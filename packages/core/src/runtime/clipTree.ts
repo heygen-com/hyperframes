@@ -11,7 +11,7 @@
  */
 
 import type { RuntimeTimelineLike } from "./types";
-import { readMediaStart } from "./playbackRate";
+import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
 
 export interface ClipNode {
   readonly id: string;
@@ -69,8 +69,7 @@ function durationFromTimeline(
 
 function durationFromMedia(el: Element): number | null {
   if (!(el instanceof HTMLMediaElement) || !Number.isFinite(el.duration)) return null;
-  const mediaStart = readMediaStart(el);
-  return el.duration > mediaStart ? el.duration - mediaStart : null;
+  return resolveNaturalMediaTimelineDuration(el, el.duration);
 }
 
 // Used only to filter out zero-duration (decorative) elements at build time.

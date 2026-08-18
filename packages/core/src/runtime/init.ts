@@ -24,6 +24,7 @@ import {
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
+  resolveNaturalMediaTimelineDuration,
   syncRuntimeMedia,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
@@ -749,7 +750,7 @@ export function initSandboxRuntimeModular(): void {
     }
     const safePlaybackStart = readElementPlaybackStart(node);
     if (Number.isFinite(node.duration) && node.duration > safePlaybackStart) {
-      return Math.max(0, node.duration - safePlaybackStart);
+      return resolveNaturalMediaTimelineDuration(node, node.duration);
     }
     return null;
   };
@@ -1986,17 +1987,15 @@ export function initSandboxRuntimeModular(): void {
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
         const start = resolveAbsoluteMediaStartSeconds(element);
-        const mediaStart = readElementPlaybackStart(element);
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration =
-          Number.isFinite(element.duration) && element.duration > mediaStart
-            ? Math.max(0, element.duration - mediaStart)
-            : null;
+        const sourceDuration = Number.isFinite(element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
         // playback so a trimmed track stops at its edge instead of running on

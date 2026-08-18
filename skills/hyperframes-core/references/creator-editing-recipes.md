@@ -25,6 +25,20 @@ Use these copyable contracts after `tracks-and-clips.md`. Global math: **consume
   muted
   playsinline
 ></video>
+<audio
+  src="take.mp4"
+  data-start="0"
+  data-duration="2"
+  data-media-start="4"
+  data-track-index="10"
+></audio>
+<audio
+  src="take.mp4"
+  data-start="2"
+  data-duration="3"
+  data-media-start="10"
+  data-track-index="10"
+></audio>
 ```
 
 Timeline math: B starts at A start + duration. Source math: each range starts at `data-media-start`; consumed source = timeline duration × rate. Audio follows: duplicate matching `<audio>` ranges/timing. Owner: `/hyperframes-core`. Limit: adjacent windows only; same-track overlap is invalid.
@@ -41,6 +55,13 @@ Timeline math: B starts at A start + duration. Source math: each range starts at
   muted
   playsinline
 ></video>
+<audio
+  src="take.mp4"
+  data-start="1"
+  data-duration="3"
+  data-media-start="6"
+  data-track-index="10"
+></audio>
 ```
 
 Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; never invent source-end syntax. Audio follows: matching separate audio track uses the same three attributes. Owner: `/hyperframes-core`. Limit: use another clip for another range.
@@ -66,6 +87,20 @@ Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; neve
   muted
   playsinline
 ></video>
+<audio
+  src="take.mp4"
+  data-start="0"
+  data-duration="2"
+  data-media-start="0"
+  data-track-index="10"
+></audio>
+<audio
+  src="take.mp4"
+  data-start="2"
+  data-duration="2"
+  data-media-start="8"
+  data-track-index="10"
+></audio>
 ```
 
 Timeline math: splice at t=2. Source math: independent source offsets select kept pieces. Audio follows: split matching audio identically. Owner: `/hyperframes-core`. Limit: source cuts are core, never keyframes.
@@ -91,6 +126,20 @@ Timeline math: splice at t=2. Source math: independent source offsets select kep
   muted
   playsinline
 ></video>
+<audio
+  src="take.mp4"
+  data-start="0"
+  data-duration="1"
+  data-media-start="2"
+  data-track-index="10"
+></audio>
+<audio
+  src="take.mp4"
+  data-start="4"
+  data-duration="1"
+  data-media-start="2"
+  data-track-index="10"
+></audio>
 ```
 
 Timeline math: copies may occupy different starts. Source math: identical offsets reuse identical source. Audio follows: duplicate the separate audio track too. Owner: `/hyperframes-core`. Limit: every element needs a unique id when ids are present.
@@ -116,6 +165,20 @@ Timeline math: copies may occupy different starts. Source math: identical offset
   muted
   playsinline
 ></video>
+<audio
+  src="take.mp4"
+  data-start="0"
+  data-duration="2"
+  data-media-start="10"
+  data-track-index="10"
+></audio>
+<audio
+  src="take.mp4"
+  data-start="2"
+  data-duration="2"
+  data-media-start="2"
+  data-track-index="10"
+></audio>
 ```
 
 Timeline math: `data-start` defines authored order. Source math: source offsets need not be chronological. Audio follows: reorder identical matching audio windows. Owner: `/hyperframes-core`. Limit: same-track overlap is invalid.

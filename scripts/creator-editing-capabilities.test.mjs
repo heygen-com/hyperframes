@@ -268,7 +268,10 @@ test("every preview reader shares the non-negative media-start helper", async ()
     "packages/core/src/runtime/startResolver.ts",
   ]) {
     const source = await read(path);
-    assert.match(source, /readElementPlaybackStart|readMediaStart/);
+    assert.match(
+      source,
+      /readElementPlaybackStart|readMediaStart|resolveNaturalMediaTimelineDuration/,
+    );
   }
 });
 
@@ -304,4 +307,45 @@ test("crossfade and volume recipes contain executable opposing envelopes", async
     "volume recipe",
   );
   JSON.parse(volume.match(/data-automation='([^']+)'/)?.[1] ?? "");
+});
+
+test("natural media duration is rate-scaled across every preview surface", async () => {
+  for (const path of [
+    files.runtimeInit,
+    "packages/core/src/runtime/clipTree.ts",
+    "packages/core/src/runtime/timeline.ts",
+  ]) {
+    assert.match(await read(path), /resolveNaturalMediaTimelineDuration/);
+  }
+});
+
+// fallow-ignore-next-line complexity
+test("every temporal source-range recipe includes matching audio markup", async () => {
+  const recipes = await read(files.editingRecipes);
+  for (const name of [
+    "Hard cut",
+    "Trim in/out",
+    "Split / splice",
+    "Duplicate / reuse same source",
+    "Reorder",
+  ]) {
+    const start = recipes.indexOf(`## ${name}`);
+    const next = recipes.indexOf("## ", start + 3);
+    const section = recipes.slice(start, next < 0 ? recipes.length : next);
+    const videos = [...section.matchAll(/<video[\s\S]*?<\/video>/g)].map((m) => m[0]);
+    const audios = [...section.matchAll(/<audio[\s\S]*?<\/audio>/g)].map((m) => m[0]);
+    assert.ok(
+      videos.length > 0 && audios.length >= videos.length,
+      `${name}: matching audio missing`,
+    );
+    for (const video of videos) {
+      for (const attr of ["src", "data-start", "data-duration", "data-media-start"]) {
+        const value = video.match(new RegExp(`${attr}="([^"]+)"`))?.[1];
+        assert.ok(
+          value && audios.some((audio) => audio.includes(`${attr}="${value}"`)),
+          `${name}: audio mismatch ${attr}`,
+        );
+      }
+    }
+  }
 });

@@ -7,6 +7,7 @@ import type {
 import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
+import { resolveNaturalMediaTimelineDuration } from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
@@ -182,7 +183,7 @@ export function collectRuntimeTimelinePayload(params: {
     }
     const playbackStart = readElementPlaybackStart(mediaEl);
     if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
-      return Math.max(0, (mediaEl.duration - playbackStart) / readElementPlaybackRate(mediaEl));
+      return resolveNaturalMediaTimelineDuration(mediaEl, mediaEl.duration);
     }
     return null;
   };
@@ -362,9 +363,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
-      const mediaStart = readElementPlaybackStart(node);
       if (Number.isFinite(node.duration) && node.duration > 0) {
-        duration = Math.max(0, node.duration - mediaStart);
+        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
     if (duration == null || duration <= 0) {

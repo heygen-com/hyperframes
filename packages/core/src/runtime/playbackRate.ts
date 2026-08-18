@@ -12,3 +12,12 @@ export function readMediaStart(el: Pick<Element, "getAttribute">): number {
     parse(el.getAttribute("data-playback-start")) ?? parse(el.getAttribute("data-media-start")) ?? 0
   );
 }
+export function resolveNaturalMediaTimelineDuration(
+  el: Pick<Element, "getAttribute">,
+  sourceDuration: number,
+): number | null {
+  const remaining = sourceDuration - readMediaStart(el);
+  return Number.isFinite(remaining) && remaining > 0
+    ? remaining / normalizePlaybackRate(Number(el.getAttribute("data-playback-rate")))
+    : null;
+}

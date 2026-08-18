@@ -2,6 +2,7 @@ import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { normalizePlaybackRate, readMediaStart } from "./playbackRate.js";
+export { resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
 export function readElementPlaybackRate(el: Element): number {
   const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");

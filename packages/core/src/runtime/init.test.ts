@@ -110,6 +110,16 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
   });
 
+  it("derives a rate-scaled natural media window", () => {
+    document.body.innerHTML =
+      '<div data-composition-id="main" data-root="true"><video data-start="0" data-media-start="2" data-playback-rate="2"></video></div>';
+    const video = document.querySelector("video")!;
+    Object.defineProperty(video, "duration", { value: 10, configurable: true });
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    expect(window.__player?.getDuration()).toBe(4);
+  });
+
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
     document.body.innerHTML = "";
