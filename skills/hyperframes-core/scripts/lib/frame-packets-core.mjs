@@ -83,14 +83,29 @@ export function citedRules(block, ruleIds) {
   return [...new Set([...explicit, ...mentioned])].filter((id) => ruleIds.includes(id));
 }
 
-export function resourceSections(block, { animationDir, ruleIds }) {
+// visual-design.md tells the author to write the blueprint as `<id> (Reproduce)`
+// or `<id> (Adapt)` — the qualifier is direction for the frame worker, not part of
+// the filename. Parse the field into the id it names (or null for `compose`), so
+// no caller ever resolves a raw field value against the blueprints directory.
+export function blueprintId(block) {
+  const raw = field(block, "blueprint");
+  if (!raw) return null;
+  const id = raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return id && id.toLowerCase() !== "compose" ? id : null;
+}
+
+export function resourceSections(block, { animationDir, ruleIds, frameId }) {
   let sections = "";
-  const blueprint = field(block, "blueprint");
-  if (blueprint && blueprint.toLowerCase() !== "compose") {
-    sections += selectedFile(
-      join(animationDir, "blueprints", `${blueprint}.md`),
-      `Selected blueprint: ${blueprint}`,
-    );
+  const blueprint = blueprintId(block);
+  if (blueprint) {
+    const path = join(animationDir, "blueprints", `${blueprint}.md`);
+    // A blueprint that resolves to nothing used to inline an empty string, so the
+    // packet shipped without the one document the frame was designed against and
+    // the run still reported success. Name it instead.
+    if (!existsSync(path)) {
+      throw new Error(`${frameId ?? "frame"}: blueprint "${blueprint}" has no file at ${path}`);
+    }
+    sections += selectedFile(path, `Selected blueprint: ${blueprint}`);
   }
   for (const rule of citedRules(block, ruleIds)) {
     sections += selectedFile(
@@ -135,7 +150,7 @@ export function buildFramePackets({
   const packets = frames.map((frame) => {
     const id = frameId(frame);
     if (validateFrame) validateFrame(frame, id);
-    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n${designTruthLine(projectDir)}\n- RULES_DIR: ${join(animationDir, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block, { animationDir, ruleIds })}${extraSections ? extraSections(frame.block) : ""}`;
+    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n${designTruthLine(projectDir)}\n- RULES_DIR: ${join(animationDir, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block, { animationDir, ruleIds, frameId: id })}${extraSections ? extraSections(frame.block) : ""}`;
     const bytes = Buffer.byteLength(packet);
     if (bytes > maxPacketBytes) {
       throw new Error(`${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`);
