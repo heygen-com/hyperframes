@@ -98,14 +98,23 @@ export function resourceSections(block, { animationDir, ruleIds, frameId }) {
   let sections = "";
   const blueprint = blueprintId(block);
   if (blueprint) {
-    const path = join(animationDir, "blueprints", `${blueprint}.md`);
-    // A blueprint that resolves to nothing used to inline an empty string, so the
+    const blueprintsDir = join(animationDir, "blueprints");
+    const path = join(blueprintsDir, `${blueprint}.md`);
+    // A blueprint that resolved to nothing used to inline an empty string, so the
     // packet shipped without the one document the frame was designed against and
-    // the run still reported success. Name it instead.
-    if (!existsSync(path)) {
+    // the run still reported success. Name it instead — but only when the library
+    // is actually there to be named against. The animation skill installs on
+    // demand, so an absent blueprints/ is a missing install, not a bad id, and it
+    // degrades with a warning exactly like an absent rules/ (see knownRuleIds).
+    if (!existsSync(blueprintsDir)) {
+      console.warn(
+        `frame-packets: no blueprints dir at ${blueprintsDir} — packets will inline no blueprint`,
+      );
+    } else if (!existsSync(path)) {
       throw new Error(`${frameId ?? "frame"}: blueprint "${blueprint}" has no file at ${path}`);
+    } else {
+      sections += selectedFile(path, `Selected blueprint: ${blueprint}`);
     }
-    sections += selectedFile(path, `Selected blueprint: ${blueprint}`);
   }
   for (const rule of citedRules(block, ruleIds)) {
     sections += selectedFile(

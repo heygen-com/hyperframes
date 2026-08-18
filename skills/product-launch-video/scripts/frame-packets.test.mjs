@@ -123,3 +123,22 @@ test("a blueprint with no file fails the run instead of shipping an empty sectio
   );
   assert.equal(existsSync(outDir), false);
 });
+
+test("an uninstalled animation skill degrades with a warning, it does not fail the run", () => {
+  // hyperframes-animation installs on demand, so an absent blueprints/ means the
+  // library isn't there yet — not that the frame named a bad id. Matches how an
+  // absent rules/ already behaves.
+  const project = mkdtempSync(join(tmpdir(), "plv-blueprint-uninstalled-"));
+  write(join(project, "frame.md"), "# tokens\n");
+  write(
+    join(project, "STORYBOARD.md"),
+    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Hook\n\n- duration: 3s\n- src: compositions/frames/01-hook.html\n- blueprint: dataviz-countup (Adapt)\n`,
+  );
+
+  const [packet] = buildFramePackets({
+    projectDir: project,
+    animationDir: join(project, "absent-animation-skill"),
+  });
+
+  assert.doesNotMatch(readFileSync(packet.path, "utf8"), /## Selected blueprint/);
+});
