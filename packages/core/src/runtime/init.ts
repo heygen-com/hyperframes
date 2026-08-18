@@ -631,22 +631,26 @@ export function initSandboxRuntimeModular(): void {
     // Both timing conventions exist in shipped projects:
     //   - composition-local media, e.g. host@20 + video@0 => root@20
     //   - legacy root-global PIP media, e.g. host@45.4 + video@45.4 => root@45.4
-    // Preserve the global value when its authored window already intersects
-    // the host's absolute window. Otherwise it is unambiguously local and
-    // must inherit the recursively-resolved host start.
-    const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+    // Which one a clip uses is decided by where it *starts*, never by where it
+    // ends. A composition-local clip is authored from its host's zero, so its
+    // start sits below the host's absolute start; a root-global clip is already
+    // in root time and starts at or after its host.
+    //
+    // TAB-792: this used to test the authored *end* instead, so any
+    // composition-local clip whose duration merely exceeded the mount offset
+    // was misread as root-global — `data-start="0"` with a 4.375s duration in a
+    // host mounted at 2.96s scheduled itself 0..4.375, the ancestor gate
+    // clipped the front, and the scene went black for the remaining 3s of its
+    // own slot. The tell was that making the clip *longer* made the hole
+    // bigger. The two branches below disagreed, and the start-based one was
+    // the correct half.
     const hostDuration = context.inheritedDuration;
     const hostEnd = hostDuration != null && hostDuration > 0 ? inheritedStart + hostDuration : null;
-    const authoredEnd =
-      authoredDuration != null && authoredDuration > 0
-        ? authoredStart + authoredDuration
-        : authoredStart;
-    const overlapsHostWindow =
+    const authoredStartIsRootGlobal =
       hostEnd == null
         ? authoredStart >= inheritedStart
-        : authoredStart < hostEnd &&
-          (authoredEnd > inheritedStart || authoredStart === inheritedStart);
-    return overlapsHostWindow ? authoredStart : inheritedStart + authoredStart;
+        : authoredStart >= inheritedStart && authoredStart < hostEnd;
+    return authoredStartIsRootGlobal ? authoredStart : inheritedStart + authoredStart;
   };
 
   window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;
