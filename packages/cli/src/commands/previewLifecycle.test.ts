@@ -428,11 +428,55 @@ describe("background preview lifecycle", () => {
     const status = await readBackgroundPreviewStatus(projectDir, 3002, {
       scan: async () => [],
       identity: () => "posix:birth",
+      isSignalable: () => true,
       stateHome,
     });
 
     expect(status).toBeNull();
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
+  });
+
+  it("keeps a live preview's record when the identity lookup gives no answer", async () => {
+    // `processIdentity` catches every failure into `null`, and on Windows and
+    // macOS that failure is a subprocess timeout on a LIVE process — under the
+    // same load that made the HTTP probe miss. Treating no-answer as
+    // "recycled" destroyed the only PID-reuse guard `--stop` has.
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    writePreviewSession(
+      { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      stateHome,
+    );
+
+    const status = await readBackgroundPreviewStatus(projectDir, 3002, {
+      scan: async () => [],
+      identity: () => null,
+      isSignalable: () => true,
+      stateHome,
+    });
+
+    expect(status).toBeNull();
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
+  });
+
+  it("retires the record when the PID cannot be signalled at all", async () => {
+    // Gone is gone: no birth token needed, and no subprocess spawned for it.
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    writePreviewSession(
+      { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      stateHome,
+    );
+    const identity = vi.fn(() => "posix:birth");
+
+    const status = await readBackgroundPreviewStatus(projectDir, 3002, {
+      scan: async () => [],
+      identity,
+      isSignalable: () => false,
+      stateHome,
+    });
+
+    expect(status).toBeNull();
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+    expect(identity).not.toHaveBeenCalled();
   });
 
   it("retires the record once the wrapper PID has been recycled", async () => {
@@ -445,6 +489,7 @@ describe("background preview lifecycle", () => {
     const status = await readBackgroundPreviewStatus(projectDir, 3002, {
       scan: async () => [],
       identity: () => "posix:someone-else",
+      isSignalable: () => true,
       stateHome,
     });
 

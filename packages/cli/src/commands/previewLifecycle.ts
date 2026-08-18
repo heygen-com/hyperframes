@@ -45,6 +45,7 @@ interface LifecycleDependencies {
   kill?: (pid: number) => void;
   isDescendant?: (childPid: number, ancestorPid: number) => boolean;
   identity?: (pid: number) => string | null;
+  isSignalable?: (pid: number) => boolean;
   stateHome?: string;
   forceNew?: boolean;
   browserGpuMode?: BrowserGpuMode;
@@ -80,8 +81,14 @@ export function writePreviewSession(session: PreviewSession, stateHome = default
   // would destroy a live server's only ownership proof. `rename` is atomic
   // within a directory, so a reader sees either the old record or the new one.
   const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
-  renameSync(temporary, path);
+  try {
+    writeFileSync(temporary, `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
+    renameSync(temporary, path);
+  } finally {
+    // A failed rename would otherwise orphan the temp file. The `.json` filter
+    // hides it from the lister, so it accumulates silently.
+    rmSync(temporary, { force: true });
+  }
 }
 
 function readPreviewSession(
@@ -287,13 +294,43 @@ export async function readBackgroundPreviewStatus(
  * record has no token to compare against — failing closed there would pin dead
  * records forever on platforms where the lookup is unavailable.
  */
+/**
+ * Whether a PID exists at all. `kill(pid, 0)` sends no signal; it only asks the
+ * kernel. `EPERM` means the process is there but owned by someone else — still
+ * alive, which is the question being asked.
+ */
+function processIsSignalable(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException | undefined)?.code === "EPERM";
+  }
+}
+
 function wrapperProcessIsAlive(
   saved: PreviewSession,
   dependencies: LifecycleDependencies,
 ): boolean {
   if (!saved.wrapperIdentity) return false;
-  const identity = dependencies.identity ?? processIdentity;
-  return identity(saved.pid) === saved.wrapperIdentity;
+
+  // Cheap and decisive first: a PID nothing can signal is gone, and no birth
+  // token is needed to say so. This also keeps the identity subprocess off the
+  // path for exactly the stale records that make `--list` slow.
+  const signalable = dependencies.isSignalable ?? processIsSignalable;
+  if (!signalable(saved.pid)) return false;
+
+  const identity = (dependencies.identity ?? processIdentity)(saved.pid);
+  // No answer is NOT the same as a different answer. `processIdentity` catches
+  // every failure into `null`, and on two of three platforms that failure is a
+  // subprocess timeout on a live process — `ps -o lstart=` and PowerShell's CIM
+  // query both run on a 2 s budget, under the very load that made the HTTP
+  // probe miss in the first place. Treating that as "recycled" would destroy
+  // the only PID-reuse guard `--stop` has, which is the loss this whole path
+  // exists to prevent. The PID is signalable, so keep the record.
+  if (identity === null) return true;
+
+  return identity === saved.wrapperIdentity;
 }
 
 export async function listBackgroundPreviewStatuses(
