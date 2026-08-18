@@ -77,7 +77,10 @@ export function getFFmpegInstallCommand(): string | undefined {
 
 export function getFFmpegInstallHint(): string {
   const command = getFFmpegInstallCommand();
-  if (process.platform === "win32") {
+  // Guarding on `command`, not the platform alone: the function above is the
+  // sole owner of platform-to-command, so the day win32 stops returning one
+  // this would otherwise interpolate "undefined, or download the ...".
+  if (command && process.platform === "win32") {
     return `${command}, or download the 64-bit build from ${FFMPEG_DOWNLOAD_URL}#build-windows and add its bin/ directory to PATH.`;
   }
   if (command) return command;

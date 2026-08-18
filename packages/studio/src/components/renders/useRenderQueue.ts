@@ -73,11 +73,13 @@ export function useRenderQueue(projectId: string | null) {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Failure of a user action (delete/cancel), surfaced inline in the panel.
   const [actionError, setActionError] = useState<string | null>(null);
-  // Owned here rather than in the panel: Studio has more than one Export
-  // control (the panel's button and the header's), and a check that lives in
-  // one of them leaves the other free to start a render this machine cannot
-  // finish. Every caller routes through `startRender`, so that is where the
-  // refusal belongs.
+  // Owned here rather than in the panel: Studio renders from three places —
+  // the panel's Export button, the header's, and each composition card in the
+  // left sidebar — and a check living in one of them leaves the rest free to
+  // start a render this machine cannot finish. Every caller routes through
+  // `startRender`, so that is where the refusal belongs. Call sites still
+  // read `ffmpegMissing` to put the prompt on screen, because a refusal the
+  // user cannot see reads as a broken button.
   const { status: ffmpeg, checking: ffmpegChecking, recheck: recheckFfmpeg } = useFfmpegStatus();
   // A null status means the probe gave no answer (older server, failed
   // request), which is not evidence of a missing encoder. Unknown fails open.

@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 
-// Studio has two Export controls (the Renders panel's button and the header's)
-// and the header one calls startRender directly. A check that lives in a
+// Studio has three render entry points: the Renders panel's Export button, the
+// header's, and the Render control on every composition card in the left
+// sidebar. The last two call startRender directly. A check that lives in one
 // button leaves every other caller free to queue a render this machine cannot
-// finish, so the refusal lives in startRender, which all of them route through.
+// finish, so the refusal lives in startRender, which all of them route through
+// — including any fourth caller nobody has written yet.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FfmpegStatus } from "./useFfmpegStatus";
