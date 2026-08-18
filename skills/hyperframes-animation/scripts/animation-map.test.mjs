@@ -345,6 +345,49 @@ const FAKE_PROXY_DRIVER_ENV = [
   "export async function getCompositionDuration() { return 4; }",
 ].join("\n");
 
+// The WebGL/uniform shape, e.g. skills/music-to-video/references/templates/
+// held-message-living-field: the TIMELINE carries onUpdate: renderFrame and its children
+// tween plain uniform objects. No child has an onUpdate of its own, so a tween-local
+// discriminator misses all of them and the whole composition reads as one dead zone.
+const FAKE_PARENT_DRIVER_ENV = [
+  "globalThis.Element = class Element {};",
+  "const uniformTween = {",
+  "  targets: () => [{ value: 0 }],",
+  '  vars: { value: 12, duration: 12, ease: "none" },',
+  "  startTime: () => 0,",
+  "  duration: () => 12,",
+  "};",
+  // Same driven timeline, but this one alters nothing — the repaint it triggers is
+  // identical frame to frame, so it must NOT count as motion.
+  "const spacerTween = {",
+  "  targets: () => [{}],",
+  "  vars: { duration: 12 },",
+  "  startTime: () => 0,",
+  "  duration: () => 12,",
+  "};",
+  "const timeline = {",
+  "  vars: { onUpdate() {} },",
+  "  getChildren: () => [uniformTween, spacerTween],",
+  "  startTime: () => 0,",
+  "  duration: () => 12,",
+  "  seek() {},",
+  "};",
+  "globalThis.window = { __timelines: { main: timeline } };",
+  "globalThis.document = { querySelector: () => null, querySelectorAll: () => [] };",
+  "globalThis.getComputedStyle = () => ({",
+  '  opacity: "1",',
+  '  visibility: "visible",',
+  '  display: "block",',
+  "});",
+  'export async function createFileServer() { return { url: "http://test", close() {} }; }',
+  "export async function createCaptureSession() {",
+  "  return { page: { evaluate: async (fn, arg) => fn(arg) } };",
+  "}",
+  "export async function closeCaptureSession() {}",
+  "export async function initializeSession() {}",
+  "export async function getCompositionDuration() { return 12; }",
+].join("\n");
+
 describe("proxy-driver tweens", () => {
   it("counts an onUpdate driver's span instead of reporting it as a dead zone", () => {
     const root = mkdtempSync(join(tmpdir(), "hyperframes-skill-proxy-test-"));
@@ -365,6 +408,28 @@ describe("proxy-driver tweens", () => {
       assert.deepEqual(report.deadZones, [], "2-4s is animating, not dead");
       // The bare spacer stays out — only the element tween and the driver are mapped.
       assert.equal(report.tweens.length, 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("inherits a driver the TIMELINE owns, without counting a spacer under it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hyperframes-skill-parent-driver-test-"));
+    try {
+      const compositionDir = writeFakeEnv(root, FAKE_PARENT_DRIVER_ENV);
+      const output = runHelper(HELPERS[0], root, compositionDir);
+      const report = JSON.parse(readFileSync(join(root, "out", "animation-map.json"), "utf8"));
+
+      const drivers = report.tweens.filter((tw) => tw.driver === "onUpdate");
+      assert.equal(drivers.length, 1, `expected one inherited driver in:\n${output}`);
+      assert.deepEqual(drivers[0].props, ["value"]);
+      assert.equal(drivers[0].start, 0);
+      assert.equal(drivers[0].end, 12);
+
+      assert.deepEqual(report.deadZones, [], "the uniform tween animates the whole span");
+      // The spacer changes no value, so the parent's onUpdate repaints an identical frame.
+      // Counting it would mask a real dead zone.
+      assert.equal(report.tweens.length, 1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -189,24 +189,22 @@ async function enumerateTweens(session) {
       return cls ? `${el.tagName.toLowerCase()}.${cls}` : el.tagName.toLowerCase();
     };
 
-    const walk = (node, parentOffset = 0) => {
+    const walk = (node, parentOffset = 0, parentDriven = false) => {
       if (!node) return;
       if (typeof node.getChildren === "function") {
         const offset = parentOffset + (node.startTime?.() ?? 0);
+        // A TIMELINE can own the driver instead of the tween. The WebGL/uniform idiom is
+        // gsap.timeline({ onUpdate: renderFrame }) over children that tween plain uniform
+        // objects; those children carry no onUpdate of their own, so the driver has to
+        // reach them from above or their motion reads as a dead zone all the same.
+        const driven = parentDriven || typeof node.vars?.onUpdate === "function";
         for (const child of node.getChildren(true, true, true)) {
-          walk(child, offset);
+          walk(child, offset, driven);
         }
         return;
       }
       const targets = (node.targets?.() ?? []).filter((t) => t instanceof Element);
       const vars = node.vars ?? {};
-      // The proxy-driver idiom tweens a plain object and applies the motion in onUpdate,
-      // so targets() holds no Element. Dropping those tweens hid real motion from the
-      // map: computeDensity saw zero active tweens over their span and findDeadZones
-      // reported it as dead. There is no element to select or measure here, but the span
-      // is real, so keep the tween and mark why it carries no geometry.
-      const isProxyDriver = targets.length === 0 && typeof vars.onUpdate === "function";
-      if (!targets.length && !isProxyDriver) return;
       const props = Object.keys(vars).filter(
         (k) =>
           ![
@@ -221,6 +219,21 @@ async function enumerateTweens(session) {
             "stagger",
           ].includes(k),
       );
+      // The proxy-driver idiom tweens a plain object and applies the motion in onUpdate,
+      // so targets() holds no Element. Dropping those tweens hid real motion from the
+      // map: computeDensity saw zero active tweens over their span and findDeadZones
+      // reported it as dead. There is no element to select or measure here, but the span
+      // is real, so keep the tween and mark why it carries no geometry.
+      //
+      // Under an inherited driver the tween must also CHANGE something. Its own onUpdate is
+      // proof of work by itself (a repaint loop need not animate a property), but a parent's
+      // is not: a bare `tl.to({}, { duration: D })` spacer inside a driven timeline advances
+      // the playhead without altering any value, so counting it would mask a genuine dead
+      // zone — the exact false positive the tween-local rule was careful to avoid.
+      const isProxyDriver =
+        targets.length === 0 &&
+        (typeof vars.onUpdate === "function" || (parentDriven && props.length > 0));
+      if (!targets.length && !isProxyDriver) return;
       const start = parentOffset + (node.startTime?.() ?? 0);
       const end = start + (node.duration?.() ?? 0);
       results.push({
