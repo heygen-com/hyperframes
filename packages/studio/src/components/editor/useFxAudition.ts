@@ -53,6 +53,17 @@ export function useFxAudition(
   );
 
   /**
+   * The chain as the DOCUMENT has it, ignoring whatever is being auditioned.
+   *
+   * An audition writes through the preview channel, and the `chain` prop is
+   * read back from that same live attribute — so mid-hover it is the hovered
+   * preset, not the stored chain. Applying on top of it stacked the auditioned
+   * preset into the saved chain: hover a reverb, click a different preset, and
+   * both were persisted, which is heard as the effect running twice.
+   */
+  const storedChain = useCallback(() => auditionBase.current ?? chain, [chain]);
+
+  /**
    * Drop whatever is being auditioned WITHOUT reverting the preview, for a
    * caller that is about to mutate the real chain anyway — reverting first
    * would be a chain the document never sees, immediately overwritten.
@@ -91,5 +102,5 @@ export function useFxAudition(
     [],
   );
 
-  return { audition, clearAudition };
+  return { audition, clearAudition, storedChain };
 }

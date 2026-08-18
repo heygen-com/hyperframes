@@ -134,11 +134,18 @@ export function FxSection({
     [chain, onChainPreview],
   );
 
-  const { audition, clearAudition } = useFxAudition(chain, onChainPreview, onAuditionTransport);
+  const { audition, clearAudition, storedChain } = useFxAudition(
+    chain,
+    onChainPreview,
+    onAuditionTransport,
+  );
 
   const applyPreset = useCallback(
     (id: string) => {
-      const next = applyPresetToChain(chain, id, trackKind);
+      // The stored chain, not whatever is being auditioned on top of it — see
+      // `storedChain`. Clicking preset B while hovering preset A used to save
+      // both, which is heard as the effect running twice.
+      const next = applyPresetToChain(storedChain(), id, trackKind);
       if (!next) return;
       // The audition WAS this, so there is nothing to put back — and putting the
       // old chain back over the write that just landed is a race the author
@@ -150,7 +157,7 @@ export function FxSection({
       setOpenNode(next.nodes.findIndex((n) => n.fromPreset === id));
       setPicking(false);
     },
-    [chain, mutate, clearAudition, trackKind],
+    [storedChain, mutate, clearAudition, trackKind],
   );
 
   const addJob = useCallback(

@@ -30,6 +30,10 @@ interface TimelineGroupHeaderProps {
   onFxChainPreview?: (next: HfAudioFxChain) => void;
   /** Member clips, so hovering a preset auditions where the group sounds. */
   auditionSpans?: readonly AuditionSpan[];
+  /** Why an audition here will be silent (excluded by someone else's solo). */
+  silentReason?: string | null;
+  /** Set the group mute on the running graph only, so an audition can lift it. */
+  onSetMutedLive?: (muted: boolean) => void;
   onOpenFxRack: () => void;
   columnWidth: number;
   theme: TimelineTheme;
@@ -56,6 +60,8 @@ export function TimelineGroupHeader({
   onFxChainChange,
   onFxChainPreview,
   auditionSpans,
+  silentReason,
+  onSetMutedLive,
   onOpenFxRack,
   columnWidth,
   theme,
@@ -151,6 +157,9 @@ export function TimelineGroupHeader({
         onChainChange={onFxChainChange}
         onChainPreview={onFxChainPreview}
         auditionSpans={auditionSpans}
+        silentReason={silentReason}
+        isMuted={hidden}
+        onSetMutedLive={onSetMutedLive}
         onOpenRack={onOpenFxRack}
       />
       <button

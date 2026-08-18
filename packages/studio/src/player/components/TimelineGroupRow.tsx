@@ -79,6 +79,19 @@ export function TimelineGroupRow({
     if (live) onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);
     else void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
   };
+  // Hovering a preset on a muted bus is a question about the preset, not about
+  // the mute — so the audition lifts the mute while it plays and puts it back
+  // on the way out, the same borrow-and-return it already does with the
+  // playhead. Live only: `data-hidden` stays in the document, so the row keeps
+  // reading (and rendering) as muted throughout.
+  const setGroupMutedLive = (muted: boolean) =>
+    onSetAudioGroupAttributeLive?.(group.id, "data-hidden", muted ? "" : null);
+  // Solo is not ours to borrow the same way — it is a statement about every
+  // other track, and lifting it would silence the one the author soloed. Say so
+  // instead, or the shelf auditions into silence and reads as broken.
+  const silencedBySolo =
+    soloed.size > 0 && !soloed.has(group.id) && !memberIds.some((id) => soloed.has(id));
+  const silentReason = silencedBySolo ? "Another track is soloed — presets here are silent." : null;
   const openGroupFxRack = () => {
     const target = domEditActions?.previewIframeRef.current?.contentDocument?.getElementById(
       group.id,
@@ -127,6 +140,8 @@ export function TimelineGroupRow({
         onFxChainChange={(next) => writeGroupFxChain(next, false)}
         onFxChainPreview={(next) => writeGroupFxChain(next, true)}
         auditionSpans={memberElements}
+        silentReason={silentReason}
+        onSetMutedLive={setGroupMutedLive}
         onOpenFxRack={openGroupFxRack}
         // Same width as every other row's header. The group row needs a real
         // label column, but it gets one by turning `labelMode` on for the whole

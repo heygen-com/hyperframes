@@ -43,6 +43,14 @@ interface TimelineFxButtonChainProps {
    *  actually sound instead of playing silence from a playhead parked before
    *  the first one. */
   auditionSpans?: readonly AuditionSpan[];
+  /** Why an audition here will be silent (excluded by someone else's solo). */
+  silentReason?: string | null;
+  /** Whether this target is muted right now. */
+  isMuted?: boolean;
+  /** Set this target's mute on the running graph WITHOUT touching the document,
+   *  so an audition can lift a mute and put it back. Hovering a preset on a
+   *  muted bus is a question about the preset, not about the mute. */
+  onSetMutedLive?: (muted: boolean) => void;
 }
 
 interface TimelineFxButtonGroupPointerProps {
@@ -60,6 +68,8 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
   // want the same thing, and neither passed one, so hovering a preset in this
   // popover was silent unless the transport already happened to be running.
   const transport = useAuditionTransport();
+  /** Whether THIS audition lifted a mute, so only it puts one back. */
+  const borrowedMute = useRef(false);
 
   const openAt = () => {
     setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
@@ -144,8 +154,17 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
             onClose={() => setOpen(false)}
             onChainChange={props.onChainChange}
             onChainPreview={props.onChainPreview}
-            onAuditionTransport={(on) => transport(on, props.auditionSpans)}
+            onAuditionTransport={(on) => {
+              // Read on the way IN and remembered: the live unmute flows back
+              // into the row's props, so by the time the audition ends the
+              // target no longer looks muted and the mute would never return.
+              if (on) borrowedMute.current = props.isMuted === true;
+              if (borrowedMute.current) props.onSetMutedLive?.(!on);
+              if (!on) borrowedMute.current = false;
+              transport(on, props.auditionSpans);
+            }}
             onOpenRack={props.onOpenRack}
+            silentReason={props.silentReason}
           />,
           document.body,
         )}

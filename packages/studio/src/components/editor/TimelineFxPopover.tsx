@@ -58,6 +58,10 @@ export interface TimelineFxPopoverProps {
   /** Select the target the way clicking it in the timeline does, and ensure
    *  the property panel's Audio FX group is expanded. */
   onOpenRack: () => void;
+  /** Why hovering a preset here will make no sound — a muted bus, a track
+   *  silenced by someone else's solo. Without this the shelf auditions into
+   *  silence and reads as broken rather than as muted. */
+  silentReason?: string | null;
 }
 
 export function TimelineFxPopover({
@@ -69,9 +73,14 @@ export function TimelineFxPopover({
   onChainPreview,
   onAuditionTransport,
   onOpenRack,
+  silentReason,
 }: TimelineFxPopoverProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const { audition, clearAudition } = useFxAudition(chain, onChainPreview, onAuditionTransport);
+  const { audition, clearAudition, storedChain } = useFxAudition(
+    chain,
+    onChainPreview,
+    onAuditionTransport,
+  );
 
   // Outside click dismisses like any other popover; the button itself is
   // excluded by pointerdown timing (the button's own click hasn't happened yet).
@@ -84,7 +93,8 @@ export function TimelineFxPopover({
   }, [onClose]);
 
   const applyPreset = (id: string) => {
-    const next = applyPresetToChain(chain, id, trackKind);
+    // The stored chain, not the auditioned one — see `storedChain`.
+    const next = applyPresetToChain(storedChain(), id, trackKind);
     if (!next) return;
     clearAudition();
     onChainChange(next);
@@ -110,6 +120,11 @@ export function TimelineFxPopover({
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
     >
+      {silentReason ? (
+        <p className="mb-1.5 shrink-0 rounded-[3px] bg-[#F5C542]/10 px-1.5 py-1 text-[10px] text-[#F5C542]">
+          {silentReason}
+        </p>
+      ) : null}
       {/* The list scrolls; the footer below stays put. `min-h-0` is load-bearing
           — a flex child defaults to min-height:auto and would refuse to shrink,
           pushing the footer out of the popover instead of scrolling. */}
