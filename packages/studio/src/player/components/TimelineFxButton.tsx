@@ -18,7 +18,10 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
-import { useAuditionTransport } from "../../components/editor/useAuditionTransport.js";
+import {
+  useAuditionTransport,
+  type AuditionSpan,
+} from "../../components/editor/useAuditionTransport.js";
 
 function parseFxChainOrEmpty(raw: string | undefined): HfAudioFxChain {
   if (!raw) return { version: 1, nodes: [] };
@@ -36,6 +39,10 @@ interface TimelineFxButtonChainProps {
   fxChainRaw: string | undefined;
   onChainChange: (next: HfAudioFxChain) => void;
   onChainPreview?: (next: HfAudioFxChain) => void;
+  /** The clips this chain is heard through, so an audition can start where they
+   *  actually sound instead of playing silence from a playhead parked before
+   *  the first one. */
+  auditionSpans?: readonly AuditionSpan[];
 }
 
 interface TimelineFxButtonGroupPointerProps {
@@ -52,7 +59,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
   // Owned here rather than threaded from each caller: both timeline call sites
   // want the same thing, and neither passed one, so hovering a preset in this
   // popover was silent unless the transport already happened to be running.
-  const auditionTransport = useAuditionTransport();
+  const transport = useAuditionTransport();
 
   const openAt = () => {
     setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
@@ -137,7 +144,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
             onClose={() => setOpen(false)}
             onChainChange={props.onChainChange}
             onChainPreview={props.onChainPreview}
-            onAuditionTransport={auditionTransport}
+            onAuditionTransport={(on) => transport(on, props.auditionSpans)}
             onOpenRack={props.onOpenRack}
           />,
           document.body,

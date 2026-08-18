@@ -490,6 +490,7 @@ export function TimelineTrackHeader({
               trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
               onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
               onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+              auditionSpans={[singleAudioClip]}
               onOpenRack={() => openClipFxRack(singleAudioClip)}
             />
           )}

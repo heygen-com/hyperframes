@@ -3,6 +3,7 @@ import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { TRACK_H } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import { TimelineFxButton } from "./TimelineFxButton";
+import type { AuditionSpan } from "../../components/editor/useAuditionTransport.js";
 
 interface TimelineGroupHeaderProps {
   label: string;
@@ -27,6 +28,8 @@ interface TimelineGroupHeaderProps {
   fxChain?: string;
   onFxChainChange: (next: HfAudioFxChain) => void;
   onFxChainPreview?: (next: HfAudioFxChain) => void;
+  /** Member clips, so hovering a preset auditions where the group sounds. */
+  auditionSpans?: readonly AuditionSpan[];
   onOpenFxRack: () => void;
   columnWidth: number;
   theme: TimelineTheme;
@@ -52,6 +55,7 @@ export function TimelineGroupHeader({
   fxChain,
   onFxChainChange,
   onFxChainPreview,
+  auditionSpans,
   onOpenFxRack,
   columnWidth,
   theme,
@@ -146,6 +150,7 @@ export function TimelineGroupHeader({
         fxChainRaw={fxChain}
         onChainChange={onFxChainChange}
         onChainPreview={onFxChainPreview}
+        auditionSpans={auditionSpans}
         onOpenRack={onOpenFxRack}
       />
       <button

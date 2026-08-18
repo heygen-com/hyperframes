@@ -126,6 +126,7 @@ export function TimelineGroupRow({
         fxChain={group.fxChain}
         onFxChainChange={(next) => writeGroupFxChain(next, false)}
         onFxChainPreview={(next) => writeGroupFxChain(next, true)}
+        auditionSpans={memberElements}
         onOpenFxRack={openGroupFxRack}
         // Same width as every other row's header. The group row needs a real
         // label column, but it gets one by turning `labelMode` on for the whole
