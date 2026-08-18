@@ -192,18 +192,22 @@ export function initSandboxRuntimeModular(): void {
     soloedIds = new Set(ids);
     webAudio.setSolo(soloedIds);
   };
-  // A2's preview/export parity fix — silencing `data-hidden` audio the way the
-  // render already does — behind the `audio-track-mute` canary, which is what
-  // that canary was declared for. Core cannot read the registry (canaries are
-  // resolved from the studio's install id), so the host pushes the resolved
-  // state on the same channel as solo. Default OFF = the shipped behaviour: a
-  // composition carrying `data-hidden` on an audio element keeps playing in
-  // preview until its author is enrolled. Non-studio hosts (CLI preview, the
-  // bare player) never push, so they stay on the old behaviour too.
-  let silenceHiddenAudio = false;
-  window.__hf.setAudioMuteHidden = (enabled) => {
-    if (silenceHiddenAudio === enabled) return;
-    silenceHiddenAudio = enabled;
+  // Canary states the HOST resolved, keyed by registry name. Core cannot
+  // resolve one itself — bucketing needs an install id it has no access to —
+  // so every runtime-visible flag arrives through this one channel rather than
+  // growing an `__hf` setter of its own.
+  //
+  // Every flag defaults OFF, which is the shipped behaviour: a host that never
+  // pushes (CLI preview, the bare player) behaves exactly as before.
+  const canaries: Record<string, boolean> = {};
+  // A2's preview/export parity fix: silence `data-hidden` audio the way the
+  // render already does. Off until enrolled, so a composition carrying
+  // `data-hidden` on an audio element keeps playing in preview meanwhile.
+  const silenceHiddenAudioEnabled = (): boolean => canaries["audio-track-mute"] === true;
+  window.__hf.setCanaries = (states) => {
+    const wasSilencing = silenceHiddenAudioEnabled();
+    for (const [name, enabled] of Object.entries(states)) canaries[name] = enabled === true;
+    if (silenceHiddenAudioEnabled() === wasSilencing) return;
     // The active-clip set is built with this predicate baked in, so a flip
     // mid-session has to rebuild it. `stopAll()` first: bumping the generation
     // only rejects future STALE schedules, it does not stop sources already
@@ -2103,7 +2107,7 @@ export function initSandboxRuntimeModular(): void {
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
         isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
-        silenceHiddenAudio,
+        silenceHiddenAudio: silenceHiddenAudioEnabled(),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -3006,7 +3010,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            if (silenceHiddenAudio && rawEl.closest("[data-hidden]")) continue;
+            if (silenceHiddenAudioEnabled() && rawEl.closest("[data-hidden]")) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3114,7 +3118,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      if (silenceHiddenAudio && rawEl.closest("[data-hidden]")) continue;
+      if (silenceHiddenAudioEnabled() && rawEl.closest("[data-hidden]")) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);

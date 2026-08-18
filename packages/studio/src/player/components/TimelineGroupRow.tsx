@@ -25,10 +25,9 @@ interface TimelineGroupRowProps {
   top: number;
   height: number;
   virtualized: boolean;
-  contentOrigin: number;
   theme: TimelineTheme;
   rovingTargetId?: string | null;
-  expandedGroupIds: ReadonlySet<string>;
+  collapsedGroupIds: ReadonlySet<string>;
   expandedLaneOwnerIds: ReadonlySet<string>;
   toggleGroupExpanded: (id: string) => void;
   toggleLaneOwnerExpanded: (id: string) => void;
@@ -43,10 +42,9 @@ export function TimelineGroupRow({
   top,
   height,
   virtualized,
-  contentOrigin,
   theme,
   rovingTargetId = null,
-  expandedGroupIds,
+  collapsedGroupIds,
   expandedLaneOwnerIds,
   toggleGroupExpanded,
   toggleLaneOwnerExpanded,
@@ -106,7 +104,7 @@ export function TimelineGroupRow({
       <TimelineGroupHeader
         label={group.label}
         memberCount={group.memberTracks.length}
-        isExpanded={expandedGroupIds.has(group.id)}
+        isExpanded={!collapsedGroupIds.has(group.id)}
         onToggleExpanded={() => toggleGroupExpanded(group.id)}
         laneCount={groupAutomationLanes(memberElements).length}
         isLaneOpen={isLaneOpen}
@@ -127,7 +125,14 @@ export function TimelineGroupRow({
         onFxChainChange={(next) => writeGroupFxChain(next, false)}
         onFxChainPreview={(next) => writeGroupFxChain(next, true)}
         onOpenFxRack={openGroupFxRack}
-        columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
+        // Always the full label column, never squeezed down to `contentOrigin`.
+        // A track row can afford a narrow gutter because its CLIPS carry the
+        // name on the bar; a group row has no clips at all, so the gutter is
+        // the only place its name exists — and at the default fit the gutter is
+        // ~80px, which rendered the label at zero width and clipped the solo,
+        // FX and lane buttons off the side. Overhanging into the lane area is
+        // safe precisely because this row is empty (see `propertyRows={[]}`).
+        columnWidth={LABEL_COL_W}
         theme={theme}
       />
       {isLaneOpen && (

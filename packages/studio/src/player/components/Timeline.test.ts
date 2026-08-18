@@ -335,7 +335,6 @@ describe("Timeline provider boundary", () => {
           audioGroup: "voiceover",
         },
       ],
-      expandedGroupIds: new Set(["voiceover"]),
     });
     const root = createRoot(host);
     act(() => root.render(React.createElement(Timeline)));

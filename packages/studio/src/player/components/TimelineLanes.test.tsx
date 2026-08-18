@@ -118,7 +118,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
             selectedElementId: null,
             selectedElementIds: next.selectedElementIds ?? new Set(),
             expandedClipIds: new Set(next.expandedClipIds ?? []),
-            expandedGroupIds: new Set(),
+            collapsedGroupIds: new Set(),
             expandedLaneOwnerIds: new Set(),
             groups: [],
             trackGroupOf: new Map(),

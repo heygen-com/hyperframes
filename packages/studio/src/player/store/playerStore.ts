@@ -266,7 +266,7 @@ export function createTimelineResetState() {
     expandedClipIds: new Set<string>(),
     // Per-composition: ids from comp A match nothing in B, silencing all of it.
     soloed: new Set<string>(),
-    expandedGroupIds: new Set<string>(),
+    collapsedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),
     focusedEaseSegment: null,
     selectedElementIds: new Set<string>(),

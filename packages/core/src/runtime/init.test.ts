@@ -1352,7 +1352,7 @@ describe("initSandboxRuntimeModular", () => {
     // Behind the `audio-track-mute` canary — off until the host pushes it, so a
     // composition that already carries data-hidden on an audio element keeps
     // playing in preview for anyone not enrolled.
-    window.__hf?.setAudioMuteHidden?.(true);
+    window.__hf?.setCanaries?.({ "audio-track-mute": true });
 
     const decodeSpy = vi
       .spyOn(WebAudioTransport.prototype, "decodeAudioElement")

@@ -55,11 +55,13 @@ describe("collapsed audio groups", () => {
     audioGroup: "voiceover",
   });
 
-  function renderGrouped(): {
+  /** `collapsed` seeds the collapsed set — expanded is the default state. */
+  function renderGrouped(collapsed = false): {
     layout: ReturnType<typeof useTimelineTrackLayout>;
     unmount: () => void;
   } {
     enabledCanaries.add("audio-groups");
+    if (collapsed) usePlayerStore.setState({ collapsedGroupIds: new Set(["voiceover"]) });
     const elements = [member("voice-1", 0), member("voice-2", 1)];
     let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
     function Probe() {
@@ -77,7 +79,7 @@ describe("collapsed audio groups", () => {
   // still reserve height, turning that null into visible dead space — the row
   // list and the logical rows have to agree.
   it("emits only the anchor row while the group is collapsed", () => {
-    const { layout, unmount } = renderGrouped();
+    const { layout, unmount } = renderGrouped(true);
     expect(layout.groups).toHaveLength(1);
     expect(layout.groups[0]!.memberTracks).toEqual([0, 1]);
     // The anchor (0 - 0.5) and nothing else.
@@ -94,14 +96,25 @@ describe("collapsed audio groups", () => {
   // display list — which a collapsed group does not appear in. Collapsed is the
   // default, so that was every group until someone opened it.
   it("carries its member elements even while collapsed", () => {
-    const { layout, unmount } = renderGrouped();
+    const { layout, unmount } = renderGrouped(true);
     expect(layout.trackOrder).toEqual([-0.5]); // collapsed: no member rows
     expect(layout.groups[0]!.memberElements.map((el) => el.id)).toEqual(["voice-1", "voice-2"]);
     unmount();
   });
 
+  // The reason the set is stored inverted. As an expanded-set, "absent" could
+  // not tell never-touched from deliberately-collapsed, so a freshly created
+  // group started collapsed — grouping three tracks made all three vanish
+  // behind a header the user had not yet learned to open.
+  it("is expanded by default, with nothing seeded", () => {
+    const { layout, unmount } = renderGrouped();
+    expect(usePlayerStore.getState().collapsedGroupIds.size).toBe(0);
+    expect(layout.trackOrder).toEqual([-0.5, 0, 1]);
+    unmount();
+  });
+
   it("emits the member rows once the group is expanded", () => {
-    usePlayerStore.setState({ expandedGroupIds: new Set(["voiceover"]) });
+    // Expanded is the default now — nothing to seed.
     const { layout, unmount } = renderGrouped();
     expect(layout.trackOrder).toEqual([-0.5, 0, 1]);
     for (const track of layout.groups[0]!.memberTracks) {

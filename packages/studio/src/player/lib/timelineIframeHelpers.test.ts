@@ -97,8 +97,8 @@ describe("applyPreviewAudioFlags", () => {
         setAudioSolo: (ids: readonly string[]) => {
           calls.solo = [...ids];
         },
-        setAudioMuteHidden: (enabled: boolean) => {
-          calls.muteHidden = [enabled];
+        setCanaries: (states: Record<string, boolean>) => {
+          calls.canaries = [states];
         },
       },
     };
@@ -119,7 +119,8 @@ describe("applyPreviewAudioFlags", () => {
     applyPreviewAudioFlags(iframe, false, 1, new Set(["voice-1"]));
 
     expect(calls.solo).toEqual(["voice-1"]);
-    expect(calls.muteHidden).toEqual([false]);
+    // Every runtime-visible flag in one push, each resolved by the host.
+    expect(calls.canaries?.[0]).toMatchObject({ "audio-track-mute": expect.any(Boolean) });
   });
 
   it("pushes an empty solo set rather than skipping the call", () => {

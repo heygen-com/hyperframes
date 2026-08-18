@@ -159,6 +159,16 @@ function hostElementState(flat: TimelineElement | undefined): Partial<TimelineEl
     // still showed the chain and its toggles.
     fxChain: flat.fxChain,
     automation: flat.automation,
+    // And the same again for group membership. Without these an expanded
+    // sub-comp child had `audioGroup === undefined`, so `resolveGroupMembership`
+    // saw no members and emitted NO group row — for a group whose members are
+    // all sub-comp children, the group simply did not exist in the timeline,
+    // even though the carve would happily create one for exactly those clips.
+    audioGroup: flat.audioGroup,
+    audioGroupLabel: flat.audioGroupLabel,
+    audioGroupVolume: flat.audioGroupVolume,
+    audioGroupHidden: flat.audioGroupHidden,
+    audioGroupFxChain: flat.audioGroupFxChain,
   };
 }
 

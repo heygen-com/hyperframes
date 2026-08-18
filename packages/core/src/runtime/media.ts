@@ -223,7 +223,7 @@ export function syncRuntimeMedia(params: {
    *  isn't wired up at all, which reads as "always audible". */
   isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
   /** Silence media under a `data-hidden` ancestor, matching the render. Opt-in:
-   *  the host pushes it via `__hf.setAudioMuteHidden` when the `audio-track-mute`
+   *  the host pushes it via `__hf.setCanaries` when the `audio-track-mute`
    *  canary is on. Absent/false = the shipped behaviour (hidden audio still
    *  plays in preview). */
   silenceHiddenAudio?: boolean;

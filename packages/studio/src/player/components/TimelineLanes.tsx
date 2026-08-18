@@ -100,7 +100,7 @@ export function TimelineLanes({
   // from resolving into a second timeline that renders the same logical rows.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
-  const { expandedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
+  const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
   useAutomationSelectionKeyboard({ lanes: automationLanes });
@@ -166,10 +166,9 @@ export function TimelineLanes({
                 top={rowGeometry.getRowTop(row)}
                 height={rowGeometry.getRowHeight(row)}
                 virtualized={rowsVirtualized}
-                contentOrigin={contentOrigin}
                 theme={theme}
                 rovingTargetId={keyboard.rovingTargetId}
-                expandedGroupIds={expandedGroupIds}
+                collapsedGroupIds={collapsedGroupIds}
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
                 toggleGroupExpanded={toggleGroupExpanded}
                 toggleLaneOwnerExpanded={toggleLaneOwnerExpanded}

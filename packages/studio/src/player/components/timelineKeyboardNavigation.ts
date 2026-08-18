@@ -77,8 +77,8 @@ export interface BuildTimelineLogicalRowsInput {
   selectedElementId: string | null;
   selectedElementIds: ReadonlySet<string>;
   expandedClipIds: ReadonlySet<string>;
-  /** Groups whose member rows the caret has shown (structural, not lanes). */
-  expandedGroupIds: ReadonlySet<string>;
+  /** Groups the caret has COLLAPSED — absent means expanded, the default. */
+  collapsedGroupIds: ReadonlySet<string>;
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
   expandedLaneOwnerIds: ReadonlySet<string>;
   groups: readonly TimelineTrackGroupInfo[];
@@ -251,7 +251,7 @@ export function buildTimelineLogicalRows({
   selectedElementId,
   selectedElementIds,
   expandedClipIds,
-  expandedGroupIds,
+  collapsedGroupIds,
   expandedLaneOwnerIds,
   groups,
   trackGroupOf,
@@ -300,7 +300,7 @@ export function buildTimelineLogicalRows({
   // count.
   function emitGroup(group: TimelineTrackGroupInfo): void {
     const groupRowId = timelineGroupRowId(group.id);
-    const groupExpanded = expandedGroupIds.has(group.id);
+    const groupExpanded = !collapsedGroupIds.has(group.id);
     rows.push({
       id: groupRowId,
       kind: "row",

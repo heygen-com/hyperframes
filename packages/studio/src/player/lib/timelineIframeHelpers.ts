@@ -143,17 +143,27 @@ export function setPreviewMediaVolume(iframe: HTMLIFrameElement | null, volume: 
   } catch {}
 }
 
-/** Push the `audio-track-mute` canary state into the preview runtime, which
- *  defaults it off (see `window.__hf.setAudioMuteHidden`). Direct call, not a
- *  control message: it is a runtime flag, not a transport command, and the
- *  player host has no equivalent property to set. */
-function setPreviewMuteHidden(iframe: HTMLIFrameElement | null, enabled: boolean): void {
+/**
+ * Every canary the preview runtime can act on, resolved here and pushed as one
+ * record (see `window.__hf.setCanaries`). Core has no install id, so it cannot
+ * bucket for itself; a flag missing from this list simply stays off in the
+ * runtime, which is the shipped behaviour.
+ *
+ * Adding a runtime-visible canary means adding its name here and reading it in
+ * core — no new `__hf` method, pusher or type entry per flag.
+ */
+const RUNTIME_CANARIES = ["audio-track-mute", "audio-groups", "audio-fx-rack"] as const;
+
+function setPreviewCanaries(iframe: HTMLIFrameElement | null): void {
   if (!iframe) return;
   try {
     const win = iframe.contentWindow as
-      | (Window & { __hf?: { setAudioMuteHidden?: (enabled: boolean) => void } })
+      | (Window & { __hf?: { setCanaries?: (states: Record<string, boolean>) => void } })
       | null;
-    win?.__hf?.setAudioMuteHidden?.(enabled);
+    if (!win?.__hf?.setCanaries) return;
+    const states: Record<string, boolean> = {};
+    for (const name of RUNTIME_CANARIES) states[name] = isCanaryEnabled(name);
+    win.__hf.setCanaries(states);
   } catch {}
 }
 
@@ -188,7 +198,7 @@ export function applyPreviewAudioFlags(
   // Volume too: the transport comes back at unity after a reload, so a preview
   // the author had turned down came back loud.
   setPreviewMediaVolume(iframe, volume);
-  setPreviewMuteHidden(iframe, isCanaryEnabled("audio-track-mute"));
+  setPreviewCanaries(iframe);
   setPreviewSolo(iframe, [...soloed]);
 }
 

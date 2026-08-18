@@ -158,6 +158,44 @@ describe("group info cache", () => {
     invalidateGroupInfoCache(doc);
     expect(parseMember(doc).audioGroupHidden).toBe(false);
   });
+
+  // The explicit invalidator is a convenience, not the contract. A cache whose
+  // only defence is "every writer must remember to call this" rots the first
+  // time a writer does not know it exists — which is precisely what happened
+  // with the FX rack, whose group writes go through the DOM editor rather than
+  // the timeline's own writers. The scan carries the DOM revision it was taken
+  // at, so a forgotten call costs a re-scan rather than a wrong answer.
+  it("expires itself on a group edit nobody announced", async () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
+
+    // No invalidateGroupInfoCache call anywhere in this test.
+    doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
+    await new Promise((resolve) => setTimeout(resolve, 0)); // observer microtask
+
+    expect(parseMember(doc).audioGroupHidden).toBe(true);
+  });
+
+  it("notices a member joining the group, not just an attribute edit", async () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+    expect(parseMember(doc).audioGroupLabel).toBe("Voices");
+
+    doc.getElementById("voiceover")?.setAttribute("data-label", "Narration");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(parseMember(doc).audioGroupLabel).toBe("Narration");
+  });
 });
 
 describe("parseTimelineFromDOM — canonical playback rate", () => {

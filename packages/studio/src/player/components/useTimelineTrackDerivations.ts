@@ -131,7 +131,7 @@ function emitGroupRows(
  */
 function groupTimelineTracks(
   rawTracks: [number, TimelineElement[]][],
-  expandedGroupIds: ReadonlySet<string>,
+  collapsedGroupIds: ReadonlySet<string>,
 ): {
   tracks: [number, TimelineElement[]][];
   groups: TimelineTrackGroupInfo[];
@@ -154,7 +154,7 @@ function groupTimelineTracks(
     emitted.add(groupId);
     const info = buildGroupInfo(groupId, trackNum, membership, rawByTrack);
     groups.push(info);
-    emitGroupRows(info, rawByTrack, trackGroupOf, tracks, expandedGroupIds.has(groupId));
+    emitGroupRows(info, rawByTrack, trackGroupOf, tracks, !collapsedGroupIds.has(groupId));
   }
   return { tracks, groups, trackGroupOf };
 }
@@ -183,7 +183,7 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
     return Array.from(map.entries()).sort(([a], [b]) => a - b);
   }, [expandedElements]);
 
-  const expandedGroupIds = usePlayerStore((s) => s.expandedGroupIds);
+  const collapsedGroupIds = usePlayerStore((s) => s.collapsedGroupIds);
   const { tracks, groups, trackGroupOf } = useMemo(() => {
     if (!isCanaryEnabled("audio-groups")) {
       return {
@@ -192,8 +192,8 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
         trackGroupOf: new Map<number, TimelineTrackGroupInfo>(),
       };
     }
-    return groupTimelineTracks(rawTracks, expandedGroupIds);
-  }, [rawTracks, expandedGroupIds]);
+    return groupTimelineTracks(rawTracks, collapsedGroupIds);
+  }, [rawTracks, collapsedGroupIds]);
 
   const trackStyles = useMemo(() => {
     const map = new Map<number, TrackVisualStyle>();
