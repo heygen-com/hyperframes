@@ -23,8 +23,17 @@ function isDeterministicTimelineWindow(input: {
   return ["video", "audio", "img"].includes(input.tag.toLowerCase());
 }
 
-export function hasPatchableTimelineTarget(input: { domId?: string; selector?: string }): boolean {
-  return Boolean(input.domId || input.selector);
+export function hasPatchableTimelineTarget(input: {
+  domId?: string;
+  selector?: string;
+  hfId?: string;
+}): boolean {
+  // hfId counts as a stable target: Studio stamps data-hf-id into the source and
+  // findElementForSelection resolves it before id/selector, so a clip carrying only
+  // an hfId is just as patchable as one with an author-written id. Omitting it here
+  // made those clips report canMove:false and surface "This clip can't be moved or
+  // resized from the timeline yet", even though the write path fully supported them.
+  return Boolean(input.domId || input.selector || input.hfId);
 }
 
 export function getTimelineEditCapabilities(input: {
@@ -33,6 +42,7 @@ export function getTimelineEditCapabilities(input: {
   duration: number;
   domId?: string;
   selector?: string;
+  hfId?: string;
   compositionSrc?: string;
   playbackStart?: number;
   playbackStartAttr?: "media-start" | "playback-start";
