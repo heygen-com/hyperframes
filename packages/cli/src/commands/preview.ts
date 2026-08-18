@@ -262,8 +262,17 @@ export default defineCommand({
         console.log("\n  No active preview servers to kill.\n");
         return;
       }
-      const killed = await killActiveServers(startPort);
-      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+      const { killed, unverified } = await killActiveServers(startPort);
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
+      if (unverified.length > 0) {
+        clack.log.warn(
+          `Left ${unverified.length} server${unverified.length === 1 ? "" : "s"} alone ` +
+            `(port${unverified.length === 1 ? "" : "s"} ${unverified.join(", ")}): the OS could ` +
+            `not confirm which process owns the socket, and the server's own claim is not proof. ` +
+            `Install lsof, or stop it with its own preview --stop.`,
+        );
+      }
+      console.log();
       return;
     }
 
@@ -972,8 +981,8 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   // SIGINT to the foreground process group (covers the common case), but
   // `kill <pid>` only targets this process — the child tree (Vite + Chrome)
   // would survive without explicit cleanup.
-  // On Windows, killProcessTree is a no-op (pgrep/ps unavailable); Ctrl+C
-  // propagates via the console process group instead.
+  // On Windows, killProcessTree delegates to taskkill's tree mode, which force
+  // kills the whole tree immediately — no grace period, unlike the POSIX path.
   registerChildTreeShutdown(child);
   return waitForChildClose(child);
 }

@@ -36,6 +36,13 @@ export function killOrphanedProcesses(): number {
  * re-adoption races.
  *
  * Windows uses taskkill's tree mode because pgrep/ps are unavailable there.
+ *
+ * `signal` is honoured on POSIX only. The Windows path always passes `/F`, so a
+ * caller asking for SIGTERM gets a forced tree kill with no grace period, while
+ * the same call on POSIX gets 500 ms to flush and exit. That is deliberate —
+ * `taskkill` without `/F` posts WM_CLOSE, which a console process is free to
+ * ignore, and leaving a preview server alive is the worse failure here. Do not
+ * pass SIGTERM expecting a clean shutdown on Windows.
  */
 export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM"): void {
   if (process.platform === "win32") {
