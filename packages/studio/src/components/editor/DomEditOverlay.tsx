@@ -29,6 +29,8 @@ import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEdi
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
+import { createGestureActiveRef } from "./overlayFrameLoop";
+import { useOverlayGeometryRefresh } from "./useOverlayGeometryRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
@@ -150,7 +152,20 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const suppressNextBoxMouseDownRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
-  const rafPausedRef = useRef(false);
+  // Written `true` at gesture start and `false` at gesture end by the gesture
+  // handlers, exactly as the plain ref it replaces; the overlay loops that only
+  // have work across that edge subscribe instead of polling it every frame.
+  const gestureActiveRef = useMemo(() => createGestureActiveRef(), []);
+
+  // Every overlay loop below parks the moment it has no work; this owns the
+  // handles that re-arm them, and the preview-document observer they share.
+  const {
+    rectsLoopRef,
+    compRectLoopRef,
+    offCanvasLoopRef,
+    offCanvasDirtyRef,
+    refreshOverlayGeometry,
+  } = useOverlayGeometryRefresh(iframeRef);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -205,10 +220,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     activeCompositionPathRef,
     groupSelectionsRef,
     hoverSelectionRef,
-    rafPausedRef,
+    gestureActiveRef,
+    loopRef: rectsLoopRef,
   });
 
-  const compRect = useDomEditCompositionRect({ iframeRef, overlayRef });
+  const compRect = useDomEditCompositionRect({ iframeRef, overlayRef, loopRef: compRectLoopRef });
   const compRectRef = useRef(compRect);
   compRectRef.current = compRect;
 
@@ -224,9 +240,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  const offCanvasDirtyRef = useRef(true);
   const offCanvasSigRef = useRef("");
-  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
   const offCanvasObservedDocRef = useRef<Document | null>(null);
 
   // Positions depend on live iframe layout, not selection — the selected-element
@@ -240,19 +254,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       activeCompositionPathRef,
       dirtyRef: offCanvasDirtyRef,
       sigRef: offCanvasSigRef,
-      observerRef: offCanvasObserverRef,
       observedDocRef: offCanvasObservedDocRef,
       elementsRef: offCanvasElementsRef,
+      loopRef: offCanvasLoopRef,
       setRects: setOffCanvasRects,
     }),
   );
 
-  // Switching compositions may not swap the iframe document (so the observer's
+  // Zoom, pan and panel resizes move every overlay at once, and switching
+  // compositions may not swap the iframe document (so the shared observer's
   // doc-swap detection wouldn't fire) yet changes which elements are off-canvas.
-  // Force a recompute explicitly on comp change.
   useEffect(() => {
-    offCanvasDirtyRef.current = true;
-  }, [activeCompositionPath]);
+    refreshOverlayGeometry();
+  }, [activeCompositionPath, compRect, refreshOverlayGeometry]);
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
@@ -265,7 +279,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
-    rafPausedRef,
+    rafPausedRef: gestureActiveRef,
     suppressNextBoxClickRef,
     setOverlayRect,
     setGroupOverlayItems,
@@ -588,6 +602,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       />
       <SnapGuideOverlay
         snapGuidesRef={snapGuidesRef}
+        gestureActiveRef={gestureActiveRef}
         compositionLeft={compRect.left}
         compositionTop={compRect.top}
         compositionWidth={compRect.width}

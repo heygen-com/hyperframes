@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
+import { createOverlayFrameLoop } from "./overlayFrameLoop";
+import { startPreviewGeometryWatch, type PreviewDomWatch } from "./previewDomWatch";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
 
@@ -114,6 +116,14 @@ export function useMotionPathData(
   // path's offset points so depth (translateZ) elements' paths track on screen.
   const [pScale, setPScale] = useState(1);
 
+  // The watch that re-arms the measurement loop below. Held in a ref so the
+  // render effect can poll it for the one change no observer can see: React
+  // swapping the preview iframe element, which arrives here as a ref.
+  const watchRef = useRef<PreviewDomWatch | null>(null);
+  useEffect(() => {
+    watchRef.current?.poll();
+  });
+
   useEffect(() => {
     if (!selector) {
       setRect(null);
@@ -121,8 +131,15 @@ export function useMotionPathData(
       return;
     }
     setHome(null);
-    let raf = 0;
-    const tick = () => {
+    // One measurement per arm, then park. This ran unconditionally at 60Hz for
+    // as long as anything was selected — a fifth always-on animation loop.
+    //
+    // What re-arms it: everything that can move what it measures. The preview
+    // document mutating (a seek or a GSAP frame writing inline styles, an edit
+    // landing, the element appearing), the iframe navigating, React swapping
+    // the iframe element, the iframe box resizing, and a stage zoom/pan.
+    // `startPreviewGeometryWatch` owns all five.
+    const measure = () => {
       const el = iframeRef.current;
       if (el) {
         const r = el.getBoundingClientRect();
@@ -153,10 +170,20 @@ export function useMotionPathData(
           setPScale((p) => (Math.abs(p - ps) < 0.001 ? p : ps));
         }
       }
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    const loop = createOverlayFrameLoop(() => {
+      measure();
+      return false;
+    });
+    const watch = startPreviewGeometryWatch(iframeRef, loop.arm);
+    watchRef.current = watch;
+    loop.arm();
+    return () => {
+      watchRef.current = null;
+      watch.dispose();
+      loop.stop();
+    };
   }, [selector, iframeRef]);
 
   useEffect(() => {

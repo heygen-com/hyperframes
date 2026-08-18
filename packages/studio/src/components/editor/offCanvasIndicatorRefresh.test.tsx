@@ -4,52 +4,26 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DomEditOverlay } from "./DomEditOverlay";
+import {
+  countScheduledFrames,
+  pinWeakRefStrong,
+  restoreAnimationFrameCounter,
+  testDomRect as domRect,
+  unpinWeakRef,
+} from "./overlayLoopTestKit";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
-// happy-dom (20.x) holds each MutationObserver's delivery callback ONLY via a
-// WeakRef (MutationObserverListener: `callback: new WeakRef(...)` — the arrow
-// has no strong referent). If V8 runs a GC between observe() and a mutation,
-// deref() returns undefined and mutation delivery silently stops — the
-// indicator-refresh loop never sees its dirty flag and these tests flake under
-// full-suite memory pressure (passing in isolation). Pin WeakRef to a strong
-// ref for this file so the real observer path stays deterministic.
-const RealWeakRef = globalThis.WeakRef;
-class StrongRef<T extends WeakKey> {
-  #value: T;
-  constructor(value: T) {
-    this.#value = value;
-  }
-  deref(): T {
-    return this.#value;
-  }
-}
-beforeAll(() => {
-  (globalThis as { WeakRef: unknown }).WeakRef = StrongRef;
-});
-afterAll(() => {
-  globalThis.WeakRef = RealWeakRef;
-});
+beforeAll(pinWeakRefStrong);
+afterAll(unpinWeakRef);
 
 const INDICATOR = '[aria-label="Select off-canvas element index.html:headline:0"]';
 
-function domRect(left: number, top: number, width: number, height: number): DOMRect {
-  return {
-    left,
-    top,
-    right: left + width,
-    bottom: top + height,
-    width,
-    height,
-    x: left,
-    y: top,
-    toJSON: () => ({}),
-  };
-}
+const nativeRequestAnimationFrame = globalThis.requestAnimationFrame;
 
 async function flushAnimationFrames(): Promise<void> {
   await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    nativeRequestAnimationFrame(() => nativeRequestAnimationFrame(() => resolve()));
   });
 }
 
@@ -119,11 +93,57 @@ function mountOverlayWithHeadline(initialLeft: number): OverlayHarness {
     cleanup: () => {
       act(() => root.unmount());
       Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+      restoreAnimationFrameCounter();
       iframe.remove();
       host.remove();
     },
   };
 }
+
+describe("canvas overlay idle cost", () => {
+  it("schedules no animation frames once the overlay has settled", async () => {
+    const h = mountOverlayWithHeadline(760);
+    try {
+      await act(async () => {
+        await flushAnimationFrames();
+        await flushAnimationFrames();
+      });
+      expect(h.host.querySelector(INDICATOR)).toBeTruthy();
+
+      // All four canvas overlay loops are mounted here (selection rects,
+      // composition rect, off-canvas indicators, snap guides). Idle, none of
+      // them may wake the page: this is the runtime-cost gate's idle
+      // animation-frame budget, asserted where it can be debugged.
+      const scheduled = countScheduledFrames();
+      await act(async () => {
+        await flushAnimationFrames();
+        await flushAnimationFrames();
+        await flushAnimationFrames();
+      });
+
+      expect(scheduled()).toBe(0);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it("runs nothing after unmount", async () => {
+    const h = mountOverlayWithHeadline(760);
+    await act(async () => {
+      await flushAnimationFrames();
+    });
+    act(() => {
+      h.movedElement.style.left = "120px";
+    });
+    h.cleanup();
+
+    const scheduled = countScheduledFrames();
+    await flushAnimationFrames();
+    await flushAnimationFrames();
+    expect(scheduled()).toBe(0);
+    restoreAnimationFrameCounter();
+  });
+});
 
 describe("off-canvas indicator refresh", () => {
   it("removes the indicator when an off-canvas element moves in-canvas (off->on)", async () => {
