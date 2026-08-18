@@ -47,10 +47,14 @@ from pathlib import Path
 from typing import Callable
 
 # Windows sizes stdio to the ANSI code page (cp1252), which cannot encode every glyph
-# a finding message carries. These scripts emit UTF-8 on every platform; say so.
+# a finding message carries. These scripts emit UTF-8 on every platform; say so. Carry
+# `errors` across: reconfigure() resets it to "strict", and CPython deliberately gives
+# stderr "backslashreplace" so the diagnostic path can never itself raise — this script
+# prints scanned filenames, and an unpaired surrogate in one would otherwise crash the
+# reporter instead of being escaped.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8")
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
 
 BLOCKER = "blocker"
 WARNING = "warning"

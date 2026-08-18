@@ -11,10 +11,12 @@ Prints: the path `d` string + layout info on stderr.
 import re, sys
 
 # Windows sizes stdio to the ANSI code page (cp1252). These scripts emit UTF-8 on
-# every platform; say so rather than depending on the console's code page.
+# every platform; say so rather than depending on the console's code page. Carry
+# `errors` across: reconfigure() resets it to "strict", and CPython deliberately gives
+# stderr "backslashreplace" so the diagnostic path can never itself raise.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8")
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
 
 font_path, text, target_w, baseline_y, x0 = (
     sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5]))

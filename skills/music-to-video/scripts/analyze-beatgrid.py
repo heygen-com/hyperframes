@@ -38,9 +38,11 @@ import soundfile as sf
 # Windows sizes stdio to the ANSI code page (cp1252), which cannot encode the glyphs
 # the brief prints (Δ, →) — every `--print` run died with UnicodeEncodeError. These
 # scripts emit UTF-8 on every platform; say so instead of trading the glyphs away.
+# Carry `errors` across: reconfigure() resets it to "strict", and CPython deliberately
+# gives stderr "backslashreplace" so the diagnostic path can never itself raise.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8")
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
 
 SR = 22050
 HOP = 512  # ~23 ms frames
