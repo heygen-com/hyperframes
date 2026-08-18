@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { beforeEach, describe, it, expect, vi } from "vitest";
+import { MAX_AUDIO_GAIN } from "../audioGain.js";
 import { WebAudioTransport } from "./webAudioTransport";
 
 function createMockAudioContext(currentTime = 100) {
@@ -58,6 +59,42 @@ const mockEl = {
   volume: 0.4,
   getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
 } as unknown as HTMLMediaElement;
+
+describe("WebAudioTransport author gain vs user volume", () => {
+  it("carries a static above-unity author gain onto the element gain node", () => {
+    // The regression this ceiling exists to prevent: a static `data-volume`
+    // above unity was capped at 1 here while the render honoured it, so preview
+    // and render disagreed on every boosted clip. Automation lanes hid it —
+    // they schedule ramps onto the param directly and never pass through here.
+    const { transport, mock } = setupTransport();
+    const el = { muted: false } as HTMLMediaElement;
+    transport["_activeSources"] = [{ el, gainNode: mock.gainNode, sourceKind: "buffer" }] as never;
+
+    transport.setElementVolume(el, 1.949845);
+
+    expect(mock.gainNode.gain.value).toBeCloseTo(1.949845, 6);
+  });
+
+  it("still refuses a gain beyond the shared ceiling", () => {
+    const { transport, mock } = setupTransport();
+    const el = { muted: false } as HTMLMediaElement;
+    transport["_activeSources"] = [{ el, gainNode: mock.gainNode, sourceKind: "buffer" }] as never;
+
+    transport.setElementVolume(el, 99);
+
+    expect(mock.gainNode.gain.value).toBeCloseTo(MAX_AUDIO_GAIN, 6);
+  });
+
+  it("keeps the user's master volume spec-clamped — it is a fader, not a gain", () => {
+    const transport = new WebAudioTransport();
+    const master = { gain: { value: 1 }, connect: vi.fn() };
+    (transport as unknown as { _masterGain: unknown })._masterGain = master;
+
+    transport.setVolume(99);
+
+    expect(master.gain.value).toBe(1);
+  });
+});
 
 describe("WebAudioTransport", () => {
   beforeEach(() => {

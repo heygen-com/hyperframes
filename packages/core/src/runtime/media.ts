@@ -295,6 +295,13 @@ export function syncRuntimeMedia(params: {
         authorVolume = currentElementVolume;
       } else if (Math.abs(currentElementVolume - previousRuntimeVolume) > 0.0001) {
         // GSAP (or user code) changed el.volume between ticks — track it.
+        //
+        // Unity-capped on purpose, and it is not a hole in the ceiling: this
+        // reads back through `el.volume`, which the spec pins to [0,1], so it
+        // cannot observe an above-unity value however wide the clamp gets. A
+        // clip whose volume is actually animated takes the probed-keyframes
+        // branch above, which carries the authored gain unclamped; this branch
+        // is the fallback for elements no probe ran on.
         authorVolume = currentElementVolume;
       } else {
         // Volume unchanged since last tick — use data-volume as the baseline.

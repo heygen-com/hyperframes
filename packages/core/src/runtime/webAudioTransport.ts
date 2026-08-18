@@ -6,6 +6,7 @@ import {
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
 import { swallow } from "./diagnostics";
+import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
 import { readElementPlaybackRate } from "./media.js";
 
@@ -449,8 +450,19 @@ export class WebAudioTransport {
     this.applyMasterGain();
   }
 
+  /**
+   * The per-element gain carries the clip's AUTHOR gain, which reaches
+   * MAX_AUDIO_GAIN — so it is clamped against that ceiling, not the spec's
+   * [0,1]. `setVolume` above is the opposite case and stays spec-clamped: the
+   * user's master volume is a fader, not a gain.
+   *
+   * Clamping this one at unity capped every static above-unity `data-volume` on
+   * the preview path while the render honoured it — the exact preview/render
+   * divergence this ceiling exists to close. Automation lanes hid it, because
+   * they schedule ramps onto the param directly and never pass through here.
+   */
   setElementVolume(el: HTMLMediaElement, volume: number): void {
-    const safeVolume = Math.max(0, Math.min(1, volume));
+    const safeVolume = clampAudioGain(volume);
     for (const source of this._activeSources) {
       if (source.el !== el) continue;
       try {
