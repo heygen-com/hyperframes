@@ -48,7 +48,10 @@ function setupTransport(currentTime = 100) {
 }
 
 const mockBuffer = {} as AudioBuffer;
-const mockEl = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
+const mockEl = {
+  muted: false,
+  getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+} as unknown as HTMLMediaElement;
 
 describe("WebAudioTransport", () => {
   it("tracks play generation for async race prevention", () => {
@@ -148,7 +151,10 @@ describe("WebAudioTransport", () => {
     }
 
     it("returns true for an element the transport plays", () => {
-      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
       expect(withSource(el).ownsElement(el)).toBe(true);
     });
 
@@ -402,7 +408,10 @@ describe("WebAudioTransport", () => {
   describe("onended cleanup (audio dropout fix)", () => {
     it("cleans up _activeSources when AudioBufferSourceNode ends naturally", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: false } as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(transport.isActive()).toBe(true);
@@ -416,7 +425,10 @@ describe("WebAudioTransport", () => {
 
     it("restores priorMuted=true when element was already muted", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: true, getAttribute: () => "1" } as unknown as HTMLMediaElement;
+      const el = {
+        muted: true,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);
@@ -450,7 +462,10 @@ describe("WebAudioTransport", () => {
 
     it("onended after stopAll is a no-op — does not clobber restored state", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
+      } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);
