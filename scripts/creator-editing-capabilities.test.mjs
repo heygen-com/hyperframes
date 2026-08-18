@@ -15,6 +15,8 @@ const files = {
   coreClips: "skills/hyperframes-core/references/tracks-and-clips.md",
   generalVideo: "skills/general-video/SKILL.md",
   editingRecipes: "skills/hyperframes-core/references/creator-editing-recipes.md",
+  runtimeMedia: "packages/core/src/runtime/media.ts",
+  runtimeInit: "packages/core/src/runtime/init.ts",
 };
 
 function requiresAll(text, patterns, surface) {
@@ -255,4 +257,51 @@ test("creator editing recipes are copyable, owned, mathematical, and limitation-
   assert.match(core, /creator-editing-recipes\.md/);
   assert.match(general, /creator-editing-recipes\.md/);
   assert.doesNotMatch(recipes, /data-(?:media-end|source-end|trim-start|trim-end)/);
+});
+
+test("every preview reader shares the non-negative media-start helper", async () => {
+  for (const path of [
+    files.runtimeMedia,
+    files.runtimeInit,
+    "packages/core/src/runtime/clipTree.ts",
+    "packages/core/src/runtime/timeline.ts",
+    "packages/core/src/runtime/startResolver.ts",
+  ]) {
+    const source = await read(path);
+    assert.match(source, /readElementPlaybackStart|readMediaStart/);
+  }
+});
+
+test("crossfade and volume recipes contain executable opposing envelopes", async () => {
+  const recipes = await read(files.editingRecipes);
+  const crossfade = recipes.slice(
+    recipes.indexOf("## Crossfade"),
+    recipes.indexOf("## Volume fades / ducking"),
+  );
+  requiresAll(
+    crossfade,
+    [
+      /data-track-index="0"[\s\S]*data-track-index="1"/,
+      /class="inner"/,
+      /gsap\.timeline\(\{\s*paused:\s*true\s*\}\)/,
+      /window\.__timelines/,
+      /autoAlpha|opacity/,
+      /<audio[\s\S]*<audio/,
+      /data-automation='/,
+    ],
+    "crossfade recipe",
+  );
+  const crossfadeAutomation = [...crossfade.matchAll(/data-automation='([^']+)'/g)];
+  assert.equal(crossfadeAutomation.length, 2);
+  for (const match of crossfadeAutomation) JSON.parse(match[1]);
+  const volume = recipes.slice(
+    recipes.indexOf("## Volume fades / ducking"),
+    recipes.indexOf("## Audio alignment"),
+  );
+  requiresAll(
+    volume,
+    [/fade-in/i, /fade-out/i, /duck down/i, /hold/i, /duck up/i, /data-automation='/],
+    "volume recipe",
+  );
+  JSON.parse(volume.match(/data-automation='([^']+)'/)?.[1] ?? "");
 });

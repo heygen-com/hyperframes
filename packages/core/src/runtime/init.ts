@@ -747,10 +747,7 @@ export function initSandboxRuntimeModular(): void {
     if (Number.isFinite(declaredDuration) && declaredDuration > 0) {
       return declaredDuration;
     }
-    const playbackStart = Number(
-      node.getAttribute("data-playback-start") ?? node.getAttribute("data-media-start") ?? "0",
-    );
-    const safePlaybackStart = Number.isFinite(playbackStart) ? Math.max(0, playbackStart) : 0;
+    const safePlaybackStart = readElementPlaybackStart(node);
     if (Number.isFinite(node.duration) && node.duration > safePlaybackStart) {
       return Math.max(0, node.duration - safePlaybackStart);
     }
@@ -1989,9 +1986,7 @@ export function initSandboxRuntimeModular(): void {
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
         const start = resolveAbsoluteMediaStartSeconds(element);
-        const mediaStart =
-          Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
-          0;
+        const mediaStart = readElementPlaybackStart(element);
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&
@@ -2924,9 +2919,7 @@ export function initSandboxRuntimeModular(): void {
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
             const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart =
-              Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
-              0;
+            const mediaStart = readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
@@ -3006,8 +2999,7 @@ export function initSandboxRuntimeModular(): void {
       const durAttr = Number.parseFloat(el.dataset.duration ?? "");
       const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
       if (timeSeconds < start || timeSeconds >= end) continue;
-      const mediaStart =
-        Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+      const mediaStart = readElementPlaybackStart(el);
       const relTime = timeSeconds - start + mediaStart;
       if (relTime >= 0) {
         try {
@@ -3033,8 +3025,7 @@ export function initSandboxRuntimeModular(): void {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
-      const mediaStart =
-        Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
+      const mediaStart = readElementPlaybackStart(rawEl);
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
       const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");

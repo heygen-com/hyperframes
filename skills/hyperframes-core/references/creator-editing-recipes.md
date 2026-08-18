@@ -190,24 +190,50 @@ Timeline math: overlap placed clips for the 0.5s handoff. Source math: each clip
 ## Crossfade
 
 ```html
-<video
-  id="a"
+<div id="a-visual" class="inner">
+  <video
+    id="a"
+    data-start="0"
+    data-duration="3"
+    data-track-index="0"
+    src="a.mp4"
+    muted
+    playsinline
+  ></video>
+</div>
+<div id="b-visual" class="inner">
+  <video
+    id="b"
+    data-start="2.5"
+    data-duration="3"
+    data-track-index="1"
+    src="b.mp4"
+    muted
+    playsinline
+  ></video>
+</div>
+<audio
+  src="a.mp4"
   data-start="0"
   data-duration="3"
-  data-track-index="0"
-  src="a.mp4"
-  muted
-  playsinline
-></video>
-<video
-  id="b"
+  data-track-index="10"
+  data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1},{"t":2.5,"v":1},{"t":3,"v":0}]}]}'
+></audio>
+<audio
+  src="b.mp4"
   data-start="2.5"
   data-duration="3"
-  data-track-index="1"
-  src="b.mp4"
-  muted
-  playsinline
-></video>
+  data-track-index="11"
+  data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":0.5,"v":1},{"t":3,"v":1}]}]}'
+></audio>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.set("#b-visual", { autoAlpha: 0 }, 0)
+    .to("#a-visual", { autoAlpha: 0, duration: 0.5 }, 2.5)
+    .to("#b-visual", { autoAlpha: 1, duration: 0.5 }, 2.5);
+  window.__timelines = window.__timelines || {};
+  window.__timelines.main = tl;
+</script>
 ```
 
 Timeline math: distinct tracks overlap by 0.5s with opposing opacity envelopes. Source math: each source range remains independent. Audio follows: opposing volume envelopes on distinct audio tracks. Owner: `/hyperframes-core` + `/hyperframes-keyframes` + `/hyperframes-audio`. Limit: same-track overlap is invalid.
@@ -220,11 +246,11 @@ Timeline math: distinct tracks overlap by 0.5s with opposing opacity envelopes. 
   data-start="0"
   data-duration="5"
   data-track-index="10"
-  data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":1,"v":1}]}]'
+  data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":1,"v":1},{"t":2,"v":1},{"t":2.2,"v":0.3},{"t":3,"v":0.3},{"t":3.2,"v":1},{"t":4,"v":1},{"t":5,"v":0}]}]}'
 ></audio>
 ```
 
-Timeline math: lane `t` is clip-local authored time. Source math: source selection still uses core attributes. Audio follows: fade/duck envelopes affect this separate audio track. Owner: `/hyperframes-audio`. Limit: automation is not source retiming.
+Timeline math: lane `t` is clip-local authored time: fade-in 0–1, duck down 2–2.2, hold 2.2–3, duck up 3–3.2, fade-out 4–5. Source math: source selection still uses core attributes. Audio follows: the explicit down-hold-up envelope affects this separate audio track. Owner: `/hyperframes-audio`. Limit: automation is not source retiming.
 
 ## Audio alignment
 

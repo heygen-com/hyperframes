@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   readElementPlaybackRate,
+  readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
@@ -56,6 +57,23 @@ describe("readElementPlaybackRate", () => {
     expect(readElementPlaybackRate(el)).toBe(1);
     Object.defineProperty(el, "defaultPlaybackRate", { value: 0, writable: true });
     expect(readElementPlaybackRate(el)).toBe(1);
+  });
+});
+
+describe("readElementPlaybackStart fallback", () => {
+  it.each([
+    ["", "1.5", 1.5],
+    ["   ", "1.5", 1.5],
+    ["later", "1.5", 1.5],
+    ["-1", "1.5", 1.5],
+    [null, "-1", 0],
+    ["0", "1.5", 0],
+    ["2.25", "1.5", 2.25],
+  ])("uses non-negative finite playback-start -> media-start -> 0", (playback, media, expected) => {
+    const el = document.createElement("audio");
+    if (playback !== null) el.setAttribute("data-playback-start", playback);
+    el.setAttribute("data-media-start", media);
+    expect(readElementPlaybackStart(el)).toBe(expected);
   });
 });
 

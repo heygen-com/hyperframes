@@ -1,7 +1,7 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { normalizePlaybackRate } from "./playbackRate.js";
+import { normalizePlaybackRate, readMediaStart } from "./playbackRate.js";
 
 export function readElementPlaybackRate(el: Element): number {
   const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
@@ -15,10 +15,7 @@ export function readElementPlaybackRate(el: Element): number {
 }
 
 export function readElementPlaybackStart(el: Element): number {
-  const raw = Number.parseFloat(
-    el.getAttribute("data-playback-start") ?? el.getAttribute("data-media-start") ?? "",
-  );
-  return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  return readMediaStart(el);
 }
 
 /**
@@ -89,8 +86,7 @@ export function refreshRuntimeMediaCache(params?: {
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
     if (!Number.isFinite(start)) continue;
-    const mediaStart =
-      Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+    const mediaStart = readElementPlaybackStart(el);
     const playbackRate = readElementPlaybackRate(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;

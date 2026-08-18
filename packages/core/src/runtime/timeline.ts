@@ -180,10 +180,7 @@ export function collectRuntimeTimelinePayload(params: {
     if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
-    const playbackStart =
-      parseNum(mediaEl.getAttribute("data-playback-start")) ??
-      parseNum(mediaEl.getAttribute("data-media-start")) ??
-      0;
+    const playbackStart = readElementPlaybackStart(mediaEl);
     if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
       return Math.max(0, (mediaEl.duration - playbackStart) / readElementPlaybackRate(mediaEl));
     }
@@ -365,10 +362,7 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
-      const mediaStart =
-        parseNum(node.getAttribute("data-playback-start")) ??
-        parseNum(node.getAttribute("data-media-start")) ??
-        0;
+      const mediaStart = readElementPlaybackStart(node);
       if (Number.isFinite(node.duration) && node.duration > 0) {
         duration = Math.max(0, node.duration - mediaStart);
       }

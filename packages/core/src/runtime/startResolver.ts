@@ -1,6 +1,7 @@
 import type { RuntimeTimelineLike } from "./types";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
+import { readMediaStart } from "./playbackRate";
 import { parseNumeric, parseStartExpression } from "./startExpression";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
@@ -82,10 +83,7 @@ export function createRuntimeStartTimeResolver(params: {
       }
     }
     if ((resolved == null || resolved <= 0) && isMediaElement(element)) {
-      const playbackStart =
-        parseNumeric(element.getAttribute("data-playback-start")) ??
-        parseNumeric(element.getAttribute("data-media-start")) ??
-        0;
+      const playbackStart = readMediaStart(element);
       if (Number.isFinite(element.duration) && element.duration > playbackStart) {
         resolved = (element.duration - playbackStart) / readElementPlaybackRate(element);
       }

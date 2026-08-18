@@ -1180,6 +1180,12 @@ describe("parseAudioElements — relative data-start resolution", () => {
     { label: "missing media-start", attributes: "", expected: 0 },
     { label: "invalid media-start", attributes: 'data-media-start="later"', expected: 0 },
     {
+      label: "negative playback-start",
+      attributes: 'data-playback-start="-1" data-media-start="1.5"',
+      expected: 1.5,
+    },
+    { label: "negative media-start", attributes: 'data-media-start="-1"', expected: 0 },
+    {
       label: "finite playback-start",
       attributes: 'data-playback-start="2.25" data-media-start="1.5"',
       expected: 2.25,

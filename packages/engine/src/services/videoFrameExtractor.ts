@@ -15,11 +15,11 @@ import {
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
   normalizePlaybackRate,
+  readMediaStart,
   toFps,
   type FpsInput,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
-import { readMediaStart } from "./mediaTiming.js";
 import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,

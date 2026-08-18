@@ -39,10 +39,9 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
-import { normalizePlaybackRate } from "@hyperframes/core";
+import { normalizePlaybackRate, readMediaStart } from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
-import { readMediaStart } from "./mediaTiming.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
