@@ -146,6 +146,31 @@ interface DisplayBounds {
  * could never be shown again (not even after a reload, since the attribute is in
  * the source).
  */
+/**
+ * Audio-group membership for an expanded child, from whichever source has it.
+ *
+ * The flat store twin when there is one; otherwise the `DomClipChild` record,
+ * which carried it off the live element during the DOM walk. That fallback is
+ * the ONLY source for a sub-composition that declares both a group and its
+ * members: those members never enter the flat store, so "inherit from the flat
+ * twin" silently produced no membership and therefore no group row — for
+ * exactly the case group support was extended to cover.
+ */
+function childGroupState(
+  flat: TimelineElement | undefined,
+  domChild: DomClipChild | undefined,
+): Partial<TimelineElement> {
+  const source = flat?.audioGroup ? flat : domChild?.audioGroup ? domChild : null;
+  if (!source) return {};
+  return {
+    audioGroup: source.audioGroup,
+    audioGroupLabel: source.audioGroupLabel,
+    audioGroupVolume: source.audioGroupVolume,
+    audioGroupHidden: source.audioGroupHidden,
+    audioGroupFxChain: source.audioGroupFxChain,
+  };
+}
+
 function hostElementState(flat: TimelineElement | undefined): Partial<TimelineElement> {
   if (!flat) return {};
   return {
@@ -159,16 +184,6 @@ function hostElementState(flat: TimelineElement | undefined): Partial<TimelineEl
     // still showed the chain and its toggles.
     fxChain: flat.fxChain,
     automation: flat.automation,
-    // And the same again for group membership. Without these an expanded
-    // sub-comp child had `audioGroup === undefined`, so `resolveGroupMembership`
-    // saw no members and emitted NO group row — for a group whose members are
-    // all sub-comp children, the group simply did not exist in the timeline,
-    // even though the carve would happily create one for exactly those clips.
-    audioGroup: flat.audioGroup,
-    audioGroupLabel: flat.audioGroupLabel,
-    audioGroupVolume: flat.audioGroupVolume,
-    audioGroupHidden: flat.audioGroupHidden,
-    audioGroupFxChain: flat.audioGroupFxChain,
   };
 }
 
@@ -182,6 +197,7 @@ function buildChildElements(
   editBasis: { start: number; sourceFile: string | undefined },
   expandedHostKey: string,
   elements: readonly TimelineElement[],
+  domChildrenById: ReadonlyMap<string, DomClipChild>,
 ): TimelineElement[] {
   const result: TimelineElement[] = [];
   for (const child of siblings) {
@@ -210,6 +226,10 @@ function buildChildElements(
     result.push({
       ...base,
       ...hostElementState(elements.find((element) => element.key === key)),
+      ...childGroupState(
+        elements.find((element) => element.key === key),
+        domId ? domChildrenById.get(domId) : undefined,
+      ),
       key,
       start: clamped.start,
       duration: clamped.duration,
@@ -312,6 +332,7 @@ export function buildExpandedElements(
   };
 
   const parentKey = topLevelElement.key ?? topLevelElement.id;
+  const domChildrenById = new Map(domClipChildren.map((child) => [child.id, child]));
   const expanded = buildChildElements(
     siblings,
     {
@@ -322,6 +343,7 @@ export function buildExpandedElements(
     editBasis,
     parentKey,
     elements,
+    domChildrenById,
   );
   if (expanded.length === 0) return filterToTopLevel(elements, parentMap);
 

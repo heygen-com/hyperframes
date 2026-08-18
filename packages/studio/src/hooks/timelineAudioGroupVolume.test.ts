@@ -16,7 +16,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
+import { resolveGroupSourceFile, useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 
 afterEach(() => {
   usePlayerStore.getState().reset();
@@ -126,5 +126,50 @@ describe("group attribute writes reach the store", () => {
     const byId = new Map(usePlayerStore.getState().elements.map((el) => [el.id, el]));
     expect(byId.get("voice-1")?.audioGroupVolume).toBeCloseTo(0.4, 6);
     expect(byId.get("sfx")?.audioGroupVolume).toBe(1);
+  });
+});
+
+/**
+ * The ancestor shape here is COPIED FROM A LIVE PREVIEW, not imagined.
+ *
+ * The first attempt at this fix used `getTimelineElementSourceFile` and a
+ * fixture in which the sub-composition root carried `data-composition-file`.
+ * The test passed; the studio still threw "Unable to patch element in
+ * index.html", because the runtime inlines a sub-comp as its own root element
+ * that carries only the composition ID — the FILE is on the host above it.
+ */
+describe("resolveGroupSourceFile", () => {
+  function livePreviewShape(): Document {
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.setAttribute("data-composition-id", "subcomp-group-qa");
+    doc.body.innerHTML = `
+      <div id="voices-host" data-composition-id="voices-host" data-composition-file="compositions/voices.html">
+        <section id="voices-root" data-composition-id="voices">
+          <hf-audio-group id="voiceover"></hf-audio-group>
+        </section>
+      </div>
+      <hf-audio-group id="root-group"></hf-audio-group>
+    `;
+    return doc;
+  }
+
+  it("climbs past the sub-comp root to the host that names the file", () => {
+    const doc = livePreviewShape();
+    expect(resolveGroupSourceFile(doc.getElementById("voiceover"))).toBe(
+      "compositions/voices.html",
+    );
+  });
+
+  // A group in the root composition: body names an id but no file, so the
+  // caller falls back to activeCompPath. Returning body's id here would route
+  // every root-composition group write at a path that does not exist.
+  it("returns undefined for a group in the root composition", () => {
+    const doc = livePreviewShape();
+    expect(resolveGroupSourceFile(doc.getElementById("root-group"))).toBeUndefined();
+  });
+
+  it("is safe on a detached or missing element", () => {
+    expect(resolveGroupSourceFile(null)).toBeUndefined();
+    expect(resolveGroupSourceFile(document.createElement("hf-audio-group"))).toBeUndefined();
   });
 });

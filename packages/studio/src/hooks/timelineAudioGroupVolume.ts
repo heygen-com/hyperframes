@@ -3,7 +3,6 @@ import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore } from "../player";
 import type { TimelineElementPatch } from "../player/store/timelineElement";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
-import { getTimelineElementSourceFile } from "../player/lib/timelineElementHelpers";
 import {
   buildPatchTarget,
   persistElementAttribute,
@@ -83,6 +82,36 @@ function syncStoredGroupAttribute(groupId: string, attr: string, value: string |
   }));
 }
 
+/**
+ * The composition FILE that contains a group element, walking up through
+ * composition ancestors until one names a file.
+ *
+ * `getTimelineElementSourceFile` stops at the nearest `[data-composition-id]`,
+ * which for an inlined sub-composition is its own ROOT element — that carries
+ * the composition id but not the file. The file is on the HOST one level above
+ * it. Measured on a live preview:
+ *
+ *   hf-audio-group#voiceover        (no composition attrs)
+ *   section#voices-root             data-composition-id="voices"          <- stops here
+ *   div#voices-host                 data-composition-file="…/voices.html" <- file is here
+ *   body                            data-composition-id="<root>"
+ *
+ * Returns undefined for a group in the root composition (body names an id but
+ * no file), which is exactly when the caller should fall back to activeCompPath.
+ */
+export function resolveGroupSourceFile(groupEl: Element | null): string | undefined {
+  let node: Element | null = groupEl?.parentElement ?? null;
+  while (node) {
+    const owner: Element | null = node.closest("[data-composition-id]");
+    if (!owner) return undefined;
+    const file =
+      owner.getAttribute("data-composition-file") ?? owner.getAttribute("data-composition-src");
+    if (file) return file;
+    node = owner.parentElement;
+  }
+  return undefined;
+}
+
 interface SetAudioGroupAttributeInput {
   projectId: string;
   activeCompPath: string | null;
@@ -125,8 +154,7 @@ async function setAudioGroupAttribute({
   // FX preset throws "Unable to patch element in index.html". Every sibling
   // timeline writer already routes `element.sourceFile || activeCompPath`.
   const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
-  const targetPath =
-    (groupEl ? getTimelineElementSourceFile(groupEl) : undefined) || activeCompPath || "index.html";
+  const targetPath = resolveGroupSourceFile(groupEl) || activeCompPath || "index.html";
   const patchTarget = buildPatchTarget({ domId: groupId });
   if (!patchTarget) return [];
 

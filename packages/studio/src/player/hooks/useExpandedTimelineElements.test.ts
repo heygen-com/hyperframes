@@ -598,4 +598,67 @@ describe("buildExpandedElements — collision-free synthetic rows (cross-file la
     // Distinct ordered rows per child.
     expect(children[0].track).not.toBe(children[1].track);
   });
+
+  /**
+   * A sub-composition that declares BOTH a group and its members keeps those
+   * members out of the flat store entirely — the store holds only the host.
+   * So "inherit membership from the flat twin" had nothing to inherit from,
+   * and the group produced no timeline row at all, for exactly the case group
+   * support was extended to cover. Verified against a real studio session
+   * before this test was written: the flat store held three elements (the
+   * panel, the sub-comp host and an ungrouped bed) and neither voice.
+   */
+  it("takes group membership from the DOM child when there is no flat store twin", () => {
+    const elements = [
+      el({ id: "voices-host", start: 0, duration: 12, compositionSrc: "voices.html" }),
+    ];
+    const manifest = [
+      clip({ id: "voices-host", start: 0, duration: 12, compositionSrc: "voices.html" }),
+    ];
+    const parentMap = new Map([
+      ["voice-1", "voices-host"],
+      ["voice-2", "voices-host"],
+    ]);
+    const domClipChildren = [
+      {
+        id: "voice-1",
+        parentId: "voices-host",
+        hostId: "voices-host",
+        label: "voice-1",
+        stackingContextId: "css:0",
+        audioGroup: "voiceover",
+        audioGroupLabel: "Voiceover",
+        audioGroupVolume: 0.8,
+        audioGroupHidden: false,
+      },
+      {
+        id: "voice-2",
+        parentId: "voices-host",
+        hostId: "voices-host",
+        label: "voice-2",
+        stackingContextId: "css:0",
+        audioGroup: "voiceover",
+        audioGroupLabel: "Voiceover",
+        audioGroupVolume: 0.8,
+        audioGroupHidden: false,
+      },
+    ];
+
+    const out = buildExpandedElements(
+      elements,
+      manifest,
+      parentMap,
+      "voices-host",
+      "voices-host",
+      domClipChildren,
+    );
+
+    const voices = out.filter((e) => e.domId?.startsWith("voice-"));
+    expect(voices).toHaveLength(2);
+    for (const voice of voices) {
+      expect(voice.audioGroup).toBe("voiceover");
+      expect(voice.audioGroupLabel).toBe("Voiceover");
+      expect(voice.audioGroupVolume).toBeCloseTo(0.8, 6);
+    }
+  });
 });

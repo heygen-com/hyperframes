@@ -234,6 +234,17 @@ export interface DomClipChild {
   hostId: string;
   label: string;
   stackingContextId: string;
+  /**
+   * The child's audio-group state, read off its live element during the DOM
+   * walk — the only place that sees it. A sub-composition can declare a group
+   * and its members entirely within itself, and those members never reach the
+   * flat store, so an expanded child has no twin to inherit membership from.
+   */
+  audioGroup?: string;
+  audioGroupLabel?: string;
+  audioGroupVolume?: number;
+  audioGroupHidden?: boolean;
+  audioGroupFxChain?: string;
 }
 
 interface BeatHistoryEntry {

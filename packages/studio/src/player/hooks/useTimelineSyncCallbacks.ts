@@ -12,6 +12,8 @@ import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
+import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
+import { groupInfoFor } from "../lib/timelineGroupInfo";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   parseTimelineFromDOM,
@@ -84,6 +86,28 @@ export function resolveReloadSeekTime(input: {
   // unclamped instead so the playhead lands at the intended position.
   if (!Number.isFinite(input.duration) || input.duration <= 0) return target;
   return Math.min(target, input.duration);
+}
+
+/**
+ * A sub-comp child's audio-group membership, read off its live element.
+ *
+ * Captured during the DOM walk because that walk holds the only reference to
+ * the element. A sub-composition that declares both a group and its members
+ * keeps those members out of the flat store entirely, so an expanded child has
+ * no flat twin to inherit membership from later — without this, a group defined
+ * inside a sub-composition produced no group row at all.
+ */
+function readChildAudioGroupState(child: Element): Partial<DomClipChild> {
+  const audioGroup = child.getAttribute(HF_AUDIO_GROUP_ATTR);
+  if (!audioGroup) return {};
+  const info = groupInfoFor(child.ownerDocument, audioGroup);
+  return {
+    audioGroup,
+    audioGroupLabel: info.label,
+    audioGroupVolume: info.volume,
+    audioGroupHidden: info.hidden,
+    ...(info.fxChain ? { audioGroupFxChain: info.fxChain } : {}),
+  };
 }
 
 /** Reject non-finite, non-positive, and absurdly large (loop-inflated) values. */
@@ -201,6 +225,7 @@ export function useTimelineSyncCallbacks({
                   hostId,
                   label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
                   stackingContextId: resolveCssStackingContextId(child),
+                  ...readChildAudioGroupState(child),
                 });
                 parentMap.set(child.id, parentId);
                 if (isGroup) collect(child, child.id);
