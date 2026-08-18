@@ -1633,6 +1633,78 @@ describe("initSandboxRuntimeModular", () => {
     expect(pipVideo.style.visibility).toBe("hidden");
   });
 
+  it("keeps a composition-local clip visible for its whole slot when its duration exceeds the mount offset", () => {
+    // TAB-792, from a user report: a scene went black for the last 3s of its
+    // own 4.375s slot. The clip is composition-local (`data-start="0"`) inside a
+    // host mounted at 2.96s, and the convention test used to look at the
+    // authored END: 0 + 4.375 = 4.375 > 2.96, so it read as root-global and was
+    // scheduled 0..4.375. The ancestor gate clipped the front, leaving
+    // 2.96..4.375 visible and 4.375..7.335 black.
+    //
+    // The giveaway was that making the clip LONGER made the hole BIGGER, which
+    // is why this asserts a late instant inside the slot rather than just the
+    // resolved start.
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "720");
+    root.setAttribute("data-height", "720");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-1");
+    host.setAttribute("data-composition-file", "compositions/scene-1.html");
+    host.setAttribute("data-start", "2.96");
+    host.setAttribute("data-duration", "4.375");
+    root.appendChild(host);
+
+    const innerRoot = document.createElement("div");
+    innerRoot.setAttribute("data-composition-id", "scene-1");
+    host.appendChild(innerRoot);
+
+    const sceneVideo = document.createElement("video");
+    sceneVideo.setAttribute("data-start", "0.000");
+    sceneVideo.setAttribute("data-duration", "4.375");
+    sceneVideo.setAttribute("data-media-start", "0.000");
+    Object.defineProperty(sceneVideo, "paused", { value: true, configurable: true });
+    Object.defineProperty(sceneVideo, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(sceneVideo, "currentTime", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    sceneVideo.load = () => {};
+    innerRoot.appendChild(sceneVideo);
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(18.88),
+      "scene-1": createMockTimeline(4.375),
+    };
+
+    initSandboxRuntimeModular();
+
+    // Composition-local: the host offset applies.
+    expect(window.__hfResolveMediaStartSeconds?.(sceneVideo)).toBeCloseTo(2.96);
+
+    const player = (window as Window & { __player?: { seek: (timeSeconds: number) => void } })
+      .__player;
+    expect(player).toBeDefined();
+
+    player?.seek(3.5);
+    expect(sceneVideo.style.visibility).toBe("visible");
+    // The instants that were black before the fix.
+    player?.seek(5.5);
+    expect(sceneVideo.style.visibility).toBe("visible");
+    player?.seek(7.2);
+    expect(sceneVideo.style.visibility).toBe("visible");
+    // Still bounded by its own slot.
+    player?.seek(7.4);
+    expect(sceneVideo.style.visibility).toBe("hidden");
+    player?.seek(2.5);
+    expect(sceneVideo.style.visibility).toBe("hidden");
+  });
+
   it("shows auto-injected video at host time, not at t=0", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
