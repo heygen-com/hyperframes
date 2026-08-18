@@ -479,12 +479,6 @@ export function StudioApp() {
                     capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
-                    onExport={() => {
-                      void (async () => {
-                        await previewPersistence.waitForPendingDomEditSaves();
-                        await renderQueue.startRender(undefined);
-                      })();
-                    }}
                   />
                   {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                     <SaveQueuePausedBanner
