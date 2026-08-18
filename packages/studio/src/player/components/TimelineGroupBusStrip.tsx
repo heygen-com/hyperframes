@@ -72,6 +72,11 @@ export function TimelineGroupBusStrip({
       className="absolute left-0 right-0 flex items-center gap-2 px-2 text-[10px] text-white/70"
       style={{ top: TRACK_H, height: STRIP_H }}
     >
+      {/* Named, because unnamed it reads as an unexplained slider next to an
+          empty capsule: the row opens off a control labelled "lanes", so the
+          first question it has to answer is what it IS. Two words, no dB and no
+          numeric readout — that part of the casual-user rule stands. */}
+      <span className="shrink-0 text-white/45">Bus level</span>
       <input
         type="range"
         aria-label="Group volume"
@@ -94,6 +99,9 @@ export function TimelineGroupBusStrip({
       <div
         className="relative h-1.5 w-16 shrink-0 overflow-hidden rounded-full"
         style={{ background: theme.gutterBorder }}
+        // Empty while the transport is stopped, which is when somebody is most
+        // likely to be wondering what it is.
+        title="How loud this bus is playing right now"
         aria-hidden="true"
       >
         <div

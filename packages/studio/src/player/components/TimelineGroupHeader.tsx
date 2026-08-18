@@ -27,7 +27,6 @@ interface TimelineGroupHeaderProps {
   fxChain?: string;
   onFxChainChange: (next: HfAudioFxChain) => void;
   onFxChainPreview?: (next: HfAudioFxChain) => void;
-  onFxAuditionTransport?: (on: boolean) => void;
   onOpenFxRack: () => void;
   columnWidth: number;
   theme: TimelineTheme;
@@ -53,7 +52,6 @@ export function TimelineGroupHeader({
   fxChain,
   onFxChainChange,
   onFxChainPreview,
-  onFxAuditionTransport,
   onOpenFxRack,
   columnWidth,
   theme,
@@ -148,7 +146,6 @@ export function TimelineGroupHeader({
         fxChainRaw={fxChain}
         onChainChange={onFxChainChange}
         onChainPreview={onFxChainPreview}
-        onAuditionTransport={onFxAuditionTransport}
         onOpenRack={onOpenFxRack}
       />
       <button

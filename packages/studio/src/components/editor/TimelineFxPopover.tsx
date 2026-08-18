@@ -17,6 +17,8 @@ import { useFxAudition } from "./useFxAudition.js";
 
 const POPOVER_WIDTH = 260;
 const VIEWPORT_MARGIN = 8;
+/** Below this the popover is useless anyway; it scrolls instead of vanishing. */
+const MIN_POPOVER_HEIGHT = 160;
 
 function clampedStyle(anchorRect: DOMRect): CSSProperties {
   const left = Math.min(
@@ -24,11 +26,18 @@ function clampedStyle(anchorRect: DOMRect): CSSProperties {
     Math.max(VIEWPORT_MARGIN, window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN),
   );
   const spaceBelow = window.innerHeight - anchorRect.bottom;
-  const openUpward = spaceBelow < 260 && anchorRect.top > spaceBelow;
+  const spaceAbove = anchorRect.top;
+  const openUpward = spaceBelow < 260 && spaceAbove > spaceBelow;
+  // Flipping direction alone was not enough: the preset list is taller than
+  // either gap on a short window, so the popover ran off the top or the bottom
+  // and its footer ("+ effect" / "Open rack") went with it. Cap to whatever the
+  // chosen side actually has and let the list scroll inside that.
+  const available = (openUpward ? spaceAbove : spaceBelow) - VIEWPORT_MARGIN - 4;
   return {
     position: "fixed",
     left,
     width: POPOVER_WIDTH,
+    maxHeight: Math.max(MIN_POPOVER_HEIGHT, available),
     ...(openUpward
       ? { bottom: window.innerHeight - anchorRect.top + 4 }
       : { top: anchorRect.bottom + 4 }),
@@ -96,22 +105,27 @@ export function TimelineFxPopover({
       ref={rootRef}
       role="dialog"
       aria-label="Effects"
-      className="z-50 rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
+      className="z-50 flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
       style={clampedStyle(anchorRect)}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <FxPresetMenu
-        trackKind={trackKind}
-        onPick={applyPreset}
-        onAudition={
-          onChainPreview
-            ? (id) =>
-                audition(id ? (base) => applyPresetToChain(base, id, trackKind) ?? base : null)
-            : undefined
-        }
-      />
-      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/55">
+      {/* The list scrolls; the footer below stays put. `min-h-0` is load-bearing
+          — a flex child defaults to min-height:auto and would refuse to shrink,
+          pushing the footer out of the popover instead of scrolling. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <FxPresetMenu
+          trackKind={trackKind}
+          onPick={applyPreset}
+          onAudition={
+            onChainPreview
+              ? (id) =>
+                  audition(id ? (base) => applyPresetToChain(base, id, trackKind) ?? base : null)
+              : undefined
+          }
+        />
+      </div>
+      <div className="mt-2 flex shrink-0 items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/55">
         <button
           type="button"
           className="hover:text-white"
