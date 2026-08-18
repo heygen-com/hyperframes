@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 /**
  * Every CDN reference to the player must ask for `latest`.
@@ -18,41 +19,36 @@ import { join, relative, resolve } from "node:path";
  * than on the four sources a reader would think to check.
  */
 const ROOT = resolve(import.meta.dirname, "..");
-const SEARCH_ROOTS = ["docs", "scripts", "packages", "registry"];
-const SKIP_DIRS = new Set(["node_modules", "dist", ".next", "coverage", "images"]);
 const PLAYER_CDN = /cdn\.jsdelivr\.net\/npm\/@hyperframes\/player@([^/"'`\s]+)/g;
+const TEXT_FILE = /\.(mdx?|[jt]sx?|html|json)$/;
 
 // The generator interpolates the range, so its source reads as a template
 // rather than a literal version. Its value is asserted separately below.
 const TEMPLATE_REFERENCE = "${playerVersionRange}";
 
-function* walk(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      yield* walk(full);
-      continue;
-    }
-    if (statSync(full).size > 5_000_000) continue;
-    yield full;
-  }
+/**
+ * Tracked files only, via git rather than a directory walk: it is one call, and
+ * it skips `node_modules` and build output for free because they are ignored.
+ */
+function trackedTextFiles(): string[] {
+  const listing = execFileSync(
+    "git",
+    ["ls-files", "-z", "docs", "scripts", "packages", "registry"],
+    {
+      cwd: ROOT,
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  return listing.split("\0").filter((file) => TEXT_FILE.test(file));
 }
 
 function pinnedReferences(): { file: string; version: string }[] {
   const found: { file: string; version: string }[] = [];
-  for (const root of SEARCH_ROOTS) {
-    for (const file of walk(join(ROOT, root))) {
-      let text: string;
-      try {
-        text = readFileSync(file, "utf-8");
-      } catch {
-        continue;
-      }
-      for (const match of text.matchAll(PLAYER_CDN)) {
-        found.push({ file: relative(ROOT, file), version: match[1] as string });
-      }
+  for (const file of trackedTextFiles()) {
+    const text = readFileSync(join(ROOT, file), "utf-8");
+    for (const match of text.matchAll(PLAYER_CDN)) {
+      found.push({ file, version: match[1] as string });
     }
   }
   return found;
@@ -79,12 +75,8 @@ test("every player CDN reference asks for latest", () => {
   );
 });
 
-test("the generated pages are regenerated from the current generator", () => {
+test("the generator emits latest, so regenerating cannot reintroduce a pin", () => {
   const generator = readFileSync(join(ROOT, "scripts/generate-catalog-pages.ts"), "utf-8");
   const range = generator.match(/const playerVersionRange = "([^"]+)"/)?.[1];
-  assert.equal(
-    range,
-    "latest",
-    "generate-catalog-pages.ts must emit @latest, or every page it writes reintroduces a pin",
-  );
+  assert.equal(range, "latest");
 });
