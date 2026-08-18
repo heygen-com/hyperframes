@@ -4,10 +4,10 @@ import {
   createTimelineElementFromManifestClip,
   parseTimelineFromDOM,
   createImplicitTimelineLayersFromDOM,
-  invalidateGroupInfoCache,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import { invalidateGroupInfoCache } from "./timelineGroupInfo";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {

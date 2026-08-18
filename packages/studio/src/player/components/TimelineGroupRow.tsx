@@ -25,6 +25,7 @@ interface TimelineGroupRowProps {
   top: number;
   height: number;
   virtualized: boolean;
+  contentOrigin: number;
   theme: TimelineTheme;
   rovingTargetId?: string | null;
   collapsedGroupIds: ReadonlySet<string>;
@@ -42,6 +43,7 @@ export function TimelineGroupRow({
   top,
   height,
   virtualized,
+  contentOrigin,
   theme,
   rovingTargetId = null,
   collapsedGroupIds,
@@ -125,14 +127,12 @@ export function TimelineGroupRow({
         onFxChainChange={(next) => writeGroupFxChain(next, false)}
         onFxChainPreview={(next) => writeGroupFxChain(next, true)}
         onOpenFxRack={openGroupFxRack}
-        // Always the full label column, never squeezed down to `contentOrigin`.
-        // A track row can afford a narrow gutter because its CLIPS carry the
-        // name on the bar; a group row has no clips at all, so the gutter is
-        // the only place its name exists — and at the default fit the gutter is
-        // ~80px, which rendered the label at zero width and clipped the solo,
-        // FX and lane buttons off the side. Overhanging into the lane area is
-        // safe precisely because this row is empty (see `propertyRows={[]}`).
-        columnWidth={LABEL_COL_W}
+        // Same width as every other row's header. The group row needs a real
+        // label column, but it gets one by turning `labelMode` on for the whole
+        // timeline (see Timeline.tsx) rather than by overhanging alone — an
+        // overhanging header paints opaquely across the rest of its row and
+        // stays pinned there through horizontal scroll.
+        columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />
       {isLaneOpen && (

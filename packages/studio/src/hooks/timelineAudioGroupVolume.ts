@@ -2,7 +2,8 @@ import { useCallback } from "react";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore } from "../player";
 import type { TimelineElementPatch } from "../player/store/timelineElement";
-import { invalidateGroupInfoCache } from "../player/lib/timelineDOM";
+import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
+import { getTimelineElementSourceFile } from "../player/lib/timelineElementHelpers";
 import {
   buildPatchTarget,
   persistElementAttribute,
@@ -28,15 +29,28 @@ function patchLiveGroupAttribute(
   invalidateGroupInfoCache(iframe?.contentDocument);
 }
 
+/**
+ * `data-volume` exactly as core reads it (`readAudioGroupVolume`): an absent or
+ * empty attribute is UNITY, not zero.
+ *
+ * `Number(null)` and `Number("")` are both 0 and both finite, so the obvious
+ * `Number.isFinite(Number(value))` mirrored "silent" into the store for a
+ * removed attribute while the DOM, the preview bus and the render all read 1 —
+ * exactly the parse divergence this mirror exists to eliminate.
+ */
+function mirroredGroupVolume(value: string | null): number {
+  if (!value) return 1;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 1;
+}
+
 /** Which store field each writable group attribute mirrors into. */
 const GROUP_ATTR_TO_MIRROR: Record<
   string,
   (value: string | null, groupId: string) => TimelineElementPatch
 > = {
   "data-hidden": (value) => ({ audioGroupHidden: value !== null }),
-  "data-volume": (value) => ({
-    audioGroupVolume: Number.isFinite(Number(value)) ? Number(value) : 1,
-  }),
+  "data-volume": (value) => ({ audioGroupVolume: mirroredGroupVolume(value) }),
   "data-label": (value, groupId) => ({ audioGroupLabel: value ?? groupId }),
   [HF_AUDIO_FX_ATTR]: (value) => ({ audioGroupFxChain: value ?? undefined }),
 };
@@ -59,10 +73,14 @@ function syncStoredGroupAttribute(groupId: string, attr: string, value: string |
   const toPatch = GROUP_ATTR_TO_MIRROR[attr];
   if (!toPatch) return;
   const patch = toPatch(value, groupId);
-  const store = usePlayerStore.getState();
-  for (const element of store.elements) {
-    if (element.audioGroup === groupId) store.updateElement(element.key ?? element.id, patch);
-  }
+  // ONE pass and one notification, rather than `updateElement` per member.
+  // That helper maps the whole `elements` array per call, so a 3-member group on
+  // a 500-clip composition was 1500 object spreads and 3 store notifications per
+  // drag frame — at ~60/s, with every `elements`-keyed memo downstream
+  // recomputing each time.
+  usePlayerStore.setState((state) => ({
+    elements: state.elements.map((el) => (el.audioGroup === groupId ? { ...el, ...patch } : el)),
+  }));
 }
 
 interface SetAudioGroupAttributeInput {
@@ -98,7 +116,17 @@ async function setAudioGroupAttribute({
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: SetAudioGroupAttributeInput): Promise<string[]> {
-  const targetPath = activeCompPath || "index.html";
+  // The file that actually CONTAINS the group element, not just the active
+  // composition. A hand-authored sub-composition can declare both the members
+  // and their `<hf-audio-group>`, and until sub-comp children inherited
+  // `audioGroup*` no group row existed for that case so nothing could reach
+  // here. Now the row appears, and routing its writes at `activeCompPath`
+  // means `readTagSnippetByTarget` finds nothing and every mute, fader move and
+  // FX preset throws "Unable to patch element in index.html". Every sibling
+  // timeline writer already routes `element.sourceFile || activeCompPath`.
+  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
+  const targetPath =
+    (groupEl ? getTimelineElementSourceFile(groupEl) : undefined) || activeCompPath || "index.html";
   const patchTarget = buildPatchTarget({ domId: groupId });
   if (!patchTarget) return [];
 
@@ -174,6 +202,14 @@ export function useSetAudioGroupAttribute({
         });
         syncStoredGroupAttribute(groupId, attr, value);
       } catch (error) {
+        // `persistElementAttribute` has already unwound the live DOM to the
+        // previous value, but `setLive` mirrored the in-progress value into the
+        // store on every drag frame — so without this the fader reads 0.4 while
+        // the preview and the file are both back at 1.0, and nothing re-parses
+        // to correct it (a live patch causing no parse is this mirror's whole
+        // premise). Re-mirror from the DOM, which is now authoritative again.
+        const live = previewIframeRef.current?.contentDocument?.getElementById(groupId);
+        syncStoredGroupAttribute(groupId, attr, live?.getAttribute(attr) ?? null);
         console.error("[Timeline] Failed to set group attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update group";
         showToast(message);

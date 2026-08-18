@@ -9,8 +9,8 @@ import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRunner";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
-import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
-import { invalidateGroupInfoCache } from "../player/lib/timelineDOM";
+import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 
 // ── Types ──
 
@@ -68,12 +68,12 @@ function setOrRemovePreviewAttribute(
   // Every DOM-edit attribute write funnels through here, which is the only
   // place that can catch a group edit made from the rack rather than from the
   // group header — `openGroupFxRack` hands the `<hf-audio-group>` to the DOM
-  // editor, and that path never went near the timeline's own writers. The group
-  // scan is cached against the preview Document, and group edits are live
-  // patches so that document is never replaced; a stale entry is re-read on
-  // every manifest tick, so the header's preset button then builds on the old
-  // chain and discards the rack's edit.
-  if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) {
+  // editor, and that path never went near the timeline's own writers.
+  //
+  // The group element itself OR a member's membership attribute: writing
+  // `data-audio-group` onto an `<audio>` moves it between groups, which changes
+  // the answer just as much as editing the bus does.
+  if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG || fullAttr === HF_AUDIO_GROUP_ATTR) {
     invalidateGroupInfoCache(el.ownerDocument);
   }
 }

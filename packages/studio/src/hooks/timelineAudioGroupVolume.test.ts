@@ -85,6 +85,32 @@ describe("group attribute writes reach the store", () => {
     );
   });
 
+  // `Number(null)` and `Number("")` are both 0 AND finite, so the obvious
+  // isFinite check mirrored "silent" for a removed attribute while core's
+  // `readAudioGroupVolume` reads the same absence as unity — a parse divergence
+  // inside the mirror whose entire job is to prevent one.
+  it("reads a removed data-volume as unity, the way core does", async () => {
+    const react = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const harness = makeSetter();
+    renderToStaticMarkup(react.createElement(harness.Probe));
+    const setter = harness.get();
+
+    usePlayerStore.getState().setElements([member("voice-1", 0)]);
+
+    setter?.setLive("voiceover", "data-volume", "0.3");
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBeCloseTo(0.3, 6);
+
+    setter?.setLive("voiceover", "data-volume", null);
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBe(1);
+
+    setter?.setLive("voiceover", "data-volume", "");
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBe(1);
+
+    setter?.setLive("voiceover", "data-volume", "nonsense");
+    expect(usePlayerStore.getState().elements[0]?.audioGroupVolume).toBe(1);
+  });
+
   it("mirrors data-volume, and leaves other groups alone", async () => {
     const react = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");

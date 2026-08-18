@@ -166,6 +166,7 @@ export function TimelineLanes({
                 top={rowGeometry.getRowTop(row)}
                 height={rowGeometry.getRowHeight(row)}
                 virtualized={rowsVirtualized}
+                contentOrigin={contentOrigin}
                 theme={theme}
                 rovingTargetId={keyboard.rovingTargetId}
                 collapsedGroupIds={collapsedGroupIds}

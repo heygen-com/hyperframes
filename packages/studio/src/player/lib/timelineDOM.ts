@@ -12,8 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
-import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
-import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import { groupInfoFor } from "./timelineGroupInfo";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -67,99 +66,6 @@ export {
 
 function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
-}
-
-// One `<hf-audio-group>` scan per document, not per clip — resolveAudioGroups
-// walks the whole tree, and a parse touches every clip in it.
-interface GroupInfo {
-  label: string;
-  volume: number;
-  hidden: boolean;
-  fxChain?: string;
-}
-
-/**
- * The cached scan, plus the DOM revision it was taken at.
- *
- * Keeping the revision beside the entry is what makes staleness *detectable*
- * rather than a documented obligation. The cache is keyed on the document, and
- * group edits are applied as live patches precisely so the iframe never
- * reloads, so the key alone never changes: an explicit "remember to invalidate"
- * contract silently rots the first time a new writer forgets — which is exactly
- * what happened with the FX rack, whose group writes go through the DOM editor
- * rather than the timeline's own writers.
- */
-const groupInfoCache = new WeakMap<
-  Document,
-  { revision: number; entries: Map<string, GroupInfo> }
->();
-
-/** Bumped by every observed mutation to group state in a document. */
-const groupRevisions = new WeakMap<Document, number>();
-const groupObservers = new WeakSet<Document>();
-
-/**
- * Watch a document for any change to group state, so the cache expires itself.
- *
- * One observer per document, attached the first time a group is read from it.
- * It watches the attributes a group's identity is made of, anywhere in the
- * tree, plus added/removed nodes — which covers a group element appearing, a
- * member joining or leaving, and any group attribute being edited, by any
- * writer, without that writer having to know this cache exists.
- */
-function observeGroupState(doc: Document): void {
-  if (groupObservers.has(doc) || typeof MutationObserver === "undefined" || !doc.body) return;
-  groupObservers.add(doc);
-  const observer = new MutationObserver(() => {
-    groupRevisions.set(doc, (groupRevisions.get(doc) ?? 0) + 1);
-  });
-  observer.observe(doc.body, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeFilter: [
-      HF_AUDIO_GROUP_ATTR,
-      HF_AUDIO_FX_ATTR,
-      "data-label",
-      "data-volume",
-      "data-hidden",
-      "id",
-    ],
-  });
-}
-
-/**
- * Drop the cached group scan for a document.
- *
- * Belt to the observer's braces: a caller that has just written and wants the
- * very next read to be honest cannot wait for the observer's microtask. Callers
- * that forget are no longer punished — the revision check catches them.
- */
-export function invalidateGroupInfoCache(doc: Document | null | undefined): void {
-  if (doc) groupInfoCache.delete(doc);
-}
-
-function groupInfoFor(doc: Document | null | undefined, groupId: string): GroupInfo {
-  if (!doc) return { label: groupId, volume: 1, hidden: false };
-  observeGroupState(doc);
-  const revision = groupRevisions.get(doc) ?? 0;
-  const cached = groupInfoCache.get(doc);
-  let info = cached && cached.revision === revision ? cached.entries : undefined;
-  if (!info) {
-    info = new Map(
-      resolveAudioGroups(doc).map((group) => [
-        group.id,
-        {
-          label: group.label,
-          volume: group.volume,
-          hidden: group.hidden,
-          ...(group.fxChain ? { fxChain: group.fxChain } : {}),
-        },
-      ]),
-    );
-    groupInfoCache.set(doc, { revision, entries: info });
-  }
-  return info.get(groupId) ?? { label: groupId, volume: 1, hidden: false };
 }
 
 // fallow-ignore-next-line complexity
