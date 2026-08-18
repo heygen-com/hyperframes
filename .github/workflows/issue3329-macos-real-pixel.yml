@@ -1,0 +1,46 @@
+name: macOS treated-media real-pixel gate
+
+on:
+  pull_request:
+    paths:
+      - "scripts/issue3329-macos-real-pixel.mjs"
+      - ".github/workflows/issue3329-macos-real-pixel.yml"
+      - "packages/core/src/runtime/colorGrading.ts"
+      - "packages/engine/src/services/frameCapture.ts"
+      - "packages/engine/src/services/screenshotService.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  macos-real-pixels:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+      - name: Install dependencies
+        run: bash scripts/ci/install-workspace-dependencies.sh
+      - name: Build local CLI render stack
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+          bun run --filter '@hyperframes/{engine,producer,studio,cli}' build
+      - name: Run real-pixel boundary matrix
+        env:
+          HF_ISSUE3329_ARTIFACT_DIR: ${{ github.workspace }}/issue3329-macos-artifacts
+        run: node scripts/issue3329-macos-real-pixel.mjs
+      - name: Upload boundary evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue3329-macos-real-pixels-${{ runner.arch }}
+          path: issue3329-macos-artifacts
+          if-no-files-found: error
