@@ -47,4 +47,18 @@ describe("createClipTree", () => {
     expect(child!.id).not.toMatch(/^__clip-/);
     expect(child!.parentId).toBe("scene");
   });
+
+  it.each([10, 11])(
+    "does not replace a known zero media span with root duration (start=%s)",
+    (start) => {
+      document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="100" data-start="0" id="root">
+        <video id="at-eof" data-start="0" data-media-start="${start}"></video>
+      </div>`;
+      const video = document.querySelector("video")!;
+      Object.defineProperty(video, "duration", { value: 10, configurable: true });
+
+      expect(createClipTree({ ...params, rootDuration: 100 }).roots).toEqual([]);
+    },
+  );
 });

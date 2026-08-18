@@ -275,6 +275,17 @@ describe("resolveRuntimeMediaClipDuration", () => {
       }),
     ).toBe(1);
   });
+
+  it("preserves a known zero natural span instead of falling back to the host window", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: true,
+        sourceDuration: 0,
+        hostRemaining: 8,
+        explicitDuration: null,
+      }),
+    ).toBe(0);
+  });
 });
 
 describe("syncRuntimeMedia", () => {

@@ -1,19 +1,8 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { normalizePlaybackRate, readMediaStart } from "./playbackRate.js";
-export { resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
-
-export function readElementPlaybackRate(el: Element): number {
-  const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
-  const raw =
-    Number.isFinite(authored) && authored > 0
-      ? authored
-      : el instanceof HTMLMediaElement
-        ? el.defaultPlaybackRate
-        : 1;
-  return normalizePlaybackRate(raw);
-}
+import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
@@ -39,7 +28,7 @@ export function resolveRuntimeMediaClipDuration(params: {
     params.isVideo
       ? [mediaDuration, params.hostRemaining]
       : [mediaDuration, params.hostRemaining, params.explicitDuration]
-  ).filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+  ).filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
   return candidates.length > 0 ? Math.min(...candidates) : null;
 }
 

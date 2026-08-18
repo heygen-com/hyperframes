@@ -748,8 +748,7 @@ export function initSandboxRuntimeModular(): void {
     if (Number.isFinite(declaredDuration) && declaredDuration > 0) {
       return declaredDuration;
     }
-    const safePlaybackStart = readElementPlaybackStart(node);
-    if (Number.isFinite(node.duration) && node.duration > safePlaybackStart) {
+    if (Number.isFinite(node.duration)) {
       return resolveNaturalMediaTimelineDuration(node, node.duration);
     }
     return null;

@@ -2,6 +2,17 @@ export function normalizePlaybackRate(raw: number): number {
   return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
 }
 
+export function readElementPlaybackRate(el: Pick<Element, "getAttribute">): number {
+  const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
+  const raw =
+    Number.isFinite(authored) && authored > 0
+      ? authored
+      : typeof HTMLMediaElement !== "undefined" && el instanceof HTMLMediaElement
+        ? el.defaultPlaybackRate
+        : 1;
+  return normalizePlaybackRate(raw);
+}
+
 export function readMediaStart(el: Pick<Element, "getAttribute">): number {
   const parse = (raw: string | null): number | null => {
     if (raw == null || raw.trim() === "") return null;
@@ -16,8 +27,7 @@ export function resolveNaturalMediaTimelineDuration(
   el: Pick<Element, "getAttribute">,
   sourceDuration: number,
 ): number | null {
-  const remaining = sourceDuration - readMediaStart(el);
-  return Number.isFinite(remaining) && remaining > 0
-    ? remaining / normalizePlaybackRate(Number(el.getAttribute("data-playback-rate")))
-    : null;
+  if (!Number.isFinite(sourceDuration)) return null;
+  const remaining = Math.max(0, sourceDuration - readMediaStart(el));
+  return remaining / readElementPlaybackRate(el);
 }

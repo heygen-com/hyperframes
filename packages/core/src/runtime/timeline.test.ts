@@ -345,6 +345,8 @@ describe("collectRuntimeTimelinePayload", () => {
     [2, 2, 4],
     [2, 0.01, 80],
     [2, 20, 1.6],
+    [0, "2x", 5],
+    [0, "0x2", 10],
   ])("rate-scales natural media duration (start=%s rate=%s)", (mediaStart, rate, expected) => {
     document.body.innerHTML = '<div data-composition-id="main" data-duration="100"></div>';
     const root = document.body.firstElementChild!;
@@ -357,6 +359,20 @@ describe("collectRuntimeTimelinePayload", () => {
     root.appendChild(video);
     expect(collectRuntimeTimelinePayload(defaultParams).clips[0].duration).toBeCloseTo(expected);
   });
+
+  it.each([10, 11])(
+    "does not replace a known zero media span with root duration (start=%s)",
+    (start) => {
+      document.body.innerHTML = '<div data-composition-id="main" data-duration="100"></div>';
+      const video = document.createElement("video");
+      video.id = "at-eof";
+      video.setAttribute("data-start", "0");
+      video.setAttribute("data-media-start", String(start));
+      Object.defineProperty(video, "duration", { value: 10, configurable: true });
+      document.body.firstElementChild!.appendChild(video);
+      expect(collectRuntimeTimelinePayload(defaultParams).clips).toEqual([]);
+    },
+  );
 
   it("keeps explicit media duration ahead of natural rate scaling", () => {
     document.body.innerHTML =

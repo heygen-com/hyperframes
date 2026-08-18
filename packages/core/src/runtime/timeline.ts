@@ -181,8 +181,7 @@ export function collectRuntimeTimelinePayload(params: {
     if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
-    const playbackStart = readElementPlaybackStart(mediaEl);
-    if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
+    if (Number.isFinite(mediaEl.duration)) {
       return resolveNaturalMediaTimelineDuration(mediaEl, mediaEl.duration);
     }
     return null;
@@ -355,19 +354,15 @@ export function collectRuntimeTimelinePayload(params: {
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseElementDurationAttr(node);
-    if (
-      (duration == null || duration <= 0) &&
-      nodeCompositionId &&
-      nodeCompositionId !== rootCompositionId
-    ) {
+    if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
-    if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
-      if (Number.isFinite(node.duration) && node.duration > 0) {
+    if (duration == null && node instanceof HTMLMediaElement) {
+      if (Number.isFinite(node.duration)) {
         duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
-    if (duration == null || duration <= 0) {
+    if (duration == null) {
       const inheritedDuration = compositionContext.inheritedDuration;
       if (inheritedDuration != null && inheritedDuration > 0) {
         const inheritedStart = compositionContext.inheritedStart ?? 0;
