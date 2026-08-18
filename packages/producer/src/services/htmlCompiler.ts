@@ -2459,7 +2459,13 @@ export async function resolveCompositionDurations(
   const results = await page.evaluate((compIds: string[]) => {
     const win = window as unknown as { __timelines?: Record<string, { duration(): number }> };
     const timelines = win.__timelines || {};
-    const resolved: { id: string; duration: number; source: string; durationRaw?: string }[] = [];
+    const resolved: {
+      id: string;
+      duration: number;
+      source: string;
+      durationRaw?: string;
+      compositionDurationRaw?: string;
+    }[] = [];
 
     for (const id of compIds) {
       // Try window.__timelines[id].duration() first (GSAP timeline)
@@ -2475,10 +2481,16 @@ export async function resolveCompositionDurations(
       // Fallback: check for authored duration on the element itself
       const el = document.getElementById(id);
       if (el) {
-        const compDurAttr =
-          el.getAttribute("data-duration") || el.getAttribute("data-composition-duration");
-        if (compDurAttr) {
-          resolved.push({ id, duration: 0, source: "data-duration", durationRaw: compDurAttr });
+        const durationRaw = el.getAttribute("data-duration");
+        const compositionDurationRaw = el.getAttribute("data-composition-duration");
+        if (durationRaw != null || compositionDurationRaw != null) {
+          resolved.push({
+            id,
+            duration: 0,
+            source: "data-duration",
+            ...(durationRaw != null ? { durationRaw } : {}),
+            ...(compositionDurationRaw != null ? { compositionDurationRaw } : {}),
+          });
           continue;
         }
       }
@@ -2491,7 +2503,10 @@ export async function resolveCompositionDurations(
 
   const resolutions: ResolvedDuration[] = [];
   for (const r of results) {
-    const duration = r.durationRaw ? parseStrictFiniteTimingNumber(r.durationRaw) : r.duration;
+    const duration =
+      parseStrictFiniteTimingNumber(r.durationRaw) ??
+      parseStrictFiniteTimingNumber(r.compositionDurationRaw) ??
+      r.duration;
     if (duration != null && duration > 0) {
       resolutions.push({ id: r.id, duration });
     }
