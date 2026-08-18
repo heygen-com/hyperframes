@@ -84,6 +84,7 @@ interface RenderHeaderOptions {
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onRemoveAutomationLane?: (target: string) => void;
   isAudioTrack?: boolean;
+  isGroupMember?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -94,7 +95,19 @@ function renderHeader(options: RenderHeaderOptions = {}): {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const render = (next: RenderHeaderOptions) => {
+  const render = (raw: RenderHeaderOptions) => {
+    // Defaults resolved once, up front, rather than as a `??` per prop in the
+    // JSX — a dozen of those is a dozen branches through one arrow.
+    const next = {
+      keyframeClip: ELEMENT,
+      clipCount: 1,
+      animations: [POSITION, OPACITY],
+      currentTime: 0,
+      isAudioTrack: false,
+      isGroupMember: false,
+      onToggleTrackHidden: vi.fn(),
+      ...raw,
+    };
     act(() => {
       root.render(
         <TimelineTrackHeader
@@ -105,17 +118,18 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           trackLabel="Hero card"
           lanesId="timeline-lanes-track-0"
           contentOrigin={LABEL_COL_W}
-          keyframeClip={next.keyframeClip ?? ELEMENT}
-          trackElements={next.trackElements ?? [next.keyframeClip ?? ELEMENT]}
-          clipCount={next.clipCount ?? 1}
+          keyframeClip={next.keyframeClip}
+          trackElements={next.trackElements ?? [next.keyframeClip]}
+          clipCount={next.clipCount}
           isExpanded={next.expanded !== false}
-          animations={next.animations ?? [POSITION, OPACITY]}
-          currentTime={next.currentTime ?? 0}
+          animations={next.animations}
+          currentTime={next.currentTime}
           isTrackHidden={false}
-          isAudioTrack={next.isAudioTrack ?? false}
+          isAudioTrack={next.isAudioTrack}
+          isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
           onToggleClipExpanded={vi.fn()}
-          onToggleTrackHidden={next.onToggleTrackHidden ?? vi.fn()}
+          onToggleTrackHidden={next.onToggleTrackHidden}
           onTogglePropertyGroupKeyframe={next.onTogglePropertyGroupKeyframe}
           onRemoveAutomationLane={next.onRemoveAutomationLane}
           onSeek={next.onSeek}
@@ -670,6 +684,33 @@ describe("TimelineTrackHeader", () => {
       expect([...usePlayerStore.getState().soloed]).toEqual(["voice-1"]);
       act(() => view.root.unmount());
       usePlayerStore.getState().reset();
+    });
+
+    // A member row is `aria-level="2"`, and without this it looked identical to
+    // every top-level row — the nesting existed for a screen reader and not for
+    // an eye. B2's design called for the accent rail; only the semantics shipped.
+    it("indents a group member's row and gives it the accent rail", () => {
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      const header = () => view.host.querySelector<HTMLElement>('[role="rowheader"]');
+
+      expect(header()?.style.paddingLeft).toBe("");
+      expect(header()?.style.borderLeft).toBe("");
+
+      view.rerender({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+        isGroupMember: true,
+      });
+      expect(header()?.style.paddingLeft).toBe("14px");
+      expect(header()?.style.borderLeft).toContain("2px");
+      act(() => view.root.unmount());
     });
 
     it("hides the FX button outside the audio-fx-rack canary", () => {

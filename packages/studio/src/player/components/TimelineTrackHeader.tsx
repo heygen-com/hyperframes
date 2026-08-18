@@ -30,6 +30,11 @@ import { valueReadout } from "./trackHeaderLaneValues";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 import { timelineLogicalRowCellId, timelinePropertyRowId } from "./timelineNavigationIdentity";
 
+/** Accent rail + inset marking a row as a group MEMBER, matching the level-2
+ *  nesting its `aria-level` already reports. */
+const GROUP_MEMBER_RAIL = "#3CE6AC59";
+const GROUP_MEMBER_INDENT = 14;
+
 interface TimelineTrackHeaderProps {
   /** The track's real key: a FRACTIONAL z-order sort value. Routes callbacks;
    *  never shown or announced. */
@@ -60,6 +65,8 @@ interface TimelineTrackHeaderProps {
   currentTime: number;
   isTrackHidden: boolean;
   isAudioTrack: boolean;
+  /** This track is a member of an audio group — indents the row under its header. */
+  isGroupMember?: boolean;
   rovingTargetId?: string | null;
   theme: TimelineTheme;
   onToggleClipExpanded: () => void;
@@ -347,6 +354,7 @@ export function TimelineTrackHeader({
   currentTime,
   isTrackHidden,
   isAudioTrack,
+  isGroupMember = false,
   theme,
   onToggleClipExpanded,
   onToggleTrackHidden,
@@ -446,6 +454,18 @@ export function TimelineTrackHeader({
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
         background: theme.gutterBackground,
         borderRight: `1px solid ${theme.gutterBorder}`,
+        // A group's member rows are `aria-level="2"`, and until this they read
+        // as level 2 to a screen reader while looking identical to every
+        // top-level row on screen. The rail is the accent-tinted left border
+        // B2's design called for; the inset is what actually makes the nesting
+        // legible. Padding rather than margin so the rail stays flush with the
+        // gutter's own edge.
+        ...(isGroupMember
+          ? {
+              borderLeft: `2px solid ${GROUP_MEMBER_RAIL}`,
+              paddingLeft: GROUP_MEMBER_INDENT,
+            }
+          : {}),
       }}
     >
       {!keyframeClip || !disclosable ? (

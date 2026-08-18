@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -108,6 +108,12 @@ export function TimelineLanes({
   const setClipExpanded = usePlayerStore((s) => s.setClipExpanded);
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
   const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
+  // Which tracks are group MEMBERS, so their headers can render the level-2
+  // nesting their `aria-level` already reports.
+  const groupMemberTracks = useMemo(
+    () => new Set(groups.flatMap((group) => group.memberTracks)),
+    [groups],
+  );
   // The caret belongs to the ROW, so it opens and closes every clip on it at
   // once. Toggling only the active clip left the row's state depending on which
   // sibling happened to be selected: expand one, click another, and the row
@@ -289,6 +295,7 @@ export function TimelineLanes({
                 currentTime={currentTime}
                 isTrackHidden={isTrackHidden}
                 isAudioTrack={isAudioTrack}
+                isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
                 onToggleClipExpanded={() => {
                   const keys = els.map(getTimelineElementIdentity);
