@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 import { describe, it, expect, vi } from "vitest";
 import { WebAudioTransport } from "./webAudioTransport";
 
@@ -47,7 +48,7 @@ function setupTransport(currentTime = 100) {
 }
 
 const mockBuffer = {} as AudioBuffer;
-const mockEl = { muted: false } as HTMLMediaElement;
+const mockEl = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
 
 describe("WebAudioTransport", () => {
   it("tracks play generation for async race prevention", () => {
@@ -147,12 +148,12 @@ describe("WebAudioTransport", () => {
     }
 
     it("returns true for an element the transport plays", () => {
-      const el = { muted: false } as HTMLMediaElement;
+      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
       expect(withSource(el).ownsElement(el)).toBe(true);
     });
 
     it("returns false for an element the transport does not play", () => {
-      const el = { muted: false } as HTMLMediaElement;
+      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
       const other = { muted: false } as HTMLMediaElement;
       expect(withSource(el).ownsElement(other)).toBe(false);
     });
@@ -230,11 +231,11 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).not.toHaveBeenCalled();
     });
 
-    it("scales the bound by playback rate (buffer seconds)", async () => {
+    it("keeps source bounds in authored media time when global rate changes", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      // rate=2, clipDuration=10 → clipSourceLen=20; elapsed=3 → 17 buffer seconds left
+      // Global rate=2 changes wallclock speed, not source-time span.
       await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
-      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 17);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
     });
 
     it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
@@ -245,6 +246,27 @@ describe("WebAudioTransport", () => {
   });
 
   describe("playback rate", () => {
+    it("combines authored media rate with global rate without corrupting source seek or clock", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "2" : null),
+      } as unknown as HTMLMediaElement;
+
+      // At composition t=0.5 with mediaStart=1, authored 2x has consumed one
+      // source second. Global 0.5x makes the source node's wallclock rate 1x,
+      // but the composition clock must still advance at global 0.5x.
+      await transport.schedulePlayback(el, mockBuffer, 0, 1, 0.5, 1, gen, 0.5, 2);
+
+      expect(mock.sourceNode.playbackRate.value).toBe(1);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 2, 3);
+      mock.ctx.currentTime = 101;
+      expect(transport.getTime()).toBe(1);
+
+      transport.setRate(1);
+      expect(mock.sourceNode.playbackRate.value).toBe(2);
+    });
+
     it("sets sourceNode.playbackRate.value when rate is provided", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
@@ -394,7 +416,7 @@ describe("WebAudioTransport", () => {
 
     it("restores priorMuted=true when element was already muted", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: true } as HTMLMediaElement;
+      const el = { muted: true, getAttribute: () => "1" } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);
@@ -428,7 +450,7 @@ describe("WebAudioTransport", () => {
 
     it("onended after stopAll is a no-op — does not clobber restored state", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      const el = { muted: false } as HTMLMediaElement;
+      const el = { muted: false, getAttribute: () => "1" } as unknown as HTMLMediaElement;
 
       await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
       expect(el.muted).toBe(true);

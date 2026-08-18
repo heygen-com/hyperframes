@@ -7,6 +7,7 @@ import {
 import { VOLUME_RANGE } from "../audioAutomation.js";
 import { swallow } from "./diagnostics";
 import { getDebugSurface } from "./globals.js";
+import { readElementPlaybackRate } from "./media.js";
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
@@ -43,21 +44,23 @@ function startBoundedSource(
     elapsed: number;
     mediaStart: number;
     scheduledAt: number;
-    safeRate: number;
+    globalRate: number;
+    mediaRate: number;
     clipDuration: number;
   },
 ): boolean {
-  const { elapsed, mediaStart, scheduledAt, safeRate, clipDuration } = opts;
+  const { elapsed, mediaStart, scheduledAt, globalRate, mediaRate, clipDuration } = opts;
   const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
-  const clipSourceLen = clipDuration * safeRate;
+  const clipSourceLen = clipDuration * mediaRate;
   if (elapsed >= 0) {
-    const remaining = clipSourceLen - elapsed;
+    const sourceElapsed = elapsed * mediaRate;
+    const remaining = clipSourceLen - sourceElapsed;
     if (hasBound && remaining <= 0) return false;
-    if (hasBound) node.start(0, elapsed + mediaStart, remaining);
-    else node.start(0, elapsed + mediaStart);
+    if (hasBound) node.start(0, sourceElapsed + mediaStart, remaining);
+    else node.start(0, sourceElapsed + mediaStart);
     return true;
   }
-  const delay = -elapsed / safeRate;
+  const delay = -elapsed / globalRate;
   if (hasBound) node.start(scheduledAt + delay, mediaStart, clipSourceLen);
   else node.start(scheduledAt + delay, mediaStart);
   return true;
@@ -87,6 +90,7 @@ export type ScheduledSource = {
   mediaStart: number;
   scheduledAt: number;
   priorMuted: boolean;
+  mediaPlaybackRate: number;
   // The clip had a finite window, so start() was given a fixed duration in
   // buffer-sample seconds. That bound can't be rescaled in place on a rate
   // change — callers must stopAll()+reschedule (see hasBoundedActiveSources).
@@ -200,10 +204,12 @@ export class WebAudioTransport {
       if (generation !== this._playGeneration) return null;
 
       const safeRate = normalizeRate(rate);
+      const mediaRate = readElementPlaybackRate(el);
+      const sourceRate = safeRate * mediaRate;
 
       const sourceNode = this._ctx.createBufferSource();
       sourceNode.buffer = buffer;
-      sourceNode.playbackRate.value = safeRate;
+      sourceNode.playbackRate.value = sourceRate;
 
       const gainNode = this._ctx.createGain();
       gainNode.gain.value = volume;
@@ -230,7 +236,8 @@ export class WebAudioTransport {
           elapsed,
           mediaStart,
           scheduledAt,
-          safeRate,
+          globalRate: safeRate,
+          mediaRate,
           clipDuration,
         })
       ) {
@@ -254,6 +261,7 @@ export class WebAudioTransport {
         mediaStart,
         scheduledAt,
         priorMuted,
+        mediaPlaybackRate: mediaRate,
         bounded: Number.isFinite(clipDuration) && clipDuration > 0,
       };
       this._activeSources.push(scheduled);
@@ -314,7 +322,7 @@ export class WebAudioTransport {
     this._rate = safeRate;
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.playbackRate.value = safeRate;
+        source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
         source.fx?.setRate(safeRate);
       } catch (err) {
         swallow("webAudioTransport.setRate", err);

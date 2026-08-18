@@ -19,6 +19,7 @@ import {
   type FpsInput,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
+import { readMediaStart } from "./mediaTiming.js";
 import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
@@ -544,8 +545,6 @@ export function parseVideoElements(html: string): VideoElement[] {
     const startAttr = el.getAttribute("data-start");
     const endAttr = el.getAttribute("data-end");
     const durationAttr = el.getAttribute("data-duration");
-    const mediaStartAttr =
-      el.getAttribute("data-playback-start") ?? el.getAttribute("data-media-start");
     const playbackRateAttr = el.getAttribute("data-playback-rate");
     const hasAudioAttr = el.getAttribute("data-has-audio");
 
@@ -574,7 +573,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       src,
       start,
       end,
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
+      mediaStart: readMediaStart(el),
       playbackRate: normalizePlaybackRate(
         playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
       ),

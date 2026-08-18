@@ -42,6 +42,7 @@ import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import { normalizePlaybackRate } from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { readMediaStart } from "./mediaTiming.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -460,8 +461,6 @@ export function parseAudioElements(html: string): AudioElement[] {
 
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
-    const mediaStartAttr = el.getAttribute("data-media-start");
-    const playbackStartAttr = el.getAttribute("data-playback-start");
     const playbackRateAttr = el.getAttribute("data-playback-rate");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
@@ -472,11 +471,7 @@ export function parseAudioElements(html: string): AudioElement[] {
       src: el.getAttribute("src") as string,
       start: resolveStart(el),
       end: parseEnd(el.getAttribute("data-end")),
-      mediaStart: playbackStartAttr
-        ? parseFloat(playbackStartAttr)
-        : mediaStartAttr
-          ? parseFloat(mediaStartAttr)
-          : 0,
+      mediaStart: readMediaStart(el),
       playbackRate: normalizePlaybackRate(
         playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
       ),

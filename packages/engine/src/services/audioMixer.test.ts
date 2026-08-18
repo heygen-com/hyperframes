@@ -1156,6 +1156,45 @@ describe("processCompositionAudio", () => {
 });
 
 describe("parseAudioElements — relative data-start resolution", () => {
+  it.each([
+    {
+      label: "valueless playback-start",
+      attributes: 'data-playback-start data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "empty playback-start",
+      attributes: 'data-playback-start="" data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "whitespace playback-start",
+      attributes: 'data-playback-start="   " data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "invalid playback-start",
+      attributes: 'data-playback-start="later" data-media-start="1.5"',
+      expected: 1.5,
+    },
+    { label: "missing media-start", attributes: "", expected: 0 },
+    { label: "invalid media-start", attributes: 'data-media-start="later"', expected: 0 },
+    {
+      label: "finite playback-start",
+      attributes: 'data-playback-start="2.25" data-media-start="1.5"',
+      expected: 2.25,
+    },
+    {
+      label: "zero playback-start",
+      attributes: 'data-playback-start="0" data-media-start="1.5"',
+      expected: 0,
+    },
+  ])("uses finite playback-start -> media-start -> 0 for $label", ({ attributes, expected }) => {
+    const html = wrap(`<audio id="a0" data-start="0" src="a.m4a" ${attributes}></audio>`);
+
+    expect(parseAudioElements(html)[0]?.mediaStart).toBe(expected);
+  });
+
   it("parses and normalizes constant playback rate", () => {
     const html = wrap(
       '<audio id="fast" data-start="0" src="a.m4a" data-playback-rate="2"></audio>' +

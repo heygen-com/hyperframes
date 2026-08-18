@@ -11,6 +11,7 @@ const files = {
   audio: "skills/hyperframes-audio/SKILL.md",
   remotionMedia: "skills/remotion-to-hyperframes/references/media.md",
   remotionMap: "skills/remotion-to-hyperframes/references/api-map.md",
+  webAudioTransport: "packages/core/src/runtime/webAudioTransport.ts",
 };
 
 function requiresAll(text, patterns, surface) {
@@ -130,4 +131,29 @@ test("Remotion media mapping uses the canonical trim and render-safe constant-ra
   assert.match(combined, /constant.*playback rate|playback rate.*constant/i);
   assert.match(combined, /volume automation|data-automation/i);
   assert.doesNotMatch(combined, /data-trim-start|data-trim-end/);
+});
+
+test("WebAudio scheduling combines per-element and global transport playback rates", async () => {
+  const webAudioTransport = await read(files.webAudioTransport);
+  assert.match(
+    webAudioTransport,
+    /mediaRate[\s\S]{0,120}readElementPlaybackRate\(el\)[\s\S]{0,160}sourceRate\s*=\s*safeRate\s*\*\s*mediaRate/i,
+  );
+});
+
+test("keyframes routes visual crop and mask handoffs without claiming temporal source edits", async () => {
+  const keyframes = await read(files.keyframes);
+  requiresAll(
+    keyframes,
+    [
+      /interpolat(?:e|ed|ing)[\s\S]{0,100}(clip-path|mask)[\s\S]{0,100}(crop|reframe)/i,
+      /directional wipe cut/i,
+      /iris[\s\S]{0,40}reveal cut|reveal[\s\S]{0,40}iris cut/i,
+      /split-screen handoff/i,
+      /polygon[\s\S]{0,50}mask transition|mask[\s\S]{0,50}polygon transition/i,
+      /visual transition[\s\S]{0,120}(not|isn't|is not)[\s\S]{0,80}(temporal|source)[\s\S]{0,80}(trim|splice)/i,
+      /hyperframes-core[\s\S]{0,160}(timeline|clip timing)/i,
+    ],
+    files.keyframes,
+  );
 });

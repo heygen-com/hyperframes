@@ -675,6 +675,45 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
 });
 
 describe("parseVideoElements", () => {
+  it.each([
+    {
+      label: "valueless playback-start",
+      attributes: 'data-playback-start data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "empty playback-start",
+      attributes: 'data-playback-start="" data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "whitespace playback-start",
+      attributes: 'data-playback-start="   " data-media-start="1.5"',
+      expected: 1.5,
+    },
+    {
+      label: "invalid playback-start",
+      attributes: 'data-playback-start="later" data-media-start="1.5"',
+      expected: 1.5,
+    },
+    { label: "missing media-start", attributes: "", expected: 0 },
+    { label: "invalid media-start", attributes: 'data-media-start="later"', expected: 0 },
+    {
+      label: "finite playback-start",
+      attributes: 'data-playback-start="2.25" data-media-start="1.5"',
+      expected: 2.25,
+    },
+    {
+      label: "zero playback-start",
+      attributes: 'data-playback-start="0" data-media-start="1.5"',
+      expected: 0,
+    },
+  ])("uses finite playback-start -> media-start -> 0 for $label", ({ attributes, expected }) => {
+    const [video] = parseVideoElements(`<video id="hero" src="clip.mp4" ${attributes}></video>`);
+
+    expect(video?.mediaStart).toBe(expected);
+  });
+
   it("parses and normalizes constant playback rate for final rendering", () => {
     const [fast, low, high, invalid] = parseVideoElements(
       '<video id="fast" src="clip.mp4" data-playback-rate="2"></video>' +
