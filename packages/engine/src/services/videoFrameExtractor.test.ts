@@ -1663,6 +1663,27 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(md.isVFR).toBe(true);
   });
 
+  it.each([
+    ["compiled EOF", 4, 1],
+    ["compiled past EOF", 5, 2],
+    ["ordinary explicit zero", 6, 0],
+  ])(
+    "drops a known zero timeline window without extraction or error: %s",
+    async (label, start, mediaStart) => {
+      const src = await synthCfrClip(`zero-window-${label.replaceAll(" ", "-")}.mp4`, 1);
+      const videos = parseVideoElements(
+        `<video id="zero-window" src="${src}" data-start="${start}" data-duration="0" data-end="${start}" data-media-start="${mediaStart}" muted></video>`,
+      );
+      const outputDir = join(FIXTURE_DIR, `out-zero-window-${label.replaceAll(" ", "-")}`);
+      const result = await extractAllVideoFrames(videos, FIXTURE_DIR, { fps: 30, outputDir });
+
+      expect(result.errors).toEqual([]);
+      expect(result.extracted).toEqual([]);
+      expect(result.totalFramesExtracted).toBe(0);
+      expect(videos).toEqual([]);
+    },
+  );
+
   it("passes an exact 24000/1001 rate through VFR normalization", async () => {
     const outputDir = join(FIXTURE_DIR, "out-vfr-ntsc-boundary");
     mkdirSync(outputDir, { recursive: true });

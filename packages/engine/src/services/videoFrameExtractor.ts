@@ -20,6 +20,7 @@ import {
   type FpsInput,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
+import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
 import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
@@ -554,6 +555,7 @@ export function parseVideoElements(html: string): VideoElement[] {
     // blank in the final render. `startAttr` may be a plain number or a
     // reference; the resolver handles both.
     const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
+    if (isKnownInactiveTimelineWindow(el, start)) continue;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
     // Static compilation cannot always clamp root media because GSAP may supply
     // the root duration at runtime. The producer passes the resolved timeline

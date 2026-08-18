@@ -87,6 +87,38 @@ describe("processCompositionAudio", () => {
     }
   });
 
+  it.each([
+    ["compiled EOF", 4, 2],
+    ["compiled past EOF", 5, 3],
+    ["ordinary explicit zero", 6, 0],
+  ])(
+    "drops a known zero timeline window without audio prep or mix: %s",
+    async (_label, start, mediaStart) => {
+      const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+      tempDirs.push(baseDir, workDir);
+      writeFileSync(join(baseDir, "tone.wav"), Buffer.from("RIFF0000WAVEfmt "));
+      const elements = parseAudioElements(
+        `<div data-composition-id="root" data-start="0" data-duration="10"><audio id="zero-window" src="tone.wav" data-start="${start}" data-duration="0" data-end="${start}" data-media-start="${mediaStart}"></audio></div>`,
+      );
+
+      const result = await processCompositionAudio(
+        elements,
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        10,
+      );
+
+      expect(extractAudioMetadataMock).not.toHaveBeenCalled();
+      expect(runFfmpegMock).toHaveBeenCalledTimes(1);
+      expect(runFfmpegMock.mock.calls[0]?.[0].join(" ")).toContain("anullsrc");
+      expect(runFfmpegMock.mock.calls[0]?.[0]).not.toContain(join(baseDir, "tone.wav"));
+      expect(elements).toEqual([]);
+      expect(result).toMatchObject({ success: true, tracksProcessed: 0 });
+    },
+  );
+
   it("classifies an HTML-as-200 audio source as deterministic user input", async () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));

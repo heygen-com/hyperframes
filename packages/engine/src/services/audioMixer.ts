@@ -21,6 +21,7 @@ import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/run
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
+import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
 import type {
   AudioElement,
   AudioFailureStage,
@@ -485,12 +486,14 @@ export function parseAudioElements(html: string): AudioElement[] {
   for (const el of document.querySelectorAll("audio[id][src]")) {
     const id = el.getAttribute("id");
     if (!id || !el.getAttribute("src") || isHidden(el)) continue;
+    if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, id, "audio"));
   }
 
   for (const el of document.querySelectorAll('video[id][src][data-has-audio="true"]')) {
     const id = el.getAttribute("id");
     if (!id || !el.getAttribute("src") || isHidden(el)) continue;
+    if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, `${id}-audio`, "video"));
   }
 

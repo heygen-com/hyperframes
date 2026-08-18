@@ -118,14 +118,8 @@ describe("compileForRender natural media duration parity", () => {
       expect(element.getAttribute("data-duration")).toBe("0");
       expect(element.getAttribute("data-end")).toBe(String(start));
     }
-    expect(result.videos.map(({ id, start, end }) => ({ id, start, end }))).toEqual([
-      { id: "video-eof", start: 4, end: 4 },
-      { id: "video-past", start: 5, end: 5 },
-    ]);
-    expect(result.audios.map(({ id, start, end }) => ({ id, start, end }))).toEqual([
-      { id: "audio-eof", start: 6, end: 6 },
-      { id: "audio-past", start: 7, end: 7 },
-    ]);
+    expect(result.videos).toEqual([]);
+    expect(result.audios).toEqual([]);
   });
 
   it("keeps explicit data-duration authoritative", async () => {
