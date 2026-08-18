@@ -9,7 +9,10 @@
 // populate.
 //
 // So we mirror the canonical Claude store into each of those per-agent dirs, but
-// only for agents the machine actually has (their marker dir exists). On Unix
+// only for agents the machine actually has (their marker dir exists). Agents
+// that already consume the universal ~/.agents/skills store globally (Pi) are
+// skipped: their universal copy is authoritative and a per-agent copy would
+// collide with it (#3294). On Unix
 // each skill is a relative symlink back into the store (one source of truth,
 // near-zero size, auto-fresh on update); on Windows it's a copy, because
 // symlinks there need admin / Developer Mode and otherwise silently dangle —
@@ -23,6 +26,22 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
+
+/**
+ * Agents that natively discover the universal `~/.agents/skills` store globally
+ * in ADDITION to their own agent-specific directory. Mirroring into their own
+ * dir makes every skill discoverable twice.
+ *
+ * Pi is the known case (earendil-works/pi): it reads both `~/.pi/agent/skills/`
+ * and `~/.agents/skills/` as global locations (pi's packages/coding-agent/docs/
+ * skills.md#locations), so a mirrored entry collides with the universal copy
+ * and Pi skips the universal one on name conflict (#3294).
+ *
+ * The generated table cannot carry this capability — it is a plain
+ * (agent, base, sub) list synced from vercel-labs/skills — so the set lives
+ * here next to the mirror logic that needs it.
+ */
+const UNIVERSAL_STORE_READERS = new Set(["pi"]);
 
 export interface MirrorResult {
   /** The store mirrored from, or null when no global Claude store was found. */
@@ -128,6 +147,7 @@ export function mirrorGlobalSkills(opts: {
   for (const { agent, base, sub } of AGENT_GLOBAL_DIRS) {
     const targetDir = join(bases[base], ...sub.split("/").filter(Boolean));
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
+    if (UNIVERSAL_STORE_READERS.has(agent)) continue; // already reads the universal store (#3294)
     if (!existsSync(dirname(targetDir))) continue; // agent not installed (no marker)
     if (mirrorInto(targetDir, source, skills, platform)) mirrored.push({ agent, dir: targetDir });
   }
