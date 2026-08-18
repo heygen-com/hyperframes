@@ -236,11 +236,12 @@
       data-width="1920"
       data-height="1080"
       data-duration="4"
-     data-composition-variables='[
+      data-composition-variables='[
     { "id": "width", "type": "number", "role": "style", "label": "Width", "description": "Sheet width in pixels.", "default": 668, "min": 400, "max": 900, "step": 4, "unit": "px" },
     { "id": "radius", "type": "number", "role": "style", "label": "Radius", "description": "Sheet corner radius.", "default": 34, "min": 16, "max": 48, "step": 1, "unit": "px" },
     { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Light is the reference near-white sheet; dark is the raised surface token.", "default": "light", "options": [{ "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" }] }
-  ]'>
+  ]'
+    >
       <section
         class="clip"
         data-start="0"
@@ -291,51 +292,51 @@
     </div>
 
     <script>
-  (function () {
-    "use strict";
+      (function () {
+        "use strict";
 
-    var vars =
-      window.__hyperframes && window.__hyperframes.getVariables
-        ? window.__hyperframes.getVariables()
-        : {};
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
 
-    // Unrecognised overrides return to their declared defaults.
-    function pick(table, value, fallback) {
-      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
-    }
+        // Unrecognised overrides return to their declared defaults.
+        function pick(table, value, fallback) {
+          return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+        }
 
-    function clampNumber(value, min, max, fallback) {
-      var n = typeof value === "number" ? value : parseFloat(value);
-      if (!isFinite(n)) {
-        return fallback;
-      }
-      return Math.min(max, Math.max(min, n));
-    }
+        function clampNumber(value, min, max, fallback) {
+          var n = typeof value === "number" ? value : parseFloat(value);
+          if (!isFinite(n)) {
+            return fallback;
+          }
+          return Math.min(max, Math.max(min, n));
+        }
 
-    var tones = {
-      light: { surface: "#f9f9f9", ink: "#101010", inkMuted: "#313131" },
-      dark: {
-        surface: "var(--_hf-ui-surface-raised)",
-        ink: "var(--_hf-ui-text-strong)",
-        inkMuted: "var(--_hf-ui-text-muted)",
-      },
-    };
+        var tones = {
+          light: { surface: "#f9f9f9", ink: "#101010", inkMuted: "#313131" },
+          dark: {
+            surface: "var(--_hf-ui-surface-raised)",
+            ink: "var(--_hf-ui-text-strong)",
+            inkMuted: "var(--_hf-ui-text-muted)",
+          },
+        };
 
-    var width = clampNumber(vars.width, 400, 900, 668);
-    var radius = clampNumber(vars.radius, 16, 48, 34);
-    var tone = tones[pick(tones, vars.tone, "light")];
+        var width = clampNumber(vars.width, 400, 900, 668);
+        var radius = clampNumber(vars.radius, 16, 48, 34);
+        var tone = tones[pick(tones, vars.tone, "light")];
 
-    var roots = document.querySelectorAll(".hf-ui-sheet-spring-up");
-    for (var i = 0; i < roots.length; i += 1) {
-      roots[i].style.setProperty("--hf-ssu-width", width + "px");
-      roots[i].style.setProperty("--hf-ssu-radius", radius + "px");
-      roots[i].style.setProperty("--hf-ssu-surface", tone.surface);
-      roots[i].style.setProperty("--hf-ssu-ink", tone.ink);
-      roots[i].style.setProperty("--hf-ssu-ink-muted", tone.inkMuted);
-    }
-  })();
-</script>
-<script>
+        var roots = document.querySelectorAll(".hf-ui-sheet-spring-up");
+        for (var i = 0; i < roots.length; i += 1) {
+          roots[i].style.setProperty("--hf-ssu-width", width + "px");
+          roots[i].style.setProperty("--hf-ssu-radius", radius + "px");
+          roots[i].style.setProperty("--hf-ssu-surface", tone.surface);
+          roots[i].style.setProperty("--hf-ssu-ink", tone.ink);
+          roots[i].style.setProperty("--hf-ssu-ink-muted", tone.inkMuted);
+        }
+      })();
+    </script>
+    <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
       /* the measured spring, verbatim */
@@ -375,10 +376,10 @@
       tl.set({}, {}, 4);
       window.__timelines["sheet-spring-up-demo"] = tl;
     </script>
-  <style>
-  /* hf-ui:tokens:start */
-  /* prettier-ignore */
-  [data-hf-ui-root] {
+    <style>
+      /* hf-ui:tokens:start */
+      /* prettier-ignore */
+      [data-hf-ui-root] {
     --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
     --_hf-ui-action: var(--hf-ui-action, #eeeeee);
     --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
@@ -437,14 +438,14 @@
     color-scheme: dark;
     font-family: var(--_hf-ui-font-sans);
   }
-  /* prettier-ignore */
-  [data-hf-ui-root] *,
+      /* prettier-ignore */
+      [data-hf-ui-root] *,
   [data-hf-ui-root] *::before,
   [data-hf-ui-root] *::after {
     box-sizing: border-box;
   }
-  /* prettier-ignore */
-  [data-hf-theme="light"] [data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-theme="light"] [data-hf-ui-root],
   [data-hf-ui-root][data-hf-theme="light"] {
     --_hf-ui-accent: var(--hf-ui-accent, #087a57);
     --_hf-ui-action: var(--hf-ui-action, #171717);
@@ -473,39 +474,39 @@
     --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
     color-scheme: light;
   }
-  /* prettier-ignore */
-  [data-hf-ui-root]:focus-visible {
+      /* prettier-ignore */
+      [data-hf-ui-root]:focus-visible {
     outline: 2px solid var(--_hf-ui-accent);
     outline-offset: 3px;
   }
-  /* hf-ui:tokens:end */
+      /* hf-ui:tokens:end */
 
-  .hf-ui-sheet-spring-up {
-    position: relative;
-  }
-  .hf-ssu-sheet {
-    position: relative;
-    width: var(--hf-ssu-width, 668px);
-    border-radius: var(--hf-ssu-radius, 34px);
-    background: var(--hf-ssu-surface, #f9f9f9);
-    color: var(--hf-ssu-ink, #101010);
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
-    padding: 49px 43px 43px;
-    will-change: opacity, transform;
-  }
-  .hf-ssu-title {
-    text-align: center;
-    font-size: 44px;
-    font-weight: var(--_hf-ui-weight-semibold);
-    line-height: 1;
-    letter-spacing: 0.2px;
-  }
-  .hf-ssu-body {
-    margin-top: 24px;
-    text-align: center;
-    font-size: 29px;
-    color: var(--hf-ssu-ink-muted, #313131);
-  }
-</style>
-</body>
+      .hf-ui-sheet-spring-up {
+        position: relative;
+      }
+      .hf-ssu-sheet {
+        position: relative;
+        width: var(--hf-ssu-width, 668px);
+        border-radius: var(--hf-ssu-radius, 34px);
+        background: var(--hf-ssu-surface, #f9f9f9);
+        color: var(--hf-ssu-ink, #101010);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        padding: 49px 43px 43px;
+        will-change: opacity, transform;
+      }
+      .hf-ssu-title {
+        text-align: center;
+        font-size: 44px;
+        font-weight: var(--_hf-ui-weight-semibold);
+        line-height: 1;
+        letter-spacing: 0.2px;
+      }
+      .hf-ssu-body {
+        margin-top: 24px;
+        text-align: center;
+        font-size: 29px;
+        color: var(--hf-ssu-ink-muted, #313131);
+      }
+    </style>
+  </body>
 </html>

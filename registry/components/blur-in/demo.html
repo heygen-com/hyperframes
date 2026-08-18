@@ -243,47 +243,47 @@
       </section>
       <p class="hf-ui-demo-caption">Blur In</p>
       <script>
-  (function () {
-    "use strict";
+        (function () {
+          "use strict";
 
-    var vars =
-      window.__hyperframes && window.__hyperframes.getVariables
-        ? window.__hyperframes.getVariables()
-        : {};
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
 
-    // Unrecognised overrides return to their declared defaults.
-    function pick(table, value, fallback) {
-      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
-    }
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
 
-    function clampNumber(value, min, max, fallback) {
-      var n = typeof value === "number" ? value : parseFloat(value);
-      if (!isFinite(n)) {
-        return fallback;
-      }
-      return Math.min(max, Math.max(min, n));
-    }
+          function clampNumber(value, min, max, fallback) {
+            var n = typeof value === "number" ? value : parseFloat(value);
+            if (!isFinite(n)) {
+              return fallback;
+            }
+            return Math.min(max, Math.max(min, n));
+          }
 
-    var tones = {
-      strong: "var(--_hf-ui-text-strong)",
-      muted: "var(--_hf-ui-text-muted)",
-      accent: "var(--_hf-ui-accent)",
-    };
-    var aligns = { left: "flex-start", center: "center", right: "flex-end" };
+          var tones = {
+            strong: "var(--_hf-ui-text-strong)",
+            muted: "var(--_hf-ui-text-muted)",
+            accent: "var(--_hf-ui-accent)",
+          };
+          var aligns = { left: "flex-start", center: "center", right: "flex-end" };
 
-    var size = clampNumber(vars.size, 24, 120, 52);
-    var tone = tones[pick(tones, vars.tone, "strong")];
-    var align = aligns[pick(aligns, vars.align, "left")];
+          var size = clampNumber(vars.size, 24, 120, 52);
+          var tone = tones[pick(tones, vars.tone, "strong")];
+          var align = aligns[pick(aligns, vars.align, "left")];
 
-    var roots = document.querySelectorAll(".hf-ui-blur-in");
-    for (var i = 0; i < roots.length; i += 1) {
-      roots[i].style.setProperty("--hf-blur-in-size", size + "px");
-      roots[i].style.setProperty("--hf-blur-in-color", tone);
-      roots[i].style.setProperty("--hf-blur-in-align", align);
-    }
-  })();
-</script>
-<script>
+          var roots = document.querySelectorAll(".hf-ui-blur-in");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-blur-in-size", size + "px");
+            roots[i].style.setProperty("--hf-blur-in-color", tone);
+            roots[i].style.setProperty("--hf-blur-in-align", align);
+          }
+        })();
+      </script>
+      <script>
         const tl = gsap.timeline({ paused: true });
         tl.addLabel("start", 0);
         tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
@@ -306,10 +306,10 @@
         window.__timelines["blur-in-demo"] = tl;
       </script>
     </main>
-  <style>
-  /* hf-ui:tokens:start */
-  /* prettier-ignore */
-  [data-hf-ui-root] {
+    <style>
+      /* hf-ui:tokens:start */
+      /* prettier-ignore */
+      [data-hf-ui-root] {
     --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
     --_hf-ui-action: var(--hf-ui-action, #eeeeee);
     --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
@@ -368,14 +368,14 @@
     color-scheme: dark;
     font-family: var(--_hf-ui-font-sans);
   }
-  /* prettier-ignore */
-  [data-hf-ui-root] *,
+      /* prettier-ignore */
+      [data-hf-ui-root] *,
   [data-hf-ui-root] *::before,
   [data-hf-ui-root] *::after {
     box-sizing: border-box;
   }
-  /* prettier-ignore */
-  [data-hf-theme="light"] [data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-theme="light"] [data-hf-ui-root],
   [data-hf-ui-root][data-hf-theme="light"] {
     --_hf-ui-accent: var(--hf-ui-accent, #087a57);
     --_hf-ui-action: var(--hf-ui-action, #171717);
@@ -404,13 +404,13 @@
     --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
     color-scheme: light;
   }
-  /* prettier-ignore */
-  [data-hf-ui-root]:focus-visible {
+      /* prettier-ignore */
+      [data-hf-ui-root]:focus-visible {
     outline: 2px solid var(--_hf-ui-accent);
     outline-offset: 3px;
   }
-  /* prettier-ignore */
-  [data-hf-rendering="true"][data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-rendering="true"][data-hf-ui-root],
   [data-hf-rendering="true"] [data-hf-ui-root],
   [data-hf-rendering="true"][data-hf-ui-root] *,
   [data-hf-rendering="true"] [data-hf-ui-root] *,
@@ -427,8 +427,8 @@
     transition-duration: 0s !important;
     transition-delay: 0s !important;
   }
-  /* prettier-ignore */
-  @media (prefers-reduced-motion: reduce) {
+      /* prettier-ignore */
+      @media (prefers-reduced-motion: reduce) {
     [data-hf-ui-root],
     [data-hf-ui-root] *,
     [data-hf-ui-root] *::before,
@@ -440,23 +440,23 @@
       scroll-behavior: auto !important;
     }
   }
-  /* hf-ui:tokens:end */
-  .hf-ui-blur-in {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: var(--hf-blur-in-align, flex-start);
-    gap: 0.28em;
-    color: var(--hf-blur-in-color, var(--_hf-ui-text-strong));
-    font: var(--_hf-ui-weight-semibold) 52px/1 var(--_hf-ui-font-sans);
-    font-size: var(--hf-blur-in-size, 52px);
-    letter-spacing: -0.02em;
-  }
-  .hf-ui-blur-in span {
-    display: inline-block;
-    filter: blur(0px);
-    opacity: 1;
-    will-change: opacity, transform, filter;
-  }
-</style>
-</body>
+      /* hf-ui:tokens:end */
+      .hf-ui-blur-in {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: var(--hf-blur-in-align, flex-start);
+        gap: 0.28em;
+        color: var(--hf-blur-in-color, var(--_hf-ui-text-strong));
+        font: var(--_hf-ui-weight-semibold) 52px/1 var(--_hf-ui-font-sans);
+        font-size: var(--hf-blur-in-size, 52px);
+        letter-spacing: -0.02em;
+      }
+      .hf-ui-blur-in span {
+        display: inline-block;
+        filter: blur(0px);
+        opacity: 1;
+        will-change: opacity, transform, filter;
+      }
+    </style>
+  </body>
 </html>

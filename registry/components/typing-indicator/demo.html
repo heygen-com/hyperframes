@@ -215,11 +215,12 @@
       data-width="1920"
       data-height="1080"
       data-duration="4.5"
-     data-composition-variables='[
+      data-composition-variables='[
     { "id": "size", "type": "number", "role": "style", "label": "Size", "description": "Bubble width in pixels; dots and tail scale with it.", "default": 124, "min": 80, "max": 220, "step": 2, "unit": "px" },
     { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Dark is the reference iOS bubble; light suits bright chat grounds.", "default": "dark", "options": [{ "value": "dark", "label": "Dark" }, { "value": "light", "label": "Light" }] },
     { "id": "tail", "type": "enum", "role": "style", "label": "Tail", "description": "The two shrinking circles anchoring the bubble to the sender side.", "default": "on", "options": [{ "value": "on", "label": "On" }, { "value": "off", "label": "Off" }] }
-  ]'>
+  ]'
+    >
       <section
         class="clip"
         data-start="0"
@@ -272,47 +273,47 @@
     </div>
 
     <script>
-  (function () {
-    "use strict";
+      (function () {
+        "use strict";
 
-    var vars =
-      window.__hyperframes && window.__hyperframes.getVariables
-        ? window.__hyperframes.getVariables()
-        : {};
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
 
-    // Unrecognised overrides return to their declared defaults.
-    function pick(table, value, fallback) {
-      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
-    }
+        // Unrecognised overrides return to their declared defaults.
+        function pick(table, value, fallback) {
+          return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+        }
 
-    function clampNumber(value, min, max, fallback) {
-      var n = typeof value === "number" ? value : parseFloat(value);
-      if (!isFinite(n)) {
-        return fallback;
-      }
-      return Math.min(max, Math.max(min, n));
-    }
+        function clampNumber(value, min, max, fallback) {
+          var n = typeof value === "number" ? value : parseFloat(value);
+          if (!isFinite(n)) {
+            return fallback;
+          }
+          return Math.min(max, Math.max(min, n));
+        }
 
-    var tones = {
-      dark: { surface: "#242428", dot: "#8e8e93" },
-      light: { surface: "#e9e9eb", dot: "#8e8e93" },
-    };
-    var tails = { on: "block", off: "none" };
+        var tones = {
+          dark: { surface: "#242428", dot: "#8e8e93" },
+          light: { surface: "#e9e9eb", dot: "#8e8e93" },
+        };
+        var tails = { on: "block", off: "none" };
 
-    var size = clampNumber(vars.size, 80, 220, 124);
-    var tone = tones[pick(tones, vars.tone, "dark")];
-    var tail = tails[pick(tails, vars.tail, "on")];
+        var size = clampNumber(vars.size, 80, 220, 124);
+        var tone = tones[pick(tones, vars.tone, "dark")];
+        var tail = tails[pick(tails, vars.tail, "on")];
 
-    var roots = document.querySelectorAll(".hf-ui-typing-indicator");
-    for (var i = 0; i < roots.length; i += 1) {
-      roots[i].style.setProperty("--hf-ti-size", size + "px");
-      roots[i].style.setProperty("--hf-ti-surface", tone.surface);
-      roots[i].style.setProperty("--hf-ti-dot", tone.dot);
-      roots[i].style.setProperty("--hf-ti-tail", tail);
-    }
-  })();
-</script>
-<script>
+        var roots = document.querySelectorAll(".hf-ui-typing-indicator");
+        for (var i = 0; i < roots.length; i += 1) {
+          roots[i].style.setProperty("--hf-ti-size", size + "px");
+          roots[i].style.setProperty("--hf-ti-surface", tone.surface);
+          roots[i].style.setProperty("--hf-ti-dot", tone.dot);
+          roots[i].style.setProperty("--hf-ti-tail", tail);
+        }
+      })();
+    </script>
+    <script>
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
       tl.set(["#ti-dots", "#ti-m2"], { autoAlpha: 0 }, 0.001);
@@ -344,10 +345,10 @@
       tl.set({}, {}, 4.5);
       window.__timelines["typing-indicator-demo"] = tl;
     </script>
-  <style>
-  /* hf-ui:tokens:start */
-  /* prettier-ignore */
-  [data-hf-ui-root] {
+    <style>
+      /* hf-ui:tokens:start */
+      /* prettier-ignore */
+      [data-hf-ui-root] {
     --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
     --_hf-ui-action: var(--hf-ui-action, #eeeeee);
     --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
@@ -406,14 +407,14 @@
     color-scheme: dark;
     font-family: var(--_hf-ui-font-sans);
   }
-  /* prettier-ignore */
-  [data-hf-ui-root] *,
+      /* prettier-ignore */
+      [data-hf-ui-root] *,
   [data-hf-ui-root] *::before,
   [data-hf-ui-root] *::after {
     box-sizing: border-box;
   }
-  /* prettier-ignore */
-  [data-hf-theme="light"] [data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-theme="light"] [data-hf-ui-root],
   [data-hf-ui-root][data-hf-theme="light"] {
     --_hf-ui-accent: var(--hf-ui-accent, #087a57);
     --_hf-ui-action: var(--hf-ui-action, #171717);
@@ -442,13 +443,13 @@
     --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
     color-scheme: light;
   }
-  /* prettier-ignore */
-  [data-hf-ui-root]:focus-visible {
+      /* prettier-ignore */
+      [data-hf-ui-root]:focus-visible {
     outline: 2px solid var(--_hf-ui-accent);
     outline-offset: 3px;
   }
-  /* prettier-ignore */
-  [data-hf-rendering="true"][data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-rendering="true"][data-hf-ui-root],
   [data-hf-rendering="true"] [data-hf-ui-root],
   [data-hf-rendering="true"][data-hf-ui-root] *,
   [data-hf-rendering="true"] [data-hf-ui-root] *,
@@ -465,8 +466,8 @@
     transition-duration: 0s !important;
     transition-delay: 0s !important;
   }
-  /* prettier-ignore */
-  @media (prefers-reduced-motion: reduce) {
+      /* prettier-ignore */
+      @media (prefers-reduced-motion: reduce) {
     [data-hf-ui-root],
     [data-hf-ui-root] *,
     [data-hf-ui-root] *::before,
@@ -478,55 +479,55 @@
       scroll-behavior: auto !important;
     }
   }
-  /* hf-ui:tokens:end */
+      /* hf-ui:tokens:end */
 
-  .hf-ui-typing-indicator {
-    position: relative;
-    display: inline-block;
-  }
-  .hf-ti-wrap {
-    position: relative;
-    display: inline-block;
-    font-size: var(--hf-ti-size, 124px);
-    will-change: opacity, transform;
-  }
-  .hf-ti-bubble {
-    width: 1em;
-    height: 0.54em;
-    background: var(--hf-ti-surface, #242428);
-    border-radius: 0.274em;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.081em;
-  }
-  .hf-ti-dot {
-    width: 0.137em;
-    height: 0.137em;
-    border-radius: 50%;
-    background: var(--hf-ti-dot, #8e8e93);
-    display: inline-block;
-  }
-  .hf-ti-tail1 {
-    position: absolute;
-    left: -0.016em;
-    bottom: -0.032em;
-    width: 0.145em;
-    height: 0.145em;
-    border-radius: 50%;
-    background: var(--hf-ti-surface, #242428);
-    display: var(--hf-ti-tail, block);
-  }
-  .hf-ti-tail2 {
-    position: absolute;
-    left: -0.113em;
-    bottom: -0.113em;
-    width: 0.073em;
-    height: 0.073em;
-    border-radius: 50%;
-    background: var(--hf-ti-surface, #242428);
-    display: var(--hf-ti-tail, block);
-  }
-</style>
-</body>
+      .hf-ui-typing-indicator {
+        position: relative;
+        display: inline-block;
+      }
+      .hf-ti-wrap {
+        position: relative;
+        display: inline-block;
+        font-size: var(--hf-ti-size, 124px);
+        will-change: opacity, transform;
+      }
+      .hf-ti-bubble {
+        width: 1em;
+        height: 0.54em;
+        background: var(--hf-ti-surface, #242428);
+        border-radius: 0.274em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.081em;
+      }
+      .hf-ti-dot {
+        width: 0.137em;
+        height: 0.137em;
+        border-radius: 50%;
+        background: var(--hf-ti-dot, #8e8e93);
+        display: inline-block;
+      }
+      .hf-ti-tail1 {
+        position: absolute;
+        left: -0.016em;
+        bottom: -0.032em;
+        width: 0.145em;
+        height: 0.145em;
+        border-radius: 50%;
+        background: var(--hf-ti-surface, #242428);
+        display: var(--hf-ti-tail, block);
+      }
+      .hf-ti-tail2 {
+        position: absolute;
+        left: -0.113em;
+        bottom: -0.113em;
+        width: 0.073em;
+        height: 0.073em;
+        border-radius: 50%;
+        background: var(--hf-ti-surface, #242428);
+        display: var(--hf-ti-tail, block);
+      }
+    </style>
+  </body>
 </html>

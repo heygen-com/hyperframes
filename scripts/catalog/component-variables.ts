@@ -26,6 +26,18 @@
  * animation intact.
  */
 
+const DECLARATION = /data-composition-variables\s*=\s*'(\[[\s\S]*?\])'/;
+const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style>/g;
+const SCRIPT_BLOCK = /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g;
+const DECLARING_TAG = /<[a-zA-Z][\w-]*\b[^>]*data-composition-variables[\s\S]*?>/;
+const COMPOSITION_ROOT_TAG = /<[a-zA-Z][\w-]*\b[^>]*\bdata-composition-id\b[^>]*>/;
+const INLINE_SCRIPT_OPEN = /<script\b(?![^>]*\bsrc=)[^>]*>/i;
+// Existence checks use their own non-global copy on purpose: `.test()` on a
+// /g regex advances its lastIndex, and these run in a loop over every
+// component, so a shared one would start mid-string and miss on later items.
+const HAS_INLINE_SCRIPT = /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/;
+const BODY_CLOSE = /<\/body>/i;
+
 /**
  * Does the snippet bring its own motion, or only a recipe for it?
  *
@@ -37,9 +49,9 @@
  * so those keep the demo and have the variable machinery layered on.
  *
  * Getting this backwards is not subtle. Build a self-contained component from
- * its demo with the snippet layered on and two timelines register under the
- * same id; build a recipe-only one from its snippet and the preview holds
- * still. Both were observed before this split existed.
+ * its demo with the snippet layered on and it keeps rendering its defaults;
+ * build a recipe-only one from its snippet and the preview holds still. Both
+ * were observed before this split existed.
  *
  * Comments are stripped first, because the recipe is written as one.
  */
@@ -60,12 +72,20 @@ export function snippetOwnsItsMotion(snippetHtml: string): boolean {
  */
 export const SNIPPET_PREVIEW_RENDERS_STILL = new Set(["ascii-render-pass", "star-rating-fill"]);
 
-const DECLARATION = /data-composition-variables\s*=\s*'(\[[\s\S]*?\])'/;
-const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style>/g;
-const SCRIPT_BLOCK = /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g;
-/** The element the snippet hangs its declaration on, and that element's tag. */
-const DECLARING_TAG = /<[a-zA-Z][\w-]*\b[^>]*data-composition-variables[\s\S]*?>/;
-const COMPOSITION_ROOT_TAG = /<[a-zA-Z][\w-]*\b[^>]*\bdata-composition-id\b[^>]*>/;
+/** The classes the snippet hangs its declaration on, which its script targets. */
+function declaringClasses(snippetHtml: string): string[] {
+  const declaring = DECLARING_TAG.exec(snippetHtml);
+  const classAttr = declaring ? /class\s*=\s*"([^"]*)"/.exec(declaring[0]) : null;
+  return (classAttr?.[1] ?? "").split(/\s+/).filter(Boolean);
+}
+
+function openingTagWithClass(html: string, cls: string): string | null {
+  const escaped = cls.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `<[a-zA-Z][\\w-]*\\b[^>]*class\\s*=\\s*"[^"]*\\b${escaped}\\b[^"]*"[^>]*>`,
+  );
+  return pattern.exec(html)?.[0] ?? null;
+}
 
 /**
  * Where to hang the declaration in the demo.
@@ -76,22 +96,24 @@ const COMPOSITION_ROOT_TAG = /<[a-zA-Z][\w-]*\b[^>]*\bdata-composition-id\b[^>]*
  * that the snippet's script finds its targets, and it finds them by the
  * component's own class, which the demo's copy still carries.
  *
- * Preference order is the demo's copy of the component, then the composition
- * root, because putting it on the component keeps the payload shaped like the
- * markup a reader would paste.
+ * The component's own element is preferred over the composition root, because
+ * that keeps the payload shaped like the markup a reader would paste.
  */
 function findDeclarationHost(demoHtml: string, snippetHtml: string): string | null {
-  const declaring = DECLARING_TAG.exec(snippetHtml);
-  const classAttr = declaring ? /class\s*=\s*"([^"]*)"/.exec(declaring[0]) : null;
-  const classes = (classAttr?.[1] ?? "").split(/\s+/).filter(Boolean);
+  const onOwnClass = declaringClasses(snippetHtml)
+    .map((cls) => openingTagWithClass(demoHtml, cls))
+    .find(Boolean);
+  return onOwnClass ?? compositionRootTag(demoHtml);
+}
 
-  for (const cls of classes) {
-    const onSameClass = new RegExp(
-      `<[a-zA-Z][\\w-]*\\b[^>]*class\\s*=\\s*"[^"]*\\b${cls.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[^"]*"[^>]*>`,
-    ).exec(demoHtml);
-    if (onSameClass) return onSameClass[0];
-  }
-  return COMPOSITION_ROOT_TAG.exec(demoHtml)?.[0] ?? null;
+function compositionRootTag(html: string): string | null {
+  return COMPOSITION_ROOT_TAG.exec(html)?.[0] ?? null;
+}
+
+function withDeclarationAttribute(tag: string, declaration: string): string {
+  const selfClosing = tag.endsWith("/>");
+  const body = tag.slice(0, selfClosing ? -2 : -1);
+  return `${body} data-composition-variables='${declaration}'${selfClosing ? "/>" : ">"}`;
 }
 
 export type LayerResult =
@@ -99,44 +121,49 @@ export type LayerResult =
   | { applied: false; html: string; reason: string };
 
 /**
- * Layer a component snippet's variable machinery onto its demo.
+ * Everything that has to hold before a demo can be layered.
  *
- * Returns the demo unchanged, with a reason, when the pair does not have the
- * shape this depends on. A component whose preview cannot be made to answer
- * its panel should keep the preview it has rather than get a broken one.
+ * A table rather than a chain of guards, so the refusals read as a list of
+ * conditions with their messages beside them. A component whose preview cannot
+ * be made to answer its panel keeps the preview it has rather than getting a
+ * half-applied one.
  */
+const REQUIREMENTS: { fails: (demo: string, snippet: string) => boolean; reason: string }[] = [
+  { fails: (_d, s) => !DECLARATION.test(s), reason: "snippet declares no variables" },
+  { fails: (d) => DECLARATION.test(d), reason: "demo already declares its variables" },
+  { fails: (d) => !BODY_CLOSE.test(d), reason: "demo has no </body> to append to" },
+  { fails: (_d, s) => !HAS_INLINE_SCRIPT.test(s), reason: "snippet has no reader script" },
+  {
+    fails: (d, s) => !findDeclarationHost(d, s),
+    reason: "demo has nowhere to hang the declaration",
+  },
+];
+
+/** Why this pair cannot be layered, or null when it can. */
+function refuseReason(demoHtml: string, snippetHtml: string): string | null {
+  return REQUIREMENTS.find((r) => r.fails(demoHtml, snippetHtml))?.reason ?? null;
+}
+
+/**
+ * The snippet's own inline blocks, which are the only ones that travel.
+ *
+ * A `src=` script is a shared dependency the demo already loads, and copying it
+ * would re-run a library.
+ */
+function inlineBlocks(snippetHtml: string, pattern: RegExp): string[] {
+  return snippetHtml.match(pattern) ?? [];
+}
+
+/** Layer a component snippet's variable machinery onto its demo. */
 export function layerVariablesOntoDemo(demoHtml: string, snippetHtml: string): LayerResult {
-  const declaration = DECLARATION.exec(snippetHtml);
-  if (!declaration) {
-    return { applied: false, html: demoHtml, reason: "snippet declares no variables" };
-  }
+  const reason = refuseReason(demoHtml, snippetHtml);
+  if (reason) return { applied: false, html: demoHtml, reason };
 
-  if (DECLARATION.test(demoHtml)) {
-    return { applied: false, html: demoHtml, reason: "demo already declares its variables" };
-  }
+  const declaration = DECLARATION.exec(snippetHtml)?.[1] as string;
+  const host = findDeclarationHost(demoHtml, snippetHtml) as string;
 
-  const rootTag = findDeclarationHost(demoHtml, snippetHtml);
-  if (!rootTag) {
-    return { applied: false, html: demoHtml, reason: "demo has nowhere to hang the declaration" };
-  }
-
-  if (!/<\/body>/i.test(demoHtml)) {
-    return { applied: false, html: demoHtml, reason: "demo has no </body> to append to" };
-  }
-
-  const tag = rootTag;
-  const selfClosing = tag.endsWith("/>");
-  const withDeclaration =
-    `${tag.slice(0, selfClosing ? -2 : -1)} data-composition-variables='${declaration[1]}'` +
-    (selfClosing ? "/>" : ">");
-
-  // Only the snippet's own inline blocks travel. A `src=` script is a shared
-  // dependency the demo already loads, and copying it would re-run a library.
-  const styles = snippetHtml.match(STYLE_BLOCK) ?? [];
-  const scripts = snippetHtml.match(SCRIPT_BLOCK) ?? [];
-  if (scripts.length === 0) {
-    return { applied: false, html: demoHtml, reason: "snippet has no reader script" };
-  }
+  const styles = inlineBlocks(snippetHtml, STYLE_BLOCK);
+  const scripts = inlineBlocks(snippetHtml, SCRIPT_BLOCK);
 
   // Order matters twice, in opposite directions.
   //
@@ -149,14 +176,22 @@ export function layerVariablesOntoDemo(demoHtml: string, snippetHtml: string): L
   // afterwards swapped those elements out from under a live timeline, which
   // animated detached nodes and left the preview frozen: nine previews that
   // used to move went static that way before this ordering was fixed.
-  const firstDemoScript = /<script\b(?![^>]*\bsrc=)[^>]*>/i.exec(demoHtml);
-  const withScript = firstDemoScript
-    ? demoHtml.replace(firstDemoScript[0], `${scripts.join("\n")}\n${firstDemoScript[0]}`)
-    : demoHtml.replace(/<\/body>/i, `${scripts.join("\n")}\n</body>`);
-
-  const html = withScript
-    .replace(tag, withDeclaration)
-    .replace(/<\/body>/i, `${styles.join("\n")}\n</body>`);
+  const html = withStylesAppended(withScriptsFirst(demoHtml, scripts), styles).replace(
+    host,
+    withDeclarationAttribute(host, declaration),
+  );
 
   return { applied: true, html };
+}
+
+function withScriptsFirst(demoHtml: string, scripts: string[]): string {
+  const firstDemoScript = INLINE_SCRIPT_OPEN.exec(demoHtml)?.[0];
+  const block = scripts.join("\n");
+  return firstDemoScript
+    ? demoHtml.replace(firstDemoScript, `${block}\n${firstDemoScript}`)
+    : demoHtml.replace(BODY_CLOSE, `${block}\n</body>`);
+}
+
+function withStylesAppended(html: string, styles: string[]): string {
+  return html.replace(BODY_CLOSE, `${styles.join("\n")}\n</body>`);
 }

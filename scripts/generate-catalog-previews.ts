@@ -33,6 +33,7 @@ import { execFileSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCatalogPreviewTempDir } from "./catalog-preview-temp.js";
+import { runAsCommand } from "./entrypoint.ts";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
   captureFrame,
@@ -473,9 +474,4 @@ async function main(): Promise<void> {
 // Only render when run as a command. This module also exports discoverItems
 // and prepareProjectDir for the payload generator, and an unguarded main()
 // would render every preview the moment that script imported them.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runAsCommand(import.meta.url, main);

@@ -245,41 +245,41 @@
       </section>
       <p class="hf-ui-demo-caption">Separator</p>
       <script>
-  (function () {
-    "use strict";
+        (function () {
+          "use strict";
 
-    var vars =
-      window.__hyperframes && window.__hyperframes.getVariables
-        ? window.__hyperframes.getVariables()
-        : {};
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
 
-    // Unrecognised overrides return to their declared defaults.
-    var orientations = { horizontal: true, vertical: true };
-    var thicknesses = { hairline: "1px", medium: "2px", bold: "4px" };
-    var tones = {
-      neutral: "var(--_hf-ui-control-border)",
-      accent: "var(--_hf-ui-accent)",
-      warning: "var(--_hf-ui-warning)",
-    };
+          // Unrecognised overrides return to their declared defaults.
+          var orientations = { horizontal: true, vertical: true };
+          var thicknesses = { hairline: "1px", medium: "2px", bold: "4px" };
+          var tones = {
+            neutral: "var(--_hf-ui-control-border)",
+            accent: "var(--_hf-ui-accent)",
+            warning: "var(--_hf-ui-warning)",
+          };
 
-    function pick(table, value, fallback) {
-      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
-    }
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
 
-    var orientation = pick(orientations, vars.orientation, "horizontal");
-    var thickness = thicknesses[pick(thicknesses, vars.thickness, "hairline")];
-    var tone = tones[pick(tones, vars.tone, "neutral")];
+          var orientation = pick(orientations, vars.orientation, "horizontal");
+          var thickness = thicknesses[pick(thicknesses, vars.thickness, "hairline")];
+          var tone = tones[pick(tones, vars.tone, "neutral")];
 
-    var roots = document.querySelectorAll(".hf-ui-separator");
-    for (var i = 0; i < roots.length; i += 1) {
-      roots[i].setAttribute("data-orientation", orientation);
-      roots[i].setAttribute("aria-orientation", orientation);
-      roots[i].style.setProperty("--hf-separator-thickness", thickness);
-      roots[i].style.setProperty("--hf-separator-fill", tone);
-    }
-  })();
-</script>
-<script>
+          var roots = document.querySelectorAll(".hf-ui-separator");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].setAttribute("data-orientation", orientation);
+            roots[i].setAttribute("aria-orientation", orientation);
+            roots[i].style.setProperty("--hf-separator-thickness", thickness);
+            roots[i].style.setProperty("--hf-separator-fill", tone);
+          }
+        })();
+      </script>
+      <script>
         const tl = gsap.timeline({ paused: true });
         tl.addLabel("start", 0);
         tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
@@ -295,10 +295,10 @@
         window.__timelines["separator-demo"] = tl;
       </script>
     </main>
-  <style>
-  /* hf-ui:tokens:start */
-  /* prettier-ignore */
-  [data-hf-ui-root] {
+    <style>
+      /* hf-ui:tokens:start */
+      /* prettier-ignore */
+      [data-hf-ui-root] {
     --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
     --_hf-ui-action: var(--hf-ui-action, #eeeeee);
     --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
@@ -357,14 +357,14 @@
     color-scheme: dark;
     font-family: var(--_hf-ui-font-sans);
   }
-  /* prettier-ignore */
-  [data-hf-ui-root] *,
+      /* prettier-ignore */
+      [data-hf-ui-root] *,
   [data-hf-ui-root] *::before,
   [data-hf-ui-root] *::after {
     box-sizing: border-box;
   }
-  /* prettier-ignore */
-  [data-hf-theme="light"] [data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-theme="light"] [data-hf-ui-root],
   [data-hf-ui-root][data-hf-theme="light"] {
     --_hf-ui-accent: var(--hf-ui-accent, #087a57);
     --_hf-ui-action: var(--hf-ui-action, #171717);
@@ -393,13 +393,13 @@
     --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
     color-scheme: light;
   }
-  /* prettier-ignore */
-  [data-hf-ui-root]:focus-visible {
+      /* prettier-ignore */
+      [data-hf-ui-root]:focus-visible {
     outline: 2px solid var(--_hf-ui-accent);
     outline-offset: 3px;
   }
-  /* prettier-ignore */
-  [data-hf-rendering="true"][data-hf-ui-root],
+      /* prettier-ignore */
+      [data-hf-rendering="true"][data-hf-ui-root],
   [data-hf-rendering="true"] [data-hf-ui-root],
   [data-hf-rendering="true"][data-hf-ui-root] *,
   [data-hf-rendering="true"] [data-hf-ui-root] *,
@@ -416,8 +416,8 @@
     transition-duration: 0s !important;
     transition-delay: 0s !important;
   }
-  /* prettier-ignore */
-  @media (prefers-reduced-motion: reduce) {
+      /* prettier-ignore */
+      @media (prefers-reduced-motion: reduce) {
     [data-hf-ui-root],
     [data-hf-ui-root] *,
     [data-hf-ui-root] *::before,
@@ -429,29 +429,29 @@
       scroll-behavior: auto !important;
     }
   }
-  /* hf-ui:tokens:end */
-  .hf-ui-separator {
-    --hf-separator-progress: 1;
-    width: min(360px, 100%);
-    height: var(--hf-separator-thickness, 1px);
-    background: var(--_hf-ui-border);
-    overflow: hidden;
-  }
-  .hf-ui-separator span {
-    display: block;
-    width: calc(var(--hf-separator-progress) * 100%);
-    height: 100%;
-    background: var(--hf-separator-fill, var(--_hf-ui-control-border));
-    transform-origin: left center;
-  }
-  .hf-ui-separator[data-orientation="vertical"] {
-    width: var(--hf-separator-thickness, 1px);
-    height: 180px;
-  }
-  .hf-ui-separator[data-orientation="vertical"] span {
-    width: 100%;
-    height: calc(var(--hf-separator-progress) * 100%);
-  }
-</style>
-</body>
+      /* hf-ui:tokens:end */
+      .hf-ui-separator {
+        --hf-separator-progress: 1;
+        width: min(360px, 100%);
+        height: var(--hf-separator-thickness, 1px);
+        background: var(--_hf-ui-border);
+        overflow: hidden;
+      }
+      .hf-ui-separator span {
+        display: block;
+        width: calc(var(--hf-separator-progress) * 100%);
+        height: 100%;
+        background: var(--hf-separator-fill, var(--_hf-ui-control-border));
+        transform-origin: left center;
+      }
+      .hf-ui-separator[data-orientation="vertical"] {
+        width: var(--hf-separator-thickness, 1px);
+        height: 180px;
+      }
+      .hf-ui-separator[data-orientation="vertical"] span {
+        width: 100%;
+        height: calc(var(--hf-separator-progress) * 100%);
+      }
+    </style>
+  </body>
 </html>

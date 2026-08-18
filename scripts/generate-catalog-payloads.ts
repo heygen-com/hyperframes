@@ -19,7 +19,7 @@
  *   npx tsx scripts/generate-catalog-payloads.ts --type block       # blocks only
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, relative, resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +29,8 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
+import { componentFiles } from "./catalog/component-files.ts";
+import { runAsCommand } from "./entrypoint.ts";
 import {
   snippetOwnsItsMotion,
   SNIPPET_PREVIEW_RENDERS_STILL,
@@ -124,17 +126,6 @@ function declaresVariables(item: CatalogItem): boolean {
   }
 }
 
-function snippetFileFor(item: CatalogItem): string | null {
-  if (item.kind !== "component") return null;
-  const manifest = JSON.parse(
-    readFileSync(join(item.sourceDir, "registry-item.json"), "utf-8"),
-  ) as { files?: { path?: string; type?: string }[] };
-  const path = (manifest.files ?? []).find((f) => f.type === "hyperframes:snippet")?.path;
-  if (!path) return null;
-  const file = join(item.sourceDir, path);
-  return existsSync(file) ? file : null;
-}
-
 /**
  * Which file this component's interactive preview is built from.
  *
@@ -146,13 +137,40 @@ function snippetFileFor(item: CatalogItem): string | null {
  * `scripts/catalog/sync-demo-variables.ts`, so nothing has to be patched in
  * here at build time.
  */
+function snippetFileFor(item: CatalogItem): string | null {
+  if (item.kind !== "component") return null;
+  return componentFiles(item.sourceDir)?.snippetPath ?? null;
+}
+
+function buildsFromSnippet(item: CatalogItem, snippetFile: string): boolean {
+  return (
+    snippetOwnsItsMotion(readFileSync(snippetFile, "utf-8")) &&
+    !SNIPPET_PREVIEW_RENDERS_STILL.has(item.name)
+  );
+}
+
 function previewSource(item: CatalogItem): { mode: "snippet" | "demo"; file: string } | null {
   const file = snippetFileFor(item);
   if (!file) return null;
-  const ownsMotion =
-    snippetOwnsItsMotion(readFileSync(file, "utf-8")) &&
-    !SNIPPET_PREVIEW_RENDERS_STILL.has(item.name);
-  return { mode: ownsMotion ? "snippet" : "demo", file };
+  return { mode: buildsFromSnippet(item, file) ? "snippet" : "demo", file };
+}
+
+/**
+ * What the preview is built from, and whether that is the component's snippet.
+ *
+ * A component whose snippet owns its motion gets its preview built from that
+ * snippet, so variables and animation arrive together. Everything else keeps
+ * its authored entry.
+ */
+function renderEntry(
+  item: CatalogItem,
+  interactive: boolean,
+): { entry: CatalogItem; fromSnippet: boolean } {
+  const source = interactive ? previewSource(item) : null;
+  if (source?.mode !== "snippet") return { entry: item, fromSnippet: false };
+
+  const entry = { ...item, entryFile: relative(item.sourceDir, source.file) };
+  return { entry, fromSnippet: true };
 }
 
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
@@ -166,12 +184,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   // A composition whose variables are meant to be changed has to reach the
   // reader uncompiled, or its values are already resolved into the markup.
   const interactive = declaresVariables(item);
-  // A component whose snippet owns its motion gets its preview built from that
-  // snippet, so variables and animation arrive together. Everything else keeps
-  // its authored entry.
-  const source = interactive ? previewSource(item) : null;
-  const fromSnippet = source?.mode === "snippet";
-  const entry = fromSnippet ? { ...item, entryFile: relative(item.sourceDir, source.file) } : item;
+  const { entry, fromSnippet } = renderEntry(item, interactive);
 
   let projectDir: string;
   try {
@@ -300,9 +313,4 @@ async function main(): Promise<void> {
   if (failed > 0) console.log(`${failed} item(s) failed to build.`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+runAsCommand(import.meta.url, main);

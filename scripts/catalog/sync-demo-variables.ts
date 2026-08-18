@@ -24,21 +24,17 @@
  *   npx tsx scripts/catalog/sync-demo-variables.ts --check  # report only
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isEntrypoint } from "../entrypoint.ts";
+import { componentFiles } from "./component-files.ts";
 import { layerVariablesOntoDemo, snippetOwnsItsMotion } from "./component-variables.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const componentsDir = join(repoRoot, "registry/components");
-
-interface Manifest {
-  name: string;
-  variables?: unknown[];
-  files?: { path?: string; type?: string }[];
-}
 
 export interface DemoSyncResult {
   name: string;
@@ -46,83 +42,74 @@ export interface DemoSyncResult {
   detail?: string;
 }
 
+/** A demo left alone: either it was already right, or it cannot be layered. */
+function untouched(name: string, reason: string): DemoSyncResult {
+  const already = reason === "demo already declares its variables";
+  return { name, status: already ? "already" : "not-applicable", detail: reason };
+}
+
+function syncPair(name: string, demoPath: string, snippet: string, write: boolean): DemoSyncResult {
+  if (snippetOwnsItsMotion(snippet)) return untouched(name, "preview uses the snippet");
+
+  const layered = layerVariablesOntoDemo(readFileSync(demoPath, "utf-8"), snippet);
+  if (!layered.applied) return untouched(name, layered.reason);
+
+  if (write) writeFileSync(demoPath, layered.html, "utf-8");
+  return { name, status: "synced" };
+}
+
+function syncOne(dir: string, write: boolean): DemoSyncResult | null {
+  const files = componentFiles(dir);
+  if (!files?.demoPath) return null;
+
+  const snippet = readFileSync(files.snippetPath, "utf-8");
+  return syncPair(files.name, files.demoPath, snippet, write);
+}
+
 export function syncDemoVariables(write: boolean): DemoSyncResult[] {
-  const results: DemoSyncResult[] = [];
-
-  for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dir = join(componentsDir, entry.name);
-    const manifestPath = join(dir, "registry-item.json");
-    if (!existsSync(manifestPath)) continue;
-
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Manifest;
-    if (!Array.isArray(manifest.variables) || manifest.variables.length === 0) continue;
-
-    const snippetPath = (manifest.files ?? []).find((f) => f.type === "hyperframes:snippet")?.path;
-    const demoPath = join(dir, "demo.html");
-    if (!snippetPath || !existsSync(join(dir, snippetPath)) || !existsSync(demoPath)) continue;
-
-    const snippet = readFileSync(join(dir, snippetPath), "utf-8");
-    if (snippetOwnsItsMotion(snippet)) {
-      results.push({
-        name: manifest.name,
-        status: "not-applicable",
-        detail: "preview uses the snippet",
-      });
-      continue;
-    }
-
-    const demo = readFileSync(demoPath, "utf-8");
-    const layered = layerVariablesOntoDemo(demo, snippet);
-    if (!layered.applied) {
-      const already = layered.reason === "demo already declares its variables";
-      results.push({
-        name: manifest.name,
-        status: already ? "already" : "not-applicable",
-        detail: layered.reason,
-      });
-      continue;
-    }
-
-    if (write) writeFileSync(demoPath, layered.html, "utf-8");
-    results.push({ name: manifest.name, status: "synced" });
-  }
-
-  return results;
+  return readdirSync(componentsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => syncOne(join(componentsDir, entry.name), write))
+    .filter((result): result is DemoSyncResult => result !== null);
 }
 
-function main(): void {
-  const check = process.argv.includes("--check");
-  const results = syncDemoVariables(!check);
-  const synced = results.filter((r) => r.status === "synced");
-
-  for (const r of results.filter(
-    (r) => r.status === "not-applicable" && r.detail !== "preview uses the snippet",
-  )) {
-    console.log(`  · ${r.name}: ${r.detail}`);
+/** Name the components that could not be layered, so a refusal is never silent. */
+function logRefusal(result: DemoSyncResult): void {
+  if (result.status === "not-applicable" && result.detail !== "preview uses the snippet") {
+    console.log(`  · ${result.name}: ${result.detail}`);
   }
+}
 
-  if (check) {
-    if (synced.length === 0) {
-      console.log(
-        `Every component demo carries its snippet's variables (${results.length} checked).`,
-      );
-      return;
-    }
-    console.error(
-      `\n${synced.length} demo(s) have drifted from their snippet and would render a dead ` +
-        `variables panel:\n${synced.map((r) => `  ${r.name}`).join("\n")}\n\n` +
-        `Run: npx tsx scripts/catalog/sync-demo-variables.ts`,
+function reportWritten(results: DemoSyncResult[]): void {
+  const synced = results.filter((r) => r.status === "synced").length;
+  const already = results.filter((r) => r.status === "already").length;
+  console.log(`Synced ${synced} demo(s); ${already} already carried their variables.`);
+}
+
+function reportDrift(results: DemoSyncResult[]): void {
+  const drifted = results.filter((r) => r.status === "synced");
+  if (drifted.length === 0) {
+    console.log(
+      `Every component demo carries its snippet's variables (${results.length} checked).`,
     );
-    process.exit(1);
+    return;
   }
 
-  console.log(
-    `Synced ${synced.length} demo(s); ` +
-      `${results.filter((r) => r.status === "already").length} already carried their variables.`,
+  console.error(
+    `\n${drifted.length} demo(s) have drifted from their snippet and would render a dead ` +
+      `variables panel:\n${drifted.map((r) => `  ${r.name}`).join("\n")}\n\n` +
+      `Run: npx tsx scripts/catalog/sync-demo-variables.ts`,
   );
+  process.exit(1);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+function report(results: DemoSyncResult[], check: boolean): void {
+  for (const result of results) logRefusal(result);
+  if (check) reportDrift(results);
+  else reportWritten(results);
+}
+
+if (isEntrypoint(import.meta.url)) {
+  const check = process.argv.includes("--check");
+  report(syncDemoVariables(!check), check);
 }
