@@ -6,6 +6,8 @@ import {
   createImplicitTimelineLayersFromDOM,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
+import { findTimelineDomNodeForClip } from "./timelineElementHelpers";
+import type { ClipManifestClip } from "./playbackTypes";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
@@ -327,5 +329,71 @@ describe("audio FX attributes on parsed elements", () => {
     const [bgm] = parseTimelineFromDOM(doc, 10).filter((e) => e.domId === "bgm");
     expect(bgm?.fxChain).toBeUndefined();
     expect(bgm?.automation).toBeUndefined();
+  });
+});
+
+describe("findTimelineDomNodeForClip — positional fallback never crosses tags", () => {
+  // Regression: a clip whose own element carries no [data-start] is not a
+  // candidate here. Before the tag guard it took candidates[fallbackIndex] — an
+  // unrelated scene <div> — which corrupted two clips at once: the img clip got a
+  // host that was not its element, and the div clip that owned that node was
+  // starved to null, losing hfId/domId/selector and therefore canMove. That is
+  // what surfaced as "This clip can't be moved or resized from the timeline yet".
+  const html = `
+    <div data-composition-id="root" data-start="0" data-duration="14">
+      <div data-hf-id="hf-a" class="s clip" data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-hf-id="hf-b" class="s clip" data-start="6" data-duration="2.6" data-track-index="1"></div>
+    </div>`;
+
+  const imgClip: ClipManifestClip = {
+    id: null,
+    label: "Site Hero",
+    start: 0,
+    duration: 14,
+    track: 2,
+    kind: "image",
+    tagName: "img",
+    compositionId: null,
+    parentCompositionId: null,
+    compositionSrc: null,
+    assetUrl: null,
+  };
+
+  it("returns null instead of stealing a div for an img clip", () => {
+    const doc = makeDoc(html);
+    expect(findTimelineDomNodeForClip(doc, imgClip, 0)).toBeNull();
+  });
+
+  it("leaves the div clips resolvable after an unmatched img clip", () => {
+    const doc = makeDoc(html);
+    const used = new Set<Element>();
+    const stolen = findTimelineDomNodeForClip(doc, imgClip, 0, used);
+    if (stolen) used.add(stolen);
+
+    const divClip: ClipManifestClip = {
+      ...imgClip,
+      label: "S",
+      start: 6,
+      duration: 2.6,
+      track: 1,
+      kind: "element",
+      tagName: "div",
+    };
+    const host = findTimelineDomNodeForClip(doc, divClip, 1, used);
+    expect(host?.getAttribute("data-hf-id")).toBe("hf-b");
+  });
+
+  it("still allows a same-tag positional fallback when attributes drift", () => {
+    const doc = makeDoc(html);
+    const drifted: ClipManifestClip = {
+      ...imgClip,
+      label: "S",
+      start: 99,
+      duration: 99,
+      track: 9,
+      kind: "element",
+      tagName: "div",
+    };
+    expect(findTimelineDomNodeForClip(doc, drifted, 0)?.getAttribute("data-hf-id")).toBe("hf-a");
   });
 });
