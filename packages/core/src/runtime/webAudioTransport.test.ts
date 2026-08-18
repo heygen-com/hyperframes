@@ -80,6 +80,7 @@ describe("WebAudioTransport", () => {
       expect(mockEl.volume).toBe(1);
       expect(mock.gainNode.gain.value).toBe(0.8);
       expect(transport.ownsElement(mockEl)).toBe(false);
+      expect(transport.routesElement(mockEl)).toBe(true);
       expect(transport.isActive()).toBe(true);
     });
 
@@ -212,6 +213,16 @@ describe("WebAudioTransport", () => {
     transport.setMuted(false);
 
     expect(mock.masterGain.gain.value).toBe(0.4);
+  });
+
+  it("applies author and user volume once in separate gain layers", async () => {
+    const { transport, mock, gen } = setupTransport();
+    await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 0.8, gen, 1);
+    transport.setVolume(0.5);
+
+    expect(mock.gainNode.gain.value).toBe(0.8);
+    expect(mock.masterGain.gain.value).toBe(0.5);
+    expect(mock.gainNode.gain.value * mock.masterGain.gain.value).toBeCloseTo(0.4);
   });
 
   describe("ownsElement (per-element mute gate)", () => {

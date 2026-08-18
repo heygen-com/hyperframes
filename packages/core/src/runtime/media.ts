@@ -207,11 +207,14 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
-  onElementVolume?: (el: HTMLMediaElement, volume: number) => void;
+  onElementVolume?: (el: HTMLMediaElement, effectiveVolume: number, authorVolume: number) => void;
   /** Is THIS element owned by the Web Audio transport? Owned → mute it (transport
    *  plays it); not owned → leave audible (HTMLMedia fallback). Per-element, not a
    *  global flag, so a not-yet-claimed track isn't muted by other tracks. */
   isWebAudioOwned?: (el: HTMLMediaElement) => boolean;
+  /** Native media routed through WebAudio keeps its upstream element volume at
+   * unity; do not mistake that transport write for an authored volume edit. */
+  isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -281,6 +284,8 @@ export function syncRuntimeMedia(params: {
         // for an untrimmed clip playing at 1x from t=0.
         const elapsedInClip = params.timeSeconds - clip.start;
         authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, elapsedInClip));
+      } else if (params.isWebAudioRouted?.(el)) {
+        authorVolume = fallbackAuthorVolume;
       } else if (previousRuntimeVolume === undefined) {
         // First tick this clip is active. The transport has already seeked GSAP
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
@@ -298,7 +303,7 @@ export function syncRuntimeMedia(params: {
       const effectiveVolume = clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
-      params.onElementVolume?.(el, effectiveVolume);
+      params.onElementVolume?.(el, effectiveVolume, authorVolume);
       // Mute only when force-muted or the transport owns this element; an unclaimed
       // track stays audible via the HTMLMedia fallback.
       if (forceMuteAll || params.isWebAudioOwned?.(el)) el.muted = true;

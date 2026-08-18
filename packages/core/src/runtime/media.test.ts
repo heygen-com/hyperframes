@@ -407,6 +407,22 @@ describe("syncRuntimeMedia", () => {
       expect(ducked).toBeCloseTo(0.1, 5);
     });
 
+    it("keeps automation author-only while user volume remains a separate layer", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.55 });
+      clip.el.setAttribute("data-automation", DUCK);
+      const onElementVolume = vi.fn();
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 1,
+        playing: true,
+        playbackRate: 1,
+        userVolume: 0.5,
+        onElementVolume,
+      });
+
+      expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.4, 0.8);
+    });
+
     it("ramps between points across ticks", () => {
       const [a, b, c] = volumesAt([2, 2.5, 3], DUCK);
       expect(a).toBeCloseTo(0.8, 5);
@@ -749,7 +765,7 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.volume).toBe(0.5);
   });
 
-  it("reports the effective element volume to external audio transports", () => {
+  it("reports effective and author-only volume to external audio transports", () => {
     const clip = createMockClip({ start: 0, end: 10, volume: 0 });
     const onElementVolume = vi.fn();
     syncRuntimeMedia({
@@ -770,7 +786,48 @@ describe("syncRuntimeMedia", () => {
     });
 
     expect(clip.el.volume).toBeCloseTo(0.375);
-    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.375);
+    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.375, 0.75);
+  });
+
+  it("preserves author volume through user zero then restore", () => {
+    const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+    const onElementVolume = vi.fn();
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 1,
+      playing: false,
+      playbackRate: 1,
+      userVolume: 0,
+      onElementVolume,
+    });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 2,
+      playing: false,
+      playbackRate: 1,
+      userVolume: 0.5,
+      onElementVolume,
+    });
+
+    expect(onElementVolume.mock.calls.at(-2)).toEqual([clip.el, 0, 0.8]);
+    expect(onElementVolume.mock.calls.at(-1)).toEqual([clip.el, 0.4, 0.8]);
+  });
+
+  it("does not mistake routed upstream unity for an authored volume change", () => {
+    const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+    clip.el.volume = 1;
+    const onElementVolume = vi.fn();
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 1,
+      playing: true,
+      playbackRate: 1,
+      userVolume: 0.5,
+      isWebAudioRouted: (el) => el === clip.el,
+      onElementVolume,
+    });
+
+    expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.4, 0.8);
   });
 
   describe("per-element mute (Web Audio ownership)", () => {

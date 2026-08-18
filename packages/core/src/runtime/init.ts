@@ -2031,8 +2031,10 @@ export function initSandboxRuntimeModular(): void {
         userMuted: state.bridgeMuted,
         userVolume: state.bridgeVolume,
         forceSync,
-        onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
+        onElementVolume: (el, _effectiveVolume, authorVolume) =>
+          webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
+        isWebAudioRouted: (el) => webAudio.routesElement(el),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -3047,7 +3049,7 @@ export function initSandboxRuntimeModular(): void {
           compStart,
           mediaStart,
           clock.now(),
-          vol * state.bridgeVolume,
+          vol,
           gen,
           state.playbackRate,
         )
@@ -3071,7 +3073,7 @@ export function initSandboxRuntimeModular(): void {
               compStart,
               mediaStart,
               clock.now(),
-              vol * state.bridgeVolume,
+              vol,
               gen,
               state.playbackRate,
               clipDuration,
