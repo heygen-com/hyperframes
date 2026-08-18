@@ -1,8 +1,14 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import type { RuntimeTimelineLike } from "./types";
+
+it("schedules WebAudio element gain from author volume without bridge volume", () => {
+  const source = readFileSync("src/runtime/init.ts", "utf8");
+  expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
+});
 
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };

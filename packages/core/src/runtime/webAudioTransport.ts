@@ -481,6 +481,11 @@ export class WebAudioTransport {
     return !this._paused && this._activeSources.some((s) => s.el === el && isBufferSource(s));
   }
 
+  /** Whether this element's native signal currently flows through the WebAudio graph. */
+  routesElement(el: HTMLMediaElement): boolean {
+    return !this._paused && this._activeSources.some((source) => source.el === el);
+  }
+
   destroy(): void {
     this.stopAll();
     this._bufferCache.clear();
