@@ -76,6 +76,18 @@ describe("buildCompositionThumbnailUrl", () => {
       "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&selector=.card&selectorIndex=2",
     );
   });
+
+  it("asks for source density only when a caller opts in", () => {
+    const base = {
+      previewUrl: "/api/projects/demo/preview",
+      seekTime: 1,
+      duration: 0,
+      origin: "http://localhost:3000",
+    };
+
+    expect(buildCompositionThumbnailUrl(base)).not.toContain("output=");
+    expect(buildCompositionThumbnailUrl({ ...base, output: "source" })).toContain("output=source");
+  });
 });
 
 describe("CompositionThumbnail", () => {

@@ -31,6 +31,7 @@ export function buildCompositionThumbnailUrl({
   selector,
   selectorIndex,
   origin,
+  output,
 }: {
   previewUrl: string;
   seekTime?: number;
@@ -38,6 +39,13 @@ export function buildCompositionThumbnailUrl({
   selector?: string;
   selectorIndex?: number;
   origin: string;
+  /**
+   * Capture density. Omitted, the route bounds the image to its preview cap —
+   * right for the timeline, where thumbnails are small and numerous and their
+   * decoded bytes are budgeted. `"source"` captures at the composition's own
+   * dimensions, for the rare surface that shows one poster large enough to read.
+   */
+  output?: "source";
 }): string {
   const thumbnailBase = previewUrl
     .replace("/preview/comp/", "/thumbnail/")
@@ -45,6 +53,7 @@ export function buildCompositionThumbnailUrl({
   const thumbnailUrl = new URL(thumbnailBase, origin);
   thumbnailUrl.searchParams.set("t", (seekTime + duration / 2).toFixed(2));
   thumbnailUrl.searchParams.set("v", THUMBNAIL_URL_VERSION);
+  if (output) thumbnailUrl.searchParams.set("output", output);
   if (selector) {
     thumbnailUrl.searchParams.set("selector", selector);
     if (selectorIndex != null && selectorIndex > 0) {
