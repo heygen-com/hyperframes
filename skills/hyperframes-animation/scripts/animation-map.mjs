@@ -143,8 +143,14 @@ try {
   // ── Composition-level analysis ──
   report.choreography = buildTimeline(report.tweens, duration);
   report.density = computeDensity(report.tweens, duration);
-  report.staggers = detectStaggers(report.tweens);
-  report.elements = buildElementLifecycles(report.tweens);
+  // Staggers and lifecycles are per-ELEMENT, and a driver tween has none. Keyed on
+  // tw.selector they would collapse every driver in the composition into one
+  // "(onUpdate driver)" pseudo-element with null geometry, and let three same-duration
+  // drivers read as a stagger no element performs. Density, dead zones and the timeline
+  // still count them — those are per-SPAN, which is what a driver does have.
+  const elementTweens = report.tweens.filter((tw) => tw.driver !== "onUpdate");
+  report.staggers = detectStaggers(elementTweens);
+  report.elements = buildElementLifecycles(elementTweens);
   report.deadZones = findDeadZones(report.density, duration);
   report.snapshots = await captureSnapshots(session, report.tweens, duration);
 

@@ -408,6 +408,10 @@ describe("proxy-driver tweens", () => {
       assert.deepEqual(report.deadZones, [], "2-4s is animating, not dead");
       // The bare spacer stays out — only the element tween and the driver are mapped.
       assert.equal(report.tweens.length, 2);
+
+      // Per-ELEMENT analyses must not adopt the driver as a pseudo-element.
+      assert.deepEqual(Object.keys(report.elements), ["#mover"]);
+      assert.deepEqual(report.staggers, []);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -427,6 +431,9 @@ describe("proxy-driver tweens", () => {
       assert.equal(drivers[0].end, 12);
 
       assert.deepEqual(report.deadZones, [], "the uniform tween animates the whole span");
+      // Nothing element-backed here at all, so both per-element analyses stay empty.
+      assert.deepEqual(report.elements, {});
+      assert.deepEqual(report.staggers, []);
       // The spacer changes no value, so the parent's onUpdate repaints an identical frame.
       // Counting it would mask a real dead zone.
       assert.equal(report.tweens.length, 1);
