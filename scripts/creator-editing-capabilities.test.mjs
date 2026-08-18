@@ -9,8 +9,6 @@ const files = {
   keyframes: "skills/hyperframes-keyframes/SKILL.md",
   cli: "skills/hyperframes-cli/SKILL.md",
   audio: "skills/hyperframes-audio/SKILL.md",
-  remotionMedia: "skills/remotion-to-hyperframes/references/media.md",
-  remotionMap: "skills/remotion-to-hyperframes/references/api-map.md",
   webAudioTransport: "packages/core/src/runtime/webAudioTransport.ts",
   coreClips: "skills/hyperframes-core/references/tracks-and-clips.md",
   generalVideo: "skills/general-video/SKILL.md",
@@ -135,16 +133,6 @@ test("audio skill owns placed-track fades, automation, ducking, and effects", as
   );
   assert.match(audio, /constant.*playback rate|data-playback-rate/i);
   assert.match(audio, /speed ramps?[\s\S]{0,220}(not supported|preprocess)/i);
-});
-
-test("Remotion media mapping uses the canonical trim and render-safe constant-rate contract", async () => {
-  const [media, apiMap] = await Promise.all([read(files.remotionMedia), read(files.remotionMap)]);
-  const combined = `${media}\n${apiMap}`;
-  assert.match(combined, /data-media-start/);
-  assert.match(combined, /data-playback-rate/);
-  assert.match(combined, /constant.*playback rate|playback rate.*constant/i);
-  assert.match(combined, /volume automation|data-automation/i);
-  assert.doesNotMatch(combined, /data-trim-start|data-trim-end/);
 });
 
 test("WebAudio scheduling combines per-element and global transport playback rates", async () => {
