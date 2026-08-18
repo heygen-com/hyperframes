@@ -166,6 +166,7 @@ describe("composition loading overlay", () => {
 
   it("keeps the asset overlay up while media is still buffering", () => {
     const { audio, iframe } = createAudioIframe();
+    audio.preload = "auto";
     Object.defineProperty(audio, "readyState", {
       value: 0,
       configurable: true,
@@ -176,6 +177,25 @@ describe("composition loading overlay", () => {
     });
 
     expect(hasUnloadedAssets(iframe, false)).toBe(true);
+
+    iframe.remove();
+  });
+
+  // The runtime fetches the playhead's neighbourhood and nothing else, so a
+  // clip far from the playhead never reaches HAVE_FUTURE_DATA by design.
+  it("does not wait on media the runtime deliberately left unfetched", () => {
+    const { audio, iframe } = createAudioIframe();
+    audio.preload = "none";
+    Object.defineProperty(audio, "readyState", {
+      value: 0,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "networkState", {
+      value: 2,
+      configurable: true,
+    });
+
+    expect(hasUnloadedAssets(iframe, false)).toBe(false);
 
     iframe.remove();
   });

@@ -51,6 +51,13 @@ declare global {
       fpsFallbackReason?: "missing" | "invalid";
       owner?: string;
     };
+    /**
+     * Set by the producer's file server (RENDER_CAPTURE_MODE_SHIM) before any
+     * page script runs. Distinct from `__HF_EXPORT_RENDER_SEEK_CONFIG`, which
+     * the render-mode body script writes only once the body is parsed — this
+     * one is the render signal available while the document is still parsing.
+     */
+    __HF_RENDER_CAPTURE_MODE?: boolean;
     __HF_PARITY_MODE?: boolean;
     /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */
     __HF_FPS?: number;

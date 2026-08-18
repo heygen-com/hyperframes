@@ -24,7 +24,9 @@ import {
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
+  type RuntimeMediaClip,
   syncRuntimeMedia,
+  usesEagerMediaPreload,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
@@ -57,6 +59,20 @@ import { parseNumeric } from "./startExpression";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
+
+/**
+ * How much timeline either side of the playhead is kept fully buffered.
+ *
+ * This is the bytes-against-first-play-latency trade: too narrow and play
+ * reaches an element the browser was never told to fetch, which is silence —
+ * a worse regression than the refetching this bounds. Playback advances one
+ * second of timeline per second, so the lookahead is a straight
+ * buffering-headroom budget: ten seconds of runway to fetch whatever the
+ * playhead is about to reach. The lookbehind covers a short scrub backwards
+ * onto a clip that only just left the window.
+ */
+const MEDIA_PRELOAD_LOOKAHEAD_SECONDS = 10;
+const MEDIA_PRELOAD_LOOKBEHIND_SECONDS = 2;
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -1837,19 +1853,22 @@ export function initSandboxRuntimeModular(): void {
       mediaEl.addEventListener("error", onMediaErrorForProxy);
 
       // Proactive proxy-fallback trigger: consult the codec map and swap
-      // BEFORE the eager load() below, so a known-hostile asset never even
+      // BEFORE anything asks for bytes, so a known-hostile asset never even
       // attempts to load (and error-flash) the original. No-op in render
       // mode, for <audio>, or when the codec map is absent.
       maybeProxyProactively(mediaEl);
 
-      // Eagerly preload media data so audio/video is buffered before the user
-      // clicks play. Without this, the first play() call fires on un-fetched
-      // media, producing silence or choppy audio until the browser caches it.
-      if (mediaEl.preload !== "auto") {
-        mediaEl.preload = "auto";
-      }
-      if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-        mediaEl.load();
+      // Render capture screenshots whatever the browser has decoded at the
+      // instant the frame is taken, so it buffers everything up front and
+      // never consults the playhead: an unbuffered element at capture time is
+      // a silent or black frame in the export.
+      if (usesEagerMediaPreload()) {
+        if (mediaEl.preload !== "auto") {
+          mediaEl.preload = "auto";
+        }
+        if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          mediaEl.load();
+        }
       }
 
       // Probe volume automation from the GSAP timeline — same approach as the
@@ -1859,6 +1878,12 @@ export function initSandboxRuntimeModular(): void {
       // fires after the timeline has been captured (every 30 transport ticks).
       probeAndCacheVolumeKeyframes(mediaEl);
     }
+    // The preview's own buffering pass. It runs over every clip, not just the
+    // newly-bound ones above, because an element already bound is exactly the
+    // one the playhead may since have approached. This is also the only pass
+    // that runs at init, before the first seek or tick, so the clip under the
+    // playhead is buffered before the user can press play.
+    applyMediaPreloadPolicy(resolveMediaClipCache().mediaClips);
   };
 
   const probeAndCacheVolumeKeyframes = (mediaEl: HTMLMediaElement) => {
@@ -1978,8 +2003,8 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  const syncMediaForCurrentState = () => {
-    const cache = refreshRuntimeMediaCache({
+  const resolveMediaClipCache = () =>
+    refreshRuntimeMediaCache({
       shouldIncludeElement: (element) =>
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
@@ -2018,12 +2043,71 @@ export function initSandboxRuntimeModular(): void {
         });
       },
     });
+
+  // Which elements have already been raised to `preload="auto"`, and which
+  // have already been given their away-from-the-playhead setting. Sources are
+  // tracked as strings, not elements, so a torn-down runtime retains nothing;
+  // both sets are bounded by the composition's distinct media files.
+  const preloadPromotedMedia = new WeakSet<HTMLMediaElement>();
+  const preloadSettledMedia = new WeakSet<HTMLMediaElement>();
+  const preloadLoadedSources = new Set<string>();
+
+  /**
+   * Buffer the media the playhead is on or about to reach, and nothing else.
+   *
+   * Elements whose clip overlaps the lookahead/lookbehind window are raised to
+   * `preload="auto"` and told to load; everything else keeps the
+   * `preload="none"` the parse-time deferral gave it, except for clips with no
+   * authored `data-duration`, which are held at `metadata` because their
+   * window can only come from the source (see resolveMediaElementDurationSeconds).
+   *
+   * Cheap to call per tick: the pass over `clips` reads plain numbers, and an
+   * element is written at most twice in its life — once when it settles away
+   * from the playhead, once when it is promoted.
+   */
+  const applyMediaPreloadPolicy = (clips: RuntimeMediaClip[]) => {
+    if (usesEagerMediaPreload()) return;
+    const from = state.currentTime - MEDIA_PRELOAD_LOOKBEHIND_SECONDS;
+    const to = state.currentTime + MEDIA_PRELOAD_LOOKAHEAD_SECONDS;
+    for (const clip of clips) {
+      const el = clip.el;
+      if (preloadPromotedMedia.has(el)) continue;
+      const source = el.currentSrc || el.src;
+      if (clip.start <= to && clip.end >= from) {
+        preloadPromotedMedia.add(el);
+        if (el.preload !== "auto") el.preload = "auto";
+        // Seven clips on one file are one fetch, not seven: the browser serves
+        // the siblings from its own cache when they reach the playhead.
+        if (source && preloadLoadedSources.has(source)) continue;
+        if (source) preloadLoadedSources.add(source);
+        // NETWORK_EMPTY means resource selection has not run yet. Calling
+        // load() on an element that is already fetching aborts that fetch and
+        // restarts from zero — the delay syncRuntimeMedia's play() path
+        // documents — so raising `preload` is enough for those.
+        if (el.networkState === HTMLMediaElement.NETWORK_EMPTY) el.load();
+        continue;
+      }
+      if (preloadSettledMedia.has(el)) continue;
+      preloadSettledMedia.add(el);
+      const authoredDuration = Number.parseFloat(el.dataset.duration ?? "");
+      if (Number.isFinite(authoredDuration) && authoredDuration > 0) continue;
+      if (el.preload !== "metadata") el.preload = "metadata";
+    }
+  };
+
+  const syncMediaForCurrentState = () => {
+    const cache = resolveMediaClipCache();
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
     // same envelope the renderer uses instead of tracking GSAP-change diffs.
     for (const clip of cache.mediaClips) {
       const kf = volumeKeyframeCache.get(clip.el as HTMLMediaElement);
       if (kf) clip.volumeKeyframes = kf;
     }
+    // Before syncRuntimeMedia, never after: this is the pass that tells an
+    // element to buffer, and play() below must not reach one it has not
+    // visited. A seek lands here too, so seeking far ahead buffers the
+    // destination rather than waiting for playback to arrive.
+    applyMediaPreloadPolicy(cache.mediaClips);
 
     const forceSync = state.mediaForceSyncNextTick;
     if (forceSync) state.mediaForceSyncNextTick = false;

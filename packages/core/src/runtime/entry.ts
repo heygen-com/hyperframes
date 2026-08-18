@@ -1,5 +1,6 @@
 import { initSandboxRuntimeModular } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
+import { installRuntimeMediaObserver } from "./media";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { getVariables } from "./getVariables";
@@ -21,6 +22,12 @@ type HyperframeWindow = Window & {
 // composition's animation scripts (and the grading hide) mutate it — must run
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
+
+// Watch media from script evaluation time, while the document is still
+// parsing, so a clip nowhere near the playhead can be told not to fetch before
+// the browser starts fetching it. Waiting for DOMContentLoaded is too late —
+// see deferParsedMediaPreload in media.ts.
+installRuntimeMediaObserver();
 
 // Expose runtime helpers immediately so composition scripts can use them
 // before DOMContentLoaded (font sizing runs during script evaluation, and
