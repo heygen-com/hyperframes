@@ -12,6 +12,9 @@ const files = {
   remotionMedia: "skills/remotion-to-hyperframes/references/media.md",
   remotionMap: "skills/remotion-to-hyperframes/references/api-map.md",
   webAudioTransport: "packages/core/src/runtime/webAudioTransport.ts",
+  coreClips: "skills/hyperframes-core/references/tracks-and-clips.md",
+  generalVideo: "skills/general-video/SKILL.md",
+  editingRecipes: "skills/hyperframes-core/references/creator-editing-recipes.md",
 };
 
 function requiresAll(text, patterns, surface) {
@@ -156,4 +159,100 @@ test("keyframes routes visual crop and mask handoffs without claiming temporal s
     ],
     files.keyframes,
   );
+});
+
+test("core and general-video author temporal edits as duplicated source-range clips", async () => {
+  const [coreClips, generalVideo, router, keyframes] = await Promise.all([
+    read(files.coreClips),
+    read(files.generalVideo),
+    read(files.router),
+    read(files.keyframes),
+  ]);
+  for (const [surface, text] of [
+    [files.coreClips, coreClips],
+    [files.generalVideo, generalVideo],
+  ]) {
+    requiresAll(
+      text,
+      [
+        /duplicate[\s\S]{0,120}(same|one)[\s\S]{0,80}(video|media) source/i,
+        /data-media-start[\s\S]{0,120}data-duration/i,
+        /data-start/,
+        /hard cut[\s\S]{0,100}trim[\s\S]{0,100}splice[\s\S]{0,100}reorder/i,
+        /separate(?:ly)? authored audio[\s\S]{0,180}(identical|same)[\s\S]{0,100}(range|timing)/i,
+      ],
+      surface,
+    );
+  }
+  assert.match(router, /cut this footage[\s\S]{0,300}hyperframes-core/i);
+  requiresAll(keyframes, [/zoom/i, /punch/i, /pan/i, /crop|mask|clip-path/i], files.keyframes);
+  assert.match(keyframes, /inner[\s\S]{0,80}wrapper/i);
+  assert.match(keyframes, /not a temporal source trim or[\s\S]{0,40}splice/i);
+});
+
+test("creator editing recipes are copyable, owned, mathematical, and limitation-safe", async () => {
+  const recipes = await read(files.editingRecipes).catch(() => "");
+  const recipeNames = [
+    "Hard cut",
+    "Trim in/out",
+    "Split / splice",
+    "Duplicate / reuse same source",
+    "Reorder",
+    "Freeze / hold",
+    "Constant speed / slow motion",
+    "Zoom / punch",
+    "Pan / Ken Burns",
+    "Crop / reframe",
+    "Clip-path wipe / reveal / mask / split-screen",
+    "Crossfade",
+    "Volume fades / ducking",
+    "Audio alignment",
+  ];
+  for (let index = 0; index < recipeNames.length; index += 1) {
+    const start = recipes.indexOf(`## ${recipeNames[index]}`);
+    const next =
+      index + 1 < recipeNames.length
+        ? recipes.indexOf(`## ${recipeNames[index + 1]}`)
+        : recipes.length;
+    assert.ok(start >= 0, `missing recipe: ${recipeNames[index]}`);
+    const section = recipes.slice(start, next);
+    requiresAll(
+      section,
+      [
+        /```(?:html|js)/,
+        /Timeline math:/i,
+        /Source math:/i,
+        /Audio follows:/i,
+        /Owner:/i,
+        /Limit:/i,
+      ],
+      recipeNames[index],
+    );
+  }
+  requiresAll(
+    recipes,
+    [
+      /data-start/,
+      /data-duration/,
+      /data-media-start/,
+      /data-playback-rate/,
+      /consumed source\s*=\s*timeline duration\s*[×*]\s*rate/i,
+      /natural timeline duration\s*=\s*remaining source\s*\/\s*rate/i,
+      /separate audio track/i,
+      /final-source[\s\S]{0,100}subcomp[\s\S]{0,100}visual pose/i,
+      /arbitrary mid-source[\s\S]{0,120}preprocess/i,
+      /distinct tracks[\s\S]{0,120}overlap[\s\S]{0,120}opposing/i,
+      /same-track overlap[\s\S]{0,80}invalid/i,
+      /inner wrapper[\s\S]{0,100}not[\s\S]{0,50}(clip element|timed clip)/i,
+      /source cuts[\s\S]{0,80}hyperframes-core/i,
+    ],
+    files.editingRecipes,
+  );
+  const [core, general] = await Promise.all([
+    read("skills/hyperframes-core/SKILL.md"),
+    read(files.generalVideo),
+  ]);
+  assert.match(core, /creator-editing-recipes\.md/);
+  assert.match(general, /creator-editing-recipes\.md/);
+  assert.doesNotMatch(recipes, /data-(?:media-end|source-end|trim-start|trim-end)/);
 });

@@ -37,6 +37,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
   voiceover carve, or FX on placed audio, read `/hyperframes-audio`. Load core
   alongside it when clip placement or picture timing also changes.
 - Use `/media-use` only to source/generate media or preprocess a derived asset.
+  Copy creator edit markup from `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ```bash
 # Fast iteration check; repeat while authoring as needed.

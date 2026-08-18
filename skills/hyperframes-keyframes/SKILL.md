@@ -45,6 +45,7 @@ ducking/carve, or effects on the placed tracks.
 A visual transition or cropping treatment is not a temporal source trim or
 splice. `/hyperframes-core` owns the timeline, clip timing, and source ranges;
 keyframes only animate the visible handoff or crop on wrappers inside those clips.
+For copyable combined picture/sound recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ## Procedure
 

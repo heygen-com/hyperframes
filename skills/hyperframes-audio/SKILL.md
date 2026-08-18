@@ -36,6 +36,7 @@ pitch-preserved sound when matching audio/video elements use the same timing,
 source offset, and rate. Source speed ramps are not supported because there is
 no rate envelope; preprocess a derived synchronized asset. HyperFrames does not
 provide automatic waveform sync or drift correction.
+For copyable cut/crossfade/retime recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 Three attributes carry everything, all on the audio/video element itself:
 
