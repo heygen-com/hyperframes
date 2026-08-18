@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { validateArtifactRoot } from "./issue3329-artifact-safety.mjs";
 
 const repo = process.cwd();
-const artifactRoot = resolve(
-  process.env.HF_ISSUE3329_ARTIFACT_DIR ?? join(repo, ".artifacts", "issue3329-macos"),
+const artifactRoot = validateArtifactRoot(
+  process.env.HF_ISSUE3329_ARTIFACT_DIR ?? join(".artifacts", "issue3329-macos"),
+  repo,
 );
 const projectsRoot = join(artifactRoot, "projects");
 const outputsRoot = join(artifactRoot, "outputs");
@@ -106,6 +108,7 @@ function ffprobe(path) {
       "stream=codec_name,codec_tag_string,pix_fmt,color_space,color_transfer,color_primaries",
       "-of",
       "json",
+      "--",
       path,
     ],
     { encoding: "utf8" },

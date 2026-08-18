@@ -35,12 +35,12 @@ jobs:
           bun run --filter '@hyperframes/{engine,producer,studio,cli}' build
       - name: Run real-pixel boundary matrix
         env:
-          HF_ISSUE3329_ARTIFACT_DIR: ${{ github.workspace }}/issue3329-macos-artifacts
+          HF_ISSUE3329_ARTIFACT_DIR: ${{ github.workspace }}/.artifacts/issue3329-macos
         run: node scripts/issue3329-macos-real-pixel.mjs
       - name: Upload boundary evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: issue3329-macos-real-pixels-${{ runner.arch }}
-          path: issue3329-macos-artifacts
+          path: .artifacts/issue3329-macos
           if-no-files-found: error
