@@ -6,28 +6,28 @@
   "account_id": "86bb57b655af7915f42b29dfc2d8807d",
   "workers_dev": true,
   "limits": {
-    "cpu_ms": 300000
+    "cpu_ms": 300000,
   },
   "containers": [
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
       "instance_type": "standard-3",
-      "max_instances": 10
-    }
+      "max_instances": 10,
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "class_name": "Sandbox",
-        "name": "Sandbox"
-      }
-    ]
+        "name": "Sandbox",
+      },
+    ],
   },
   "migrations": [
     {
       "new_sqlite_classes": ["Sandbox"],
-      "tag": "v1"
-    }
-  ]
+      "tag": "v1",
+    },
+  ],
 }
