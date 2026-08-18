@@ -3,6 +3,7 @@ import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { defaultLogger } from "../logger.js";
@@ -26,7 +27,11 @@ import {
 import { validateNoSystemFonts } from "./render/planValidation.js";
 
 describe("discoverMediaFromBrowser", () => {
-  async function discover(html: string, currentSrcById: Record<string, string>) {
+  async function discover(
+    html: string,
+    currentSrcById: Record<string, string>,
+    serializeCallback = false,
+  ) {
     const { document } = parseHTML(html);
     for (const [id, currentSrc] of Object.entries(currentSrcById)) {
       const element = document.getElementById(id);
@@ -35,7 +40,13 @@ describe("discoverMediaFromBrowser", () => {
     const previousDocument = Reflect.get(globalThis, "document");
     Reflect.set(globalThis, "document", document);
     try {
-      return await discoverMediaFromBrowser({ evaluate: async (collect) => collect() } as never);
+      return await discoverMediaFromBrowser({
+        evaluate: async (collect) => {
+          if (!serializeCallback) return collect();
+          const isolated = runInThisContext(`(${collect.toString()})`) as typeof collect;
+          return isolated();
+        },
+      } as never);
     } finally {
       if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
       else Reflect.set(globalThis, "document", previousDocument);
@@ -83,6 +94,15 @@ describe("discoverMediaFromBrowser", () => {
       tagName: "image",
       src: "https://cdn.example/runtime.avif",
     });
+  });
+
+  it("keeps strict timing parsing self-contained after Puppeteer serializes the callback", async () => {
+    const media = await discover(
+      '<video id="clip" src="clip.mp4" data-start="0" data-end="2" data-duration="2" data-media-start="1"></video>',
+      {},
+      true,
+    );
+    expect(media[0]).toMatchObject({ start: 0, end: 2, duration: 2, mediaStart: 1 });
   });
 });
 

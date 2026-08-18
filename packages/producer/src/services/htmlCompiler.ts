@@ -2134,12 +2134,13 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
   const elements = await page.evaluate(() => {
     const results: {
       id: string;
-      tagName: string;
+      tagName: "video" | "audio" | "image";
       src: string;
       start: number;
-      end: number;
-      duration: number;
-      mediaStart: number;
+      endRaw: string | null;
+      durationRaw: string | null;
+      playbackStartRaw: string | null;
+      mediaStartRaw: string | null;
       loop: boolean;
       hasAudio: boolean;
       volume: number;
@@ -2164,15 +2165,21 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
     mediaEls.forEach((el) => {
       const htmlEl = el as HTMLVideoElement | HTMLAudioElement | HTMLImageElement;
       const isImage = htmlEl.tagName.toLowerCase() === "img";
+      const tagName: "video" | "audio" | "image" = isImage
+        ? "image"
+        : htmlEl.tagName.toLowerCase() === "video"
+          ? "video"
+          : "audio";
       const id = htmlEl.id || (isImage ? autoImageIds.get(htmlEl) : undefined);
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
       const src = htmlEl.currentSrc || htmlEl.src || htmlEl.getAttribute("src") || "";
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
-      const end = parseStrictFiniteTimingNumber(htmlEl.getAttribute("data-end")) ?? 0;
-      const duration = parseStrictFiniteTimingNumber(htmlEl.getAttribute("data-duration")) ?? 0;
-      const mediaStart = readMediaStart(htmlEl);
+      const endRaw = htmlEl.getAttribute("data-end");
+      const durationRaw = htmlEl.getAttribute("data-duration");
+      const playbackStartRaw = htmlEl.getAttribute("data-playback-start");
+      const mediaStartRaw = htmlEl.getAttribute("data-media-start");
       const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
@@ -2182,12 +2189,13 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
 
       results.push({
         id,
-        tagName: isImage ? "image" : htmlEl.tagName.toLowerCase(),
+        tagName,
         src,
         start,
-        end,
-        duration,
-        mediaStart,
+        endRaw,
+        durationRaw,
+        playbackStartRaw,
+        mediaStartRaw,
         loop,
         hasAudio,
         volume,
@@ -2198,7 +2206,18 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
     return results;
   });
 
-  return elements as BrowserMediaElement[];
+  return elements.map(({ endRaw, durationRaw, playbackStartRaw, mediaStartRaw, ...element }) => ({
+    ...element,
+    end: parseStrictFiniteTimingNumber(endRaw) ?? 0,
+    duration: parseStrictFiniteTimingNumber(durationRaw) ?? 0,
+    mediaStart: readMediaStart({
+      getAttribute(name: string) {
+        if (name === "data-playback-start") return playbackStartRaw;
+        if (name === "data-media-start") return mediaStartRaw;
+        return null;
+      },
+    }),
+  }));
 }
 
 export async function discoverAudioVolumeAutomationFromTimeline(
