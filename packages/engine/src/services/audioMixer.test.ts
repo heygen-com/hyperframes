@@ -286,6 +286,38 @@ describe("processCompositionAudio", () => {
     expect(capturedFilterScripts[1]).toContain("volume=3.98");
   });
 
+  it("clamps an out-of-range gain to the shared authoring ceiling", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "quiet.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "quiet",
+          src: "quiet.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 99,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    // Pins the UPPER bound: the 3.98 case above only proves the clamp is not
+    // min(1, ...). Without this, changing MAX_AUDIO_GAIN's effect in the mixer
+    // leaves this suite green.
+    expect(capturedFilterScripts[1]).toContain("volume=3.981072");
+  });
+
   it("lets an FX tail run past the clip, still bounded by the composition", async () => {
     // A reverb is still decaying when the clip's own audio stops. Trimming at
     // the clip boundary is what cut every tail short in the render.

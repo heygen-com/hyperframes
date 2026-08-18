@@ -246,6 +246,10 @@ export function MediaSection({
 
         {(isVideo || isAudio) && (
           <>
+            {/* Held above unity: this control tops out at 100%, so committing
+                from it would silently cap a boosted clip and drop up to 12 dB
+                that now genuinely renders. The dB fader that can represent
+                these levels replaces this control outright. */}
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Volume</span>
               <SliderControl
@@ -254,6 +258,7 @@ export function MediaSection({
                 min={0}
                 max={100}
                 step={1}
+                disabled={volume > 1}
                 displayValue={`${volumePercent}%`}
                 formatDisplayValue={(next) => `${Math.round(next)}%`}
                 onCommit={(next) => {

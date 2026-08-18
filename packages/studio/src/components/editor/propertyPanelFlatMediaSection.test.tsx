@@ -153,6 +153,41 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
+  it("refuses to commit from the percent slider on a clip authored above unity", () => {
+    // The control tops out at 100%, so any commit from it would cap a boosted
+    // clip and silently drop up to 12 dB that now genuinely renders. Held until
+    // the dB fader that can represent these levels replaces it.
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { volume: "1.949845" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+
+    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
+    });
+
+    expect(onSetAttribute).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
   it("commits a new volume value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
     const element = makeVideoElement({ dataAttributes: { volume: "0.2" } });
