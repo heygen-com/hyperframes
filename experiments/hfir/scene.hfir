@@ -1,0 +1,40 @@
+; A complete HyperFrames scene with no HTML and no CSS in it.
+; Columns: OP  FRAME  ELEMENT  PROPERTY  VALUE
+
+CANVAS  1280 720 30
+FRAMES  60
+
+DECL    bg      rect
+DECL    box     rect
+DECL    tag     text
+
+; frame 0 - every value stated, nothing inferred
+SET   0   bg    x 0
+SET   0   bg    y 0
+SET   0   bg    w 1280
+SET   0   bg    h 720
+SET   0   bg    fill #101623
+
+SET   0   box   x 120
+SET   0   box   y 260
+SET   0   box   w 200
+SET   0   box   h 200
+SET   0   box   fill #E0322C
+SET   0   box   opacity 0
+
+SET   0   tag   x 120
+SET   0   tag   y 120
+SET   0   tag   size 44
+SET   0   tag   fill #FFFFFF
+SET   0   tag   text NO_HTML_WAS_HARMED
+
+; RAMP interpolates linearly into the stated value
+RAMP  15  box   opacity 1
+RAMP  45  box   x 960
+RAMP  45  box   fill #0F7A52
+
+; SET is a hard step - frame 29 and frame 30 differ with nothing in between
+SET   30  tag   text FRAME_30_EXACTLY
+SET   30  tag   fill #2B5DE0
+
+SET   59  box   x 960
