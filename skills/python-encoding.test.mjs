@@ -12,11 +12,11 @@
 // they only ever run on CI and maintainer machines.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-const SKILLS_DIR = resolve(fileURLToPath(new URL("./", import.meta.url)));
+const SKILLS_DIR = dirname(fileURLToPath(import.meta.url));
 
 function pythonScripts(dir) {
   const found = [];
@@ -61,63 +61,49 @@ describe("skill Python scripts pin UTF-8", () => {
 });
 
 /**
- * Every `open(...)` / `read_text(...)` / `write_text(...)` call in the source, matched by
- * scanning to the balanced close paren rather than by regex. A regex has to cap nesting
- * depth, and a call it fails to match is a call it silently exempts — the opposite of what
- * a guard is for.
+ * Every `open(...)` / `read_text(...)` / `write_text(...)` call in the source, paired with
+ * its argument text. Scanning to the balanced close paren beats a regex here: a regex has
+ * to cap nesting depth, and a call it fails to match is a call it silently exempts — the
+ * opposite of what a guard is for.
  */
 function fileIoCalls(source) {
   const calls = [];
   const opener = /\b(open|read_text|write_text)\(/g;
   for (let m = opener.exec(source); m; m = opener.exec(source)) {
-    const argsStart = m.index + m[0].length;
-    let depth = 1;
-    let i = argsStart;
-    for (; i < source.length && depth > 0; i++) {
-      if (source[i] === "(") depth++;
-      else if (source[i] === ")") depth--;
-    }
-    if (depth !== 0) continue; // unbalanced source; nothing to assert
+    const end = closingParen(source, m.index + m[0].length - 1);
+    if (end < 0) continue; // unbalanced source; nothing to assert
     calls.push({
       name: m[1],
-      args: source.slice(argsStart, i - 1),
-      text: source.slice(m.index, i),
+      args: source.slice(m.index + m[0].length, end),
+      text: source.slice(m.index, end + 1),
     });
   }
   return calls;
 }
 
 /**
- * True for a binary-mode call, where no encoding applies. The mode is `open`'s SECOND
- * POSITIONAL argument and nothing else — testing the whole call text for a quoted "b"
- * let any payload key spell the check away (`write_text(json.dumps({"bpm": 120}))`
- * exempted itself, and "bpm"/"bars" are literally analyze-beatgrid's own keys).
+ * Index of the `)` closing the `(` at `start`, or -1 if the source is unbalanced.
+ * Counting with arithmetic rather than branches keeps this at the size it deserves:
+ * `start` is the opening paren, so depth returns to 0 exactly at its partner.
  */
-function isBinary(call) {
-  if (call.name !== "open") return false; // Path.read_text/write_text are always text
-  const mode = splitTopLevelArgs(call.args)[1];
-  return mode !== undefined && /^(["'])[^"']*b[^"']*\1$/.test(mode.trim());
+function closingParen(source, start) {
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    depth += Number(source[i] === "(") - Number(source[i] === ")");
+    if (depth === 0) return i;
+  }
+  return -1;
 }
 
-function splitTopLevelArgs(args) {
-  const parts = [];
-  let depth = 0;
-  let start = 0;
-  let quote = null;
-  for (let i = 0; i < args.length; i++) {
-    const ch = args[i];
-    if (quote) {
-      if (ch === quote && args[i - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "(" || ch === "[" || ch === "{") depth++;
-    else if (ch === ")" || ch === "]" || ch === "}") depth--;
-    else if (ch === "," && depth === 0) {
-      parts.push(args.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(args.slice(start));
-  return parts;
+// A binary mode is a WHOLE argument (comma-delimited) made only of mode characters, one of
+// which is `b`. Both halves matter. Testing the whole call text for any quoted "b" let a
+// payload key spell the check away — `write_text(json.dumps({"bpm": 120}))` exempted
+// itself, and "bpm"/"bars" are literally analyze-beatgrid's own keys. Restricting to mode
+// characters rules that out without having to split arguments: "bpm" holds `p` and `m`,
+// which no mode does.
+const BINARY_MODE = /(^|,)\s*(["'])[rwxa+t]*b[rwxa+t]*\2\s*(,|$)/;
+
+/** True when no encoding applies. `Path.read_text`/`write_text` have no mode: always text. */
+function isBinary(call) {
+  return call.name === "open" && BINARY_MODE.test(call.args);
 }
