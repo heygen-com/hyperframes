@@ -80,9 +80,8 @@ function scheduleVolumeLane(
   scheduleParamLane([{ param: gainNode.gain }], lane, VOLUME_RANGE.scale, timing);
 }
 
-export type ScheduledSource = {
+type ScheduledSourceBase = {
   el: HTMLMediaElement;
-  sourceNode: AudioBufferSourceNode;
   gainNode: GainNode;
   /** FX chain spliced between source and gain, when the element carries one. */
   fx?: ElementFxHandle | null;
@@ -90,6 +89,7 @@ export type ScheduledSource = {
   mediaStart: number;
   scheduledAt: number;
   priorMuted: boolean;
+  priorVolume: number;
   mediaPlaybackRate: number;
   // The clip had a finite window, so start() was given a fixed duration in
   // buffer-sample seconds. That bound can't be rescaled in place on a rate
@@ -97,12 +97,27 @@ export type ScheduledSource = {
   bounded: boolean;
 };
 
+export type ScheduledSource = ScheduledSourceBase &
+  (
+    | { sourceKind: "buffer"; sourceNode: AudioBufferSourceNode }
+    | { sourceKind: "media-element"; sourceNode: MediaElementAudioSourceNode }
+  );
+
+function isBufferSource(
+  source: ScheduledSource,
+): source is ScheduledSourceBase & { sourceKind: "buffer"; sourceNode: AudioBufferSourceNode } {
+  return source.sourceKind === "buffer";
+}
+
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _failedSrcs = new Set<string>();
+  private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  private _masterVolume = 1;
+  private _masterMuted = false;
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -117,6 +132,7 @@ export class WebAudioTransport {
       this._ctx = new AudioContext();
       this._masterGain = this._ctx.createGain();
       this._masterGain.connect(this._ctx.destination);
+      this.applyMasterGain();
       return true;
     } catch {
       return false;
@@ -181,6 +197,75 @@ export class WebAudioTransport {
 
   currentGeneration(): number {
     return this._playGeneration;
+  }
+
+  /**
+   * Route the browser's pitch-preserving HTMLMediaElement transport through the
+   * same FX, automation, element-gain, and master graph used by final audio.
+   * The media element remains the source-time/rate owner; Web Audio is strictly
+   * downstream and therefore never resamples it for Studio global speed.
+   */
+  async scheduleMediaElementPlayback(
+    el: HTMLMediaElement,
+    compositionStart: number,
+    _mediaStart: number,
+    compositionTime: number,
+    volume: number,
+    generation: number,
+    rate = 1,
+  ): Promise<ScheduledSource | null> {
+    if (!this._ctx || !this._masterGain) return null;
+    if (generation !== this._playGeneration) return null;
+
+    try {
+      if (this._ctx.state === "suspended") await this._ctx.resume();
+      if (generation !== this._playGeneration) return null;
+
+      let sourceNode = this._mediaElementSources.get(el);
+      if (!sourceNode) {
+        sourceNode = this._ctx.createMediaElementSource(el);
+        this._mediaElementSources.set(el, sourceNode);
+      }
+
+      const safeRate = normalizeRate(rate);
+      const gainNode = this._ctx.createGain();
+      gainNode.gain.value = volume;
+      const scheduledAt = this._ctx.currentTime;
+      const elapsed = compositionTime - compositionStart;
+      const timing: AutomationTiming = { scheduledAt, elapsed, rate: safeRate };
+      const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
+      gainNode.connect(this._masterGain);
+      scheduleVolumeLane(el, gainNode, timing);
+
+      this._rate = safeRate;
+      this._rateAnchorCtx = scheduledAt;
+      this._rateAnchorComp = compositionTime;
+
+      const scheduled: ScheduledSource = {
+        fx,
+        el,
+        sourceNode,
+        sourceKind: "media-element",
+        gainNode,
+        compositionStart,
+        mediaStart: _mediaStart,
+        scheduledAt,
+        priorMuted: el.muted,
+        priorVolume: el.volume,
+        mediaPlaybackRate: readElementPlaybackRate(el),
+        bounded: false,
+      };
+      // Chrome applies HTMLMediaElement.volume before MediaElementAudioSource.
+      // Keep that upstream stage at unity so the existing downstream gain is
+      // the single owner of author × user volume and automation.
+      el.volume = 1;
+      this._activeSources.push(scheduled);
+      this._paused = false;
+      return scheduled;
+    } catch (err) {
+      swallow("webAudioTransport.mediaElementSource", err);
+      return null;
+    }
   }
 
   async schedulePlayback(
@@ -256,11 +341,13 @@ export class WebAudioTransport {
         fx,
         el,
         sourceNode,
+        sourceKind: "buffer",
         gainNode,
         compositionStart,
         mediaStart,
         scheduledAt,
         priorMuted,
+        priorVolume: el.volume,
         mediaPlaybackRate: mediaRate,
         bounded: Number.isFinite(clipDuration) && clipDuration > 0,
       };
@@ -322,7 +409,9 @@ export class WebAudioTransport {
     this._rate = safeRate;
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
+        if (isBufferSource(source)) {
+          source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
+        }
         source.fx?.setRate(safeRate);
       } catch (err) {
         swallow("webAudioTransport.setRate", err);
@@ -335,29 +424,29 @@ export class WebAudioTransport {
   // arg at its original rate; a later rate change can't rescale it in place, so
   // the caller must stopAll()+reschedule to keep trimmed clips ending on time.
   hasBoundedActiveSources(): boolean {
-    return this._activeSources.some((s) => s.bounded);
+    return this._activeSources.some((s) => isBufferSource(s) && s.bounded);
   }
 
   stopAll(): void {
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.stop();
+        if (isBufferSource(source)) source.sourceNode.stop();
         source.sourceNode.disconnect();
         source.fx?.dispose();
         source.gainNode.disconnect();
       } catch {
         // already stopped
       }
-      source.el.muted = source.priorMuted;
+      if (isBufferSource(source)) source.el.muted = source.priorMuted;
+      else source.el.volume = source.priorVolume;
     }
     this._activeSources = [];
     this._paused = true;
   }
 
   setVolume(volume: number): void {
-    if (this._masterGain) {
-      this._masterGain.gain.value = Math.max(0, Math.min(1, volume));
-    }
+    this._masterVolume = Math.max(0, Math.min(1, volume));
+    this.applyMasterGain();
   }
 
   setElementVolume(el: HTMLMediaElement, volume: number): void {
@@ -365,6 +454,7 @@ export class WebAudioTransport {
     for (const source of this._activeSources) {
       if (source.el !== el) continue;
       try {
+        if (source.sourceKind === "media-element") source.el.volume = 1;
         source.gainNode.gain.value = safeVolume;
       } catch (err) {
         swallow("webAudioTransport.setElementVolume", err);
@@ -373,9 +463,12 @@ export class WebAudioTransport {
   }
 
   setMuted(muted: boolean): void {
-    if (this._masterGain) {
-      this._masterGain.gain.value = muted ? 0 : 1;
-    }
+    this._masterMuted = muted;
+    this.applyMasterGain();
+  }
+
+  private applyMasterGain(): void {
+    if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
   isActive(): boolean {
@@ -385,13 +478,14 @@ export class WebAudioTransport {
   /** Whether the transport currently plays THIS element (the runtime mutes it to
    *  avoid double audio; an unclaimed track stays audible). */
   ownsElement(el: HTMLMediaElement): boolean {
-    return !this._paused && this._activeSources.some((s) => s.el === el);
+    return !this._paused && this._activeSources.some((s) => s.el === el && isBufferSource(s));
   }
 
   destroy(): void {
     this.stopAll();
     this._bufferCache.clear();
     this._failedSrcs.clear();
+    this._mediaElementSources = new WeakMap();
     if (this._ctx) {
       try {
         void this._ctx.close();
@@ -401,5 +495,7 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._masterVolume = 1;
+    this._masterMuted = false;
   }
 }

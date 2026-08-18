@@ -2027,9 +2027,7 @@ export function initSandboxRuntimeModular(): void {
         timeSeconds: state.currentTime,
         playing: state.isPlaying,
         playbackRate: state.playbackRate,
-        outputMuted:
-          state.mediaOutputMuted ||
-          (!state.webAudioMediaDisabled && !state.nativeMediaSyncDisabled && webAudio.isActive()),
+        outputMuted: state.mediaOutputMuted,
         userMuted: state.bridgeMuted,
         userVolume: state.bridgeVolume,
         forceSync,
@@ -3043,20 +3041,43 @@ export function initSandboxRuntimeModular(): void {
           );
         }
       }
-      void webAudio.decodeAudioElement(rawEl).then((buffer) => {
-        if (!buffer || !clock.isPlaying()) return;
-        void webAudio.schedulePlayback(
+      void webAudio
+        .scheduleMediaElementPlayback(
           rawEl,
-          buffer,
           compStart,
           mediaStart,
           clock.now(),
           vol * state.bridgeVolume,
           gen,
           state.playbackRate,
-          clipDuration,
-        );
-      });
+        )
+        .then((scheduled) => {
+          if (scheduled || !clock.isPlaying()) return;
+          const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
+          const hasProcessing =
+            rawEl.hasAttribute("data-fx-chain") || rawEl.hasAttribute("data-automation");
+          // A decoded AudioBufferSourceNode changes pitch whenever its playback
+          // rate is non-unit. Bare tracks may safely stay on native output; a
+          // processed track must fail closed rather than silently lose its graph.
+          if (Math.abs(effectiveRate - 1) > 1e-9) {
+            if (hasProcessing) rawEl.muted = true;
+            return;
+          }
+          void webAudio.decodeAudioElement(rawEl).then((buffer) => {
+            if (!buffer || !clock.isPlaying()) return;
+            void webAudio.schedulePlayback(
+              rawEl,
+              buffer,
+              compStart,
+              mediaStart,
+              clock.now(),
+              vol * state.bridgeVolume,
+              gen,
+              state.playbackRate,
+              clipDuration,
+            );
+          });
+        });
     }
   };
 
