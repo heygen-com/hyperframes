@@ -1,0 +1,32 @@
+name: Install ffmpeg (Linux)
+description: >-
+  Install ffmpeg from apt with a bounded, retried fetch.
+
+  Hosted runners intermittently stall on an apt mirror, and an unbounded
+  `apt-get` inherits the whole job budget: the producer integration lane
+  normally finishes in ~11 minutes against a 20 minute cap, so one stalled
+  fetch took the job to the cap and failed it. Three jobs then went red off
+  that single step, because the gates downstream fail closed on a skip.
+
+  Bounding each attempt turns a stalled mirror into a retry that costs
+  seconds rather than the job. This deliberately keeps apt as the source, so
+  the ffmpeg build under the producer's output comparisons does not change.
+
+runs:
+  using: composite
+  steps:
+    - name: Install ffmpeg
+      shell: bash
+      run: |
+        set -euo pipefail
+        for attempt in 1 2 3; do
+          if sudo timeout 120 apt-get update -qq \
+            && sudo timeout 300 apt-get install -y --no-install-recommends ffmpeg; then
+            ffmpeg -version | head -1
+            exit 0
+          fi
+          echo "::warning::apt attempt ${attempt} did not complete; retrying"
+          sleep $((attempt * 10))
+        done
+        echo "::error::ffmpeg install did not complete after 3 bounded attempts"
+        exit 1
