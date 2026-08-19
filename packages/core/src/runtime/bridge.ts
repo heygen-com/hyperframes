@@ -1,12 +1,18 @@
 import { swallow } from "./diagnostics";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
+import {
+  inspectRuntimeProtocol,
+  runtimeProtocolFpsToNumber,
+  runtimeProtocolMetadata,
+  type RuntimeProtocolV1,
+} from "./protocol";
 
 type BridgeDeps = {
   onPlay: () => void;
   onPause: () => void;
   onStopMedia: () => void;
-  onSeek: (frame: number, seekMode: "drag" | "commit") => void;
+  onSeek: (timeSeconds: number, seekMode: "drag" | "commit") => void;
   onTick: () => void;
   onSetMuted: (muted: boolean) => void;
   onSetVolume: (volume: number) => void;
@@ -22,18 +28,25 @@ type BridgeDeps = {
   ) => void;
   onEnablePickMode: () => void;
   onDisablePickMode: () => void;
+  getCanonicalFps: () => number;
 };
+
+let runtimeProtocolFps = 30;
+
+export function setRuntimeProtocolFps(fps: number): void {
+  runtimeProtocolFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
+}
 
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   try {
-    window.parent.postMessage(payload, "*");
+    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
   }
 }
 
-type BridgeControlData = Partial<RuntimeBridgeControlMessage>;
+type BridgeControlData = Partial<RuntimeBridgeControlMessage & RuntimeProtocolV1>;
 type ControlHandler = (data: BridgeControlData, deps: BridgeDeps) => void;
 
 // Per-action dispatchers. Splitting the handler into a lookup table keeps the
@@ -43,7 +56,7 @@ const CONTROL_HANDLERS: Record<string, ControlHandler> = {
   play: (_d, deps) => deps.onPlay(),
   pause: (_d, deps) => deps.onPause(),
   "stop-media": (_d, deps) => deps.onStopMedia(),
-  seek: (data, deps) => deps.onSeek(Number(data.frame ?? 0), data.seekMode ?? "commit"),
+  seek: (data, deps) => deps.onSeek(resolveSeekTimeSeconds(data, deps), data.seekMode ?? "commit"),
   tick: (_d, deps) => deps.onTick(),
   "set-muted": (data, deps) => deps.onSetMuted(Boolean(data.muted)),
   "set-volume": (data, deps) =>
@@ -64,6 +77,31 @@ const CONTROL_HANDLERS: Record<string, ControlHandler> = {
   "flash-elements": (data) => handleFlashElements(data),
 };
 
+function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number {
+  const explicitSeconds = Number(data.timeSeconds);
+  if (Number.isFinite(explicitSeconds)) return Math.max(0, explicitSeconds);
+  const messageFps = runtimeProtocolFpsToNumber(data.fps);
+  const fps = messageFps ?? deps.getCanonicalFps();
+  return Math.max(0, Number(data.frame ?? 0)) / fps;
+}
+
+function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
+  const protocol = inspectRuntimeProtocol(data);
+  if (protocol.status !== "unsupported") return false;
+  postRuntimeMessage({
+    source: "hf-preview",
+    type: "diagnostic",
+    code: `runtime.protocol.${protocol.code}`,
+    details: {
+      receivedVersion:
+        typeof protocol.receivedVersion === "string" || typeof protocol.receivedVersion === "number"
+          ? protocol.receivedVersion
+          : null,
+    },
+  });
+  return true;
+}
+
 function handleFlashElements(data: BridgeControlData): void {
   // Briefly highlight elements — used by the chat-canvas bridge
   // to show what changed after an agent edit
@@ -78,6 +116,7 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
   const handler = (event: MessageEvent) => {
     const data = event.data as BridgeControlData | null;
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
+    if (rejectUnsupportedProtocol(data)) return;
     const action = data.action;
     if (typeof action !== "string") return;
     const fn = CONTROL_HANDLERS[action];

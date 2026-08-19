@@ -1,33 +1,58 @@
+import { failCommand } from "../utils/commandResult.js";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import * as clack from "@clack/prompts";
 import open from "open";
 import type { Example } from "./_examples.js";
-import { trackRenderFeedback } from "../telemetry/events.js";
+import { trackCatalogSearchMiss, trackRenderFeedback } from "../telemetry/events.js";
 import { shouldTrack, flush } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
+import { readConfig, type RecentRenderRecord } from "../telemetry/config.js";
 import { publishProjectArchive } from "../utils/publishProject.js";
 import { submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
+import { parseFeedbackRating } from "../utils/feedbackRating.js";
+import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
 
 export const examples: Example[] = [
-  ["Submit render feedback", 'hyperframes feedback --rating 4 --comment "fast but font missing"'],
-  ["Quick rating only", "hyperframes feedback --rating 5"],
+  ["Submit render feedback", 'hyperframes feedback --rating 8 --comment "fast but font missing"'],
+  ["Quick rating only", "hyperframes feedback --rating 10"],
+  [
+    "Report a catalog gap after a fruitless search",
+    'hyperframes feedback --search-miss "typewriter that deletes" --wanted "text that types then backspaces"',
+  ],
   [
     "Also file a GitHub issue with a published repro",
-    'hyperframes feedback --rating 2 --comment "GSAP timeline froze" --file-issue',
+    'hyperframes feedback --rating 3 --comment "GSAP timeline froze" --file-issue',
   ],
 ];
 
-function parseRating(raw: string): number | null {
-  const n = parseInt(raw, 10);
-  return n >= 1 && n <= 5 && Number.isFinite(n) ? n : null;
-}
-
 function normalizeComment(raw?: string): string | undefined {
   return raw || undefined;
+}
+
+/**
+ * Compact PostHog join keys appended to the environment string that rides
+ * along with the forwarded report (and therefore lands verbatim in the wild
+ * feedback channel): `fid` = this submission's PostHog `cli_render_feedback`
+ * `feedback_id`; `tid` = the install's telemetry distinct_id; `renders` =
+ * recent `render_job_id`s (newest last, `!` suffix = the render failed).
+ * Together they turn a wild report into an exact telemetry lookup instead of
+ * a hardware-fingerprint hunt.
+ */
+export function buildTelemetryJoinKeys(input: {
+  feedbackId: string;
+  anonymousId: string;
+  recentRenders?: RecentRenderRecord[];
+}): string {
+  const parts = [`fid=${input.feedbackId}`, `tid=${input.anonymousId}`];
+  if (input.recentRenders?.length) {
+    parts.push(`renders=${input.recentRenders.map((r) => `${r.id}${r.ok ? "" : "!"}`).join(",")}`);
+  }
+  return parts.join(" ");
 }
 
 function printIssueConsent(dir: string): void {
@@ -82,6 +107,18 @@ async function publishRepro(dir: string): Promise<string | undefined> {
   }
 }
 
+/**
+ * Print soft-warn feedback-lint messages to stdout. Extracted so the
+ * command's `run` stays a flat control-flow driver — the warning loop is
+ * incidental to the command logic and its complexity would otherwise push
+ * `run` over the Fallow CRAP threshold.
+ */
+function printFeedbackLintWarnings(input: FeedbackLintInput): void {
+  for (const warning of lintFeedbackComment(input)) {
+    console.log(c.warn(`⚠ ${warning.message}`));
+  }
+}
+
 async function openAndPrintIssue(url: string): Promise<void> {
   if (process.stdout.isTTY) {
     try {
@@ -122,12 +159,25 @@ export default defineCommand({
   args: {
     rating: {
       type: "string",
-      description: "Satisfaction rating (1=poor, 5=great)",
-      required: true,
+      // Required for a rating report, but --search-miss is a different report
+      // with no rating to give, so the check moved into the run body.
+      description: "Likelihood to recommend (0=not likely, 10=extremely likely)",
     },
     comment: {
       type: "string",
       description: "Optional details about your experience",
+    },
+    "search-miss": {
+      type: "string",
+      description: "Report a catalog search that found nothing useful; pass the query you ran",
+    },
+    wanted: {
+      type: "string",
+      description: "What you needed the catalog to have (used with --search-miss)",
+    },
+    tier: {
+      type: "string",
+      description: 'Which search tier answered: "on-device" or "words"',
     },
     "file-issue": {
       type: "boolean",
@@ -146,10 +196,31 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const rating = parseRating(args.rating);
+    // A search miss is a different report from a rating: it names a gap in the
+    // catalog rather than scoring an experience, so it carries no rating and
+    // must not land in the same number.
+    const searchMiss = normalizeComment(args["search-miss"]);
+    if (searchMiss) {
+      if (!shouldTrack()) {
+        console.log(c.dim("Telemetry is disabled. Nothing sent."));
+        return;
+      }
+      trackCatalogSearchMiss({
+        query: searchMiss,
+        wanted: normalizeComment(args.wanted),
+        tier: normalizeComment(args.tier),
+      });
+      await flush();
+      console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
+      return;
+    }
+
+    // `--rating` is no longer required at the arg level, so an absent one
+    // reaches here as undefined rather than being rejected by the parser.
+    const rating = args.rating === undefined ? null : parseFeedbackRating(args.rating);
     if (rating === null) {
-      console.error(c.error("Rating must be between 1 and 5"));
-      process.exit(1);
+      console.error(c.error("Rating must be an integer between 0 and 10"));
+      failCommand();
     }
 
     if (!shouldTrack()) {
@@ -160,15 +231,38 @@ export default defineCommand({
     const comment = normalizeComment(args.comment);
     const doctorSummary = await getDoctorSummary();
 
+    // Join keys tying this report to the install's PostHog rows — see
+    // buildTelemetryJoinKeys. Appended to the env string so they surface in
+    // the forwarded report; mirrored as structured props on the PostHog event.
+    const feedbackId = randomUUID();
+    const config = readConfig();
+    const joinKeys = buildTelemetryJoinKeys({
+      feedbackId,
+      anonymousId: config.anonymousId,
+      recentRenders: config.recentRenders,
+    });
+    const envWithJoinKeys = doctorSummary ? `${doctorSummary} ${joinKeys}` : joinKeys;
+
+    // Soft-warn (never blocks) when the comment for a non-clean report is
+    // missing the mandated reproduction-packet markers. Prints before the
+    // submission ack so the reporter sees the nudge while their run is fresh.
+    printFeedbackLintWarnings({ rating, comment });
+
     // The standalone command runs separately from `render`, so it has no real
     // elapsed time to report. Omit it rather than recording a fake duration.
-    trackRenderFeedback({ rating, comment, doctorSummary });
+    trackRenderFeedback({
+      rating,
+      comment,
+      doctorSummary,
+      feedbackId,
+      recentRenderIds: config.recentRenders?.map((r) => r.id),
+    });
 
     await flush();
     // Ack first so the user isn't kept waiting on the best-effort forward (which
     // is bounded to a few seconds and never surfaces an error either way).
     console.log(c.dim("Thanks for the feedback!"));
-    await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
+    await submitFeedback({ rating, comment, cliVersion: VERSION, env: envWithJoinKeys });
 
     if (args["file-issue"] === true) {
       await fileGithubIssue({

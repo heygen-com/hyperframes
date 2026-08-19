@@ -24,20 +24,31 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  rmSync,
   statfsSync,
 } from "node:fs";
 import { join } from "node:path";
 import {
   type CaptureSession,
   decodePngToRgb48le,
+  extractMediaMetadata,
+  getCgroupMemoryLimitMb,
   normalizeObjectFit,
   queryElementStacking,
   resampleRgb48leObjectFit,
+  resolveFinalFrameExtractionWindow,
+  resolveVideoExtractionWindow,
   runFfmpeg,
+  type TimelineExtractionWindow,
+  type VideoMetadata,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
-import type { HdrImageBuffer, HdrVideoFrameSource } from "../../hdrCompositor.js";
+import {
+  closeHdrVideoFrameSource,
+  type HdrImageBuffer,
+  type HdrVideoFrameSource,
+} from "../../hdrCompositor.js";
 import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
 
@@ -107,6 +118,7 @@ export function planHdrResources(args: {
  * probe for HDR images whose `data-start` instant reports zero dims (GSAP
  * `from` tweens animate the element in slightly later).
  */
+// fallow-ignore-next-line complexity code-duplication
 export async function probeHdrExtractionDims(args: {
   domSession: CaptureSession;
   nativeHdrIds: Set<string>;
@@ -186,7 +198,129 @@ export function estimateHdrExtractionBytes(
 }
 
 const HDR_EXTRACTION_HEADROOM_FRACTION = 0.9;
+const HDR_EXTRACTION_CGROUP_BUDGET_FRACTION = 0.5;
 const HDR_EXTRACTION_WARN_BYTES = 10e9;
+const HDR_EXTRACTION_MAX_BYTES_ENV = "HDR_EXTRACTION_MAX_BYTES";
+const BYTES_PER_MIB = 1024 * 1024;
+let aggregateHdrExtractionReservedBytes = 0;
+
+export function resolveHdrExtractionBudgetBytes(
+  raw: string | undefined,
+  cgroupLimitMb: number | null = getCgroupMemoryLimitMb(),
+): number | undefined {
+  let configuredBudget: number | undefined;
+  if (raw !== undefined && raw.trim() !== "") {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`${HDR_EXTRACTION_MAX_BYTES_ENV} must be a positive finite byte count`);
+    }
+    configuredBudget = Math.floor(value);
+  }
+  const cgroupBudget =
+    cgroupLimitMb !== null && Number.isFinite(cgroupLimitMb) && cgroupLimitMb > 0
+      ? Math.floor(cgroupLimitMb * BYTES_PER_MIB * HDR_EXTRACTION_CGROUP_BUDGET_FRACTION)
+      : undefined;
+  if (configuredBudget === undefined) return cgroupBudget;
+  if (cgroupBudget === undefined) return configuredBudget;
+  return Math.min(configuredBudget, cgroupBudget);
+}
+
+export function resolveHdrExtractionActiveBudgetBytes(
+  configuredBudgetBytes: number | undefined,
+  freeBytes: number,
+): number {
+  const diskBudgetBytes = Math.floor(freeBytes * HDR_EXTRACTION_HEADROOM_FRACTION);
+  return configuredBudgetBytes === undefined
+    ? diskBudgetBytes
+    : Math.min(configuredBudgetBytes, diskBudgetBytes);
+}
+
+export function reserveHdrExtractionBytes(
+  estimatedBytes: number,
+  budgetBytes: number | undefined,
+): () => void {
+  if (!Number.isFinite(estimatedBytes) || estimatedBytes < 0) {
+    throw new Error(`HDR extraction reservation must be a finite non-negative byte count`);
+  }
+  const aggregateBytes = aggregateHdrExtractionReservedBytes + estimatedBytes;
+  if (budgetBytes !== undefined && aggregateBytes > budgetBytes) {
+    throw new Error(
+      `Concurrent HDR pre-extractions need ~${(aggregateBytes / 1e9).toFixed(1)} GB of raw ` +
+        `16-bit frame scratch, exceeding the active ${(budgetBytes / 1e9).toFixed(1)} GB budget.`,
+    );
+  }
+  aggregateHdrExtractionReservedBytes = aggregateBytes;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    aggregateHdrExtractionReservedBytes = Math.max(
+      0,
+      aggregateHdrExtractionReservedBytes - estimatedBytes,
+    );
+  };
+}
+
+export function getHdrExtractionReservedBytes(): number {
+  return aggregateHdrExtractionReservedBytes;
+}
+
+export type HdrExtractionWindow = TimelineExtractionWindow;
+
+export function resolveHdrExtractionWindow(
+  video: {
+    id: string;
+    start: number;
+    end: number;
+    mediaStart: number;
+    loop: boolean;
+  },
+  compositionDuration: number,
+  metadata: VideoMetadata,
+): HdrExtractionWindow | null {
+  if (!Number.isFinite(compositionDuration) || compositionDuration <= 0) {
+    throw new Error(
+      `Cannot extract HDR video "${video.id}" with invalid composition duration ${String(compositionDuration)}`,
+    );
+  }
+  const window = resolveVideoExtractionWindow(video, metadata, compositionDuration);
+  if (!Number.isFinite(window.durationSeconds)) {
+    throw new Error(
+      `HDR video "${video.id}" has no finite interval inside the ${compositionDuration}s composition`,
+    );
+  }
+  if (window.durationSeconds <= 0) return null;
+  if (!Number.isFinite(window.mediaStart) || window.mediaStart < 0) {
+    throw new Error(`HDR video "${video.id}" has invalid mediaStart ${String(window.mediaStart)}`);
+  }
+  return window;
+}
+
+function cleanupHdrFrameDirectory(
+  frameDir: string,
+  rawPath: string | undefined,
+  log?: ProducerLogger,
+): void {
+  if (process.env.KEEP_TEMP === "1") return;
+  try {
+    rmSync(frameDir, { recursive: true, force: true });
+  } catch (err) {
+    log?.warn("Failed to clean up HDR raw frame directory", {
+      frameDir,
+      rawPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** Close the raw-frame descriptor and release its directory unless KEEP_TEMP=1. */
+export function cleanupHdrVideoFrameSource(
+  source: HdrVideoFrameSource,
+  log?: ProducerLogger,
+): void {
+  closeHdrVideoFrameSource(source, log);
+  cleanupHdrFrameDirectory(source.dir, source.rawPath, log);
+}
 
 /**
  * Disk-headroom gate for raw rgb48le pre-extraction: throws if the planned
@@ -202,18 +336,30 @@ function assertHdrExtractionDiskHeadroom(
   plannedVideos: Array<{ durationSeconds: number; width: number; height: number }>,
   fps: number,
   log: ProducerLogger,
-): void {
+): { estimatedBytes: number; budgetBytes: number | undefined } {
   const estimatedBytes = estimateHdrExtractionBytes(plannedVideos, fps);
+  const configuredBudget = resolveHdrExtractionBudgetBytes(
+    process.env[HDR_EXTRACTION_MAX_BYTES_ENV],
+  );
+  const estimatedGb = (estimatedBytes / 1e9).toFixed(1);
+  if (configuredBudget !== undefined && estimatedBytes > configuredBudget) {
+    throw new Error(
+      `HDR pre-extraction needs ~${estimatedGb} GB of raw 16-bit frames, exceeding the ` +
+        `active scratch budget of ${(configuredBudget / 1e9).toFixed(1)} GB. ` +
+        `If the composition doesn't need HDR output, re-run with --sdr; otherwise reduce its ` +
+        `HDR duration/resolution or use a render container with a larger memory limit.`,
+    );
+  }
   let freeBytes: number;
   try {
     const stat = statfsSync(framesDir);
     freeBytes = stat.bavail * stat.bsize;
   } catch {
     // statfs unsupported on this platform/filesystem — skip the gate.
-    return;
+    return { estimatedBytes, budgetBytes: configuredBudget };
   }
-  const estimatedGb = (estimatedBytes / 1e9).toFixed(1);
-  if (estimatedBytes > freeBytes * HDR_EXTRACTION_HEADROOM_FRACTION) {
+  const diskBudgetBytes = Math.floor(freeBytes * HDR_EXTRACTION_HEADROOM_FRACTION);
+  if (estimatedBytes > diskBudgetBytes) {
     throw new Error(
       `HDR pre-extraction needs ~${estimatedGb} GB of raw 16-bit frames but only ` +
         `${(freeBytes / 1e9).toFixed(1)} GB is free at ${framesDir}. ` +
@@ -228,13 +374,25 @@ function assertHdrExtractionDiskHeadroom(
       { estimatedBytes, freeBytes },
     );
   }
+  return {
+    estimatedBytes,
+    budgetBytes: resolveHdrExtractionActiveBudgetBytes(configuredBudget, freeBytes),
+  };
+}
+
+export interface HdrVideoExtractionResult {
+  sources: Map<string, HdrVideoFrameSource>;
+  estimatedBytes: number;
+  releaseReservation: () => void;
 }
 
 /**
  * Extract each HDR video into a raw rgb48le frame file via a single FFmpeg
- * pass per video, and open a file descriptor for each. Returns a map keyed
- * by video id. Caller owns lifecycle teardown (closing fds + rm-rf).
+ * pass per video, and open a file descriptor for each. The caller owns both
+ * source teardown and the aggregate scratch reservation, which intentionally
+ * remains held until the capture-stage finally block.
  */
+// fallow-ignore-next-line complexity
 export async function extractHdrVideoFrames(args: {
   job: RenderJob;
   log: ProducerLogger;
@@ -245,90 +403,142 @@ export async function extractHdrVideoFrames(args: {
   height: number;
   abortSignal: AbortSignal | undefined;
   hdrDiagnostics: HdrDiagnostics;
-}): Promise<Map<string, HdrVideoFrameSource>> {
+  runFfmpegImpl?: typeof runFfmpeg;
+  extractMediaMetadataImpl?: typeof extractMediaMetadata;
+  resolveFinalFrameExtractionWindowImpl?: typeof resolveFinalFrameExtractionWindow;
+}): Promise<HdrVideoExtractionResult> {
   const { job, log, framesDir, composition, prep, width, height, abortSignal, hdrDiagnostics } =
     args;
+  const runFfmpegImpl = args.runFfmpegImpl ?? runFfmpeg;
+  const extractMediaMetadataImpl = args.extractMediaMetadataImpl ?? extractMediaMetadata;
+  const resolveFinalFrameExtractionWindowImpl =
+    args.resolveFinalFrameExtractionWindowImpl ?? resolveFinalFrameExtractionWindow;
   const out = new Map<string, HdrVideoFrameSource>();
   mkdirSync(framesDir, { recursive: true });
   const plannedVideos: Array<{ durationSeconds: number; width: number; height: number }> = [];
-  for (const [videoId] of prep.hdrVideoSrcPaths) {
+  const extractionWindows = new Map<string, HdrExtractionWindow>();
+  for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
     const video = composition.videos.find((v) => v.id === videoId);
     if (!video) continue;
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
+    const metadata = await extractMediaMetadataImpl(srcPath);
+    const initialWindow = resolveHdrExtractionWindow(video, composition.duration, metadata);
+    if (!initialWindow) continue;
+    const window = await resolveFinalFrameExtractionWindowImpl(
+      srcPath,
+      video,
+      metadata,
+      initialWindow,
+      abortSignal,
+    );
+    extractionWindows.set(videoId, window);
+    prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     plannedVideos.push({
-      durationSeconds: video.end - video.start,
+      durationSeconds: window.durationSeconds,
       width: dims.width,
       height: dims.height,
     });
   }
-  assertHdrExtractionDiskHeadroom(framesDir, plannedVideos, fpsToNumber(job.config.fps), log);
-  for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
-    const video = composition.videos.find((v) => v.id === videoId);
-    if (!video) continue;
-    mkdirSync(framesDir, { recursive: true });
-    const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
-    const duration = video.end - video.start;
-    const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
-    const rawPath = join(frameDir, "frames.rgb48le");
-    const ffmpegArgs = [
-      "-ss",
-      String(video.mediaStart),
-      "-i",
-      srcPath,
-      "-t",
-      String(duration),
-      "-r",
-      fpsToFfmpegArg(job.config.fps),
-      "-vf",
-      `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=increase,crop=${dims.width}:${dims.height}`,
-      "-pix_fmt",
-      "rgb48le",
-      "-f",
-      "rawvideo",
-      "-y",
-      rawPath,
-    ];
-    const result = await runFfmpeg(ffmpegArgs, { signal: abortSignal });
-    if (!result.success) {
-      hdrDiagnostics.videoExtractionFailures += 1;
-      log.error("HDR frame pre-extraction failed; aborting render", {
-        videoId,
-        srcPath,
-        stderr: result.stderr.slice(-400),
-      });
-      throw new Error(
-        `HDR frame extraction failed for video "${videoId}". ` +
-          `Aborting render to avoid shipping black HDR layers.`,
+  const { estimatedBytes, budgetBytes } = assertHdrExtractionDiskHeadroom(
+    framesDir,
+    plannedVideos,
+    fpsToNumber(job.config.fps),
+    log,
+  );
+  const releaseReservation = reserveHdrExtractionBytes(estimatedBytes, budgetBytes);
+  const createdFrameDirs = new Set<string>();
+  try {
+    for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
+      const video = composition.videos.find((v) => v.id === videoId);
+      const window = extractionWindows.get(videoId);
+      if (!video || !window) continue;
+      mkdirSync(framesDir, { recursive: true });
+      const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
+      createdFrameDirs.add(frameDir);
+      const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
+      const rawPath = join(frameDir, "frames.rgb48le");
+      const extractionStart = String(window.extractionMediaStart ?? window.mediaStart);
+      const ffmpegArgs: string[] = [];
+      if (window.finalFrameOnly) {
+        // Decode before seeking for the one-frame path. Input-side seeking can
+        // return zero frames for valid unindexed/negative-base transports.
+        ffmpegArgs.push("-i", srcPath, "-ss", extractionStart, "-frames:v", "1");
+      } else {
+        ffmpegArgs.push(
+          "-ss",
+          extractionStart,
+          "-i",
+          srcPath,
+          "-t",
+          String(window.durationSeconds),
+        );
+      }
+      if (!window.finalFrameOnly) {
+        ffmpegArgs.push("-r", fpsToFfmpegArg(job.config.fps));
+      }
+      ffmpegArgs.push(
+        "-vf",
+        `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=increase,crop=${dims.width}:${dims.height}`,
+        "-pix_fmt",
+        "rgb48le",
+        "-f",
+        "rawvideo",
+        "-y",
+        rawPath,
       );
-    }
-    const frameSize = dims.width * dims.height * 6;
-    const fd = openSync(rawPath, constants.O_RDONLY | NO_FOLLOW_FLAG);
-    let handedOff = false;
-    try {
-      const frameCount = Math.floor(fstatSync(fd).size / frameSize);
-      if (frameCount < 1) {
+      const result = await runFfmpegImpl(ffmpegArgs, { signal: abortSignal });
+      if (!result.success) {
         hdrDiagnostics.videoExtractionFailures += 1;
+        log.error("HDR frame pre-extraction failed; aborting render", {
+          videoId,
+          srcPath,
+          stderr: result.stderr.slice(-400),
+        });
         throw new Error(
-          `HDR frame extraction produced no frames for video "${videoId}". ` +
+          `HDR frame extraction failed for video "${videoId}". ` +
             `Aborting render to avoid shipping black HDR layers.`,
         );
       }
-      out.set(videoId, {
-        dir: frameDir,
-        rawPath,
-        fd,
-        width: dims.width,
-        height: dims.height,
-        frameSize,
-        frameCount,
-        scratch: Buffer.allocUnsafe(frameSize),
-      });
-      handedOff = true;
-    } finally {
-      if (!handedOff) closeSync(fd);
+      const frameSize = dims.width * dims.height * 6;
+      const fd = openSync(rawPath, constants.O_RDONLY | NO_FOLLOW_FLAG);
+      let handedOff = false;
+      try {
+        const frameCount = Math.floor(fstatSync(fd).size / frameSize);
+        if (frameCount < 1) {
+          hdrDiagnostics.videoExtractionFailures += 1;
+          throw new Error(
+            `HDR frame extraction produced no frames for video "${videoId}". ` +
+              `Aborting render to avoid shipping black HDR layers.`,
+          );
+        }
+        out.set(videoId, {
+          dir: frameDir,
+          rawPath,
+          fd,
+          width: dims.width,
+          height: dims.height,
+          frameSize,
+          frameCount,
+          scratch: Buffer.allocUnsafe(frameSize),
+          loop: video.loop,
+        });
+        handedOff = true;
+      } finally {
+        if (!handedOff) closeSync(fd);
+      }
     }
+    return { sources: out, estimatedBytes, releaseReservation };
+  } catch (error) {
+    for (const source of out.values()) {
+      cleanupHdrVideoFrameSource(source, log);
+      createdFrameDirs.delete(source.dir);
+    }
+    for (const frameDir of createdFrameDirs) {
+      cleanupHdrFrameDirectory(frameDir, undefined, log);
+    }
+    releaseReservation();
+    throw error;
   }
-  return out;
 }
 
 /**

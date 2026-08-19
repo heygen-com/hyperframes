@@ -11,10 +11,11 @@ import { ChevronDown, ChevronRight, Plus, X } from "../../icons/SystemIcons";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { LABEL } from "./propertyPanelHelpers";
 import { ColorGradingSliderControl } from "./propertyPanelColorGradingSlider";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const LUT_UPLOAD_DIR = "assets/luts";
 
-const ADJUST_SLIDERS: Array<{
+export const COLOR_GRADING_ADJUST_SLIDERS: Array<{
   key: HfColorGradingAdjustKey;
   label: string;
   min: number;
@@ -59,7 +60,7 @@ const ADJUST_SLIDERS: Array<{
   { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1, scale: 100, suffix: "%" },
 ];
 
-const DETAIL_SLIDERS: Array<{
+export const COLOR_GRADING_DETAIL_SLIDERS: Array<{
   key: HfColorGradingDetailKey;
   label: string;
   min: number;
@@ -122,7 +123,7 @@ const DETAIL_SLIDERS: Array<{
   },
 ];
 
-type DetailSlider = (typeof DETAIL_SLIDERS)[number];
+type DetailSlider = (typeof COLOR_GRADING_DETAIL_SLIDERS)[number];
 type SliderSettings = {
   active?: boolean;
   label: string;
@@ -142,26 +143,109 @@ const EFFECT_SLIDERS: Array<{
   { key: "pixelate", label: "Pixelate", min: 0, max: 100, step: 1, scale: 100, suffix: "%" },
 ];
 
-const AMOUNT_DETAIL_SLIDERS = DETAIL_SLIDERS.filter(
+const AMOUNT_DETAIL_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
   (slider) => slider.key === "vignette" || slider.key === "grain",
 );
-const VIGNETTE_TUNE_SLIDERS = DETAIL_SLIDERS.filter(
+export const VIGNETTE_TUNE_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
   (slider) =>
     slider.key === "vignetteMidpoint" ||
     slider.key === "vignetteRoundness" ||
     slider.key === "vignetteFeather",
 );
-const GRAIN_TUNE_SLIDERS = DETAIL_SLIDERS.filter(
+export const GRAIN_TUNE_SLIDERS = COLOR_GRADING_DETAIL_SLIDERS.filter(
   (slider) => slider.key === "grainSize" || slider.key === "grainRoughness",
 );
 
-function normalizedDefaultValue(slider: { defaultValue?: number; scale: number }): number {
+export function normalizedColorGradingDefault(slider: {
+  defaultValue?: number;
+  scale: number;
+}): number {
   return (slider.defaultValue ?? 0) / slider.scale;
 }
 
-function visibleIntensity(grading: NormalizedHfColorGrading): number {
+export function visibleColorGradingIntensity(grading: NormalizedHfColorGrading): number {
   // Earlier drafts could persist 0% strength; the next manual edit should revive visible grading.
   return grading.intensity === 0 ? 1 : grading.intensity;
+}
+
+function colorGradingWithLut(
+  grading: NormalizedHfColorGrading,
+  src: string | null,
+  intensity = 1,
+): NormalizedHfColorGrading {
+  return {
+    ...grading,
+    intensity: visibleColorGradingIntensity(grading),
+    lut: src ? { src, intensity } : null,
+  };
+}
+
+export function colorGradingWithDetail(
+  grading: NormalizedHfColorGrading,
+  key: HfColorGradingDetailKey,
+  value: number,
+): NormalizedHfColorGrading {
+  return {
+    ...grading,
+    intensity: visibleColorGradingIntensity(grading),
+    details: { ...grading.details, [key]: value },
+  };
+}
+
+function colorGradingWithIntensity(
+  grading: NormalizedHfColorGrading,
+  intensity: number,
+): NormalizedHfColorGrading {
+  return { ...grading, intensity };
+}
+
+export function colorGradingWithAdjust(
+  grading: NormalizedHfColorGrading,
+  key: HfColorGradingAdjustKey,
+  value: number,
+): NormalizedHfColorGrading {
+  return {
+    ...grading,
+    intensity: visibleColorGradingIntensity(grading),
+    adjust: { ...grading.adjust, [key]: value },
+  };
+}
+
+async function importFirstLut(
+  files: FileList | null,
+  onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>,
+): Promise<string | null> {
+  if (!files?.length || !onImportAssets) return null;
+  const uploaded = await onImportAssets(files, LUT_UPLOAD_DIR);
+  return uploaded.find((asset) => LUT_EXT.test(asset)) ?? null;
+}
+
+export function createColorGradingActions(
+  grading: NormalizedHfColorGrading,
+  onCommit: (grading: NormalizedHfColorGrading) => void,
+) {
+  const applyLut = (src: string | null, intensity = 1) => {
+    onCommit(colorGradingWithLut(grading, src, intensity));
+  };
+  return {
+    setIntensityPercent(value: number) {
+      onCommit(colorGradingWithIntensity(grading, value / 100));
+    },
+    applyLut,
+    setLutIntensityPercent(value: number) {
+      if (grading.lut) applyLut(grading.lut.src, value / 100);
+    },
+    async importLut(
+      files: FileList | null,
+      onImportAssets: ((files: FileList, dir?: string) => Promise<string[]>) | undefined,
+      onImported: () => void,
+    ) {
+      const src = await importFirstLut(files, onImportAssets);
+      if (!src) return;
+      onImported();
+      applyLut(src);
+    },
+  };
 }
 
 export function ColorGradingControls({
@@ -175,6 +259,7 @@ export function ColorGradingControls({
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onCommitColorGrading: (nextGrading: NormalizedHfColorGrading) => void;
 }) {
+  const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettings, setDetailSettings] = useState<"vignette" | "grain" | null>(null);
@@ -187,58 +272,29 @@ export function ColorGradingControls({
   const detailSettingsSliders =
     detailSettings === "vignette" ? VIGNETTE_TUNE_SLIDERS : GRAIN_TUNE_SLIDERS;
   const vignetteSettingsActive = VIGNETTE_TUNE_SLIDERS.some(
-    (slider) => Math.abs(grading.details[slider.key] - normalizedDefaultValue(slider)) > 0.0001,
+    (slider) =>
+      Math.abs(grading.details[slider.key] - normalizedColorGradingDefault(slider)) > 0.0001,
   );
   const grainSettingsActive = GRAIN_TUNE_SLIDERS.some(
-    (slider) => Math.abs(grading.details[slider.key] - normalizedDefaultValue(slider)) > 0.0001,
+    (slider) =>
+      Math.abs(grading.details[slider.key] - normalizedColorGradingDefault(slider)) > 0.0001,
   );
+  const actions = createColorGradingActions(grading, onCommitColorGrading);
 
   const applyPreset = (preset: string) => {
     const next = normalizeHfColorGrading({ preset, intensity: 1, lut: grading.lut });
-    if (next) onCommitColorGrading(next);
-  };
-  const updateFilterIntensity = (value: number) => {
-    onCommitColorGrading({
-      ...grading,
-      intensity: value / 100,
-    });
-  };
-  const applyLut = (src: string | null, intensity = 1) => {
-    onCommitColorGrading({
-      ...grading,
-      intensity: visibleIntensity(grading),
-      lut: src ? { src, intensity } : null,
-    });
-  };
-  const updateLutIntensity = (value: number) => {
-    if (!grading.lut) return;
-    applyLut(grading.lut.src, value / 100);
-  };
-  const importLuts = async (files: FileList | null) => {
-    if (!files?.length || !onImportAssets) return;
-    const uploaded = await onImportAssets(files, LUT_UPLOAD_DIR);
-    const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
-    if (firstLut) applyLut(firstLut, 1);
+    if (next) {
+      track("select", "Preset");
+      onCommitColorGrading(next);
+    }
   };
   const commitDetailSlider = (slider: DetailSlider, next: number) => {
-    onCommitColorGrading({
-      ...grading,
-      intensity: visibleIntensity(grading),
-      details: {
-        ...grading.details,
-        [slider.key]: next / slider.scale,
-      },
-    });
+    onCommitColorGrading(colorGradingWithDetail(grading, slider.key, next / slider.scale));
   };
   const resetDetailSlider = (slider: DetailSlider) => {
-    onCommitColorGrading({
-      ...grading,
-      intensity: visibleIntensity(grading),
-      details: {
-        ...grading.details,
-        [slider.key]: normalizedDefaultValue(slider),
-      },
-    });
+    onCommitColorGrading(
+      colorGradingWithDetail(grading, slider.key, normalizedColorGradingDefault(slider)),
+    );
   };
   const renderDetailSlider = (slider: DetailSlider, settings?: SliderSettings) => {
     const value = Math.round(grading.details[slider.key] * slider.scale);
@@ -285,8 +341,8 @@ export function ColorGradingControls({
         neutral={0}
         suffix="%"
         displayValue={`${Math.round(grading.intensity * 100)}%`}
-        onCommit={updateFilterIntensity}
-        onReset={() => updateFilterIntensity(100)}
+        onCommit={actions.setIntensityPercent}
+        onReset={() => actions.setIntensityPercent(100)}
       />
 
       <div className="min-w-0 rounded-md border border-panel-border/70 bg-panel-input/15">
@@ -313,7 +369,8 @@ export function ColorGradingControls({
                 value={selectedLut}
                 onChange={(event) => {
                   const nextSrc = event.target.value;
-                  applyLut(
+                  track("select", "Custom LUT");
+                  actions.applyLut(
                     nextSrc || null,
                     nextSrc && grading.lut?.src === nextSrc ? grading.lut.intensity : 1,
                   );
@@ -352,7 +409,9 @@ export function ColorGradingControls({
                 multiple
                 className="hidden"
                 onChange={(event) => {
-                  void importLuts(event.currentTarget.files);
+                  void actions.importLut(event.currentTarget.files, onImportAssets, () =>
+                    track("button", "Import LUT"),
+                  );
                   event.currentTarget.value = "";
                 }}
               />
@@ -377,8 +436,8 @@ export function ColorGradingControls({
                   neutral={0}
                   suffix="%"
                   displayValue={`${Math.round((grading.lut.intensity ?? 1) * 100)}%`}
-                  onCommit={updateLutIntensity}
-                  onReset={() => updateLutIntensity(100)}
+                  onCommit={actions.setLutIntensityPercent}
+                  onReset={() => actions.setLutIntensityPercent(100)}
                 />
               </div>
             )}
@@ -389,7 +448,7 @@ export function ColorGradingControls({
       <div className="grid min-w-0 gap-1.5">
         <span className={LABEL}>Adjust</span>
         <div className="grid min-w-0 grid-cols-2 gap-1.5">
-          {ADJUST_SLIDERS.map((slider) => {
+          {COLOR_GRADING_ADJUST_SLIDERS.map((slider) => {
             const value = grading.adjust[slider.key] * slider.scale;
             const isExposure = slider.key === "exposure";
             return (
@@ -409,24 +468,12 @@ export function ColorGradingControls({
                     : `${Math.round(value)}%`
                 }
                 onCommit={(next) => {
-                  onCommitColorGrading({
-                    ...grading,
-                    intensity: visibleIntensity(grading),
-                    adjust: {
-                      ...grading.adjust,
-                      [slider.key]: next / slider.scale,
-                    },
-                  });
+                  onCommitColorGrading(
+                    colorGradingWithAdjust(grading, slider.key, next / slider.scale),
+                  );
                 }}
                 onReset={() => {
-                  onCommitColorGrading({
-                    ...grading,
-                    intensity: visibleIntensity(grading),
-                    adjust: {
-                      ...grading.adjust,
-                      [slider.key]: 0,
-                    },
-                  });
+                  onCommitColorGrading(colorGradingWithAdjust(grading, slider.key, 0));
                 }}
               />
             );
@@ -490,7 +537,7 @@ export function ColorGradingControls({
                 onCommit={(next) => {
                   onCommitColorGrading({
                     ...grading,
-                    intensity: visibleIntensity(grading),
+                    intensity: visibleColorGradingIntensity(grading),
                     effects: {
                       ...grading.effects,
                       [slider.key]: next / slider.scale,
@@ -500,7 +547,7 @@ export function ColorGradingControls({
                 onReset={() => {
                   onCommitColorGrading({
                     ...grading,
-                    intensity: visibleIntensity(grading),
+                    intensity: visibleColorGradingIntensity(grading),
                     effects: {
                       ...grading.effects,
                       [slider.key]: 0,

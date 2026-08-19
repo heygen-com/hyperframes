@@ -1,11 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "HyperFrames",
-  "theme": "maple",
+  "theme": "aspen",
   "colors": {
-    "primary": "#0a0a0a",
-    "light": "#f6f5f1",
-    "dark": "#0a0a0a"
+    "primary": "#16785B",
+    "light": "#3CE6AC",
+    "dark": "#16785B"
   },
   "background": {
     "color": {
@@ -20,11 +20,12 @@
     }
   },
   "appearance": {
-    "default": "light"
+    "default": "system"
   },
   "logo": {
     "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "dark": "/logo/dark.svg",
+    "href": "https://hyperframes.heygen.com/introduction"
   },
   "favicon": "/favicon.svg",
   "contextual": {
@@ -47,313 +48,734 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Guides",
+        "icon": "book-open",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Start here",
             "pages": [
               "introduction",
-              "changelog",
-              "weekly-updates",
               "quickstart",
-              "showcase",
+              "go-further",
+              "developers/index"
+            ]
+          },
+          {
+            "group": "Explore",
+            "pages": [
               "examples",
-              "launch-videos"
+              "thirty-days",
+              "product-updates",
+              "weekly-updates",
+              "changelog"
             ]
           },
           {
-            "group": "Concepts",
+            "group": "Choose where to create",
             "pages": [
-              "concepts/compositions",
-              "concepts/data-attributes",
-              "concepts/variables",
-              "concepts/frame-adapters",
-              "concepts/determinism"
+              "guides/choose-creation-path",
+              "guides/mcp",
+              "guides/design-tools"
             ]
           },
           {
-            "group": "Guides",
+            "group": "Prompt Guide",
             "pages": [
-              "guides/pipeline",
-              "guides/skills",
-              "guides/authentication",
+              "prompting/overview",
+              {
+                "group": "Level 1 — Your first video",
+                "pages": [
+                  "prompting/product-launch",
+                  "prompting/explainers",
+                  "prompting/code-and-prs",
+                  "prompting/captions-and-talking-heads",
+                  "prompting/music-and-slideshows",
+                  "prompting/motion-graphics"
+                ]
+              },
+              {
+                "group": "Level 2 — Control",
+                "pages": [
+                  "prompting/anatomy",
+                  "prompting/specification-dial",
+                  "prompting/vocabulary",
+                  "prompting/visual-specs",
+                  "prompting/examples"
+                ]
+              },
+              {
+                "group": "Level 3 — Life",
+                "pages": [
+                  "prompting/motion",
+                  "prompting/transitions"
+                ]
+              },
+              {
+                "group": "Level 4 — Substance",
+                "pages": [
+                  "prompting/code-blocks",
+                  "prompting/data-and-maps",
+                  "prompting/overlays-and-lower-thirds",
+                  "prompting/captions-catalog",
+                  "prompting/generated-artwork",
+                  "prompting/color-grading",
+                  "prompting/vfx-and-liquid-glass",
+                  "prompting/runtimes-and-3d"
+                ]
+              },
+              {
+                "group": "Level 5 — Voice and sound",
+                "pages": [
+                  "prompting/media-and-audio"
+                ]
+              },
+              {
+                "group": "Level 6 — Scale",
+                "pages": [
+                  "prompting/design-systems",
+                  "prompting/variables-and-templating",
+                  "prompting/storyboards",
+                  "prompting/editing-existing-videos",
+                  "prompting/iterating",
+                  "prompting/recreating-references",
+                  "prompting/rendering-and-output",
+                  "prompting/remotion-migration"
+                ]
+              },
+              {
+                "group": "Level 7 — Capstone",
+                "pages": [
+                  "prompting/capstone"
+                ]
+              },
+              {
+                "group": "Appendix",
+                "pages": [
+                  "prompting/rules-and-anti-patterns"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "workflows",
+              "guides/product-launch-video",
+              "guides/faceless-explainer",
+              "guides/pr-to-video",
+              "guides/captions-and-recuts",
+              "guides/motion-graphics",
+              "guides/music-to-video",
+              "guides/slideshow",
+              "guides/general-video",
+              "guides/hyperframes-vs-remotion"
+            ]
+          },
+          {
+            "group": "Build the project",
+            "pages": [
+              "concepts/index",
+              "guides/media",
               "guides/video-components",
-              "guides/color-grading",
-              "guides/html-in-canvas",
-              "guides/website-to-video",
-              "guides/figma",
-              "guides/antigravity",
-              "guides/copilot-cli",
-              "guides/claude-design",
-              "guides/open-design",
-              "guides/prompting",
-              "guides/hyperframes-vs-remotion",
-              "guides/gsap-animation",
-              "guides/keyframes",
-              "guides/rendering",
+              "guides/avatar-presenter",
+              "guides/voice-and-audio",
               "guides/remove-background",
-              "guides/hdr",
-              "guides/4k-rendering",
-              "guides/performance",
-              "guides/timeline-editing",
-              "guides/video-editor-cheatsheet",
-              "guides/common-mistakes",
+              "guides/color-grading",
+              "guides/media-effects",
+              "guides/export-and-share"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "help",
               "guides/troubleshooting",
               "guides/feedback"
             ]
+          }
+        ]
+      },
+      {
+        "tab": "Studio",
+        "icon": "palette",
+        "groups": [
+          {
+            "group": "Start in Studio",
+            "pages": [
+              "studio/index",
+              "studio/storyboard"
+            ]
           },
           {
-            "group": "Deploy",
+            "group": "Edit",
             "pages": [
-              "deploy/cloud",
-              "guides/deploy",
-              "deploy/aws-lambda",
-              "deploy/gcp-cloud-run",
-              "deploy/templates-on-lambda",
-              "deploy/migrating-to-hyperframes-lambda"
+              "studio/canvas",
+              "studio/timeline",
+              "studio/animation",
+              "studio/captions"
+            ]
+          },
+          {
+            "group": "Build and reuse",
+            "pages": [
+              "studio/assets-and-blocks",
+              "studio/variables",
+              "studio/slideshows"
+            ]
+          },
+          {
+            "group": "Finish and recover",
+            "pages": [
+              "studio/export",
+              "studio/troubleshooting"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "studio/source",
+              "studio/shortcuts"
             ]
           }
         ]
       },
       {
         "tab": "Catalog",
+        "icon": "grid-2",
         "groups": [
           {
-            "group": "Code Animations",
+            "group": "Overview",
             "pages": [
-              "catalog/blocks/code-3d-extrude",
-              "catalog/blocks/code-shader-dissolve",
-              "catalog/blocks/code-particle-assemble",
-              "catalog/blocks/code-morph",
-              "catalog/blocks/code-snippet-flight",
-              "catalog/blocks/code-typing",
-              "catalog/blocks/code-diff",
-              "catalog/blocks/code-highlight",
-              "catalog/blocks/code-scroll"
+              "catalog/index"
             ]
           },
           {
-            "group": "Captions",
+            "group": "Text & captions",
             "pages": [
-              "catalog/components/caption-clip-wipe",
-              "catalog/components/caption-editorial-emphasis",
-              "catalog/components/caption-emoji-pop",
-              "catalog/components/caption-glitch-rgb",
-              "catalog/components/caption-gradient-fill",
-              "catalog/components/caption-highlight",
-              "catalog/components/caption-kinetic-slam",
-              "catalog/components/caption-matrix-decode",
-              "catalog/components/caption-neon-accent",
-              "catalog/components/caption-neon-glow",
-              "catalog/components/caption-parallax-layers",
-              "catalog/components/caption-particle-burst",
-              "catalog/components/caption-pill-karaoke",
-              "catalog/components/caption-texture",
-              "catalog/components/caption-weight-shift"
+              {
+                "group": "Captions",
+                "pages": [
+                  "catalog/components/caption-camera-follow",
+                  "catalog/components/caption-clip-wipe",
+                  "catalog/components/caption-editorial-emphasis",
+                  "catalog/components/caption-emoji-pop",
+                  "catalog/components/caption-glitch-rgb",
+                  "catalog/components/caption-gradient-fill",
+                  "catalog/components/caption-highlight",
+                  "catalog/components/caption-kinetic-slam",
+                  "catalog/components/caption-matrix-decode",
+                  "catalog/components/caption-neon-accent",
+                  "catalog/components/caption-neon-glow",
+                  "catalog/components/caption-parallax-layers",
+                  "catalog/components/caption-particle-burst",
+                  "catalog/components/caption-pill-karaoke",
+                  "catalog/components/caption-texture",
+                  "catalog/components/caption-weight-shift",
+                  "catalog/blocks/mk-callout-highlight"
+                ]
+              },
+              {
+                "group": "Typography & Text",
+                "pages": [
+                  "catalog/components/blur-out-up",
+                  "catalog/components/bottom-up-letters",
+                  "catalog/components/caption-blend-difference",
+                  "catalog/components/char-slam-explode",
+                  "catalog/components/focus-blur-resolve",
+                  "catalog/components/headline-slam",
+                  "catalog/blocks/hw-path-text",
+                  "catalog/blocks/hw-title",
+                  "catalog/components/inline-highlight",
+                  "catalog/components/kinetic-type-swap",
+                  "catalog/components/line-by-line-slide",
+                  "catalog/components/line-swap",
+                  "catalog/components/logo-brand-close",
+                  "catalog/components/marker-highlight",
+                  "catalog/components/matrix-decode",
+                  "catalog/components/mk-emphasis-type",
+                  "catalog/components/morph-text",
+                  "catalog/components/particle-text-dissolve",
+                  "catalog/components/per-word-crossfade",
+                  "catalog/components/per-word-rise",
+                  "catalog/components/perspective-marquee",
+                  "catalog/components/rgb-glitch-text",
+                  "catalog/components/scan-band",
+                  "catalog/components/scramble-reveal",
+                  "catalog/components/shared-axis-y",
+                  "catalog/components/shared-axis-z",
+                  "catalog/components/shimmer-sweep",
+                  "catalog/components/soft-blur-in",
+                  "catalog/blocks/split-flap-board",
+                  "catalog/components/strikethrough-replace",
+                  "catalog/components/text-shimmer",
+                  "catalog/components/ticker-takeover",
+                  "catalog/components/titlecard-calm",
+                  "catalog/components/titlecard-lockup",
+                  "catalog/components/tracking-in",
+                  "catalog/components/variable-axis-type",
+                  "catalog/components/vox-annotate",
+                  "catalog/blocks/weight-wave",
+                  "catalog/components/wordmark-tiles",
+                  "catalog/blocks/yt-prism-title"
+                ]
+              },
+              {
+                "group": "Lower Thirds",
+                "pages": [
+                  "catalog/blocks/lower-third-bild",
+                  "catalog/blocks/lt-accent-underline",
+                  "catalog/blocks/lt-bold-block",
+                  "catalog/blocks/lt-clean-bar",
+                  "catalog/blocks/lt-color-block",
+                  "catalog/blocks/lt-dark-card",
+                  "catalog/blocks/lt-kicker-name",
+                  "catalog/blocks/lt-mask-reveal",
+                  "catalog/blocks/lt-side-rule",
+                  "catalog/blocks/lt-soft-pill",
+                  "catalog/blocks/lt-stack-bars",
+                  "catalog/blocks/news-ticker"
+                ]
+              }
             ]
           },
           {
-            "group": "HTML-in-Canvas",
+            "group": "Code",
             "pages": [
-              "catalog/blocks/ios26-liquid-glass",
-              "catalog/blocks/liquid-glass-context-menu",
-              "catalog/blocks/liquid-glass-media-controls",
-              "catalog/blocks/liquid-glass-notification",
-              "catalog/blocks/liquid-glass-widgets",
-              "catalog/blocks/macos-tahoe-liquid-glass",
-              "catalog/blocks/vfx-iphone-device",
-              "catalog/blocks/vfx-liquid-background",
-              "catalog/blocks/vfx-liquid-glass",
-              "catalog/blocks/vfx-magnetic",
-              "catalog/blocks/vfx-portal",
-              "catalog/blocks/vfx-shatter",
-              "catalog/blocks/vfx-text-cursor"
+              {
+                "group": "Code Animations",
+                "pages": [
+                  "catalog/blocks/code-3d-extrude",
+                  "catalog/blocks/code-diff",
+                  "catalog/blocks/code-highlight",
+                  "catalog/blocks/code-morph",
+                  "catalog/blocks/code-particle-assemble",
+                  "catalog/blocks/code-scroll",
+                  "catalog/blocks/code-shader-dissolve",
+                  "catalog/blocks/code-snippet-flight",
+                  "catalog/blocks/code-typing",
+                  "catalog/components/terminal-simulator"
+                ]
+              },
+              {
+                "group": "Code Snippets",
+                "pages": [
+                  "catalog/blocks/code-snippet-apple-terminal-basic",
+                  "catalog/blocks/code-snippet-apple-terminal-clear-dark",
+                  "catalog/blocks/code-snippet-apple-terminal-clear-light",
+                  "catalog/blocks/code-snippet-apple-terminal-grass",
+                  "catalog/blocks/code-snippet-apple-terminal-homebrew",
+                  "catalog/blocks/code-snippet-apple-terminal-man-page",
+                  "catalog/blocks/code-snippet-apple-terminal-novel",
+                  "catalog/blocks/code-snippet-apple-terminal-ocean",
+                  "catalog/blocks/code-snippet-apple-terminal-pro",
+                  "catalog/blocks/code-snippet-apple-terminal-red-sands",
+                  "catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
+                  "catalog/blocks/code-snippet-apple-terminal-solid-colors",
+                  "catalog/blocks/code-snippet-dark-2026",
+                  "catalog/blocks/code-snippet-dark-modern",
+                  "catalog/blocks/code-snippet-dark-plus",
+                  "catalog/blocks/code-snippet-high-contrast",
+                  "catalog/blocks/code-snippet-high-contrast-light",
+                  "catalog/blocks/code-snippet-light-2026",
+                  "catalog/blocks/code-snippet-light-modern",
+                  "catalog/blocks/code-snippet-light-plus",
+                  "catalog/blocks/code-snippet-monokai",
+                  "catalog/blocks/code-snippet-solarized-light",
+                  "catalog/blocks/code-snippet-visual-studio-dark",
+                  "catalog/blocks/code-snippet-visual-studio-light"
+                ]
+              }
             ]
           },
           {
-            "group": "Social Overlays",
+            "group": "Transitions",
             "pages": [
-              "catalog/blocks/instagram-follow",
-              "catalog/blocks/macos-notification",
-              "catalog/blocks/reddit-post",
-              "catalog/blocks/spotify-card",
-              "catalog/blocks/tiktok-follow",
-              "catalog/blocks/x-post",
-              "catalog/blocks/yt-lower-third"
+              {
+                "group": "Shader Transitions",
+                "pages": [
+                  "catalog/blocks/chromatic-radial-split",
+                  "catalog/blocks/cinematic-zoom",
+                  "catalog/blocks/cross-warp-morph",
+                  "catalog/blocks/domain-warp-dissolve",
+                  "catalog/blocks/flash-through-white",
+                  "catalog/blocks/glitch",
+                  "catalog/blocks/gravitational-lens",
+                  "catalog/blocks/light-leak",
+                  "catalog/blocks/ridged-burn",
+                  "catalog/blocks/ripple-waves",
+                  "catalog/blocks/sdf-iris",
+                  "catalog/blocks/swirl-vortex",
+                  "catalog/blocks/thermal-distortion",
+                  "catalog/blocks/whip-pan"
+                ]
+              },
+              {
+                "group": "CSS Transitions",
+                "pages": [
+                  "catalog/blocks/beat-freeze-cut",
+                  "catalog/blocks/hw-scribble-transition",
+                  "catalog/blocks/mk-clone-wall-transition",
+                  "catalog/blocks/organic-light-leak-overlay",
+                  "catalog/blocks/transitions-3d",
+                  "catalog/blocks/transitions-blur",
+                  "catalog/blocks/transitions-cover",
+                  "catalog/blocks/transitions-destruction",
+                  "catalog/blocks/transitions-dissolve",
+                  "catalog/blocks/transitions-distortion",
+                  "catalog/blocks/transitions-grid",
+                  "catalog/blocks/transitions-light",
+                  "catalog/blocks/transitions-mechanical",
+                  "catalog/blocks/transitions-other",
+                  "catalog/blocks/transitions-push",
+                  "catalog/blocks/transitions-radial",
+                  "catalog/blocks/transitions-scale"
+                ]
+              }
             ]
           },
           {
-            "group": "Lower Thirds",
+            "group": "Data & charts",
             "pages": [
-              "catalog/blocks/lower-third-bild",
-              "catalog/blocks/lt-accent-underline",
-              "catalog/blocks/lt-bold-block",
-              "catalog/blocks/lt-clean-bar",
-              "catalog/blocks/lt-color-block",
-              "catalog/blocks/lt-dark-card",
-              "catalog/blocks/lt-kicker-name",
-              "catalog/blocks/lt-mask-reveal",
-              "catalog/blocks/lt-side-rule",
-              "catalog/blocks/lt-soft-pill",
-              "catalog/blocks/lt-stack-bars",
-              "catalog/blocks/news-ticker"
+              {
+                "group": "Data",
+                "pages": [
+                  "catalog/components/animated-bar-chart",
+                  "catalog/components/ascii-render-pass",
+                  "catalog/components/ascii-trail-reveal",
+                  "catalog/blocks/bar-chart-race",
+                  "catalog/components/chart-story",
+                  "catalog/components/conic-progress-ring",
+                  "catalog/blocks/data-chart",
+                  "catalog/components/decline-chart",
+                  "catalog/components/logo-wall",
+                  "catalog/blocks/mk-line-graph",
+                  "catalog/blocks/spain-map",
+                  "catalog/components/star-rating-fill",
+                  "catalog/blocks/us-map",
+                  "catalog/blocks/us-map-bubble",
+                  "catalog/blocks/us-map-flow",
+                  "catalog/blocks/us-map-hex",
+                  "catalog/blocks/world-map"
+                ]
+              }
             ]
           },
           {
-            "group": "Shader Transitions",
+            "group": "Scenes & demos",
             "pages": [
-              "catalog/blocks/chromatic-radial-split",
-              "catalog/blocks/cinematic-zoom",
-              "catalog/blocks/cross-warp-morph",
-              "catalog/blocks/domain-warp-dissolve",
-              "catalog/blocks/flash-through-white",
-              "catalog/blocks/glitch",
-              "catalog/blocks/gravitational-lens",
-              "catalog/blocks/light-leak",
-              "catalog/blocks/ridged-burn",
-              "catalog/blocks/ripple-waves",
-              "catalog/blocks/sdf-iris",
-              "catalog/blocks/swirl-vortex",
-              "catalog/blocks/thermal-distortion",
-              "catalog/blocks/whip-pan"
+              {
+                "group": "Showcases",
+                "pages": [
+                  "catalog/blocks/ai-chat-reveal",
+                  "catalog/blocks/app-showcase",
+                  "catalog/blocks/apple-money-count",
+                  "catalog/blocks/blue-sweater-intro-video",
+                  "catalog/blocks/camera-dolly-zoom",
+                  "catalog/blocks/chatgpt-exchange",
+                  "catalog/blocks/claude-exchange",
+                  "catalog/blocks/cosmic-orb",
+                  "catalog/blocks/gallery-tunnel",
+                  "catalog/blocks/heygen-avatar-promo-card",
+                  "catalog/blocks/message-thread-reveal",
+                  "catalog/blocks/north-korea-locked-down",
+                  "catalog/blocks/notes-reveal",
+                  "catalog/blocks/notification-cascade",
+                  "catalog/blocks/nyc-paris-flight",
+                  "catalog/blocks/oscilloscope-trace",
+                  "catalog/blocks/rack-focus",
+                  "catalog/blocks/share-sheet-carousel",
+                  "catalog/blocks/slack-notification-ad",
+                  "catalog/blocks/ui-3d-reveal",
+                  "catalog/blocks/vfx-anamorphic-flare",
+                  "catalog/blocks/vpn-youtube-spot"
+                ]
+              },
+              {
+                "group": "Product Demo",
+                "pages": [
+                  "catalog/components/browser-device-stage",
+                  "catalog/components/code-terminal-run",
+                  "catalog/components/cursor-glyph-trail",
+                  "catalog/components/echo-trail",
+                  "catalog/components/focus-swap",
+                  "catalog/components/icon-morph-beat",
+                  "catalog/components/native-notification-pop",
+                  "catalog/components/notification-stack",
+                  "catalog/components/offset-path-traveler",
+                  "catalog/components/press-ripple",
+                  "catalog/components/pull-to-refresh",
+                  "catalog/components/screen-flow-carousel",
+                  "catalog/components/segmentation-flood",
+                  "catalog/components/soft-blob-touch",
+                  "catalog/components/spring-stack-shuffle",
+                  "catalog/components/state-chip-rail",
+                  "catalog/components/sticky-mock-swap",
+                  "catalog/components/telemetry-hud",
+                  "catalog/components/toggle-flip",
+                  "catalog/components/tracing-beam",
+                  "catalog/components/typed-prompt",
+                  "catalog/components/vector-editor-rig"
+                ]
+              },
+              {
+                "group": "Social Overlays",
+                "pages": [
+                  "catalog/blocks/editorial-flash-overlay",
+                  "catalog/blocks/freeze-frame-dressing",
+                  "catalog/blocks/instagram-follow",
+                  "catalog/blocks/macos-notification",
+                  "catalog/blocks/reddit-post",
+                  "catalog/blocks/spotify-card",
+                  "catalog/blocks/thread-message-stack",
+                  "catalog/blocks/tiktok-follow",
+                  "catalog/blocks/x-post",
+                  "catalog/blocks/yt-comment-card",
+                  "catalog/blocks/yt-lower-third"
+                ]
+              },
+              {
+                "group": "Motion Scenes",
+                "pages": [
+                  "catalog/components/aurora-drift",
+                  "catalog/components/beat-accent",
+                  "catalog/components/beat-pulse-background",
+                  "catalog/components/chat-thread",
+                  "catalog/components/constellation-hub",
+                  "catalog/components/count-up",
+                  "catalog/components/cta-close",
+                  "catalog/components/cta-lockup",
+                  "catalog/components/facet-morph",
+                  "catalog/components/gesture-tap",
+                  "catalog/components/gloss-sweep",
+                  "catalog/components/grade-split-reveal",
+                  "catalog/components/grid-card-assemble",
+                  "catalog/components/light-sweep-pass",
+                  "catalog/components/locked-nucleus-orbit",
+                  "catalog/components/logo-sting",
+                  "catalog/components/marker-checklist-card",
+                  "catalog/components/modal-morph",
+                  "catalog/components/multi-device-splay",
+                  "catalog/components/notes-typing",
+                  "catalog/components/outline-draw",
+                  "catalog/components/oversized-cursor",
+                  "catalog/components/particle-image-reveal",
+                  "catalog/components/physical-exit",
+                  "catalog/components/radial-surround",
+                  "catalog/components/scroll-feed",
+                  "catalog/components/slit-scan-reveal",
+                  "catalog/components/social-proof-card",
+                  "catalog/components/split-tilt-cards",
+                  "catalog/components/spring-pop",
+                  "catalog/components/stitched-text-draw",
+                  "catalog/components/stop-motion-cadence",
+                  "catalog/components/svg-stroke-trace",
+                  "catalog/components/swipe-rail",
+                  "catalog/components/testimonial-proof-card",
+                  "catalog/components/touch-indicator",
+                  "catalog/components/trust-strip",
+                  "catalog/components/variable-font-flex",
+                  "catalog/components/velocity-throw-snap",
+                  "catalog/components/whiteboard-ink"
+                ]
+              }
             ]
           },
           {
-            "group": "CSS Transitions",
+            "group": "Motion & effects",
             "pages": [
-              "catalog/blocks/transitions-3d",
-              "catalog/blocks/transitions-blur",
-              "catalog/blocks/transitions-cover",
-              "catalog/blocks/transitions-destruction",
-              "catalog/blocks/transitions-dissolve",
-              "catalog/blocks/transitions-distortion",
-              "catalog/blocks/transitions-grid",
-              "catalog/blocks/transitions-light",
-              "catalog/blocks/transitions-mechanical",
-              "catalog/blocks/transitions-other",
-              "catalog/blocks/transitions-push",
-              "catalog/blocks/transitions-radial",
-              "catalog/blocks/transitions-scale"
+              {
+                "group": "Motion Primitives",
+                "pages": [
+                  "catalog/components/arc-motion-path",
+                  "catalog/components/avatar-group-hover",
+                  "catalog/components/badge-pop",
+                  "catalog/components/blur-in",
+                  "catalog/components/card-resize",
+                  "catalog/components/chat-message",
+                  "catalog/components/chromatic-aberration-wipe",
+                  "catalog/components/dynamic-grid",
+                  "catalog/components/icon-swap",
+                  "catalog/blocks/lt-neon-border",
+                  "catalog/components/menu-morph",
+                  "catalog/components/number-pop-in",
+                  "catalog/components/number-wheel",
+                  "catalog/components/page-slide",
+                  "catalog/components/separator",
+                  "catalog/components/sheet-spring-up",
+                  "catalog/components/simulated-cursor",
+                  "catalog/components/skeleton-reveal",
+                  "catalog/components/slot-machine-roll",
+                  "catalog/components/staggered-fade-up",
+                  "catalog/components/streaming-text",
+                  "catalog/components/success-check",
+                  "catalog/components/svg-line-draw-loader",
+                  "catalog/components/text-stagger",
+                  "catalog/components/text-state-swap",
+                  "catalog/components/three-orbiting-cards",
+                  "catalog/components/tilt-card",
+                  "catalog/components/top-down-letters",
+                  "catalog/components/typewriter",
+                  "catalog/components/typing-indicator"
+                ]
+              },
+              {
+                "group": "Effects",
+                "pages": [
+                  "catalog/components/avatar-cloud",
+                  "catalog/components/beat-timeline",
+                  "catalog/components/before-after-wipe",
+                  "catalog/components/camera-rig-depth-stack",
+                  "catalog/components/checkout-flow",
+                  "catalog/components/comparison-split",
+                  "catalog/components/confetti",
+                  "catalog/components/cut-the-curve",
+                  "catalog/components/device-frame-stage",
+                  "catalog/components/directional-wipe",
+                  "catalog/components/fade-through",
+                  "catalog/components/grid-pixelate-wipe",
+                  "catalog/components/halftone-dissolve",
+                  "catalog/components/hw-arrow",
+                  "catalog/components/hw-boil",
+                  "catalog/components/hw-box-label",
+                  "catalog/components/hw-callout-circle",
+                  "catalog/components/hw-underline",
+                  "catalog/components/input-feedback",
+                  "catalog/components/iris-reveal",
+                  "catalog/components/keyframe-scrub-stack",
+                  "catalog/components/match-cut",
+                  "catalog/components/mesh-gradient-bg",
+                  "catalog/components/micro-transitions",
+                  "catalog/components/mk-usage-arc",
+                  "catalog/components/morph-swap",
+                  "catalog/components/motion-blur",
+                  "catalog/components/multiplayer-cursors",
+                  "catalog/components/notification-pileup",
+                  "catalog/components/onboarding-stepper-flow",
+                  "catalog/components/ordered-dither-pass",
+                  "catalog/components/overwhelm-surround",
+                  "catalog/components/panel-reveal",
+                  "catalog/components/parallax-device-dive",
+                  "catalog/components/parallax-unzoom",
+                  "catalog/components/parallax-zoom",
+                  "catalog/components/rubber-band-bumper",
+                  "catalog/components/settings-toggle-flow",
+                  "catalog/components/signup-flow",
+                  "catalog/components/spotlight-card",
+                  "catalog/components/stagger-cascade",
+                  "catalog/components/stagger-lattice",
+                  "catalog/components/store-badge-lockup",
+                  "catalog/components/svg-mask-reveal",
+                  "catalog/components/tabs-slide-indicator",
+                  "catalog/components/testimonial-card",
+                  "catalog/components/type-match-cut",
+                  "catalog/components/vignette",
+                  "catalog/components/whip-pan-cut",
+                  "catalog/components/x-follow-card",
+                  "catalog/components/yt-circle-pointer",
+                  "catalog/components/yt-feather-highlight",
+                  "catalog/components/zoom-through-transition"
+                ]
+              },
+              {
+                "group": "Camera & 3D",
+                "pages": [
+                  "catalog/blocks/camcorder-hud",
+                  "catalog/components/camera-scan-gate",
+                  "catalog/components/camera-shake",
+                  "catalog/components/drift-hold",
+                  "catalog/components/focus-rack",
+                  "catalog/components/pan-stations",
+                  "catalog/components/pull-back-reveal",
+                  "catalog/components/push-in",
+                  "catalog/components/scroll-camera-story",
+                  "catalog/components/ui-focus-zoom",
+                  "catalog/components/yt-camera-move"
+                ]
+              }
             ]
           },
           {
-            "group": "Showcases",
+            "group": "Surfaces",
             "pages": [
-              "catalog/blocks/app-showcase",
-              "catalog/blocks/apple-money-count",
-              "catalog/blocks/blue-sweater-intro-video",
-              "catalog/blocks/north-korea-locked-down",
-              "catalog/blocks/nyc-paris-flight",
-              "catalog/blocks/ui-3d-reveal",
-              "catalog/blocks/vpn-youtube-spot"
-            ]
-          },
-          {
-            "group": "Data",
-            "pages": [
-              "catalog/blocks/data-chart",
-              "catalog/blocks/spain-map",
-              "catalog/blocks/us-map",
-              "catalog/blocks/us-map-bubble",
-              "catalog/blocks/us-map-flow",
-              "catalog/blocks/us-map-hex",
-              "catalog/blocks/world-map"
-            ]
-          },
-          {
-            "group": "Effects",
-            "pages": [
-              "catalog/components/grain-overlay",
-              "catalog/components/grid-pixelate-wipe",
-              "catalog/components/parallax-unzoom",
-              "catalog/components/parallax-zoom",
-              "catalog/components/shimmer-sweep",
-              "catalog/components/vignette"
-            ]
-          },
-          {
-            "group": "Text Effects",
-            "pages": [
-              "catalog/components/caption-blend-difference",
-              "catalog/components/morph-text",
-              "catalog/components/texture-mask-text"
+              {
+                "group": "Texture",
+                "pages": [
+                  "catalog/components/grain-field",
+                  "catalog/components/grain-overlay",
+                  "catalog/blocks/halftone-field",
+                  "catalog/components/ink-bleed-reveal",
+                  "catalog/components/texture-mask-text",
+                  "catalog/blocks/yt-lcd-background",
+                  "catalog/components/yt-screen-warp"
+                ]
+              },
+              {
+                "group": "HTML-in-Canvas",
+                "pages": [
+                  "catalog/blocks/ios26-liquid-glass",
+                  "catalog/blocks/liquid-glass-context-menu",
+                  "catalog/blocks/liquid-glass-media-controls",
+                  "catalog/blocks/liquid-glass-notification",
+                  "catalog/blocks/liquid-glass-widgets",
+                  "catalog/blocks/macos-tahoe-liquid-glass",
+                  "catalog/blocks/vfx-iphone-device",
+                  "catalog/blocks/vfx-liquid-background",
+                  "catalog/blocks/vfx-liquid-glass",
+                  "catalog/blocks/vfx-magnetic",
+                  "catalog/blocks/vfx-portal",
+                  "catalog/blocks/vfx-shatter",
+                  "catalog/blocks/vfx-text-cursor"
+                ]
+              }
             ]
           },
           {
             "group": "Blocks",
             "pages": [
-              "catalog/blocks/flowchart",
-              "catalog/blocks/flowchart-vertical",
-              "catalog/blocks/logo-outro"
-            ]
-          },
-          {
-            "group": "Code Snippets",
-            "pages": [
-              "catalog/blocks/code-snippet-apple-terminal-basic",
-              "catalog/blocks/code-snippet-apple-terminal-clear-dark",
-              "catalog/blocks/code-snippet-apple-terminal-clear-light",
-              "catalog/blocks/code-snippet-apple-terminal-grass",
-              "catalog/blocks/code-snippet-apple-terminal-homebrew",
-              "catalog/blocks/code-snippet-apple-terminal-man-page",
-              "catalog/blocks/code-snippet-apple-terminal-novel",
-              "catalog/blocks/code-snippet-apple-terminal-ocean",
-              "catalog/blocks/code-snippet-apple-terminal-pro",
-              "catalog/blocks/code-snippet-apple-terminal-red-sands",
-              "catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
-              "catalog/blocks/code-snippet-apple-terminal-solid-colors",
-              "catalog/blocks/code-snippet-dark-2026",
-              "catalog/blocks/code-snippet-dark-modern",
-              "catalog/blocks/code-snippet-dark-plus",
-              "catalog/blocks/code-snippet-high-contrast",
-              "catalog/blocks/code-snippet-high-contrast-light",
-              "catalog/blocks/code-snippet-light-2026",
-              "catalog/blocks/code-snippet-light-modern",
-              "catalog/blocks/code-snippet-light-plus",
-              "catalog/blocks/code-snippet-monokai",
-              "catalog/blocks/code-snippet-solarized-light",
-              "catalog/blocks/code-snippet-visual-studio-dark",
-              "catalog/blocks/code-snippet-visual-studio-light"
+              {
+                "group": "Blocks",
+                "pages": [
+                  "catalog/blocks/flowchart",
+                  "catalog/blocks/flowchart-vertical",
+                  "catalog/blocks/hw-frame",
+                  "catalog/blocks/hw-pipeline",
+                  "catalog/blocks/hw-text-cloud",
+                  "catalog/blocks/logo-outro",
+                  "catalog/blocks/mk-background",
+                  "catalog/blocks/mk-placeholder-grid",
+                  "catalog/blocks/mk-progress-stat",
+                  "catalog/blocks/mk-specs-list",
+                  "catalog/blocks/spiral-galaxy",
+                  "catalog/blocks/yt-logo-intro",
+                  "catalog/blocks/yt-vertical-fill"
+                ]
+              }
             ]
           }
         ]
       },
       {
-        "tab": "Packages",
+        "tab": "Developers",
+        "icon": "code",
         "groups": [
           {
-            "group": "Packages",
+            "group": "Start here",
             "pages": [
-              "packages/core",
-              "packages/parsers",
-              "packages/lint",
-              "packages/studio-server",
-              "packages/sdk",
-              "packages/engine",
-              "packages/player",
-              "packages/producer",
-              "packages/shader-transitions",
-              "packages/aws-lambda",
-              "packages/gcp-cloud-run",
-              "packages/studio",
-              "packages/cli"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "SDK",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": [
-              "sdk/overview",
-              "sdk/quickstart"
+              "developers/overview"
             ]
           },
           {
-            "group": "Guides",
+            "group": "Command line",
             "pages": [
+              "developers/cli",
+              "packages/cli",
+              "packages/lint"
+            ]
+          },
+          {
+            "group": "SDK guides",
+            "pages": [
+              "sdk/quickstart",
               "sdk/guides/querying-and-editing",
               "sdk/guides/timing-and-animation",
               "sdk/guides/undo-redo-and-patches",
@@ -364,7 +786,7 @@
             ]
           },
           {
-            "group": "Reference",
+            "group": "SDK reference",
             "pages": [
               "sdk/reference/open-composition",
               "sdk/reference/composition",
@@ -373,32 +795,85 @@
               "sdk/reference/adapters",
               "sdk/reference/utilities"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Reference",
-        "groups": [
+          },
           {
-            "group": "Reference",
+            "group": "Composition, design & animation",
             "pages": [
-              "reference/html-schema"
+              "concepts/compositions",
+              "concepts/variables",
+              "concepts/data-attributes",
+              "guides/gsap-animation",
+              "concepts/frame-adapters",
+              "concepts/determinism",
+              "guides/html-in-canvas",
+              "guides/figma"
             ]
           },
           {
-            "group": "Contributing",
+            "group": "Composition reference",
+            "pages": [
+              "reference/html-schema",
+              "reference/color-grading"
+            ]
+          },
+          {
+            "group": "Rendering paths",
+            "pages": [
+              "guides/rendering",
+              "deploy/overview",
+              "deploy/cloud",
+              "guides/deploy"
+            ]
+          },
+          {
+            "group": "Cloud infrastructure",
+            "pages": [
+              "deploy/aws-lambda",
+              "deploy/gcp-cloud-run",
+              "deploy/templates-on-lambda",
+              "deploy/migrating-to-hyperframes-lambda",
+              "packages/aws-lambda",
+              "packages/gcp-cloud-run"
+            ]
+          },
+          {
+            "group": "Advanced rendering",
+            "pages": [
+              "guides/4k-rendering",
+              "guides/hdr",
+              "guides/performance"
+            ]
+          },
+          {
+            "group": "Packages",
+            "pages": [
+              "packages/core",
+              "packages/parsers",
+              "packages/studio-server",
+              "packages/sdk",
+              "packages/engine",
+              "packages/player",
+              "packages/producer",
+              "packages/shader-transitions",
+              "packages/studio"
+            ]
+          },
+          {
+            "group": "Agent setup",
+            "pages": [
+              "guides/authentication",
+              "guides/skills"
+            ]
+          },
+          {
+            "group": "Contributing & community",
             "pages": [
               "contributing",
               "contributing/catalog",
               "contributing/release-channels",
               "contributing/changelog-process",
               "contributing/testing-local-changes",
-              "contributing/studio-manual-dom-editing"
-            ]
-          },
-          {
-            "group": "Community",
-            "pages": [
+              "contributing/canary-rollouts",
               "community/adopters"
             ]
           }
@@ -408,7 +883,206 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/heygen-com/hyperframes"
+      "github": "https://github.com/heygen-com/hyperframes",
+      "x": "https://x.com/HeyGen",
+      "instagram": "https://www.instagram.com/heygen_official/"
+    },
+    "links": [
+      {
+        "header": "Explore",
+        "items": [
+          {
+            "label": "Introduction",
+            "href": "/introduction"
+          },
+          {
+            "label": "Make your first video",
+            "href": "/quickstart"
+          },
+          {
+            "label": "Examples",
+            "href": "/examples"
+          }
+        ]
+      },
+      {
+        "header": "Build",
+        "items": [
+          {
+            "label": "Studio",
+            "href": "/studio"
+          },
+          {
+            "label": "Catalog",
+            "href": "/catalog"
+          },
+          {
+            "label": "Developers",
+            "href": "/developers/overview"
+          }
+        ]
+      },
+      {
+        "header": "Resources",
+        "items": [
+          {
+            "label": "Product updates",
+            "href": "/product-updates"
+          },
+          {
+            "label": "Playground",
+            "href": "https://www.hyperframes.dev/"
+          },
+          {
+            "label": "GitHub",
+            "href": "https://github.com/heygen-com/hyperframes"
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/heygen-com/hyperframes"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Playground",
+      "href": "https://www.hyperframes.dev/"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/guides",
+      "destination": "/introduction"
+    },
+    {
+      "source": "/showcase",
+      "destination": "/examples"
+    },
+    {
+      "source": "/launch-videos",
+      "destination": "/examples"
+    },
+    {
+      "source": "/guides/claude-design",
+      "destination": "/guides/design-tools"
+    },
+    {
+      "source": "/guides/open-design",
+      "destination": "/guides/design-tools"
+    },
+    {
+      "source": "/guides/common-mistakes",
+      "destination": "/guides/troubleshooting"
+    },
+    {
+      "source": "/guides/create-with-agent",
+      "destination": "/workflows"
+    },
+    {
+      "source": "/guides/choose-your-path",
+      "destination": "/workflows"
+    },
+    {
+      "source": "/guides/help",
+      "destination": "/help"
+    },
+    {
+      "source": "/guides/project-tour",
+      "destination": "/concepts"
+    },
+    {
+      "source": "/guides/media-overlays",
+      "destination": "/catalog"
+    },
+    {
+      "source": "/guides/common-questions",
+      "destination": "/help"
+    },
+    {
+      "source": "/contributing/studio-manual-dom-editing",
+      "destination": "/studio/canvas"
+    },
+    {
+      "source": "/guides/video-editor-cheatsheet",
+      "destination": "/studio/shortcuts"
+    },
+    {
+      "source": "/guides/timeline-editing",
+      "destination": "/studio/timeline"
+    },
+    {
+      "source": "/guides/website-to-video",
+      "destination": "/guides/product-launch-video"
+    },
+    {
+      "source": "/guides/prompting",
+      "destination": "/prompting/overview",
+      "permanent": true
+    },
+    {
+      "source": "/guides/pipeline",
+      "destination": "/workflows",
+      "permanent": true
+    },
+    {
+      "source": "/guides/quality-checklist",
+      "destination": "/guides/export-and-share",
+      "permanent": true
+    },
+    {
+      "source": "/guides/publish-and-share",
+      "destination": "/guides/export-and-share",
+      "permanent": true
+    },
+    {
+      "source": "/guides/antigravity",
+      "destination": "/guides/skills",
+      "permanent": true
+    },
+    {
+      "source": "/guides/copilot-cli",
+      "destination": "/guides/skills",
+      "permanent": true
+    },
+    {
+      "source": "/studio/tour",
+      "destination": "/studio",
+      "permanent": true
+    },
+    {
+      "source": "/studio/layers",
+      "destination": "/studio/canvas",
+      "permanent": true
+    },
+    {
+      "source": "/studio/design",
+      "destination": "/studio/canvas",
+      "permanent": true
+    },
+    {
+      "source": "/guides/keyframes",
+      "destination": "/studio/animation",
+      "permanent": true
+    },
+    {
+      "source": "/studio/lint-and-agent",
+      "destination": "/studio/source",
+      "permanent": true
+    },
+    {
+      "source": "/guides/transcribe-and-caption",
+      "destination": "/guides/voice-and-audio",
+      "permanent": true
+    },
+    {
+      "source": "/sdk/overview",
+      "destination": "/sdk/quickstart",
+      "permanent": true
+    }
+  ]
 }

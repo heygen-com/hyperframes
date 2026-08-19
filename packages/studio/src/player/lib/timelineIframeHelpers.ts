@@ -12,13 +12,16 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { IframeWindow } from "./playbackTypes";
+import { readClipTiming } from "@hyperframes/core/composition-contract";
 import {
   getTimelineElementSelector,
   getTimelineElementSourceFile,
   getTimelineElementSelectorIndex,
   getTimelineElementDisplayLabel,
   buildTimelineElementIdentity,
+  readTimelineElementZIndex,
 } from "./timelineElementHelpers";
+import { postRuntimeControlMessage } from "./runtimeProtocol";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation
@@ -36,6 +39,9 @@ export function normalizePreviewViewport(doc: Document, win: Window): void {
   win.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
+// Legacy recovery retained until versioned composition manifests complete
+// their compatibility soak across published CDN runtimes.
+// fallow-ignore-next-line complexity
 export function autoHealMissingCompositionIds(doc: Document): void {
   const compositionIdRe = /data-composition-id=["']([^"']+)["']/gi;
   const referencedIds = new Set<string>();
@@ -78,8 +84,14 @@ export function autoHealMissingCompositionIds(doc: Document): void {
 
 type PreviewPlayerHost = HTMLElement & {
   muted?: boolean;
+  volume?: number;
   playbackRate?: number;
 };
+
+function normalizePreviewVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.max(0, Math.min(1, volume));
+}
 
 function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
   return value instanceof HTMLElement;
@@ -102,14 +114,7 @@ function postPreviewControl(
   action: string,
   payload: Record<string, unknown>,
 ): void {
-  iframe.contentWindow?.postMessage(
-    { source: "hf-parent", type: "control", action, ...payload },
-    "*",
-  );
-}
-
-export function shouldMutePreviewAudio(audioMuted: boolean, playbackRate: number): boolean {
-  return audioMuted || playbackRate > 1;
+  postRuntimeControlMessage(iframe.contentWindow, action, payload);
 }
 
 export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: boolean): void {
@@ -121,6 +126,19 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
       return;
     }
     postPreviewControl(iframe, "set-muted", { muted });
+  } catch {}
+}
+
+export function setPreviewMediaVolume(iframe: HTMLIFrameElement | null, volume: number): void {
+  if (!iframe) return;
+  const nextVolume = normalizePreviewVolume(volume);
+  try {
+    const host = resolvePreviewPlayerHost(iframe);
+    if (host && typeof host.volume === "number") {
+      host.volume = nextVolume;
+      return;
+    }
+    postPreviewControl(iframe, "set-volume", { volume: nextVolume });
   } catch {}
 }
 
@@ -194,14 +212,14 @@ function resolveScrubAudioEl(doc: Document, musicId?: string | null): HTMLAudioE
   );
 }
 
-function applyScrub(el: HTMLAudioElement, audioFileTime: number): void {
+function applyScrub(el: HTMLAudioElement, audioFileTime: number, previewVolume: number): void {
   if (scrubAudioEl && scrubAudioEl !== el) stopScrubPreviewAudio();
   if (scrubPrevMuted === null) scrubPrevMuted = el.muted;
   if (scrubPrevVolume === null) scrubPrevVolume = el.volume;
   scrubAudioEl = el;
   try {
     el.muted = false;
-    el.volume = SCRUB_VOLUME;
+    el.volume = SCRUB_VOLUME * normalizePreviewVolume(previewVolume);
     if (Math.abs(el.currentTime - audioFileTime) > 0.04) el.currentTime = audioFileTime;
     if (el.paused) void el.play().catch(() => {});
   } catch {
@@ -219,6 +237,7 @@ export function scrubPreviewAudio(
   iframe: HTMLIFrameElement | null,
   audioFileTime: number | null,
   musicId?: string | null,
+  previewVolume = 1,
 ): void {
   if (!iframe) return;
   if (audioFileTime === null) {
@@ -233,7 +252,7 @@ export function scrubPreviewAudio(
   }
   if (!doc) return;
   const el = resolveScrubAudioEl(doc, musicId);
-  if (el) applyScrub(el, audioFileTime);
+  if (el) applyScrub(el, audioFileTime, previewVolume);
 }
 
 export function stopScrubPreviewAudio(): void {
@@ -259,6 +278,141 @@ export function stopScrubPreviewAudio(): void {
 // Enrich missing compositions from DOM
 // ---------------------------------------------------------------------------
 
+function timelineDuration(iframeWin: IframeWindow, compositionId: string): number {
+  return (
+    (
+      iframeWin.__timelines?.[compositionId] as { duration?: () => number } | undefined
+    )?.duration?.() ?? 0
+  );
+}
+
+function createTimedElementLookup(doc: Document): Map<string, Element> {
+  const timedById = new Map<string, Element>();
+  for (const timed of doc.querySelectorAll("[data-start]")) {
+    for (const id of [
+      timed.id,
+      timed.getAttribute("data-hf-id"),
+      timed.getAttribute("data-composition-id"),
+    ]) {
+      if (id) timedById.set(id, timed);
+    }
+  }
+  return timedById;
+}
+
+function createReferenceEndResolver(
+  timedById: ReadonlyMap<string, Element>,
+  iframeWin: IframeWindow,
+): (refId: string, visiting: ReadonlySet<string>) => number | null {
+  const resolveEnd = (refId: string, visiting: ReadonlySet<string>): number | null => {
+    if (visiting.has(refId)) return null;
+    const referenced = timedById.get(refId);
+    if (!referenced) return null;
+    const next = new Set(visiting).add(refId);
+    const timing = readClipTiming(referenced, {
+      resolveReferenceEnd: (nestedId) => resolveEnd(nestedId, next),
+    });
+    if (timing.end != null) return timing.end;
+    const compositionId = referenced.getAttribute("data-composition-id");
+    const duration = compositionId ? timelineDuration(iframeWin, compositionId) : 0;
+    return timing.start == null || duration <= 0 ? null : timing.start + duration;
+  };
+  return resolveEnd;
+}
+
+function clampCompositionWindow(
+  start: number,
+  duration: number,
+  rootDuration: number,
+): { start: number; duration: number } | null {
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  const safeStart = Number.isFinite(start) ? start : 0;
+  if (!Number.isFinite(rootDuration) || rootDuration <= 0) {
+    return { start: safeStart, duration };
+  }
+  if (safeStart >= rootDuration) return null;
+  const clamped = Math.min(duration, Math.max(0, rootDuration - safeStart));
+  return clamped > 0 ? { start: safeStart, duration: clamped } : null;
+}
+
+function nonEmpty(value: string, fallback: string): string {
+  return value || fallback;
+}
+
+function optionalNonEmpty(value: string | null): string | undefined {
+  return value || undefined;
+}
+
+function attachCompositionSource(
+  entry: TimelineElement,
+  element: HTMLElement,
+  compositionSrc: string | null,
+): TimelineElement {
+  if (compositionSrc) return { ...entry, compositionSrc };
+  const innerVideo = element.querySelector("video[src]");
+  if (!innerVideo) return entry;
+  return { ...entry, src: optionalNonEmpty(innerVideo.getAttribute("src")), tag: "video" };
+}
+
+function buildMissingCompositionEntry(params: {
+  doc: Document;
+  iframeWin: IframeWindow;
+  element: HTMLElement;
+  compositionId: string;
+  rootDuration: number;
+  fallbackIndex: number;
+  resolveEnd: (refId: string, visiting: ReadonlySet<string>) => number | null;
+}): TimelineElement | null {
+  const { doc, iframeWin, element, compositionId, rootDuration, fallbackIndex, resolveEnd } =
+    params;
+  const timing = readClipTiming(element, {
+    resolveReferenceEnd: (refId) => resolveEnd(refId, new Set([compositionId])),
+  });
+  const window = clampCompositionWindow(
+    timing.start ?? 0,
+    timing.duration ?? timelineDuration(iframeWin, compositionId),
+    rootDuration,
+  );
+  if (!window) return null;
+
+  const preferredId = nonEmpty(element.id, compositionId);
+  const compositionSrc =
+    element.getAttribute("data-composition-src") ?? element.getAttribute("data-composition-file");
+  const selector = getTimelineElementSelector(element);
+  const sourceFile = getTimelineElementSourceFile(element);
+  const selectorIndex = getTimelineElementSelectorIndex(doc, element, selector);
+  const label = getTimelineElementDisplayLabel({
+    id: preferredId,
+    label: element.getAttribute("data-timeline-label") ?? element.getAttribute("data-label"),
+    tag: element.tagName,
+  });
+  const identity = buildTimelineElementIdentity({
+    preferredId,
+    label,
+    fallbackIndex,
+    domId: optionalNonEmpty(element.id),
+    selector,
+    selectorIndex,
+    sourceFile,
+  });
+  const entry: TimelineElement = {
+    id: identity.id,
+    label,
+    key: identity.key,
+    tag: element.tagName.toLowerCase(),
+    start: window.start,
+    duration: window.duration,
+    track: timing.trackIndex,
+    domId: optionalNonEmpty(element.id),
+    hfId: optionalNonEmpty(element.getAttribute("data-hf-id")),
+    selector,
+    selectorIndex,
+    sourceFile,
+    zIndex: readTimelineElementZIndex(element),
+  };
+  return attachCompositionSource(entry, element, compositionSrc);
+}
+
 /**
  * Scan the iframe DOM for composition hosts missing from the current
  * timeline elements and add them.  The CDN runtime often fails to resolve
@@ -280,116 +434,24 @@ export function buildMissingCompositionElements(
   const hosts = doc.querySelectorAll("[data-composition-id][data-start]");
   const missing: TimelineElement[] = [];
 
-  hosts.forEach((host) => {
+  const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
+
+  for (const host of hosts) {
     const el = host as HTMLElement;
     const compId = el.getAttribute("data-composition-id");
-    if (!compId || compId === rootCompId) return;
-    if (existingIds.has(el.id) || existingIds.has(compId)) return;
-
-    // Resolve start: numeric or element-reference
-    const startAttr = el.getAttribute("data-start") ?? "0";
-    let start = parseFloat(startAttr);
-    if (isNaN(start)) {
-      const ref =
-        doc.getElementById(startAttr) ||
-        doc.querySelector(`[data-composition-id="${CSS.escape(startAttr)}"]`);
-      if (ref) {
-        const refStartAttr = ref.getAttribute("data-start") ?? "0";
-        let refStart = parseFloat(refStartAttr);
-        // Recursively resolve one level of reference for the ref's own start
-        if (isNaN(refStart)) {
-          const refRef =
-            doc.getElementById(refStartAttr) ||
-            doc.querySelector(`[data-composition-id="${CSS.escape(refStartAttr)}"]`);
-          const rrStart = parseFloat(refRef?.getAttribute("data-start") ?? "0") || 0;
-          const rrCompId = refRef?.getAttribute("data-composition-id");
-          const rrDur =
-            parseFloat(refRef?.getAttribute("data-duration") ?? "") ||
-            (rrCompId
-              ? ((
-                  iframeWin.__timelines?.[rrCompId] as { duration?: () => number } | undefined
-                )?.duration?.() ?? 0)
-              : 0);
-          refStart = rrStart + rrDur;
-        }
-        const refCompId = ref.getAttribute("data-composition-id");
-        const refDur =
-          parseFloat(ref.getAttribute("data-duration") ?? "") ||
-          (refCompId
-            ? ((
-                iframeWin.__timelines?.[refCompId] as { duration?: () => number } | undefined
-              )?.duration?.() ?? 0)
-            : 0);
-        start = refStart + refDur;
-      } else {
-        start = 0;
-      }
-    }
-
-    // Resolve duration from data-duration or GSAP timeline
-    let dur = parseFloat(el.getAttribute("data-duration") ?? "");
-    if (isNaN(dur) || dur <= 0) {
-      dur =
-        (
-          iframeWin.__timelines?.[compId] as { duration?: () => number } | undefined
-        )?.duration?.() ?? 0;
-    }
-    if (!Number.isFinite(dur) || dur <= 0) return;
-    if (!Number.isFinite(start)) start = 0;
-    if (Number.isFinite(rootDuration) && rootDuration > 0) {
-      if (start >= rootDuration) return;
-      dur = Math.min(dur, Math.max(0, rootDuration - start));
-      if (dur <= 0) return;
-    }
-
-    const trackStr = el.getAttribute("data-track-index");
-    const track = trackStr != null ? parseInt(trackStr, 10) : 0;
-    // fallow-ignore-next-line code-duplication
-    const compSrc =
-      el.getAttribute("data-composition-src") || el.getAttribute("data-composition-file");
-    const selector = getTimelineElementSelector(el);
-    const sourceFile = getTimelineElementSourceFile(el);
-    const selectorIndex = getTimelineElementSelectorIndex(doc, el, selector);
-    const label = getTimelineElementDisplayLabel({
-      id: el.id || compId || null,
-      label: el.getAttribute("data-timeline-label") ?? el.getAttribute("data-label"),
-      tag: el.tagName,
-    });
-    const identity = buildTimelineElementIdentity({
-      preferredId: el.id || compId || null,
-      label,
+    if (!compId || compId === rootCompId) continue;
+    if (existingIds.has(el.id) || existingIds.has(compId)) continue;
+    const entry = buildMissingCompositionEntry({
+      doc,
+      iframeWin,
+      element: el,
+      compositionId: compId,
+      rootDuration,
       fallbackIndex: missing.length,
-      domId: el.id || undefined,
-      selector,
-      selectorIndex,
-      sourceFile,
+      resolveEnd,
     });
-    const entry: TimelineElement = {
-      id: identity.id,
-      label,
-      key: identity.key,
-      tag: el.tagName.toLowerCase(),
-      start,
-      duration: dur,
-      track: isNaN(track) ? 0 : track,
-      domId: el.id || undefined,
-      hfId: el.getAttribute("data-hf-id") || undefined,
-      selector,
-      selectorIndex,
-      sourceFile,
-    };
-    if (compSrc) {
-      entry.compositionSrc = compSrc;
-    } else {
-      // Inline composition — expose inner video for thumbnails
-      const innerVideo = el.querySelector("video[src]");
-      if (innerVideo) {
-        entry.src = innerVideo.getAttribute("src") || undefined;
-        entry.tag = "video";
-      }
-    }
-    missing.push(entry);
-  });
+    if (entry) missing.push(entry);
+  }
 
   // Patch existing elements that are missing compositionSrc
   let patched = false;

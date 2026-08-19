@@ -9,9 +9,7 @@
  */
 import { useCallback, useEffect, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
-import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import { useGsapAnimationsForElement, usePopulateKeyframeCacheForFile } from "./useGsapTweenCache";
 import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
@@ -25,6 +23,8 @@ export interface UseDomEditWiringParams {
   activeCompPath: string | null;
   domEditSelection: DomEditSelection | null;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
+  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   previewIframe: HTMLIFrameElement | null;
   captionEditMode: boolean;
@@ -33,7 +33,7 @@ export interface UseDomEditWiringParams {
   bumpGsapCache: () => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
@@ -56,24 +56,24 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     animId: string,
     updates: { duration?: number; ease?: string; position?: number },
-  ) => void;
-  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => void;
-  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => void;
+  ) => Promise<void>;
+  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => Promise<void>;
+  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => Promise<void>;
   addGsapAnimation: (
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
   ) => Promise<void>;
-  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   updateGsapFromProperty: (
     sel: DomEditSelection,
     animId: string,
     prop: string,
     value: number | string,
-  ) => void;
-  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  ) => Promise<void>;
+  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   addKeyframe: (
     sel: DomEditSelection,
     animId: string,
@@ -93,20 +93,20 @@ export interface UseDomEditWiringParams {
     animId: string,
     fromPercentage: number,
     toPercentage: number,
-  ) => void;
+  ) => Promise<boolean>;
   resizeKeyframedTween: (
     sel: DomEditSelection,
     animId: string,
     position: number,
     duration: number,
     pctRemap: Array<{ from: number; to: number }>,
-  ) => void;
+  ) => Promise<boolean>;
   convertToKeyframes: (
     sel: DomEditSelection,
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
-  removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
+  removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
 }
 
@@ -117,6 +117,8 @@ export function useDomEditWiring({
   activeCompPath,
   domEditSelection,
   domEditSelectionRef,
+  domEditGroupSelectionsRef,
+  refreshDomEditGroupSelectionsFromPreview,
   previewIframeRef,
   previewIframe,
   captionEditMode,
@@ -125,7 +127,7 @@ export function useDomEditWiring({
   bumpGsapCache,
   showToast,
   refreshPreviewDocumentVersion,
-  syncPreviewHistoryHotkey,
+  syncPreviewHotkeys,
   applyStudioManualEditsToPreviewRef,
   applyDomSelection,
   buildDomSelectionFromTarget,
@@ -171,14 +173,13 @@ export function useDomEditWiring({
 
   useEffect(() => {
     if (!domEditSelection?.id) return;
-    const { selectedElementId, elements, setSelectionAnchor } = usePlayerStore.getState();
-    // Resolve through the canonical resolver (source-file + ancestor + active-comp
-    // fallback) rather than a narrow domId/id match, so a sub-composition selection
-    // maps to the same clip the rest of the selection pipeline picks. Use the
-    // anchor-only setter: this is a DOM->store echo and must not collapse a group.
-    const key = resolveTimelineIdForSelection(domEditSelection, elements, activeCompPath);
-    if (key && key !== selectedElementId) setSelectionAnchor(key);
-  }, [domEditSelection, activeCompPath]);
+    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
+    const matchKey = elements.find(
+      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
+    );
+    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
+    if (key && key !== selectedElementId) setSelectedElementId(key);
+  }, [domEditSelection?.id]);
 
   // ── GSAP cache sync ──
 
@@ -197,7 +198,7 @@ export function useDomEditWiring({
   const gsapSourceFile = domEditSelection?.sourceFile || activeCompPath || "index.html";
 
   usePopulateKeyframeCacheForFile(
-    STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
+    projectId ?? null,
     gsapSourceFile,
     gsapCacheVersion,
     previewIframeRef,
@@ -208,7 +209,7 @@ export function useDomEditWiring({
     multipleTimelines: gsapMultipleTimelines,
     unsupportedTimelinePattern: gsapUnsupportedTimelinePattern,
   } = useGsapAnimationsForElement(
-    STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
+    projectId ?? null,
     gsapSourceFile,
     domEditSelection
       ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
@@ -247,6 +248,7 @@ export function useDomEditWiring({
     removeAllKeyframes,
     handleDomManualEditsReset,
     selectedGsapAnimations,
+    showToast,
   });
 
   // ── Preview sync side-effects ──
@@ -256,11 +258,13 @@ export function useDomEditWiring({
     activeCompPath,
     captionEditMode,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
     domEditSelection,
     applyDomSelection,
+    refreshDomEditGroupSelectionsFromPreview,
     buildDomSelectionFromTarget,
     refreshPreviewDocumentVersion,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     openSourceForSelection,
     getSidebarTab,

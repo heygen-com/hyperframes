@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   classifyHeygenError,
   classifyHeygenErrorCode,
+  consumeHeygenRemediation,
   flushHeygenFailureTracking,
   HEYGEN_NOT_AUTHENTICATED_MESSAGE,
   HEYGEN_NOT_FOUND_MESSAGE,
@@ -147,6 +148,39 @@ test("tracks not-found failures without changing actionable output", () => {
   assert.deepEqual(trackingCalls, [
     ["media_use_provider_error", { provider: "heygen", reason: "not_found" }],
   ]);
+});
+
+test("records missing and outdated CLI remediation once", () => {
+  consumeHeygenRemediation();
+  captureFailureReport({ code: "ENOENT" }, "heygen audio sounds list", () => {});
+  assert.deepEqual(consumeHeygenRemediation(), {
+    code: "not_found",
+    message: HEYGEN_NOT_FOUND_MESSAGE,
+  });
+  assert.equal(consumeHeygenRemediation(), null);
+
+  captureFailureReport(
+    { stderr: Buffer.from("heygen v0.1.5 does not support --headers") },
+    "heygen audio sounds list",
+    () => {},
+  );
+  assert.deepEqual(consumeHeygenRemediation(), {
+    code: "outdated",
+    message: HEYGEN_OUTDATED_MESSAGE,
+  });
+  assert.equal(consumeHeygenRemediation(), null);
+});
+
+test("does not record non-install remediation", () => {
+  consumeHeygenRemediation();
+  for (const error of [
+    { stderr: Buffer.from("HTTP 401 Unauthorized") },
+    { stderr: Buffer.from("quota exhausted") },
+    { stderr: Buffer.from("provider unavailable") },
+  ]) {
+    captureFailureReport(error, "heygen audio sounds list", () => {});
+    assert.equal(consumeHeygenRemediation(), null);
+  }
 });
 
 test("tracks generic failures without including raw detail", () => {

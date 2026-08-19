@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 // Dark-launch contract: with STUDIO_SDK_CUTOVER_ENABLED=false, EVERY cutover
-// persist chokepoint must return false so the caller takes the legacy server
+// persist chokepoint must explicitly decline so the caller takes the legacy server
 // path — even when a valid SDK session exists (one always does, for
 // shadow/selection). This is the contract the prod flag-flip rests on; a future
 // refactor of the gate guards that silently re-enables cutover on flag-off
@@ -31,12 +31,12 @@ const makeDeps = () =>
     domEditSaveTimestampRef: { current: 0 },
   }) as never;
 
-describe("dark-launch gate — STUDIO_SDK_CUTOVER_ENABLED=false ⇒ persist returns false", () => {
+describe("dark-launch gate — STUDIO_SDK_CUTOVER_ENABLED=false ⇒ persist declines", () => {
   it("sdkTimingPersist falls back without writing", async () => {
     const deps = makeDeps();
-    expect(await sdkTimingPersist("hf-a", "/c.html", { start: 1 }, makeSession(), deps)).toBe(
-      false,
-    );
+    expect(
+      await sdkTimingPersist("hf-a", "/c.html", { start: 1 }, makeSession(), deps),
+    ).toMatchObject({ status: "declined", reason: "feature_disabled" });
     expect(
       (deps as unknown as { writeProjectFile: ReturnType<typeof vi.fn> }).writeProjectFile,
     ).not.toHaveBeenCalled();
@@ -50,12 +50,12 @@ describe("dark-launch gate — STUDIO_SDK_CUTOVER_ENABLED=false ⇒ persist retu
         makeSession(),
         makeDeps(),
       ),
-    ).toBe(false);
+    ).toMatchObject({ status: "declined", reason: "feature_disabled" });
   });
 
   it("sdkDeletePersist falls back", async () => {
     expect(
       await sdkDeletePersist("hf-a", "<html></html>", "/c.html", makeSession(), makeDeps()),
-    ).toBe(false);
+    ).toMatchObject({ status: "declined", reason: "feature_disabled" });
   });
 });

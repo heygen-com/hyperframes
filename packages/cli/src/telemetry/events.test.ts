@@ -2,9 +2,20 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const trackEvent = vi.fn();
 const flush = vi.fn(() => Promise.resolve());
+const shouldTrack = vi.fn(() => true);
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
   flush: () => flush(),
+  shouldTrack: () => shouldTrack(),
+}));
+
+// Power state shells out to `pmset`; spy so tests can assert it is NOT
+// sampled for opted-out installs (the fields are built at the call site,
+// before trackEvent's own shouldTrack guard).
+const getPowerState = vi.fn(() => ({ on_battery: true, low_power_mode: false }));
+vi.mock("./system.js", async () => ({
+  ...(await vi.importActual<typeof import("./system.js")>("./system.js")),
+  getPowerState: () => getPowerState(),
 }));
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
@@ -186,6 +197,59 @@ describe("render telemetry events", () => {
     expect(flush).toHaveBeenCalledTimes(2);
   });
 
+  // The enforcement decision for the advisory heap budget reads these fleet
+  // props (see computeWorkerSizing) — a silent drop in the summary→event hop
+  // would invalidate that decision without anyone noticing.
+  it("carries every worker-sizing provenance prop on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      workers: 6,
+      workersBoundBy: "max_workers",
+      workersCpuBased: 16,
+      workersMemoryBased: 8,
+      workersHeapBased: 4,
+      workersFrameBased: 24,
+      workersHeapLimitMb: 4096,
+      workersExceedHeapAdvisory: true,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({
+        workers: 6,
+        workers_bound_by: "max_workers",
+        workers_cpu_based: 16,
+        workers_memory_based: 8,
+        workers_heap_based: 4,
+        workers_frame_based: 24,
+        workers_heap_limit_mb: 4096,
+        workers_exceed_heap_advisory: true,
+      }),
+      undefined,
+    );
+  });
+
+  it("ties feedback to its report and recent renders via feedback_id + recent_render_ids", () => {
+    trackRenderFeedback({
+      rating: 3,
+      comment: "hook scene blank",
+      feedbackId: "feedback-uuid",
+      recentRenderIds: ["render-a", "render-b"],
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_render_feedback",
+      expect.objectContaining({
+        feedback_id: "feedback-uuid",
+        recent_render_ids: "render-a,render-b",
+      }),
+    );
+  });
+
   it("redacts paths and URL query strings from render error messages", () => {
     trackRenderError({
       fps: 30,
@@ -252,6 +316,32 @@ describe("render telemetry events", () => {
     );
   });
 
+  it("carries the failing dB, frame index, and threshold on render_error for a psnr fallback that failed hard afterward", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      errorMessage: "worker crashed after a psnr fallback",
+      captureDeParallelRouter: "reverted",
+      captureDeSelfVerifyFallback: true,
+      captureDeFallbackReason: "psnr",
+      captureDeFallbackFailedDb: 28.4,
+      captureDeFallbackFrameIndex: 649,
+      captureDeFallbackThresholdDb: 32,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({
+        de_fallback_reason: "psnr",
+        de_fallback_failed_db: 28.4,
+        de_fallback_frame_index: 649,
+        de_fallback_threshold_db: 32,
+      }),
+      undefined,
+    );
+  });
+
   it("prefers the explicit perfSummary-sourced de_worker_inversion over the capture-observability fallback on render_complete", () => {
     trackRenderComplete({
       durationMs: 1000,
@@ -268,6 +358,32 @@ describe("render telemetry events", () => {
     expect(trackEvent).toHaveBeenCalledWith(
       "render_complete",
       expect.objectContaining({ de_worker_inversion: "inverted" }),
+      undefined,
+    );
+  });
+
+  it("carries the perfSummary-sourced failing dB, frame index, and threshold on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      gpu: false,
+      deParallelRouter: "reverted",
+      deFallbackReason: "psnr",
+      deFallbackFailedDb: 28.4,
+      deFallbackFrameIndex: 649,
+      deFallbackThresholdDb: 32,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({
+        de_fallback_reason: "psnr",
+        de_fallback_failed_db: 28.4,
+        de_fallback_frame_index: 649,
+        de_fallback_threshold_db: 32,
+      }),
       undefined,
     );
   });
@@ -399,14 +515,15 @@ describe("trackRenderFeedback", () => {
 
     const [, props] = trackEvent.mock.calls[0] as [string, Record<string, unknown>];
     expect(props).not.toHaveProperty("render_duration_ms");
-    expect(props.$survey_response).toBe(4);
+    expect(props.rating).toBe(4);
+    expect(props.rating_scale).toBe(10);
   });
 
   it("includes render_duration_ms when a real duration is supplied", () => {
     trackRenderFeedback({ rating: 5, renderDurationMs: 6000 });
 
     expect(trackEvent).toHaveBeenCalledWith(
-      "survey sent",
+      "cli_render_feedback",
       expect.objectContaining({ render_duration_ms: 6000 }),
     );
   });
@@ -430,6 +547,21 @@ describe("trackCliError", () => {
     expect(props.error_message).not.toContain("/Users/alice");
     expect(props.error_message).toContain("[path]");
     expect(props.stack_trace).not.toContain("/Users/alice");
+  });
+
+  it("forwards the figma endpoint label when supplied", () => {
+    trackCliError({
+      error_name: "RATE_LIMITED",
+      error_message: "figma rate limit hit (429)",
+      command: "figma asset",
+      kind: "command_error",
+      endpoint: "images",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ endpoint: "images" }),
+    );
   });
 });
 
@@ -583,5 +715,30 @@ describe("auth login telemetry events", () => {
   it("identifyUser is a no-op when there is no identity to attach", () => {
     identifyUser("");
     expect(trackEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("power-state sampling respects the telemetry opt-out", () => {
+  beforeEach(() => {
+    getPowerState.mockClear();
+    shouldTrack.mockReturnValue(true);
+  });
+
+  it("samples power state for a tracked render", () => {
+    trackRenderComplete({ durationMs: 1, fps: 30, quality: "high", docker: false, gpu: false });
+    expect(getPowerState).toHaveBeenCalled();
+    const props = trackEvent.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(props.on_battery).toBe(true);
+    expect(props.low_power_mode).toBe(false);
+  });
+
+  it("does NOT spawn pmset when telemetry is disabled", () => {
+    // Regression: powerStateFields() is spread into the properties object at
+    // the call site, so it runs BEFORE trackEvent's `if (!shouldTrack())`
+    // guard — an opted-out install would otherwise pay two blocking
+    // subprocess spawns per render for an event that is then discarded.
+    shouldTrack.mockReturnValue(false);
+    trackRenderComplete({ durationMs: 1, fps: 30, quality: "high", docker: false, gpu: false });
+    expect(getPowerState).not.toHaveBeenCalled();
   });
 });

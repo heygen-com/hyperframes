@@ -96,9 +96,21 @@ while (progress.status === "running") {
 console.log(progress.status, progress.outputFile, progress.costs.displayCost);
 ```
 
+Plan v2 is the default because workers fetch manifest-selected
+content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
+omitted. Deprecated v1 compatibility remains available by passing
+`planProtocol: "v1"`.
+
+<Warning>
+  For an existing installation, pause new renders and drain active workflow
+  executions. Redeploy the Cloud Run image and Cloud Workflows definition from
+  the same package version before upgrading the application SDK. Older
+  workflows may default omission to v1 or lack v2 support.
+</Warning>
+
 Pass `projectDir` for one-shot uploads, or call `deploySite()` separately and reuse the returned site handle across many renders.
 
-## Related Guides
+## Related topics
 
 <CardGroup cols={2}>
   <Card title="GCP Cloud Run Deployment" icon="cloud" href="/deploy/gcp-cloud-run">

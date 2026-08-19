@@ -34,8 +34,7 @@ function AppHotkeyHarness() {
   const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
 
   useAppHotkeys({
-    toggleTimelineVisibility: vi.fn(),
-    handleTimelineElementDelete: vi.fn(),
+    handleTimelineElementsDelete: vi.fn(async () => {}),
     handleTimelineElementSplit: vi.fn(),
     handleDomEditElementDelete: vi.fn(),
     domEditSelectionRef,

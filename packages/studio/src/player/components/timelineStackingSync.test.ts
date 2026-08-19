@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeStackingPatches, laneIsAbove, type StackingElement } from "./timelineStackingSync";
+import {
+  computeStackingPatches,
+  laneIsAbove,
+  samePaintScope,
+  type StackingElement,
+} from "./timelineStackingSync";
 
 function el(
   key: string,
@@ -18,6 +23,102 @@ function patchMap(elements: StackingElement[], edited: string[]): Record<string,
   for (const p of computeStackingPatches(elements, edited)) out[p.key] = p.zIndex;
   return out;
 }
+
+describe("stacking-context partitioning", () => {
+  it("uses source file and normalized stacking context as the canonical paint scope", () => {
+    expect(samePaintScope({}, { stackingContextId: null })).toBe(true);
+    expect(samePaintScope({}, { sourceFile: "index.html" })).toBe(false);
+    expect(
+      samePaintScope(
+        { sourceFile: "scene.html", stackingContextId: "card" },
+        { sourceFile: "scene.html", stackingContextId: "modal" },
+      ),
+    ).toBe(false);
+  });
+
+  it("never compares or patches across source files in the root context", () => {
+    const root: StackingElement = {
+      key: "root",
+      track: 0,
+      start: 0,
+      duration: 5,
+      zIndex: 1,
+      isAudio: false,
+      sourceFile: "index.html",
+      stackingContextId: null,
+    };
+    const scene: StackingElement = {
+      key: "scene",
+      track: 1,
+      start: 0,
+      duration: 5,
+      zIndex: 10,
+      isAudio: false,
+      sourceFile: "scenes/scene.html",
+      stackingContextId: null,
+    };
+
+    expect(patchMap([root, scene], ["root"])).toEqual({});
+  });
+
+  it("never compares or patches across stacking contexts", () => {
+    // X lives in sub-comp context "scene-1" with a high leaf z; Y is a root clip
+    // with a lower leaf z, overlapping in time. Their leaf z values are NOT
+    // comparable (the ancestors' z decides paint order), so moving X's lane above
+    // Y must not reason on Y or patch either based on the 10-vs-5 comparison.
+    const x: StackingElement = {
+      key: "x",
+      track: 0,
+      start: 0,
+      duration: 5,
+      zIndex: 10,
+      isAudio: false,
+      stackingContextId: "scene-1",
+    };
+    const y: StackingElement = {
+      key: "y",
+      track: 1,
+      start: 0,
+      duration: 5,
+      zIndex: 5,
+      isAudio: false,
+      stackingContextId: null,
+    };
+    // X edited: only same-context neighbours participate — none here, so X keeps
+    // its z (nothing to fix WITHIN its context) and Y is never touched.
+    expect(patchMap([x, y], ["x"])).toEqual({});
+  });
+
+  it("still resolves within the edited clip's own context", () => {
+    const a: StackingElement = {
+      key: "a",
+      track: 1,
+      start: 0,
+      duration: 5,
+      zIndex: 1,
+      isAudio: false,
+      stackingContextId: "scene-1",
+    };
+    const b: StackingElement = {
+      key: "b",
+      track: 0,
+      start: 0,
+      duration: 5,
+      zIndex: 5,
+      isAudio: false,
+      stackingContextId: "scene-1",
+    };
+    // 'a' moved BELOW b's lane... a (track 1) is under b (track 0): a's z (1)
+    // is already below b's (5) — consistent, no patch. Move a ABOVE (track -1
+    // relative ordering) is covered by existing suites; here we just prove the
+    // same-context pair still participates (no patch ≠ no participation: verify
+    // by flipping z so a MUST be lifted).
+    const aWrong = { ...a, track: 0, zIndex: 1 };
+    const bLow = { ...b, track: 1, zIndex: 5 };
+    const patches = patchMap([aWrong, bLow], ["a"]);
+    expect(patches.a).toBeGreaterThan(5);
+  });
+});
 
 describe("laneIsAbove", () => {
   it("lower track renders above (top of timeline wins)", () => {

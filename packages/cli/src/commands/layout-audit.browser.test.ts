@@ -31,6 +31,81 @@ describe("layout-audit.browser", () => {
     clearGeometryCollector();
   });
 
+  it("changes the sweep fingerprint when visible video pixels advance", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video id="footage"></video>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      footage: rect({ left: 0, top: 0, width: 640, height: 360 }),
+    });
+
+    let pixelValue = 20;
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    getContextSpy.mockReturnValue({
+      drawImage() {},
+      getImageData() {
+        return { data: new Uint8ClampedArray(8 * 8 * 4).fill(pixelValue) };
+      },
+    } as unknown as CanvasRenderingContext2D);
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    pixelValue = 220;
+    const after = collect();
+
+    expect(after).not.toBe(before);
+  });
+
+  // Opacity-reveal fixture (CLI feedback digest 2026-07-14): code-typing style
+  // scenes reveal pre-laid-out characters via opacity only — no geometry ever
+  // moves. The sweep fingerprint must treat that as motion, both while a glyph
+  // fades (opacity value changes) and when it crosses the 0.2 visibility floor
+  // (element enters the signature); otherwise `check` misfires `sweep_static`
+  // and authors reach for geometry hacks (a slow host y-drift) to pass.
+  it("changes the sweep fingerprint when text reveals via opacity alone", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="code"><span id="char">c</span></div>
+      </div>
+    `;
+
+    let charOpacity = "0";
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        code: rect({ left: 40, top: 40, width: 560, height: 48 }),
+        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
+      },
+      {
+        char: {
+          get opacity() {
+            return charOpacity;
+          },
+        } as Partial<CSSStyleDeclaration>,
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    const hidden = collect(); // below the 0.2 visibility floor — not in the signature
+    charOpacity = "0.5";
+    const fading = collect(); // mid-fade — present, opacity part of the signature
+    charOpacity = "1";
+    const revealed = collect(); // settled
+
+    expect(fading).not.toBe(hidden);
+    expect(revealed).not.toBe(fading);
+  });
+
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
@@ -109,6 +184,49 @@ describe("layout-audit.browser", () => {
     expect(runAudit()).toEqual([]);
   });
 
+  it("suppresses intentional ellipsis clipping under overflow opt-outs", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="overflow-optout">
+          <div id="headline" style="width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+            Intentional long truncated label
+          </div>
+        </div>
+      </div>
+    `;
+    const headline = document.querySelector("#headline");
+    if (!(headline instanceof HTMLElement)) throw new Error("missing headline");
+    Object.defineProperties(headline, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 240 },
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, value: 20 },
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 60, width: 100, height: 20 }),
+        text: rect({ left: 40, top: 60, width: 240, height: 20 }),
+      },
+      {
+        headline: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" },
+      },
+    );
+
+    installAuditScript();
+    const textOverflowCodes = () =>
+      runAudit()
+        .map((issue) => issue.code)
+        .filter((code) => code === "clipped_text" || code === "text_box_overflow");
+
+    expect(textOverflowCodes()).toEqual(["clipped_text", "text_box_overflow"]);
+    document.querySelector("#overflow-optout")?.setAttribute("data-layout-allow-overflow", "");
+    expect(textOverflowCodes()).toEqual([]);
+    document.querySelector("#overflow-optout")?.removeAttribute("data-layout-allow-overflow");
+    headline.setAttribute("data-layout-bleed", "true");
+    expect(textOverflowCodes()).toEqual([]);
+  });
+
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
     // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
     // line-height box by a few px vertically — normal typography, nothing is clipped. (fontSize
@@ -166,6 +284,31 @@ describe("layout-audit.browser", () => {
         expect.objectContaining({ code: "canvas_overflow", selector: "#late" }),
       ]),
     );
+  });
+
+  it("does not expand a parent's overflow geometry to a positioned descendant", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline">Visible copy<span id="positioned-copy">Positioned copy</span></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 60, width: 200, height: 40 }),
+        "positioned-copy": rect({ left: 700, top: 60, width: 160, height: 40 }),
+        headlineText: rect({ left: 40, top: 60, width: 120, height: 40 }),
+        "positioned-copyText": rect({ left: 700, top: 60, width: 160, height: 40 }),
+        text: rect({ left: 40, top: 60, width: 820, height: 40 }),
+      },
+      { "positioned-copy": { position: "absolute" } },
+    );
+    installAuditScript();
+
+    const parentOverflow = runAudit().find(
+      (issue) => issue.code === "canvas_overflow" && issue.selector === "#headline",
+    );
+    expect(parentOverflow).toBeUndefined();
   });
 });
 
@@ -236,6 +379,27 @@ it("returns own-text rects and media overflow while excluding caption layers", (
     ]),
   );
   expect(candidates.some((candidate) => candidate.selector === "#caption")).toBe(false);
+});
+
+it("excludes text marked data-layout-allow-caption-zone from geometry candidates", () => {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <p id="copy">Main copy</p>
+        <p id="lower" data-layout-allow-caption-zone>Lower third</p>
+        <div data-layout-allow-caption-zone><span id="nested">Nested lower</span></div>
+      </div>
+    `;
+  installGeometry({
+    root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+    copy: rect({ left: 100, top: 100, width: 200, height: 40 }),
+    lower: rect({ left: 100, top: 280, width: 200, height: 40 }),
+    nested: rect({ left: 100, top: 300, width: 200, height: 40 }),
+    text: rect({ left: 100, top: 100, width: 200, height: 40 }),
+  });
+  installAuditScript();
+
+  const candidates = runGeometryCandidates({ text: true, media: false, tolerance: 2 });
+  expect(candidates.map((candidate) => candidate.selector)).toEqual(["#copy"]);
 });
 
 it("scans body-level composition siblings and includes a media boundary root", () => {
@@ -454,6 +618,536 @@ describe("layout-audit.browser invisible text", () => {
   });
 });
 
+describe("layout-audit.browser coordinate-frame findings", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
+    clearGeometryCollector();
+  });
+
+  it("flags a positioned element rendering far outside its offset parent", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="diagram"><div id="node"></div><div id="badge"></div><div id="callout"></div></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        diagram: rect({ left: 610, top: 130, width: 700, height: 700 }),
+        node: rect({ left: 1490, top: 170, width: 160, height: 160 }),
+        badge: rect({ left: 580, top: 160, width: 120, height: 120 }),
+        callout: rect({ left: 700, top: 60, width: 160, height: 56 }),
+      },
+      {
+        node: { position: "absolute" },
+        badge: { position: "absolute" },
+        callout: { position: "absolute" },
+      },
+    );
+    installOffsetParents({ node: "diagram", badge: "diagram", callout: "diagram" });
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "escaped_container");
+    // The node is 180px away in a foreign frame; the badge overlaps its parent; the callout hangs 14px above it.
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: "warning",
+      selector: "#node",
+      containerSelector: "#diagram",
+    });
+    expect(issues[0]?.message).toContain("computed in a different frame");
+    expect(issues[0]?.fixHint).toContain("offset parent's frame");
+  });
+
+  it("respects the allow-overflow opt-out and skips fixed elements", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="diagram">
+          <div id="node" data-layout-allow-overflow></div>
+          <div id="hud"></div>
+        </div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        diagram: rect({ left: 610, top: 130, width: 700, height: 700 }),
+        node: rect({ left: 1490, top: 170, width: 160, height: 160 }),
+        hud: rect({ left: 24, top: 900, width: 200, height: 100 }),
+      },
+      {
+        node: { position: "absolute" },
+        hud: { position: "fixed" },
+      },
+    );
+    installOffsetParents({ node: "diagram", hud: "diagram" });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "escaped_container")).toEqual([]);
+  });
+
+  it("flags painted panels crossing the canvas, hero-sized as warning and bleeds as info", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero"></div>
+        <div id="bleed"></div>
+        <div id="glow"></div>
+        <div id="spotlight"></div>
+        <div id="goldframe"></div>
+        <div id="parked"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        bleed: rect({ left: -150, top: -150, width: 300, height: 300 }),
+        glow: rect({ left: 1800, top: 0, width: 400, height: 400 }),
+        spotlight: rect({ left: 560, top: -216, width: 800, height: 1200 }),
+        goldframe: rect({ left: 660, top: -150, width: 620, height: 820 }),
+        parked: rect({ left: 2200, top: 300, width: 600, height: 400 }),
+      },
+      {
+        // Paint alone qualifies — a flat solid panel with no padding/border is still content.
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+        bleed: { backgroundColor: "rgb(200, 180, 120)" },
+        // Gradient-only paint is decoration; a border is content even with pointer-events:none.
+        spotlight: {
+          backgroundImage: "radial-gradient(ellipse at top, rgba(212,175,55,0.15), transparent)",
+        },
+        goldframe: { borderTopWidth: "10px", borderBottomWidth: "10px" },
+        parked: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
+    // The unpainted glow, gradient-only spotlight, and fully off-canvas parked entrance stay silent.
+    expect(issues).toHaveLength(3);
+    expect(issues.some((issue) => issue.selector === "#goldframe")).toBe(true);
+    expect(issues.some((issue) => issue.selector === "#spotlight")).toBe(false);
+    expect(issues.find((issue) => issue.selector === "#hero")).toMatchObject({
+      severity: "warning",
+      overflow: { right: 280 },
+      message: "Painted panel extends outside the composition canvas.",
+    });
+    expect(issues.find((issue) => issue.selector === "#hero")?.fixHint).toContain(
+      "data-layout-allow-overflow",
+    );
+    expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
+  });
+
+  it("flags a gradient-content hero but not an all-translucent gradient glow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="gradient-hero"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        "gradient-hero": rect({ left: 1400, top: 300, width: 800, height: 600 }),
+      },
+      {
+        // Opaque gradient stops read as content — miguel's regression case.
+        "gradient-hero": {
+          backgroundImage: "linear-gradient(90deg, rgb(16, 24, 40), rgb(52, 64, 84))",
+        },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "warning", selector: "#gradient-hero" });
+  });
+
+  it("cedes ownership to canvas_overflow even for a shallow text breach", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Barely breaching title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        // Text breaches 20px: past canvas_overflow's 2px tolerance, under the 27px panel floor.
+        text: rect({ left: 1740, top: 340, width: 200, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toEqual([]);
+    expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
+  });
+
+  it("flags a painted hero whose box breaches while its direct text stays in-bounds", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        text: rect({ left: 1450, top: 340, width: 200, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toHaveLength(1);
+    expect(issues.filter((issue) => issue.code === "canvas_overflow")).toEqual([]);
+  });
+
+  it("leaves a breaching panel to canvas_overflow when its own text breaches too", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Very long breaching title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        text: rect({ left: 1450, top: 340, width: 700, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toEqual([]);
+    expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
+  });
+
+  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="connector-svg">
+          <defs><marker id="arrow"><path id="tip" d="M 0 0 L 8 4 L 0 8" /></marker></defs>
+          <path id="detached" class="connector-line" d="M 980 580 L 380 280" />
+          <path id="anchored" class="connector-line" d="M 900 353 L 300 53" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // Screen CTM translates svg user space by the svg's offset (80, 227): the detached path's
+    // start (980, 580) renders at (1060, 807) — 147px below #n1's box — while the anchored
+    // path's start (900, 353) renders at (980, 580), inside #n1.
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    // The marker tip path is skipped outright; only the detached line reports.
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "warning", selector: "#detached" });
+    expect(issues[0]?.message).toContain("user-space coordinates would attach");
+    expect(issues[0]?.fixHint).toContain("invert getScreenCTM");
+  });
+
+  it("skips svgs and paths without connector intent", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="knowledge-overflow"><path id="squiggle" d="M 10 10 L 200 200" /></svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "knowledge-overflow": rect({ left: 1400, top: 100, width: 400, height: 400 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    // "knowledge-overflow" contains conn-family substrings only across word boundaries — no match.
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Counterfactual: decorative paths miss anchors both as rendered and as user-as-screen → not the frame bug.
+  it("skips decorative arrow/flow paths whose user-space coords would not attach either", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-l" class="arrow">
+          <path id="arrow-glyph" d="M70 20 L10 20" marker-end="url(#tip)" />
+        </svg>
+        <svg id="decor"><path id="flow-line" class="flow-line" d="M-100 200 L2020 880" /></svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-l": rect({ left: 100, top: 500, width: 80, height: 40 }),
+        decor: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    installConnectorGeometry({ e: 100, f: 500 });
+    // Full-bleed decor SVG uses identity translate so user-as-screen == rendered (still off-canvas).
+    for (const path of Array.from(document.querySelectorAll("#decor path"))) {
+      Object.defineProperty(path, "getScreenCTM", {
+        value: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+      });
+      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        value: (length: number) => (length === 0 ? { x: -100, y: 200 } : { x: 2020, y: 880 }),
+      });
+    }
+    const decorSvg = document.getElementById("decor");
+    if (decorSvg) {
+      Object.defineProperty(decorSvg, "createSVGPoint", {
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Same DOM node via painted-inside + compact-near-miss must share one identity (not p0 vs c0).
+  it("skips same-anchor cross-tier arrows that only graze one node", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="cross-tier" d="M 980 580 L 1080 580" marker-end="url(#tip)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // Raw start inside #n1; raw end just outside #n1 but within attach tolerance — one element.
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // One raw endpoint on a node is not the paste-into-`d` bug (decorative arrow / partial aim).
+  it("skips one-ended decorative arrows when only one user endpoint attaches", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="one-ended" d="M 980 580 L 200 100" marker-end="url(#tip)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // CTM offset moves both rendered ends off anchors; raw start sits in #n1, raw end in empty space.
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Scaled viewBox: user chord can be <32 while screen chord is hundreds of px — must not skip.
+  it("flags foreign-frame connectors when user-space chord is short but screen chord is long", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="scaled-svg" viewBox="0 0 192 108">
+          <path id="short-user" class="connector" d="M 100 58 L 140 58" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        // Non-overlapping anchors so both user endpoints hit distinct keys.
+        n1: rect({ left: 70, top: 40, width: 50, height: 40 }),
+        n2: rect({ left: 125, top: 40, width: 50, height: 40 }),
+        "scaled-svg": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // 10× viewBox scale: user chord 30 (< old 32px gate) → screen chord 300.
+    const path = document.getElementById("short-user");
+    const svg = document.getElementById("scaled-svg");
+    const matrix = { a: 10, b: 0, c: 0, d: 10, e: 0, f: 0 };
+    const prop = { configurable: true, writable: true };
+    if (path) {
+      Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 30 });
+      Object.defineProperty(path, "getPointAtLength", {
+        ...prop,
+        value: (length: number) => (length === 0 ? { x: 100, y: 58 } : { x: 140, y: 58 }),
+      });
+      Object.defineProperty(path, "getScreenCTM", { ...prop, value: () => matrix });
+    }
+    if (svg) {
+      Object.defineProperty(svg, "createSVGPoint", {
+        ...prop,
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: typeof matrix) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ selector: "#short-user" });
+  });
+
+  // Closed glyph: rendered chord ~0 — not a two-ended frame bug even if the point sits on a node.
+  it("skips closed filled glyphs whose user-space endpoints collapse", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="main-arrow" d="M10 10 L90 10 L50 90 Z" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // Closed path: start≈end in user space (and after CTM).
+    for (const path of Array.from(document.querySelectorAll("#main-arrow"))) {
+      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        value: () => ({ x: 980, y: 580 }),
+      });
+      Object.defineProperty(path, "getScreenCTM", {
+        value: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+      });
+    }
+    const svg = document.getElementById("arrow-svg");
+    if (svg) {
+      Object.defineProperty(svg, "createSVGPoint", {
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Correct inverse-CTM authoring: rendered attaches → never flag, even with an offset SVG.
+  it("skips connectors whose rendered endpoints already attach", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="connector-svg">
+          <path id="anchored-only" class="connector-line" d="M 900 353 L 300 53" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+});
+
 describe("layout-audit.browser content overlap", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -476,6 +1170,20 @@ describe("layout-audit.browser content overlap", () => {
       a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
       b: { textRect: rect({ left: 490, top: 100, width: 400, height: 100 }) },
     });
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+  });
+
+  it("ignores another block placed only in a multiline text block's empty line gap", () => {
+    const issues = auditOverlapScene({
+      a: {
+        textRect: [
+          rect({ left: 100, top: 100, width: 400, height: 60 }),
+          rect({ left: 100, top: 260, width: 400, height: 60 }),
+        ],
+      },
+      b: { textRect: rect({ left: 180, top: 180, width: 240, height: 50 }) },
+    });
+
     expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
   });
 
@@ -603,6 +1311,68 @@ describe("contrast-audit.browser clip-path visibility", () => {
     expect(selectors).not.toContain("#rail-label");
   });
 
+  it("excludes intentionally occluded text from contrast reports", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline" data-layout-allow-occlusion>Covered copy</div>
+        <div id="cover"></div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "32px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("headline")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 100, top: 100, width: 400, height: 40 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      document.getElementById("cover");
+
+    installContrastScript();
+
+    expect(await runContrastAudit()).toEqual([]);
+  });
+
+  it("still audits visible text that allows occlusion", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline" data-layout-allow-occlusion>Visible copy</div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "32px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("headline")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 100, top: 100, width: 400, height: 40 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      document.getElementById("headline");
+
+    installContrastScript();
+
+    const entries = await runContrastAudit();
+    expect(entries.map((entry) => entry.selector)).toContain("#headline");
+  });
+
   it("excludes text that has left the canvas from contrast reports", async () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
@@ -713,6 +1483,119 @@ describe("contrast-audit.browser background sampling", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ selector: "#label", wcagAA: true, bg: "rgb(10,10,10)" });
   });
+
+  it("resolves color-mix() foregrounds before computing contrast", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="label">Mixed color</span>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "color-mix(in srgb, rgb(37, 99, 235) 20%, rgb(255, 255, 255) 80%)",
+          fontSize: "20px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("label")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 120, height: 30 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript(
+      pixelsWithRegion(
+        rect({ left: 0, top: 0, width: 640, height: 360 }),
+        [10, 10, 10],
+        [10, 10, 10],
+      ),
+    );
+
+    const result = await runContrastAudit();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      selector: "#label",
+      fg: "rgb(211,224,251)",
+      bg: "rgb(10,10,10)",
+      ratio: 14.92,
+      wcagAA: true,
+    });
+  });
+
+  it("accepts outlined text when its stroke has adequate background contrast", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="caption">Outlined white caption</div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          webkitTextStrokeWidth: "8px",
+          webkitTextStrokeColor: "rgb(0, 0, 0)",
+          fontSize: "40px",
+          fontWeight: "700",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("caption")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 300, height: 60 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript();
+
+    const result = await runContrastAudit();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      selector: "#caption",
+      fg: "rgb(0,0,0)",
+      bg: "rgb(255,255,255)",
+      wcagAA: true,
+    });
+  });
+
+  it("skips text whose sampled backdrop remains transparent", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="overlay" data-width="640" data-height="360">
+        <span id="label">Live</span>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "20px",
+          fontWeight: "700",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("label")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 100, height: 30 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript(new Uint8ClampedArray(640 * 360 * 4));
+
+    expect(await runContrastAudit()).toEqual([]);
+  });
 });
 
 // Both blocks overlap heavily; only the exemption on block A should suppress
@@ -726,8 +1609,8 @@ function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string })
 }
 
 function auditOverlapScene(options: {
-  a: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
-  b: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
+  a: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
+  b: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -743,7 +1626,10 @@ function auditOverlapScene(options: {
     a: options.a.clipPath ?? "none",
     b: options.b.clipPath ?? "none",
   };
-  const textRects: Record<string, DOMRect> = { a: options.a.textRect, b: options.b.textRect };
+  const textRects: Record<string, DOMRect[]> = {
+    a: normalizeTextRects(options.a.textRect),
+    b: normalizeTextRects(options.b.textRect),
+  };
 
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
     const id = (element as Element).id;
@@ -766,7 +1652,8 @@ function auditOverlapScene(options: {
 
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
-      textRects[element.id] ?? rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      boundingTextRect(textRects[element.id]) ??
+        rect({ left: 0, top: 0, width: 1920, height: 1080 }),
     );
   }
 
@@ -777,10 +1664,12 @@ function auditOverlapScene(options: {
         selected = node;
       },
       getClientRects() {
-        const id = (selected as Element | null)?.id ?? "";
-        return textRects[id]
-          ? ([textRects[id]] as unknown as DOMRectList)
-          : ([] as unknown as DOMRectList);
+        const element =
+          selected?.nodeType === Node.TEXT_NODE
+            ? selected.parentElement
+            : (selected as Element | null);
+        const id = element?.id ?? "";
+        return (textRects[id] ?? []) as unknown as DOMRectList;
       },
       detach() {},
     } as unknown as Range;
@@ -788,6 +1677,19 @@ function auditOverlapScene(options: {
 
   installAuditScript();
   return runAudit();
+}
+
+function normalizeTextRects(value: DOMRect | DOMRect[]): DOMRect[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+function boundingTextRect(rects: DOMRect[] | undefined): DOMRect | undefined {
+  if (!rects?.length) return undefined;
+  const left = Math.min(...rects.map((item) => item.left));
+  const top = Math.min(...rects.map((item) => item.top));
+  const right = Math.max(...rects.map((item) => item.right));
+  const bottom = Math.max(...rects.map((item) => item.bottom));
+  return rect({ left, top, width: right - left, height: bottom - top });
 }
 
 function isFullyClipped(clipPath: string): boolean {
@@ -799,6 +1701,7 @@ describe("layout-audit.browser occlusion", () => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
     delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+    delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint;
     delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
     clearGeometryCollector();
   });
@@ -829,12 +1732,52 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("does not treat transparent pixels in an image as text occlusion", () => {
+    const issues = auditImageOcclusionScene(0);
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still treats opaque pixels in an image as text occlusion", () => {
+    const occluded = auditImageOcclusionScene(255).find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
+  it("does not treat object-fit letterboxing as image occlusion", () => {
+    const issues = auditImageOcclusionScene(255, {
+      objectFit: "contain",
+      headlineTextRect: rect({ left: 50, top: 500, width: 200, height: 80 }),
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
   it("respects the data-layout-allow-occlusion opt-out", () => {
     const issues = auditOcclusionScene({
       headlineAttrs: "data-layout-allow-occlusion",
       overlayStyle: { backgroundColor: "rgb(10, 10, 10)" },
       topmostId: "overlay",
     });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("does not treat a visible container as painted text when its only text child is hidden", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="caption-container"><span id="caption">Hidden caption</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        caption: { opacity: "0" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+      textRectElementId: "caption-container",
+    });
+    installAuditScript();
+
+    const issues = runAudit();
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
@@ -864,6 +1807,26 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("flags ~0.07 prose when proseCoverageFloor is lowered to 0.05", () => {
+    const issues = auditCoverageScene({
+      text: "This paragraph is long enough to read as ordinary prose, not a label.",
+      hitCount: 2,
+      proseCoverageFloor: 0.05,
+    });
+    const occluded = issues.find((issue) => issue.code === "text_occluded");
+    expect(occluded).toBeDefined();
+    expect(occluded?.coveredFraction).toBe(0.07);
+  });
+
+  it("still flags an atomic label at ~0.07 when proseCoverageFloor is 0.05", () => {
+    const issues = auditCoverageScene({
+      text: "SUBSCRIBE",
+      hitCount: 2,
+      proseCoverageFloor: 0.05,
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
   it("flags prose once coverage clears the 0.15 floor", () => {
     // 5/27 ≈ 0.185, comfortably over the ~0.15 prose floor.
     const issues = auditCoverageScene({
@@ -871,6 +1834,229 @@ describe("layout-audit.browser occlusion", () => {
       hitCount: 5,
     });
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
+  it("does not sample opaque content in the gap between multiline text fragments", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">First line of prose<br />Second line of prose</div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    const lineRects = [
+      rect({ left: 200, top: 500, width: 600, height: 40 }),
+      rect({ left: 200, top: 580, width: 600, height: 40 }),
+    ];
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: lineRects,
+      topmostId: "headline",
+    });
+    (
+      document as unknown as { elementFromPoint: (x: number, y: number) => Element | null }
+    ).elementFromPoint = (_x, y) =>
+      document.getElementById(y > 540 && y < 580 ? "overlay" : "headline");
+
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("does not flag visible text carrying pointer-events:none (probe restores hit-testing)", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Headline copy</div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        headline: { pointerEvents: "none" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    // Simulate real hit-testing: with hit-testing restored (inline auto), the topmost hit IS the text.
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+      const headline = document.getElementById("headline");
+      return headline?.style.getPropertyValue("pointer-events") === "auto"
+        ? headline
+        : document.getElementById("overlay");
+    };
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("audits only a container's direct text when a hidden descendant also has text", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Visible copy<span id="hidden-copy">Hidden copy</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        "hidden-copy": { opacity: "0" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const issue = runAudit().find((candidate) => candidate.code === "text_occluded");
+    expect(issue?.text).toBe("Visible copy");
+  });
+
+  it("does not expand a container's text audit to a positioned descendant", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Visible copy<span id="positioned-copy">Positioned copy</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        "positioned-copy": { position: "absolute" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const issues = runAudit().filter((candidate) => candidate.code === "text_occluded");
+    const headlineIssue = issues.find((candidate) => candidate.selector === "#headline");
+    expect(headlineIssue?.text).toBe("Visible copy");
+  });
+
+  it("does not count a low-alpha gradient overlay (grid/scrim) as an opaque occluder", () => {
+    const issues = auditOcclusionScene({
+      overlayStyle: {
+        backgroundImage:
+          "repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0px, transparent 1px)",
+      },
+      topmostId: "overlay",
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("walks past a transparent layer sharing the text's 3D context to a deeper occluder", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="stage">
+          <div id="headline">Headline copy</div>
+          <div id="decor"></div>
+        </div>
+        <div id="panel"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        stage: { transformStyle: "preserve-3d" },
+        panel: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "decor",
+    });
+    (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () =>
+      ["decor", "panel"].map((id) => document.getElementById(id) as Element);
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
+  it("composites stacked translucent gradient layers (two 0.5-alpha layers occlude)", () => {
+    const occluded = auditOcclusionScene({
+      overlayStyle: {
+        backgroundImage:
+          "linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5))",
+      },
+      topmostId: "overlay",
+    }).find((issue) => issue.code === "text_occluded");
+    expect(occluded).toBeDefined();
+  });
+
+  it("does not count a single 0.5-alpha gradient layer as an occluder", () => {
+    const issues = auditOcclusionScene({
+      overlayStyle: { backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5))" },
+      topmostId: "overlay",
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("probes text whose ink sits just above the 0.05 opacity floor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">
+          <span id="inner">Headline copy</span>
+        </div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        inner: { opacity: "0.06" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+      textRectElementId: "inner",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
+  it("still counts an opaque gradient panel as an occluder", () => {
+    const occluded = auditOcclusionScene({
+      overlayStyle: { backgroundImage: "linear-gradient(rgb(10, 10, 10), rgb(40, 40, 40))" },
+      topmostId: "overlay",
+    }).find((issue) => issue.code === "text_occluded");
+    expect(occluded).toBeDefined();
+  });
+
+  it("still flags text buried under an occluder that itself has pointer-events:none", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Headline copy</div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        overlay: { backgroundColor: "rgb(10, 10, 10)", pointerEvents: "none" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    // Simulate hit-testing: the scrim is only hittable once the audit restores its pointer-events.
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+      const overlay = document.getElementById("overlay");
+      return overlay?.style.getPropertyValue("pointer-events") === "auto"
+        ? overlay
+        : document.getElementById("headline");
+    };
+    installAuditScript();
+    const occluded = runAudit().find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
+  it("does not probe text whose every text node is still at opacity 0 (whitespace-indented markup)", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">
+          <span id="inner">Headline copy</span>
+        </div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        inner: { opacity: "0" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 });
 
@@ -897,6 +2083,7 @@ function occlusionProbePoints(textRect: RectInput): Array<{ x: number; y: number
 function auditCoverageScene(options: {
   text: string;
   hitCount: number;
+  proseCoverageFloor?: number;
 }): ReturnType<typeof runAudit> {
   const textRect = { left: 200, top: 500, width: 600, height: 80 };
   document.body.innerHTML = `
@@ -920,7 +2107,11 @@ function auditCoverageScene(options: {
     return document.getElementById(isHit ? "overlay" : "headline");
   };
   installAuditScript();
-  return runAudit();
+  return runAudit(
+    options.proseCoverageFloor === undefined
+      ? undefined
+      : { proseCoverageFloor: options.proseCoverageFloor },
+  );
 }
 
 function auditOcclusionScene(options: {
@@ -943,10 +2134,44 @@ function auditOcclusionScene(options: {
   return runAudit();
 }
 
+function auditImageOcclusionScene(
+  alpha: number,
+  options: { objectFit?: string; headlineTextRect?: DOMRect } = {},
+): ReturnType<typeof runAudit> {
+  document.body.innerHTML = `
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+      <div id="headline">Headline copy</div>
+      <img id="overlay" src="paper.png" alt="" />
+    </div>
+  `;
+  const overlay = document.getElementById("overlay") as HTMLImageElement;
+  Object.defineProperties(overlay, {
+    naturalWidth: { configurable: true, value: 100 },
+    naturalHeight: { configurable: true, value: 100 },
+  });
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage: vi.fn(),
+    getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([0, 0, 0, alpha]) })),
+  } as unknown as CanvasRenderingContext2D);
+  installOcclusionGeometry({
+    styleOverrides: { overlay: { objectFit: options.objectFit ?? "fill" } },
+    headlineTextRect:
+      options.headlineTextRect ?? rect({ left: 200, top: 500, width: 600, height: 80 }),
+    topmostId: "overlay",
+  });
+  overlay.getBoundingClientRect = () => rect({ left: 0, top: 0, width: 1920, height: 1080 });
+  installAuditScript();
+  return runAudit();
+}
+
 function installOcclusionGeometry(options: {
   styleOverrides: Record<string, Partial<Record<string, string>>>;
-  headlineTextRect: DOMRect;
+  headlineTextRect: DOMRect | DOMRect[];
   topmostId: string;
+  textRectElementId?: string;
 }): void {
   const baseStyle: Record<string, string> = {
     display: "block",
@@ -993,8 +2218,12 @@ function installOcclusionGeometry(options: {
         selected = node;
       },
       getClientRects() {
-        return (selected as Element | null)?.id === "headline"
-          ? ([options.headlineTextRect] as unknown as DOMRectList)
+        const selectedElement =
+          selected?.nodeType === Node.TEXT_NODE
+            ? (selected.parentElement as Element | null)
+            : (selected as Element | null);
+        return selectedElement?.id === (options.textRectElementId ?? "headline")
+          ? (normalizeTextRects(options.headlineTextRect) as unknown as DOMRectList)
           : ([] as unknown as DOMRectList);
       },
       detach() {},
@@ -1003,6 +2232,48 @@ function installOcclusionGeometry(options: {
 
   (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
     document.getElementById(options.topmostId);
+}
+
+function installOffsetParents(map: Record<string, string>): void {
+  for (const [childId, parentId] of Object.entries(map)) {
+    const child = document.getElementById(childId);
+    const parent = document.getElementById(parentId);
+    if (child && parent) Object.defineProperty(child, "offsetParent", { value: parent });
+  }
+}
+
+interface CtmTranslate {
+  e: number;
+  f: number;
+}
+
+// happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
+function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
+  const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
+  const prop = { configurable: true, writable: true };
+  for (const svg of Array.from(root.querySelectorAll("svg"))) {
+    Object.defineProperty(svg, "createSVGPoint", {
+      ...prop,
+      value: () => ({
+        x: 0,
+        y: 0,
+        matrixTransform(m: typeof matrix) {
+          return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+        },
+      }),
+    });
+    for (const path of Array.from(svg.querySelectorAll("path"))) {
+      const numbers = (path.getAttribute("d")?.match(/-?\d*\.?\d+/g) || []).map(Number);
+      const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
+      const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
+      Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        ...prop,
+        value: (length: number) => (length === 0 ? start : end),
+      });
+      Object.defineProperty(path, "getScreenCTM", { ...prop, value: () => matrix });
+    }
+  }
 }
 
 function installAuditScript(): void {
@@ -1085,19 +2356,39 @@ async function runContrastAudit(): Promise<Array<Record<string, unknown>>> {
 interface AuditIssue {
   code: string;
   selector: string;
+  text?: string;
   containerSelector?: string;
   overflow?: Record<string, number>;
   message?: string;
+  fixHint?: string;
   coveredFraction?: number;
 }
 
-function runAudit(): AuditIssue[] {
+function runAudit(options?: { proseCoverageFloor?: number }): AuditIssue[] {
   const audit = (
     window as unknown as {
-      __hyperframesLayoutAudit: (options: { time: number; tolerance: number }) => AuditIssue[];
+      __hyperframesLayoutAudit: (options: {
+        time: number;
+        tolerance: number;
+        proseCoverageFloor?: number;
+      }) => AuditIssue[];
     }
   ).__hyperframesLayoutAudit;
-  return audit({ time: 1, tolerance: 2 });
+  return audit({ time: 1, tolerance: 2, ...options });
+}
+
+function selectedRangeElement(selected: Node | null): Element | null {
+  return selected?.nodeType === Node.TEXT_NODE
+    ? (selected.parentElement as Element | null)
+    : (selected as Element | null);
+}
+
+function rangeTextRect(selected: Node | null, rects: Record<string, DOMRect>): DOMRect | undefined {
+  const element = selectedRangeElement(selected);
+  if (element?.id === "ignored") return rects.ignored;
+  if (selected?.nodeType === Node.TEXT_NODE && element?.id)
+    return rects[`${element.id}Text`] ?? rects.text;
+  return rects.text;
 }
 
 function installGeometry(
@@ -1154,8 +2445,7 @@ function installGeometry(
         selected = node;
       },
       getClientRects() {
-        const element = selected as Element | null;
-        const textRect = element?.id === "ignored" ? rects.ignored : rects.text;
+        const textRect = rangeTextRect(selected, rects);
         return textRect ? ([textRect] as unknown as DOMRectList) : ([] as unknown as DOMRectList);
       },
       detach() {},

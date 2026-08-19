@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateOptimalWorkers,
+  computeWorkerSizing,
   distributeFrames,
+  expectedFramesForTask,
+  flagSilentWorkerExits,
   formatWorkerFailure,
+  selectVerifySampleIndicesForTask,
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
   shouldVerifyWorkerGpu,
+  synthesizeSilentWorkerExitError,
   resolveParallelDeVerifySamples,
+  type WorkerResult,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
 
@@ -75,6 +81,61 @@ describe("calculateOptimalWorkers", () => {
     });
 
     expect(workers).toBe(4);
+  });
+
+  it.each([12, 16])(
+    "honors an explicit %i-worker request above the auto safe maximum",
+    (requested) => {
+      expect(calculateOptimalWorkers(900, requested, { concurrency: "auto" })).toBe(requested);
+    },
+  );
+
+  it("caps explicit worker requests at the documented 24-worker ceiling", () => {
+    expect(calculateOptimalWorkers(900, 25, { concurrency: "auto" })).toBe(24);
+  });
+});
+
+describe("computeWorkerSizing", () => {
+  it("matches calculateOptimalWorkers and reports every constraint", () => {
+    const config = { concurrency: "auto" as const };
+    const sizing = computeWorkerSizing(900, undefined, config);
+    expect(sizing.workers).toBe(calculateOptimalWorkers(900, undefined, config));
+    expect(sizing.cpuBasedWorkers).toBeGreaterThanOrEqual(1);
+    expect(sizing.memoryBasedWorkers).toBeGreaterThanOrEqual(1);
+    expect(sizing.heapBasedWorkers).toBeGreaterThanOrEqual(1);
+    expect(sizing.frameBasedWorkers).toBe(30); // 900 / MIN_FRAMES_PER_WORKER(30)
+    expect(sizing.heapLimitMb).toBeGreaterThan(0);
+    expect(sizing.totalMemoryMb).toBeGreaterThan(0);
+    expect(sizing.cpuCount).toBeGreaterThan(0);
+  });
+
+  it("labels explicit requests and clamps them like the legacy wrapper", () => {
+    const sizing = computeWorkerSizing(900, 25, { concurrency: "auto" });
+    expect(sizing.workers).toBe(24);
+    expect(sizing.boundBy).toBe("explicit");
+  });
+
+  it("labels tiny renders as too_few_frames", () => {
+    const sizing = computeWorkerSizing(30, undefined, { concurrency: "auto" });
+    expect(sizing.workers).toBe(1);
+    expect(sizing.boundBy).toBe("too_few_frames");
+  });
+
+  it("labels the contention cap when high capture cost binds", () => {
+    const sizing = computeWorkerSizing(180, undefined, {
+      concurrency: 6,
+      coresPerWorker: 100,
+      minParallelFrames: 120,
+      largeRenderThreshold: 1000,
+      captureCostMultiplier: 4,
+    });
+    expect(sizing.workers).toBe(1);
+    expect(sizing.boundBy).toBe("contention");
+  });
+
+  it("flags exceedsHeapAdvisory exactly when workers exceed the heap budget", () => {
+    const sizing = computeWorkerSizing(900, 24, { concurrency: "auto" });
+    expect(sizing.exceedsHeapAdvisory).toBe(sizing.workers > sizing.heapBasedWorkers);
   });
 });
 
@@ -149,6 +210,172 @@ describe("worker failure diagnostics", () => {
     ).toBe(
       "Worker 1: Navigation timeout of 60000 ms exceeded; diagnostics: [FrameCapture:ERROR] page.goto failed mode=screenshot timeoutMs=60000",
     );
+  });
+
+  // Field signal ts=1784042064: a Windows render hard-exited during video
+  // frame extraction without emitting a terminal error string; the parent
+  // treated the result as success because `error` was falsy. The synthesized
+  // string surfaces the shortfall so downstream telemetry can classify the
+  // failure instead of it disappearing silently.
+  it("synthesizes a terminal error when a worker exits with no error string", () => {
+    const message = formatWorkerFailure({
+      workerId: 3,
+      framesCaptured: 12,
+      startFrame: 0,
+      endFrame: 60,
+      durationMs: 180_000,
+    });
+    expect(message).toContain("Worker 3: worker 3 exited without terminal error string");
+    expect(message).toContain("framesCaptured=12");
+    expect(message).toContain("expected=60");
+    expect(message).toContain("range=[0, 60)");
+    expect(message).toContain("ts=1784042064");
+    expect(message).toContain("--workers=1");
+  });
+
+  it("prefers an explicit error string over the synthesized silent-exit message", () => {
+    const message = formatWorkerFailure({
+      workerId: 3,
+      framesCaptured: 12,
+      startFrame: 0,
+      endFrame: 60,
+      durationMs: 180_000,
+      error: "Target closed",
+    });
+    expect(message).toBe("Worker 3: Target closed");
+    expect(message).not.toContain("ts=1784042064");
+    expect(message).not.toContain("exited without terminal error string");
+  });
+
+  it("treats an empty error string as a silent exit for the message contract", () => {
+    const message = formatWorkerFailure({
+      workerId: 3,
+      framesCaptured: 12,
+      startFrame: 0,
+      endFrame: 60,
+      durationMs: 180_000,
+      error: "",
+    });
+    expect(message).toContain("exited without terminal error string");
+    expect(message).toContain("ts=1784042064");
+  });
+});
+
+describe("expectedFramesForTask", () => {
+  it("returns the range length for contiguous tasks", () => {
+    expect(expectedFramesForTask({ startFrame: 0, endFrame: 30 })).toBe(30);
+    expect(expectedFramesForTask({ startFrame: 10, endFrame: 25 })).toBe(15);
+  });
+
+  it("divides by stride for interleaved tasks", () => {
+    // Worker 0 in a 3-way interleave over 30 frames captures 0, 3, 6, ..., 27 → 10 frames.
+    expect(expectedFramesForTask({ startFrame: 0, endFrame: 30, frameStride: 3 })).toBe(10);
+  });
+
+  it("rounds up so the last-stride-remainder frame is expected", () => {
+    // Worker 0 in a 3-way interleave over 31 frames captures 0, 3, ..., 30 → 11 frames.
+    expect(expectedFramesForTask({ startFrame: 0, endFrame: 31, frameStride: 3 })).toBe(11);
+  });
+
+  it("returns zero for empty ranges", () => {
+    expect(expectedFramesForTask({ startFrame: 10, endFrame: 10 })).toBe(0);
+    expect(expectedFramesForTask({ startFrame: 30, endFrame: 10 })).toBe(0);
+  });
+});
+
+describe("synthesizeSilentWorkerExitError", () => {
+  it("names the field signal and reruns hint so operators can classify the failure", () => {
+    const message = synthesizeSilentWorkerExitError(
+      { workerId: 7, framesCaptured: 40, startFrame: 60, endFrame: 120 },
+      60,
+    );
+    expect(message).toContain("worker 7 exited without terminal error string");
+    expect(message).toContain("framesCaptured=40");
+    expect(message).toContain("expected=60");
+    expect(message).toContain("range=[60, 120)");
+    expect(message).toContain("Field signal ts=1784042064");
+    expect(message).toContain("--workers=1");
+  });
+});
+
+describe("flagSilentWorkerExits", () => {
+  it("does not flag a fully-successful interleaved worker (regression: PRINFRA-300)", () => {
+    // 3-way interleave over 150 frames: worker 0 captures 0, 3, ..., 147 → 50
+    // frames, which is its FULL expected count at stride=3. Without
+    // `frameStride` on the result, expectedFramesForTask would fall back to
+    // stride=1 (150) and false-positive this as a silent death.
+    const results: WorkerResult[] = [
+      {
+        workerId: 0,
+        framesCaptured: 50,
+        startFrame: 0,
+        endFrame: 150,
+        frameStride: 3,
+        durationMs: 1000,
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toBeUndefined();
+  });
+
+  it("still flags a genuinely under-captured interleaved worker", () => {
+    const results: WorkerResult[] = [
+      {
+        workerId: 1,
+        framesCaptured: 20, // expected 50 at stride=3
+        startFrame: 1,
+        endFrame: 150,
+        frameStride: 3,
+        durationMs: 1000,
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toContain("worker 1 exited without terminal error string");
+    expect(results[0]?.error).toContain("expected=50");
+  });
+
+  it("does not overwrite an existing error", () => {
+    const results: WorkerResult[] = [
+      {
+        workerId: 2,
+        framesCaptured: 0,
+        startFrame: 0,
+        endFrame: 10,
+        durationMs: 1000,
+        error: "Protocol error (Page.captureScreenshot): Target closed",
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toBe("Protocol error (Page.captureScreenshot): Target closed");
+  });
+});
+
+describe("selectVerifySampleIndicesForTask", () => {
+  it("keeps only samples inside the task's contiguous range, sorted", () => {
+    // 2-worker split of 3032 frames: worker 1 owns [1516, 3032).
+    expect(
+      selectVerifySampleIndicesForTask([2274, 758, 1516, 3031, 3032], {
+        startFrame: 1516,
+        endFrame: 3032,
+      }),
+    ).toEqual([1516, 2274, 3031]);
+  });
+
+  it("respects the stride lattice for interleaved tasks", () => {
+    // Worker 1 of a 3-way interleave over [1, 30): captures 1, 4, 7, ...
+    expect(
+      selectVerifySampleIndicesForTask([1, 2, 4, 6, 7, 28, 29], {
+        startFrame: 1,
+        endFrame: 30,
+        frameStride: 3,
+      }),
+    ).toEqual([1, 4, 7, 28]);
+  });
+
+  it("returns empty when no samples fall in the range", () => {
+    expect(
+      selectVerifySampleIndicesForTask([0, 10, 20], { startFrame: 100, endFrame: 200 }),
+    ).toEqual([]);
   });
 });
 

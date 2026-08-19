@@ -355,28 +355,6 @@ export const NLEPreview = memo(function NLEPreview({
   }, [applyZoom, applyPan]);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const handleDblClick = (event: MouseEvent) => {
-      if (isPreviewAtFit(zoomRef.current)) return;
-      const rect = viewport.getBoundingClientRect();
-      if (
-        event.clientX < rect.left ||
-        event.clientX > rect.right ||
-        event.clientY < rect.top ||
-        event.clientY > rect.bottom
-      ) {
-        return;
-      }
-      applyZoom(DEFAULT_PREVIEW_ZOOM);
-    };
-
-    document.addEventListener("dblclick", handleDblClick, { capture: true });
-    return () => document.removeEventListener("dblclick", handleDblClick, { capture: true });
-  }, [applyZoom]);
-
-  useEffect(() => {
     const isInsideViewport = (clientX: number, clientY: number): DOMRect | null => {
       const viewport = viewportRef.current;
       if (!viewport) return null;
@@ -459,7 +437,7 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-700"
+        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-950"
         tabIndex={0}
         aria-label="Composition preview"
       >

@@ -27,14 +27,13 @@ describe("resolveTimelineMove", () => {
           track: 2,
           duration: 2,
           originClientX: 100,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 8,
           trackOrder: [0, 1, 2, 3, 4],
         },
         245,
-        200,
+        0,
       ),
     ).toEqual({ start: 2.7, track: 2 });
   });
@@ -47,14 +46,13 @@ describe("resolveTimelineMove", () => {
           track: 1,
           duration: 3,
           originClientX: 200,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 10,
           trackOrder: [0, 1, 5, 9],
         },
         150,
-        390,
+        190 / 72,
       ),
     ).toEqual({ start: 1.5, track: 9 });
   });
@@ -67,14 +65,13 @@ describe("resolveTimelineMove", () => {
           track: 0,
           duration: 4,
           originClientX: 300,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 6,
           trackOrder: [0, 10, 20],
         },
         -100,
-        -200,
+        -400 / 72,
       ),
     ).toEqual({ start: 0, track: -1 });
 
@@ -85,14 +82,13 @@ describe("resolveTimelineMove", () => {
           track: 10,
           duration: 4,
           originClientX: 300,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 6,
           trackOrder: [0, 10, 20],
         },
         500,
-        200,
+        0,
       ),
     ).toEqual({ start: 6, track: 10 });
   });
@@ -105,14 +101,13 @@ describe("resolveTimelineMove", () => {
           track: 0,
           duration: 2,
           originClientX: 100,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 8,
           trackOrder: [0, 10, 20],
         },
         100,
-        150,
+        -50 / 72,
       ),
     ).toEqual({ start: 1, track: -1 });
   });
@@ -125,19 +120,18 @@ describe("resolveTimelineMove", () => {
           track: 20,
           duration: 2,
           originClientX: 100,
-          originClientY: 200,
+          originRow: 0,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 8,
           trackOrder: [0, 10, 20],
         },
         100,
-        250,
+        50 / 72,
       ),
     ).toEqual({ start: 1, track: 21 });
   });
 
-  it("accounts for scroll displacement while dragging", () => {
+  it("accounts for horizontal scroll displacement while dragging", () => {
     expect(
       resolveTimelineMove(
         {
@@ -145,18 +139,17 @@ describe("resolveTimelineMove", () => {
           track: 0,
           duration: 2,
           originClientX: 100,
-          originClientY: 200,
+          originRow: 0,
           originScrollLeft: 0,
-          originScrollTop: 0,
           currentScrollLeft: 100,
-          currentScrollTop: 144,
           pixelsPerSecond: 100,
-          trackHeight: 72,
           maxStart: 8,
+          // Vertical scroll never reaches here: the drag preview folds it into the
+          // row index it passes, because rows no longer share one pixel height.
           trackOrder: [0, 1, 2, 3],
         },
         100,
-        200,
+        2,
       ),
     ).toEqual({ start: 2, track: 2 });
   });
@@ -195,9 +188,8 @@ describe("resolveTimelineMove", () => {
         track: 1,
         duration: 2,
         originClientX: 0,
-        originClientY: 0,
+        originRow: 0,
         pixelsPerSecond: 100,
-        trackHeight: 72,
         maxStart: 8,
         trackOrder: [0, 1],
         layerOrder: layers.map((layer) => layer.id),
@@ -206,7 +198,7 @@ describe("resolveTimelineMove", () => {
         stackingElements,
       },
       0,
-      -72,
+      -1,
     );
 
     expect(result).toEqual({
@@ -677,6 +669,38 @@ describe("resolveTimelineAutoScroll", () => {
       ),
     ).toEqual({ x: 9, y: 6 });
   });
+
+  it("uses the time-grid edge instead of the viewport edge when labels are sticky", () => {
+    expect(
+      resolveTimelineAutoScroll(
+        {
+          left: 100,
+          top: 100,
+          right: 700,
+          bottom: 400,
+        },
+        340,
+        250,
+        232,
+      ),
+    ).toEqual({ x: -10, y: 0 });
+  });
+
+  it("caps auto-scroll speed when the pointer moves inside the sticky labels", () => {
+    expect(
+      resolveTimelineAutoScroll(
+        {
+          left: 100,
+          top: 100,
+          right: 700,
+          bottom: 400,
+        },
+        120,
+        250,
+        232,
+      ),
+    ).toEqual({ x: -12, y: 0 });
+  });
 });
 
 describe("buildTimelineAgentPrompt", () => {
@@ -693,7 +717,7 @@ describe("buildTimelineAgentPrompt", () => {
       prompt: "Move the title later and lower the music",
     });
 
-    expect(text).toContain("Time range: 0:01 - 0:04");
+    expect(text).toContain("Time range: 00:01 - 00:04");
     expect(text).toContain("#title (div)");
     expect(text).toContain("#music (audio)");
     expect(text).toContain("Move the title later and lower the music");

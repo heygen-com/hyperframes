@@ -4,10 +4,12 @@ When no recorded voiceover exists, generate one and obtain word-level caption ti
 
 ## Path A — HeyGen (single call, no Whisper)
 
-HeyGen returns word timestamps in the same response as the audio. Pass `--words` and you're done:
+HeyGen returns word timestamps in the same response as the audio. Use the
+bundled REST helper (the `hyperframes tts` command is Kokoro-only):
 
 ```bash
-npx hyperframes tts script.txt --provider heygen --output narration.wav --words narration.words.json
+node skills/media-use/audio/scripts/heygen-tts.mjs \
+  script.txt --output narration.wav --words narration.words.json
 ```
 
 `narration.words.json` is already in the `[{ id, text, start, end }]` shape the captions pipeline consumes — no separate transcribe pass.

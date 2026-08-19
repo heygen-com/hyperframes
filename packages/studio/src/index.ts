@@ -1,5 +1,5 @@
 // NLE Layout
-export { NLELayout } from "./components/nle/NLELayout";
+export { EditorShell } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";

@@ -10,9 +10,9 @@ import {
 import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { safeLocalStorage } from "../../utils/safeStorage";
 import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
 import { FileTree } from "../editor/FileTree";
-import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability";
 import { Tooltip } from "../ui";
 
 export type SidebarTab = "compositions" | "assets" | "code" | "blocks";
@@ -24,8 +24,18 @@ export interface LeftSidebarHandle {
 
 const STORAGE_KEY = "hf-studio-sidebar-tab";
 
-function getPersistedTab(): SidebarTab {
-  const stored = localStorage.getItem(STORAGE_KEY);
+// Both the `localStorage` reference and `getItem` itself can throw when the
+// browsing context is partitioned or site data is blocked — the same case
+// telemetry/config.ts documents. This runs as a `useState` initializer, so an
+// unguarded throw here takes the whole editor to the crash boundary rather
+// than losing one remembered tab.
+export function getPersistedTab(): SidebarTab {
+  let stored: string | null = null;
+  try {
+    stored = safeLocalStorage()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    /* storage unavailable — fall back to the default tab */
+  }
   if (stored === "assets") return "assets";
   if (stored === "code") return "code";
   if (stored === "blocks") return "blocks";
@@ -60,6 +70,8 @@ interface LeftSidebarProps {
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   takeoverContent?: ReactNode;
+  onAddAssetToTimeline?: (path: string) => void;
+  onAddCompositionToTimeline?: (path: string) => void;
 }
 
 export const LeftSidebar = memo(
@@ -92,6 +104,8 @@ export const LeftSidebar = memo(
       onAddBlock,
       onPreviewBlock,
       takeoverContent,
+      onAddAssetToTimeline,
+      onAddCompositionToTimeline,
     },
     ref,
   ) {
@@ -101,7 +115,11 @@ export const LeftSidebar = memo(
 
     const selectTab = useCallback((t: SidebarTab) => {
       setTab(t);
-      localStorage.setItem(STORAGE_KEY, t);
+      try {
+        safeLocalStorage()?.setItem(STORAGE_KEY, t);
+      } catch {
+        /* storage unavailable — the tab just won't be remembered */
+      }
       trackStudioEvent("tab_switch", { panel: "left_sidebar", tab: t });
     }, []);
 
@@ -111,7 +129,7 @@ export const LeftSidebar = memo(
 
     return (
       <div
-        className="flex flex-col h-full bg-neutral-950 border-r border-neutral-800/50"
+        className="flex flex-col h-full overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
         style={{ width }}
       >
         {takeoverContent ? (
@@ -123,11 +141,7 @@ export const LeftSidebar = memo(
               <div className="flex items-center gap-2">
                 <div
                   className="grid min-w-0 flex-1 gap-0.5 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-                  style={{
-                    gridTemplateColumns: STUDIO_BLOCKS_PANEL_ENABLED
-                      ? "1fr 1fr 1fr 1fr"
-                      : "1fr 1fr 1fr",
-                  }}
+                  style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}
                 >
                   <Tooltip label="Source code editor" side="bottom">
                     <button
@@ -168,21 +182,19 @@ export const LeftSidebar = memo(
                       Assets
                     </button>
                   </Tooltip>
-                  {STUDIO_BLOCKS_PANEL_ENABLED && (
-                    <Tooltip label="Browse blocks and components" side="bottom">
-                      <button
-                        type="button"
-                        onClick={() => selectTab("blocks")}
-                        className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                          tab === "blocks"
-                            ? "bg-neutral-800 text-white"
-                            : "text-neutral-500 hover:text-neutral-200"
-                        }`}
-                      >
-                        Catalog
-                      </button>
-                    </Tooltip>
-                  )}
+                  <Tooltip label="Browse blocks and components" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => selectTab("blocks")}
+                      className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
+                        tab === "blocks"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:text-neutral-200"
+                      }`}
+                    >
+                      Catalog
+                    </button>
+                  </Tooltip>
                 </div>
                 {onToggleCollapse && (
                   <button
@@ -218,6 +230,7 @@ export const LeftSidebar = memo(
                 compositions={compositions}
                 activeComposition={activeComposition}
                 onSelect={onSelectComposition}
+                onAddToTimeline={onAddCompositionToTimeline}
                 onRenderComposition={onRenderComposition}
                 isRendering={isRendering}
                 lintFindingsByFile={lintFindingsByFile}
@@ -230,6 +243,7 @@ export const LeftSidebar = memo(
                 onImport={onImportFiles}
                 onDelete={onDeleteFile}
                 onRename={onRenameFile}
+                onAddAssetToTimeline={onAddAssetToTimeline}
               />
             )}
             {tab === "code" && (
@@ -261,7 +275,7 @@ export const LeftSidebar = memo(
               </div>
             )}
 
-            {STUDIO_BLOCKS_PANEL_ENABLED && tab === "blocks" && (
+            {tab === "blocks" && (
               <BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />
             )}
 

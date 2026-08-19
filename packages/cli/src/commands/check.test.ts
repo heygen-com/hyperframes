@@ -31,6 +31,7 @@ import {
   type MotionSpecResolution,
 } from "../utils/checkPipeline.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { consumeCommandResult } from "../utils/commandResult.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import type {
   LayoutIssue,
@@ -46,10 +47,8 @@ const PROJECT: ProjectDir = {
   indexPath: "/project/index.html",
 };
 const PNG_BASE64 = Buffer.from("png-bytes").toString("base64");
-const ORIGINAL_EXIT_CODE = process.exitCode;
-
 afterEach(() => {
-  process.exitCode = ORIGINAL_EXIT_CODE;
+  consumeCommandResult();
   trackCheckReport.mockClear();
   vi.restoreAllMocks();
 });
@@ -148,8 +147,12 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     getCanvas: vi.fn(async () => ({ width: 1920, height: 1080 })),
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
     seek: vi.fn(async (_time: number) => undefined),
+    seekGeometry: vi.fn(async (_time: number) => undefined),
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
+    collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
+    collectRotationSample: vi.fn(async (_time: number) => []),
+    collectOffPivotRotationSample: vi.fn(async (time: number) => ({ time, samples: [] })),
     collectGeometryCandidates: vi.fn(async () => []),
     collectMotionFrame: vi.fn(async (time: number) => ({ time, data: {}, liveness: {} })),
     anchorMotionIssues: vi.fn(async (issues: LayoutIssue[]) =>
@@ -172,11 +175,13 @@ interface GeometryFixture {
   elementRect?: LayoutRect;
   time: number;
   overflow?: LayoutOverflow;
+  dataAttributes?: Record<string, string>;
 }
 
 function geometryCandidate(fixture: GeometryFixture) {
   return {
     ...anchor(fixture.selector, fixture.time),
+    ...(fixture.dataAttributes ? { dataAttributes: fixture.dataAttributes } : {}),
     kind: fixture.kind,
     tag: fixture.tag,
     text: fixture.text,
@@ -354,6 +359,81 @@ it("parses the caption-zone grammar and enables the frame gate", async () => {
   );
 });
 
+it("preserves caption-zone after bare --frame-check", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: [
+      "--frame-check",
+      "--caption-zone",
+      "x0=0;y0=.82;x1=1;y1=1;severity=error;seek=.25,1",
+      "--json",
+    ],
+  });
+
+  expect(runPipeline).toHaveBeenCalledWith(
+    PROJECT,
+    expect.objectContaining({
+      captionZone: {
+        x0: 0,
+        y0: 0.82,
+        x1: 1,
+        y1: 1,
+        severity: "error",
+        seek: [0.25, 1],
+      },
+      frameCheck: {},
+    }),
+  );
+});
+
+it("preserves --json after bare --frame-check", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--snapshots", "--samples", "15", "--frame-check", "--json"],
+  });
+
+  expect(runPipeline).toHaveBeenCalledWith(
+    PROJECT,
+    expect.objectContaining({
+      samples: 15,
+      snapshots: true,
+      frameCheck: {},
+    }),
+  );
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('"ok"'));
+});
+
+it("threads --no-proxy into the browser check options", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json", "--no-proxy"] });
+
+  expect(runPipeline).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ autoProxy: false }));
+});
+
 it("rejects malformed caption-zone specs instead of silently disabling the gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async () => report);
@@ -369,7 +449,7 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 
   expect(runPipeline).not.toHaveBeenCalled();
-  expect(process.exitCode).toBe(1);
+  expect(consumeCommandResult().exitCode).toBe(1);
   expect(log).toHaveBeenCalledTimes(1);
   expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({
     ok: false,
@@ -426,6 +506,26 @@ it("flags only text whose center is inside the caption band at the default end s
     }),
   ]);
   expect(report.ok).toBe(true);
+});
+
+it("skips caption_zone_collision when data-layout-allow-caption-zone is set", async () => {
+  const collectGeometryCandidates = vi.fn(async (time: number) => [
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Intentional lower third",
+      selector: "#lower-third",
+      rect: fixtureRect(860, 870, 200, 60),
+      time,
+      dataAttributes: { "data-layout-allow-caption-zone": "" },
+    }),
+  ]);
+  const { report } = await runScenario(
+    fakeDriver({ getDuration: vi.fn(async () => 10), collectGeometryCandidates }),
+    { samples: 1, contrast: false, captionZone: { x0: 0, y0: 0.8, x1: 1, y1: 0.9 } },
+  );
+
+  expect(report.layout.findings).toEqual([]);
 });
 
 it("filters caption candidates by the element box while centering the text rect", async () => {
@@ -784,10 +884,8 @@ describe("selectFindingCropRequests", () => {
 });
 
 describe("check pipeline", () => {
-  const originalExitCode = process.exitCode;
-
   afterEach(() => {
-    process.exitCode = originalExitCode;
+    consumeCommandResult();
     vi.restoreAllMocks();
   });
 
@@ -804,7 +902,7 @@ describe("check pipeline", () => {
 
     expect(report.ok).toBe(true);
     expect(checkExitCode(report)).toBe(0);
-    expect(process.exitCode).toBe(0);
+    expect(consumeCommandResult().exitCode).toBe(0);
     expect(log).toHaveBeenCalledTimes(1);
     const output = log.mock.calls[0]?.[0];
     expect(typeof output).toBe("string");
@@ -1125,6 +1223,66 @@ describe("frame-check flag grammar", () => {
     });
     expect(() => parseFrameCheck("bogus=1")).toThrow("Invalid --frame-check");
     expect(() => parseFrameCheck("tol=-2")).toThrow("Invalid --frame-check");
+    expect(() => parseFrameCheck("tol=4px")).toThrow("Invalid --frame-check");
+    expect(() => parseFrameCheck("tol=2garbage")).toThrow("Invalid --frame-check");
+  });
+
+  it("attributes swallowed option values to --frame-check", async () => {
+    const { parseFrameCheck } = await import("./check.js");
+
+    expect(() => parseFrameCheck("--json")).toThrow(
+      'Invalid --frame-check: value "--json" appears to have swallowed the next option; use --frame-check= or move --frame-check to the end',
+    );
+    expect(() => parseFrameCheck("severity")).toThrow("Invalid --frame-check");
+  });
+});
+
+describe("layout flag grammar", () => {
+  it("parses proseCoverageFloor and rejects malformed specs", async () => {
+    const { parseLayout } = await import("./check.js");
+    expect(parseLayout(undefined)).toBeUndefined();
+    expect(parseLayout("proseCoverageFloor=0.05")).toEqual({ proseCoverageFloor: 0.05 });
+    expect(parseLayout("proseCoverageFloor=0")).toEqual({ proseCoverageFloor: 0 });
+    expect(parseLayout("proseCoverageFloor=1")).toEqual({ proseCoverageFloor: 1 });
+    expect(() => parseLayout(true)).toThrow("Invalid --layout");
+    expect(() => parseLayout("")).toThrow("Invalid --layout");
+    expect(() => parseLayout("bogus=1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=-0.1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=1.1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=0.05garbage")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=0.1%")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=")).toThrow("Invalid --layout");
+  });
+
+  it("threads --layout into the check pipeline options", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline,
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, {
+      rawArgs: ["--json", "--layout", "proseCoverageFloor=0.05"],
+    });
+
+    expect(runPipeline).toHaveBeenCalledWith(
+      PROJECT,
+      expect.objectContaining({
+        layout: { proseCoverageFloor: 0.05 },
+      }),
+    );
+  });
+
+  it("forwards layout options into driver.collectLayout", async () => {
+    const collectLayout = vi.fn(async (_time: number, _tolerance: number, _layout?: unknown) => []);
+    await runScenario(fakeDriver({ collectLayout }), { layout: { proseCoverageFloor: 0.05 } });
+    expect(collectLayout).toHaveBeenCalled();
+    expect(collectLayout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), {
+      proseCoverageFloor: 0.05,
+    });
   });
 });
 
@@ -1327,5 +1485,44 @@ describe("contrast candidate round-trip", () => {
     expect(source).toMatch(/prepared\.map\(\(entry\) => entry\.raw\)/);
     expect(source).toMatch(/raw: unknown;/);
     expect(source).not.toMatch(/prepared\.map\(\(entry\) => entry\.candidate\)/);
+  });
+});
+
+describe("dense motion-overlap re-sampling", () => {
+  // Collision lives inside (3.5, 4.5), a gap the sparse base grid seeks past; only the 8fps dense pass observes it.
+  const inBetweenGridWindow = (time: number): boolean => time >= 3.6 && time <= 4.4;
+
+  it("detects a content_overlap that occurs ONLY between two sparse grid samples", async () => {
+    const driver = fakeDriver({
+      // Sparse base grid sees nothing at any base sample time.
+      collectLayout: vi.fn(async (_time: number) => []),
+      // The transient exists only strictly between base samples 3.5 and 4.5.
+      collectOverlap: vi.fn(async (time: number) =>
+        inBetweenGridWindow(time)
+          ? [layoutIssue("warning", { time, code: "content_overlap" })]
+          : [],
+      ),
+    });
+    const { report } = await runScenario(driver);
+    expect(driver.collectOverlap).toHaveBeenCalled();
+    expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
+    // Held ~750ms across the dense grid (>= the 500ms floor) -> promoted.
+    expect(report.layout.errorCount).toBeGreaterThan(0);
+  });
+
+  it("runs the dense pass even when sparse fingerprints are identical (aliased motion)", async () => {
+    // Aliased motion has identical fingerprints yet still collides between samples — the false-negative the removed gate caused.
+    const driver = fakeDriver({
+      collectLayoutGeometry: vi.fn(async () => "static"),
+      collectLayout: vi.fn(async (_time: number) => []),
+      collectOverlap: vi.fn(async (time: number) =>
+        inBetweenGridWindow(time)
+          ? [layoutIssue("warning", { time, code: "content_overlap" })]
+          : [],
+      ),
+    });
+    const { report } = await runScenario(driver);
+    expect(driver.collectOverlap).toHaveBeenCalled();
+    expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
   });
 });

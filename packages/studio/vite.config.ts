@@ -3,7 +3,8 @@ import react from "@vitejs/plugin-react";
 import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
-import { createViteAdapter, isPathWithin } from "./vite.adapter";
+import { watch } from "chokidar";
+import { createViteAdapter } from "./vite.adapter";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -63,9 +64,20 @@ function devProjectApi(): Plugin {
     name: "studio-dev-api",
     configureServer(server): void {
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
+      let _studioServerModule: {
+        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
+          fetch: (req: Request) => Promise<Response>;
+        };
+        consumeFileWriteReceipt?: (
+          path: string,
+          expectedVersion: string,
+        ) => { path: string; version: string; writeToken: string } | null;
+        fileContentVersion?: (content: string) => string;
+      } | null = null;
       const getApi = async () => {
         if (!_api) {
           const mod = await server.ssrLoadModule("@hyperframes/studio-server");
+          _studioServerModule = mod as typeof _studioServerModule;
           const adapter = createViteAdapter(dataDir, server);
           _api = mod.createStudioApi(adapter);
         }
@@ -132,15 +144,16 @@ function devProjectApi(): Plugin {
         }
       });
 
-      // Watch project directories for file changes → HMR
+      // Watch project directories on a watcher of our own. Vite's is told to
+      // ignore them (see `server.watch.ignored`), because it answers an html
+      // change with a full page reload; this one only announces the change and
+      // lets Studio decide what to do with it.
       const realProjectPaths: string[] = [];
       try {
         for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
           const full = join(dataDir, entry.name);
           try {
-            const real = lstatSync(full).isSymbolicLink() ? realpathSync(full) : full;
-            realProjectPaths.push(real);
-            server.watcher.add(real);
+            realProjectPaths.push(lstatSync(full).isSymbolicLink() ? realpathSync(full) : full);
           } catch {
             /* skip broken symlinks */
           }
@@ -149,19 +162,42 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      server.watcher.on("change", (filePath: string) => {
-        const isProjectFile = realProjectPaths.some((p) => isPathWithin(p, filePath));
-        if (
-          isProjectFile &&
-          (filePath.endsWith(".html") ||
-            filePath.endsWith(".css") ||
-            filePath.endsWith(".js") ||
-            filePath.endsWith(".json"))
-        ) {
-          console.log(`[Studio] File changed: ${filePath}`);
-          server.ws.send({ type: "custom", event: "hf:file-change", data: { path: filePath } });
-        }
+      const projectWatcher = watch(realProjectPaths, {
+        ignoreInitial: true,
+        // A project write is a whole-file replace; wait for it to settle so a
+        // half-written composition is never announced.
+        awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
       });
+      projectWatcher.on("change", (filePath: string) => {
+        if (
+          !filePath.endsWith(".html") &&
+          !filePath.endsWith(".css") &&
+          !filePath.endsWith(".js") &&
+          !filePath.endsWith(".json")
+        )
+          return;
+        console.log(`[Studio] File changed: ${filePath}`);
+        // The receipt is matched on the file's current bytes, not just its path,
+        // so a write is only recognised as ours when the version agrees. Calling
+        // this without the version could never match, which left every Studio
+        // write looking external and reloaded the preview on each edit.
+        let version: string | null = null;
+        try {
+          version =
+            _studioServerModule?.fileContentVersion?.(readFileSync(filePath, "utf-8")) ?? null;
+        } catch {
+          // A deletion has no current bytes to match a write receipt against.
+        }
+        const receipt = version
+          ? (_studioServerModule?.consumeFileWriteReceipt?.(filePath, version) ?? null)
+          : null;
+        server.ws.send({
+          type: "custom",
+          event: "hf:file-change",
+          data: receipt ?? { path: filePath },
+        });
+      });
+      server.httpServer?.on("close", () => void projectWatcher.close());
     },
   };
 }
@@ -189,6 +225,15 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    watch: {
+      // A composition lives under this package's root, so Vite's HMR sees a
+      // write to one as an html page dependency changing and full-reloads the
+      // browser. That reload is the flash after every edit in the canvas, and
+      // it is not Studio's to make: the app already decides whether a write of
+      // its own needs the preview refreshed, and the plugin below announces
+      // project writes as `hf:file-change` off its own watcher.
+      ignored: ["**/data/projects/**"],
+    },
   },
   ssr: {
     // recast / @babel/parser are CommonJS and call `require("fs")`. They are

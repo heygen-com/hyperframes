@@ -37,7 +37,7 @@ const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): Cach
     size: stat.size,
     mediaStart: 0,
     duration: 3,
-    fps: 30,
+    fps: "30",
     format: "jpg",
     ...overrides,
   };
@@ -63,8 +63,8 @@ function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: s
 }
 
 describe("extractionCache constants", () => {
-  it("exposes the v2 schema prefix", () => {
-    expect(SCHEMA_PREFIX).toBe("hfcache-v3-");
+  it("exposes the v4 schema prefix", () => {
+    expect(SCHEMA_PREFIX).toBe("hfcache-v4-");
   });
 
   it("exposes the frame filename prefix shared with the extractor", () => {
@@ -123,8 +123,14 @@ describe("computeCacheKey", () => {
 
   it("changes when fps changes (different frame count invalidates key)", () => {
     const a = computeCacheKey(base(sourceFile));
-    const b = computeCacheKey({ ...base(sourceFile), fps: 60 });
+    const b = computeCacheKey({ ...base(sourceFile), fps: "60" });
     expect(a).not.toBe(b);
+  });
+
+  it("keeps exact rational rates distinct from their JavaScript decimal", () => {
+    const rational = computeCacheKey({ ...base(sourceFile), fps: "30000/1001" });
+    const decimal = computeCacheKey({ ...base(sourceFile), fps: String(30000 / 1001) });
+    expect(rational).not.toBe(decimal);
   });
 
   it("changes when format changes", () => {
@@ -199,6 +205,18 @@ describe("lookupCacheEntry / markCacheEntryComplete", () => {
   });
 
   const base = (videoPath: string): CacheKeyInput => keyFor(videoPath);
+
+  it("does not reuse a complete entry from the v3 numeric-fps namespace", () => {
+    const input = base(sourceFile);
+    const keyHash = computeCacheKey(input);
+    const staleV3Dir = join(tmpRoot, `hfcache-v3-${keyHash.slice(0, 16)}`);
+    mkdirSync(staleV3Dir, { recursive: true });
+    writeFileSync(join(staleV3Dir, COMPLETE_SENTINEL), "", "utf-8");
+
+    const lookup = lookupCacheEntry(tmpRoot, input);
+    expect(lookup.hit).toBe(false);
+    expect(lookup.entry.dir).toBe(join(tmpRoot, `${SCHEMA_PREFIX}${keyHash.slice(0, 16)}`));
+  });
 
   it("misses on an empty cache root", () => {
     const lookup = lookupCacheEntry(tmpRoot, base(sourceFile));

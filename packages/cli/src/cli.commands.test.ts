@@ -27,6 +27,20 @@ describe("CLI command registration", () => {
     );
   });
 
+  it("shows the check command used by workflow capability preflight in root help", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toMatch(/\bcheck:\s*\(\)\s*=>\s*import\("\.\/commands\/check\.js"\)/);
+    expect(helpSource).toContain(
+      '["check", "Run lint, runtime validation, and layout inspection as one gate"]',
+    );
+  });
+
+  it("registers media-treatment as the only treatment authoring command", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toContain('"media-treatment"');
+    expect(loaders).not.toContain('"color-grading"');
+  });
+
   // A command actively reconciling skills (`skills check`/`skills update`)
   // must not also nudge the user to go reconcile skills — that nudge is
   // either redundant (it just ran) or misleading (a stale cached count from
@@ -38,5 +52,11 @@ describe("CLI command registration", () => {
     expect(condition).toContain('command !== "upgrade"');
     expect(condition).toContain('command !== "events"');
     expect(condition).toContain('command !== "skills"');
+  });
+
+  it("reports each command failure only at the executable boundary", () => {
+    expect(cliSource).toContain("trackCommandFailures(load)");
+    expect(cliSource).not.toContain("trackCommandFailures(load,");
+    expect(cliSource.match(/reportCommandFailure\(command, error\)/g)).toHaveLength(1);
   });
 });

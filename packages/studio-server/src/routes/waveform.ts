@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
@@ -13,10 +13,13 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
       c.req.path.replace(`/projects/${project.id}/waveform/`, "").split("?")[0] ?? "",
     );
     const audioPath = join(project.dir, assetPath);
-    if (!existsSync(audioPath)) return c.json({ error: "file not found" }, 404);
+    const stats = statSync(audioPath, { throwIfNoEntry: false });
+    if (!stats) return c.json({ error: "file not found" }, 404);
 
     const cacheDir = join(project.dir, ".waveform-cache");
-    const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath));
+    // Keyed on the file's size and mtime as well as its name, so re-encoding an
+    // asset in place invalidates its peaks instead of drawing the old ones.
+    const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
 
     if (existsSync(cachePath)) {
       try {

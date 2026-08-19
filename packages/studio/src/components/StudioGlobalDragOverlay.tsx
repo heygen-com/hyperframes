@@ -17,9 +17,7 @@ export function StudioGlobalDragOverlay() {
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        <span className="text-sm font-medium text-studio-accent">
-          Drop files to import into project
-        </span>
+        <span className="text-sm font-medium text-studio-accent">Drop to add at the playhead</span>
       </div>
     </div>
   );

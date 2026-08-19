@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -50,7 +51,7 @@ export default defineCommand({
 
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     const depsError = validateRemoteDebuggingPortDeps({
@@ -60,7 +61,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     let remoteDebuggingPort: number | undefined;
@@ -70,7 +71,7 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -80,7 +81,7 @@ export default defineCommand({
       clack.log.error(
         "@hyperframes/player not found. Run `bun run --cwd packages/player build` first.",
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -94,7 +95,7 @@ export default defineCommand({
         `No slideshow island found in ${project.indexPath}. ` +
           `Add a <script type="application/hyperframes-slideshow+json"> block — see /hyperframes (slideshow).`,
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     const islandJson = islandMatch[1].trim();
@@ -106,7 +107,7 @@ export default defineCommand({
       clack.log.error(
         `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 

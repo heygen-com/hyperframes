@@ -209,6 +209,8 @@ export async function runAssetImportMany(
           throw new FigmaClientError(
             "RENDER_FAILED",
             `figma could not render node ${nodeId} as ${opts.format}`,
+            undefined,
+            "images",
           );
         slots[i] = await freezeAndRecord(
           fileKey,

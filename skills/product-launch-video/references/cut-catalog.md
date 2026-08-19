@@ -109,7 +109,7 @@ through_ content; inverse reads as _arriving at_ content.
 - Easing: `expo.out`, Duration: 0.5s
 
 Shipped examples: `boring → until-now` and `B3 → "That changes today."` (sfx-music-launch);
-seams 3/4 in claude-paper (`follow-up → thinking`, `thinking → compose UI`).
+seams 3/4 in editorial-paper (`follow-up → thinking`, `thinking → compose UI`).
 
 ---
 

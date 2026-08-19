@@ -14,6 +14,15 @@ export default defineConfig({
         find: /^@hyperframes\/core$/,
         replacement: resolve(__dirname, "../core/src/index.ts"),
       },
+      // Same reason the tsup build aliases this specifier to source: the CLI
+      // bundles the producer rather than depending on it at runtime, so its
+      // dist is not built for the test job. Without the alias, vite's import
+      // analysis resolves studioServer.ts's `import("@hyperframes/producer")`
+      // against an unbuilt package and the whole suite fails to collect.
+      {
+        find: /^@hyperframes\/producer$/,
+        replacement: resolve(__dirname, "../producer/src/index.ts"),
+      },
     ],
   },
   test: {

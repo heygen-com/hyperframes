@@ -178,6 +178,14 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
+    it("does not treat !important as part of a generic font family", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Inter', cursive !important; }</style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
     it("reports multiple missing families in one finding", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>
@@ -252,6 +260,34 @@ describe("font rules", () => {
         result.findings.filter((f) => f.code === "font_family_without_font_face"),
       ).toHaveLength(0);
       expect(result.errorCount).toBe(0);
+    });
+
+    it("accepts a URL-style plus alias used literally as the CSS family", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @import url("https://fonts.googleapis.com/css2?family=DM+Mono&family=IBM+Plex+Mono&display=swap");
+          h1 { font-family: 'DM+Mono', monospace; }
+          code { font-family: 'IBM+Plex+Mono', monospace; }
+        </style>
+      </div>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(
+        result.findings.filter((f) => f.code === "font_family_without_font_face"),
+      ).toHaveLength(0);
+      expect(result.errorCount).toBe(0);
+    });
+
+    it("does not decode percent escapes in a literal CSS family", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @import url("https://fonts.googleapis.com/css2?family=DM+Mono&display=swap");
+          h1 { font-family: 'DM%20Mono', monospace; }
+        </style>
+      </div>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(
+        result.findings.filter((f) => f.code === "font_family_without_font_face"),
+      ).toHaveLength(1);
     });
 
     it("still flags non-bundled families not covered by the Google Fonts URL", async () => {

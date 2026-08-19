@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   _resetCgroupLimitCacheForTests,
@@ -154,6 +155,30 @@ describe("parseCgroupLimitMb", () => {
   });
 });
 
+describe("getCgroupMemoryLimitMb", () => {
+  it("returns only an actual cgroup limit and never host RAM", async () => {
+    await withSystemMemoryMocks(
+      {
+        files: { [CGROUP_V2_MEMORY_MAX_PATH]: `${24576 * BYTES_PER_MIB}` },
+        hostTotalMb: 65536,
+      },
+      ({ getCgroupMemoryLimitMb }) => {
+        expect(getCgroupMemoryLimitMb()).toBe(24576);
+      },
+    );
+
+    await withSystemMemoryMocks(
+      {
+        files: { [CGROUP_V2_MEMORY_MAX_PATH]: "max" },
+        hostTotalMb: 65536,
+      },
+      ({ getCgroupMemoryLimitMb }) => {
+        expect(getCgroupMemoryLimitMb()).toBeNull();
+      },
+    );
+  });
+});
+
 describe("getSystemTotalMb", () => {
   it("caches cgroup probes until the test reset hook clears the cache", async () => {
     const readCalls: string[] = [];
@@ -248,6 +273,27 @@ describe("getSystemTotalMb", () => {
           "[SystemMemory] Unable to read cgroup memory limit",
         );
         expect(warn.mock.calls[0]?.[0]).toContain("EACCES");
+      },
+    );
+  });
+
+  it("logs the cgroup-limit notice to stderr, not stdout (keeps --json output clean)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await withSystemMemoryMocks(
+      {
+        files: {
+          [CGROUP_V2_MEMORY_MAX_PATH]: `${4096 * BYTES_PER_MIB}`,
+        },
+      },
+      ({ getSystemTotalMb }) => {
+        expect(getSystemTotalMb()).toBe(4096);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[0]).toContain("[SystemMemory] cgroup memory limit detected");
+        // stdout must stay clean so `check --json` output is machine-parseable.
+        expect(info).not.toHaveBeenCalled();
+        expect(log).not.toHaveBeenCalled();
       },
     );
   });

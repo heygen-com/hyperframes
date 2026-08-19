@@ -27,7 +27,7 @@ A slideshow's output is the **running deck**: serve it with `hyperframes present
 
 ## Intent confirmation
 
-If the user explicitly asks for a slideshow, slide show, or HyperFrames slideshow, proceed with this skill.
+If the user explicitly asks for a slideshow, slide show, or HyperFrames slideshow, proceed with this skill. When the request arrived through `/hyperframes`, the intent layer's triage owns this confirmation — routed here means already confirmed, so don't re-ask; the layer's run-shape questions don't apply (the deliverable is a deck, not a rendered video). A `BRIEF.md`, when present, carries the confirmed intent — read it.
 
 If the skill triggered from an adjacent request such as "presentation", "pitch deck", "deck", "interactive deck", or "convert this page", pause before authoring and frame the choice before asking for confirmation. Briefly explain that a HyperFrames slideshow means a runnable deck with discrete slides, built-in navigation and presenter mode, editable speaker notes, shared media handling, and validation before handoff. For source-page conversions, also mention that the goal is to preserve the original page's visual design, interactions, motion, and media behavior while translating page movement into slide-to-slide transitions.
 
@@ -37,7 +37,7 @@ Then ask a short confirmation question:
 
 Use a yes/no choice UI when the environment provides one; otherwise ask the question in plain text.
 
-Do not implement the slideshow until the user says yes. If they say no, stop using this skill and switch to the appropriate non-slideshow workflow. This confirmation is a **routing decision**, not a preference gate — per `../hyperframes-core/references/brief-contract.md` § 1 it survives autonomous mode ("surprise me" does not skip it): building the wrong deliverable type is a quality failure, not a creative call.
+Do not implement the slideshow until the user says yes. If they say no, stop using this skill — read `/hyperframes` and let the intent layer re-route. This confirmation is a **routing decision**, not a preference gate — per `../hyperframes-core/references/brief-contract.md` § 1 it survives autonomous mode ("surprise me" does not skip it): building the wrong deliverable type is a quality failure, not a creative call.
 
 ---
 
@@ -443,36 +443,6 @@ Same-slide fragment navigation does **not** stop media. Global/deck-level parent
 Do not add per-slide cleanup scripts for normal media players. Keep slide video/audio as normal media in the composition; use `data-has-audio="true"` only when the player should preserve audible native video audio instead of treating it as silent visual media.
 
 If the source page has custom controls or visualizations attached to media, those controls must listen to the same native element the slideshow player stops and mutes. A pause caused by slide exit, presenter sync, native controls, custom controls, or the global mute button should all update the visible custom UI through media events, not through parallel state.
-
-When implementing direct iframe fallback cleanup, treat iframe media as cross-realm DOM. Do not test iframe nodes with the parent page's `el instanceof HTMLMediaElement`; that returns false in real browsers. Use `el.ownerDocument.defaultView.HTMLMediaElement` (or an equivalent tag/duck-type guard) before setting `muted` or calling `pause()`.
-
-### Global nav mute
-
-When `<hyperframes-slideshow sound>` renders the nav mute button, that button is the global mute control for the page. It must mute:
-
-- child `<hyperframes-player>` instances, including same-origin iframe media;
-- top-level page `<audio>` / `<video>` elements; and
-- wrapper-owned SFX/global `Audio` objects via the `hf-sound` event.
-
-Do not add a second mute button inside the composition. If a wrapper script creates `new Audio(...)` objects that are not attached to the DOM, it must listen for `hf-sound` and set `clip.muted = detail.muted` on each object, not merely skip future plays.
-
-The same cross-realm rule applies here: global mute must reach iframe `<video>` / `<audio>` elements through the child frame's DOM realm. A passing unit test in a single DOM realm is not enough; verify in a browser that the actual iframe media elements report `muted: true` after clicking the nav mute button.
-
-`hyperframes present` serves built bundles from `packages/player/dist`. After changing player or slideshow chrome behavior, run `bun run build` in `packages/player` and restart the present server before testing in a browser.
-
-Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `skills/slideshow/references/standalone-harness.md`.
-
-### Media cleanup on slide exit
-
-The slideshow controller owns slide-exit media cleanup. When navigation changes slide or sequence, it calls `hyperframes-player.stopMedia()` before entering the next slide. That command:
-
-- posts `stop-media` to the iframe runtime, which stops WebAudio and pauses native `<video>` / `<audio>` elements;
-- pauses same-origin iframe media directly as a fallback; and
-- pauses parent-frame proxies adopted from iframe media.
-
-Same-slide fragment navigation does **not** stop media. Global/deck-level parent audio, such as a background track wired through `audio-src`, is not treated as slide media.
-
-Do not add per-slide cleanup scripts for normal media players. Keep slide video/audio as normal media in the composition; use `data-has-audio="true"` only when the player should preserve audible native video audio instead of treating it as silent visual media.
 
 When implementing direct iframe fallback cleanup, treat iframe media as cross-realm DOM. Do not test iframe nodes with the parent page's `el instanceof HTMLMediaElement`; that returns false in real browsers. Use `el.ownerDocument.defaultView.HTMLMediaElement` (or an equivalent tag/duck-type guard) before setting `muted` or calling `pause()`.
 

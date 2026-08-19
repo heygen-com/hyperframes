@@ -4,4 +4,5 @@ export {
   rewriteAssetPaths,
   rewriteInlineStyleAssetUrls,
   rewriteCssAssetUrls,
+  type AssetExists,
 } from "@hyperframes/parsers/asset-paths";

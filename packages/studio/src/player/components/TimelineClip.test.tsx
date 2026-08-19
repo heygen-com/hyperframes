@@ -36,6 +36,7 @@ function renderClip({
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  const onClick = vi.fn();
 
   act(() => {
     root.render(
@@ -50,7 +51,7 @@ function renderClip({
         isComposition={false}
         onHoverStart={vi.fn()}
         onHoverEnd={vi.fn()}
-        onClick={vi.fn()}
+        onClick={onClick}
         onDoubleClick={vi.fn()}
       >
         <div data-custom-content="true" />
@@ -58,7 +59,7 @@ function renderClip({
     );
   });
 
-  return { host, root };
+  return { host, onClick, root };
 }
 
 describe("TimelineClip", () => {
@@ -111,6 +112,20 @@ describe("TimelineClip", () => {
 
     expect(host.querySelector(".timeline-clip")?.classList.contains("is-selected")).toBe(true);
 
+    act(() => root.unmount());
+  });
+
+  it("is a roving native button with explicit selection semantics", () => {
+    const { host, onClick, root } = renderClip({
+      element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 2, track: 0 },
+      isSelected: true,
+    });
+    const clip = host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+    expect(clip.type).toBe("button");
+    expect(clip.tabIndex).toBe(-1);
+    expect(clip.getAttribute("aria-pressed")).toBe("true");
+    act(() => clip.click());
+    expect(onClick).toHaveBeenCalledOnce();
     act(() => root.unmount());
   });
 });

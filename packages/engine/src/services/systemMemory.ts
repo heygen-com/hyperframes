@@ -80,7 +80,11 @@ export function _resetCgroupLimitCacheForTests(): void {
   _warnedCgroupReadFailure = false;
 }
 
-function getCgroupLimitMb(): number | null {
+/**
+ * Actual Linux cgroup memory ceiling in MiB, or null when the process is not
+ * cgroup-limited. Unlike getSystemTotalMb this never falls back to host RAM.
+ */
+export function getCgroupMemoryLimitMb(): number | null {
   if (_cachedCgroupLimitMb !== undefined) return _cachedCgroupLimitMb;
 
   if (process.platform !== "linux") {
@@ -93,7 +97,10 @@ function getCgroupLimitMb(): number | null {
 
   _cachedCgroupLimitMb = parseCgroupLimitMb(v2Content, v1Content);
   if (_cachedCgroupLimitMb !== null) {
-    console.info(
+    // stderr, not stdout: this is a diagnostic notice, and commands like `check --json`
+    // write their machine-readable payload to stdout. A banner on stdout corrupts that
+    // payload for any JSON consumer (it broke the Video Agent's hyperframes check parse).
+    console.warn(
       `[SystemMemory] cgroup memory limit detected: ${_cachedCgroupLimitMb} MiB — ` +
         `it governs memory-adaptive render behaviour instead of host RAM.`,
     );
@@ -139,7 +146,7 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
 /** Total physical RAM in MiB. */
 export function getSystemTotalMb(): number {
   const hostTotalMb = Math.floor(totalmem() / BYTES_PER_MIB);
-  const cgroupLimitMb = getCgroupLimitMb();
+  const cgroupLimitMb = getCgroupMemoryLimitMb();
 
   return cgroupLimitMb === null ? hostTotalMb : Math.min(hostTotalMb, cgroupLimitMb);
 }

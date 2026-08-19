@@ -13,10 +13,11 @@ import {
   groupOverlayItemsEqual,
   isElementVisibleForOverlay,
   groupAwareOverlayRect,
+  orientedGroupAwareOverlayRect,
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
-  toVisibleOverlayRect,
+  orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
@@ -157,7 +158,13 @@ export function useDomEditOverlayRects({
         // backgroundless full-bleed scene above a subcomposition), which would wrongly
         // hide the selection box. Occlusion stays for hover, where a false hide is cheap.
         if (el && isElementVisibleForOverlay(el)) {
-          const nextRect = groupAwareOverlayRect(overlayEl, iframe, el);
+          // Groups render as an AABB union of their members (a group OBB is out of
+          // scope); a single element renders as an oriented box that co-rotates
+          // with its transform. orientedOverlayRect gates on rotation internally
+          // (a cheap per-call check) and only pays for the full corner-transform
+          // measurement when the element is actually rotated — this RAF loop runs
+          // every frame for any single selection, so that gate matters here most.
+          const nextRect = orientedGroupAwareOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");
           if (descendants.length > 0 && descendants.length <= 60) {
@@ -165,7 +172,9 @@ export function useDomEditOverlayRects({
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
               if (!child.getBoundingClientRect) continue;
-              const r = toVisibleOverlayRect(overlayEl, iframe, child);
+              // Oriented, not axis-aligned: a child of a rotated element drew its
+              // outline square around the rotated glyphs instead of on them.
+              const r = orientedVisibleOverlayRect(overlayEl, iframe, child);
               if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);
             }
             if (!childRectsEqual(childRectsRef.current, nextChildRects)) {
@@ -242,7 +251,7 @@ export function useDomEditOverlayRects({
         return;
       }
 
-      setHoverRect(groupAwareOverlayRect(overlayEl, iframe, hoverEl));
+      setHoverRect(orientedGroupAwareOverlayRect(overlayEl, iframe, hoverEl));
     };
 
     frame = requestAnimationFrame(update);

@@ -199,7 +199,7 @@ function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function toByte(value: number): number {
+export function unitFloatToByte(value: number): number {
   return Math.round(clampUnit(value) * 255);
 }
 
@@ -214,9 +214,9 @@ export function packCubeLutToRgba8(lut: CubeLut3D): PackedCubeLut2D {
       for (let r = 0; r < size; r++) {
         const lutIndex = ((b * size + g) * size + r) * 3;
         const pixelIndex = (g * width + b * size + r) * 4;
-        packed[pixelIndex] = toByte(lut.data[lutIndex] ?? 0);
-        packed[pixelIndex + 1] = toByte(lut.data[lutIndex + 1] ?? 0);
-        packed[pixelIndex + 2] = toByte(lut.data[lutIndex + 2] ?? 0);
+        packed[pixelIndex] = unitFloatToByte(lut.data[lutIndex] ?? 0);
+        packed[pixelIndex + 1] = unitFloatToByte(lut.data[lutIndex + 1] ?? 0);
+        packed[pixelIndex + 2] = unitFloatToByte(lut.data[lutIndex + 2] ?? 0);
         packed[pixelIndex + 3] = 255;
       }
     }

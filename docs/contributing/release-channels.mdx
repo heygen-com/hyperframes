@@ -21,7 +21,7 @@ If a feature should ship in alpha only, merge or retarget that PR to a prereleas
 
 ## Stable release
 
-Stable releases must be reachable from `origin/main` or `origin/release/v*`.
+Stable releases publish only when a reviewed `release/vX.Y.Z` PR merges into protected `main`.
 Prepare and review release notes before creating the release commit:
 
 ```bash
@@ -32,10 +32,9 @@ On the first run, `release:prepare` drafts missing changelog artifacts and exits
 
 See [Changelog process](/contributing/changelog-process) for the full workflow. For stable releases, `bun run set-version <version>` still enforces this checkpoint when maintainers run the lower-level release command directly.
 
-```bash
-bun run release:prepare <version>
-git push origin main --tags
-```
+Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release.
+
+If that workflow needs recovery, rerun its original merged-PR event. Stable tag pushes and manual dispatches do not publish, so recovery cannot select a different commit.
 
 For hotfixes, branch from the last stable tag, cherry-pick only the fix, publish the patch release, then merge or cherry-pick the same fix back into the prerelease branch.
 
@@ -64,8 +63,9 @@ The publish workflow validates release channel boundaries before publishing:
 
 - Stable versions must publish with `latest`.
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
-- Stable tags must be reachable from `main` or `release/v*`.
+- Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
 - Prerelease tags must be reachable from a prerelease branch.
 - Merged `release/vX.Y.Z` PRs publish stable releases only.
+- Every publish job verifies that its checkout matches the immutable event SHA.
 
 This prevents an alpha-only feature from being included in a stable hotfix by accident.

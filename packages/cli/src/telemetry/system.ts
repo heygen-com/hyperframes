@@ -184,6 +184,60 @@ export function getFreeDiskMb(path: string = "."): number | null {
   }
 }
 
+export interface PowerState {
+  /** true = running on battery, false = external power, null = undetectable. */
+  on_battery: boolean | null;
+  /** macOS Low Power Mode; null off-darwin or undetectable. */
+  low_power_mode: boolean | null;
+}
+
+/**
+ * Parse `pmset -g batt` output for the power source line. Exported for tests.
+ * Example first line: `Now drawing from 'Battery Power'`.
+ */
+export function parsePmsetPowerSource(raw: string): boolean | null {
+  const m = raw.match(/Now drawing from '([^']+)'/);
+  if (!m) return null;
+  return m[1] === "Battery Power";
+}
+
+/**
+ * Sample the machine's power state. Volatile — sample at event time, never
+ * cache alongside SystemMeta.
+ *
+ * Why this exists: the DE fast path only engages on macOS + hardware GPU, so
+ * the render fleet is overwhelmingly laptops, and laptop perf is
+ * power-managed — bench sweeps on an M4 Pro showed the SAME render flipping
+ * between ~9.6 and ~17.2 ms/frame regimes with no load/thermal signal to
+ * explain it. Without a power-state dimension on render telemetry those
+ * regimes are indistinguishable noise; with it, perf distributions (and the
+ * DE parallel-router soak) can be segmented by the machine state real users
+ * actually render in.
+ */
+export function getPowerState(): PowerState {
+  if (platform() !== "darwin") {
+    // Linux laptops exist but the DE fleet is darwin; don't guess elsewhere.
+    return { on_battery: null, low_power_mode: null };
+  }
+  let on_battery: boolean | null = null;
+  let low_power_mode: boolean | null = null;
+  try {
+    on_battery = parsePmsetPowerSource(
+      execSync("pmset -g batt", { encoding: "utf-8", timeout: 2000 }),
+    );
+  } catch {
+    // pmset missing/slow — leave null rather than fail telemetry.
+  }
+  try {
+    const raw = execSync("pmset -g", { encoding: "utf-8", timeout: 2000 });
+    const m = raw.match(/lowpowermode\s+(\d)/);
+    if (m) low_power_mode = m[1] === "1";
+  } catch {
+    // Same: absence of the reading is itself acceptable.
+  }
+  return { on_battery, low_power_mode };
+}
+
 /**
  * Get available memory in MB, accounting for OS-level page caching.
  *

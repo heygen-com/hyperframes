@@ -1,64 +1,40 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { readConfig, writeConfig } from "./config.js";
+import {
+  getIdentityPersistence,
+  getIdentityWriteOutcome,
+  readConfig,
+  writeConfig,
+} from "./config.js";
+import { getInvocationId } from "./runId.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
-import { isDevMode } from "../utils/env.js";
+import { diag } from "../ui/diagnostics.js";
 import { getSystemMeta } from "./system.js";
-
-// This is a public project API key — safe to embed in client-side code.
-// It only allows writing events, not reading data.
-const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
-const POSTHOG_HOST = "https://us.i.posthog.com";
-const FLUSH_TIMEOUT_MS = 5_000;
+import { canaryEventProperties } from "./canary.js";
+import { enqueue, type EventProperties } from "./transport.js";
+import { telemetryRuntimeOverride } from "./policy.js";
 
 // ---------------------------------------------------------------------------
-// Lightweight PostHog client — uses the HTTP batch API directly to avoid
-// pulling in the full posthog-node SDK and its dependencies.
-// All calls are fire-and-forget with a hard timeout.
+// CLI-facing telemetry policy: opt-out checks, system-metadata enrichment, and
+// the first-run disclosure notice. The reliability-critical delivery layer
+// (the event queue, `flush()`, and the exit-time `flushSync()`) lives in
+// transport.ts. `flush` / `flushSync` are re-exported here so existing callers
+// (events.ts, index.ts, the cli.ts exit handlers) keep importing from
+// `./client.js` unchanged.
 // ---------------------------------------------------------------------------
 
-interface EventProperties {
-  [key: string]: string | number | boolean | null | undefined;
-}
-
-interface QueuedEvent {
-  // Client-generated event id. PostHog dedupes on it, so an event that gets
-  // sent by an interrupted flush() AND re-sent by the exit-time flushSync()
-  // fallback still counts once.
-  uuid: string;
-  event: string;
-  properties: EventProperties;
-  timestamp: string;
-  // Override for the batch distinct_id. Defaults to the install's anonymousId.
-  // Used to attribute server-side studio renders to the browser user who
-  // triggered them, so the render funnel is joinable across processes.
-  distinctId?: string;
-}
-
-let eventQueue: QueuedEvent[] = [];
+export { flush, flushSync } from "./transport.js";
 
 let telemetryEnabled: boolean | null = null;
 
 /**
  * Check if telemetry should be active.
- * Disabled when: dev mode, user opted out, CI environment, or HYPERFRAMES_NO_TELEMETRY set.
+ * Disabled when: a privacy env var is set, this is a development or
+ * telemetry-disabled build, or the persisted preference is off.
  */
 export function shouldTrack(): boolean {
   if (telemetryEnabled !== null) return telemetryEnabled;
 
-  if (process.env["HYPERFRAMES_NO_TELEMETRY"] === "1" || process.env["DO_NOT_TRACK"] === "1") {
-    telemetryEnabled = false;
-    return false;
-  }
-
-  if (isDevMode()) {
-    telemetryEnabled = false;
-    return false;
-  }
-
-  // Safety check: ensure the API key has been configured (phc_ prefix = valid PostHog key)
-  if (!POSTHOG_API_KEY.startsWith("phc_")) {
+  if (telemetryRuntimeOverride() !== null) {
     telemetryEnabled = false;
     return false;
   }
@@ -69,7 +45,26 @@ export function shouldTrack(): boolean {
 }
 
 /**
+ * Drop the cached posture so the next `shouldTrack()` re-reads the persisted
+ * preference.
+ *
+ * The memo is right for a CLI command — one process, one answer, and the
+ * question is asked per event. It is wrong for `hyperframes preview`, which
+ * lives for hours: run `hyperframes telemetry disable` in another terminal and
+ * this process kept the old answer indefinitely, still resolving canaries and
+ * still injecting the CLI id into every page load. Callers that serve requests
+ * refresh at a request boundary; see `refreshTelemetryPosture` in
+ * server/telemetryIdentity.ts, which invalidates this and the config cache
+ * together so the two cannot disagree.
+ */
+export function resetTelemetryPostureCache(): void {
+  telemetryEnabled = null;
+}
+
+/**
  * Queue a telemetry event. Non-blocking, fail-silent.
+ * Enriches the event with system metadata, then hands it to the transport
+ * queue (which stamps the dedup uuid + timestamp).
  */
 export function trackEvent(
   event: string,
@@ -79,11 +74,9 @@ export function trackEvent(
   if (!shouldTrack()) return;
 
   const sys = getSystemMeta();
-  eventQueue.push({
-    uuid: randomUUID(),
+  enqueue(
     event,
-    distinctId,
-    properties: {
+    {
       ...properties,
       cli_version: VERSION,
       os: process.platform,
@@ -104,103 +97,40 @@ export function trackEvent(
       // New-agent discovery signals — populated only when agent_runtime is null.
       agent_hint: sys.agent_hint ?? undefined,
       term_program: sys.term_program ?? undefined,
+      // Did this install's mint find a previous install's state marker?
+      // The fleet-wide rate of `true` IS the recoverable-churn fraction —
+      // the share of "new" ids that are really a config re-mint on a machine
+      // we already knew. Absent (not false) when the config predates the
+      // marker. Resolved after the shouldTrack guard.
+      install_predecessor_found: readConfig().predecessorFound,
+      // Splits the `true` share above: a machine we knew but whose record we
+      // could not read. Without it a partial disk write is indistinguishable
+      // from a genuinely fresh install. Absent in the normal case.
+      install_state_file_corrupt: readConfig().stateFileCorrupt,
+      // Whether this process's anonymousId can be trusted to survive to the
+      // next run: `durable` (loaded from a preexisting config), `unknown`
+      // (minted+persisted this run — an ephemeral HOME is indistinguishable
+      // from a genuine first run), `process_only` (not persisted). Install-
+      // grain metrics should count only durable identities; the identity-
+      // churn workloads (fresh id per run) are never durable.
+      identity_persistence: getIdentityPersistence(),
+      // Outcome of the identity-establishing config write; absent when that
+      // path did not write (including a durable id loaded from disk).
+      config_write_outcome: getIdentityWriteOutcome(),
+      // Groups one invocation's events even when the install identity is
+      // untrustworthy. Always present, unlike the orchestrator-set run_id.
+      invocation_id: getInvocationId(),
+      // Canary assignments as `$feature/canary-<name>` — PostHog's native flag
+      // property shape, so breakdowns and experiment analysis work on a canary
+      // with nothing configured server-side. On EVERY event, not just renders:
+      // a staged rollout is only as good as the ability to split any metric by
+      // cohort. Resolved after the shouldTrack guard, so opted-out installs
+      // never pay for it. See telemetry/canary.ts.
+      ...canaryEventProperties(),
       agent_env_hints: sys.agent_env_hints ?? undefined,
     },
-    timestamp: new Date().toISOString(),
-  });
-}
-
-/**
- * Serialize events into a PostHog `/batch/` payload string. Pure — the queue
- * is untouched, so callers decide when events count as delivered.
- *
- * Each event carries its client-generated `uuid`, which PostHog treats as the
- * event id — re-sending the same event is idempotent, not a duplicate.
- *
- * $ip:null tells PostHog not to record the request IP for any of these events.
- * Server-side "Discard client IP data" is also enabled in project settings.
- */
-function buildPayload(events: readonly QueuedEvent[]): string | null {
-  if (events.length === 0) return null;
-  const config = readConfig();
-  const batch = events.map((e) => ({
-    uuid: e.uuid,
-    event: e.event,
-    properties: { ...e.properties, $ip: null },
-    distinct_id: e.distinctId ?? config.anonymousId,
-    timestamp: e.timestamp,
-  }));
-  return JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
-}
-
-/**
- * Flush all queued events to PostHog via async HTTP POST.
- * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
- * after high-value events (trackRenderComplete / trackRenderError), and the
- * `events` beacon command, which awaits delivery before its process exits.
- *
- * Events are only removed from the queue once the request has completed.
- * The old drain-first version silently lost the whole batch whenever the
- * process died with the fetch in flight — which is the NORMAL exit path for
- * `render`: an agent pipe closing triggers the EPIPE `process.exit(0)`, and
- * error paths call `process.exit(1)` directly, both killing the in-flight
- * request that `beforeExit` had just started. Keeping the queue intact until
- * delivery lets the exit-time flushSync() child (which survives the parent)
- * re-send anything unconfirmed; event uuids make that re-send idempotent.
- */
-export async function flush(): Promise<void> {
-  // Copy, not alias — events queued while the request is in flight must not
-  // be swept into the "delivered" set below.
-  const snapshot = eventQueue.slice();
-  const payload = buildPayload(snapshot);
-  if (payload == null) return;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
-
-  try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Connection: "close" },
-      body: payload,
-      signal: controller.signal,
-    });
-    // Delivered — forget exactly what was sent (events queued while the
-    // request was in flight stay for the next flush).
-    const sent = new Set(snapshot);
-    eventQueue = eventQueue.filter((e) => !sent.has(e));
-  } catch {
-    // Silently ignore — telemetry must never break the CLI. The events stay
-    // queued so the exit-time flushSync() fallback can still deliver them.
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Fire-and-forget flush for use in the `exit` event handler.
- * Spawns a detached child process that sends the HTTP request independently,
- * so the parent process exits immediately without waiting.
- */
-export function flushSync(): void {
-  const payload = buildPayload(eventQueue);
-  if (payload == null) return;
-  eventQueue = [];
-
-  try {
-    const child = spawn(
-      process.execPath,
-      [
-        "-e",
-        `fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:${JSON.stringify(payload)},signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
-      ],
-      { detached: true, stdio: "ignore" },
-    );
-    // Let the parent exit without waiting for the child
-    child.unref();
-  } catch {
-    // Silently ignore
-  }
+    distinctId,
+  );
 }
 
 /**
@@ -219,15 +149,18 @@ export function showTelemetryNotice(): boolean {
   config.telemetryNoticeShown = true;
   writeConfig(config);
 
-  console.log();
-  console.log(`  ${c.dim("Hyperframes collects anonymous usage data to improve the tool.")}`);
-  console.log(`  ${c.dim("File paths and composition content are never collected.")}`);
-  console.log(
+  // stderr (via diag), not stdout: this first-run disclosure is not gated by
+  // --json (the guard in cli.ts filters by command only), so a stdout banner
+  // would corrupt the JSON envelope of the very first `check --json` etc.
+  diag.notice();
+  diag.notice(`  ${c.dim("Hyperframes collects anonymous usage data to improve the tool.")}`);
+  diag.notice(`  ${c.dim("File paths and composition content are never collected.")}`);
+  diag.notice(
     `  ${c.dim("If you sign in to HeyGen, your account (email, or username) is linked to your usage.")}`,
   );
-  console.log();
-  console.log(`  ${c.dim("Disable anytime:")} ${c.accent("hyperframes telemetry disable")}`);
-  console.log();
+  diag.notice();
+  diag.notice(`  ${c.dim("Disable anytime:")} ${c.accent("hyperframes telemetry disable")}`);
+  diag.notice();
 
   return true;
 }

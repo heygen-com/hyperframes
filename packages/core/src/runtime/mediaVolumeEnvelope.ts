@@ -1,4 +1,6 @@
 import type { RuntimeTimelineLike } from "./types";
+import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
+import { parseStrictFiniteTimingNumber } from "./playbackRate";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -31,7 +33,7 @@ export function normaliseEnvelope(
     .filter((k) => Number.isFinite(k.time) && Number.isFinite(k.volume))
     .map((k) => ({
       time: Math.max(0, k.time - trackStart),
-      volume: Math.max(0, Math.min(1, k.volume)),
+      volume: clampAudioGain(k.volume),
     }))
     .sort((a, b) => a.time - b.time);
 
@@ -47,7 +49,7 @@ export function normaliseEnvelope(
 
   if (deduped.length === 0) return deduped;
   if (deduped[0]!.time > 0) {
-    deduped.unshift({ time: 0, volume: Math.max(0, Math.min(1, baseVolume)) });
+    deduped.unshift({ time: 0, volume: clampAudioGain(baseVolume) });
   }
   return deduped;
 }
@@ -61,6 +63,9 @@ export function interpolateVolumeGain(envelope: VolumeKeyframe[], t: number): nu
   if (envelope.length === 0) return 1;
 
   let segment = 0;
+  // The PCM baker intentionally inlines this lookup with a monotonic cursor
+  // because calling this preview-oriented helper per sample would be O(N×M).
+  // fallow-ignore-next-line code-duplication
   while (segment < envelope.length - 2 && t >= envelope[segment + 1]!.time) {
     segment += 1;
   }
@@ -72,7 +77,48 @@ export function interpolateVolumeGain(envelope: VolumeKeyframe[], t: number): nu
   return a.volume + (b.volume - a.volume) * progress;
 }
 
-// fallow-ignore-next-line complexity
+function recordVolumeSample(
+  keyframes: VolumeKeyframe[],
+  previousSample: VolumeKeyframe | undefined,
+  sample: VolumeKeyframe,
+  isFinalSample: boolean,
+): void {
+  const last = keyframes.at(-1);
+  if (!last || Math.abs(last.volume - sample.volume) > 0.0001) {
+    // Change-only compression must retain the preceding real sample so a
+    // flat run stays flat instead of being interpolated into the next value.
+    // During a continuous ramp, that sample is already the last keyframe.
+    if (last && previousSample && previousSample.time > last.time) {
+      keyframes.push(previousSample);
+    }
+    keyframes.push(sample);
+  } else if (isFinalSample && sample.time > last.time) {
+    keyframes.push(sample);
+  }
+}
+
+function parseVolumeNumber(value: string | undefined): number | undefined {
+  const parsed = Number.parseFloat(value ?? "");
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function resolveVolumeProbeWindow(
+  el: HTMLAudioElement | HTMLVideoElement,
+  compositionDuration: number,
+): { start: number; end: number; staticVolume: number } {
+  const start = parseStrictFiniteTimingNumber(el.dataset.start) ?? 0;
+  const endAttr = parseStrictFiniteTimingNumber(el.dataset.end) ?? undefined;
+  const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration) ?? undefined;
+  let end = compositionDuration;
+  if (durAttr !== undefined && durAttr > 0) {
+    end = start + durAttr;
+  } else if (endAttr !== undefined && endAttr > start) {
+    end = endAttr;
+  }
+  const staticAttr = parseVolumeNumber(el.dataset.volume) ?? 1;
+  return { start, end, staticVolume: clampAudioGain(staticAttr) };
+}
+
 /**
  * Probe a single media element's volume automation by seeking a GSAP timeline
  * through the element's active window.
@@ -89,39 +135,34 @@ export function probeElementVolumeKeyframes(
   compositionDuration: number,
   sampleFps: number,
 ): VolumeKeyframe[] | null {
-  const start = Number.parseFloat(el.dataset.start ?? "0") || 0;
-  const endAttr = Number.parseFloat(el.dataset.end ?? "");
-  const durAttr = Number.parseFloat(el.dataset.duration ?? "");
-  const end =
-    Number.isFinite(endAttr) && endAttr > start
-      ? endAttr
-      : Number.isFinite(durAttr) && durAttr > 0
-        ? start + durAttr
-        : compositionDuration;
-
-  const staticAttr = Number.parseFloat(el.dataset.volume ?? "");
-  const staticVolume = Number.isFinite(staticAttr) ? Math.max(0, Math.min(1, staticAttr)) : 1;
-
-  // Reset to data-volume so GSAP captures the correct FROM value.
-  el.volume = staticVolume;
+  const { start, end, staticVolume } = resolveVolumeProbeWindow(el, compositionDuration);
 
   const step = 1 / Math.min(60, Math.max(1, sampleFps));
   const sampleStart = Math.max(0, start);
   const sampleEnd = Math.min(compositionDuration, end);
 
-  const keyframes: VolumeKeyframe[] = [];
-  for (let t = sampleStart; t <= sampleEnd + 1e-6; t += step) {
-    const bounded = Math.min(sampleEnd, t);
-    seekTimeline(bounded);
-    const raw = Number(el.volume);
-    if (!Number.isFinite(raw)) continue;
-    const volume = Math.max(0, Math.min(1, raw));
-    const last = keyframes.at(-1);
-    if (!last || Math.abs(last.volume - volume) > 0.0001 || bounded === sampleEnd) {
-      keyframes.push({ time: Number(bounded.toFixed(6)), volume: Number(volume.toFixed(6)) });
+  const keyframes: VolumeKeyframe[] = withUnclampedVolume(el, () => {
+    // Reset to data-volume so GSAP captures the correct FROM value. Above
+    // unity that only survives because the shadow accessor is installed.
+    el.volume = staticVolume;
+
+    const samples: VolumeKeyframe[] = [];
+    let previousSample: VolumeKeyframe | undefined;
+    for (let t = sampleStart; t <= sampleEnd + 1e-6; t = Math.min(sampleEnd, t + step)) {
+      seekTimeline(t);
+      const raw = Number(el.volume);
+      if (Number.isFinite(raw)) {
+        const sample = {
+          time: Number(t.toFixed(6)),
+          volume: Number(clampAudioGain(raw).toFixed(6)),
+        };
+        recordVolumeSample(samples, previousSample, sample, t === sampleEnd);
+        previousSample = sample;
+      }
+      if (t === sampleEnd) break;
     }
-    if (bounded === sampleEnd) break;
-  }
+    return samples;
+  });
 
   const hasAutomation = keyframes.some((kf) => Math.abs(kf.volume - staticVolume) > 0.0001);
   return hasAutomation ? keyframes : null;
@@ -129,16 +170,37 @@ export function probeElementVolumeKeyframes(
 
 export type RuntimeTimelineRef = Partial<Pick<RuntimeTimelineLike, "totalTime" | "seek">>;
 
+export interface VolumeProbeOptions {
+  /**
+   * Render/probe pages must not sample the live visual timeline during runtime
+   * initialization. The producer discovers audio automation in its own
+   * isolated pass and bakes it before frame capture, so seeking here is both
+   * redundant and capable of materializing future zero-duration GSAP state.
+   *
+   * Preview callers omit this option and retain live automation discovery.
+   */
+  allowLiveTimelineSeek?: boolean;
+}
+
 /**
- * Probe a media element and, if volume automation is detected, store the
- * keyframes in `cache`. Safe to call with a null timeline — returns early.
+ * Probe a media element and, if volume automation is detected, store a
+ * NORMALISED envelope in `cache`. Safe to call with a null timeline — returns
+ * early.
+ *
+ * `probeElementVolumeKeyframes` stamps each keyframe with the timeline seek
+ * time it was sampled at. Everything downstream of this cache — like the
+ * renderer's PCM baker — indexes an envelope by track-relative seconds, so the
+ * rebase belongs here, at the one point that fills the cache, rather than at
+ * each read.
  */
 export function probeAndCacheElementVolume(
   mediaEl: HTMLMediaElement,
   timeline: RuntimeTimelineRef | null | undefined,
   compositionDuration: number,
   cache: WeakMap<HTMLMediaElement, VolumeKeyframe[]>,
+  options: VolumeProbeOptions = {},
 ): void {
+  if (options.allowLiveTimelineSeek === false) return;
   if (!timeline) return;
   if (!(mediaEl instanceof HTMLAudioElement) && !(mediaEl instanceof HTMLVideoElement)) return;
   if (compositionDuration <= 0) return;
@@ -166,6 +228,8 @@ export function probeAndCacheElementVolume(
   const keyframes = probeElementVolumeKeyframes(mediaEl, seekFn, compositionDuration, 60);
   if (Number.isFinite(originalTime)) seekFn(originalTime);
   if (keyframes) {
-    cache.set(mediaEl, keyframes);
+    const { start, staticVolume } = resolveVolumeProbeWindow(mediaEl, compositionDuration);
+    const envelope = normaliseEnvelope(keyframes, start, staticVolume);
+    if (envelope.length > 0) cache.set(mediaEl, envelope);
   }
 }

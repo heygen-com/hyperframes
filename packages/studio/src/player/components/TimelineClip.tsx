@@ -2,18 +2,24 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
 
 interface TimelineClipProps {
   el: TimelineElement;
   pps: number;
   clipY: number;
+  clipHeight?: number;
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
+  isGestureActor?: boolean;
+  isActive?: boolean;
   hasCustomContent: boolean;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
   isComposition: boolean;
+  tabIndex?: 0 | -1;
   onHoverStart: () => void;
   onHoverEnd: () => void;
   onPointerDown?: (e: React.PointerEvent) => void;
@@ -29,13 +35,17 @@ export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
   clipY,
+  clipHeight,
   isSelected,
   isHovered,
   isDragging = false,
+  isGestureActor = false,
+  isActive = false,
   hasCustomContent,
   capabilities,
   theme = defaultTimelineTheme,
   isComposition,
+  tabIndex = -1,
   onHoverStart,
   onHoverEnd,
   onPointerDown,
@@ -62,6 +72,7 @@ export const TimelineClip = memo(function TimelineClip({
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
     showDefaultText ? "" : "is-micro",
+    isAudioTimelineElement(el) ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");
@@ -69,20 +80,33 @@ export const TimelineClip = memo(function TimelineClip({
     left: leftPx,
     width: widthPx,
     top: clipY,
-    bottom: clipY,
+    ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: theme.clipRadius,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-    cursor: capabilities.canMove ? "grab" : "default",
+    // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
+    cursor: "default",
+    appearance: "none",
+    color: "inherit",
+    font: "inherit",
+    padding: 0,
+    textAlign: "left",
     transform: isDragging ? "translateY(-1px)" : undefined,
   };
 
   return (
-    <div
-      data-clip="true"
-      data-el-id={el.key ?? el.id}
+    <button
+      type="button"
+      data-clip={isGestureActor ? undefined : "true"}
+      data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
+      data-timeline-focus-id={isGestureActor ? undefined : timelineClipFocusId(el.key ?? el.id)}
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
+      data-active={isActive ? "" : undefined}
+      aria-hidden={isGestureActor ? "true" : undefined}
+      tabIndex={isGestureActor ? undefined : tabIndex}
+      aria-label={`${displayLabel}, ${startLabel} to ${endLabel} seconds`}
+      aria-pressed={isGestureActor ? undefined : isSelected}
       className={clipClassName}
       style={style}
       title={
@@ -164,6 +188,6 @@ export const TimelineClip = memo(function TimelineClip({
         </span>
       )}
       {children}
-    </div>
+    </button>
   );
 });

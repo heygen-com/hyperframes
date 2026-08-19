@@ -9,7 +9,6 @@
  * centralized here.
  */
 
-import { rmSync } from "node:fs";
 import {
   type BeforeCaptureHook,
   type CaptureSession,
@@ -28,9 +27,9 @@ import {
   type TransitionRange,
   blitHdrImageLayer,
   blitHdrVideoLayer,
-  closeHdrVideoFrameSource,
   selectDomLayerShowIds,
 } from "../../hdrCompositor.js";
+import { cleanupHdrVideoFrameSource } from "./captureHdrResources.js";
 import {
   type HdrPerfCollector,
   type HdrPerfTimingKey,
@@ -402,17 +401,7 @@ export function cleanupEndedHdrVideos(args: {
       if (!stillNeeded) {
         const frameSource = hdrVideoFrameSources.get(videoId);
         if (frameSource) {
-          closeHdrVideoFrameSource(frameSource, log);
-          try {
-            rmSync(frameSource.dir, { recursive: true, force: true });
-          } catch (err) {
-            log.warn("Failed to clean up HDR raw frame directory", {
-              videoId,
-              frameDir: frameSource.dir,
-              rawPath: frameSource.rawPath,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
+          cleanupHdrVideoFrameSource(frameSource, log);
           hdrVideoFrameSources.delete(videoId);
         }
         cleanedUpVideos.add(videoId);

@@ -126,9 +126,21 @@ export function pushEditHistoryEntry(
     previous &&
     previous.coalesceKey &&
     previous.coalesceKey === entry.coalesceKey &&
-    entry.createdAt - previous.createdAt <= coalesceMs
+    entry.createdAt - previous.createdAt <= coalesceMs &&
+    // A shared key/window is not enough: bytes from an external writer may
+    // have landed between the two Studio-owned edits. Only fold a path when
+    // the follow-up starts from the exact output the previous entry recorded.
+    // Otherwise keep both entries so undo restores the foreign bytes first and
+    // the older entry's content check safely blocks at that ownership boundary.
+    Object.entries(entry.files).every(([path, snapshot]) => {
+      const previousSnapshot = previous.files[path];
+      return !previousSnapshot || previousSnapshot.after === snapshot.before;
+    })
   ) {
-    const files: Record<string, EditHistoryFileSnapshot> = {};
+    // A follow-up may touch only a subset of the files in the original edit
+    // (for example, only one file in a multi-file timing move has GSAP). Keep
+    // previous-only paths in the single coalesced undo entry.
+    const files: Record<string, EditHistoryFileSnapshot> = { ...previous.files };
     for (const [path, snapshot] of Object.entries(entry.files)) {
       const previousSnapshot = previous.files[path];
       files[path] = previousSnapshot

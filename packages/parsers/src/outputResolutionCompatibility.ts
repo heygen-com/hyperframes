@@ -59,8 +59,13 @@ const OK: OutputResolutionCompatibility = { ok: true };
  * Returns `undefined` when no preset matches the composition's aspect ratio
  * (e.g. a custom, non-preset composition aspect ratio) — in that case there
  * is no unambiguous swap to suggest.
+ *
+ * Exported so that consumers with permission to auto-apply the swap (see the
+ * `--resolution 1080p` aspect-agnostic path in the CLI/producer) can share the
+ * same sibling-lookup logic as this module's user-facing "did you mean?" hint,
+ * without duplicating the tier-preserving fallback rules.
  */
-function suggestMatchingPreset(
+export function suggestMatchingPreset(
   compositionWidth: number,
   compositionHeight: number,
   chosen: CanvasResolution,

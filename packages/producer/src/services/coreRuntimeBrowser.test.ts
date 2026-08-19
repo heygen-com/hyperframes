@@ -67,6 +67,87 @@ describe("core runtime browser contract", () => {
     });
   });
 
+  it.each([24, 30, 60, 30_000 / 1_001])(
+    "keeps the real public player running across a seek at %s fps",
+    async (fps) => {
+      const fpsPage = await browser.newPage();
+      try {
+        await fpsPage.setContent(`<!doctype html>
+          <style>
+            @keyframes slide {
+              from { transform: translateX(0); }
+              to { transform: translateX(100px); }
+            }
+            #box { animation: slide 4s linear both; }
+          </style>
+          <div
+            data-composition-id="root"
+            data-start="0"
+            data-duration="4"
+            data-width="320"
+            data-height="180"
+          >
+            <div id="box"></div>
+          </div>`);
+        await fpsPage.evaluate((runtimeFps) => {
+          (
+            window as unknown as {
+              __HF_EXPORT_RENDER_SEEK_CONFIG?: {
+                fps: number;
+                fpsSource: "render-options";
+              };
+            }
+          ).__HF_EXPORT_RENDER_SEEK_CONFIG = {
+            fps: runtimeFps,
+            fpsSource: "render-options",
+          };
+        }, fps);
+        await fpsPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await fpsPage.waitForFunction(
+          () =>
+            (window as unknown as { __playerReady?: boolean }).__playerReady === true &&
+            (window as unknown as { __renderReady?: boolean }).__renderReady === true,
+        );
+
+        const result = await fpsPage.evaluate(async () => {
+          const player = (
+            window as unknown as {
+              __player?: {
+                play: () => void;
+                seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
+                getTime: () => number;
+                isPlaying: () => boolean;
+              };
+            }
+          ).__player;
+          if (!player) throw new Error("runtime player was not installed");
+
+          player.play();
+          player.seek(1.123, { keepPlaying: true });
+          const timeAfterSeek = player.getTime();
+          const playingAfterSeek = player.isPlaying();
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 80));
+
+          return {
+            timeAfterSeek,
+            playingAfterSeek,
+            timeAfterDelay: player.getTime(),
+            playingAfterDelay: player.isPlaying(),
+          };
+        });
+
+        const expectedSeek = Math.floor(1.123 * fps + 1e-9) / fps;
+        expect(result.timeAfterSeek).toBeCloseTo(expectedSeek, 1);
+        expect(result.playingAfterSeek).toBe(true);
+        expect(result.playingAfterDelay).toBe(true);
+        expect(result.timeAfterDelay).toBeGreaterThan(result.timeAfterSeek + 0.04);
+      } finally {
+        await fpsPage.close();
+      }
+    },
+    30_000,
+  );
+
   it("removes the control bridge during teardown", async () => {
     const result = await page.evaluate(async () => {
       const runtimeWindow = window as unknown as {

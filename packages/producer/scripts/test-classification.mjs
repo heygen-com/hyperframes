@@ -9,6 +9,7 @@ export const PRODUCER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), ".
 // or local sockets. Keep the list explicit so a filename-only rename does not
 // make Git/fallow re-audit thousands of unchanged test lines as new code.
 const INTEGRATION_TEST_FILES = new Set([
+  "src/regression-harness-psnr.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
   "src/services/deterministicFonts-systemCapture.test.ts",
   "src/services/distributed/assemble.test.ts",
@@ -19,6 +20,10 @@ const INTEGRATION_TEST_FILES = new Set([
   "src/services/distributed/renderChunk.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/healthWorker.test.ts",
+  "src/services/assetMediaType.test.ts",
+  "src/services/htmlCompiler.mediaType.test.ts",
+  "src/services/htmlCompiler.naturalDuration.test.ts",
+  "src/services/render/stages/compileStage.mediaType.test.ts",
   "src/utils/audioRegression.test.ts",
   "src/utils/streamDurationParity.test.ts",
 ]);

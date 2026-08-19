@@ -31,6 +31,8 @@ export type { SerializableDistributedRenderConfig } from "@hyperframes/producer/
 
 /** Discriminator for the three roles the one Cloud Run image fulfills. */
 export type CloudRunAction = "plan" | "renderChunk" | "assemble";
+/** Transport protocol selected for one complete distributed render. */
+export type CloudRunPlanProtocol = "v1" | "v2";
 
 /**
  * Top-level shape of any request body the handler may receive.
@@ -48,7 +50,7 @@ export type CloudRunEvent =
   | { Input: CloudRunEvent };
 
 /** Activity A: produce a planDir, upload to GCS. */
-export interface PlanEvent {
+interface PlanEventBase {
   Action: "plan";
   /** GCS URI pointing at a `tar -czf`-archived project directory (`gs://bucket/key.tar.gz`). */
   ProjectGcsUri: string;
@@ -58,11 +60,25 @@ export interface PlanEvent {
   Config: SerializableDistributedRenderConfig;
 }
 
+/**
+ * Legacy plan transport. Callers must select it explicitly.
+ *
+ * @deprecated Use {@link PlanV2Event} for new integrations.
+ */
+export interface PlanV1Event extends PlanEventBase {
+  PlanProtocol: "v1";
+}
+
+/** Default content-addressed v2 plan transport. */
+export interface PlanV2Event extends PlanEventBase {
+  PlanProtocol?: "v2";
+}
+
+export type PlanEvent = PlanV1Event | PlanV2Event;
+
 /** Activity B: fetch planDir, render one chunk, upload result. */
-export interface RenderChunkEvent {
+interface RenderChunkEventBase {
   Action: "renderChunk";
-  /** GCS URI of the plan tar produced by a PlanEvent invocation. */
-  PlanGcsUri: string;
   /**
    * `PlanResult.planHash` from the Plan invocation. The handler verifies
    * this against the untarred planDir's `plan.json` before invoking the
@@ -79,15 +95,37 @@ export interface RenderChunkEvent {
   Format: DistributedFormat;
 }
 
-/** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
-export interface AssembleEvent {
-  Action: "assemble";
-  /** GCS URI of the plan tar produced by a PlanEvent invocation. */
+/**
+ * Legacy chunk event. Callers must select it explicitly.
+ *
+ * @deprecated Use {@link RenderChunkV2Event} for new integrations.
+ */
+export interface RenderChunkV1Event extends RenderChunkEventBase {
+  PlanProtocol: "v1";
+  /** GCS URI of the v1 plan tar produced by a PlanEvent invocation. */
   PlanGcsUri: string;
+  PlanV2ManifestGcsUri?: never;
+  PlanV2ArtifactGcsPrefix?: never;
+}
+
+/**
+ * V2 chunk event. It intentionally cannot carry `PlanGcsUri`: the manifest
+ * describes the exact content-addressed artifacts needed by this chunk.
+ */
+export interface RenderChunkV2Event extends RenderChunkEventBase {
+  PlanProtocol?: "v2";
+  PlanV2ManifestGcsUri: string;
+  PlanV2ArtifactGcsPrefix: string;
+  PlanGcsUri?: never;
+}
+
+export type RenderChunkEvent = RenderChunkV1Event | RenderChunkV2Event;
+
+/** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
+interface AssembleEventBase {
+  Action: "assemble";
   /** GCS URIs of every chunk, ordered by chunk index. Length must equal `chunkCount`. */
   ChunkGcsUris: string[];
-  /** GCS URI of the planDir's `audio.aac` if the composition has audio; `null` otherwise. */
-  AudioGcsUri: string | null;
   /** Final output GCS URI (`gs://bucket/key.mp4`). */
   OutputGcsUri: string;
   /** Output container format; drives file vs frame-dir handling. */
@@ -104,12 +142,39 @@ export interface AssembleEvent {
   Cfr?: boolean;
 }
 
+/**
+ * Legacy assemble event. Callers must select it explicitly.
+ *
+ * @deprecated Use {@link AssembleV2Event} for new integrations.
+ */
+export interface AssembleV1Event extends AssembleEventBase {
+  PlanProtocol: "v1";
+  /** GCS URI of the v1 plan tar produced by a PlanEvent invocation. */
+  PlanGcsUri: string;
+  /** Legacy standalone audio locator; `null` when audio is embedded in the v1 plan tar. */
+  AudioGcsUri: string | null;
+  PlanV2ManifestGcsUri?: never;
+  PlanV2ArtifactGcsPrefix?: never;
+}
+
+/** V2 assemble event, scoped to manifest-declared assembler artifacts. */
+export interface AssembleV2Event extends AssembleEventBase {
+  PlanProtocol?: "v2";
+  PlanV2ManifestGcsUri: string;
+  PlanV2ArtifactGcsPrefix: string;
+  PlanHash: string;
+  PlanGcsUri?: never;
+  /** V2 audio is a manifest artifact materialized only for the assembler. */
+  AudioGcsUri: null;
+}
+
+export type AssembleEvent = AssembleV1Event | AssembleV2Event;
+
 // ── Result types — kept small to fit Cloud Workflows step budgets ────────────
 
 /** Result of a `plan` invocation. Carries enough to size the Map(N) state. */
-export interface PlanResultBody {
+interface PlanResultBodyBase {
   Action: "plan";
-  PlanGcsUri: string;
   PlanHash: string;
   ChunkCount: number;
   TotalFrames: number;
@@ -124,6 +189,29 @@ export interface PlanResultBody {
   DurationMs: number;
 }
 
+/**
+ * Existing v1 result. Kept unchanged for wire compatibility.
+ *
+ * @deprecated New integrations should consume {@link PlanV2ResultBody}.
+ */
+export interface PlanV1ResultBody extends PlanResultBodyBase {
+  PlanGcsUri: string;
+  PlanProtocol?: never;
+  PlanV2ManifestGcsUri?: never;
+  PlanV2ArtifactGcsPrefix?: never;
+}
+
+/** V2 result. The two v2 locators are never aliases for `PlanGcsUri`. */
+export interface PlanV2ResultBody extends PlanResultBodyBase {
+  PlanProtocol: "v2";
+  PlanV2ManifestGcsUri: string;
+  PlanV2ArtifactGcsPrefix: string;
+  PlanGcsUri?: never;
+  AudioGcsUri: null;
+}
+
+export type PlanResultBody = PlanV1ResultBody | PlanV2ResultBody;
+
 /** Result of a `renderChunk` invocation. Sized ≤200 bytes. */
 export interface RenderChunkResultBody {
   Action: "renderChunk";
@@ -131,6 +219,8 @@ export interface RenderChunkResultBody {
   ChunkIndex: number;
   Sha256: string;
   FramesEncoded: number;
+  /** Effective engine mode after browser probing. Emitted by current handlers. */
+  CaptureMode?: "beginframe" | "screenshot" | "drawelement";
   DurationMs: number;
 }
 

@@ -12,6 +12,8 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
 
   if (row !== undefined && stdout.isTTY) {
     stdout.write(`\x1b[${row};1H\x1b[2K${line}`);
+  } else if (!stdout.isTTY) {
+    stdout.write(`${line}\n`);
   } else {
     stdout.write(`\r\x1b[2K${line}`);
   }

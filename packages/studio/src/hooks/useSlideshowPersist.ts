@@ -2,6 +2,7 @@ import { useCallback, type MutableRefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { SlideshowManifest } from "@hyperframes/core/slideshow";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PublishSdkSession } from "../utils/sdkCutover";
 import { persistSlideshowManifest } from "../utils/setSlideshowManifest";
 
 export interface UseSlideshowPersistParams {
@@ -16,6 +17,8 @@ export interface UseSlideshowPersistParams {
   }) => Promise<void>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: PublishSdkSession;
   /**
    * When provided, rapid writes with the same key coalesce through the
    * save-queue infra (via recordEdit's coalesceKey) so back-to-back persists
@@ -33,6 +36,7 @@ export function useSlideshowPersist({
   recordEdit,
   reloadPreview,
   domEditSaveTimestampRef,
+  publishSdkSession,
   coalesceKey,
 }: UseSlideshowPersistParams): (manifest: SlideshowManifest) => Promise<void> {
   return useCallback(
@@ -42,7 +46,6 @@ export function useSlideshowPersist({
       const originalContent = await readProjectFile(path);
       await persistSlideshowManifest({
         manifest,
-        sdkSession,
         originalContent,
         targetPath: path,
         deps: {
@@ -50,6 +53,8 @@ export function useSlideshowPersist({
           writeProjectFile,
           reloadPreview,
           domEditSaveTimestampRef,
+          readProjectFile,
+          publishSession: publishSdkSession,
         },
         coalesceKey,
       });
@@ -62,6 +67,7 @@ export function useSlideshowPersist({
       recordEdit,
       reloadPreview,
       domEditSaveTimestampRef,
+      publishSdkSession,
       coalesceKey,
     ],
   );

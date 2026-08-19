@@ -5,7 +5,7 @@
  * embedded in the composition HTML.  Because <script> nodes are not tracked by
  * the SDK element tree (they have no hf-id), we cannot use a `setText` dispatch
  * op.  Instead we:
- *   1. Call `sdkSession.serialize()` to get the current HTML.
+ *   1. Acquire the per-file transaction and read the current on-disk HTML.
  *   2. Replace or insert the island with the new manifest JSON.
  *   3. Write via `persistSdkSerialize` — the same low-level writer used by the
  *      other SDK-cutover paths (sdkDeletePersist, sdkTimingPersist, etc.).
@@ -23,7 +23,6 @@ import {
   parseSlideshowManifest,
   slideshowIslandRegex,
 } from "@hyperframes/core/slideshow";
-import type { Composition } from "@hyperframes/sdk";
 import type { CutoverDeps } from "./sdkCutover";
 import { persistSdkSerialize } from "./sdkCutover";
 
@@ -46,8 +45,6 @@ export function buildSlideshowIslandHtml(manifest: SlideshowManifest): string {
 
 export interface PersistSlideshowArgs {
   manifest: SlideshowManifest;
-  /** Live SDK Composition session — used only to read the current serialized HTML. */
-  sdkSession: Pick<Composition, "serialize">;
   /** Exact on-disk bytes for the undo-history `before` baseline. */
   originalContent: string;
   targetPath: string;
@@ -62,7 +59,7 @@ export interface PersistSlideshowArgs {
 }
 
 export async function persistSlideshowManifest(args: PersistSlideshowArgs): Promise<void> {
-  const { manifest, sdkSession, originalContent, targetPath, deps, label, coalesceKey } = args;
+  const { manifest, originalContent, targetPath, deps, label, coalesceKey } = args;
 
   const islandHtml = buildSlideshowIslandHtml(manifest);
 
@@ -77,26 +74,22 @@ export async function persistSlideshowManifest(args: PersistSlideshowArgs): Prom
     throw new Error(`refusing to persist invalid slideshow manifest: ${(err as Error).message}`);
   }
 
-  const current = sdkSession.serialize();
-
-  // Strip ALL existing islands (handles the case where two stale islands
-  // accumulated) then insert exactly one fresh island.
-  const stripped = current.replace(ISLAND_RE, "");
-
-  let after: string;
-  const bodyClose = stripped.lastIndexOf("</body>");
-  if (bodyClose !== -1) {
-    after = stripped.slice(0, bodyClose) + islandHtml + "\n" + stripped.slice(bodyClose);
-  } else {
-    after = stripped + "\n" + islandHtml;
-  }
-
-  // No-op gate: if the rewritten HTML is byte-identical to the current serialized
-  // HTML, skip the write — avoids a spurious disk write and a no-op undo entry.
-  if (after === current) return;
-
-  await persistSdkSerialize(after, targetPath, originalContent, deps, {
-    label: label ?? "Edit slideshow",
-    ...(coalesceKey ? { coalesceKey } : {}),
-  });
+  await persistSdkSerialize(
+    (current) => {
+      // Strip ALL existing islands (handles the case where two stale islands
+      // accumulated) then insert exactly one fresh island.
+      const stripped = current.replace(ISLAND_RE, "");
+      const bodyClose = stripped.lastIndexOf("</body>");
+      return bodyClose !== -1
+        ? stripped.slice(0, bodyClose) + islandHtml + "\n" + stripped.slice(bodyClose)
+        : stripped + "\n" + islandHtml;
+    },
+    targetPath,
+    originalContent,
+    deps,
+    {
+      label: label ?? "Edit slideshow",
+      ...(coalesceKey ? { coalesceKey } : {}),
+    },
+  );
 }

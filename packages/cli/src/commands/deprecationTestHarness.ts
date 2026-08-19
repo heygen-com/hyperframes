@@ -11,6 +11,7 @@
 import type { ArgsDef, CommandDef } from "citty";
 import { runCommand } from "citty";
 import { expect, vi } from "vitest";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 const FAKE_PROJECT = {
   dir: "/fake-project",
@@ -51,6 +52,18 @@ export function metaDescription<T extends ArgsDef = ArgsDef>(command: CommandDef
   throw new Error("expected a synchronous meta object");
 }
 
+async function runExpectedFailure<T extends ArgsDef>(
+  command: CommandDef<T>,
+  rawArgs: string[],
+): Promise<void> {
+  try {
+    await runCommand(command, { rawArgs });
+  } catch (error) {
+    if (error instanceof CliRuntimeError && error.result.presented) return;
+    throw error;
+  }
+}
+
 /**
  * Run a command with stdout/stderr writes captured (and process.exit /
  * console.log stubbed so the run stays silent and non-terminating), and
@@ -73,7 +86,7 @@ export async function runAndCaptureStdio<T extends ArgsDef = ArgsDef>(
   vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
   vi.spyOn(console, "log").mockImplementation(() => {});
 
-  await runCommand(command, { rawArgs });
+  await runExpectedFailure(command, rawArgs);
 
   return { stderrText: stderrWrites.join(""), stdoutText: stdoutWrites.join("") };
 }
@@ -92,7 +105,7 @@ export async function runAndFindJsonLogCall<T extends ArgsDef = ArgsDef>(
   vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-  await runCommand(command, { rawArgs });
+  await runExpectedFailure(command, rawArgs);
 
   return logSpy.mock.calls.find(([arg]) => typeof arg === "string" && arg.trim().startsWith("{"));
 }

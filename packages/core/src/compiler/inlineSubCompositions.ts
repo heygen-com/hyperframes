@@ -9,17 +9,20 @@
  */
 
 import {
+  rewriteAssetPath,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  type AssetExists,
 } from "./rewriteSubCompPaths";
-import { queryByAttr } from "../utils/cssSelector";
+import { warnUnknownEnumValues } from "../runtime/getVariables";
 import {
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
+import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -102,6 +105,15 @@ export interface InlineSubCompositionsOptions {
   scriptErrorLabel?: string;
 
   /**
+   * Probe for "does this project-root-relative path exist?". Supplied by
+   * callers that can see the filesystem so a sub-composition's SIBLING asset
+   * refs (`<link href="_shared.css">` next to the composition) resolve against
+   * its own directory instead of 404ing at the project root. Omit it and plain
+   * relative paths pass through unchanged. See `AssetExists`.
+   */
+  assetExists?: AssetExists;
+
+  /**
    * Log a warning when a composition file cannot be resolved. `reason` is a
    * short, human-readable explanation (e.g. "the file is empty (0 bytes or
    * whitespace-only)") from `checkSubCompositionUsability` — present for
@@ -167,6 +179,7 @@ export function inlineSubCompositions(
     buildScopeSelector = defaultBuildScopeSelector,
     scriptErrorLabel = "[HyperFrames] composition script error:",
     onMissingComposition,
+    assetExists,
   } = options;
 
   const styles: string[] = [];
@@ -177,7 +190,9 @@ export function inlineSubCompositions(
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
-  for (const hostEl of hosts) {
+  const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const { element: hostEl, ancestry } = queue[queueIndex]!;
     const src = hostEl.getAttribute("data-composition-src");
     if (!src) continue;
 
@@ -228,13 +243,21 @@ export function inlineSubCompositions(
       continue;
     }
 
-    // Find the inner composition root
-    const innerRoot = compId
-      ? queryByAttr(contentDoc, "data-composition-id", compId)
-      : contentDoc.querySelector("[data-composition-id]");
-    const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || "";
-    const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
-    const scopeCompId = compId || inferredCompId;
+    // Which node is the composition root, which id its CSS scopes to, which
+    // id its scripts scope to, where its assets come from and in what order —
+    // every one of those is decided by the shared assembly module, so the mount
+    // path in runtime/compositionLoader.ts decides them the same way.
+    const plan = planCompositionAssembly<Element>({
+      contentNode: contentDoc,
+      head: compDoc.head,
+      documentElement: compDoc.documentElement,
+      hasTemplate: Boolean(contentRoot),
+      compositionId: compId,
+    });
+    const innerRoot = plan.innerRoot;
+    const authoredRootId = plan.authoredRootId;
+    const scopeCompId = plan.authoredCompositionId || "";
+    const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
     // Variable merging (bundler feature). Read declared defaults from the
@@ -242,21 +265,35 @@ export function inlineSubCompositions(
     // (template/fragment sub-comps store their schema on the root div, not a
     // synthetic <html>), then let per-instance host values override.
     if (readVariableDefaults && parseHostVariables && runtimeCompId) {
-      const mergedVariables = {
-        ...readVariableDefaults(compDoc.documentElement),
-        ...(innerRoot ? readVariableDefaults(innerRoot) : {}),
-        ...parseHostVariables(hostEl),
-      };
+      const mergedVariables: Record<string, unknown> = {};
+      for (const carrier of plan.variableDefaultCarriers) {
+        Object.assign(mergedVariables, readVariableDefaults(carrier));
+      }
+      Object.assign(mergedVariables, parseHostVariables(hostEl));
       if (Object.keys(mergedVariables).length > 0) {
         variablesByComp[runtimeCompId] = mergedVariables;
       }
+      // Compile time is the only place this defect is visible on the sub-comp
+      // path: the instance value is baked into `__hfVariablesByComp` right
+      // here, and the scoped `getVariables` shim only reads that table, so the
+      // runtime's identical guard never runs. Same helper, so the message and
+      // the per-process dedupe set are shared with the runtime path and the
+      // author sees one warning either way.
+      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, runtimeCompId);
+      warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
     }
+
+    // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
+    // need the same directory rewrite the body's [src]/[href] pass applies —
+    // without it even the documented `../` form escapes the project and 404s.
+    const resolveSubAssetPath = (raw: string | null): string =>
+      rewriteAssetPath(src, (raw || "").trim(), assetExists);
 
     // Scope one sub-composition <style> body. scopeRootSelectors keeps the
     // sub-comp's html/body/:root rules from clobbering the host document (they
     // are remapped to the composition box); see compositionScoping.
     const scopeSubStyle = (raw: string): string => {
-      const css = rewriteCssAssetUrls(raw, src);
+      const css = rewriteCssAssetUrls(raw, src, assetExists);
       return scopeCompId
         ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
             compoundAuthoredRoot: compoundAuthoredRoot === true,
@@ -265,67 +302,55 @@ export function inlineSubCompositions(
         : css;
     };
 
-    // When a sub-composition is a full HTML document (no <template>), styles
-    // and scripts in <head> are not part of contentDoc (which only has body
-    // content). Extract them so backgrounds, positioning, fonts, and library
-    // scripts (e.g. GSAP CDN) are not silently dropped.
-    if (!contentRoot && compDoc.head) {
-      for (const s of [...compDoc.head.querySelectorAll("style")]) {
-        styles.push(scopeSubStyle(s.textContent || ""));
-      }
-      for (const s of [...compDoc.head.querySelectorAll("script")]) {
-        const externalSrc = (s.getAttribute("src") || "").trim();
-        if (externalSrc) {
-          if (!externalScriptSrcs.includes(externalSrc)) {
-            externalScriptSrcs.push(externalSrc);
-          }
-          scriptItems.push({ kind: "external", src: externalSrc });
-        }
-      }
-      for (const link of [
-        ...compDoc.head.querySelectorAll('link[rel="stylesheet"], link[rel="preconnect"]'),
-      ]) {
-        const href = (link.getAttribute("href") || "").trim();
-        if (href && !seenLinkHrefs.has(href)) {
-          seenLinkHrefs.add(href);
-          const rel = (link.getAttribute("rel") || "").trim();
-          const crossorigin = link.hasAttribute("crossorigin")
-            ? link.getAttribute("crossorigin") || ""
-            : undefined;
-          externalLinks.push({ href, rel, crossorigin });
-        }
+    // <link> hoisting is unconditional. A templated sub-composition's webfont
+    // link is as load-bearing as a non-templated one's, and the mount path has
+    // always hoisted both; gating this on `!contentRoot` dropped a templated
+    // composition's font from the render while preview kept it.
+    for (const link of plan.linkSources) {
+      const href = resolveSubAssetPath(link.getAttribute("href"));
+      if (href && !seenLinkHrefs.has(href)) {
+        seenLinkHrefs.add(href);
+        const rel = (link.getAttribute("rel") || "").trim();
+        const crossorigin = link.hasAttribute("crossorigin")
+          ? link.getAttribute("crossorigin") || ""
+          : undefined;
+        externalLinks.push({ href, rel, crossorigin });
       }
     }
 
-    // Extract styles from content
-    for (const s of [...contentDoc.querySelectorAll("style")]) {
-      styles.push(scopeSubStyle(s.textContent || ""));
-      s.remove();
+    // Head-sourced assets come first: a non-templated sub-composition's <head>
+    // carries its backgrounds, positioning and fonts, and a <head> library tag
+    // (GSAP from a CDN) has to run before the content scripts calling into it.
+    for (const styleEl of plan.styleSources) {
+      styles.push(scopeSubStyle(styleEl.textContent || ""));
+      styleEl.remove();
     }
 
-    // Extract scripts from content
-    for (const s of [...contentDoc.querySelectorAll("script")]) {
-      const externalSrc = (s.getAttribute("src") || "").trim();
+    // Head- and content-sourced scripts take the same branch. The head loop
+    // used to handle only `src`, so an inline <head> script was silently
+    // discarded on render while the mount path executed it.
+    for (const scriptEl of plan.scriptSources) {
+      const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
       if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
         }
         scriptItems.push({ kind: "external", src: externalSrc });
       } else {
-        const wrappedScript = scopeCompId
+        const wrappedScript = scriptCompositionId
           ? wrapScopedCompositionScript(
-              s.textContent || "",
-              scopeCompId,
+              scriptEl.textContent || "",
+              scriptCompositionId,
               scriptErrorLabel,
               runtimeScope || undefined,
-              runtimeCompId || scopeCompId,
+              runtimeCompId || scopeCompId || scriptCompositionId,
               authoredRootId,
             )
-          : wrapInlineScriptWithErrorBoundary(s.textContent || "", scriptErrorLabel);
+          : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
         scripts.push(wrappedScript);
         scriptItems.push({ kind: "inline", content: wrappedScript });
       }
-      s.remove();
+      scriptEl.remove();
     }
 
     // Rewrite relative asset paths before inlining so ../foo.svg from
@@ -340,6 +365,7 @@ export function inlineSubCompositions(
       (el: Element, attr: string, val: string) => {
         el.setAttribute(attr, val);
       },
+      assetExists,
     );
 
     if (rewriteInlineStyles) {
@@ -353,6 +379,7 @@ export function inlineSubCompositions(
         (el: Element, val: string) => {
           el.setAttribute("style", val);
         },
+        assetExists,
       );
     }
 
@@ -376,7 +403,7 @@ export function inlineSubCompositions(
       for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
-        if (!compId && inferredCompId) {
+        if (!compId && scopeCompId) {
           // Anonymous host: flattenInnerRoot strips data-composition-id,
           // assuming the host already carries the composition's identity.
           // When the host has none, nothing in the render DOM matches the
@@ -384,7 +411,7 @@ export function inlineSubCompositions(
           // (e.g. document.querySelector('[data-composition-id="X"]')).
           // Restore it on the wrapper so both keep resolving, same as
           // before flattening preserved it via outerHTML.
-          prepared.setAttribute("data-composition-id", inferredCompId);
+          prepared.setAttribute("data-composition-id", scopeCompId);
         }
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
@@ -407,6 +434,15 @@ export function inlineSubCompositions(
 
     hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");
+
+    const nestedAncestry = [...ancestry, src];
+    const nested = enumerateNestedCompositionHosts(hostEl, nestedAncestry);
+    for (const skipped of nested.skipped) {
+      onMissingComposition?.(skipped.src, skipped.reason);
+    }
+    for (const nestedHost of nested.hosts) {
+      queue.push({ element: nestedHost.host, ancestry: nestedAncestry });
+    }
   }
 
   return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };

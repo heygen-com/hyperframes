@@ -1,4 +1,9 @@
-import { getStudioSaveErrorMessage, getStudioSaveStatusCode } from "./studioSaveDiagnostics";
+import {
+  getStudioSaveErrorMessage,
+  getStudioSaveStatusCode,
+  StudioFileConflictError,
+  type StudioSaveDrainResult,
+} from "./studioSaveDiagnostics";
 
 interface DomEditSaveQueueOpenEvent {
   consecutiveFailures: number;
@@ -13,11 +18,13 @@ interface DomEditSaveQueueOptions {
 }
 
 export interface DomEditSaveQueue {
-  enqueue: (save: () => Promise<void>) => Promise<void>;
-  waitForIdle: () => Promise<void>;
+  enqueue: <T>(save: () => Promise<T>) => Promise<T>;
+  waitForIdle: () => Promise<DomEditSaveDrainResult>;
   reset: () => void;
   destroy: () => void;
 }
+
+export type DomEditSaveDrainResult = StudioSaveDrainResult;
 
 const DEFAULT_FAILURE_THRESHOLD = 5;
 
@@ -34,11 +41,13 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   let tail = Promise.resolve();
   let consecutiveFailures = 0;
   let breakerOpen = false;
+  let drainError: unknown = null;
 
   const reset = (notify = true) => {
     const wasOpen = breakerOpen;
     consecutiveFailures = 0;
     breakerOpen = false;
+    drainError = null;
     if (notify && wasOpen) options.onReset?.();
   };
 
@@ -52,13 +61,19 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
     });
   };
 
-  const run = async (save: () => Promise<void>) => {
+  const run = async <T>(save: () => Promise<T>): Promise<T> => {
     try {
-      await save();
-      if (!breakerOpen) consecutiveFailures = 0;
+      const result = await save();
+      if (!breakerOpen) {
+        consecutiveFailures = 0;
+        drainError = null;
+      }
+      return result;
     } catch (error) {
+      drainError = error;
       consecutiveFailures += 1;
-      if (consecutiveFailures >= failureThreshold) open(error);
+      if (getStudioSaveStatusCode(error) === 409 || consecutiveFailures >= failureThreshold)
+        open(error);
       throw error;
     }
   };
@@ -74,8 +89,13 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
       return queued;
     },
 
-    async waitForIdle() {
+    async waitForIdle(): Promise<DomEditSaveDrainResult> {
       await tail.catch(() => undefined);
+      if (drainError instanceof StudioFileConflictError) {
+        return { status: "conflict", error: drainError };
+      }
+      if (drainError != null) return { status: "failed", error: drainError };
+      return { status: "clean" };
     },
 
     reset,

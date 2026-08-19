@@ -74,11 +74,8 @@ describe("persistSlideshowManifest — op construction", () => {
     const deps = makeDeps(writeProjectFile);
     const recordEdit = deps.editHistory.recordEdit as ReturnType<typeof vi.fn>;
 
-    const mockSession = { serialize: vi.fn().mockReturnValue(originalHtml) };
-
     await persistSlideshowManifest({
       manifest: { slides: [{ sceneId: "scene-2" }] },
-      sdkSession: mockSession as never,
       originalContent: originalHtml,
       targetPath: "/proj/comp.html",
       deps,
@@ -96,11 +93,8 @@ describe("persistSlideshowManifest — op construction", () => {
     const baseHtml = "<html><head></head><body></body></html>";
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const deps = makeDeps(writeProjectFile);
-    const mockSession = { serialize: vi.fn().mockReturnValue(baseHtml) };
-
     await persistSlideshowManifest({
       manifest: { slides: [{ sceneId: "new-scene" }] },
-      sdkSession: mockSession as never,
       originalContent: baseHtml,
       targetPath: "/proj/comp.html",
       deps,
@@ -122,11 +116,8 @@ describe("persistSlideshowManifest — op construction", () => {
 
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const deps = makeDeps(writeProjectFile);
-    const mockSession = { serialize: vi.fn().mockReturnValue(twoIslandHtml) };
-
     await persistSlideshowManifest({
       manifest: { slides: [{ sceneId: "fresh" }] },
-      sdkSession: mockSession as never,
       originalContent: twoIslandHtml,
       targetPath: "/proj/comp.html",
       deps,

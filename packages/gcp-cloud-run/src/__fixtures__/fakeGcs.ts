@@ -24,6 +24,9 @@ export interface FakeGcsOp {
 export class FakeGcs {
   ops: FakeGcsOp[] = [];
   objects = new Map<string, Buffer>();
+  metadata = new Map<string, Record<string, string>>();
+  /** Optional one-shot race hook used to model another writer before a create-only upload. */
+  beforeUpload?: (uri: string) => void;
 
   // Accessed only through the `Storage` cast in tests, so fallow's static
   // analysis can't see the reference.
@@ -57,13 +60,30 @@ class FakeBucket {
     return new FakeFile(this.gcs, this.bucketName, key);
   }
 
+  // The stateful command matrix intentionally stays inline so tests exercise
+  // generation preconditions and metadata updates as one fake GCS operation.
+  // fallow-ignore-next-line complexity
   async upload(
     localPath: string,
-    opts: { destination: string; contentType?: string },
+    opts: {
+      destination: string;
+      contentType?: string;
+      metadata?: { metadata?: Record<string, string> };
+      preconditionOpts?: { ifGenerationMatch?: number };
+    },
   ): Promise<unknown> {
     const uri = `gs://${this.bucketName}/${opts.destination}`;
+    this.gcs.beforeUpload?.(uri);
+    if (opts.preconditionOpts?.ifGenerationMatch === 0 && this.gcs.objects.has(uri)) {
+      const error = new Error(`FakeGcs: precondition failed: ${uri}`) as Error & {
+        code: number;
+      };
+      error.code = 412;
+      throw error;
+    }
     const bytes = readFileSync(localPath);
     this.gcs.objects.set(uri, bytes);
+    this.gcs.metadata.set(uri, opts.metadata?.metadata ?? {});
     this.gcs.ops.push({ kind: "upload", uri, bytes: bytes.length });
     return [{}];
   }
@@ -96,10 +116,18 @@ class FakeFile {
     return [has];
   }
 
-  async getMetadata(): Promise<[{ size?: string | number; updated?: string }]> {
+  async getMetadata(): Promise<
+    [{ size?: string | number; updated?: string; metadata?: Record<string, string> }]
+  > {
     const bytes = this.gcs.objects.get(this.uri);
     this.gcs.ops.push({ kind: "getMetadata", uri: this.uri });
-    return [{ size: bytes?.length ?? 0, updated: "2026-06-06T00:00:00.000Z" }];
+    return [
+      {
+        size: bytes?.length ?? 0,
+        updated: "2026-06-06T00:00:00.000Z",
+        metadata: this.gcs.metadata.get(this.uri) ?? {},
+      },
+    ];
   }
 
   /** Helper for tests that want to materialize an object to disk. */

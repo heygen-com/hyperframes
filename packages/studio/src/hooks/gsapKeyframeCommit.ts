@@ -1,7 +1,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { absoluteToPercentageForAnimation, findTweenAtTime } from "../utils/globalTimeCompiler";
-import { PROPERTY_DEFAULTS, selectorFromSelection } from "./gsapShared";
+import { PROPERTY_DEFAULTS, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import { roundToCenti } from "../utils/rounding";
 
 type CommitFn = (
@@ -22,6 +22,9 @@ export async function commitKeyframeAtTimeImpl(
   properties: Record<string, number | string>,
   commitMutation: CommitFn,
 ): Promise<void> {
+  // Matching an authored tween is a string compare against what the author
+  // wrote, so it keeps using the selection's own selector; the NEW tween below
+  // is authored with the one-element form instead.
   const selector = selectorFromSelection(selection);
   if (!selector) return;
 
@@ -60,12 +63,18 @@ export async function commitKeyframeAtTimeImpl(
       },
     );
   } else {
+    // Null means the live DOM could not prove any one-element form. Falling
+    // back to the author's own selector would write the group-collapsing
+    // target this narrowing exists to prevent, so the keyframe is dropped
+    // instead (see writeTargetSelector).
+    const target = writeTargetSelector(selection);
+    if (!target) return;
     const defaultDuration = 0.5;
     await commitMutation(
       selection,
       {
         type: "add-with-keyframes" as const,
-        targetSelector: selector,
+        targetSelector: target,
         position: absoluteTime,
         duration: defaultDuration,
         keyframes: [

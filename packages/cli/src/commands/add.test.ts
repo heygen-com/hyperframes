@@ -3,7 +3,20 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { AddError, buildSnippet, remapTarget, runAdd } from "./add.js";
+import {
+  AddError,
+  buildSnippet,
+  describeInstallFailure,
+  parseVariableValues,
+  remapTarget,
+  runAdd,
+} from "./add.js";
+import { trackRegistryItemAdded } from "../telemetry/events.js";
+
+// Assert the emitted payload rather than the transport: `shouldTrack()` is
+// already false under test (dev mode / no PostHog key), so a real call would
+// be indistinguishable from no call at all.
+vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -250,7 +263,10 @@ describe("add command pure helpers", () => {
 });
 
 describe("runAdd (integration, mocked registry)", () => {
-  beforeEach(() => mockFetch());
+  beforeEach(() => {
+    vi.mocked(trackRegistryItemAdded).mockClear();
+    mockFetch();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -313,6 +329,9 @@ describe("runAdd (integration, mocked registry)", () => {
         code: "incompatible-cli",
       });
       expect(existsSync(join(dir, "compositions/future-block.html"))).toBe(false);
+      // Nothing was written, so nothing may be counted: an install count that
+      // also counts refused installs is not a download count.
+      expect(trackRegistryItemAdded).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -359,6 +378,31 @@ describe("runAdd (integration, mocked registry)", () => {
     }
   });
 
+  it("reports every installed item, marking only the requested one", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      await runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true });
+
+      // A dependency dragged in behind the request must not read as a vote for
+      // itself, or a popular dependency outranks everything that depends on it.
+      expect(trackRegistryItemAdded).toHaveBeenCalledTimes(2);
+      expect(trackRegistryItemAdded).toHaveBeenCalledWith({
+        item: "base-component",
+        itemType: "hyperframes:component",
+        requested: false,
+      });
+      expect(trackRegistryItemAdded).toHaveBeenCalledWith({
+        item: "dep-block",
+        itemType: "hyperframes:block",
+        requested: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("throws AddError with code 'example-type' when asked to add an example", async () => {
     const dir = tmp();
     try {
@@ -385,5 +429,86 @@ describe("runAdd (integration, mocked registry)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("variable values in the snippet", () => {
+  const block = {
+    name: "split-flap-board",
+    type: "hyperframes:block",
+    duration: 3.5,
+    dimensions: { width: 1920, height: 1080 },
+  } as unknown as RegistryItem;
+
+  it("leaves the snippet alone when no values are passed", () => {
+    const snippet = buildSnippet(block, "compositions/split-flap-board.html");
+    expect(snippet).not.toContain("data-variable-values");
+  });
+
+  it("carries values tuned on the catalog page", () => {
+    const snippet = buildSnippet(block, "compositions/split-flap-board.html", {
+      boardText: "GATE 42",
+      cellCount: 16,
+    });
+    expect(snippet).toContain(`data-variable-values='{"boardText":"GATE 42","cellCount":16}'`);
+  });
+
+  it("escapes a single quote rather than letting it close the attribute", () => {
+    const snippet = buildSnippet(block, "x.html", { boardText: "IT'S BOARDING" });
+    expect(snippet).toContain("&#39;");
+    expect(snippet.match(/data-variable-values='/g)?.length).toBe(1);
+  });
+
+  it("treats an empty object as nothing to say", () => {
+    expect(buildSnippet(block, "x.html", {})).not.toContain("data-variable-values");
+  });
+
+  it("rejects --vars that is not a JSON object", () => {
+    expect(() => parseVariableValues("not json")).toThrow(/JSON object/);
+    expect(() => parseVariableValues("[1,2]")).toThrow(/JSON object/);
+    expect(parseVariableValues(undefined)).toBeNull();
+  });
+});
+
+describe("describeInstallFailure", () => {
+  it("explains a bare transport failure instead of echoing it", () => {
+    // What the user actually sees after copying a command off the catalog page.
+    // Item FILES are not cached, so a blip surfaces as node's `fetch failed`
+    // with no URL and no cause, and reads like the command was wrong.
+    const message = describeInstallFailure(new Error("fetch failed"));
+
+    expect(message).toContain("could not download the item's files");
+    expect(message).toContain("rather than a bad command");
+    expect(message).toContain("HTTPS_PROXY");
+  });
+
+  it("names the project's own registry when it is not the public one", () => {
+    // The reported failure: hyperframes.json pointed at a private host with a
+    // self-signed certificate. Telling that reader to check their connection
+    // sends them to debug the one thing that was working.
+    const message = describeInstallFailure(
+      new Error("fetch failed"),
+      "https://private.example/registry",
+    );
+
+    expect(message).toContain("https://private.example/registry");
+    expect(message).toContain("not the public registry");
+  });
+
+  it("stays quiet about the registry when it is the default one", () => {
+    const message = describeInstallFailure(
+      new Error("fetch failed"),
+      "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+    );
+
+    expect(message).not.toContain("not the public registry");
+  });
+
+  it("leaves a non-transport failure exactly as it was", () => {
+    // An unsafe target or a malformed item is the caller's problem to read; a
+    // connectivity lecture there would send them to fix the wrong thing.
+    const message = describeInstallFailure(new Error('Unsafe target "../x"'));
+
+    expect(message).toBe('Install failed: Unsafe target "../x"');
   });
 });

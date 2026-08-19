@@ -1,3 +1,4 @@
+import { failCommand } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud delete <render_id>` — soft-delete a cloud render.
  *
@@ -53,14 +54,14 @@ export default defineCommand({
           "delete cannot prompt for confirmation here — stdin isn't a TTY or --json was passed.",
           "Re-run with --no-confirm to acknowledge the irreversible delete.",
         );
-        process.exit(1);
+        failCommand();
       }
       const ok = await confirmDelete(args.id);
       if (!ok) {
         // Distinct exit code so wrapper scripts can tell an explicit
         // decline apart from an API/system error.
         console.log(c.dim("Aborted."));
-        process.exit(2);
+        failCommand(2);
       }
     }
     const client = await createCloudClient();

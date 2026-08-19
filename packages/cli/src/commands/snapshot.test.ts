@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { computeSnapshotTimes, parseZoomScale, tailFrameTime } from "./snapshot.js";
+import { readFileSync } from "node:fs";
+import {
+  computeSnapshotTimes,
+  formatSnapshotTimestamp,
+  parseZoomScale,
+  requireSnapshotFfmpeg,
+  resolveSnapshotVideoClipStart,
+  resolveSnapshotVideoFrameTime,
+  tailFrameTime,
+} from "./snapshot.js";
+
+describe("formatSnapshotTimestamp", () => {
+  it.each([
+    [1.12, "1.12s"],
+    [0.30000000000000004, "0.3s"],
+  ])("formats %s without discarding useful precision", (time, expected) => {
+    expect(formatSnapshotTimestamp(time)).toBe(expected);
+  });
+});
 
 // --zoom's crop-region math (selector bbox + padding + clamp, exact region
 // form, no-match error) is owned by and tested in
@@ -18,6 +36,158 @@ describe("tailFrameTime", () => {
 
   it("never goes negative", () => {
     expect(tailFrameTime(0)).toBe(0);
+  });
+});
+
+describe("transparent snapshot capture", () => {
+  it("asks Chrome to retain the alpha channel in review PNGs", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain(
+      'page.screenshot({ path: framePath, type: "png", omitBackground: true })',
+    );
+  });
+
+  it("exposes --proxy/--no-proxy and forwards the override to the static server", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("proxy: {");
+    expect(source).toContain("autoProxy: args.proxy as boolean | undefined");
+    expect(source).toContain("opts.autoProxy");
+  });
+
+  it("resolves and forwards the shared local browser GPU policy", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("resolveLocalBrowserGpuMode");
+    expect(source).toContain("browserGpuMode: opts.browserGpuMode");
+    expect(source).toContain('"browser-gpu": {');
+  });
+});
+
+describe("resolveSnapshotVideoFrameTime", () => {
+  it("keeps media active at the inclusive clip end and samples its last decodable frame", () => {
+    expect(
+      resolveSnapshotVideoFrameTime({
+        globalTime: 15,
+        clipStart: 0,
+        clipDuration: 15,
+        relativeTime: 15,
+        sourceDuration: 15,
+      }),
+    ).toBeCloseTo(15 - 1 / 30, 6);
+  });
+
+  it("keeps ordinary in-window media timestamps unchanged", () => {
+    expect(
+      resolveSnapshotVideoFrameTime({
+        globalTime: 7.5,
+        clipStart: 0,
+        clipDuration: 15,
+        relativeTime: 7.5,
+        sourceDuration: 15,
+      }),
+    ).toBe(7.5);
+  });
+
+  it("does not activate media after the clip end", () => {
+    expect(
+      resolveSnapshotVideoFrameTime({
+        globalTime: 15.001,
+        clipStart: 0,
+        clipDuration: 15,
+        relativeTime: 15.001,
+        sourceDuration: 15,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    {
+      name: "before clip start",
+      input: {
+        globalTime: 4.9,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 0,
+        sourceDuration: 10,
+      },
+      expected: null,
+    },
+    {
+      name: "negative relative time",
+      input: {
+        globalTime: 5,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: -0.1,
+        sourceDuration: 10,
+      },
+      expected: null,
+    },
+    {
+      name: "unknown source duration",
+      input: {
+        globalTime: 15,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 0,
+      },
+      expected: 10 - 1 / 30,
+    },
+    {
+      name: "offset clip inclusive end",
+      input: {
+        globalTime: 15,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 10,
+      },
+      expected: 10 - 1 / 30,
+    },
+    {
+      name: "clip end within floating-point tolerance",
+      input: {
+        globalTime: 15 + 5e-10,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 10,
+      },
+      expected: 10 - 1 / 30,
+    },
+  ])("handles $name", ({ input, expected }) => {
+    const result = resolveSnapshotVideoFrameTime(input);
+    if (expected === null) expect(result).toBeNull();
+    else expect(result).toBeCloseTo(expected, 6);
+  });
+});
+
+describe("resolveSnapshotVideoClipStart", () => {
+  it("offsets a scene-local video start by its later template host", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 0,
+        runtimeResolvedStart: 3,
+      }),
+    ).toBe(3);
+  });
+
+  it("uses the runtime's recursively resolved start for deeply nested media", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 1,
+        runtimeResolvedStart: 8,
+      }),
+    ).toBe(8);
+  });
+
+  it("keeps authored starts as a compatibility fallback", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 3,
+        runtimeResolvedStart: null,
+      }),
+    ).toBe(3);
   });
 });
 
@@ -62,6 +232,16 @@ describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {
     expect(times).toEqual([1, 2]);
     expect(appendedTail).toBe(false);
   });
+
+  it("preserves exact explicit transition timestamps", () => {
+    const exactTransition = 3.3666666666666667;
+    const { times } = computeSnapshotTimes(8, {
+      frames: 5,
+      at: [exactTransition],
+      includeEnd: false,
+    });
+    expect(times).toEqual([exactTransition]);
+  });
 });
 
 describe("parseZoomScale (--zoom-scale)", () => {
@@ -77,5 +257,17 @@ describe("parseZoomScale (--zoom-scale)", () => {
     expect(parseZoomScale("abc")).toBe(3);
     expect(parseZoomScale("0")).toBe(3);
     expect(parseZoomScale("-1")).toBe(3);
+  });
+});
+
+describe("requireSnapshotFfmpeg", () => {
+  it("rejects video snapshot extraction when FFmpeg is unavailable", () => {
+    expect(() => requireSnapshotFfmpeg(undefined)).toThrow(
+      /FFmpeg is required to extract video frames for snapshots/,
+    );
+  });
+
+  it("preserves the resolved FFmpeg executable", () => {
+    expect(requireSnapshotFfmpeg("C:\\tools\\ffmpeg.exe")).toBe("C:\\tools\\ffmpeg.exe");
   });
 });

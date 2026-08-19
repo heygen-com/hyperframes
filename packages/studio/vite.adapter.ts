@@ -33,6 +33,10 @@ export function isPathWithin(parentDir: string, childPath: string): boolean {
   );
 }
 
+export function resolveViteAutoProxy(value: string | undefined): boolean {
+  return value !== "false";
+}
+
 export function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
   let _bundler:
     | ((
@@ -99,6 +103,11 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
   };
 
   return {
+    // The CLI resolves --proxy/--no-proxy against hyperframes.json before it
+    // launches Vite. Direct `bun run dev` keeps the historical default-on
+    // behavior when the child environment is absent.
+    autoProxy: resolveViteAutoProxy(process.env.HYPERFRAMES_AUTO_PROXY),
+
     // fallow-ignore-next-line complexity
     listProjects() {
       if (!existsSync(dataDir)) return [];

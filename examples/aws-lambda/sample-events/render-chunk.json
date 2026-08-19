@@ -1,6 +1,7 @@
 {
   "Action": "renderChunk",
-  "PlanS3Uri": "s3://example-bucket/renders/sample/plan.tar.gz",
+  "PlanV2ManifestS3Uri": "s3://example-bucket/renders/sample/v2/manifest.json",
+  "PlanV2ArtifactS3Prefix": "s3://example-bucket/renders/sample/v2/artifacts/sha256",
   "PlanHash": "0000000000000000000000000000000000000000000000000000000000000000",
   "ChunkIndex": 0,
   "ChunkOutputS3Prefix": "s3://example-bucket/renders/sample/",

@@ -48,6 +48,13 @@ export const UA_DEFAULT_COLORS = new Set(
   ["#0000EE", "#0000FF", "#0000CC", "#1A0DAB", "#551A8B", "#EE0000"].map((c) => c.toUpperCase()),
 );
 
+export const ICON_FONT_PATTERN =
+  /(?:^|[\s_-])icons?(?:[\s_-]|$)|icomoon|font\s*-?awesome|glyphicons?|material\s*icons|feather\s*icons|(?:icon|glyph).*font|font.*(?:icon|glyph)|^vidaxlfont$/i;
+
+export function isIconFont(name) {
+  return ICON_FONT_PATTERN.test(String(name));
+}
+
 // Semantic STATUS roles (green "positive", red "negative"/"error", amber "warning" …). Their HUE
 // carries the meaning, so they are never a brand ACCENT — a status red is frequently the most
 // chromatic color in a palette (e.g. #dc2626 chroma 182 beats a deep-blue accent #1E40AF chroma
@@ -127,15 +134,7 @@ export function brandRolesFromStats(stats, colorsInOrder) {
       .find((s) => Math.abs((lum(s.hex) ?? 0) - cl) > 64)?.hex ??
     (cl > 128 ? "#000000" : "#FFFFFF");
   const accent2 =
-    v
-      .filter(
-        (s) =>
-          ![canvas, ink, accent].includes(s.hex) &&
-          (s.interactiveBg || 0) > 0 &&
-          chroma(s.hex) > 40 &&
-          !UA_DEFAULT_COLORS.has(s.hex.toUpperCase()),
-      )
-      .sort((a, b) => (b.interactiveBg || 0) - (a.interactiveBg || 0))[0]?.hex ?? accent;
+    pickAccent(v, colorsInOrder ?? v.map((s) => s.hex), [canvas, ink, accent]) ?? accent;
   return { ink, canvas, accent, accent2 };
 }
 

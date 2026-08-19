@@ -9,16 +9,14 @@ import {
   STUDIO_ORIGINAL_HEIGHT_ATTR,
 } from "../components/editor/manualEditsTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
-import { computeElementPercentage } from "./gsapShared";
+import { computeElementPercentage, writeTargetSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
-import {
-  setPatchFromUpdateProperties,
-  setPatchFromUpdateProperty,
-} from "./gsapDragStaticSetHelpers";
+import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
+import { setPatchFromUpdateProperty } from "./gsapDragStaticSetHelpers";
+import { GsapEditBlockedError } from "./gsapEditOutcome";
 export {
   findExistingPositionWrite,
   findRotationSetAnimation,
@@ -46,6 +44,23 @@ export interface GsapDragCommitCallbacks {
   fetchAnimations?: () => Promise<GsapAnimation[]>;
 }
 
+/**
+ * The target for a tween these helpers are about to CREATE. Callers derive
+ * `selector` with `selectorFromSelection`, which hands back a bare class for an
+ * id-less element: authoring that widens a one-element drag/resize/rotate into a
+ * write over every sibling sharing the class. Retargets of an EXISTING tween
+ * must NOT come through here (they keep `anim.targetSelector`, so a tween the
+ * author aimed at a group stays aimed at it).
+ *
+ * Null means no one-element form exists, and every caller drops the commit
+ * rather than falling back to `selector` (see writeTargetSelector): the drag
+ * reverts on the next reload, which is recoverable, where a `.group` write is
+ * not.
+ */
+function newTweenTarget(selection: DomEditSelection): string | null {
+  return writeTargetSelector(selection);
+}
+
 // Re-export for backward compatibility with existing imports.
 export function computeCurrentPercentage(
   selection: DomEditSelection,
@@ -65,6 +80,47 @@ export function parkPlayheadOnKeyframe(anim: GsapAnimation, pct: number): void {
   usePlayerStore.getState().requestSeek(roundTo3(ts + (pct / 100) * td));
 }
 
+async function replaceKeyframedPositionHold(
+  selection: DomEditSelection,
+  existingSet: GsapAnimation,
+  properties: { x: number; y: number },
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+): Promise<void> {
+  const target = newTweenTarget(selection);
+  if (!target) throw new GsapEditBlockedError("no-selector");
+  const persist = async (commit: GsapDragCommitCallbacks["commitMutation"]) => {
+    await commit(
+      selection,
+      {
+        type: "add",
+        targetSelector: target,
+        method: "set",
+        position: 0,
+        properties,
+        global: true,
+      },
+      { label: "Move layer", skipReload: true },
+    );
+    await commit(
+      selection,
+      { type: "delete", animationId: existingSet.id },
+      { label: "Move layer", softReload: true },
+    );
+  };
+
+  if (isGestureTransactionCommit(commitMutation)) {
+    await persist(commitMutation);
+    return;
+  }
+  await runGestureTransaction({
+    element: selection.element,
+    label: "Move layer",
+    settle: () => undefined,
+    persist: async (commit) => persist(commit(commitMutation)),
+    restore: () => undefined,
+  });
+}
+
 // ── Dynamic keyframe materialization ──────────────────────────────────────
 
 export async function materializeIfDynamic(
@@ -74,40 +130,12 @@ export async function materializeIfDynamic(
   selection: DomEditSelection,
 ): Promise<string | void> {
   if (!anim.hasUnresolvedKeyframes && !anim.hasUnresolvedSelector) return;
-
-  if (anim.hasUnresolvedSelector) {
-    const allScanned = scanAllRuntimeKeyframes(iframe);
-    if (allScanned.size === 0) return;
-    const allElements = Array.from(allScanned.entries()).map(([id, data]) => ({
-      selector: `#${id}`,
-      keyframes: data.keyframes,
-      easeEach: data.easeEach,
-    }));
-    await commitMutation(
-      selection,
-      {
-        type: "materialize-keyframes",
-        animationId: anim.id,
-        keyframes: allScanned.get(selection.id ?? "")?.keyframes ?? [],
-        allElements,
-      },
-      { label: "Unroll dynamic animations", skipReload: true },
-    );
-    return `${anim.targetSelector}-to-0`;
-  }
-
-  const runtime = readRuntimeKeyframes(iframe, anim.targetSelector);
-  if (!runtime || runtime.keyframes.length === 0) return;
-  await commitMutation(
-    selection,
-    {
-      type: "materialize-keyframes",
-      animationId: anim.id,
-      keyframes: runtime.keyframes,
-      easeEach: runtime.easeEach,
-    },
-    { label: "Materialize dynamic keyframes", skipReload: true },
-  );
+  // Geometry commits must never rewrite runtime/computed source implicitly.
+  // The explicit Unroll action owns that source-destructive transition.
+  void iframe;
+  void commitMutation;
+  void selection;
+  throw new GsapEditBlockedError("source-uneditable");
 }
 
 // ── Drag → GSAP position math ──────────────────────────────────────────────
@@ -116,7 +144,7 @@ export async function materializeIfDynamic(
  * Commit a STATIC element drag as a `tl.set("#el",{x,y})` — the single-source
  * position channel for elements with no position animation. Idempotent: a
  * re-nudge of an element that already has a `set` UPDATES that set's x/y
- * (two `update-property` mutations) rather than stacking a second set or
+ * in one `update-properties` mutation rather than stacking a second set or
  * converting it to keyframes (plan R2 / KTD3). New elements get one `add`
  * mutation with `method:"set"` at position 0.
  */
@@ -132,80 +160,43 @@ export async function commitStaticGsapPosition(
   if (existingSet) {
     if (existingSet.keyframes) {
       // Keyframed zero-duration hold (drag-path corruption): can't update-property
-      // into keyframes — delete it and write a clean static set instead.
-      const coalesceKey = `gsap:heal-static:${existingSet.id}`;
-      await callbacks.commitMutation(
+      // into keyframes. Add the replacement first so either failure leaves at
+      // least one hold on disk, then delete the corrupt tween in one transaction.
+      await replaceKeyframedPositionHold(
         selection,
-        { type: "delete", animationId: existingSet.id },
-        { label: "Move layer", skipReload: true, coalesceKey },
-      );
-      await callbacks.commitMutation(
-        selection,
-        {
-          type: "add",
-          targetSelector: selector,
-          method: "set",
-          position: 0,
-          properties: { x: newX, y: newY },
-          global: true,
-        },
-        {
-          label: "Move layer",
-          softReload: true,
-          coalesceKey,
-          instantPatch: { selector, change: { kind: "global-set", props: { x: newX, y: newY } } },
-        },
+        existingSet,
+        { x: newX, y: newY },
+        callbacks.commitMutation,
       );
       return;
     }
-    // Update in place — two single-property mutations (the API updates one prop
-    // per call). Coalesce them and reload only after the second lands.
-    const coalesceKey = `gsap:set-nudge:${existingSet.id}`;
-    // Build each mutation FIRST, then derive its instantPatch from the SAME
-    // object that's POSTed — so a future caller can't ship a clean mutation with
-    // a stale/malformed patch (the validated `value` flows straight into the
-    // patch). `findUnsafeMutationValues` validates the mutation upstream.
-    const xMutation = {
-      type: "update-property",
+    const mutation = {
+      type: "update-properties",
       animationId: existingSet.id,
-      property: "x",
-      value: newX,
+      properties: { x: newX, y: newY },
     } as const;
-    const yMutation = {
-      type: "update-property",
-      animationId: existingSet.id,
-      property: "y",
-      value: newY,
-    } as const;
-    // Patch BOTH coalesced commits. If the SECOND POST fails server-side, the
-    // first (x) already persisted — patching its commit too means the live
-    // preview still reflects what DID persist. The x commit carries skipReload
-    // (no reload), so its instantPatch gives instant feedback without a reload;
-    // the y commit triggers the soft reload (skipped when the patch applies).
     const global = !!existingSet.global;
-    await callbacks.commitMutation(selection, xMutation, {
-      label: "Move layer",
-      skipReload: true,
-      coalesceKey,
-      instantPatch: setPatchFromUpdateProperty(selector, xMutation, global),
-    });
-    await callbacks.commitMutation(selection, yMutation, {
+    await callbacks.commitMutation(selection, mutation, {
       label: "Move layer",
       softReload: true,
-      coalesceKey,
-      // Final commit of the coalesced x/y pair: carry both channels so the
-      // runtime set lands the complete {x,y} pose in place.
-      instantPatch: setPatchFromUpdateProperties(selector, [xMutation, yMutation], global),
+      instantPatch: {
+        selector,
+        change: { kind: global ? "global-set" : "set", props: mutation.properties },
+      },
     });
     return;
   }
   // New static hold → a base `gsap.set` (off-timeline, no 0% keyframe marker), with
   // an instant patch so the first nudge shows immediately (no soft-reload flash).
+  // The patch reuses the WRITTEN target so the runtime moves exactly the element
+  // the source write names.
+  const target = newTweenTarget(selection);
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {
       type: "add",
-      targetSelector: selector,
+      targetSelector: target,
       method: "set",
       position: 0,
       properties: { x: newX, y: newY },
@@ -214,7 +205,10 @@ export async function commitStaticGsapPosition(
     {
       label: "Move layer",
       softReload: true,
-      instantPatch: { selector, change: { kind: "global-set", props: { x: newX, y: newY } } },
+      instantPatch: {
+        selector: target,
+        change: { kind: "global-set", props: { x: newX, y: newY } },
+      },
     },
   );
 }
@@ -254,11 +248,13 @@ export async function commitStaticGsapRotation(
     return;
   }
   // New static hold → off-timeline `gsap.set` (no 0% keyframe marker) + instant patch.
+  const target = newTweenTarget(selection);
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {
       type: "add",
-      targetSelector: selector,
+      targetSelector: target,
       method: "set",
       position: 0,
       properties: { rotation: newRotation },
@@ -267,7 +263,10 @@ export async function commitStaticGsapRotation(
     {
       label: "Rotate layer",
       softReload: true,
-      instantPatch: { selector, change: { kind: "global-set", props: { rotation: newRotation } } },
+      instantPatch: {
+        selector: target,
+        change: { kind: "global-set", props: { rotation: newRotation } },
+      },
     },
   );
 }
@@ -279,7 +278,7 @@ export async function commitStaticGsapRotation(
  * tween: one keyframe at the playhead % renders NaN/0 at every other frame, so
  * the element collapses/disappears (worst when resized off the 0% mark). A `set`
  * holds the size at all times. Re-resizing an element that already has a size
- * `set` UPDATES it in place (two `update-property`, like x/y); a new element
+ * `set` UPDATES it in place with one `update-properties`; a new element
  * gets one `add` with `method:"set"`.
  */
 export async function commitStaticGsapSize(
@@ -294,27 +293,22 @@ export async function commitStaticGsapSize(
   if (existingSet) {
     await callbacks.commitMutation(
       selection,
-      { type: "delete", animationId: existingSet.id },
-      { label: "Resize layer", skipReload: true },
-    );
-    await callbacks.commitMutation(
-      selection,
       {
-        type: "add",
-        targetSelector: selector,
-        method: "set",
-        position: 0,
+        type: "update-properties",
+        animationId: existingSet.id,
         properties: { width, height },
       },
       { label: "Resize layer", softReload: true },
     );
     return;
   }
+  const target = newTweenTarget(selection);
+  if (!target) throw new GsapEditBlockedError("no-selector");
   await callbacks.commitMutation(
     selection,
     {
       type: "add",
-      targetSelector: selector,
+      targetSelector: target,
       method: "set",
       position: 0,
       properties: { width, height },
@@ -394,16 +388,17 @@ export async function commitKeyframedSizeFromResize(
       properties: Math.abs(p - pct) < 0.05 ? { width: newW, height: newH } : { ...prior },
     }));
 
-  // Add the size keyframe tween FIRST, then delete the old global hold. The two
-  // commits aren't transactional, so ordering matters: if the delete fails the
-  // size is preserved (animated, recoverable) rather than lost. Only the last
-  // commit triggers the reload.
+  // Add the size keyframe tween FIRST, then delete the old global hold. The gesture
+  // transport applies both in one ordered batch; a plain commit fallback keeps the
+  // same recoverable ordering. Only the transaction's result triggers the reload.
   const addLabel = `Resize (size keyframe ${pct.toFixed(0)}%)`;
+  const target = newTweenTarget(selection);
+  if (!target) return false;
   await callbacks.commitMutation(
     selection,
     {
       type: "add-with-keyframes",
-      targetSelector: selector,
+      targetSelector: target,
       position: roundTo3(ts),
       duration: roundTo3(td),
       keyframes,

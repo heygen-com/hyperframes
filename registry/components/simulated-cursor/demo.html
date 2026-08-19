@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Simulated Cursor - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #ecf1f3;
+        font-family: Inter, system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        color: #152026;
+      }
+      .demo-frame {
+        /* ponytail: zoom on wrapper so GSAP can freely animate .card transform */
+        zoom: 1.5;
+      }
+      .card {
+        width: 880px;
+        padding: 72px;
+        background: white;
+        border: 1px solid #dce4e8;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(37, 55, 66, 0.1);
+      }
+      .title {
+        font-size: 64px;
+        font-weight: 850;
+        letter-spacing: -0.03em;
+      }
+      .button {
+        margin-top: 48px;
+        display: inline-flex;
+        padding: 22px 36px;
+        background: #141a20;
+        color: white;
+        font-size: 28px;
+        font-weight: 760;
+        border-radius: 10px;
+      }
+      .hf-simulated-cursor {
+        --hf-cursor-x: 420px;
+        --hf-cursor-y: 360px;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 44px;
+        height: 44px;
+        transform: translate3d(var(--hf-cursor-x), var(--hf-cursor-y), 0);
+        pointer-events: none;
+        z-index: 999;
+        filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.24));
+      }
+      .hf-simulated-cursor-pulse {
+        position: absolute;
+        left: 9px;
+        top: 9px;
+        width: 22px;
+        height: 22px;
+        border: 2px solid rgba(20, 26, 32, 0.75);
+        border-radius: 999px;
+        opacity: 0;
+        transform: scale(0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="simulated-cursor-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="card">
+          <div class="title">Point at the action without screen recording.</div>
+          <div class="button">Generate video</div>
+        </div>
+      </div>
+      <div
+        class="hf-simulated-cursor"
+        aria-hidden="true"
+        data-composition-variables='[
+    {"id": "size", "type": "number", "role": "layout", "label": "Size", "description": "Height and width of the pointer in pixels. The click ring scales with it. Values outside the range clamp to the nearest end and anything that is not a number falls back to 44.", "default": 44, "min": 20, "max": 120, "step": 2, "unit": "px"},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Pointer fill and click ring colour: light reads on dark screens, dark reads on light ones, accent rides --hf-ui-accent.", "default": "light", "options": [{"value": "light", "label": "Light"}, {"value": "dark", "label": "Dark"}, {"value": "accent", "label": "Accent"}]},
+    {"id": "pulse", "type": "enum", "role": "style", "label": "Click ring", "description": "Weight of the ring the click animation expands: subtle is a thin small ring, bold a thick wide one, none removes the ring entirely.", "default": "standard", "options": [{"value": "subtle", "label": "Subtle"}, {"value": "standard", "label": "Standard"}, {"value": "bold", "label": "Bold"}, {"value": "none", "label": "None"}]}
+  ]'
+      >
+        <div class="hf-simulated-cursor-pulse"></div>
+        <svg
+          viewBox="0 0 24 24"
+          width="34"
+          height="34"
+          style="filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.3))"
+        >
+          <path
+            d="M5.5 3.2 L5.5 19.6 L9.7 15.7 L12.5 21.9 L15.0 20.7 L12.3 14.6 L17.9 14.2 Z"
+            fill="#18181b"
+            stroke="#ffffff"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised or out-of-range overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var tones = {
+            light: {
+              fill: "#ffffff",
+              edge: "rgba(0, 0, 0, 0.45)",
+              ring: "rgba(255, 255, 255, 0.85)",
+            },
+            dark: {
+              fill: "#18181b",
+              edge: "rgba(255, 255, 255, 0.75)",
+              ring: "rgba(24, 24, 27, 0.75)",
+            },
+            accent: {
+              fill: "var(--hf-ui-accent, #3ce6ac)",
+              edge: "rgba(0, 0, 0, 0.45)",
+              ring: "var(--hf-ui-accent, #3ce6ac)",
+            },
+          };
+          var pulses = {
+            subtle: { size: "18px", width: "1px", display: "block" },
+            standard: { size: "22px", width: "2px", display: "block" },
+            bold: { size: "28px", width: "3px", display: "block" },
+            none: { size: "22px", width: "2px", display: "none" },
+          };
+
+          var size = typeof vars.size === "number" ? vars.size : parseFloat(vars.size);
+          if (!isFinite(size)) size = 44;
+          size = Math.min(120, Math.max(20, size));
+
+          var tone = tones[pick(tones, vars.tone, "light")];
+          var pulse = pulses[pick(pulses, vars.pulse, "standard")];
+
+          var roots = document.querySelectorAll(".hf-simulated-cursor");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-cursor-scale", String(size / 44));
+            root.style.setProperty("--hf-cursor-fill", tone.fill);
+            root.style.setProperty("--hf-cursor-edge", tone.edge);
+            root.style.setProperty("--hf-cursor-ring", tone.ring);
+            root.style.setProperty("--hf-cursor-ring-size", pulse.size);
+            root.style.setProperty("--hf-cursor-ring-width", pulse.width);
+            root.style.setProperty("--hf-cursor-ring-display", pulse.display);
+          }
+        })();
+      </script>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.from(".card", { opacity: 0, y: 30, duration: 0.6, ease: "power3.out" }, 0.2);
+        tl.to(
+          ".hf-simulated-cursor",
+          {
+            "--hf-cursor-x": "1030px",
+            "--hf-cursor-y": "620px",
+            duration: 1,
+            ease: "power2.inOut",
+          },
+          1.0,
+        );
+        tl.fromTo(
+          ".hf-simulated-cursor-pulse",
+          { opacity: 0.8, scale: 0.2 },
+          { opacity: 0, scale: 2.4, duration: 0.45, ease: "power2.out" },
+          2.02,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["simulated-cursor-demo"] = tl;
+      </script>
+    </div>
+    <style>
+      .hf-simulated-cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: calc(44px * var(--hf-cursor-scale, 1));
+        height: calc(44px * var(--hf-cursor-scale, 1));
+        transform: translate3d(var(--hf-cursor-x, 0px), var(--hf-cursor-y, 0px), 0);
+        pointer-events: none;
+        z-index: 999;
+        filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.24));
+      }
+      .hf-simulated-cursor svg {
+        width: 100%;
+        height: 100%;
+      }
+      .hf-simulated-cursor svg path {
+        fill: var(--hf-cursor-fill, #ffffff);
+        stroke: var(--hf-cursor-edge, rgba(0, 0, 0, 0.45));
+      }
+      .hf-simulated-cursor-pulse {
+        display: var(--hf-cursor-ring-display, block);
+        position: absolute;
+        left: calc((20px - var(--hf-cursor-ring-size, 22px) / 2) * var(--hf-cursor-scale, 1));
+        top: calc((20px - var(--hf-cursor-ring-size, 22px) / 2) * var(--hf-cursor-scale, 1));
+        width: calc(var(--hf-cursor-ring-size, 22px) * var(--hf-cursor-scale, 1));
+        height: calc(var(--hf-cursor-ring-size, 22px) * var(--hf-cursor-scale, 1));
+        border: calc(var(--hf-cursor-ring-width, 2px) * var(--hf-cursor-scale, 1)) solid
+          var(--hf-cursor-ring, rgba(255, 255, 255, 0.85));
+        border-radius: 999px;
+        opacity: 0;
+        transform: scale(0.2);
+      }
+    </style>
+  </body>
+</html>

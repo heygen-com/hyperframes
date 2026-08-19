@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=320, height=180" />
+    <title>Plan protocol visual and audio parity</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 320px;
+        height: 180px;
+        margin: 0;
+        overflow: hidden;
+        background: #07111f;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+      }
+      .first {
+        background: linear-gradient(135deg, #07111f, #0e7490);
+      }
+      .second {
+        background: linear-gradient(135deg, #312e81, #be185d);
+      }
+      .shape {
+        position: absolute;
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        background: #f8fafc;
+        box-shadow: 0 12px 30px rgb(0 0 0 / 35%);
+      }
+      .first .shape {
+        top: 38px;
+        left: 48px;
+        transform: rotate(12deg);
+      }
+      .second .shape {
+        right: 48px;
+        bottom: 38px;
+        transform: rotate(-12deg);
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="root"
+      data-composition-id="plan-protocol-visual-audio"
+      data-start="0"
+      data-duration="2"
+      data-width="320"
+      data-height="180"
+      data-fps="30"
+      data-no-timeline
+    >
+      <audio
+        id="tone"
+        src="assets/tone.wav"
+        data-start="0"
+        data-duration="2"
+        data-volume="0.5"
+      ></audio>
+      <section class="scene first clip" data-start="0" data-duration="1">
+        <div class="shape"></div>
+      </section>
+      <section class="scene second clip" data-start="1" data-duration="1">
+        <div class="shape"></div>
+      </section>
+    </main>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>

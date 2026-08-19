@@ -66,8 +66,8 @@ export interface EngineConfig {
   /**
    * Use drawElementImage for frame capture (requires the CanvasDrawElement
    * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
-   * `resolveConfig` to hosts where it can actually engage (macOS + hardware-GPU
-   * browser); compile/init gates and the runtime self-verification net route
+   * `resolveConfig` to hosts where it can actually engage (macOS or Windows +
+   * hardware-GPU browser); compile/init gates and the runtime self-verification net route
    * incompatible or damaged renders back to screenshot capture.
    * Kill switch: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE=false` (or the CLI
    * `--experimental-fast-capture=false`).
@@ -88,6 +88,19 @@ export interface EngineConfig {
    * opt-out. Not intended to be set by callers.
    */
   pageSideCompositingAutoDisabled?: boolean;
+  /**
+   * INTERNAL. Set to `true` by `resolveConfig` when the caller explicitly
+   * opted out of the software-GPU→screenshot clamp — either via env
+   * `PRODUCER_FORCE_SCREENSHOT=false` or programmatic
+   * `overrides.forceScreenshot === false`. The concrete-resolved-GPU helper
+   * (`shouldClampToScreenshotForConcreteGpu`) reads this so the
+   * `browserGpuMode:"auto"` → software probe path preserves the same
+   * escape hatch as literal `browserGpuMode:"software"` (the boolean
+   * `forceScreenshot === false` at that point is otherwise ambiguous —
+   * default vs explicit opt-out — because the config resolves before
+   * the runtime probe fires). Not intended to be set by callers.
+   */
+  forceScreenshotExplicitlyOptedOut?: boolean;
   /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
@@ -137,6 +150,15 @@ export interface EngineConfig {
   enableChunkedEncode: boolean;
   chunkSizeFrames: number;
   enableStreamingEncode: boolean;
+  /**
+   * INTERNAL. Set by `resolveConfig` when the Windows software-GPU compound
+   * heuristic (`shouldAutoDisableStreamingEncodeOnWin32Compound`) turned
+   * `enableStreamingEncode` off on the caller's behalf. Not intended to be
+   * set by callers; surfaces the auto-decision for downstream observability
+   * (log lines, telemetry) so operators can tell an auto-disable apart from
+   * an explicit user opt-out.
+   */
+  streamingEncodeAutoDisabledOnWin32Compound?: boolean;
   /**
    * Max composition duration eligible for streaming encode (seconds).
    * Mirrors GSAP rendering's 4-minute streaming guard: production has seen
@@ -295,6 +317,212 @@ export const DEFAULT_CONFIG: EngineConfig = {
   debug: false,
 };
 
+const OPTIONAL_ENGINE_CONFIG_FIELDS = [
+  "chromePath",
+  "expectedChromiumMajor",
+  "pageSideCompositingAutoDisabled",
+  "forceScreenshotExplicitlyOptedOut",
+  "streamingEncodeAutoDisabledOnWin32Compound",
+  "runtimeManifestPath",
+  "extractCacheDir",
+] as const;
+
+const BOOLEAN_ENGINE_CONFIG_FIELDS = [
+  "disableGpu",
+  "enableBrowserPool",
+  "forceScreenshot",
+  "staticFrameDedup",
+  "useDrawElement",
+  "enableDrawElementWorkerEncode",
+  "lowMemoryMode",
+  "enablePageSideCompositing",
+  "enableChunkedEncode",
+  "enableStreamingEncode",
+  "hdrAutoDetect",
+  "verifyRuntime",
+  "debug",
+] as const;
+
+const POSITIVE_NUMBER_ENGINE_CONFIG_FIELDS = [
+  "browserTimeout",
+  "protocolTimeout",
+  "chunkSizeFrames",
+  "ffmpegEncodeTimeout",
+  "ffmpegProcessTimeout",
+  "ffmpegStreamingTimeout",
+  "frameDataUriCacheLimit",
+  "frameDataUriCacheBytesLimitMb",
+  "playerReadyTimeout",
+  "renderReadyTimeout",
+  "pageNavigationTimeout",
+  "extractCacheMaxBytes",
+] as const;
+
+const ENUM_ENGINE_CONFIG_FIELDS = {
+  fps: [24, 30, 60],
+  quality: ["draft", "standard", "high"],
+  format: ["jpeg", "png"],
+  browserGpuMode: ["software", "hardware", "auto"],
+} as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    [Object.prototype, null].includes(Object.getPrototypeOf(value))
+  );
+}
+
+function assertEngineConfigNumber(
+  config: Record<string, unknown>,
+  field: string,
+  min: number,
+  integer = false,
+): void {
+  const value = config[field];
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < min ||
+    (integer && !Number.isInteger(value))
+  ) {
+    throw new Error(
+      `Engine config ${field} must be a ${integer ? "finite integer" : "finite number"} >= ${min}`,
+    );
+  }
+}
+
+function assertPositiveEngineConfigNumber(config: Record<string, unknown>, field: string): void {
+  const value = config[field];
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`Engine config ${field} must be a finite number > 0`);
+  }
+}
+
+function assertEngineConfigEnum(
+  config: Record<string, unknown>,
+  field: string,
+  values: readonly unknown[],
+): void {
+  if (!values.includes(config[field])) throw new Error(`Engine config ${field} is invalid`);
+}
+
+function validateRequiredEngineConfigFields(config: Record<string, unknown>): void {
+  const requiredFields = Object.keys(DEFAULT_CONFIG);
+  for (const field of requiredFields) {
+    if (!Object.hasOwn(config, field)) {
+      throw new Error(`Engine config snapshot is missing required field ${field}`);
+    }
+  }
+  const allowedFields = new Set([...requiredFields, ...OPTIONAL_ENGINE_CONFIG_FIELDS]);
+  for (const field of Object.keys(config)) {
+    if (!allowedFields.has(field))
+      throw new Error(`Engine config snapshot has unknown field ${field}`);
+  }
+}
+
+function validateEngineConfigScalars(config: Record<string, unknown>): void {
+  for (const [field, values] of Object.entries(ENUM_ENGINE_CONFIG_FIELDS)) {
+    assertEngineConfigEnum(config, field, values);
+  }
+  assertEngineConfigNumber(config, "jpegQuality", 0);
+  if (typeof config.jpegQuality === "number" && config.jpegQuality > 100) {
+    throw new Error("Engine config jpegQuality must be <= 100");
+  }
+}
+
+function validateEngineConfigParallelism(config: Record<string, unknown>): void {
+  if (
+    config.concurrency !== "auto" &&
+    (typeof config.concurrency !== "number" ||
+      !Number.isInteger(config.concurrency) ||
+      config.concurrency < 1)
+  ) {
+    throw new Error("Engine config concurrency must be a positive integer or auto");
+  }
+  assertPositiveEngineConfigNumber(config, "coresPerWorker");
+  for (const field of ["minParallelFrames", "largeRenderThreshold"] as const) {
+    assertEngineConfigNumber(config, field, 0, true);
+  }
+}
+
+function validateEngineConfigVp9(config: Record<string, unknown>): void {
+  if (
+    typeof config.vp9CpuUsed !== "number" ||
+    !Number.isInteger(config.vp9CpuUsed) ||
+    config.vp9CpuUsed < -8 ||
+    config.vp9CpuUsed > 8
+  ) {
+    throw new Error("Engine config vp9CpuUsed must be an integer in [-8, 8]");
+  }
+}
+
+function validateEngineConfigRuntime(config: Record<string, unknown>): void {
+  for (const field of BOOLEAN_ENGINE_CONFIG_FIELDS) {
+    if (typeof config[field] !== "boolean")
+      throw new Error(`Engine config ${field} must be a boolean`);
+  }
+  for (const field of POSITIVE_NUMBER_ENGINE_CONFIG_FIELDS) {
+    assertEngineConfigNumber(config, field, 1, field === "frameDataUriCacheLimit");
+  }
+  assertEngineConfigNumber(config, "streamingEncodeMaxDurationSeconds", 0);
+  assertEngineConfigNumber(config, "audioGain", 0);
+}
+
+function validateEngineConfigHdr(config: Record<string, unknown>): void {
+  const { hdr } = config;
+  if (
+    hdr !== false &&
+    (!isPlainObject(hdr) ||
+      Object.keys(hdr).length !== 1 ||
+      (hdr.transfer !== "hlg" && hdr.transfer !== "pq"))
+  ) {
+    throw new Error("Engine config hdr must be false or an hlg/pq transfer object");
+  }
+}
+
+function validateOptionalEngineConfigFields(config: Record<string, unknown>): void {
+  for (const field of ["chromePath", "runtimeManifestPath", "extractCacheDir"] as const) {
+    if (
+      config[field] !== undefined &&
+      (typeof config[field] !== "string" || config[field].length === 0)
+    ) {
+      throw new Error(`Engine config ${field} must be a non-empty string`);
+    }
+  }
+  if (config.expectedChromiumMajor !== undefined) {
+    assertEngineConfigNumber(config, "expectedChromiumMajor", 1, true);
+  }
+  for (const field of [
+    "pageSideCompositingAutoDisabled",
+    "forceScreenshotExplicitlyOptedOut",
+    "streamingEncodeAutoDisabledOnWin32Compound",
+  ] as const) {
+    if (config[field] !== undefined && typeof config[field] !== "boolean") {
+      throw new Error(`Engine config ${field} must be a boolean`);
+    }
+  }
+}
+
+/**
+ * Validate a complete EngineConfig crossing a JSON wire boundary.
+ *
+ * `resolveConfig()` intentionally accepts partial programmatic overrides, but
+ * a serialized render request stores a resolved snapshot. Accepting a partial
+ * snapshot would skip the orchestrator's `resolveConfig()` fallback entirely.
+ */
+export function validateEngineConfigSnapshot(value: unknown): asserts value is EngineConfig {
+  if (!isPlainObject(value)) throw new Error("Engine config snapshot must be a plain object");
+  validateRequiredEngineConfigFields(value);
+  validateEngineConfigScalars(value);
+  validateEngineConfigParallelism(value);
+  validateEngineConfigVp9(value);
+  validateEngineConfigRuntime(value);
+  validateEngineConfigHdr(value);
+  validateOptionalEngineConfigFields(value);
+}
+
 /**
  * Reference canvas area for the baseline `protocolTimeout`: 1080p. A single CDP
  * call (`Runtime.callFunctionOn` seek+paint, or `Page.captureScreenshot`)
@@ -342,6 +570,125 @@ export function scaleProtocolTimeoutForComposition(
   return Math.min(ceiling, Math.max(baseTimeoutMs, scaled));
 }
 
+/**
+ * Auto-disable `enableStreamingEncode` on Windows software-GPU compound.
+ *
+ * Field signal (`ts=1784131903`, win32/x64, CLI 0.7.58, 156s UI-heavy
+ * composition): the render was stable ONLY with FOUR flags together —
+ * `--workers 1 --no-browser-gpu --low-memory-mode` + explicit
+ * `PRODUCER_ENABLE_STREAMING_ENCODE=false`. Every recent Windows-related
+ * fix (#2359, #2245, #2298, #2331) already shipped in 0.7.58; the residual
+ * failure is screenshot streaming-encode via CDP `Page.captureScreenshot`
+ * on Windows even after software fallback. Since `--low-memory-mode` and
+ * `--no-browser-gpu` already imply screenshot capture, three of the four
+ * flags are structurally coupled — auto-detect the compound and disable
+ * streaming-encode automatically so callers don't have to memorize the
+ * four-flag combination.
+ *
+ * Conservative gates (all must hold):
+ *   1. `platform === "win32"` — the failure is Windows-specific to CDP's
+ *      screenshot streaming path.
+ *   2. `softwareGpuForced` — the render is already on the SwiftShader /
+ *      forced-screenshot path (from `--no-browser-gpu`, `disableGpu`, or
+ *      `--low-memory-mode` implying screenshot capture).
+ *   3. `workers === 1` — the field signal reproduces on single-worker
+ *      captures; parallel workers have a different failure surface
+ *      (missing media frames) already handled by the worker-count route.
+ *   4. Composition duration >120s WHEN KNOWN. When unknown at the config
+ *      layer (composition duration is parsed downstream), the guard
+ *      reduces to the three-condition compound. Trade-off documented in
+ *      the PR body: false positives possible for short (~<120s) Windows
+ *      software-GPU single-worker renders. Mitigation: the explicit
+ *      opt-in escape hatch (`PRODUCER_ENABLE_STREAMING_ENCODE=true` or
+ *      `overrides.enableStreamingEncode !== undefined`) always wins.
+ *
+ * Pure function; exported for tests.
+ */
+export function shouldAutoDisableStreamingEncodeOnWin32Compound(opts: {
+  platform: NodeJS.Platform;
+  softwareGpuForced: boolean;
+  workers: number;
+  compositionDurationSec: number | undefined;
+  userExplicitlySet: boolean;
+}): boolean {
+  if (opts.userExplicitlySet) return false;
+  if (opts.platform !== "win32") return false;
+  if (!opts.softwareGpuForced) return false;
+  // Strict equality: NaN (concurrency: "auto") and fractional / zero worker
+  // counts do NOT match. The field-signal compound is `--workers 1`.
+  if (opts.workers !== 1) return false;
+  // Duration boundary: when known, only auto-disable if >120s (avoid
+  // over-triggering on short renders). When unknown, skip this check —
+  // the three conditions above are already conservative on their own.
+  if (opts.compositionDurationSec !== undefined && opts.compositionDurationSec <= 120) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Result of resolving the extract cache directory from the env, decoupled from
+ * the wider {@link resolveConfig} pipeline so `hyperframes doctor` (and any
+ * other diagnostic surface) can report the exact same effective value the
+ * renderer will use — including whether the user has explicitly disabled the
+ * cache via `off`/`none`/`false`/`0`.
+ *
+ * - `dir: string` + `disabled: false`  → renderer will use this directory.
+ *   `source` reports whether the value came from the env or the OS default.
+ * - `dir: undefined` + `disabled: true` → user explicitly turned caching off;
+ *   frames extract into the per-render workDir (auto-cleaned when the render
+ *   ends). `rawValue` carries the exact string the user set.
+ */
+export type ExtractCacheDirResolution =
+  | { dir: string; disabled: false; source: "env" | "default"; rawValue?: string }
+  | { dir: undefined; disabled: true; source: "env"; rawValue: string };
+
+/**
+ * Env-var values that disable the extract cache entirely. Case-insensitive;
+ * whitespace-trimmed. Kept as an exported constant so the CLI can echo the
+ * accepted alias set in `--frames-cache-dir` help text without drift.
+ */
+export const EXTRACT_CACHE_DIR_DISABLED_ALIASES: readonly string[] = ["off", "none", "false", "0"];
+
+/**
+ * Compute the default extract-cache directory when the user has NOT set
+ * `HYPERFRAMES_EXTRACT_CACHE_DIR`. Exported so downstream tests can reproduce
+ * the exact path without duplicating the uid-suffix idiom.
+ */
+export function defaultExtractCacheDir(): string {
+  return join(tmpdir(), `hyperframes-extract-cache-${process.getuid?.() ?? "u"}`);
+}
+
+/**
+ * Resolve the extract-cache directory from an environment (defaults to
+ * `process.env`). Mirrors the internal helper used by {@link resolveConfig},
+ * but returns a rich resolution object so callers can distinguish "disabled by
+ * user" from "default location" without re-parsing the env value.
+ *
+ * See {@link ExtractCacheDirResolution} for the shape and its two states.
+ */
+export function resolveExtractCacheDir(
+  env: Record<string, string | undefined> = process.env,
+): ExtractCacheDirResolution {
+  const raw = env["HYPERFRAMES_EXTRACT_CACHE_DIR"];
+  if (raw === undefined) {
+    return { dir: defaultExtractCacheDir(), disabled: false, source: "default" };
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (EXTRACT_CACHE_DIR_DISABLED_ALIASES.includes(normalized)) {
+    return { dir: undefined, disabled: true, source: "env", rawValue: raw };
+  }
+  return { dir: raw, disabled: false, source: "env", rawValue: raw };
+}
+
+function resolveExtractCacheDirFromEnv(
+  env: (key: string) => string | undefined,
+): string | undefined {
+  const raw = env("HYPERFRAMES_EXTRACT_CACHE_DIR");
+  return resolveExtractCacheDir(raw === undefined ? {} : { HYPERFRAMES_EXTRACT_CACHE_DIR: raw })
+    .dir;
+}
+
 function memoryAdaptiveCacheLimit(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 32;
@@ -361,6 +708,72 @@ function memoryAdaptiveCacheBytesMb(): number {
  * Env vars provide backward compatibility during migration; explicit config
  * takes precedence over everything.
  */
+/**
+ * Platforms where default-on drawElement may engage: macOS (Metal-ANGLE,
+ * the original validated envelope) and Windows (D3D11-ANGLE, opened
+ * 2026-07-27 — see the clamp comment above resolveDefaultDrawElement's call
+ * site). Linux is excluded: that fleet is headless/Docker SwiftShader.
+ * Internal — the exported `resolveDefaultDrawElement` is the tested surface.
+ */
+function isDrawElementPlatform(platform: NodeJS.Platform): boolean {
+  return platform === "darwin" || platform === "win32";
+}
+
+/**
+ * Default-on drawElement host clamp. An explicit opt-in always wins (attempt
+ * DE, let the init-time gates route away — debugging relies on it). Otherwise
+ * DE stays on only where it can actually engage — a supported platform with a
+ * non-software-GPU browser — AND with worker-encode enabled: the runtime
+ * self-verification net lives in the worker-encode drain (the serial path has
+ * only the blank guard), so a default-on session without it would ship
+ * unverified drawElement frames. Pure; exported for tests.
+ */
+export function resolveDefaultDrawElement(args: {
+  useDrawElement: boolean;
+  explicitOptIn: boolean;
+  platform: NodeJS.Platform;
+  browserGpuMode: EngineConfig["browserGpuMode"];
+  workerEncode: boolean;
+}): boolean {
+  if (!args.useDrawElement) return false;
+  if (args.explicitOptIn) return true;
+  if (!isDrawElementPlatform(args.platform) || args.browserGpuMode === "software") return false;
+  return args.workerEncode;
+}
+
+/**
+ * Why {@link resolveDefaultDrawElement} said no. Call ONLY when the resolved
+ * `useDrawElement` is false — the branches mirror that resolver's, in order.
+ *
+ * Every branch there returns a bare `false` and records nothing, so a render
+ * that never became a drawElement candidate reaches telemetry with no
+ * `de_compile_gate`, no `de_clamp_reason` and no `de_gate_reason`. Those land
+ * in the "Why not drawElement" dashboard's catch-all `other` bucket, which
+ * measured 56,507 renders over 14 days — its second-largest bar, explaining
+ * nothing. The orchestrator's own clamp only fires while `useDrawElement` is
+ * still true, so it cannot cover a config-time refusal by construction.
+ *
+ * Takes only the environmental inputs on purpose: the caller holds the
+ * POST-resolution `useDrawElement`, from which the pre-resolution request is
+ * no longer recoverable. So "none of these three explain it" is itself the
+ * answer — the feature was switched off explicitly.
+ *
+ * Kept separate from the resolver rather than widening its return type: it sits
+ * on the config hot path and several call sites want a plain boolean. Mirror
+ * any branch change in both.
+ */
+export function explainDrawElementDisabled(args: {
+  platform: NodeJS.Platform;
+  browserGpuMode: EngineConfig["browserGpuMode"];
+  workerEncode: boolean;
+}): "unsupported_platform" | "software_gpu" | "worker_encode_off" | "disabled" {
+  // Platform first: on an unsupported host the GPU mode is beside the point.
+  if (!isDrawElementPlatform(args.platform)) return "unsupported_platform";
+  if (args.browserGpuMode === "software") return "software_gpu";
+  if (!args.workerEncode) return "worker_encode_off";
+  return "disabled";
+}
+
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   const env = (key: string): string | undefined => process.env[key];
   const envNum = (key: string, fallback: number): number => {
@@ -395,23 +808,6 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   const resolveStaticFrameDedup = (): boolean => {
     const raw = env("HF_STATIC_DEDUP")?.trim().toLowerCase();
     return !(raw === "false" || raw === "off" || raw === "0");
-  };
-  const resolveExtractCacheDir = (): string | undefined => {
-    const raw = env("HYPERFRAMES_EXTRACT_CACHE_DIR");
-    if (raw === undefined) {
-      return join(tmpdir(), `hyperframes-extract-cache-${process.getuid?.() ?? "u"}`);
-    }
-    const trimmed = raw.trim();
-    const normalized = trimmed.toLowerCase();
-    if (
-      normalized === "off" ||
-      normalized === "none" ||
-      normalized === "false" ||
-      normalized === "0"
-    ) {
-      return undefined;
-    }
-    return raw;
   };
 
   // Env-var layer (backward compat)
@@ -511,7 +907,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),
 
-    extractCacheDir: resolveExtractCacheDir(),
+    extractCacheDir: resolveExtractCacheDirFromEnv(env),
     extractCacheMaxBytes:
       envNum("HYPERFRAMES_EXTRACT_CACHE_MAX_MB", DEFAULT_CONFIG.extractCacheMaxBytes / 1024 ** 2) *
       1024 ** 2,
@@ -527,31 +923,125 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   };
 
   // Default-on drawElement is clamped to hosts where it can actually engage
-  // (macOS with a non-software-GPU browser; SwiftShader drops transparent
-  // sub-layers — crbug 521434899). "auto" passes the clamp: the stock CLI
-  // resolves GPU mode to auto, which probes to hardware on real Macs — and if
-  // it resolves to software after all, the SwiftShader init-time gate still
-  // routes the session to the screenshot baseline. Without the clamp, the
-  // default would needlessly disable page-side shader compositing (below) on
-  // Linux/Docker hosts where DE never runs. An EXPLICIT opt-in (env or caller override)
-  // skips the clamp and keeps the old semantics — attempt DE, let the
-  // init-time gates route away — which debugging relies on.
+  // (macOS or Windows with a non-software-GPU browser; SwiftShader drops
+  // transparent sub-layers — crbug 521434899). "auto" passes the clamp: the
+  // stock CLI resolves GPU mode to auto, which probes to hardware on real
+  // Macs/PCs — and if it resolves to software after all, the SwiftShader
+  // init-time gate still routes the session to the screenshot baseline.
+  // Without the clamp, the default would needlessly disable page-side shader
+  // compositing (below) on Linux/Docker hosts where DE never runs. An
+  // EXPLICIT opt-in (env or caller override) skips the clamp and keeps the
+  // old semantics — attempt DE, let the init-time gates route away — which
+  // debugging relies on.
+  //
+  // win32 opened 2026-07-27: telemetry showed ~206k non-CI hardware-GPU
+  // Windows renders / 30d (~78% of the win32 fleet) held on the slow
+  // screenshot path by the darwin-only clamp — the second-largest perf
+  // population after macOS. The mechanism is platform-neutral (the Chrome
+  // flag ships everywhere); darwin-only was a validation envelope, not an
+  // architectural limit. Opening it rides the same per-render safety
+  // contract macOS shipped with in v0.7.38: compile/init gates +
+  // worker-encode self-verify + screenshot fallback catch damage per
+  // render, and `gpu_renderer` telemetry (captured at DE session init)
+  // segments the D3D11/ANGLE cohort by GPU vendor so backend-specific
+  // damage clusters are attributable. Kill switches unchanged
+  // (PRODUCER_EXPERIMENTAL_FAST_CAPTURE=false; per-render --workers).
+  // Linux stays excluded: the fleet there is headless/Docker SwiftShader.
   const explicitDrawElementOptIn =
     env("PRODUCER_EXPERIMENTAL_FAST_CAPTURE") === "true" || overrides?.useDrawElement === true;
-  if (
-    merged.useDrawElement &&
-    !explicitDrawElementOptIn &&
-    !(process.platform === "darwin" && merged.browserGpuMode !== "software")
-  ) {
-    merged.useDrawElement = false;
+  merged.useDrawElement = resolveDefaultDrawElement({
+    useDrawElement: merged.useDrawElement,
+    explicitOptIn: explicitDrawElementOptIn,
+    platform: process.platform,
+    browserGpuMode: merged.browserGpuMode,
+    workerEncode: merged.enableDrawElementWorkerEncode,
+  });
+
+  // Software GPU implies screenshot capture.
+  //
+  // Two existing platform gates already do most of the work: `browserManager`
+  // only launches BeginFrame on Linux + chrome-headless-shell + !forceScreenshot,
+  // and the DE clamp above turns off `useDrawElement` on non-((darwin|win32) +
+  // non-software) hosts. Setting `forceScreenshot` here layers defense-in-depth
+  // on top:
+  //
+  //   1. Linux + software (SwiftShader host): kicks the browser off BeginFrame,
+  //      which stalls the compositor on shader-heavy frames under CPU raster
+  //      (same motivation as the closed PR #822).
+  //   2. Observability truth: `renderOrchestrator`'s reported `captureMode`
+  //      field is derived from `cfg.forceScreenshot ? "screenshot" : "beginframe"`
+  //      — without this clamp it misreports `"beginframe"` for the actual
+  //      screenshot capture on darwin + software.
+  //   3. Future-proofing: any new BeginFrame or drawElement entry point that
+  //      forgets to gate on GPU mode still routes to screenshot here.
+  //
+  // Note this does NOT eliminate SwiftShader-on-darwin text-rasterization
+  // artifacts (an ANGLE-SwiftShader issue on macOS text — the fix there is to
+  // use `--browser-gpu`, which routes to `--use-angle=metal`). It only makes
+  // routing consistent + observability accurate.
+  //
+  // Explicit opt-out (env or programmatic override) is honored so BeginFrame-
+  // on-software debugging remains possible.
+  const explicitForceScreenshotOptOut =
+    env("PRODUCER_FORCE_SCREENSHOT") === "false" || overrides?.forceScreenshot === false;
+  // Persist provenance so the concrete-resolved-GPU helper can honor the
+  // programmatic opt-out too — at that point `forceScreenshot === false` is
+  // otherwise ambiguous between default and explicit opt-out.
+  if (explicitForceScreenshotOptOut) {
+    merged.forceScreenshotExplicitlyOptedOut = true;
   }
-  // The runtime self-verification net lives in the worker-encode drain — the
-  // serial drawElement path has only the blank guard. Default-on drawElement
-  // therefore requires worker-encode; disabling HF_DE_WORKER_ENCODE without an
-  // explicit drawElement opt-in falls back to the screenshot baseline rather
-  // than shipping unverified drawElement frames.
-  if (merged.useDrawElement && !explicitDrawElementOptIn && !merged.enableDrawElementWorkerEncode) {
-    merged.useDrawElement = false;
+  if (
+    merged.browserGpuMode === "software" &&
+    !merged.forceScreenshot &&
+    !explicitForceScreenshotOptOut
+  ) {
+    merged.forceScreenshot = true;
+  }
+
+  // Windows software-GPU compound auto-disable for streaming-encode.
+  //
+  // Field signal ts=1784131903 (win32/x64, CLI 0.7.58, 156s UI-heavy):
+  // stable ONLY with FOUR flags — `--workers 1 --no-browser-gpu
+  // --low-memory-mode` + `PRODUCER_ENABLE_STREAMING_ENCODE=false`. Since
+  // `--no-browser-gpu` and `--low-memory-mode` already imply screenshot
+  // capture, three of the four flags are structurally coupled: auto-detect
+  // the compound and disable streaming-encode on the caller's behalf.
+  //
+  // Explicit user intent wins: if `PRODUCER_ENABLE_STREAMING_ENCODE` env
+  // is set to any value OR the caller passed `overrides.enableStreamingEncode`,
+  // this clamp is a no-op (the user's explicit choice — including
+  // `PRODUCER_ENABLE_STREAMING_ENCODE=true` — is preserved).
+  //
+  // Composition duration is not known at the config-resolution layer
+  // (the composition is parsed downstream of `resolveConfig`), so this
+  // wire-up passes `compositionDurationSec: undefined` and the helper
+  // reduces to the three-condition compound. Trade-off documented in the
+  // helper's JSDoc and the PR body: false positives possible for short
+  // Windows software-GPU single-worker renders; the explicit opt-in
+  // escape hatch is the mitigation.
+  const streamingEncodeUserExplicitlySet =
+    env("PRODUCER_ENABLE_STREAMING_ENCODE") !== undefined ||
+    overrides?.enableStreamingEncode !== undefined;
+  const softwareGpuForced =
+    merged.browserGpuMode === "software" || merged.disableGpu || merged.lowMemoryMode;
+  const resolvedWorkers = typeof merged.concurrency === "number" ? merged.concurrency : NaN;
+  if (
+    merged.enableStreamingEncode &&
+    shouldAutoDisableStreamingEncodeOnWin32Compound({
+      platform: process.platform,
+      softwareGpuForced,
+      workers: resolvedWorkers,
+      compositionDurationSec: undefined,
+      userExplicitlySet: streamingEncodeUserExplicitlySet,
+    })
+  ) {
+    merged.enableStreamingEncode = false;
+    merged.streamingEncodeAutoDisabledOnWin32Compound = true;
+    console.error(
+      "[hyperframes] Windows compound-workaround auto-detected — disabling streaming-encode " +
+        "(platform=win32, software-GPU forced, workers=1). Field signal ts=1784131903. " +
+        "Override: PRODUCER_ENABLE_STREAMING_ENCODE=true.",
+    );
   }
 
   // drawElement capture and page-side shader compositing are mutually
@@ -574,4 +1064,64 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     ...merged,
     vp9CpuUsed: normalizeVp9CpuUsed(merged.vp9CpuUsed),
   };
+}
+
+/**
+ * Runtime-resolved companion to the software-GPU screenshot clamp in
+ * `resolveConfig`. Returns `true` iff callers should treat this render as
+ * `forceScreenshot=true` even though the config's stored `forceScreenshot`
+ * is `false`. Fires when the concrete resolved GPU is software AND neither
+ * the env opt-out (`PRODUCER_FORCE_SCREENSHOT=false`) nor the programmatic
+ * opt-out (`overrides.forceScreenshot === false`, carried via
+ * `cfg.forceScreenshotExplicitlyOptedOut`) is set.
+ *
+ * `resolveConfig`'s clamp only sees `browserGpuMode` as a string, so
+ * `"auto"` that runtime-probes to software slips through. This helper
+ * closes that gap at the concrete-resolution points (`frameCapture` and
+ * `renderOrchestrator`). Same invariant, same escape hatches, one predicate.
+ *
+ * Callers should skip when the invariant is already satisfied
+ * (`currentForceScreenshot === true`) to avoid redundant work. Pass
+ * `cfg.forceScreenshotExplicitlyOptedOut` via `opts.programmaticOptOut` so
+ * the `browserGpuMode:"auto"` → software probe path honors the same
+ * programmatic escape hatch as literal `browserGpuMode:"software"`.
+ */
+export function shouldClampToScreenshotForConcreteGpu(
+  resolvedGpuMode: "software" | "hardware",
+  currentForceScreenshot: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { programmaticOptOut?: boolean } = {},
+): boolean {
+  if (currentForceScreenshot) return false;
+  if (resolvedGpuMode !== "software") return false;
+  if (opts.programmaticOptOut) return false;
+  return env["PRODUCER_FORCE_SCREENSHOT"] !== "false";
+}
+
+/**
+ * Caller-facing pair to `shouldClampToScreenshotForConcreteGpu`: computes the
+ * value the *authoritative* `forceScreenshot` local should hold after the
+ * concrete-resolved-GPU decision fires. Returns the (possibly-promoted) new
+ * boolean, so the caller can assign it back to its local — driving both
+ * routing AND telemetry from one source of truth.
+ *
+ * Reads the programmatic opt-out from `cfg.forceScreenshotExplicitlyOptedOut`
+ * (set by `resolveConfig` when EITHER env `PRODUCER_FORCE_SCREENSHOT=false`
+ * OR programmatic `overrides.forceScreenshot === false` was present).
+ *
+ * Idempotent: `applyConcreteGpuScreenshotClamp(true, ...)` returns `true`
+ * without consulting anything else.
+ */
+export function applyConcreteGpuScreenshotClamp(
+  currentForceScreenshot: boolean,
+  resolvedGpuMode: "software" | "hardware",
+  cfg: Pick<EngineConfig, "forceScreenshotExplicitlyOptedOut"> | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    currentForceScreenshot ||
+    shouldClampToScreenshotForConcreteGpu(resolvedGpuMode, currentForceScreenshot, env, {
+      programmaticOptOut: cfg?.forceScreenshotExplicitlyOptedOut ?? false,
+    })
+  );
 }

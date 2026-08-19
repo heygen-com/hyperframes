@@ -47,11 +47,6 @@ function expectBatchError(fn: () => unknown, title: string): BatchRenderInputErr
   throw new Error("Expected BatchRenderInputError");
 }
 
-function eventType(value: unknown): string | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  return "type" in value && typeof value.type === "string" ? value.type : undefined;
-}
-
 describe("parseBatchRows", () => {
   it("parses a JSON array of variable rows", () => {
     expect(parseBatchRows('[{"name":"Alice"},{"name":"Bob"}]', "rows.json")).toEqual([
@@ -192,7 +187,7 @@ describe("runBatchRender", () => {
     expect(readFileSync(prepared.manifestPath, "utf8")).toContain('"status": "completed"');
   });
 
-  it("emits JSON progress events when json mode is enabled", async () => {
+  it("emits exactly one final JSON document when json mode is enabled", async () => {
     const prepared = prepareBatchRender({
       batchPath: writeJson("rows.json", '[{"name":"Alice"}]'),
       outputTemplate: join(tmpDir, "renders/{name}.mp4"),
@@ -212,12 +207,14 @@ describe("runBatchRender", () => {
       renderOne: async () => ({ renderTimeMs: 10 }),
     });
 
-    const events = log.mock.calls.map((call): unknown => JSON.parse(String(call[0])));
-    expect(events.map(eventType)).toEqual([
-      "batch-row-start",
-      "batch-row-complete",
-      "batch-complete",
-    ]);
+    expect(log).toHaveBeenCalledTimes(1);
+    const result = JSON.parse(String(log.mock.calls[0]?.[0])) as {
+      type: string;
+      completed: number;
+      rows: Array<{ status: string }>;
+    };
+    expect(result).toMatchObject({ type: "batch-complete", completed: 1 });
+    expect(result.rows).toEqual([expect.objectContaining({ status: "completed" })]);
   });
 
   it("continues after row failure by default", async () => {

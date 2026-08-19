@@ -11,17 +11,49 @@ import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 
+interface DownloadBudgetOptions {
+  remainingMs?: () => number;
+}
+
 // SVGs: hash-of-bytes filename so it can't drift from content; label-derived names mis-assigned brands.
 function svgContentHashSlug(svgSource: string | Buffer, isLogo: boolean): string {
   const hash = createHash("sha1").update(svgSource).digest("hex").slice(0, 8);
   return isLogo ? `logo-${hash}` : `svg-${hash}`;
 }
 
+/**
+ * Make a scraped inline `<svg>` usable as a standalone `.svg` file.
+ *
+ * An inline SVG in an HTML document inherits the SVG namespace from the parser, so the DOM's
+ * `outerHTML` does not serialize `xmlns`. That string is fine pasted back into HTML but is NOT
+ * a valid standalone document: `<img src="logo-abc123.svg">` renders a broken-image icon, which
+ * is how these assets are actually consumed downstream. Declare the namespaces on the way to disk.
+ *
+ * `xlink:href` is deprecated but still emitted by plenty of sites; an undeclared `xlink:` prefix
+ * is a parse error in a standalone document, so declare that too — but only when it is used.
+ */
+export function toStandaloneSvg(outerHTML: string): string {
+  const open = outerHTML.match(/<svg\b[^>]*>/i);
+  if (!open) return outerHTML;
+  const original = open[0];
+  let tag = original;
+  const add: string[] = [];
+  if (!/\sxmlns\s*=/i.test(tag)) add.push('xmlns="http://www.w3.org/2000/svg"');
+  if (/\sxlink:[a-z-]+\s*=/i.test(outerHTML) && !/\sxmlns:xlink\s*=/i.test(tag)) {
+    add.push('xmlns:xlink="http://www.w3.org/1999/xlink"');
+  }
+  if (!add.length) return outerHTML;
+  tag = tag.replace(/^<svg\b/i, `<svg ${add.join(" ")}`);
+  return outerHTML.replace(original, tag);
+}
+
+// fallow-ignore-next-line complexity
 export async function downloadAssets(
   tokens: DesignTokens,
   outputDir: string,
   catalogedAssets?: CatalogedAsset[],
   faviconLinks?: Array<{ rel: string; href: string }>,
+  options: DownloadBudgetOptions = {},
 ): Promise<DownloadedAsset[]> {
   const assetsDir = join(outputDir, "assets");
   mkdirSync(assetsDir, { recursive: true });
@@ -34,7 +66,9 @@ export async function downloadAssets(
   for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
     const svg = tokens.svgs[i]!;
     if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
-    const slug = svgContentHashSlug(svg.outerHTML, !!svg.isLogo);
+    // Hash the bytes that actually land on disk, so the filename still can't drift from content.
+    const svgFile = toStandaloneSvg(svg.outerHTML);
+    const slug = svgContentHashSlug(svgFile, !!svg.isLogo);
     let finalSlug = slug;
     let suffix = 2;
     while (usedSvgNames.has(finalSlug)) {
@@ -45,7 +79,7 @@ export async function downloadAssets(
     const name = `${finalSlug}.svg`;
     const localPath = `assets/svgs/${name}`;
     try {
-      writeFileSync(join(outputDir, localPath), svg.outerHTML, "utf-8");
+      writeFileSync(join(outputDir, localPath), svgFile, "utf-8");
       assets.push({ url: "", localPath, type: "svg" });
     } catch {
       /* skip */
@@ -54,12 +88,14 @@ export async function downloadAssets(
 
   // 2. Favicon
   for (const icon of faviconLinks || []) {
+    const remainingMs = options.remainingMs?.() ?? 10_000;
+    if (remainingMs <= 0) break;
     if (!icon.href) continue;
     try {
       const ext = extname(new URL(icon.href).pathname) || ".ico";
       const name = `favicon${ext}`;
       const localPath = `assets/${name}`;
-      const buffer = await fetchBuffer(icon.href);
+      const buffer = await fetchBuffer(icon.href, Math.min(10_000, remainingMs));
       if (buffer) {
         writeFileSync(join(outputDir, localPath), buffer);
         assets.push({ url: icon.href, localPath, type: "favicon" });
@@ -121,13 +157,15 @@ export async function downloadAssets(
   let imgIdx = 0;
   const usedNames = new Set<string>();
   for (let i = 0; i < toDownload.length; i += BATCH_SIZE) {
+    const remainingMs = options.remainingMs?.() ?? 10_000;
+    if (remainingMs <= 0) break;
     const batch = toDownload.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async ({ url, isPoster, catalog }) => {
         const parsedUrl = new URL(url);
         const pathExt = extname(parsedUrl.pathname);
         const ext = pathExt && pathExt.length <= 5 ? pathExt : ".jpg";
-        const buffer = await fetchBuffer(url);
+        const buffer = await fetchBuffer(url, Math.min(10_000, remainingMs));
         if (!buffer) return null;
         const isSvg = ext === ".svg" || url.includes(".svg");
         const minSize = isSvg ? 200 : 10000;
@@ -170,10 +208,12 @@ export async function downloadAssets(
 
   // 4. OG image (if not already downloaded)
   if (tokens.ogImage && !downloadedUrls.has(normalizeUrl(tokens.ogImage))) {
+    const remainingMs = options.remainingMs?.() ?? 10_000;
     try {
       const ext = extname(new URL(tokens.ogImage).pathname) || ".jpg";
       const localPath = `assets/og-image${ext}`;
-      const buffer = await fetchBuffer(tokens.ogImage);
+      const buffer =
+        remainingMs > 0 ? await fetchBuffer(tokens.ogImage, Math.min(10_000, remainingMs)) : null;
       if (buffer && buffer.length > 5000) {
         writeFileSync(join(outputDir, localPath), buffer);
         assets.push({ url: tokens.ogImage, localPath, type: "image" });
@@ -206,7 +246,12 @@ function normalizeUrl(u: string): string {
  * Download fonts referenced in CSS and rewrite URLs to local paths.
  * Returns the modified CSS string with local font paths.
  */
-export async function downloadAndRewriteFonts(css: string, outputDir: string): Promise<string> {
+// fallow-ignore-next-line complexity
+export async function downloadAndRewriteFonts(
+  css: string,
+  outputDir: string,
+  options: DownloadBudgetOptions = {},
+): Promise<string> {
   const assetsDir = join(outputDir, "assets", "fonts");
   mkdirSync(assetsDir, { recursive: true });
 
@@ -219,8 +264,10 @@ export async function downloadAndRewriteFonts(css: string, outputDir: string): P
 
   if (fontUrls.size === 0) return css;
 
-  // Limit font downloads to avoid bloat. Google Fonts serves 20+ unicode-range
-  // subsets per weight — we only need a few per family for video production.
+  // Limit font download attempts to bound worst-case egress and latency. Google Fonts serves
+  // 20+ unicode-range subsets per weight, so successes alone cannot be the bound: six transient
+  // failures can intentionally suppress later URLs in that family. Latin-priority sorting below
+  // makes the limited attempts useful while keeping this failure tradeoff explicit.
   const MAX_FONTS_PER_FAMILY = 6;
   const MAX_TOTAL_FONTS = 30;
   const familyCounts = new Map<string, number>();
@@ -247,10 +294,14 @@ export async function downloadAndRewriteFonts(css: string, outputDir: string): P
   let count = 0;
 
   for (const fontUrl of sortedUrls) {
+    const remainingMs = options.remainingMs?.() ?? 10_000;
+    if (remainingMs <= 0) break;
     if (count >= MAX_TOTAL_FONTS) break;
     const family = getFamilyForUrl(fontUrl);
     const familyCount = familyCounts.get(family) || 0;
     if (familyCount >= MAX_FONTS_PER_FAMILY) continue;
+    familyCounts.set(family, familyCount + 1);
+    count++;
 
     try {
       const urlObj = new URL(fontUrl);
@@ -258,12 +309,10 @@ export async function downloadAndRewriteFonts(css: string, outputDir: string): P
       const localPath = join(assetsDir, filename);
       const relativePath = `assets/fonts/${filename}`;
 
-      const buffer = await fetchBuffer(fontUrl);
+      const buffer = await fetchBuffer(fontUrl, Math.min(10_000, remainingMs));
       if (buffer) {
         writeFileSync(localPath, buffer);
         rewritten = rewritten.split(fontUrl).join(relativePath);
-        familyCounts.set(family, familyCount + 1);
-        count++;
       }
     } catch {
       /* skip */
@@ -363,10 +412,10 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
   return null; // too many redirects
 }
 
-async function fetchBuffer(url: string): Promise<Buffer | null> {
+async function fetchBuffer(url: string, timeoutMs = 10_000): Promise<Buffer | null> {
   try {
     const res = await safeFetch(url, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { "User-Agent": "HyperFrames/1.0" },
     });
     if (!res || !res.ok) return null;

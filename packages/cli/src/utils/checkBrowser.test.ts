@@ -1,19 +1,45 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   openSettledCompositionPage,
   type OpenSettledCompositionPageOptions,
 } from "../capture/captureCompositionFrame.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
-import { captureOverviewShot, runBrowserCheck } from "./checkBrowser.js";
+import {
+  captureOverviewShot,
+  preResolveHostileMediaProxies,
+  runBrowserCheck,
+} from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
+  bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
+  resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
+  scanProjectMediaCodecMap: vi.fn<
+    (...args: unknown[]) => Promise<
+      Record<
+        string,
+        {
+          codecName: string;
+          browserHostile: boolean;
+          representativeMime: string | null;
+          hasAlpha: boolean;
+        }
+      >
+    >
+  >(async () => ({})),
 }));
 
-vi.mock("@hyperframes/core/compiler", () => ({
-  bundleToSingleHtml: vi.fn(async () => "<html></html>"),
+vi.mock("./bundleWithLocalizedFonts.js", () => ({
+  // Keep browser-check unit tests focused on the page driver and audit pipeline.
+  // The real helper cold-loads the producer/font graph, which is covered by its
+  // own tests and can exhaust this suite's timeout under Windows CI contention.
+  bundleWithLocalizedFonts: mocks.bundleWithLocalizedFonts,
 }));
 
 vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
@@ -40,6 +66,16 @@ vi.mock("./staticProjectServer.js", () => ({
   })),
 }));
 
+// `preResolveHostileMediaProxies` reaches these two studio-server helpers via
+vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/studio-server/media-codec-map")>()),
+  scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
+}));
+vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
+  resolveProxy: mocks.resolveProxy,
+}));
+
 const PROJECT: ProjectDir = {
   dir: "/project",
   name: "project",
@@ -47,6 +83,7 @@ const PROJECT: ProjectDir = {
 };
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
@@ -56,6 +93,7 @@ afterEach(() => {
   Reflect.deleteProperty(window, "__contrastAuditFinish");
   Reflect.deleteProperty(window, "__contrastAuditRestores");
   Reflect.deleteProperty(window, "__contrastAuditRestoreIfPending");
+  mocks.scanProjectMediaCodecMap.mockResolvedValue({});
 });
 
 function installSessionMock(page: ReturnType<typeof fakePage>): void {
@@ -100,6 +138,7 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
     runAuditGrid,
   );
 
+  expect(mocks.bundleWithLocalizedFonts).toHaveBeenCalledWith(PROJECT.dir);
   expect(result.layoutIssues).toEqual([
     expect.objectContaining({
       code: "frame_out_of_frame",
@@ -115,6 +154,28 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
   ]);
   expect(result.timings).toEqual({ launchSettleMs: 60, seekLoopMs: 40, contrastMs: 0 });
   expect(mocks.serverClose).toHaveBeenCalledOnce();
+});
+
+it("uses check --timeout for both navigation and render-ready settling", async () => {
+  mountCanvasFixture();
+  const page = fakePage();
+  installSessionMock(page);
+
+  await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false, timeout: 30_000 },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(openSettledCompositionPage).toHaveBeenCalledWith(
+    "<html></html>",
+    "http://127.0.0.1:3000",
+    expect.objectContaining({
+      navigationTimeoutMs: 30_000,
+      renderReadyTimeoutMs: 30_000,
+    }),
+  );
 });
 
 it("round-trips the browser script's raw contrast candidates back into finish", async () => {
@@ -213,6 +274,61 @@ it("round-trips the browser script's raw contrast candidates back into finish", 
   }
 });
 
+it("captures check overview snapshots after contrast restores hidden text", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture(`<div id="headline">Readable copy</div>`);
+  const root = document.querySelector("[data-composition-id]");
+  const headline = document.querySelector<HTMLElement>("#headline");
+  if (!root || !headline) throw new Error("Contrast fixture failed to mount");
+  vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
+  vi.spyOn(headline, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 50, 300, 40));
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    () =>
+      ({
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        color: "rgb(255,255,255)",
+        fill: "",
+        clipPath: "none",
+        fontSize: "32px",
+        fontWeight: "700",
+      }) as unknown as CSSStyleDeclaration,
+  );
+
+  const page = fakePage();
+  const injectScript = page.addScriptTag;
+  page.addScriptTag = vi.fn(async (arg: { content: string }) => {
+    await injectScript(arg);
+    const w = window as unknown as {
+      __contrastAuditFinish?: (...args: unknown[]) => Promise<unknown>;
+      __contrastAuditRestoreIfPending?: () => void;
+    };
+    if (w.__contrastAuditFinish) {
+      w.__contrastAuditFinish = async () => {
+        w.__contrastAuditRestoreIfPending?.();
+        return [];
+      };
+    }
+  });
+  page.screenshot = vi.fn(async () =>
+    headline.style.getPropertyValue("color") === "transparent"
+      ? "text-hidden-base64"
+      : "text-visible-base64",
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: true, snapshots: true },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(page.screenshot).toHaveBeenCalledTimes(2);
+  expect(result.screenshots[0]?.pngBase64).toBe("text-visible-base64");
+});
+
 it("carries validate's clip-duration audit into the runtime findings", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();
@@ -240,6 +356,254 @@ it("carries validate's clip-duration audit into the runtime findings", async () 
       message: expect.stringContaining("slot is shortened"),
     }),
   ]);
+});
+
+it("surfaces the runtime's media-proxy-fallback console.info line as an info finding, ignoring unrelated info logs", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const fallbackMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_fallback: "assets/clip.mp4" uses a codec (hevc) this browser can\'t decode; ' +
+      "auto-swapped to an authoring proxy for this preview only. Render output is unaffected.",
+  );
+  const unrelatedInfo = fakeConsoleMessage("info", "[hyperframes] render runtime fps 30");
+  const authorInfo = fakeConsoleMessage("info", "debug runtime_media_proxy_probe");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(fallbackMessage);
+        handler(unrelatedInfo);
+        handler(authorInfo);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_fallback",
+      severity: "info",
+      message: fallbackMessage.text(),
+    }),
+  );
+  expect(result.runtimeFindings.some((finding) => finding.message === unrelatedInfo.text())).toBe(
+    false,
+  );
+  expect(result.runtimeFindings.some((finding) => finding.message === authorInfo.text())).toBe(
+    false,
+  );
+});
+
+it("surfaces the runtime's media-proxy-unavailable console.info line as its own info finding", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const unavailableMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_unavailable: "https://cdn.example.com/video.mp4" (cross_origin): ' +
+      "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
+  );
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(unavailableMessage);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_unavailable",
+      severity: "info",
+      message: unavailableMessage.text(),
+    }),
+  );
+});
+
+it("elevates and deduplicates WebGPU validation warnings while preserving ordinary warnings", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const validationFailure = fakeConsoleMessage(
+    "warn",
+    "WebGPU uncaptured error: GPUValidationError: Destroyed texture used in a submit",
+  );
+  const ordinaryWarning = fakeConsoleMessage("warn", "Optional caption font was not loaded");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(validationFailure);
+        handler(validationFailure);
+        handler(ordinaryWarning);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "webgpu_runtime_error",
+      severity: "error",
+      message: `${validationFailure.text()} (repeated 2 times)`,
+    }),
+  );
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "console_warning",
+      severity: "warning",
+      message: ordinaryWarning.text(),
+    }),
+  );
+});
+
+describe("preResolveHostileMediaProxies", () => {
+  const dirs: string[] = [];
+  const mkProjectDir = (): string => {
+    const d = mkdtempSync(join(tmpdir(), "hf-check-preresolve-"));
+    dirs.push(d);
+    return d;
+  };
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("awaits resolveProxy for every browser-hostile entry before returning", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+      "/plain.mp4": {
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    let resolveTranscode: (() => void) | undefined;
+    mocks.resolveProxy.mockImplementation(
+      () =>
+        new Promise<string>((resolveIt) => {
+          resolveTranscode = () => resolveIt("/cache/clip.mp4");
+        }),
+    );
+
+    let settled = false;
+    const pending = preResolveHostileMediaProxies(projectDir, "<html></html>").then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      join(projectDir, "clip.mp4"),
+      "h264",
+    );
+    expect(settled).toBe(false); // still waiting on the hostile entry's transcode
+
+    resolveTranscode?.();
+    await pending;
+    expect(settled).toBe(true);
+  });
+
+  it("does nothing (no scan, no resolveProxy) when autoProxy is off in hyperframes.json", async () => {
+    const projectDir = mkProjectDir();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ media: { autoProxy: false } }),
+    );
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  it("swallows a resolveProxy rejection instead of throwing", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    await expect(
+      preResolveHostileMediaProxies(projectDir, "<html></html>"),
+    ).resolves.toBeUndefined();
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
+    );
+  });
+
+  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/alpha.webm": {
+        codecName: "vp9",
+        browserHostile: true,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        hasAlpha: true,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      join(projectDir, "alpha.webm"),
+      "vp8",
+    );
+  });
+
+  it("is a no-op when the codec map has no hostile entries", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/plain.mp4": {
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
 });
 
 describe("captureOverviewShot", () => {
@@ -286,6 +650,14 @@ function installRects(): void {
   if (!root || !image) throw new Error("Geometry fixture failed to mount");
   vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
   vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 80, 200, 100));
+}
+
+function fakeConsoleMessage(type: string, text: string) {
+  return {
+    type: () => type,
+    text: () => text,
+    location: () => ({ url: "http://127.0.0.1:3000/index.html", lineNumber: 1 }),
+  };
 }
 
 function fakePage() {

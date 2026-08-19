@@ -11,9 +11,19 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
+export {
+  consumeFileWriteReceipt,
+  fileContentVersion,
+  type FileWriteReceipt,
+} from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
 export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
+export {
+  thumbnailDeviceScaleFactor,
+  type ThumbnailOutputDimensions,
+} from "./helpers/thumbnailOutput.js";
 export {
   createBackgroundRemovalJob,
   type BackgroundRemovalRender,

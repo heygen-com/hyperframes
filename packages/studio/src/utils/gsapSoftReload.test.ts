@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { applySoftReload, ensureMotionPathPluginLoaded } from "./gsapSoftReload";
+import {
+  applySoftReload,
+  applySoftReloadFinalization,
+  ensureMotionPathPluginLoaded,
+} from "./gsapSoftReload";
 
 const SCRIPT_TEXT = `
 window.__timelines = window.__timelines || {};
@@ -61,6 +65,7 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
     iframe: { contentWindow, contentDocument } as unknown as HTMLIFrameElement,
     contentWindow,
     mockTimeline,
+    container,
   };
 }
 
@@ -280,6 +285,58 @@ describe("applySoftReload", () => {
     // Multiple scripts, none registering "root" → can't identify what to replace
     // → structural failure that genuinely needs a full reload.
     expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+  });
+});
+
+// ── Finalization-only path: seek → rebind → manual edits, with NO script
+// execution — the flashless sync for timing edits that changed no script.
+describe("applySoftReloadFinalization", () => {
+  it("seeks, rebinds, and reapplies manual edits without touching any script", () => {
+    const { iframe, contentWindow, container, mockTimeline } = buildMockIframe();
+    const scriptsBefore = container.querySelectorAll("script").length;
+
+    expect(applySoftReloadFinalization(iframe, 2.0)).toBe(true);
+
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0);
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+    expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalledTimes(1);
+    // No script executed or removed; the live timeline was never killed.
+    expect(container.querySelectorAll("script").length).toBe(scriptsBefore);
+    expect(mockTimeline.kill).not.toHaveBeenCalled();
+    expect(contentWindow.__timelines.root).toBe(mockTimeline);
+  });
+
+  it("runs inside __hfSuppressSceneMutations when the runtime provides it", () => {
+    const suppress = vi.fn(<T>(fn: () => T): T => fn());
+    const { iframe, contentWindow } = buildMockIframe({
+      __hfSuppressSceneMutations: suppress,
+    });
+
+    expect(applySoftReloadFinalization(iframe, 1.5)).toBe(true);
+
+    expect(suppress).toHaveBeenCalledTimes(1);
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT require gsap — a script-less runtime with the rebind hook works", () => {
+    const { iframe, contentWindow } = buildMockIframe({ gsap: undefined });
+    expect(applySoftReloadFinalization(iframe, 0)).toBe(true);
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false when the iframe or the rebind hook is unavailable", () => {
+    expect(applySoftReloadFinalization(null, 0)).toBe(false);
+    const { iframe } = buildMockIframe({ __hfForceTimelineRebind: undefined });
+    expect(applySoftReloadFinalization(iframe, 0)).toBe(false);
+  });
+
+  it("returns false when the rebind throws (caller full-reloads)", () => {
+    const { iframe } = buildMockIframe({
+      __hfForceTimelineRebind: vi.fn(() => {
+        throw new Error("runtime mid-teardown");
+      }),
+    });
+    expect(applySoftReloadFinalization(iframe, 0)).toBe(false);
   });
 });
 

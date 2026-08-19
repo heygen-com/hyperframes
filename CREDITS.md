@@ -25,6 +25,6 @@ broader Node.js ecosystem.
 
 ## Third-party licenses
 
-- **[mediabunny](https://github.com/nicoch/mediabunny)** — media toolkit used
+- **[mediabunny](https://github.com/Vanilagy/mediabunny)** — media toolkit used
   in the studio for fast metadata extraction from file headers. Licensed under
   the [Mozilla Public License 2.0 (MPL-2.0)](https://mozilla.org/MPL/2.0/).

@@ -33,6 +33,7 @@ const GROUPS: Group[] = [
     title: "Project",
     commands: [
       ["lint", "Validate a composition for common mistakes"],
+      ["check", "Run lint, runtime validation, and layout inspection as one gate"],
       [
         "validate",
         "Runtime-validate a composition in headless Chrome (JS errors, missing assets, contrast)",
@@ -41,6 +42,10 @@ const GROUPS: Group[] = [
       ["inspect", "Inspect rendered visual layout across the timeline"],
       ["keyframes", "Inspect keyframes and render onion-shot diagnostics"],
       ["snapshot", "Capture key frames as PNG screenshots for visual verification"],
+      [
+        "media-treatment",
+        "Discover, apply, or clear deterministic media treatments on one media element",
+      ],
       [
         "grade-compare",
         "Render candidate color grades onto a reference frame as one labeled comparison PNG",

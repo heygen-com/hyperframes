@@ -130,6 +130,7 @@ async function checkWith(registryVersion: unknown): Promise<{
   const writes: Array<Record<string, unknown>> = [];
   vi.doMock("../telemetry/config.js", () => ({
     readConfig: () => ({}),
+    readConfigFresh: () => ({}),
     writeConfig: (c: Record<string, unknown>) => writes.push({ ...c }),
   }));
   const origFetch = globalThis.fetch;
@@ -145,6 +146,49 @@ async function checkWith(registryVersion: unknown): Promise<{
       latest: result.latest,
       wroteVersion: lastWrite ? (lastWrite["latestVersion"] as string | undefined) : undefined,
     };
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+async function checkAcrossConcurrentConfigWrite(): Promise<Record<string, unknown>> {
+  vi.resetModules();
+  const initial = {
+    telemetryEnabled: true,
+    anonymousId: "test-install",
+    telemetryNoticeShown: true,
+    commandCount: 0,
+    renderSuccessCount: 0,
+    lastFeedbackPromptAt: 0,
+  };
+  let persisted: Record<string, unknown> = { ...initial };
+  vi.doMock("../telemetry/config.js", () => ({
+    readConfig: () => ({ ...initial }),
+    readConfigFresh: () => ({ ...persisted }),
+    writeConfig: (config: Record<string, unknown>) => {
+      persisted = { ...config };
+      return true;
+    },
+  }));
+  const origFetch = globalThis.fetch;
+  let releaseResponse: (() => void) | undefined;
+  const responseReady = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  globalThis.fetch = (async () => {
+    await responseReady;
+    return {
+      ok: true,
+      json: async () => ({ version: "9.9.9" }),
+    };
+  }) as unknown as typeof fetch;
+  try {
+    const mod = await import("./updateCheck.js");
+    const check = mod.checkForUpdate(true);
+    persisted = { ...persisted, telemetryEnabled: false };
+    releaseResponse?.();
+    await check;
+    return persisted;
   } finally {
     globalThis.fetch = origFetch;
   }
@@ -235,5 +279,13 @@ describe("checkForUpdate — registry boundary guard", () => {
     const { latest, wroteVersion } = await checkWith({ evil: true });
     expect(typeof latest).toBe("string");
     expect(wroteVersion).toBeUndefined();
+  });
+
+  it("merges update metadata into a fresh snapshot without re-enabling telemetry", async () => {
+    const persisted = await checkAcrossConcurrentConfigWrite();
+    expect(persisted).toMatchObject({
+      telemetryEnabled: false,
+      latestVersion: "9.9.9",
+    });
   });
 });

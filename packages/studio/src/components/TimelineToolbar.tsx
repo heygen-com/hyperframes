@@ -1,22 +1,20 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
   type EnableKeyframesSession,
 } from "../hooks/useEnableKeyframes";
-import { computeElementPercentage } from "../hooks/gsapShared";
+import { computeElementPercentage, KEYFRAME_PCT_MATCH } from "../hooks/gsapShared";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
+  timelineZoomPercentToSlider,
+  timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
-import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
 import { usePlayerStore, type TimelineElement } from "../player";
-import {
-  STUDIO_KEYFRAMES_ENABLED,
-  STUDIO_RAZOR_TOOL_ENABLED,
-} from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -30,13 +28,80 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
 }
 
 interface TimelineToolbarProps {
-  toggleTimelineVisibility: () => void;
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
 }
 
+interface KeyframeToggleState {
+  state: "active" | "inactive" | "none";
+  isMotionPath: boolean;
+  pathEndpoint: boolean;
+  willExtend: boolean;
+}
+
+const NO_KEYFRAME_TOGGLE: KeyframeToggleState = {
+  state: "none",
+  isMotionPath: false,
+  pathEndpoint: false,
+  willExtend: false,
+};
+
+function isMotionPathEndpoint(animation: GsapAnimation | undefined, percentage: number): boolean {
+  if (!animation?.keyframes) return false;
+  const keyframes = animation.keyframes.keyframes;
+  return (
+    Math.abs((keyframes[0]?.percentage ?? -Infinity) - percentage) <= KEYFRAME_PCT_MATCH ||
+    Math.abs((keyframes.at(-1)?.percentage ?? Infinity) - percentage) <= KEYFRAME_PCT_MATCH
+  );
+}
+
+function resolveKeyframeToggleState(
+  session: DomEditSessionSlice | undefined,
+  currentTime: number,
+): KeyframeToggleState {
+  if (!session?.domEditSelection) return NO_KEYFRAME_TOGGLE;
+  const arcAnimation = session.selectedGsapAnimations.find(
+    (animation) => animation.arcPath && animation.keyframes,
+  );
+  const animation =
+    arcAnimation ??
+    session.selectedGsapAnimations.find((candidate) => candidate.keyframes && !candidate.arcPath);
+  if (!animation?.keyframes) return NO_KEYFRAME_TOGGLE;
+
+  const isMotionPath = Boolean(arcAnimation);
+  if (!isPlayheadWithinTween(animation, currentTime, session.domEditSelection)) {
+    return { state: "inactive", isMotionPath, pathEndpoint: false, willExtend: true };
+  }
+
+  const percentage = computeElementPercentage(currentTime, session.domEditSelection, animation);
+  const pathEndpoint = isMotionPathEndpoint(arcAnimation, percentage);
+  const active = animation.keyframes.keyframes.some(
+    (keyframe) => Math.abs(keyframe.percentage - percentage) <= KEYFRAME_PCT_MATCH,
+  );
+  return {
+    state: pathEndpoint ? "none" : active ? "active" : "inactive",
+    isMotionPath,
+    pathEndpoint,
+    willExtend: false,
+  };
+}
+
+/**
+ * Can this element be keyframed at all?
+ *
+ * An audio clip cannot. It has no box on the canvas, so there is nothing to move,
+ * scale or fade — and "add a keyframe" on one seeds a tween from the position
+ * properties, which produced a position lane on a track that has no position. Audio
+ * is automated instead: volume and effect parameters, on their own lanes.
+ */
+function isKeyframeable(element: TimelineElement | undefined): boolean {
+  return element?.tag !== "audio";
+}
+
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
@@ -44,50 +109,46 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
     sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
   );
 
-  if (!session) return { state: "none" as const, onToggle: undefined };
+  const selected = elements.find((element) => (element.key ?? element.id) === selectedElementId);
+  if (!isKeyframeable(selected)) return { ...NO_KEYFRAME_TOGGLE, onToggle: undefined };
 
-  const sel = session.domEditSelection;
-  const anims = session.selectedGsapAnimations;
-  const kfAnim = anims.find((a) => a.keyframes);
+  const toggleState = resolveKeyframeToggleState(session, currentTime);
 
-  let state: "active" | "inactive" | "none" = "none";
-  // Outside the tween, clicking extends the animation to the playhead rather than
-  // toggling a (clamped) edge keyframe — so the button stays an "add" affordance.
-  let willExtend = false;
-  if (kfAnim?.keyframes && sel) {
-    if (!isPlayheadWithinTween(kfAnim, currentTime)) {
-      state = "inactive";
-      willExtend = true;
-    } else {
-      // Tween-relative percentage (not the clip range) so the button state matches
-      // where the keyframe would actually land.
-      const pct = computeElementPercentage(currentTime, sel, kfAnim);
-      state = kfAnim.keyframes.keyframes.some((k) => Math.abs(k.percentage - pct) <= 1)
-        ? "active"
-        : "inactive";
-    }
-  }
-
-  return { state, willExtend, onToggle: sel ? onToggle : undefined };
+  return {
+    ...toggleState,
+    onToggle: session?.domEditSelection && !toggleState.pathEndpoint ? onToggle : undefined,
+  };
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({
-  toggleTimelineVisibility,
-  domEditSession,
-  onSplitElement,
-}: TimelineToolbarProps) {
+export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
+  const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
+  const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
+  const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
+  const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
+  const thumbnailsVisible = thumbnailMode === "adaptive";
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
+  // Subscribe (not getState) so the split button enables/disables the moment
+  // the selection changes, not only on the next playhead tick.
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
+  const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
-  const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
+  const displayedTimelineZoomPercent = getTimelineZoomPercent(
+    zoomMode,
+    manualZoomPercent,
+    timelineFitPps,
+  );
   const {
     state: keyframeState,
+    isMotionPath: keyframeIsMotionPath,
+    pathEndpoint: keyframePathEndpoint,
     willExtend: keyframeWillExtend,
     onToggle: onToggleKeyframe,
   } = useKeyframeToggle(domEditSession);
@@ -95,137 +156,184 @@ export function TimelineToolbar({
   // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
   // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
   useKeyframeKeyboard({
-    enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
+    enabled: Boolean(onToggleKeyframe),
     onAddKeyframe: onToggleKeyframe,
   });
 
+  // "N" toggles timeline snapping (industry convention: Resolve/FCP).
+  // Skip when typing in an input/contenteditable.
+  useEffect(() => {
+    // fallow-ignore-next-line complexity
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "n" && e.key !== "N") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.isContentEditable) return;
+      const tag = target?.tagName?.toLowerCase() ?? "";
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const store = usePlayerStore.getState();
+      store.setTimelineSnapEnabled(!store.timelineSnapEnabled);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
+  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
+  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
+  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
+  const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
+  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
+
   return (
-    <div className="border-b border-neutral-800/40 bg-neutral-950/96">
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-3">
-          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-            Timeline
-          </div>
-          {STUDIO_RAZOR_TOOL_ENABLED && (
-            <div className="flex items-center border border-neutral-800 rounded overflow-hidden">
-              <Tooltip label="Selection tool (V)">
-                <button
-                  type="button"
-                  onClick={() => setActiveTool("select")}
-                  aria-label="Selection tool"
-                  aria-pressed={activeTool === "select"}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
-                    activeTool === "select"
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "text-neutral-500 hover:text-neutral-300"
-                  }`}
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-                  </svg>
-                </button>
-              </Tooltip>
-              <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
-                <button
-                  type="button"
-                  onClick={() => setActiveTool("razor")}
-                  aria-label="Razor tool"
-                  aria-pressed={activeTool === "razor"}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
-                    activeTool === "razor"
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "text-neutral-500 hover:text-neutral-300"
-                  }`}
-                >
-                  <Scissors size={11} />
-                </button>
-              </Tooltip>
-            </div>
-          )}
-          {STUDIO_KEYFRAMES_ENABLED && onToggleKeyframe && (
-            <Tooltip
-              label={
-                keyframeState === "active"
-                  ? "Remove keyframe at playhead (K)"
-                  : keyframeState === "inactive"
+    // The "TIMELINE" label is dropped for CapCut-like density — the pane's
+    // position (tracks right below) makes it self-evident.
+    <div className="border-b border-neutral-800/60">
+      <div className="flex items-center justify-between px-2 py-0.5">
+        <div className="flex items-center gap-0.5">
+          <Tooltip label="Selection tool (V)">
+            <button
+              type="button"
+              onClick={() => setActiveTool("select")}
+              aria-label="Selection tool"
+              aria-pressed={activeTool === "select"}
+              className={activeTool === "select" ? flatActive : flatIdle}
+            >
+              <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
+            <button
+              type="button"
+              onClick={() => setActiveTool("razor")}
+              aria-label="Razor tool"
+              aria-pressed={activeTool === "razor"}
+              className={activeTool === "razor" ? flatActive : flatIdle}
+            >
+              <Scissors size={16} />
+            </button>
+          </Tooltip>
+          {/* Divider: tool-mode | editing-actions */}
+          <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
+          <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
+            <button
+              type="button"
+              onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
+              aria-label="Toggle timeline snapping"
+              aria-pressed={timelineSnapEnabled}
+              className={timelineSnapEnabled ? flatActive : flatIdle}
+            >
+              <Magnet size={16} weight="bold" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          {/* Always rendered (CapCut-style): with no keyframeable selection the
+              button fades to a disabled state instead of unmounting, so the
+              toolbar layout never shifts. */}
+          <Tooltip
+            label={
+              keyframePathEndpoint
+                ? "Motion path endpoints cannot be removed"
+                : !onToggleKeyframe
+                  ? "Select an animated element to add keyframes"
+                  : keyframeIsMotionPath
                     ? keyframeWillExtend
-                      ? "Add keyframe at playhead, extends animation (K)"
-                      : "Add keyframe at playhead (K)"
-                    : "Add keyframe (K)"
+                      ? "Extend motion path to playhead (K)"
+                      : keyframeState === "active"
+                        ? "Remove waypoint from motion path (K)"
+                        : "Add waypoint to motion path (K)"
+                    : keyframeState === "active"
+                      ? "Remove keyframe at playhead (K)"
+                      : keyframeState === "inactive"
+                        ? keyframeWillExtend
+                          ? "Add keyframe at playhead, extends animation (K)"
+                          : "Add keyframe at playhead (K)"
+                        : "Add keyframe (K)"
+            }
+          >
+            <button
+              type="button"
+              disabled={!onToggleKeyframe}
+              onClick={onToggleKeyframe}
+              aria-label={
+                keyframePathEndpoint
+                  ? "Motion path endpoint"
+                  : keyframeIsMotionPath
+                    ? keyframeState === "active"
+                      ? "Remove motion path waypoint"
+                      : keyframeWillExtend
+                        ? "Extend motion path to playhead"
+                        : "Add motion path waypoint"
+                    : keyframeState === "active"
+                      ? "Remove keyframe at playhead"
+                      : "Add keyframe at playhead"
+              }
+              className={
+                !onToggleKeyframe
+                  ? flatDisabled
+                  : `${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
+                      keyframeState === "active"
+                        ? "text-studio-accent"
+                        : keyframeState === "inactive"
+                          ? "text-neutral-400 hover:text-studio-accent"
+                          : "text-neutral-600 hover:text-neutral-400"
+                    }`
               }
             >
-              <button
-                type="button"
-                onClick={onToggleKeyframe}
-                aria-label={
-                  keyframeState === "active"
-                    ? "Remove keyframe at playhead"
-                    : "Add keyframe at playhead"
-                }
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
-                  keyframeState === "active"
-                    ? "text-studio-accent"
-                    : keyframeState === "inactive"
-                      ? "text-neutral-400 hover:text-studio-accent"
-                      : "text-neutral-600 hover:text-neutral-400"
-                }`}
-              >
-                <svg width="18" height="18" viewBox="0 0 10 10" fill="currentColor">
-                  {keyframeState === "active" ? (
-                    <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                  ) : (
-                    <path
-                      d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                    />
-                  )}
-                </svg>
-              </button>
-            </Tooltip>
-          )}
-          {STUDIO_KEYFRAMES_ENABLED && (
-            <Tooltip
-              label={
+              <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                {keyframeState === "active" ? (
+                  <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
+                ) : (
+                  <path
+                    d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                  />
+                )}
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip
+            label={
+              autoKeyframeEnabled
+                ? "Auto-record manual edits as keyframes (click to turn off)"
+                : "Manual edits will not be recorded as keyframes (click to turn on)"
+            }
+          >
+            <button
+              type="button"
+              onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
+              aria-label="Auto-record manual edits as keyframes"
+              aria-pressed={autoKeyframeEnabled}
+              className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
                 autoKeyframeEnabled
-                  ? "Auto-record manual edits as keyframes (click to turn off)"
-                  : "Manual edits will not be recorded as keyframes (click to turn on)"
-              }
+                  ? "text-red-400 hover:text-red-300"
+                  : "text-neutral-600 hover:text-neutral-400"
+              }`}
             >
-              <button
-                type="button"
-                onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-                aria-label="Auto-record manual edits as keyframes"
-                aria-pressed={autoKeyframeEnabled}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
-                  autoKeyframeEnabled
-                    ? "text-red-400 hover:text-red-300"
-                    : "text-neutral-600 hover:text-neutral-400"
-                }`}
-              >
-                <svg width="18" height="18" viewBox="0 0 10 10" fill="none">
-                  {/* Same diamond outline as the Add-keyframe icon, with a
+              <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
+                {/* Same diamond outline as the Add-keyframe icon, with a
                       record-style dot inside: filled = auto-recording,
                       hollow = manual edits won't be keyframed. */}
-                  <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                  <circle
-                    cx="5"
-                    cy="5"
-                    r="1.8"
-                    fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth="1"
-                  />
-                </svg>
-              </button>
-            </Tooltip>
-          )}
+                <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
+                <circle
+                  cx="5"
+                  cy="5"
+                  r="1.8"
+                  fill={autoKeyframeEnabled ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth="1"
+                />
+              </svg>
+            </button>
+          </Tooltip>
           {onSplitElement &&
             (() => {
               // Render the button unconditionally (disabled when unusable):
               // mounting/unmounting mid-task shifts the neighboring controls.
-              const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+              // Mirrors the S-key gate: selected clip + playhead strictly inside it.
               const el = selectedElementId
                 ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
                 : null;
@@ -236,7 +344,7 @@ export function TimelineToolbar({
                 <Tooltip
                   label={
                     canSplit
-                      ? "Split clip at playhead (S)"
+                      ? "Split at playhead (S)"
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
@@ -245,64 +353,109 @@ export function TimelineToolbar({
                   <button
                     type="button"
                     disabled={!canSplit}
-                    aria-label="Split clip at playhead"
+                    aria-label="Split at playhead"
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
-                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                      canSplit
-                        ? "text-neutral-500 hover:text-neutral-200 active:scale-[0.98]"
-                        : "text-neutral-700 cursor-not-allowed"
-                    }`}
+                    className={canSplit ? flatIdle : flatDisabled}
                   >
-                    <Scissors size={15} />
-                  </button>
-                </Tooltip>
-              );
-            })()}
-          {beatAnalysisReady &&
-            (() => {
-              const canAdd = canAddBeatAt(currentTime);
-              return (
-                <Tooltip
-                  label={canAdd ? "Add beat at playhead" : "A beat already exists at the playhead"}
-                >
-                  <button
-                    type="button"
-                    disabled={!canAdd}
-                    aria-label="Add beat at playhead"
-                    onClick={() => {
-                      if (canAdd) addBeatAtCompositionTime(currentTime);
-                    }}
-                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                      canAdd
-                        ? "text-neutral-500 hover:text-[#22c55e] active:scale-[0.98]"
-                        : "text-neutral-700 cursor-not-allowed"
-                    }`}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                    {/* "][" split glyph: two outward-facing brackets with a center gap */}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      {/* Right bracket of left half: ] */}
+                      <path d="M5 3 L7 3 L7 13 L5 13" />
+                      {/* Left bracket of right half: [ */}
+                      <path d="M11 3 L9 3 L9 13 L11 13" />
                     </svg>
                   </button>
                 </Tooltip>
               );
             })()}
+          {(() => {
+            // Always rendered (CapCut-style): before beat analysis loads (or when
+            // the project has no analyzed music) the button fades to a disabled
+            // state instead of unmounting, so the toolbar layout never shifts.
+            const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);
+            return (
+              <Tooltip
+                label={
+                  !beatAnalysisReady
+                    ? "Add a music track with beat analysis to place beats"
+                    : canAdd
+                      ? "Add beat at playhead"
+                      : "A beat already exists at the playhead"
+                }
+              >
+                <button
+                  type="button"
+                  disabled={!canAdd}
+                  aria-label="Add beat at playhead"
+                  onClick={() => {
+                    if (canAdd) addBeatAtCompositionTime(currentTime);
+                  }}
+                  className={
+                    canAdd
+                      ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
+                      : flatDisabled
+                  }
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
+            );
+          })()}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
+          <Tooltip
+            label={
+              thumbnailsVisible
+                ? "Hide thumbnails — labels only"
+                : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+            }
+          >
+            <button
+              type="button"
+              aria-label={
+                thumbnailsVisible
+                  ? "Hide thumbnails — labels only"
+                  : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+              }
+              aria-pressed={thumbnailsVisible}
+              onClick={() => setThumbnailMode(thumbnailsVisible ? "hidden" : "adaptive")}
+              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
+                thumbnailsVisible
+                  ? "bg-studio-accent/10 text-studio-accent"
+                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+              }`}
+            >
+              <Image size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
           <Tooltip label="Fit timeline to width">
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
-              className={`h-7 px-2.5 rounded-md border text-[11px] font-medium transition-colors ${
+              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
-                  ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
-                  : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+                  ? "bg-studio-accent/10 text-studio-accent"
+                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
               }`}
             >
               Fit
@@ -311,55 +464,57 @@ export function TimelineToolbar({
           <Tooltip label="Zoom out">
             <button
               type="button"
+              aria-label="Zoom out"
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(
-                  getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent),
+                  getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent, timelineFitPps),
                 );
               }}
-              className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+              className={flatIdle}
             >
-              -
+              <MagnifyingGlassMinus size={16} aria-hidden="true" />
             </button>
           </Tooltip>
-          <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
-            {`${displayedTimelineZoomPercent}%`}
-          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent, timelineFitPps)}
+            title={`${displayedTimelineZoomPercent}%`}
+            aria-label="Timeline zoom"
+            onChange={(e) => {
+              setZoomMode("manual");
+              setManualZoomPercent(
+                timelineSliderToZoomPercent(Number(e.target.value), timelineFitPps),
+              );
+            }}
+            // h-6 on the input is the 24x24 WCAG 2.2 (2.5.8) target: the visible
+            // track stays 2px and the thumb 10px, only the pointer box grows.
+            className="mx-1 h-6 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+          />
           <Tooltip label="Zoom in">
             <button
               type="button"
+              aria-label="Zoom in"
               onClick={() => {
                 setZoomMode("manual");
-                setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+                setManualZoomPercent(
+                  getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent, timelineFitPps),
+                );
               }}
-              className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+              className={flatIdle}
             >
-              +
+              <MagnifyingGlassPlus size={16} aria-hidden="true" />
             </button>
           </Tooltip>
-          <Tooltip label={getTimelineToggleTitle(true)}>
-            <button
-              type="button"
-              onClick={toggleTimelineVisibility}
-              className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
-              aria-label="Hide timeline editor"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M5 7h14" />
-                <path d="m8 11 4 4 4-4" />
-              </svg>
-            </button>
-          </Tooltip>
+          {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
+          <span
+            className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
+            aria-label="Timeline zoom level"
+          >
+            {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
+          </span>
         </div>
       </div>
     </div>

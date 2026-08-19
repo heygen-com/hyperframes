@@ -1,33 +1,26 @@
 # GSAP Effects for HyperFrames
 
-Drop-in animation patterns. Each effect is self-contained (HTML + CSS + JS) and follows the HyperFrames seek-driven contract — deterministic, no randomness, timeline registered on `window.__timelines`.
+Drop-in animation patterns. Snippets show mechanism only, inside a standard scene clip (hyperframes-core); assume `tl` exists.
 
-## Index
-
-- [Typewriter](#typewriter) — character-by-character text reveal with optional cursor / backspace / word rotation
+- [Typewriter](#typewriter) — character-by-character reveal with optional cursor / backspace / word rotation
 - [Audio Visualizer](#audio-visualizer) — pre-extract audio data, drive Canvas/DOM rendering from the timeline
-
----
 
 ## Typewriter
 
-Reveal text character by character using GSAP's TextPlugin.
-
-### Required Plugin
+Requires GSAP's TextPlugin alongside the core script:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/TextPlugin.min.js"></script>
 <script>
   gsap.registerPlugin(TextPlugin);
 </script>
 ```
 
-### Basic Typewriter
+### Basic
 
 ```js
 const text = "Hello, world!";
-const cps = 10; // chars per second: 3-5 dramatic, 8-12 conversational, 15-20 energetic
+const cps = 10; // chars per second — see timing table
 tl.to(
   "#typed-text",
   { text: { value: text }, duration: text.length / cps, ease: "none" },
@@ -35,13 +28,9 @@ tl.to(
 );
 ```
 
-### With Blinking Cursor
+### Blinking Cursor
 
-Three rules:
-
-1. **One cursor visible at a time** — hide previous before showing next.
-2. **Cursor must blink when idle** — after typing, during pauses.
-3. **No gap between text and cursor** — elements must be flush in HTML.
+Three rules: **one cursor visible at a time** (hide previous before showing next); **cursor must blink when idle** (after typing, during holds); **no gap between text and cursor** (elements flush in HTML).
 
 ```html
 <span id="typed-text"></span><span id="cursor" class="cursor-blink">|</span>
@@ -70,7 +59,7 @@ Three rules:
 }
 ```
 
-Pattern: blink → solid (typing starts) → type → solid → blink (typing done).
+Pattern: blink → solid (typing starts) → type → blink (typing done):
 
 ```js
 tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], startTime);
@@ -78,9 +67,11 @@ tl.to("#typed-text", { text: { value: text }, duration: dur, ease: "none" }, sta
 tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], startTime + dur);
 ```
 
+Multi-line handoff: hide previous cursor → blink new → brief pause (~0.5s) → solid when typing. Never go `hidden → solid` (skips the idle blink).
+
 ### Backspacing
 
-TextPlugin removes from front — wrong for backspace. Use manual substring removal:
+TextPlugin removes from the front — wrong for backspace. Use manual substring removal:
 
 ```js
 function backspace(tl, selector, word, startTime, cps) {
@@ -88,9 +79,7 @@ function backspace(tl, selector, word, startTime, cps) {
   const interval = 1 / cps;
   for (let i = word.length - 1; i >= 0; i--) {
     tl.call(
-      () => {
-        el.textContent = word.slice(0, i);
-      },
+      () => (el.textContent = word.slice(0, i)),
       [],
       startTime + (word.length - i) * interval,
     );
@@ -101,72 +90,26 @@ function backspace(tl, selector, word, startTime, cps) {
 
 ### Spacing With Static Text
 
-When a typewriter word sits next to static text, use `margin-left` on a wrapper span. Don't use flex `gap` (it spaces the cursor from the text) and don't put a trailing space in the static text (it collapses when the dynamic span is empty).
-
-```html
-<div style="display:flex; align-items:baseline;">
-  <span style="font-size:40px; color:#555;">Ship something</span>
-  <span style="margin-left:14px;"><span id="word"></span><span id="cursor">|</span></span>
-</div>
-```
+A typewriter word next to static text (`<span>Ship something</span><span style="margin-left:14px"><span id="word"></span><span id="cursor">|</span></span>` in a baseline-aligned flex row): use `margin-left` on the wrapper span. Don't use flex `gap` (it spaces the cursor from the text) and don't put a trailing space in the static text (it collapses when the dynamic span is empty).
 
 ### Word Rotation
 
-Type → hold → backspace → next word. Cursor blinks during every idle moment (holds, after backspace).
+Type → hold → backspace → next word; cursor blinks during every idle moment:
 
 ```js
 let offset = 0;
 words.forEach((word, i) => {
   const typeDur = word.length / 10;
-  tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
+  // cursor: solid while typing, blink during holds (same call pattern as above)
   tl.to("#typed-text", { text: { value: word }, duration: typeDur, ease: "none" }, offset);
-  tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + typeDur);
   offset += typeDur + 1.5; // hold
-
-  if (i < words.length - 1) {
-    tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
-    const clearDur = backspace(tl, "#typed-text", word, offset, 20);
-    tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + clearDur);
-    offset += clearDur + 0.3;
-  }
+  if (i < words.length - 1) offset += backspace(tl, "#typed-text", word, offset, 20) + 0.3;
 });
 ```
 
 ### Appending Words
 
-Build a sentence word-by-word into the same element:
-
-```js
-let accumulated = "";
-let offset = 0;
-words.forEach((word) => {
-  const target = accumulated + (accumulated ? " " : "") + word;
-  const newChars = target.length - accumulated.length;
-  tl.to("#typed-text", { text: { value: target }, duration: newChars / 10, ease: "none" }, offset);
-  accumulated = target;
-  offset += newChars / 10 + 0.3;
-});
-```
-
-### Multi-Line Cursor Handoff
-
-Handing off between typewriter lines: hide previous → blink new → pause → solid when typing. Never go `hidden → solid` (skips the idle blink).
-
-```js
-tl.call(
-  () => {
-    prevCursor.classList.replace("cursor-blink", "cursor-hide");
-    nextCursor.classList.replace("cursor-hide", "cursor-blink");
-  },
-  [],
-  handoffTime,
-);
-
-const typeStart = handoffTime + 0.5; // brief blink pause
-tl.call(() => nextCursor.classList.replace("cursor-blink", "cursor-solid"), [], typeStart);
-tl.to("#next-text", { text: { value: text }, duration: dur, ease: "none" }, typeStart);
-tl.call(() => nextCursor.classList.replace("cursor-solid", "cursor-blink"), [], typeStart + dur);
-```
+Build a sentence word-by-word into the same element: keep an `accumulated` string, each step tweens `text: { value: accumulated + " " + word }` with `duration: newChars / cps`, then advances the offset.
 
 ### Timing Guide
 
@@ -177,59 +120,40 @@ tl.call(() => nextCursor.classList.replace("cursor-solid", "cursor-blink"), [], 
 | 15-20 | Fast, energetic  | Tech demos, code           |
 | 30+   | Near-instant     | Filling long blocks        |
 
----
-
 ## Audio Visualizer
 
-Pre-extract audio data, drive Canvas / DOM rendering from a single `tl.call(...)` per frame. **Do not** use the Web Audio API at render time — there's no playback during seek.
+Pre-extract audio data, drive Canvas / DOM rendering from the timeline. **Do not use the Web Audio API at render time** — there's no playback during seek.
 
 ### Extract Audio Data
 
-Use the bundled extractor (requires `ffmpeg` and Python `numpy`):
+Bundled extractor (requires `ffmpeg` + Python `numpy`):
 
 ```bash
 python skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 -o audio-data.json
 python skills/hyperframes-creative/scripts/extract-audio-data.py video.mp4 --fps 30 --bands 16 -o audio-data.json
 ```
 
-### Data Format
+Output: `{ "fps": 30, "totalFrames": 5415, "frames": [{ "time": 0.0, "rms": 0.42, "bands": [0.8, 0.6, 0.3] }] }` — `rms` (0-1) is overall loudness; `bands[]` (0-1) are frequency magnitudes, index 0 = bass, each band normalized independently.
 
-```json
-{
-  "fps": 30,
-  "totalFrames": 5415,
-  "frames": [{ "time": 0.0, "rms": 0.42, "bands": [0.8, 0.6, 0.3] }]
-}
-```
+### Loading (Synchronously)
 
-- **`rms`** (0-1) — overall loudness, normalized across the track.
-- **`bands[]`** (0-1) — frequency magnitudes. Index 0 = bass, higher index = treble. Each band normalized independently.
-
-### Loading the Data (Synchronously)
+Inline the JSON for small files (< ~500 KB), or sync XHR for large ones:
 
 ```js
-// Option A — inline (small files, under ~500 KB)
-var AUDIO_DATA = {
-  /* paste audio-data.json contents */
-};
-
-// Option B — sync XHR (large files; must be synchronous for deterministic timeline construction)
-var xhr = new XMLHttpRequest();
-xhr.open("GET", "audio-data.json", false);
+const xhr = new XMLHttpRequest();
+xhr.open("GET", "audio-data.json", false); // synchronous — deliberate
 xhr.send();
-var AUDIO_DATA = JSON.parse(xhr.responseText);
+const AUDIO_DATA = JSON.parse(xhr.responseText);
 ```
 
-**Do NOT use async `fetch()`.** HyperFrames reads `window.__timelines` synchronously after page load — building the timeline inside `.then()` means the timeline isn't ready when capture starts.
+**Do NOT use async `fetch()`** — HyperFrames reads `window.__timelines` synchronously after page load; building the timeline inside `.then()` means it isn't ready when capture starts.
 
 ### Driving the Timeline
 
-**Canvas 2D** — most common (bars, waveforms, circles, gradients):
+Canvas 2D is the workhorse (bars, waveforms, circles, gradients) — one `tl.call` per frame:
 
 ```js
-const canvas = document.getElementById("viz");
-const ctx = canvas.getContext("2d");
-
+const ctx = document.getElementById("viz").getContext("2d");
 for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
   tl.call(
     () => {
@@ -243,9 +167,7 @@ for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
 }
 ```
 
-**WebGL / Three.js** — HyperFrames patches `THREE.Clock` for deterministic time. Update uniforms from audio data each frame.
-
-**DOM elements** — fine for fewer than ~20 elements, slower than Canvas for many.
+WebGL / Three.js: HyperFrames patches `THREE.Clock` for deterministic time — update uniforms from audio data each frame. DOM elements: fine under ~20 elements, slower than Canvas beyond that.
 
 ### Smoothing
 
@@ -254,46 +176,21 @@ let prev = null;
 const smoothing = 0.25; // 0.1-0.2 snappy, 0.3-0.5 flowing
 function smooth(f) {
   const raw = AUDIO_DATA.frames[f];
-  if (!prev) {
-    prev = { rms: raw.rms, bands: [...raw.bands] };
-    return prev;
+  if (!prev) prev = { rms: raw.rms, bands: [...raw.bands] };
+  else {
+    prev = {
+      rms: prev.rms * smoothing + raw.rms * (1 - smoothing),
+      bands: raw.bands.map((b, i) => prev.bands[i] * smoothing + b * (1 - smoothing)),
+    };
   }
-  prev = {
-    rms: prev.rms * smoothing + raw.rms * (1 - smoothing),
-    bands: raw.bands.map((b, i) => prev.bands[i] * smoothing + b * (1 - smoothing)),
-  };
   return prev;
 }
 ```
 
-### Spatial Mapping
+### Design Guide
 
-- **Horizontal**: bass left, treble right (iterate bands left-to-right)
-- **Vertical**: bass bottom, treble top
-- **Circular**: bass at 12 o'clock, wrap clockwise; mirror for a full circle
-
-### Motion Principles
-
-- **Bass drives big moves** — scale, glow, position shifts.
-- **Treble drives detail** — shimmer, flicker, edge effects.
-- **RMS drives globals** — background brightness, overall energy.
-- Pick 2-3 properties to animate. More looks noisy.
-- Keep minimums above zero — quiet sections still need life.
-
-### Band Count
-
-| Bands | Detail    | Good for                   |
-| ----- | --------- | -------------------------- |
-| 4     | Low       | Background glow, pulsing   |
-| 8     | Medium    | Bar charts, basic spectrum |
-| 16    | High      | Detailed EQ (default)      |
-| 32    | Very high | Dense radial layouts       |
-
-### Layering
-
-Layer multiple canvases with CSS `z-index` for depth — a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without per-element complexity.
-
-```html
-<canvas id="bg-layer" style="position:absolute;top:0;left:0;z-index:1;"></canvas>
-<canvas id="main-layer" style="position:absolute;top:0;left:0;z-index:2;"></canvas>
-```
+- **Spatial mapping** — horizontal: bass left, treble right; vertical: bass bottom; circular: bass at 12 o'clock, wrap clockwise (mirror for a full circle).
+- **Bass drives big moves** (scale, glow, position); **treble drives detail** (shimmer, flicker, edges); **RMS drives globals** (background brightness, overall energy).
+- Pick 2-3 animated properties — more looks noisy. Keep minimums above zero so quiet sections still have life.
+- **Band count**: 4 = background glow/pulse, 8 = bar charts, 16 = detailed EQ (default), 32 = dense radial layouts.
+- **Layering**: stack canvases with `z-index` — a background layer driven by bass/rms under a foreground layer driven by individual bands gives depth without per-element complexity.

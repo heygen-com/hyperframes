@@ -1,0 +1,29 @@
+{
+  "package": "@hyperframes/aws-lambda",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./handler": {
+      "source": "./src/handler.ts",
+      "runtime": "./dist/handler.js",
+      "types": "./dist/handler.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./sdk": {
+      "source": "./src/sdk/index.ts",
+      "runtime": "./dist/sdk/index.js",
+      "types": "./dist/sdk/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./cdk": {
+      "source": "./src/cdk/index.ts",
+      "runtime": "./dist/cdk/index.js",
+      "types": "./dist/cdk/index.d.ts",
+      "environments": ["bun", "node"]
+    }
+  }
+}

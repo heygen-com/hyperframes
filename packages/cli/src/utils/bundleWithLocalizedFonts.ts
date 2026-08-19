@@ -29,14 +29,11 @@ export async function bundleWithLocalizedFonts(
 type FontInjector = (html: string) => Promise<string>;
 
 /**
- * Load the render pipeline's `injectDeterministicFontFaces`, resolving
- * `@hyperframes/producer` at RUNTIME only. The specifier is kept out of the
- * bundler's/test-runner's static module graph (`@vite-ignore` + a variable
- * specifier) on purpose: the CLI test job builds with `--filter
- * '!@hyperframes/producer'`, so a static `import("@hyperframes/producer")`
- * would fail Vitest's transform-time resolution. At runtime — the built CLI or
- * an installed package — producer is a real dependency and resolves via
- * node_modules.
+ * Load the render pipeline's `injectDeterministicFontFaces` through the CLI's
+ * canonical producer loader. That loader uses a literal dynamic import, which
+ * lets tsup see and inline producer into the published CLI bundle. A variable
+ * bare-package import is invisible to tsup and silently fails after `npm
+ * install`, because producer is intentionally only a workspace devDependency.
  *
  * Returns `null` (not a throw) when the module simply isn't available in this
  * environment, so the caller can treat "producer absent" — a benign, expected
@@ -44,8 +41,8 @@ type FontInjector = (html: string) => Promise<string>;
  */
 async function loadFontInjector(): Promise<FontInjector | null> {
   try {
-    const producerSpecifier = "@hyperframes/producer";
-    const mod = (await import(/* @vite-ignore */ producerSpecifier)) as {
+    const { loadProducer } = await import("./producer.js");
+    const mod = (await loadProducer()) as {
       injectDeterministicFontFaces?: FontInjector;
     };
     return mod.injectDeterministicFontFaces ?? null;

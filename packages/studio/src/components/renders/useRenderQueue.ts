@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { CanvasResolution } from "@hyperframes/parsers";
 import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
+import { browserTelemetryAllowed } from "../../telemetry/policy";
 import { generateId } from "../../utils/generateId";
+import { readServerError } from "./serverError";
+import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
+import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
 
 export interface RenderJob {
   id: string;
@@ -14,17 +19,10 @@ export interface RenderJob {
   durationMs?: number;
 }
 
-// Mirrors `CanvasResolution` from @hyperframes/core. Kept local because
-// studio's tsconfig doesn't include node types, and the core barrel
-// transitively pulls in modules with `node:fs` imports. Drift risk is
-// low (6 string literals kept in sync manually with CANVAS_DIMENSIONS).
-export type ResolutionPreset =
-  | "landscape"
-  | "portrait"
-  | "landscape-4k"
-  | "portrait-4k"
-  | "square"
-  | "square-4k";
+// The CLI consumes this same source through @hyperframes/core's re-export.
+// Importing from the browser-safe parsers package avoids the core barrel's
+// Node-only transitive modules without duplicating the preset union in Studio.
+export type ResolutionPreset = CanvasResolution;
 
 export interface StartRenderOptions {
   fps?: number;
@@ -75,8 +73,36 @@ export function useRenderQueue(projectId: string | null) {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Failure of a user action (delete/cancel), surfaced inline in the panel.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Owned here rather than in the panel: Studio renders from three places —
+  // the panel's Export button, the header's, and each composition card in the
+  // left sidebar — and a check living in one of them leaves the rest free to
+  // start a render this machine cannot finish. Every caller routes through
+  // `startRender`, so that is where the refusal belongs. Call sites still
+  // read `ffmpegMissing` to put the prompt on screen, because a refusal the
+  // user cannot see reads as a broken button.
+  const { status: ffmpeg, checking: ffmpegChecking, recheck: recheckFfmpeg } = useFfmpegStatus();
+  // A null status means the probe gave no answer (older server, failed
+  // request), which is not evidence of a missing encoder. Unknown fails open.
+  const ffmpegMissing = ffmpeg !== null && !ffmpeg.ok;
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeJobRef = useRef<string | null>(null);
+  // Renders started in THIS tab, mapped to the settings they ran with.
+  // `loadRenders` also injects finished jobs from disk history, and those must
+  // never trigger a feedback prompt — the user did not just watch them happen.
+  const sessionJobs = useRef(new Map<string, FeedbackContext>());
+  const promptedJobIds = useRef(new Set<string>());
+
+  /**
+   * The one way a render started here enters the list. Every start path — the
+   * happy one and all three failure shortcuts — goes through here, so both
+   * "this render belongs to this session" and "these are the settings it ran
+   * with" have a single owner. A report about a render is only actionable if
+   * it arrives with the settings that produced it.
+   */
+  const addSessionJob = useCallback((job: RenderJob, settings: FeedbackContext) => {
+    sessionJobs.current.set(job.id, settings);
+    setJobs((prev) => [...prev, job]);
+  }, []);
 
   const closeActiveEventSource = useCallback((jobId?: string) => {
     if (jobId && activeJobRef.current !== jobId) return;
@@ -137,6 +163,23 @@ export function useRenderQueue(projectId: string | null) {
     // fallow-ignore-next-line complexity
     async (opts: StartRenderOptions = {}) => {
       if (!projectId) return;
+      // The server would answer this with a 503 anyway. Refusing here keeps
+      // the reason and the fix in the message, and keeps a control that
+      // forgot to disable itself from producing a mystery failure.
+      if (ffmpegMissing) {
+        addSessionJob(
+          {
+            id: generateId(),
+            status: "failed",
+            progress: 0,
+            error: ffmpegInstallMessage(ffmpeg),
+            filename: "Export blocked",
+            createdAt: Date.now(),
+          },
+          {},
+        );
+        return;
+      }
 
       const fps = opts.fps ?? 30;
       const quality = opts.quality ?? "standard";
@@ -153,6 +196,16 @@ export function useRenderQueue(projectId: string | null) {
       });
 
       const startTime = Date.now();
+      // Travels with any feedback about this render. Settings only: the
+      // composition path is a name the user chose, not file contents.
+      const settings: FeedbackContext = {
+        render_format: format,
+        render_quality: quality,
+        render_fps: fps,
+        render_resolution: resolution ?? "auto",
+        render_composition: composition ?? "index.html",
+        render_has_variables: Boolean(opts.variables && Object.keys(opts.variables).length > 0),
+      };
       // "auto" / undefined means "render at the composition's authored size".
       // Omit the field entirely — sending "auto" would trip the route's
       // enum validation set.
@@ -163,16 +216,28 @@ export function useRenderQueue(projectId: string | null) {
         resolution?: string;
         composition?: string;
         variables?: Record<string, unknown>;
-        telemetryDistinctId: string;
+        telemetryDistinctId?: string;
+        telemetryOptOut?: boolean;
       } = {
         fps,
         quality,
         format,
+      };
+      // The id is MINTED by getAnonymousId(), so calling it unconditionally
+      // created a telemetry identity for a profile that had opted out — and
+      // then shipped it to the server. The server's own policy cannot see this
+      // browser's localStorage or DoNotTrack, so it has to be told: an
+      // explicit `telemetryOptOut` suppresses the render outcome, which
+      // omitting the id alone does NOT (an old client omits it too, and that
+      // falls back to the install id).
+      if (browserTelemetryAllowed()) {
         // So the server-emitted render_complete/render_error is attributed to
         // this browser user (same id studio_* events use), making the render
         // funnel joinable. Matches studio_render_start fired just above.
-        telemetryDistinctId: getAnonymousId(),
-      };
+        body.telemetryDistinctId = getAnonymousId();
+      } else {
+        body.telemetryOptOut = true;
+      }
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
       if (opts.variables && Object.keys(opts.variables).length > 0) {
@@ -194,7 +259,7 @@ export function useRenderQueue(projectId: string | null) {
           filename: "Export failed",
           createdAt: startTime,
         };
-        setJobs((prev) => [...prev, failedJob]);
+        addSessionJob(failedJob, settings);
         return;
       }
       if (!res.ok) {
@@ -202,11 +267,11 @@ export function useRenderQueue(projectId: string | null) {
           id: generateId(),
           status: "failed",
           progress: 0,
-          error: `Server error (${res.status}). Check the terminal for details.`,
+          error: await readServerError(res),
           filename: "Export failed",
           createdAt: startTime,
         };
-        setJobs((prev) => [...prev, failedJob]);
+        addSessionJob(failedJob, settings);
         return;
       }
       const { jobId } = await res.json();
@@ -220,7 +285,7 @@ export function useRenderQueue(projectId: string | null) {
         filename: `${jobId}${ext}`,
         createdAt: startTime,
       };
-      setJobs((prev) => [...prev, job]);
+      addSessionJob(job, settings);
       activeJobRef.current = jobId;
 
       // Track progress via SSE
@@ -272,7 +337,7 @@ export function useRenderQueue(projectId: string | null) {
 
       return jobId;
     },
-    [projectId, closeActiveEventSource],
+    [projectId, closeActiveEventSource, addSessionJob, ffmpeg, ffmpegMissing],
   );
 
   // Cancel an in-flight render. The job row stays (as "cancelled") so the
@@ -345,6 +410,36 @@ export function useRenderQueue(projectId: string | null) {
 
   const dismissActionError = useCallback(() => setActionError(null), []);
 
+  // Ask for feedback the moment a render this tab started reaches its outcome.
+  // Watching the list (rather than each of the four places a job can finish)
+  // keeps one trigger for every path, including SSE drops and cancels-that-
+  // finished-anyway. `requestStudioFeedback` decides whether to actually ask.
+  useEffect(() => {
+    for (const job of jobs) {
+      if (job.status === "rendering" || job.status === "cancelled") continue;
+      const settings = sessionJobs.current.get(job.id);
+      if (!settings || promptedJobIds.current.has(job.id)) continue;
+      promptedJobIds.current.add(job.id);
+      requestStudioFeedback({
+        reason: job.status === "complete" ? "render_complete" : "render_failed",
+        renderId: job.id,
+        detail: job.error,
+        context: {
+          ...settings,
+          // How far it got and how long it took separate "died on frame one"
+          // from "died during encode", which need different fixes.
+          render_progress: job.progress,
+          render_duration_ms: job.durationMs ?? Date.now() - job.createdAt,
+          render_stage: job.stage,
+          render_error: job.error,
+          // Earlier renders this session: a first-render failure and a
+          // failure after nine successes are different bugs.
+          renders_this_session: sessionJobs.current.size,
+        },
+      });
+    }
+  }, [jobs]);
+
   // Clean up EventSource on unmount or projectId change
   useEffect(() => {
     return () => {
@@ -366,6 +461,12 @@ export function useRenderQueue(projectId: string | null) {
       cancelRender,
       clearCompleted,
       startRender: startRender as (options: unknown) => Promise<void>,
+      // Every Export control reads these, so no caller has to decide for
+      // itself whether this machine can encode.
+      ffmpeg,
+      ffmpegMissing,
+      ffmpegChecking,
+      recheckFfmpeg,
     }),
     [
       jobs,
@@ -378,6 +479,10 @@ export function useRenderQueue(projectId: string | null) {
       cancelRender,
       clearCompleted,
       startRender,
+      ffmpeg,
+      ffmpegMissing,
+      ffmpegChecking,
+      recheckFfmpeg,
     ],
   );
 }

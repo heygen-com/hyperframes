@@ -14,6 +14,10 @@ skills/**/assets/vendor/
 skills/**/*.min.js
 # reference snippets with intentional pseudo-markup (literal "..." attributes)
 skills/talking-head-recut/references/frames/polaroid.html
+# repo-native skill examples with intentional pseudo-markup placeholders
+# (e.g. <RANGE>, <TOTAL> tokens the agent replaces at build time — not real HTML)
+.claude/skills/**/examples/**/*.html
+.agents/skills/**/examples/**/*.html
 
 # Generated demo compositions — large video-pipeline output (GSAP/Three/WebGL
 # embedded), not hand-authored source; reformatting them is churn + risk. Listed

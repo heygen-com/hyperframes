@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AUDIT_SEEK_OPTIONS,
+  DENSE_GEOMETRY_SEEK_OPTIONS,
   captureRegionCrop,
   clampCropRegion,
   installPageFunctionGuard,
@@ -53,12 +55,13 @@ describe("seekCompositionTimeline", () => {
     await seekCompositionTimeline(page, 1.25);
 
     expect(waitForFunction).not.toHaveBeenCalled();
-    expect(evaluate).toHaveBeenCalledTimes(3);
+    expect(evaluate).toHaveBeenCalledTimes(4);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false);
-    expect(evaluate.mock.calls[1]?.[0]).toContain("window.setTimeout(finish, 100)");
+    expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function));
+    expect(evaluate.mock.calls[2]?.[0]).toContain("window.setTimeout(finish, 100)");
     // Post-seek font settle: a seek can reveal glyphs whose unicode-range
     // subsets only start loading after the next layout (CJK snapshot reports).
-    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function), 500);
+    expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), 500);
   });
 
   it("waitForFontsMs: 0 disables the post-seek font wait", async () => {
@@ -66,7 +69,7 @@ describe("seekCompositionTimeline", () => {
 
     await seekCompositionTimeline(page, 1.25, { waitForFontsMs: 0 });
 
-    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(evaluate).toHaveBeenCalledTimes(3);
   });
 
   it("prefers renderSeek so the runtime synchronizes clip visibility", async () => {
@@ -146,7 +149,7 @@ describe("seekCompositionTimeline", () => {
     await pending;
 
     expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 500 });
-    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(evaluate).toHaveBeenCalledTimes(2);
     expect(evaluate).toHaveBeenCalledWith(expect.any(Function), 3, true);
   });
 
@@ -163,39 +166,69 @@ describe("seekCompositionTimeline", () => {
     await vi.advanceTimersByTimeAsync(120);
     await pending;
 
-    expect(evaluate).toHaveBeenCalledTimes(3);
+    expect(evaluate).toHaveBeenCalledTimes(4);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 4, true);
     expect(evaluate).toHaveBeenNthCalledWith(2, expect.any(Function));
-    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function), 500);
+    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function));
+    expect(evaluate).toHaveBeenNthCalledWith(4, expect.any(Function), 500);
+  });
+
+  it("awaits GPU completion registered by the seek event before settling", async () => {
+    let completeGpu: (() => void) | undefined;
+    const gpuWork = new Promise<void>((resolve) => {
+      completeGpu = resolve;
+    });
+    let evaluateCall = 0;
+    vi.stubGlobal("window", {
+      __player: { renderSeek: vi.fn() },
+      __hfWaitForSeekCompletion: () => gpuWork,
+    });
+    const page: CompositionSeekPage = {
+      evaluate: vi.fn(async (pageFunction, value, fallback) => {
+        evaluateCall += 1;
+        if (typeof pageFunction === "function") {
+          return Reflect.apply(pageFunction, undefined, [value, fallback]);
+        }
+      }),
+    };
+
+    let settled = false;
+    const pending = seekCompositionTimeline(page, 1, {
+      animationFrameSettle: "none",
+      waitForFontsMs: 0,
+    }).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(evaluateCall).toBe(2);
+    expect(settled).toBe(false);
+    completeGpu?.();
+    await pending;
+    expect(settled).toBe(true);
   });
 });
 
 describe("resolveCliChromeGpuMode", () => {
-  it("preserves validate's software-only opt-in mapping", () => {
+  it("preserves auto/hardware/software env mapping", () => {
     expect(resolveCliChromeGpuMode("software")).toBe("software");
     expect(resolveCliChromeGpuMode("hardware")).toBe("hardware");
-    expect(resolveCliChromeGpuMode("auto")).toBe("hardware");
-    expect(resolveCliChromeGpuMode("")).toBe("hardware");
+    expect(resolveCliChromeGpuMode("auto")).toBe("auto");
+    expect(resolveCliChromeGpuMode("")).toBe("auto");
   });
 });
 
 describe("screenshot Chrome arguments", () => {
-  it("leaves shared capture and layout on the engine's software default", () => {
-    const defaultScreenshotArgs =
-      /args:\s*buildChromeArgs\(\s*\{[^}]*captureMode:\s*"screenshot"[^}]*\}\s*\),/;
+  it("resolves auto once and launches shared captures with the concrete mode", () => {
     const captureSource = readFileSync(
       new URL("./captureCompositionFrame.ts", import.meta.url),
       "utf8",
     );
     const layoutSource = readFileSync(new URL("../commands/layout.ts", import.meta.url), "utf8");
 
-    // openSettledCompositionPage threads the caller's optional browserGpuMode;
-    // callers that omit it (snapshot, compare) fall through to the engine's
-    // software default for screenshot capture.
-    expect(captureSource).toMatch(
-      /args:\s*buildChromeArgs\(\s*\{[^}]*captureMode:\s*"screenshot"[^}]*\},\s*\{\s*browserGpuMode:\s*options\.browserGpuMode\s*\},?\s*\),/,
-    );
-    expect(layoutSource).toMatch(defaultScreenshotArgs);
+    expect(captureSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(captureSource).toContain("{ browserGpuMode: resolvedGpuMode }");
+    expect(layoutSource).toContain("resolveCaptureBrowserGpuMode(");
+    expect(layoutSource).toContain("{ browserGpuMode: resolvedGpuMode }");
   });
 });
 
@@ -305,7 +338,11 @@ describe("captureRegionCrop", () => {
     const buffer = await captureRegionCrop(page, region, 3);
 
     expect(setViewport).toHaveBeenNthCalledWith(1, { ...original, deviceScaleFactor: 3 });
-    expect(screenshot).toHaveBeenCalledWith({ clip: region, type: "png" });
+    expect(screenshot).toHaveBeenCalledWith({
+      clip: region,
+      type: "png",
+      omitBackground: true,
+    });
     expect(setViewport).toHaveBeenNthCalledWith(2, original);
     expect(buffer).toBeInstanceOf(Buffer);
     expect(Array.from(buffer)).toEqual([1, 2, 3]);
@@ -368,5 +405,17 @@ describe("installPageFunctionGuard", () => {
     ) => unknown;
     const marker = () => 42;
     expect(shim(marker)).toBe(marker);
+  });
+});
+
+describe("DENSE_GEOMETRY_SEEK_OPTIONS", () => {
+  it("is genuinely geometry-only — no post-seek settle waits at the 600-sample cap", () => {
+    // Dense pass must not inherit AUDIT's post-seek waits — geometry is valid synchronously after setTime, and waits multiply by sample count.
+    expect(DENSE_GEOMETRY_SEEK_OPTIONS.animationFrameSettle).toBe("none");
+    expect(DENSE_GEOMETRY_SEEK_OPTIONS.waitForFontsMs).toBe(0);
+    expect(DENSE_GEOMETRY_SEEK_OPTIONS.settleMs).toBe(0);
+    // AUDIT (the full-settle path used by the base grid) must still carry the waits.
+    expect(AUDIT_SEEK_OPTIONS.animationFrameSettle).toBe("double");
+    expect(AUDIT_SEEK_OPTIONS.settleMs).toBeGreaterThan(0);
   });
 });

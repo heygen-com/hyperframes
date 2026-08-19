@@ -3,39 +3,72 @@ title: Compositions
 description: "The fundamental building block of a Hyperframes video."
 ---
 
-A composition is an HTML document that defines a video timeline. Every clip -- video, image, audio -- lives inside a composition.
+A composition is an HTML file that describes a video. You write elements, give
+them `data-*` timing attributes, and the framework turns them into frames.
 
-## Structure
+`index.html` is the top-level composition. It can hold other compositions
+inside it. There is no special "root" type — any composition can be imported
+into any other.
 
-Every composition needs a root element with `data-composition-id`:
+## How an HTML file becomes frames
+
+Here is a whole video: a logo, then a video clip.
 
 ```html index.html
 <div id="root" data-composition-id="root"
      data-start="0" data-width="1920" data-height="1080">
-  <!-- Elements go here -->
+  <img class="clip" src="assets/logo.png"
+       data-start="0" data-duration="2" data-track-index="0" />
+  <video class="clip" src="assets/video.mp4"
+         data-start="2" data-duration="3" data-track-index="0"></video>
 </div>
 ```
 
-The `index.html` file is the top-level composition. It can contain nested compositions within it. Any composition can be imported into another -- there is no special "root" type.
+Two rules make that work. The outer element needs `data-composition-id`, and
+every timed element needs `class="clip"` so the runtime can hide it outside its
+own window of time.
 
-## Clip Types
+The clips add up to five seconds. At 30 frames per second — the default — that
+is 150 frames, numbered 0 to 149:
 
-A clip is any discrete block on the timeline, represented as an HTML element with [data attributes](/concepts/data-attributes):
+```mermaid
+flowchart TD
+    A["index.html<br/>img: start 0, duration 2<br/>video: start 2, duration 3"]
+    A --> B["One timeline, 5 seconds<br/>30 fps = 150 frames"]
+    B --> C["frames 0-59<br/>image on screen"]
+    B --> D["frames 60-149<br/>video on screen, playing<br/>from its own second 0"]
+```
 
-- `<video>` -- Video clips, B-roll, A-roll
-- `<img>` -- Static images, overlays
-- `<audio>` -- Music, sound effects
-- `<div data-composition-id="...">` -- Nested compositions (animations, grouped sequences)
+Nothing plays in real time during a render. The renderer asks for frame 0, then
+frame 1, and each answer is a single still picture. That is what makes
+[rendering deterministic](/concepts/determinism).
 
-See the [HTML Schema Reference](/reference/html-schema) for the full list of attributes on each clip type.
+## What can go on the timeline
 
-## Nested Compositions
+A clip is any element with timing attributes on it:
 
-You can embed one composition inside another in two ways: loading from an external file or defining it inline. External files are the recommended approach for reusable compositions.
+- `<video>` — video clips, B-roll, A-roll
+- `<img>` — stills and overlays
+- `<audio>` — music and sound effects
+- `<div data-composition-id="...">` — another composition nested inside this one
+
+The [Data attributes](/concepts/data-attributes) page lists every timing
+attribute. The [HTML schema](/reference/html-schema) has the full contract.
+
+## Put one composition inside another
+
+You can either point at a separate file or write the nested composition inline.
+Use a separate file when you want to reuse it.
 
 <Tabs>
   <Tab title="External file">
-    Reference another HTML file with `data-composition-src`. The framework automatically fetches the file, extracts the `<template>` content, mounts it, executes scripts, and registers the timeline.
+    `data-composition-src` names the file. The framework fetches it, pulls the
+    content out of its `<template>` tag, mounts it, runs its scripts, and
+    registers its timeline.
+
+    Paths resolve from the **project root**, not from the file doing the
+    referencing. So a composition nested one level deep still writes
+    `compositions/foo.html`, never `../compositions/foo.html`.
 
     ```html index.html
     <div
@@ -43,11 +76,13 @@ You can embed one composition inside another in two ways: loading from an extern
       data-composition-id="intro-anim"
       data-composition-src="compositions/intro-anim.html"
       data-start="0"
+      data-duration="4"
+      data-playback-start="0"
       data-track-index="3"
     ></div>
     ```
 
-    Each external composition file wraps its content in a `<template>` tag:
+    The file it points at wraps everything in a `<template>`:
 
     ```html compositions/intro-anim.html
     <template id="intro-anim-template">
@@ -68,9 +103,15 @@ You can embed one composition inside another in two ways: loading from an extern
       </div>
     </template>
     ```
+
+    `data-playback-start` picks which moment of the child timeline shows first.
+    It defaults to `0`. Trimming or splitting from the left pushes this offset
+    forward by the time elapsed multiplied by `data-playback-rate`, so the
+    nested animation keeps going instead of jumping back to its beginning.
   </Tab>
   <Tab title="Inline">
-    Define a nested composition directly inside the parent. This is simpler for one-off compositions that do not need to be reused.
+    Write the nested composition straight into the parent. Simpler for
+    something you only use once.
 
     ```html index.html
     <div id="root" data-composition-id="root"
@@ -92,11 +133,11 @@ You can embed one composition inside another in two ways: loading from an extern
     </div>
     ```
 
-    Inline compositions do not use `<template>` tags or `data-composition-src`.
+    No `<template>` tag and no `data-composition-src` here.
   </Tab>
 </Tabs>
 
-### Project Structure
+### Where the files live
 
 <Tree>
   <Tree.Folder name="project" defaultOpen>
@@ -114,32 +155,41 @@ You can embed one composition inside another in two ways: loading from an extern
   </Tree.Folder>
 </Tree>
 
-## Two Layers: Primitives and Scripts
+## HTML sets the timing, scripts do the motion
 
-Every composition has two layers:
-
-- **HTML** -- primitive clips (`video`, `img`, `audio`, nested compositions). The declarative structure: what plays, when, and on which track. Controlled by [data attributes](/concepts/data-attributes).
-- **Script** -- effects, transitions, dynamic DOM, canvas, SVG -- creative animation via [GSAP](/guides/gsap-animation). Scripts do **not** control media playback or clip visibility.
+Your HTML says what plays, when, and on which track, all through
+[data attributes](/concepts/data-attributes). Your scripts handle the creative
+part: effects, transitions, canvas, SVG, [GSAP](/guides/gsap-animation)
+animation.
 
 <Warning>
-  Never use scripts to play/pause/seek media elements or to show/hide clips based on timing. The framework handles this automatically from data attributes. Scripts that duplicate this behavior will conflict with the framework. See [Common Mistakes](/guides/common-mistakes) for examples.
+  Never use a script to play, pause, or seek a media element, and never use one
+  to show or hide a clip based on time. The framework already does that from the
+  data attributes, and a script doing it too will fight the framework. See
+  [Common Mistakes](/guides/troubleshooting) for what that looks like.
 </Warning>
 
-## Variables
+## Reuse one composition with different content
 
-HyperFrames does not automatically bind `data-var-*` attributes into your composition DOM or CSS.
+One source file can appear several times in the same video, each copy carrying
+its own text and colors. HyperFrames does not wire `data-var-*` attributes into
+your DOM or CSS for you — you do it in three steps:
 
-The supported pattern is:
-
-1. Declare the variables once on the sub-comp's composition root with `data-composition-variables` (id + type + default) — the `<html>` element for a full-document composition, or the `[data-composition-id]` root element for a template / fragment sub-composition.
-2. Pass per-instance values on each composition host with `data-variable-values`.
-3. Read the resolved values inside the composition with `window.__hyperframes.getVariables()`. The runtime layers the host's `data-variable-values` over the declared defaults on a per-instance basis, so the same source can be embedded multiple times with different values.
+1. Declare each variable — id, type, default — on the sub-composition's root
+   with `data-composition-variables`. That root is the `<html>` element in a
+   full-document composition, or the `[data-composition-id]` element in a
+   template or fragment.
+2. Pass each copy's values on its host element with `data-variable-values`.
+3. Read them inside the composition with
+   `window.__hyperframes.getVariables()`, which layers the host's values over
+   the declared defaults, one copy at a time.
 
 ```html index.html
 <div
   data-composition-id="card-pro"
   data-composition-src="compositions/card.html"
   data-start="0"
+  data-duration="3"
   data-track-index="1"
   data-variable-values='{"title":"Pro","color":"#ff4d4f"}'
 ></div>
@@ -147,10 +197,15 @@ The supported pattern is:
   data-composition-id="card-enterprise"
   data-composition-src="compositions/card.html"
   data-start="card-pro"
+  data-duration="3"
   data-track-index="1"
   data-variable-values='{"title":"Enterprise","color":"#22c55e"}'
 ></div>
 ```
+
+The second card's `data-start="card-pro"` means "start when that one ends".
+
+And the source file both cards share:
 
 ```html compositions/card.html
 <html data-composition-variables='[
@@ -162,18 +217,10 @@ The supported pattern is:
       <h1 class="title"></h1>
 
       <style>
-        [data-composition-id="card"] {
-          --card-color: #111827;
-        }
-
-        [data-composition-id="card"] .title {
-          color: var(--card-color);
-        }
+        [data-composition-id="card"] .title { color: var(--card-color, #111827); }
       </style>
 
       <script>
-        // Inside a sub-comp script, getVariables() returns the per-instance
-        // values: declared defaults < host data-variable-values overrides.
         const { title, color } = __hyperframes.getVariables();
         const root = document.querySelector('[data-composition-id="card"]');
         root.querySelector(".title").textContent = title;
@@ -184,29 +231,22 @@ The supported pattern is:
 </html>
 ```
 
-If you are building tooling on top of `@hyperframes/core`, the same `data-composition-variables` array is readable via `extractCompositionMetadata()` for Studio editing UI and analysis pipelines.
+[Variables](/concepts/variables) covers the types, the bindings that need no
+script, CLI overrides, and which value wins. If you are building tooling on
+`@hyperframes/core`, `extractCompositionMetadata()` reads the same
+`data-composition-variables` array — that is how Studio builds its editing UI.
 
-## Listing Compositions
-
-Use the [CLI](/packages/cli) to see all compositions in a project:
+## See every composition in a project
 
 ```bash
 npx hyperframes compositions
 ```
 
-## Next Steps
+## Related topics
 
-<CardGroup cols={2}>
-  <Card title="Data Attributes" icon="code" href="/concepts/data-attributes">
-    Full reference for timing, media, and composition attributes
-  </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    Add animations to your compositions with GSAP timelines
-  </Card>
-  <Card title="Examples" icon="grid-2" href="/examples">
-    Start from built-in examples for common video patterns
-  </Card>
-  <Card title="HTML Schema Reference" icon="book" href="/reference/html-schema">
-    Complete schema for authoring compositions
-  </Card>
-</CardGroup>
+- [Data attributes](/concepts/data-attributes)
+- [Deterministic rendering](/concepts/determinism)
+- [Variables](/concepts/variables)
+- [Animate with GSAP](/guides/gsap-animation)
+- [HTML schema reference](/reference/html-schema)
+- [Start from an example](/examples)

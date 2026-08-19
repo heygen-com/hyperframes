@@ -3,6 +3,7 @@
 // cannot import the Node helper. Line-level markers don't survive the clone
 // window drifting as the file is edited, hence the file-level suppression.
 // fallow-ignore-file code-duplication
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,8 +128,9 @@ export function raceMediaReady(
 }
 
 /**
- * Flag `<video>`/`<audio>` clips whose source is meaningfully shorter than their
- * `data-duration` slot (the slot gets silently shortened in renders). Runs in
+ * Flag `<audio>` clips whose source is meaningfully shorter than their
+ * `data-duration` slot (the slot gets silently shortened in renders). Videos
+ * intentionally hold their final frame through an explicit longer slot. Runs in
  * the live page to read each element's intrinsic `.duration`, which static lint
  * can't see.
  */
@@ -140,7 +142,7 @@ export async function auditClipDurations(
   // fallow-ignore-next-line complexity
   const clips = await page.evaluate(async (maxWaitMs: number) => {
     const nodes = Array.from(
-      document.querySelectorAll("video[data-duration], audio[data-duration]"),
+      document.querySelectorAll("audio[data-duration]"),
     ) as HTMLMediaElement[];
 
     // The caller's page-settle sleep is a flat, unconditional wait shared with
@@ -276,7 +278,11 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
           : [],
       )) as ContrastCandidate[];
 
-      const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
+      const screenshot = (await page.screenshot({
+        encoding: "base64",
+        type: "png",
+        omitBackground: true,
+      })) as string;
       const entries = await page.evaluate(
         (b64: string, time: number, cands: ContrastCandidate[]) =>
           typeof (window as unknown as Record<string, unknown>).__contrastAuditFinish === "function"
@@ -412,12 +418,20 @@ async function validateInBrowser(
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
+    const requestedGpuMode = resolveCliChromeGpuMode();
+    const { assertWebGpuRequirement, resolveCaptureBrowserGpuMode } =
+      await import("../browser/gpuPolicy.js");
+    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
+      requestedGpuMode,
+      browser.executablePath,
+    );
+    assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
         { ...viewport, captureMode: "screenshot" },
-        { browserGpuMode: resolveCliChromeGpuMode() },
+        { browserGpuMode: resolvedGpuMode },
       ),
     });
 
@@ -622,11 +636,12 @@ Examples:
     try {
       const result = await validateInBrowser(project, { timeout, contrast: useContrast });
       const exitCode = printValidationResult(result, asJson);
-      process.exit(exitCode);
+      setCommandExitCode(exitCode);
+      return;
     } catch (err: unknown) {
       const message = normalizeErrorMessage(err);
       emitFailureReport(message, asJson);
-      process.exit(1);
+      failCommand();
     }
   },
 });

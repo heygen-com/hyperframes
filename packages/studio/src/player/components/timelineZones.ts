@@ -3,8 +3,8 @@ import { isAudioTimelineElement } from "../../utils/timelineInspector";
 
 /**
  * Free-form vertical zones, top → bottom: visual, audio. There is no "main track"
- * — layering is CSS z-index (the renderer ignores track index), so the timeline's
- * only job is to keep visual clips grouped above audio clips.
+ * — canvas layering is CSS z-index (the renderer ignores track index), so the
+ * timeline's only job is to keep visual clips grouped above audio clips.
  */
 export type TrackZone = "visual" | "audio";
 
@@ -16,9 +16,6 @@ export function classifyZone(el: TimelineElement): TrackZone {
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
-/** Stacking order for a clip: missing / "auto" z is treated as 0. */
-const zOf = (el: TimelineElement) => (Number.isFinite(el.zIndex) ? (el.zIndex as number) : 0);
-
 const EPS = 1e-6;
 
 /** Two clips overlap when their half-open [start, end) intervals intersect. */
@@ -26,173 +23,123 @@ function overlaps(a: TimelineElement, b: TimelineElement): boolean {
   return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
 }
 
-/** A clip paired with its position in the discovery/document (input) order. */
-interface IndexedClip {
-  el: TimelineElement;
-  /** Index in the input `elements` array = discovery/DOM order. */
-  domIndex: number;
-}
-
-/** One display lane: the clips packed onto it, in placement order. */
-interface Lane {
-  occupants: IndexedClip[];
-  /** The single authored track all occupants share, or null once mixed (never
-   *  happens — we only ever add same-track clips to an existing lane). */
-  track: number;
+/** Deterministic order on the stable clip id (never the mutated lane/track). */
+function byStableId(a: TimelineElement, b: TimelineElement): number {
+  const ka = keyOf(a);
+  const kb = keyOf(b);
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 
 /**
- * Lowest lane index a clip may occupy: strictly above every already-placed lane
- * holding a clip it overlaps in time (all of which out-stack it by the z-desc
- * placement order).
- */
-function lowestAllowedLane(lanes: Lane[], item: IndexedClip): number {
-  let minLane = 0;
-  for (let i = 0; i < lanes.length; i++) {
-    if (lanes[i].occupants.some((o) => overlaps(o.el, item.el))) minLane = i + 1;
-  }
-  return minLane;
-}
-
-/**
- * First lane at index ≥ minLane that holds solely this clip's authored track and
- * nothing overlapping (so sequential same-track clips share a lane); -1 when none
- * qualifies and a fresh lane must open.
- */
-function findReusableLane(lanes: Lane[], minLane: number, item: IndexedClip): number {
-  for (let i = minLane; i < lanes.length; i++) {
-    const lane = lanes[i];
-    if (lane.track !== item.el.track) continue;
-    if (lane.occupants.some((o) => overlaps(o.el, item.el))) continue;
-    return i;
-  }
-  return -1;
-}
-
-/**
- * Pack a WHOLE zone's clips onto display lanes with a single constrained pass so
- * that, for EVERY pair of time-overlapping clips, lane order (upper = lower index)
- * equals canvas stacking order. This replaces the old two-stage
- * `orderTrackBlocksByZ` + per-track `packTrackLanes`, which ordered whole authored
- * tracks by their MAX z and so lifted a low-z clip above a clip that covers it
- * whenever it shared a track with a high-z clip (the qa-clean ralu/video bug — a
- * low-z image rode its z=3 trackmate above the z=2 video that paints over it). No
- * whole-track mapping can fix that; the mapping must be per-clip.
+ * Pack ONE authored track's clips onto sub-lanes so no two time-overlapping clips
+ * share a lane. Clips are ordered by their STABLE id (a function of the input, not
+ * of the lane being computed — the historical oscillation bug tie-broke on the
+ * mutated track) and placed first-fit, so sequential (non-overlapping) clips
+ * collapse onto a single lane and only genuine time overlaps spill onto adjacent
+ * sub-lanes. Writes each clip's absolute display lane into `laneOf`; returns the
+ * number of lanes used (≥ 1 when non-empty).
  *
- * Algorithm:
- *   1. Order clips by z DESC; z-tie → INPUT-ARRAY-INDEX (DOM order) DESC (CSS
- *      paints equal-z siblings by DOM order — LATER in DOM paints on top, so it
- *      must place first / upper); final tie → stable key. NEVER tie-break on the
- *      mutated lane/track index (historic oscillation bug — the tie-break must be
- *      a stable function of the input, not of the output being computed).
- *   2. Place each clip at lane ≥ (1 + highest lane among already-placed clips it
- *      OVERLAPS IN TIME). By z-desc placement every already-placed overlapping
- *      clip out-stacks this one (higher z, or equal z but later in DOM), so this
- *      guarantees lane order == stacking order for every overlapping pair.
- *   3. To preserve the "distinct authored tracks stay distinct / sequential
- *      same-track clips share a lane" feel, reuse an existing lane at index ≥ that
- *      minimum ONLY when the lane's occupants are all from the SAME authored track
- *      AND none overlaps this clip in time; otherwise open a fresh lane.
+ * The editor enforces no per-track time overlap, so the spill only fires on legacy
+ * files. It is DISPLAY-ONLY — a drag commit persists just the dragged clip, never
+ * this re-lane — so it never rewrites the source.
  *
- * Writes each clip's absolute display lane (`base + laneIndex`) into `laneOf` and
- * returns the number of lanes used (≥ 1 when non-empty).
+ * Spill sub-lanes ARE legal drop targets (Timeline's trackOrder lists every
+ * display lane). Because every occupant of a sub-lane shares the base lane's
+ * authored track by construction, dropping a clip onto one persists that shared
+ * authored track — a legitimate same-track join. On the next normalize the
+ * joined track re-packs (stable-id first-fit), so the clip may display on a
+ * DIFFERENT sub-lane than it was dropped on; the packing is deterministic, and
+ * the persisted source value is correct either way.
  */
-function packZoneLanes(clips: IndexedClip[], base: number, laneOf: Map<string, number>): number {
-  const ordered = [...clips].sort(
-    (a, b) =>
-      zOf(b.el) - zOf(a.el) || b.domIndex - a.domIndex || (keyOf(a.el) < keyOf(b.el) ? -1 : 1),
-  );
-  const lanes: Lane[] = [];
-  for (const item of ordered) {
-    const minLane = lowestAllowedLane(lanes, item);
-    let placed = findReusableLane(lanes, minLane, item);
-    if (placed === -1) {
-      placed = lanes.length;
-      lanes.push({ occupants: [], track: item.el.track });
-    }
-    lanes[placed].occupants.push(item);
-    laneOf.set(keyOf(item.el), base + placed);
-  }
-  return lanes.length;
-}
-
-/**
- * Legacy per-track interval packing for the AUDIO zone (no z semantics): pack one
- * authored track's clips onto sub-lanes so no two overlap in time — sequential
- * clips share a lane, overlapping ones spill onto the next (first-fit). Ordered by
- * start (then stable key) so the layout is deterministic and idempotent. Returns
- * the number of lanes used (≥ 1 when non-empty).
- */
-function packAudioTrackLanes(
-  clips: IndexedClip[],
+function packTrackLanes(
+  clips: TimelineElement[],
   base: number,
   laneOf: Map<string, number>,
 ): number {
-  const ordered = [...clips].sort(
-    (a, b) => a.el.start - b.el.start || (keyOf(a.el) < keyOf(b.el) ? -1 : 1),
-  );
-  const lanes: IndexedClip[][] = [];
-  for (const item of ordered) {
-    let sub = lanes.findIndex((occ) => occ.every((o) => !overlaps(o.el, item.el)));
+  const ordered = [...clips].sort(byStableId);
+  const lanes: TimelineElement[][] = [];
+  for (const el of ordered) {
+    let sub = lanes.findIndex((occ) => occ.every((o) => !overlaps(o, el)));
     if (sub === -1) {
       sub = lanes.length;
       lanes.push([]);
     }
-    lanes[sub].push(item);
-    laneOf.set(keyOf(item.el), base + sub);
+    lanes[sub].push(el);
+    laneOf.set(keyOf(el), base + sub);
   }
   return Math.max(1, lanes.length);
 }
 
 /**
+ * Pack a whole zone's clips onto contiguous display lanes, CapCut-stable: lanes
+ * follow the authored `data-track-index` (ASCENDING; ties by stable id) — NEVER a
+ * z-rank. Each distinct authored track owns its own lane (in ascending order);
+ * sequential same-track clips share it; time-overlapping same-track clips spill to
+ * adjacent sub-lanes (packTrackLanes). Returns the number of lanes used.
+ *
+ * This REPLACES the old global-z-rank interval pack. That pack ordered visual
+ * lanes by z-index and interval-packed overlaps, so editing one clip's z (or the
+ * whole-set re-pack a lane drag triggered) silently re-laned OTHER clips. The
+ * product decision is the opposite: a clip's lane is its track, period — z is
+ * canvas paint order only, and lane assignment must ignore it.
+ */
+function packZoneLanes(
+  clips: TimelineElement[],
+  base: number,
+  laneOf: Map<string, number>,
+): number {
+  const byTrack = new Map<number, TimelineElement[]>();
+  for (const el of clips) {
+    const list = byTrack.get(el.track);
+    if (list) list.push(el);
+    else byTrack.set(el.track, [el]);
+  }
+  let used = 0;
+  for (const track of [...byTrack.keys()].sort((a, b) => a - b)) {
+    used += packTrackLanes(byTrack.get(track)!, base + used, laneOf);
+  }
+  return used;
+}
+
+/**
  * Assign display lanes for the timeline: visual lanes on top, audio lanes below.
  *
- * The VISUAL zone is packed per-clip (packZoneLanes) so the timeline's vertical
- * order matches the canvas's CSS stacking for EVERY time-overlapping pair — a
- * low-z clip sinks below a clip that covers it even if it shares an authored track
- * with a higher-z clip. Time-overlapping clips still split onto separate lanes
- * (standard NLE), sequential same-track clips still share a lane, and distinct
- * authored tracks stay distinct.
- *
- * The AUDIO zone keeps the original behavior — authored-track order, per-track
- * interval packing — because audio has no z / stacking semantics.
+ * Both zones are packed the SAME way — by authored track-index, ascending (see
+ * packZoneLanes) — so the timeline's vertical order follows each clip's track and
+ * nothing else. z-index does not participate in lane assignment (it is canvas
+ * paint order only; the lane ↔ z stacking sync in timelineStackingSync runs the
+ * other direction, only on a deliberate vertical edit). Time-overlapping same-track
+ * clips still split onto separate sub-lanes (legacy files only — the editor forbids
+ * per-track overlap), and that split is display-only, never persisted.
  *
  * Pure — returns a new array; unchanged clips keep their identity. Display-only
  * (runs on discovery); it does not rewrite the source. Idempotent (running it on
- * its own output is a fixed point).
+ * its own output is a fixed point): the lanes it emits are contiguous integers in
+ * ascending track order, and re-running groups by those same integers unchanged.
  */
 export function normalizeToZones(elements: TimelineElement[]): TimelineElement[] {
   if (elements.length === 0) return elements;
 
   const laneOf = new Map<string, number>();
+  const visual: TimelineElement[] = [];
+  const audio: TimelineElement[] = [];
+  for (const el of elements) {
+    (classifyZone(el) === "audio" ? audio : visual).push(el);
+  }
+
   let nextLane = 0;
-
-  const visual: IndexedClip[] = [];
-  const audio: IndexedClip[] = [];
-  elements.forEach((el, domIndex) => {
-    (classifyZone(el) === "audio" ? audio : visual).push({ el, domIndex });
-  });
-
   nextLane += packZoneLanes(visual, nextLane, laneOf);
-
-  // Audio: preserve legacy behavior — group by authored track (ascending), pack
-  // each track's overlapping clips onto sub-lanes.
-  const audioByTrack = new Map<number, IndexedClip[]>();
-  for (const item of audio) {
-    const list = audioByTrack.get(item.el.track);
-    if (list) list.push(item);
-    else audioByTrack.set(item.el.track, [item]);
-  }
-  for (const track of [...audioByTrack.keys()].sort((a, b) => a - b)) {
-    nextLane += packAudioTrackLanes(audioByTrack.get(track)!, nextLane, laneOf);
-  }
+  packZoneLanes(audio, nextLane, laneOf);
 
   let changed = false;
   const remapped = elements.map((el) => {
     const lane = laneOf.get(keyOf(el));
     if (lane == null || lane === el.track) return el;
     changed = true;
-    return { ...el, track: lane };
+    // Record the source-file track the first time a clip is remapped so lane
+    // edits can persist in AUTHORED space (see TimelineElement.authoredTrack).
+    // Re-normalizing already-remapped elements must keep the original value.
+    return { ...el, track: lane, authoredTrack: el.authoredTrack ?? el.track };
   });
   return changed ? remapped : elements;
 }

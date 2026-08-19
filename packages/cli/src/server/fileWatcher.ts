@@ -13,7 +13,10 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   ".git",
   ".hyperframes",
   ".next",
+  ".thumbnails",
+  ".transcode-cache",
   ".vite",
+  ".waveform-cache",
   "build",
   "coverage",
   "dist",
@@ -31,6 +34,7 @@ export function shouldWatchProjectFile(filename: string): boolean {
 
 export function createProjectWatcher(projectDir: string): ProjectWatcher {
   const listeners = new Set<FileChangeListener>();
+  const pendingPaths = new Set<string>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let watcher: FSWatcher | null = null;
 
@@ -40,10 +44,16 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
       const relativePath = filename.toString();
       if (!shouldWatchProjectFile(relativePath)) return;
 
+      pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        for (const fn of listeners) {
-          fn(relativePath);
+        const changedPaths = [...pendingPaths];
+        pendingPaths.clear();
+        debounceTimer = null;
+        for (const changedPath of changedPaths) {
+          for (const fn of listeners) {
+            fn(changedPath);
+          }
         }
       }, DEBOUNCE_MS);
     });
@@ -69,6 +79,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
     },
     close() {
       if (debounceTimer) clearTimeout(debounceTimer);
+      pendingPaths.clear();
       watcher?.close();
       listeners.clear();
     },

@@ -21,7 +21,7 @@ Hand-author only (a) gaps no block/rule covers, (b) the `asset-fusion` affordanc
 
 ## Layout before animation
 
-Build the **hero-frame end-state** in CSS first (flex + padding; never absolute offsets on content containers; the root must be sized). Then `gsap.from()` entrances INTO it; exits via transitions or the final scene. Full rules: `references/builder-contract.md`.
+Build the **hero-frame end-state** in CSS first (flex + padding; never absolute offsets on content containers; the root must be sized). Use `fromTo()` for elements inside `.clip` and for any delayed entrance; `from()` is safe only for non-clip elements active from `t=0`. Exits belong to transitions or the final scene. Full rules: `references/builder-contract.md`.
 
 ## IR → composition
 
@@ -35,6 +35,6 @@ Build the **hero-frame end-state** in CSS first (flex + padding; never absolute 
 
 Opacity-gate delayed elements (set hidden until their entrance). Clamp at tween bounds (no overshoot past a held value). Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`). One motif per scene. Run `hyperframes check` for overflow / collisions.
 
-## Verify-fix
+## Hand off for verification
 
-`hyperframes lint` → `inspect` → `render -q draft`. On failure, fix the offending element + re-run. (Remotion-sourced prior art is graded by the `/remotion-to-hyperframes` SSIM harness.) **Never change a fixed `data-duration` during repair.**
+Self-check the authored file, then return it to the orchestrator. Step 5 runs `hyperframes lint`, `hyperframes check`, and proof snapshots on the assembled project. Do not render. When redispatched with a finding, fix the offending element and never change a fixed `data-duration` during repair. Remotion-source migrations use `/remotion-to-hyperframes` and its SSIM harness instead.

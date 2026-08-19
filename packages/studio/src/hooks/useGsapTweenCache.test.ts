@@ -86,8 +86,32 @@ describe("resolveSelectorElementIds", () => {
     expect(resolveSelectorElementIds(".a, .b", doc).sort()).toEqual(["x", "y"]);
   });
 
-  it("falls back to a leading #id when there is no DOM", () => {
-    expect(resolveSelectorElementIds("#card .label", null)).toEqual(["card"]);
+  // A DOM-less LEADING-id fallback attributed `#card .label` to `#card`, the
+  // ancestor it merely scopes to. Without a DOM there is nothing to resolve the
+  // descendant against, so the honest answer is no element at all.
+  it("resolves nothing for a compound selector when there is no DOM", () => {
+    expect(resolveSelectorElementIds("#card .label", null)).toEqual([]);
     expect(resolveSelectorElementIds(".dot", null)).toEqual([]);
+  });
+
+  it("still resolves every whole-id part of a group selector without a DOM", () => {
+    expect(resolveSelectorElementIds("#a, #b", null)).toEqual(["a", "b"]);
+  });
+
+  // The `[id="…"]` form is what writers emit for a CSS-unsafe id (digit-leading,
+  // dotted). The old local `#id`-only regex read no id at all for those, so they
+  // silently dropped out of both DOM-less paths.
+  it("falls back to a bracketed id when there is no DOM", () => {
+    expect(resolveSelectorElementIds('[id="01-hook"]', null)).toEqual(["01-hook"]);
+    expect(resolveSelectorElementIds('[id="01-hook"] .label', null)).toEqual([]);
+  });
+
+  it("falls back to a bracketed id when querySelectorAll rejects the selector", () => {
+    const doc = {
+      querySelectorAll: () => {
+        throw new SyntaxError("bad selector");
+      },
+    } as unknown as Document;
+    expect(resolveSelectorElementIds('[id="01-hook"]:has(>*)', doc)).toEqual(["01-hook"]);
   });
 });

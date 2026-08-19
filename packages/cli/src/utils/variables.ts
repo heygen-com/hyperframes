@@ -1,3 +1,4 @@
+import { failCommand } from "./commandResult.js";
 /**
  * Shared `--variables` / `--variables-file` / `--strict-variables` parsing
  * and validation helpers used by both `hyperframes render` (in-process) and
@@ -134,7 +135,7 @@ export function resolveVariablesArg(
   if (!result.ok) {
     const { title, message } = variablesErrorMessage(result.error);
     errorBox(title, message);
-    process.exit(1);
+    failCommand();
   }
   return result.value;
 }
@@ -227,6 +228,6 @@ export function reportVariableIssues(
       "Variable validation failed",
       "Aborting render due to variable issues (--strict-variables mode).",
     );
-    process.exit(1);
+    failCommand();
   }
 }

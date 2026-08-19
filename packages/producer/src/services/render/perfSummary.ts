@@ -4,7 +4,7 @@
  */
 
 import { fpsToNumber } from "@hyperframes/core";
-import type { CapturePerfSummary, SubTimelineWaitOutcome } from "@hyperframes/engine";
+import type { CapturePerfSummary, SubTimelineWaitOutcome, WorkerSizing } from "@hyperframes/engine";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
   CaptureAttemptSummary,
@@ -59,6 +59,19 @@ export function pushWorkerDedupPerfs(
  * render-level drawElement outcome. mode/gateReason |-join distinct values
  * across workers (bounded cardinality); counters SUM.
  */
+/**
+ * Round a dB value to 1 decimal and clamp at 999 (an `Infinity` PSNR — a
+ * bit-exact frame match — must not ship literally to telemetry). Single
+ * source of truth for every dB field crossing into `RenderPerfSummary` or
+ * `RenderCaptureObservability` — both must agree byte-for-byte so PostHog
+ * consumers joining `render_complete` against the crash-survival
+ * `render_error` mirror never see the same underlying score reported at two
+ * different precisions (review finding).
+ */
+export function roundDb(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : Math.round(Math.min(value, 999) * 10) / 10;
+}
+
 /** Orchestrator-supplied render-level drawElement outcome (one shape, used by
  * both the aggregate function and buildRenderPerfSummary's input). */
 export interface DrawElementPerfInput {
@@ -67,11 +80,23 @@ export interface DrawElementPerfInput {
   workerInversion?: "inverted" | "reverted";
   /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
   preInversionWorkers?: number;
+  /** Rough compiled-composition element count — gate variable for the short-comp inversion band. */
+  compositionElementCount?: number;
+  /** Provenance of the element count: "live" (probe DOM, trusted to gate) | "static" (source scan, not). */
+  compositionElementCountSource?: "live" | "static";
+  /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
+  shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
   /** Auto-resolved worker count before the router pinned it to 3 (set only when the router fired). */
   preRouterWorkers?: number;
   selfVerifyFallback: boolean;
   fallbackReason?: string;
+  /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for blank/oom/capture_error. */
+  fallbackFailedDb?: number;
+  /** Frame index the verification failure was detected at; set for both "psnr" and "blank". */
+  fallbackFrameIndex?: number;
+  /** The HF_DE_VERIFY_MIN_DB threshold the failing dB breached; only set alongside fallbackFailedDb. */
+  fallbackThresholdDb?: number;
   drainStats?: {
     verifyChecked: number;
     verifyMinDb?: number;
@@ -92,6 +117,9 @@ function aggregateDrawElement(
   const gateReasons = [
     ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
   ].sort();
+  const gpuRenderers = [
+    ...new Set(perfs.map((p) => p.gpuRenderer).filter((r): r is string => !!r)),
+  ].sort();
   const drain = de.drainStats;
   return {
     mode: modes.join("|") || "unknown",
@@ -99,19 +127,23 @@ function aggregateDrawElement(
     clampReason: de.clampReason,
     workerInversion: de.workerInversion ?? "none",
     preInversionWorkers: de.preInversionWorkers,
+    compositionElementCount: de.compositionElementCount,
+    compositionElementCountSource: de.compositionElementCountSource,
+    shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
+    gpuRenderer: gpuRenderers.length > 0 ? gpuRenderers.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
     verifyChecked: drain?.verifyChecked ?? 0,
-    verifyMinDb:
-      drain?.verifyMinDb === undefined
-        ? undefined
-        : Math.round(Math.min(drain.verifyMinDb, 999) * 10) / 10,
+    verifyMinDb: roundDb(drain?.verifyMinDb),
     verifyInitMs: perfs.reduce((sum, p) => sum + (p.deVerifyInitMs ?? 0), 0),
     selfVerifyFallback: de.selfVerifyFallback,
     fallbackReason: de.fallbackReason,
+    fallbackFailedDb: roundDb(de.fallbackFailedDb),
+    fallbackFrameIndex: de.fallbackFrameIndex,
+    fallbackThresholdDb: roundDb(de.fallbackThresholdDb),
     blankSuspects: drain?.blankSuspects ?? 0,
     blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
     blankRecaptures: drain?.blankRecaptures ?? 0,
@@ -162,6 +194,8 @@ function aggregateBeginFrameReuse(
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
   workerCount: number;
+  /** Auto-sizing provenance; undefined when a pin (htmlInCanvas / low-memory) short-circuited sizing. */
+  workerSizing?: WorkerSizing;
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
   compositionDurationSeconds: number;
@@ -198,6 +232,7 @@ export function buildRenderPerfSummary(input: {
     fps: fpsToNumber(input.job.config.fps),
     quality: input.job.config.quality,
     workers: input.workerCount,
+    workerSizing: input.workerSizing,
     chunkedEncode: input.enableChunkedEncode,
     chunkSizeFrames: input.enableChunkedEncode ? input.chunkedEncodeSize : null,
     compositionDurationSeconds: input.compositionDurationSeconds,

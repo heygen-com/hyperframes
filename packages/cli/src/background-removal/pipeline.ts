@@ -18,7 +18,7 @@ import { extname } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
-import { DEFAULT_VP9_CPU_USED } from "@hyperframes/engine";
+import { DEFAULT_VP9_CPU_USED, renderProvenanceArgs } from "@hyperframes/engine";
 
 export type OutputFormat = "webm" | "mov" | "png";
 
@@ -182,6 +182,7 @@ export function buildEncoderArgs(
       "-metadata:s:v:0",
       "alpha_mode=1",
       "-an",
+      ...renderProvenanceArgs(outputPath),
       outputPath,
     ];
   }
@@ -197,6 +198,7 @@ export function buildEncoderArgs(
       "-pix_fmt",
       "yuva444p10le",
       "-an",
+      ...renderProvenanceArgs(outputPath),
       outputPath,
     ];
   }

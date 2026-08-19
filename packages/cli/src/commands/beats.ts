@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
@@ -14,7 +15,7 @@ export const examples: Example[] = [
 
 function fail(message: string): never {
   console.error(c.error(message));
-  process.exit(1);
+  failCommand();
 }
 
 /** Locate the music track + its on-disk audio, or fail with a clear message. */

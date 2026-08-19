@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect, memo } from "react";
+import { useState, useCallback, useId, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
+import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -108,20 +109,9 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
 }: ShortcutsPanelProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
-  const shortcutsPanelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showShortcuts) return;
-    const handleMouseDown = (e: MouseEvent) => {
-      if (shortcutsPanelRef.current && !shortcutsPanelRef.current.contains(e.target as Node)) {
-        setShowShortcuts(false);
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown);
-    };
-  }, [showShortcuts]);
+  const shortcutsPanelId = useId();
+  const closeShortcuts = useCallback(() => setShowShortcuts(false), []);
+  const shortcutsPanelRef = useContextMenuDismiss(closeShortcuts);
 
   const commitJumpFrame = useCallback(() => {
     if (disabled) return;
@@ -153,13 +143,12 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
         <button
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
-          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
-            showShortcuts
-              ? "border-neutral-600 text-neutral-200 bg-neutral-800"
-              : "border-neutral-800 text-neutral-600 hover:text-neutral-300 hover:border-neutral-600"
+          className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+            showShortcuts ? "text-neutral-200" : "text-neutral-600 hover:text-neutral-300"
           }`}
           aria-label="Shortcuts and tools"
           aria-expanded={showShortcuts}
+          aria-controls={shortcutsPanelId}
         >
           <svg
             width="11"
@@ -179,6 +168,11 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       </Tooltip>
       {showShortcuts && (
         <div
+          id={shortcutsPanelId}
+          role="dialog"
+          // Deliberately NOT aria-modal. This is a non-modal disclosure: focus is
+          // not trapped and the rest of the editor stays operable, so claiming
+          // modality would make assistive tech treat the whole app as inert.
           className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
           style={{
             background: "#161618",

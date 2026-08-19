@@ -8,15 +8,16 @@
 //
 // commandFailed must be declared here (before the handlers) so the EPIPE
 // stream-error path can set it before process.exit(0). The telemetry exit
-// handler reads this flag to determine success/failure — an EPIPE exit
-// should NOT score as success:true in telemetry.
+// handler reads this flag to determine success/failure — an EPIPE that
+// interrupts a command should NOT score as success:true, but one that
+// arrives after the render artifact was validated is the normal agent-pipe
+// teardown and must stay success:true (see handleStreamEpipe).
 let commandFailed = false;
 
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (err) => {
     if ((err as NodeJS.ErrnoException).code === "EPIPE") {
-      commandFailed = true;
-      process.exit(0);
+      handleStreamEpipe();
     }
   });
 }
@@ -99,10 +100,21 @@ try {
 // Telemetry, update checks, and heavy modules are imported only when needed.
 // For --help we skip telemetry entirely.
 
-import { defineCommand, runMain } from "citty";
+import { defineCommand, runCommand } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
 import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
+import { isRenderSucceeded } from "./utils/render-success-state.js";
+import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
+import {
+  CliResultSignal,
+  CliRuntimeError,
+  CliUsageError,
+  consumeCommandResult,
+  registerRootExitCodeSanitizer,
+  registerRootExitRequester,
+  type CommandResult,
+} from "./utils/commandResult.js";
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
@@ -141,6 +153,8 @@ const commandLoaders = {
   events: () => import("./commands/events.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
+  "media-treatment": () =>
+    import("./commands/media-treatment.js").then((m) => m.mediaTreatmentCommand),
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
   compare: () => import("./commands/compare.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
@@ -151,15 +165,8 @@ const commandLoaders = {
   figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
-// Wrap each command's run() so a thrown failure reports its reason to telemetry
-// before citty catches the error and exits 1. The error is re-thrown unchanged,
-// preserving citty's print + exit-1 behavior. Commands that call process.exit()
-// themselves (e.g. `browser path`) bypass this and report inline.
 const subCommands = Object.fromEntries(
-  Object.entries(commandLoaders).map(([name, load]) => [
-    name,
-    trackCommandFailures(load, (err) => reportCommandFailure(command, err)),
-  ]),
+  Object.entries(commandLoaders).map(([name, load]) => [name, trackCommandFailures(load)]),
 );
 
 const main = defineCommand({
@@ -206,13 +213,15 @@ let _trackCommandResult:
     }) => void)
   | undefined;
 let _printUpdateNotice: (() => void) | undefined;
+let _printStalePinNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
+let telemetryReady: Promise<void> = Promise.resolve();
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
 // printed into a skill's captured output).
 if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
-  import("./telemetry/index.js").then((mod) => {
+  telemetryReady = import("./telemetry/index.js").then((mod) => {
     _flush = mod.flush;
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
@@ -225,6 +234,8 @@ if (!isHelp && command !== "telemetry" && command !== "events" && command !== "u
 
 // `events` skips the update check too — a skill-usage beacon must not add
 // network latency or trigger a background self-upgrade on the calling skill.
+// `telemetry` skips it because update metadata must never race the command
+// that changes the user's telemetry preference.
 // `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
 // excluded from the self-update notice: a command that is itself actively
 // checking/reconciling skills (`skills check`, `skills update`) must not also
@@ -236,6 +247,7 @@ if (
   !hasJsonFlag &&
   command !== "upgrade" &&
   command !== "events" &&
+  command !== "telemetry" &&
   command !== "skills"
 ) {
   // Report any completed auto-install from the previous run first, before
@@ -245,6 +257,7 @@ if (
 
   import("./utils/updateCheck.js").then(async (mod) => {
     _printUpdateNotice = mod.printUpdateNotice;
+    _printStalePinNotice = mod.printStalePinNotice;
     const result = await mod.checkForUpdate().catch(() => null);
     if (result?.updateAvailable) {
       const auto = await import("./utils/autoUpdate.js").catch(() => null);
@@ -262,64 +275,183 @@ if (
 
 const commandStart = Date.now();
 const runId = getRunId();
+let finalized = false;
 
-// Async flush for normal exit. `beforeExit` re-fires every time the
-// event loop drains, and the async `_flush()` itself schedules new
-// work — so a plain `on` listener would print the update notice (and
-// re-flush) once per drain (the user-reported double-print). `once`
-// detaches after first invocation, which is what we want for both.
-process.once("beforeExit", () => {
-  _flush?.().catch(() => {});
+// Root-only lifecycle fan-in: telemetry, notices, flushing, then exit code.
+// fallow-ignore-next-line complexity
+async function finalizeCli(result: CommandResult): Promise<void> {
+  if (finalized) return;
+  finalized = true;
+  commandFailed ||= result.exitCode !== 0;
+  await telemetryReady.catch(() => {});
+  _trackCommandResult?.({
+    command,
+    success: result.exitCode === 0 && commandSucceededForTelemetry(),
+    exitCode: result.exitCode,
+    durationMs: Date.now() - commandStart,
+    runId,
+  });
+  await _flush?.().catch(() => {});
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
+    _printStalePinNotice?.();
     _printSkillsUpdateNotice?.();
+  }
+  process.exitCode = result.exitCode;
+}
+
+registerRootExitRequester((exitCode) => {
+  void finalizeCli({
+    exitCode,
+    kind: exitCode === 0 ? "success" : "runtime_error",
+    presented: true,
+  }).finally(() => process.exit(exitCode));
+});
+
+registerRootExitCodeSanitizer(() => {
+  if (process.exitCode !== undefined && process.exitCode !== 0) {
+    process.exitCode = 0;
   }
 });
 
 // Sync-only: exit handlers cannot await promises or drain microtasks.
 // _trackCommandResult / _trackCliError are captured references resolved
 // at init time, so they're callable synchronously here.
-process.on("exit", (code) => {
-  _trackCommandResult?.({
-    command,
-    success: code === 0 && !commandFailed,
-    exitCode: code,
-    durationMs: Date.now() - commandStart,
-    runId,
-  });
-  _flushSync?.();
-});
+process.on(
+  "exit",
+  // fallow-ignore-next-line complexity
+  (code) => {
+    if (!finalized) {
+      _trackCommandResult?.({
+        command,
+        success: code === 0 && commandSucceededForTelemetry(),
+        exitCode: code,
+        durationMs: Date.now() - commandStart,
+        runId,
+      });
+    }
+    // Unconditional — `finalized` only means finalizeCli STARTED its awaited
+    // flush(). A process.exit() racing that flush (the EPIPE path under agent
+    // pipes) kills the in-flight request, and gating this fallback behind
+    // `finalized` silently dropped the still-queued events — the 0.7.65
+    // render_complete regression. flushSync() is safe to over-call: an empty
+    // queue is a no-op, and event uuids make re-sends idempotent.
+    _flushSync?.();
+  },
+);
 
-process.on("uncaughtException", (error) => {
-  if ((error as NodeJS.ErrnoException).code === "EPIPE") {
-    commandFailed = true;
-    process.exit(0);
-  }
-  commandFailed = true;
+// Report a CLI error event to telemetry. Extracted from the process-error
+// handlers so their bodies stay simple linear branches (see fallow CRAP
+// scoring — arrow handlers with inline telemetry calls tip past threshold).
+function emitCliErrorEvent(kind: "uncaught_exception" | "unhandled_rejection", error: Error): void {
   _trackCliError?.({
     error_name: error.name,
     error_message: error.message,
     stack_trace: error.stack,
     command,
-    kind: "uncaught_exception",
+    kind,
   });
+}
+
+// Handle a post-artifact-validated throw: record the diagnostic, emit the
+// telemetry event, but do NOT mark the run as failed. Field signals:
+//   ts=1784169760, ts=1784171150, ts=1784172467 (all win32/x64, CLI 0.7.58,
+//   ffmpeg=no, 1080x1920, valid MP4s on disk).
+// The render is valid — a worker teardown / browser shutdown / stray
+// subprocess stream error after `renderSucceeded` was set must not flip
+// exit code or telemetry success to failure.
+function reportPostRenderTerminationEvent(
+  label: "uncaughtException" | "unhandledRejection",
+  kind: "uncaught_exception" | "unhandled_rejection",
+  error: Error,
+): void {
+  process.stderr.write(
+    `  [hyperframes] Post-render ${label} (render already succeeded): ${error.message}\n`,
+  );
+  emitCliErrorEvent(kind, error);
+}
+
+// Terminate the process after a post-artifact-validated throw. Wraps
+// report + flush + exit(0) so the caller arrow handler doesn't accumulate
+// optional-chain branches (fallow CRAP scoring on the arrow tips past
+// threshold otherwise).
+function exitAfterPostRenderTermination(
+  label: "uncaughtException" | "unhandledRejection",
+  kind: "uncaught_exception" | "unhandled_rejection",
+  error: Error,
+): never {
+  reportPostRenderTerminationEvent(label, kind, error);
+  _flushSync?.();
+  process.exit(0);
+}
+
+// A closed pipe (EPIPE) is the NORMAL teardown when the CLI runs under a
+// piped agent (Claude Code, Codex, …) — the reader may stop consuming as
+// soon as it has what it needs. Exit cleanly, but only score the run as a
+// failure when the pipe died BEFORE the render artifact was validated:
+// unconditionally setting `commandFailed = true` here marked every piped
+// successful render as success:false (0.7.65–0.7.90). Delivery of anything
+// still queued (render_complete's eager flush() dies with the process) is
+// owned by the unconditional flushSync() in the `exit` handler below.
+function handleStreamEpipe(): never {
+  if (!isRenderSucceeded()) commandFailed = true;
+  process.exit(0);
+}
+
+// Success gate for the cli_command_result telemetry field. `commandFailed`
+// can be set by pre-artifact noise — a stray unhandledRejection mid-render,
+// or an EPIPE that fires before validation on a run that still completes.
+// Once the render artifact has been validated (`isRenderSucceeded()`), that
+// earlier noise must not score the run as a failure: the run delivered.
+// Genuine failures keep a non-zero exit code and are caught by the
+// `exitCode === 0 &&` half of the expression at both call sites.
+function commandSucceededForTelemetry(): boolean {
+  return !commandFailed || isRenderSucceeded();
+}
+
+// Terminate the process after a genuine CLI failure — mark commandFailed,
+// emit telemetry, flush, exit(1). Same rationale as above: keeps the arrow
+// handler linear so fallow CRAP stays under threshold.
+function exitAfterCliFailure(
+  kind: "uncaught_exception" | "unhandled_rejection",
+  error: Error,
+): never {
+  commandFailed = true;
+  emitCliErrorEvent(kind, error);
   _flushSync?.();
   process.exit(1);
+}
+
+process.on("uncaughtException", (error) => {
+  if ((error as NodeJS.ErrnoException).code === "EPIPE") {
+    handleStreamEpipe();
+  }
+  // Post-artifact-validated shutdown throws must not turn a valid render
+  // into an exit-1 "no final error message" failure. The render command
+  // sets `renderSucceeded` right after the producer resolves and the
+  // artifact is committed.
+  if (isRenderSucceeded()) {
+    exitAfterPostRenderTermination("uncaughtException", "uncaught_exception", error);
+  }
+  exitAfterCliFailure("uncaught_exception", error);
 });
 
 // unhandledRejection does not call process.exit() — Node may continue
 // running if the rejection is non-fatal (e.g. a fire-and-forget promise).
 // The exit handler above will still fire with the real exit code.
 process.on("unhandledRejection", (reason) => {
-  commandFailed = true;
   const error = reason instanceof Error ? reason : new Error(String(reason));
-  _trackCliError?.({
-    error_name: error.name,
-    error_message: error.message,
-    stack_trace: error.stack,
-    command,
-    kind: "unhandled_rejection",
-  });
+  // Same rationale as the uncaughtException branch above: a stray promise
+  // rejection during post-artifact-validated cleanup must not mark a valid
+  // render as failed. `commandFailed` gates the success:true telemetry
+  // field — keep it false when the render actually succeeded.
+  if (isRenderSucceeded()) {
+    reportPostRenderTerminationEvent("unhandledRejection", "unhandled_rejection", error);
+    return;
+  }
+  commandFailed = true;
+  process.exitCode = 1;
+  emitCliErrorEvent("unhandled_rejection", error);
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations
@@ -331,4 +463,41 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined);
 }
 
-runMain(main, { showUsage });
+async function showRequestedUsage(): Promise<void> {
+  const requested = await resolveCommandUsage(main as CommandDef, argv);
+  return showUsage(requested.command, requested.parent);
+}
+
+function commandResultForError(error: unknown): CommandResult {
+  if (error instanceof CliResultSignal) return error.result;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.result;
+  return { exitCode: 1, kind: "runtime_error" };
+}
+
+// Root-only command boundary; keeping every result path here prevents modules
+// from bypassing output, telemetry, or finalizers.
+// fallow-ignore-next-line complexity
+async function executeCli(): Promise<void> {
+  let result: CommandResult = { exitCode: 0, kind: "success" };
+  try {
+    if (isHelp) await showRequestedUsage();
+    else await runCommand(main, { rawArgs: argv });
+  } catch (error) {
+    result = commandResultForError(error);
+    if (!(error instanceof CliResultSignal)) {
+      commandFailed = true;
+      await reportCommandFailure(command, error);
+      const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
+      if (error instanceof CliUsageError && !error.result.presented) await showRequestedUsage();
+      if (!typed || !error.result.presented) {
+        console.error(error instanceof Error ? error.message : String(error));
+      }
+    }
+  } finally {
+    const pending = consumeCommandResult();
+    if (pending.exitCode !== 0 || result.exitCode === 0) result = pending;
+    await finalizeCli(result);
+  }
+}
+
+await executeCli();

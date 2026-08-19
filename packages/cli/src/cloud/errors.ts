@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 /**
  * Shared API-error reporter for the cloud subverbs.
  *
@@ -19,7 +20,7 @@ import { HyperframesApiError } from "./_gen/client.js";
  */
 const ERROR_CODE_HINTS: Record<string, string> = {
   hyperframes_project_too_large:
-    "The zip exceeded the 200 MB limit. Trim large media (or pre-host them and reference by URL), then try again.",
+    "The zip exceeded the 200 MB limit. Run `hyperframes cloud render --dry-run`, then add only verified-unneeded paths to `.hyperframesignore` or pre-host required large media.",
   hyperframes_render_not_found:
     "The render_id no longer exists — either soft-deleted or never created.",
   invalid_parameter:
@@ -61,7 +62,7 @@ export function reportApiError(
   if (err instanceof HyperframesApiError) {
     if (err.status === 404 && options.notFound) {
       errorBox("Not found", options.notFound);
-      process.exit(1);
+      failCommand();
     }
     const hint = err.code ? hints[err.code] : undefined;
     const title = `${stage} (HTTP ${err.status})`;
@@ -78,12 +79,12 @@ export function reportApiError(
     } else {
       errorBox(title, err.message);
     }
-    process.exit(1);
+    failCommand();
   }
   if (err instanceof Error) {
     errorBox(stage, err.message, options.suggestion);
-    process.exit(1);
+    failCommand();
   }
   errorBox(stage, String(err), options.suggestion);
-  process.exit(1);
+  failCommand();
 }

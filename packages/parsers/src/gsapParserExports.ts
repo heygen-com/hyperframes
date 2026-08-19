@@ -14,6 +14,7 @@ export type {
   GsapMethod,
   GsapKeyframesData,
   GsapPercentageKeyframe,
+  SourcedGsapPercentageKeyframe,
   ParsedGsap,
   ArcPathConfig,
   ArcPathSegment,

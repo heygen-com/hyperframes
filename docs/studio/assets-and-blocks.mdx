@@ -1,0 +1,63 @@
+---
+title: "Use Assets and Catalog"
+description: "Import project media, reuse existing files, and add ready-made visuals."
+---
+
+Use **Assets** for media files. Use **Catalog** for reusable visual scenes and components.
+
+<div className="not-prose my-7 max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 dark:border-zinc-800">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-assets-catalog-loop-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/studio-assets-catalog-loop-v1.jpg"
+    autoPlay
+    muted
+    loop
+    playsInline
+    preload="metadata"
+  />
+  <div className="px-3 py-2 text-sm text-zinc-600 dark:text-zinc-400">
+    Import project media, then add a compatible Catalog scene at the playhead.
+  </div>
+</div>
+
+## Import an asset
+
+1. Open **Assets**.
+2. Choose **Import media**, or drop files into the panel.
+3. Preview it before adding it to the project.
+4. Drag it to the timeline or use it from the relevant inspector control.
+
+Keep clear filenames. `product-dashboard-dark.png` is easier to reuse than `Screenshot 42.png`.
+
+## Reuse project assets
+
+**This project** contains the files available to the open project. **All projects** is a read-only
+index of the global `~/.media` cache, where resolved media can be found again across projects. It is
+not a file manager, so files cannot be deleted or replaced from that view.
+
+If a large video is still preparing a preview or proxy, wait for that process before judging playback performance.
+
+## Add a Catalog item
+
+1. Open **Catalog**.
+2. Browse or search for the visual you need.
+3. Preview the result.
+4. If the item supports direct insertion, choose **Add** to place it at the current time.
+5. Otherwise, copy the generated prompt into your agent chat.
+6. Replace sample content and match the project’s timing and design.
+
+Not every Catalog item can be inserted directly. Some are patterns that an agent adapts to the current composition.
+
+Browse the full [Catalog](/catalog) when you want to compare categories and individual examples.
+
+<Tip>
+  Reusable does not mean finished. Remove sample content and decorative motion that does not support
+  your story.
+</Tip>
+
+## Related topics
+
+- [Work with media](/guides/media)
+- [Browse the Catalog](/catalog)
+- [Turn values into reusable variables](/studio/variables)

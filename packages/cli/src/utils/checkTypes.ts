@@ -3,6 +3,7 @@ import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
 import type { ProjectDir } from "./project.js";
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 export interface CheckOptions {
   samples: number;
@@ -18,6 +19,11 @@ export interface CheckOptions {
   snapshots: boolean;
   captionZone?: CaptionZoneOptions;
   frameCheck?: FrameCheckOptions;
+  /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
+  layout?: LayoutOptions;
+  /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
+  autoProxy?: boolean;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 export interface CaptionZoneOptions {
@@ -33,6 +39,12 @@ export interface FrameCheckOptions {
   tol?: number;
   severity?: "error" | "warning";
   seek?: number[];
+}
+
+/** Layout-audit tuning passed through to `__hyperframesLayoutAudit`. All fields optional. */
+export interface LayoutOptions {
+  /** Prose `text_occluded` coveredFraction floor (0–1; default 0.15); atomic labels still flag at any hit. */
+  proseCoverageFloor?: number;
 }
 
 export type CheckSeverity = "error" | "warning" | "info";
@@ -118,6 +130,47 @@ export interface CheckGeometryCandidate extends CheckAnchor {
   overflow?: LayoutOverflow;
 }
 
+/** One rotatable element's geometry at a single seeked sample, produced by
+ * `__hyperframesRotationSample` (layout-audit.browser.js) and accumulated
+ * across the grid to detect `rotation_pivot_drift`. */
+export interface RotationSample {
+  time: number;
+  selector: string;
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  angle: number;
+}
+
+/** One elongated rotating SVG figure's material geometry at a single seeked
+ * sample, produced by `__hyperframesOffPivotRotationSample`. `(ax,ay)`/`(bx,by)` are
+ * two fixed material points on the figure (major-axis endpoints) mapped to
+ * screen space, so their cross-frame trajectory recovers the true center of
+ * rotation; `(hx,hy)` is the dial's static hub and `hr` its radius. The sample
+ * time is hoisted to the enclosing {@link OffPivotFrame}, not repeated here. */
+export interface OffPivotRotationSample {
+  selector: string;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  len: number;
+  angle: number;
+  hx: number | null;
+  hy: number | null;
+  hr: number | null;
+  hubCount: number;
+}
+
+/** All elongated rotating figures at one seeked sample. Time is hoisted to the
+ * frame (matching {@link ConnectorFrame}) so the per-figure samples don't repeat
+ * it; frames are accumulated across the grid to detect off_pivot_rotation. */
+export interface OffPivotFrame {
+  time: number;
+  samples: OffPivotRotationSample[];
+}
+
 export type MotionSpecResolution =
   | { kind: "none" }
   | { kind: "valid"; path: string; spec: MotionSpec }
@@ -130,11 +183,26 @@ export interface CheckAuditDriver {
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
   seek(time: number): Promise<void>;
-  collectLayout(time: number, tolerance: number): Promise<AnchoredLayoutIssue[]>;
+  /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */
+  seekGeometry(time: number): Promise<void>;
+  collectLayout(
+    time: number,
+    tolerance: number,
+    layout?: LayoutOptions,
+  ): Promise<AnchoredLayoutIssue[]>;
+  /** content_overlap only, for the dense re-sampling grid — catches transient text collisions the sparse grid seeks past. */
+  collectOverlap(time: number): Promise<AnchoredLayoutIssue[]>;
   /** Frozen-sweep guard (#U10): an opaque per-sample geometry+opacity
    * fingerprint of the current seeked state, for detecting a timeline that
    * never advances under seek. See layout-audit.browser.js. */
   collectLayoutGeometry(): Promise<string>;
+  /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
+   * the current seeked state. Accumulated across the grid — see checkPipeline. */
+  collectRotationSample(time: number): Promise<RotationSample[]>;
+  /** off_pivot_rotation: every elongated rotating SVG figure's material-point
+   * geometry + resolved dial hub at the current seeked state, as a time-hoisted
+   * frame envelope. */
+  collectOffPivotRotationSample(time: number): Promise<OffPivotFrame>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,

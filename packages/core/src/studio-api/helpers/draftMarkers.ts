@@ -1,2 +1,2 @@
-/** @deprecated Import from @hyperframes/studio-server/draft-markers */
-export * from "@hyperframes/studio-server/draft-markers";
+/** @deprecated Import from @hyperframes/core/editing/draft-markers. */
+export * from "../../editing/draftMarkers.js";

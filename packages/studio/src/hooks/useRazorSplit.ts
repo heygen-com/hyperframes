@@ -1,167 +1,24 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { getTimelineElementLabel, collectHtmlIds } from "../utils/studioHelpers";
+import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { trackStudioRazorSplit } from "../telemetry/events";
-import {
-  canSplitElementAt,
-  selectSplittableElements,
-  buildPatchTarget,
-  readFileContent,
-} from "../utils/timelineElementSplit";
+import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
+import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
+  // fallow-ignore-next-line code-duplication
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
+  observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
+  forceReloadSdkSession?: () => void;
   isRecordingRef?: React.RefObject<boolean>;
-}
-
-function generateSplitId(existingIds: string[], baseId: string): string {
-  let newId = `${baseId}-split`;
-  let suffix = 2;
-  while (existingIds.includes(newId)) {
-    newId = `${baseId}-split-${suffix++}`;
-  }
-  return newId;
-}
-
-async function splitHtmlElement(
-  projectId: string,
-  targetPath: string,
-  patchTarget: NonNullable<ReturnType<typeof buildPatchTarget>>,
-  splitTime: number,
-  newId: string,
-  elementStart: number,
-  elementDuration: number,
-): Promise<{ ok: boolean; changed?: boolean; content?: string }> {
-  const response = await fetch(
-    `/api/projects/${projectId}/file-mutations/split-element/${encodeURIComponent(targetPath)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target: patchTarget,
-        splitTime,
-        newId,
-        elementStart,
-        elementDuration,
-      }),
-    },
-  );
-  if (!response.ok) throw new Error("Split request failed");
-  return (await response.json()) as { ok: boolean; changed?: boolean; content?: string };
-}
-
-async function splitGsapAnimations(
-  projectId: string,
-  targetPath: string,
-  originalId: string,
-  newId: string,
-  splitTime: number,
-  elementStart: number,
-  elementDuration: number,
-): Promise<{ content: string | null; skippedSelectors?: string[] }> {
-  const response = await fetch(
-    `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(targetPath)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "split-animations",
-        originalId,
-        newId,
-        splitTime,
-        elementStart,
-        elementDuration,
-      }),
-    },
-  );
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (errorBody?.error === "no GSAP script found in file") {
-      return { content: null };
-    }
-    throw new Error(errorBody?.error ?? `GSAP animation split failed (${response.status})`);
-  }
-  const data = (await response.json()) as {
-    ok?: boolean;
-    after?: string;
-    skippedSelectors?: string[];
-  };
-  return {
-    content: data.ok && data.after ? data.after : null,
-    skippedSelectors: data.skippedSelectors,
-  };
-}
-
-// fallow-ignore-next-line complexity
-async function executeSplit(
-  pid: string,
-  element: TimelineElement,
-  splitTime: number,
-  activeCompPath: string | null,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
-): Promise<{
-  targetPath: string;
-  originalContent: string;
-  patchedContent: string;
-  changed: boolean;
-  skippedSelectors?: string[];
-}> {
-  const patchTarget = buildPatchTarget(element);
-  if (!patchTarget) throw new Error("Clip is missing a patchable target.");
-
-  const targetPath = element.sourceFile || activeCompPath || "index.html";
-  const originalContent = await readFileContent(pid, targetPath);
-  const newId = generateSplitId(collectHtmlIds(originalContent), element.domId || "clip");
-
-  const splitResult = await splitHtmlElement(
-    pid,
-    targetPath,
-    patchTarget,
-    splitTime,
-    newId,
-    element.start,
-    element.duration,
-  );
-  if (!splitResult.ok) throw new Error("Failed to split clip.");
-  if (!splitResult.changed) {
-    return { targetPath, originalContent, patchedContent: originalContent, changed: false };
-  }
-
-  let patchedContent =
-    typeof splitResult.content === "string" ? splitResult.content : originalContent;
-
-  let skippedSelectors: string[] | undefined;
-  if (element.domId) {
-    try {
-      const gsapResult = await splitGsapAnimations(
-        pid,
-        targetPath,
-        element.domId,
-        newId,
-        splitTime,
-        element.start,
-        element.duration,
-      );
-      if (gsapResult.content) patchedContent = gsapResult.content;
-      if (gsapResult.skippedSelectors?.length) skippedSelectors = gsapResult.skippedSelectors;
-    } catch (gsapError) {
-      // GSAP mutation failed — the HTML split already wrote to disk.
-      // Restore the original content to avoid a corrupt half-split state.
-      await writeProjectFile(targetPath, originalContent);
-      throw gsapError;
-    }
-  }
-
-  return { targetPath, originalContent, patchedContent, changed: true, skippedSelectors };
 }
 
 export function useRazorSplit({
@@ -169,142 +26,119 @@ export function useRazorSplit({
   activeCompPath,
   showToast,
   writeProjectFile,
+  observeProjectFileVersion,
   recordEdit,
   domEditSaveTimestampRef,
   reloadPreview,
+  forceReloadSdkSession,
   isRecordingRef,
 }: UseRazorSplitOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
+  const synchronize = useCallback(() => {
+    let failure: unknown;
+    try {
+      forceReloadSdkSession?.();
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      reloadPreview();
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure) throw failure;
+  }, [forceReloadSdkSession, reloadPreview]);
+
+  const runCut = useCallback(
+    async (elements: readonly TimelineElement[], splitTime: number, mode: "single" | "all") => {
+      const pid = projectIdRef.current;
+      if (!pid || elements.length === 0) return;
+      const intents = buildAtomicCutIntents(elements, splitTime, activeCompPath);
+      const requestedCount = intents.reduce((count, file) => count + file.targets.length, 0);
+      const label =
+        mode === "single"
+          ? "Split timeline clip"
+          : `Split ${requestedCount} clips at ${splitTime.toFixed(2)}s`;
+
+      // Server writes arrive through the watcher before React can refresh. Keep
+      // the existing short self-write window active for this owned transaction.
+      domEditSaveTimestampRef.current = Date.now();
+      const result = await runAtomicCutTransaction({
+        projectId: pid,
+        intents,
+        label,
+        writeProjectFile,
+        recordEdit,
+        observeProjectFileVersion,
+        synchronize,
+      });
+      trackStudioRazorSplit({ mode, count: result.splitCount });
+      if (result.syncFailed) {
+        showToast(
+          "Cut was saved, but Studio could not refresh it. Reload the preview to resynchronize.",
+          "error",
+        );
+      }
+      if (result.skippedSelectors.length > 0) {
+        showToast(
+          `Some animations use non-ID selectors (${result.skippedSelectors.join(", ")}) and were not retargeted`,
+          "info",
+        );
+      }
+      return result;
+    },
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      observeProjectFileVersion,
+      recordEdit,
+      showToast,
+      synchronize,
+      writeProjectFile,
+    ],
+  );
+
   const handleRazorSplit = useCallback(
-    // fallow-ignore-next-line complexity
     async (element: TimelineElement, splitTime: number) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-
-      const pid = projectIdRef.current;
-      if (!pid || !canSplitElementAt(element, splitTime)) return;
-
+      if (!canSplitElementAt(element, splitTime)) return;
       try {
-        const { targetPath, originalContent, patchedContent, changed, skippedSelectors } =
-          await executeSplit(pid, element, splitTime, activeCompPath, writeProjectFile);
-
-        if (!changed) {
-          showToast("Failed to split clip — playhead may be outside the clip", "error");
-          return;
-        }
-
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Split timeline clip",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-
-        reloadPreview();
-        trackStudioRazorSplit({ mode: "single", count: 1 });
+        const result = await runCut([element], splitTime, "single");
+        if (!result) return;
+        if (result.syncFailed) return;
         showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
-        if (skippedSelectors?.length) {
-          showToast(
-            `Some animations use non-ID selectors (${skippedSelectors.join(", ")}) and were not retargeted`,
-            "info",
-          );
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to split timeline clip";
         showToast(message, "error");
       }
     },
-    [
-      activeCompPath,
-      recordEdit,
-      showToast,
-      writeProjectFile,
-      domEditSaveTimestampRef,
-      reloadPreview,
-      isRecordingRef,
-    ],
+    [isRecordingRef, runCut, showToast],
   );
 
-  // fallow-ignore-next-line complexity
   const handleRazorSplitAll = useCallback(
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-
-      const pid = projectIdRef.current;
-      if (!pid) return;
-      const { elements } = usePlayerStore.getState();
-      const splittable = selectSplittableElements(elements, splitTime);
+      const splittable = selectSplittableElements(usePlayerStore.getState().elements, splitTime);
       if (splittable.length === 0) return;
-
       try {
-        const originals = new Map<string, string>();
-        for (const el of splittable) {
-          const path = el.sourceFile || activeCompPath || "index.html";
-          if (!originals.has(path)) {
-            originals.set(path, await readFileContent(pid, path));
-          }
-        }
-
-        let splitCount = 0;
-        const finalContent = new Map<string, string>();
-
-        for (const element of splittable) {
-          const result = await executeSplit(
-            pid,
-            element,
-            splitTime,
-            activeCompPath,
-            writeProjectFile,
-          );
-          if (result.changed) {
-            finalContent.set(result.targetPath, result.patchedContent);
-            await writeProjectFile(result.targetPath, result.patchedContent);
-            splitCount++;
-          }
-        }
-
-        if (splitCount === 0) return;
-
-        domEditSaveTimestampRef.current = Date.now();
-        await recordEdit({
-          label: `Split ${splitCount} clips at ${splitTime.toFixed(2)}s`,
-          kind: "timeline",
-          files: Object.fromEntries(
-            [...finalContent].map(([path, after]) => [
-              path,
-              { before: originals.get(path) ?? "", after },
-            ]),
-          ),
-        });
-
-        reloadPreview();
-        trackStudioRazorSplit({ mode: "all", count: splitCount });
-        showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
+        const result = await runCut(splittable, splitTime, "all");
+        if (!result) return;
+        if (result.syncFailed) return;
+        showToast(`Split ${result.splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to split clips";
         showToast(message, "error");
       }
     },
-    [
-      activeCompPath,
-      recordEdit,
-      showToast,
-      writeProjectFile,
-      domEditSaveTimestampRef,
-      reloadPreview,
-      isRecordingRef,
-    ],
+    [isRecordingRef, runCut, showToast],
   );
 
   return { handleRazorSplit, handleRazorSplitAll };

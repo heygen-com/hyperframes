@@ -17,6 +17,12 @@ packages/producer/tests/**/*.webm filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/*.png filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/output/compiled.html filter=lfs diff=lfs merge=lfs -text
 
+# HF#2550 fixture's source index.html carries the real-world project's
+# embedded base64 assets (744 KB) — over the largefiles hook's 500 KB
+# non-LFS limit. Scoped to this one file, not a broad tests/**/*.html
+# pattern, since every other fixture's source HTML is small plain git.
+packages/producer/tests/hf2550-video-subcomposition-ghost/src/index.html filter=lfs diff=lfs merge=lfs -text
+
 # ONNX models must ALWAYS use LFS regardless of location: a 31 MB ppmattingv2
 # model was once committed raw into skills/ then deleted — but a raw commit
 # lives in history forever. No path in the repo legitimately ships a raw .onnx.
@@ -30,3 +36,20 @@ packages/producer/tests/**/output/compiled.html filter=lfs diff=lfs merge=lfs -t
 # which is the actual implementation, surfaces as the dominant language.
 registry/**/*.html linguist-vendored
 *.html linguist-detectable=false
+
+# Repo-native project-skill assets — the changelog-video skill ships a 12 MB
+# animated background (bg-pattern.mp4) and a 5 MB house music track (bgm.mp3)
+# alongside its 5 fonts. Route them through LFS in both mirrors so a fresh
+# clone stays lean; the largefiles pre-commit guard fails hard on raw commits
+# of media this size, and history rewrites after merge are painful (see the
+# comment on the packages/producer patterns above).
+.claude/skills/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+.claude/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+.agents/skills/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+.agents/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+
+# The documentation Reference Project ships real voice and music. Only the WAV
+# masters exceed the repository's 500 KB non-LFS limit, so only those are routed
+# through LFS — the small MP3 stings stay plain so the example still clones and
+# renders without `git lfs pull`.
+examples/docs-reference-project/**/*.wav filter=lfs diff=lfs merge=lfs -text

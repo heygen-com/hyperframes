@@ -7,8 +7,9 @@
 
 import { cpus, freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
-import { copyFile, rename } from "fs/promises";
+import { copyFile, readFile, rename } from "fs/promises";
 import { join } from "path";
+import { getHeapStatistics } from "v8";
 
 import {
   createCaptureSession,
@@ -18,16 +19,24 @@ import {
   captureFrameToBufferPipelined,
   captureFrameToBuffer,
   getCapturePerfSummary,
+  DrawElementVerificationError,
   type CaptureSession,
   type CaptureOptions,
   type CapturePerfSummary,
   type BeforeCaptureHook,
 } from "./frameCapture.js";
+import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { getSystemTotalMb } from "./systemMemory.js";
+import {
+  CaptureFailure,
+  classifyCaptureFailure,
+  isFatalCaptureFailure,
+  type CaptureWorkerDiagnostic,
+} from "./captureFailure.js";
 
 export interface WorkerTask {
   workerId: number;
@@ -57,10 +66,19 @@ export interface WorkerResult {
   framesCaptured: number;
   startFrame: number;
   endFrame: number;
+  /**
+   * Mirrors the originating `WorkerTask.frameStride` (default 1). Required by
+   * `expectedFramesForTask` — without it, every interleaved (stride > 1)
+   * worker's expected count is computed as the full contiguous range instead
+   * of range/stride, so a fully-successful worker looks like it under-captured
+   * and gets misclassified as a silent death (see `synthesizeSilentWorkerExitError`).
+   */
+  frameStride?: number;
   durationMs: number;
   perf?: CapturePerfSummary;
   error?: string;
   diagnostics?: string[];
+  failure?: CaptureFailure;
 }
 
 export interface ParallelProgress {
@@ -93,7 +111,22 @@ type WorkerBrowserPoolDecision = {
   headlessShellPath?: string;
 };
 
-const MEMORY_PER_WORKER_MB = 256;
+// System-memory budget per parallel worker. Each worker is a full Chrome
+// process (SwiftShader compositor + raster threads) plus its share of parent-
+// process frame buffering — the old 256MB figure was ~6× under a measured
+// Chrome-under-capture RSS and let memory-constrained hosts overcommit (wild
+// 16GB black-slab report; 0.7.66 heap-OOM report on 24GB with 6 auto workers).
+const MEMORY_PER_WORKER_MB = 1536;
+// Parent-process V8 heap the coordinator itself needs regardless of worker
+// count (compile artifacts, puppeteer sessions, encoder state).
+const HEAP_RESERVED_MB = 1024;
+// Parent-process V8 heap consumed per worker (protocol buffers + in-flight
+// frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
+// default heap ⇒ >~500MB/worker + base. ponytail: advisory-only until the
+// workers_heap_* telemetry added alongside this constant validates the figure
+// — enforcing a guessed budget could silently cut worker counts fleet-wide.
+// TODO(PRINFRA-341): decide enforcement after ~2 weeks of fleet soak.
+const HEAP_PER_WORKER_MB = 640;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
 // Hard ceiling on explicit `--workers N` requests. Above this, the cost of
@@ -147,19 +180,164 @@ function compactDiagnosticLine(line: string): string {
   return line.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Expected frame count for a worker task, honoring its stride. Contiguous
+ * tasks (stride 1) expect `endFrame - startFrame`; interleaved tasks
+ * (stride > 1) expect `ceil((endFrame - startFrame) / stride)`, matching
+ * the loop shape in `captureFrameRange`.
+ */
+export function expectedFramesForTask(task: {
+  startFrame: number;
+  endFrame: number;
+  frameStride?: number;
+}): number {
+  const stride = task.frameStride ?? 1;
+  return Math.max(0, Math.ceil((task.endFrame - task.startFrame) / stride));
+}
+
+/**
+ * Synthetic terminal-error message for a worker whose exit didn't produce
+ * an explicit error string but under-captured its expected frame range.
+ * Field signal ts=1784042064: a 1292s Windows render hard-exited during
+ * capture with no final error string, leaving the operator with no
+ * actionable trace. This message surfaces the shortfall + reruns hint
+ * so downstream telemetry (and operators grepping logs) can classify the
+ * failure instead of it disappearing silently.
+ */
+export function synthesizeSilentWorkerExitError(
+  result: Pick<WorkerResult, "workerId" | "framesCaptured" | "startFrame" | "endFrame">,
+  expectedFrames: number,
+): string {
+  return (
+    `worker ${result.workerId} exited without terminal error string ` +
+    `(framesCaptured=${result.framesCaptured}, expected=${expectedFrames}, ` +
+    `range=[${result.startFrame}, ${result.endFrame})). ` +
+    `Field signal ts=1784042064 — this class of failure has been reported; ` +
+    `consider re-run with --workers=1 to isolate.`
+  );
+}
+
+/**
+ * A worker may return without an error string yet with `framesCaptured`
+ * below its task's expected count — the silent-exit shape field signal
+ * ts=1784042064 called out. Synthesize a terminal error string in-place so
+ * the caller's failure filter treats it as a failure (and so the caller's
+ * failure message actually names what went wrong). Requires each result to
+ * carry `frameStride` (see `WorkerResult`) — without it, an interleaved
+ * worker's true `framesCaptured` (range/stride) is compared against the full
+ * contiguous range and every successful interleaved worker false-positives.
+ */
+export function flagSilentWorkerExits(results: WorkerResult[]): void {
+  for (const r of results) {
+    if (!r.error && r.framesCaptured < expectedFramesForTask(r)) {
+      r.error = synthesizeSilentWorkerExitError(r, expectedFramesForTask(r));
+    }
+  }
+}
+
 export function formatWorkerFailure(result: WorkerResult): string {
-  const base = `Worker ${result.workerId}: ${result.error ?? "unknown error"}`;
+  const errorText =
+    result.error && result.error.length > 0
+      ? result.error
+      : synthesizeSilentWorkerExitError(result, expectedFramesForTask(result));
+  const base = `Worker ${result.workerId}: ${errorText}`;
   if (!result.diagnostics || result.diagnostics.length === 0) return base;
 
   const diagnostics = result.diagnostics.map(compactDiagnosticLine).join(" | ");
   return `${base}; diagnostics: ${diagnostics}`;
 }
 
-export function calculateOptimalWorkers(
+/** Which constraint produced the final auto-sized worker count. */
+export type WorkerSizingBound =
+  | "explicit"
+  | "too_few_frames"
+  | "cpu"
+  | "memory"
+  | "frames"
+  | "max_workers"
+  | "min_parallel_floor"
+  | "contention";
+
+/**
+ * Full provenance of a worker-sizing decision. Threaded into render
+ * observability/telemetry so fleet data can answer "why N workers?" and
+ * "would the heap budget have prevented this OOM?" without a repro.
+ */
+export interface WorkerSizing {
+  workers: number;
+  boundBy: WorkerSizingBound;
+  cpuBasedWorkers: number;
+  memoryBasedWorkers: number;
+  frameBasedWorkers: number;
+  effectiveMaxWorkers: number;
+  /**
+   * ADVISORY, not enforced (see HEAP_PER_WORKER_MB): how many workers the
+   * parent process's V8 heap could feed. Compare against `workers` in
+   * telemetry to validate the budget before enforcement.
+   */
+  heapBasedWorkers: number;
+  /** V8 `heap_size_limit` for the parent process, MB. */
+  heapLimitMb: number;
+  totalMemoryMb: number;
+  cpuCount: number;
+  captureCostMultiplier: number;
+  /** true when the chosen count exceeds the advisory heap budget. */
+  exceedsHeapAdvisory: boolean;
+}
+
+/**
+ * Compute the auto worker count together with the full sizing provenance.
+ * `calculateOptimalWorkers` is the thin legacy wrapper returning `.workers`.
+ */
+// The branch count is the decision provenance itself — each if records WHICH
+// constraint bound, which is the entire point of the function.
+// fallow-ignore-next-line complexity
+export function computeWorkerSizing(
   totalFrames: number,
   requested?: number,
   config?: WorkerSizingConfig,
-): number {
+): WorkerSizing {
+  const cpuCount = cpus().length;
+  // Use total memory instead of free memory — macOS reports misleadingly low
+  // freemem() because it aggressively caches files in "inactive" memory that
+  // is immediately reclaimable.
+  const totalMemoryMb = getSystemTotalMb();
+  const heapLimitMb = Math.round(getHeapStatistics().heap_size_limit / (1024 * 1024));
+  const heapBasedWorkers = Math.max(
+    1,
+    Math.floor((heapLimitMb - HEAP_RESERVED_MB) / HEAP_PER_WORKER_MB),
+  );
+  const cpuBasedWorkers = Math.max(1, cpuCount - 2);
+  const memoryBasedWorkers = Math.max(1, Math.floor((totalMemoryMb * 0.5) / MEMORY_PER_WORKER_MB));
+  const frameBasedWorkers = Math.floor(totalFrames / MIN_FRAMES_PER_WORKER);
+  const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);
+
+  const base = {
+    cpuBasedWorkers,
+    memoryBasedWorkers,
+    frameBasedWorkers,
+    heapBasedWorkers,
+    heapLimitMb,
+    totalMemoryMb,
+    cpuCount,
+    captureCostMultiplier,
+  };
+  const finish = (workers: number, boundBy: WorkerSizingBound, effectiveMaxWorkers: number) => ({
+    workers,
+    boundBy,
+    effectiveMaxWorkers,
+    ...base,
+    exceedsHeapAdvisory: workers > heapBasedWorkers,
+  });
+
+  if (requested !== undefined) {
+    return finish(
+      Math.max(MIN_WORKERS, Math.min(ABSOLUTE_MAX_WORKERS, requested)),
+      "explicit",
+      ABSOLUTE_MAX_WORKERS,
+    );
+  }
+
   // Resolve effective values: config overrides → DEFAULT_CONFIG fallback.
   const effectiveMaxWorkers = (() => {
     const concurrency = config?.concurrency ?? DEFAULT_CONFIG.concurrency;
@@ -172,28 +350,22 @@ export function calculateOptimalWorkers(
   const effectiveMinParallelFrames = config?.minParallelFrames ?? DEFAULT_CONFIG.minParallelFrames;
   const effectiveLargeRenderThreshold =
     config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
-  const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);
 
-  if (requested !== undefined) {
-    return Math.max(MIN_WORKERS, Math.min(effectiveMaxWorkers, requested));
+  if (totalFrames < MIN_FRAMES_PER_WORKER * 2) {
+    return finish(1, "too_few_frames", effectiveMaxWorkers);
   }
 
-  if (totalFrames < MIN_FRAMES_PER_WORKER * 2) return 1;
-
-  const cpuCount = cpus().length;
-  const cpuBasedWorkers = Math.max(1, cpuCount - 2);
-
-  // Use total memory instead of free memory — macOS reports misleadingly low
-  // freemem() because it aggressively caches files in "inactive" memory that
-  // is immediately reclaimable.
-  const totalMemoryMB = getSystemTotalMb();
-  const memoryBasedWorkers = Math.max(1, Math.floor((totalMemoryMB * 0.5) / MEMORY_PER_WORKER_MB));
-
-  const frameBasedWorkers = Math.floor(totalFrames / MIN_FRAMES_PER_WORKER);
-
   const optimal = Math.min(cpuBasedWorkers, memoryBasedWorkers, frameBasedWorkers);
+  const optimalBound: WorkerSizingBound =
+    optimal === cpuBasedWorkers ? "cpu" : optimal === memoryBasedWorkers ? "memory" : "frames";
   const minWorkersForJob = totalFrames >= effectiveMinParallelFrames ? 2 : MIN_WORKERS;
   let finalWorkers = Math.max(minWorkersForJob, Math.min(effectiveMaxWorkers, optimal));
+  let boundBy: WorkerSizingBound =
+    finalWorkers === optimal
+      ? optimalBound
+      : finalWorkers === effectiveMaxWorkers && effectiveMaxWorkers < optimal
+        ? "max_workers"
+        : "min_parallel_floor";
 
   // Adaptive scaling: cap workers for large or expensive renders to prevent
   // CPU contention. Each Chrome process (with SwiftShader) is CPU-heavy; too
@@ -210,10 +382,19 @@ export function calculateOptimalWorkers(
     const cpuScaledMax = Math.max(MIN_WORKERS, Math.floor(cpuCount / weightedCoresPerWorker));
     if (finalWorkers > cpuScaledMax) {
       finalWorkers = cpuScaledMax;
+      boundBy = "contention";
     }
   }
 
-  return finalWorkers;
+  return finish(finalWorkers, boundBy, effectiveMaxWorkers);
+}
+
+export function calculateOptimalWorkers(
+  totalFrames: number,
+  requested?: number,
+  config?: WorkerSizingConfig,
+): number {
+  return computeWorkerSizing(totalFrames, requested, config).workers;
 }
 
 export function distributeFrames(
@@ -372,6 +553,126 @@ async function captureFrameRange(
   return framesCaptured;
 }
 
+/**
+ * The armed self-verify sample indices this task actually captured: inside
+ * `[startFrame, endFrame)` and on the task's stride lattice. Mirrors the
+ * capture loop in `captureFrameRange` (`i += stride` from `startFrame`).
+ */
+export function selectVerifySampleIndicesForTask(
+  sampleIndices: Iterable<number>,
+  task: Pick<WorkerTask, "startFrame" | "endFrame" | "frameStride">,
+): number[] {
+  const stride = task.frameStride ?? 1;
+  const selected: number[] = [];
+  for (const idx of sampleIndices) {
+    if (idx < task.startFrame || idx >= task.endFrame) continue;
+    if ((idx - task.startFrame) % stride !== 0) continue;
+    selected.push(idx);
+  }
+  return selected.sort((a, b) => a - b);
+}
+
+/**
+ * Disk-path drawElement self-verification (PRINFRA-352). Parallel DISK
+ * workers arm the same pre-injection ground-truth samples as the streaming
+ * path (`resolveParallelDeVerifySamples` even raises the density for
+ * multi-worker capture) — but only the streaming drain ever CHECKED them,
+ * so an explicit `--experimental-fast-capture --workers N` render shipped
+ * unverified drawElement frames. On a 16GB host, two concurrent
+ * hardware-GPU Chrome instances hit the documented compositor-tile-eviction
+ * damage class (frames displaced into vertical strips for one worker's
+ * whole range — reads as "corruption from the exact worker boundary").
+ *
+ * After a worker's range completes, re-read its captured files for the
+ * sampled indices and PSNR-compare against the session's ground truth.
+ * A breach throws `DrawElementVerificationError`, which the orchestrator's
+ * existing pinned-fallback retry converts into a screenshot re-render —
+ * the same recovery the streaming drain gets.
+ */
+/** HF_DE_PAR_DEBUG=1 gated per-worker trace line (message built lazily). */
+function logParDebug(message: () => string): void {
+  if (process.env.HF_DE_PAR_DEBUG === "1") console.log(message());
+}
+
+/**
+ * Throw the verification error for a sample below the PSNR floor; log the
+ * pass otherwise. Split from the sampling loop for the complexity gate.
+ */
+function assertDiskSampleAboveFloor(
+  db: number,
+  verifyMinDb: number,
+  idx: number,
+  workerId: number,
+): void {
+  if (db < verifyMinDb) {
+    // Message keeps the contiguous "drawElement self-verify" phrase —
+    // captureFailure's VERIFICATION_ERROR_PATTERNS classifies on it.
+    throw new DrawElementVerificationError(
+      `drawElement self-verify failed at frame ${idx} (disk path, worker ${workerId}): ` +
+        `${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot`,
+      { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
+    );
+  }
+  console.log(
+    `[Parallel] drawElement disk self-verify passed (worker ${workerId}, frame ${idx}, ` +
+      `${db === Infinity ? "inf" : db.toFixed(1)}dB)`,
+  );
+}
+
+/**
+ * Compare one captured frame file against its ground truth. Returns the
+ * PSNR, or null on infrastructure failure (missing file already surfaces
+ * via the frame completeness check; ffmpeg spawn/tmpdir here) — a skipped
+ * sample is not damage evidence and must not fail the capture.
+ */
+async function psnrForDiskSample(
+  framePath: string,
+  truth: Buffer,
+  workerId: number,
+  idx: number,
+): Promise<number | null> {
+  try {
+    return await psnrDb(await readFile(framePath), truth);
+  } catch (err) {
+    console.warn(
+      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
+        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+// Branches are the gate conditions themselves (mode/armed/streaming guards +
+// per-sample skip/breach) — already decomposed into psnrForDiskSample +
+// assertDiskSampleAboveFloor; further splitting obscures the check.
+// fallow-ignore-next-line complexity
+export async function verifyDiskDrawElementSamples(
+  session: CaptureSession,
+  task: WorkerTask,
+  streaming: boolean,
+): Promise<void> {
+  // Streaming capture verifies every sampled frame in the drain guard already.
+  if (streaming || session.captureMode !== "drawelement") return;
+  const truths = session.deVerifyFrames;
+  if (!truths || truths.size === 0) return;
+  const verifyMinDb = resolveDeVerifyMinDb();
+  const ext = session.options.format === "png" ? "png" : "jpg";
+  const offset = task.outputFrameOffset ?? 0;
+  for (const idx of selectVerifySampleIndicesForTask(truths.keys(), task)) {
+    const truth = truths.get(idx);
+    if (!truth) continue;
+    const framePath = join(task.outputDir, `frame_${String(idx - offset).padStart(6, "0")}.${ext}`);
+    const db = await psnrForDiskSample(framePath, truth, task.workerId, idx);
+    if (db === null) continue;
+    assertDiskSampleAboveFloor(db, verifyMinDb, idx, task.workerId);
+  }
+}
+
+// Inherited worker-lifecycle shape (session create → verify GPU → init →
+// capture → self-verify → perf, with a classifying catch + closing finally);
+// flagged only because the disk self-verify call shifted its line range into
+// the changed-code audit. Not restructured by this PR.
+// fallow-ignore-next-line complexity
 async function executeWorkerTask(
   task: WorkerTask,
   serverUrl: string,
@@ -382,6 +683,7 @@ async function executeWorkerTask(
   onFrameBuffer?: (frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>,
   config?: Partial<EngineConfig>,
   parallel?: boolean,
+  onFailure?: (failure: CaptureFailure) => void,
 ): Promise<WorkerResult> {
   const startTime = Date.now();
   let framesCaptured = 0;
@@ -410,19 +712,16 @@ async function executeWorkerTask(
       createBeforeCaptureHook(),
       workerConfig,
     );
-    if (process.env.HF_DE_PAR_DEBUG === "1") {
-      console.log(`[par:w${task.workerId}] session created`);
-    }
+    logParDebug(() => `[par:w${task.workerId}] session created`);
     // Worker-0-only SwiftShader assertion — see `shouldVerifyWorkerGpu` and #955.
     if (shouldVerifyWorkerGpu(task.workerId, workerConfig)) {
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
-    if (process.env.HF_DE_PAR_DEBUG === "1") {
-      console.log(
-        `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
-      );
-    }
+    logParDebug(
+      () =>
+        `[par:w${task.workerId}] init done (mode=${session?.captureMode} workerEncode=${session?.workerEncodeEnabled === true})`,
+    );
     framesCaptured = await captureFrameRange(
       session,
       task,
@@ -432,27 +731,43 @@ async function executeWorkerTask(
       onFrameBuffer,
     );
 
+    await verifyDiskDrawElementSamples(session, task, Boolean(onFrameBuffer));
+
     perf = getCapturePerfSummary(session);
     return {
       workerId: task.workerId,
       framesCaptured,
       startFrame: task.startFrame,
       endFrame: task.endFrame,
+      frameStride: task.frameStride,
       durationMs: Date.now() - startTime,
       perf,
     };
   } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
     const diagnostics = session ? selectWorkerDiagnostics(session.browserConsoleBuffer) : [];
+    const workerDiagnostic: CaptureWorkerDiagnostic = {
+      workerId: task.workerId,
+      framesCaptured,
+      startFrame: task.startFrame,
+      endFrame: task.endFrame,
+      lines: diagnostics,
+    };
+    const failure = classifyCaptureFailure(error, {
+      signal,
+      workerDiagnostics: [workerDiagnostic],
+    });
+    onFailure?.(failure);
     return {
       workerId: task.workerId,
       framesCaptured,
       startFrame: task.startFrame,
       endFrame: task.endFrame,
+      frameStride: task.frameStride,
       durationMs: Date.now() - startTime,
       perf,
-      error: errMsg,
+      error: failure.message,
       diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
+      failure,
     };
   } finally {
     if (session) await closeCaptureSession(session).catch(() => {});
@@ -525,6 +840,16 @@ export async function executeParallelCapture(
     deVerifySamples === captureOptions.deVerifySamples
       ? captureOptions
       : { ...captureOptions, deVerifySamples };
+  const peerController = new AbortController();
+  const workerSignal = signal
+    ? AbortSignal.any([signal, peerController.signal])
+    : peerController.signal;
+  let firstFatalFailure: CaptureFailure | undefined;
+  const onFailure = (failure: CaptureFailure): void => {
+    if (firstFatalFailure || !isFatalCaptureFailure(failure)) return;
+    firstFatalFailure = failure;
+    peerController.abort(failure);
+  };
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
@@ -532,19 +857,29 @@ export async function executeParallelCapture(
         serverUrl,
         workerCaptureOptions,
         createBeforeCaptureHook,
-        signal,
+        workerSignal,
         onFrameCaptured,
         onFrameBuffer,
         config,
         parallel,
+        onFailure,
       ),
     ),
   );
 
-  const errors = results.filter((r) => r.error);
+  flagSilentWorkerExits(results);
+
+  const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {
     const errorMessages = errors.map(formatWorkerFailure).join("; ");
-    throw new Error(`[Parallel] Capture failed: ${errorMessages}`);
+    const representative = firstFatalFailure ?? errors.find((result) => result.failure)?.failure;
+    const workerDiagnostics = errors.flatMap((result) => result.failure?.workerDiagnostics ?? []);
+    throw new CaptureFailure({
+      kind: representative?.kind ?? "io",
+      message: `[Parallel] Capture failed: ${errorMessages}`,
+      cause: representative,
+      workerDiagnostics,
+    });
   }
 
   return results;

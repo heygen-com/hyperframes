@@ -1,13 +1,13 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
-import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
+import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
 import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
@@ -19,8 +19,8 @@ import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
-
-// ── Types ──
+import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 interface RecordEditInput {
   label: string;
@@ -32,20 +32,22 @@ interface RecordEditInput {
 export interface UseDomEditSessionParams {
   projectId: string | null;
   activeCompPath: string | null;
-  isMasterView: boolean;
   compIdToSrc: Map<string, string>;
   captionEditMode: boolean;
   compositionLoading: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  getTimelineSelectionSet: () => ReadonlySet<string>;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelectionSet: (ids: Set<string>) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
+  isRecordingRef?: React.RefObject<boolean>;
   refreshPreviewDocumentVersion: () => void;
-  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   updateEditingFileContent: (path: string, content: string) => void;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -60,31 +62,48 @@ export interface UseDomEditSessionParams {
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
-  syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
+  publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
 }
 
-// ── Hook ──
+/**
+ * Which elements a delete acts on. `expandGroup` widens the primary to the
+ * whole marquee group, which is what the Delete key means.
+ *
+ * The caller chooses rather than the delete deciding for everyone: Cut copies
+ * the primary alone, so expanding for it put one element on the clipboard and
+ * removed every other member of the group with it.
+ */
+export function membersForDelete(
+  selection: DomEditSelection,
+  group: DomEditSelection[],
+  options?: { expandGroup?: boolean },
+): DomEditSelection[] {
+  return options?.expandGroup && group.length > 0 ? group : [selection];
+}
 
 export function useDomEditSession({
   projectId,
   activeCompPath,
-  isMasterView,
   compIdToSrc,
   captionEditMode,
   compositionLoading,
   previewIframeRef,
   timelineElements,
+  getTimelineSelectionSet,
   setSelectedTimelineElementId,
+  setTimelineSelectionSet,
   setRightCollapsed,
   setRightPanelTab,
   showToast,
+  isRecordingRef,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
   readProjectFile,
@@ -101,19 +120,18 @@ export function useDomEditSession({
   previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
-  syncPreviewHistoryHotkey,
+  syncPreviewHotkeys,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
   openSourceForSelection,
   selectSidebarTab,
   getSidebarTab,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
+  const isMasterView = !activeCompPath || activeCompPath === "index.html";
   void _setRefreshKey;
-
-  // ── Selection ──
-
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -131,6 +149,7 @@ export function useDomEditSession({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
+    refreshDomEditGroupSelectionsFromPreview,
     applyMarqueeSelection,
   } = useDomSelection({
     projectId,
@@ -140,15 +159,15 @@ export function useDomEditSession({
     captionEditMode,
     previewIframeRef,
     timelineElements,
+    getTimelineSelectionSet,
     setSelectedTimelineElementId,
+    setTimelineSelectionSet,
     setRightCollapsed,
     setRightPanelTab,
     previewIframe,
     refreshKey,
     rightPanelTab,
   });
-
-  // ── Agent modal ──
 
   const {
     agentModalOpen,
@@ -178,7 +197,6 @@ export function useDomEditSession({
     previewDocumentVersion,
     refreshDomEditSelectionFromPreview,
   });
-
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
 
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
@@ -217,6 +235,7 @@ export function useDomEditSession({
     onFileContentChanged: updateEditingFileContent,
     showToast,
     sdkSession,
+    publishSdkSession,
     writeProjectFile,
     forceReloadSdkSession,
   });
@@ -228,14 +247,17 @@ export function useDomEditSession({
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
-    handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditCommits({
     activeCompPath,
@@ -260,8 +282,13 @@ export function useDomEditSession({
       ? (selection, operations, originalContent, targetPath, options) => {
           // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
           // Pass originalContent so the runtime-node filter can suppress hf-ids
-          // absent from source (script-created nodes the SDK can't model).
-          runResolverShadow(sdkSession, selection.hfId, operations, originalContent);
+          // absent from source (script-created nodes the SDK can't model), and
+          // the paths so cross-file edits (session models only the active comp)
+          // skip instead of emitting structural element_not_found noise.
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
+            targetPath,
+            compositionPath: activeCompPath,
+          });
           return sdkCutoverPersist(
             selection,
             operations,
@@ -274,6 +301,8 @@ export function useDomEditSession({
               reloadPreview,
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
+              readProjectFile,
+              publishSession: publishSdkSession,
             },
             options,
           );
@@ -287,6 +316,8 @@ export function useDomEditSession({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            readProjectFile,
+            publishSession: publishSdkSession,
           })
       : undefined,
     // Resolver shadow for the z-index reorder edit: it takes the server path (no
@@ -319,6 +350,21 @@ export function useDomEditSession({
     clearDomSelection,
     forceReloadSdkSession,
   });
+
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
+      // Same structural edit the timeline delete refuses mid-recording, so it
+      // refuses here too — this is now the path a Delete press takes whenever
+      // the canvas holds a selection.
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
+      await handleDomEditElementsDelete(members);
+    },
+    [domEditGroupSelectionsRef, handleDomEditElementsDelete, isRecordingRef, showToast],
+  );
 
   const handleGroupSelection = useCallback(() => {
     const group = domEditGroupSelectionsRef.current;
@@ -378,6 +424,8 @@ export function useDomEditSession({
     activeCompPath,
     domEditSelection,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    refreshDomEditGroupSelectionsFromPreview,
     previewIframeRef,
     previewIframe,
     captionEditMode,
@@ -386,7 +434,7 @@ export function useDomEditSession({
     bumpGsapCache,
     showToast,
     refreshPreviewDocumentVersion,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     applyDomSelection,
     buildDomSelectionFromTarget,
@@ -412,9 +460,6 @@ export function useDomEditSession({
     removeAllKeyframes,
     handleDomManualEditsReset,
   });
-
-  // ── Preview interaction ──
-
   const {
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -433,9 +478,6 @@ export function useDomEditSession({
     setActiveGroupElement,
     onClickToSource,
   });
-
-  // ── GSAP-aware geometry intercepts + animated property commit ──
-
   const {
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareGroupPathOffsetCommit,
@@ -462,45 +504,8 @@ export function useDomEditSession({
     setArcPath,
     updateArcSegment,
   });
-
-  const handleUpdateKeyframeEase = useCallback(
-    (animationId: string, percentage: number, ease: string) => {
-      const sel = domEditSelectionRef.current;
-      if (!sel) return;
-      gsapCommitMutation(
-        sel,
-        {
-          type: "update-keyframe",
-          animationId,
-          percentage,
-          properties: {},
-          ease,
-        },
-        { label: "Update keyframe ease", softReload: true },
-      );
-    },
-    [gsapCommitMutation, domEditSelectionRef],
-  );
-
-  // Apply one ease to every segment at once (AE select-all + F9): set easeEach
-  // and strip per-keyframe overrides in a single mutation.
-  const handleSetAllKeyframeEases = useCallback(
-    (animationId: string, ease: string) => {
-      const sel = domEditSelectionRef.current;
-      if (!sel) return;
-      gsapCommitMutation(
-        sel,
-        {
-          type: "update-meta",
-          animationId,
-          updates: { easeEach: ease, resetKeyframeEases: true },
-        },
-        { label: "Apply ease to all segments", softReload: true },
-      );
-    },
-    [gsapCommitMutation, domEditSelectionRef],
-  );
-
+  const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
+    useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   return {
     // State
     domEditSelection,
@@ -523,7 +528,9 @@ export function useDomEditSession({
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
@@ -531,6 +538,7 @@ export function useDomEditSession({
     handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,
     handleDomTextCommit,
+    handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
@@ -575,6 +583,7 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     handleUpdateKeyframeEase,
+    handleUpdateSegmentEase,
     handleSetAllKeyframeEases,
     commitAnimatedProperty,
     commitAnimatedProperties,

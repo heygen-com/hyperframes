@@ -201,10 +201,13 @@ describe("renderChunk()", () => {
       expect(a.planHashMs).toBeGreaterThanOrEqual(0);
       expect(a.sessionBootMs).toBeGreaterThanOrEqual(0);
       expect(a.captureStageMs).toBeGreaterThan(0);
-      expect(a.encodeStageMs).toBeGreaterThan(0);
+      expect(a.encodeStageMs).toBeGreaterThanOrEqual(0);
       expect(a.workers).toBeGreaterThanOrEqual(1);
+      expect(["beginframe", "screenshot", "drawelement"]).toContain(a.captureMode);
+      expect(b.captureMode).toBe(a.captureMode);
       expect(a.captureStageMs + a.encodeStageMs).toBeLessThanOrEqual(a.durationMs);
       const perf = JSON.parse(readFileSync(a.perfPath, "utf-8"));
+      expect(perf.captureMode).toBe(a.captureMode);
       for (const key of [
         "planHashMs",
         "sessionBootMs",

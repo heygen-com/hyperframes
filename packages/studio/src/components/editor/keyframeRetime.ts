@@ -51,10 +51,38 @@ export interface KeyframeRetimeResult {
 const NOOP_EPSILON_PCT = 0.1;
 /** Slack (seconds) for the within-tween boundary test. */
 const EPSILON_TIME = 1e-4;
+/** Smallest authored tween window; avoids sub-millisecond/round-to-zero durations. */
+const MIN_TWEEN_DURATION = 0.01;
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-const round1 = (n: number) => Math.round(n * 10) / 10; // 0.1% precision
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/** Resolve timing for a flat tween's synthesized start/end diamond. */
+function resolveFlatTweenBoundaryRetime(opts: {
+  keyframeCount: number;
+  draggedTweenPct: number;
+  tweenStart: number;
+  tweenEnd: number;
+  dropAbsTime: number;
+}): KeyframeRetimeResult | null {
+  const { keyframeCount, draggedTweenPct, tweenStart, tweenEnd, dropAbsTime } = opts;
+  if (keyframeCount > 0) return null;
+  // Flat tweens have only synthesized boundary diamonds. Never delegate an
+  // unexpected interior percentage to the authored-keyframe move path.
+  if (draggedTweenPct !== 0 && draggedTweenPct !== 100) return { kind: "noop" };
+  const draggedTime = draggedTweenPct === 0 ? tweenStart : tweenEnd;
+  if (Math.abs(dropAbsTime - draggedTime) <= EPSILON_TIME) return { kind: "noop" };
+  const newStart = draggedTweenPct === 0 ? dropAbsTime : tweenStart;
+  const newEnd = draggedTweenPct === 100 ? dropAbsTime : tweenEnd;
+  const newDuration = newEnd - newStart;
+  if (newDuration < MIN_TWEEN_DURATION) return { kind: "noop" };
+  return {
+    kind: "resize",
+    position: round3(newStart),
+    duration: round3(newDuration),
+    pctRemap: [],
+  };
+}
 
 /**
  * Decide move vs resize for a dragged keyframe and, for resize, return the new
@@ -76,20 +104,38 @@ export function resolveKeyframeRetime(opts: {
   if (tweenDuration <= 0) return { kind: "noop" };
   const tweenEnd = tweenStart + tweenDuration;
 
-  // Within the tween window → plain move (re-key the tween-%). This branch never
-  // touches the keyframes array, so it still works for synthesized flat tweens.
+  // A flat tween's synthesized diamonds are its real start/end boundaries —
+  // there is no authored keyframe node to re-key. Moving either boundary must
+  // therefore resize the tween window while keeping the opposite endpoint at
+  // its absolute time. Returning `resize` with an empty remap lets the caller
+  // update the flat tween's position/duration instead of sending a keyframe
+  // mutation that would silently no-op.
+  const flatBoundary = resolveFlatTweenBoundaryRetime({
+    keyframeCount: keyframes.length,
+    draggedTweenPct,
+    tweenStart,
+    tweenEnd,
+    dropAbsTime,
+  });
+  if (flatBoundary) return flatBoundary;
+
+  // Within the tween window → plain move (re-key the tween-%).
   if (dropAbsTime >= tweenStart - EPSILON_TIME && dropAbsTime <= tweenEnd + EPSILON_TIME) {
-    const toTweenPct = clamp(((dropAbsTime - tweenStart) / tweenDuration) * 100, 0, 100);
+    // Round here, not at the return: the no-op test below and the value written
+    // to source must be the same number. The resize branch already rounds, so
+    // this keeps both write paths at the authored 3dp precision.
+    const toTweenPct = round3(clamp(((dropAbsTime - tweenStart) / tweenDuration) * 100, 0, 100));
     if (Math.abs(toTweenPct - draggedTweenPct) < NOOP_EPSILON_PCT) return { kind: "noop" };
     return { kind: "move", toTweenPct };
   }
 
-  // Boundary resize needs the real keyframes to remap; a flat tween has none here.
+  // Boundary resize needs the real keyframes to remap. Flat start/end boundaries
+  // were handled above.
   if (keyframes.length === 0) return { kind: "noop" };
 
   const newStart = Math.min(dropAbsTime, tweenStart);
   const newEnd = Math.max(dropAbsTime, tweenEnd);
-  const newDuration = Math.max(0.01, newEnd - newStart);
+  const newDuration = Math.max(MIN_TWEEN_DURATION, newEnd - newStart);
 
   // The dragged keyframe is the one whose tween-% is closest to draggedTweenPct.
   let draggedIdx = 0;
@@ -109,7 +155,7 @@ export function resolveKeyframeRetime(opts: {
   const pctRemap: KeyframePctRemap[] = keyframes.map((kf, i) => {
     const absTime =
       i === draggedIdx ? dropAbsTime : tweenStart + (kf.percentage / 100) * tweenDuration;
-    return { from: kf.percentage, to: round1(((absTime - newStart) / newDuration) * 100) };
+    return { from: kf.percentage, to: round3(((absTime - newStart) / newDuration) * 100) };
   });
 
   return {

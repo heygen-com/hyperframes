@@ -18,6 +18,7 @@ import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -95,6 +96,7 @@ class HyperframesPlayer extends HTMLElement {
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
+  private _runtimeFps = 30;
 
   constructor() {
     super();
@@ -175,6 +177,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._sendControl("pause");
+    this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
     this.iframe.removeEventListener("load", this._onIframeLoad);
@@ -185,6 +189,9 @@ class HyperframesPlayer extends HTMLElement {
     this.shaderLoader.destroy();
     this._media.destroy();
     this.controlsApi?.destroy();
+    this.controlsApi = null;
+    this._paused = true;
+    this._ready = false;
   }
 
   // fallow-ignore-next-line complexity
@@ -322,7 +329,13 @@ class HyperframesPlayer extends HTMLElement {
 
   seek(timeInSeconds: number) {
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
-      this._sendControl("seek", { frame: Math.round(timeInSeconds * 30) });
+      this._sendControl("seek", {
+        timeSeconds: timeInSeconds,
+        // Legacy runtimes read only `frame`. Protocol-v1 runtimes prefer
+        // `timeSeconds`, so carrying both keeps cross-origin embeds seekable
+        // while preserving seconds-first precision between current peers.
+        frame: Math.round(timeInSeconds * this._runtimeFps),
+      });
     }
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -491,7 +504,13 @@ class HyperframesPlayer extends HTMLElement {
   private _sendControl(action: string, extra: Record<string, unknown> = {}) {
     try {
       this.iframe.contentWindow?.postMessage(
-        { source: "hf-parent", type: "control", action, ...extra },
+        {
+          ...extra,
+          source: "hf-parent",
+          type: "control",
+          action,
+          ...runtimeProtocolMetadata(this._runtimeFps),
+        },
         "*",
       );
     } catch {
@@ -655,6 +674,9 @@ class HyperframesPlayer extends HTMLElement {
       getIframeDoc: () => this.iframe.contentDocument,
       onRuntimeReady: () => this._replayBridgeState(),
       onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
+      setRuntimeFps: (fps) => {
+        this._runtimeFps = fps;
+      },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
@@ -738,6 +760,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    this._ready = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();

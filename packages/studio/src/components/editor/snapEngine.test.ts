@@ -5,8 +5,8 @@ import {
   buildCompositionSnapTarget,
   buildGridSnapEdges,
   resolveSnapAdjustment,
-  resolveResizeSnapAdjustment,
   resolveEquidistanceGuides,
+  resolveGuideLineRect,
   SNAP_THRESHOLD_PX,
   type SnapTarget,
 } from "./snapEngine";
@@ -385,88 +385,22 @@ describe("resolveSnapAdjustment", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveResizeSnapAdjustment
+// resolveGuideLineRect
 // ---------------------------------------------------------------------------
 
-describe("resolveResizeSnapAdjustment", () => {
-  test("only right edge snaps on X", () => {
-    // Moving rect at (100, 100) size 50x50, right=150.
-    // Target left at 200. Propose dx=47 => proposed right=197. Dist to 200=3.
-    const t = target("a", 200, 100, 100, 100);
-    const result = resolveResizeSnapAdjustment({
-      movingRect: rect(100, 100, 50, 50),
-      proposedDx: 47,
-      proposedDy: 0,
-      targets: [t],
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: false,
-    });
-    expect(result.dx).toBe(50); // right edge snaps to 200
+describe("resolveGuideLineRect", () => {
+  const composition = rect(120, 80, 640, 360); // letterboxed inside the overlay
+
+  test("vertical guide (axis x) spans the composition's height at the snap x", () => {
+    expect(resolveGuideLineRect({ axis: "x", position: 440, from: 0, to: 0 }, composition)).toEqual(
+      { left: 440, top: 80, width: 1, height: 360 },
+    );
   });
 
-  test("only bottom edge snaps on Y", () => {
-    // Moving rect at (100, 100) size 50x50, bottom=150.
-    // Target top at 200. Propose dy=47 => proposed bottom=197. Dist to 200=3.
-    const t = target("a", 100, 200, 100, 100);
-    const result = resolveResizeSnapAdjustment({
-      movingRect: rect(100, 100, 50, 50),
-      proposedDx: 0,
-      proposedDy: 47,
-      targets: [t],
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: false,
-    });
-    expect(result.dy).toBe(50); // bottom edge snaps to 200
-  });
-
-  test("left edge does NOT snap during resize", () => {
-    // Target right at 150. Moving rect left=100. If drag were active,
-    // left would snap. But during resize, only right edge snaps.
-    // Moving rect at (100, 100) size 200x200, right=300.
-    // Target right=150. Proposed dx=-153 => proposed right=147. Dist to 150=3.
-    // This SHOULD snap right to 150 (dx = -150). But left stays at 100.
-    const t = target("a", 50, 100, 100, 100); // right=150
-    const result = resolveResizeSnapAdjustment({
-      movingRect: rect(100, 100, 200, 200),
-      proposedDx: -153,
-      proposedDy: 0,
-      targets: [t],
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: false,
-    });
-    // Right edge: 300 + (-153) = 147 => snaps to 150, adjustment = +3, dx = -150
-    expect(result.dx).toBe(-150);
-  });
-
-  test("disabled=true returns passthrough for resize", () => {
-    const t = target("a", 200, 200, 100, 100);
-    const result = resolveResizeSnapAdjustment({
-      movingRect: rect(100, 100, 50, 50),
-      proposedDx: 47,
-      proposedDy: 47,
-      targets: [t],
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: true,
-    });
-    expect(result.dx).toBe(47);
-    expect(result.dy).toBe(47);
-    expect(result.guides).toHaveLength(0);
-  });
-
-  test("resize produces guide lines", () => {
-    const t = target("a", 200, 100, 100, 100);
-    const result = resolveResizeSnapAdjustment({
-      movingRect: rect(100, 100, 50, 50),
-      proposedDx: 47,
-      proposedDy: 0,
-      targets: [t],
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: false,
-    });
-    expect(result.guides.length).toBeGreaterThanOrEqual(1);
-    const xGuide = result.guides.find((g) => g.axis === "x");
-    expect(xGuide).toBeDefined();
-    expect(xGuide!.position).toBe(200);
+  test("horizontal guide (axis y) spans the composition's width at the snap y", () => {
+    expect(resolveGuideLineRect({ axis: "y", position: 260, from: 0, to: 0 }, composition)).toEqual(
+      { left: 120, top: 260, width: 640, height: 1 },
+    );
   });
 });
 

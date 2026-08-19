@@ -150,4 +150,70 @@ describe("rebuildExtractedFramesFromPlanDir", () => {
       rmSync(planDir, { recursive: true, force: true });
     }
   });
+
+  it("keeps the historical sorted-position mapping for v1 numeric filenames", () => {
+    const planDir = mkdtempSync(join(tmpdir(), "hf-rebuild-frames-v1-numeric-"));
+    try {
+      makeFramesDir(planDir, "vid-v1-numeric", ["frame_00000.jpg", "frame_00001.jpg"]);
+      const [extracted] = rebuildExtractedFramesFromPlanDir(planDir, [
+        {
+          videoId: "vid-v1-numeric",
+          srcPath: "/v1-numeric.mp4",
+          framePattern: "frame_%05d.jpg",
+          fps: 30,
+          totalFrames: 2,
+          metadata: VIDEO_METADATA_STUB,
+        },
+      ]);
+
+      expect(extracted!.framePaths.get(0)).toBe(
+        join(planDir, "video-frames", "vid-v1-numeric", "frame_00000.jpg"),
+      );
+      expect(extracted!.framePaths.get(1)).toBe(
+        join(planDir, "video-frames", "vid-v1-numeric", "frame_00001.jpg"),
+      );
+      expect(extracted!.framePaths.get(-1)).toBeUndefined();
+    } finally {
+      rmSync(planDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves original indexes for a sparse v2 chunk materialization", () => {
+    const planDir = mkdtempSync(join(tmpdir(), "hf-rebuild-frames-sparse-"));
+    try {
+      makeFramesDir(planDir, "vid-sparse", [
+        "frame_00021.jpg",
+        "frame_00022.jpg",
+        "frame_00101.jpg",
+      ]);
+      const [extracted] = rebuildExtractedFramesFromPlanDir(
+        planDir,
+        [
+          {
+            videoId: "vid-sparse",
+            srcPath: "/sparse.mp4",
+            framePattern: "frame_%05d.jpg",
+            fps: 30,
+            totalFrames: 200,
+            metadata: VIDEO_METADATA_STUB,
+          },
+        ],
+        "sparse-v2",
+      );
+      if (!extracted) throw new Error("expected sparse v2 extracted-frame result");
+
+      expect(extracted.framePaths.get(20)).toBe(
+        join(planDir, "video-frames", "vid-sparse", "frame_00021.jpg"),
+      );
+      expect(extracted.framePaths.get(21)).toBe(
+        join(planDir, "video-frames", "vid-sparse", "frame_00022.jpg"),
+      );
+      expect(extracted.framePaths.get(100)).toBe(
+        join(planDir, "video-frames", "vid-sparse", "frame_00101.jpg"),
+      );
+      expect(extracted.framePaths.get(0)).toBeUndefined();
+    } finally {
+      rmSync(planDir, { recursive: true, force: true });
+    }
+  });
 });

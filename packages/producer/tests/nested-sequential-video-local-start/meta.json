@@ -1,0 +1,13 @@
+{
+  "name": "Later nested template video stays visible",
+  "description": "Two template-mounted hosts play sequentially, and each template owns a scene-local video with data-start=0 that reads its half of one generated source. Before the fix, producer capture evaluated the later video's start against root time without its host offset, hid it for the entire second host window, and rendered black instead of the generated green half.",
+  "tags": ["video", "sub-composition", "regression"],
+  "minPsnr": 25,
+  "maxFrameFailures": 2,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 24,
+    "workers": 1
+  }
+}

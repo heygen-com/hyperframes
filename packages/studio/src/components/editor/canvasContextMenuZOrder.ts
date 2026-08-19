@@ -7,8 +7,23 @@
  * the computed value. Treat missing / "auto" as 0 for comparison purposes.
  *
  * "Overlapping siblings" = siblings whose bounding rects intersect the
- * target's bounding rect. Forward/backward operate within that set;
- * front/back operate across all siblings.
+ * target's bounding rect AND are actually visible at the current frame.
+ * Forward/backward operate within that set; front/back operate across all
+ * siblings (full painting family, visible or not — unchanged semantics).
+ *
+ * ── Visibility ───────────────────────────────────────────────────────────────
+ * In HyperFrames compositions the nearest z-neighbor is often INVISIBLE at the
+ * paused frame: the runtime hides time-inactive clips with inline
+ * `visibility:hidden` / `display:none` (see core runtime
+ * syncTimedElementVisibility), and GSAP timelines park elements at `opacity:0`.
+ * Stepping "forward" over such a sibling looks like a silent no-op. The
+ * forward/backward comparison set therefore keeps only siblings whose
+ * element-level computed style is visible (display ≠ none, visibility ≠
+ * hidden, opacity > 0.01) — all runtime hiding signals are inline styles, so
+ * computed style covers them. Ancestor-chain checks are unnecessary here:
+ * siblings share the target's ancestors. The probe is injectable
+ * (ZOrderResolveOptions.isVisible) so the pure-module tests stay meaningful
+ * without a real style engine, mirroring how tests stub rect reading.
  *
  * ── Tie-awareness ────────────────────────────────────────────────────────────
  * CSS paint order for elements that share a z-index is DOM document order:
@@ -26,12 +41,57 @@
  * (project convention clamps z ≥ 0).
  */
 
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { readLayerRevealPriorZ } from "../../player/lib/timelineElementHelpers";
+
 export type ZOrderAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
 
 /** A resolved change: set `element`'s z-index to `zIndex`. */
 export interface ZOrderPatch {
   element: HTMLElement;
   zIndex: number;
+}
+
+/** Injectable knobs for the pure resolver (kept mockable like rect reading). */
+export interface ZOrderResolveOptions {
+  /**
+   * Element-level visibility probe used to scope the forward/backward
+   * comparison set. Defaults to `isElementVisibleForZOrder` (computed-style
+   * display/visibility/opacity). Injectable so tests can run without a real
+   * style engine.
+   */
+  isVisible?: (el: HTMLElement) => boolean;
+}
+
+/**
+ * Default visibility probe: is this element itself visible at the current
+ * frame? Element-level only (siblings share the target's ancestor chain).
+ * Covers the runtime's inactive-clip hiding (inline `visibility:hidden` /
+ * `display:none`) and animation-parked `opacity:0`, all of which surface
+ * through computed style. A color-grading source (hidden at opacity:0 while
+ * its canvas paints in its place) still counts as visible, matching
+ * isElementVisibleThroughAncestors in domEditingDom.
+ */
+export function isElementVisibleForZOrder(el: HTMLElement): boolean {
+  try {
+    const win = el.ownerDocument?.defaultView;
+    if (!win) return true;
+    const computed = win.getComputedStyle(el);
+    if (computed.display === "none") return false;
+    if (computed.visibility === "hidden" || computed.visibility === "collapse") return false;
+    const opacity = Number.parseFloat(computed.opacity);
+    if (
+      Number.isFinite(opacity) &&
+      opacity <= 0.01 &&
+      !el.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    /* cross-origin / detached — assume visible (fail open, matches rect fallback) */
+    return true;
+  }
 }
 
 interface RenderEntry {
@@ -48,8 +108,11 @@ export function parseZIndex(value: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Read the effective z-index for an element (inline style preferred). */
+/** Read the effective z-index for an element (inline style preferred).
+ *  Reveal-lift transparent: an active Layers-panel lift reports the TRUE z. */
 export function readEffectiveZIndex(el: HTMLElement): number {
+  const prior = readLayerRevealPriorZ(el);
+  if (prior != null) return prior;
   const inline = el.style.zIndex;
   if (inline && inline !== "auto") return parseZIndex(inline);
   try {
@@ -81,8 +144,18 @@ function isElementNode(node: Node): node is HTMLElement {
  * z-index onto the qa-clean audio element, and counting it as a sibling skews the
  * renumber for the visible elements. `<script>/<style>/<link>/<meta>` are also
  * non-painting and could otherwise pad the family / eat a z slot.
+ * `<template>/<noscript>` never paint either — letting them in meant renumber
+ * fallbacks wrote z-index/position into template source markup.
  */
-const NON_PAINTING_TAGS = new Set(["AUDIO", "SCRIPT", "STYLE", "LINK", "META"]);
+const NON_PAINTING_TAGS = new Set([
+  "AUDIO",
+  "SCRIPT",
+  "STYLE",
+  "LINK",
+  "META",
+  "TEMPLATE",
+  "NOSCRIPT",
+]);
 
 /** A painting element: an element node whose tag actually renders pixels. */
 function isPaintingElement(node: Node): node is HTMLElement {
@@ -112,7 +185,7 @@ function getFamily(target: HTMLElement): { entries: RenderEntry[]; targetIndex: 
   return { entries, targetIndex };
 }
 
-/** True if two DOM bounding rects intersect (even if touching). */
+/** True if two DOM bounding rects strictly overlap (rects that merely touch do NOT intersect). */
 function rectsIntersect(
   a: { left: number; top: number; right: number; bottom: number },
   b: { left: number; top: number; right: number; bottom: number },
@@ -121,26 +194,35 @@ function rectsIntersect(
 }
 
 /**
- * Restrict a family to the target plus siblings whose bounding rect overlaps
- * the target's rect. The target is always retained. If the target's rect is
- * unavailable or empty (headless / happy-dom returns 0×0), all entries are
- * kept — matching the prior behavior.
+ * Restrict a family to the target plus siblings that are VISIBLE and whose
+ * bounding rect overlaps the target's rect. The target is always retained
+ * (even when itself hidden at the current frame — it is the user's explicit
+ * selection). If the target's rect is unavailable or empty (headless /
+ * happy-dom returns 0×0), the overlap filter is skipped and all VISIBLE
+ * entries are kept — matching the prior rect-fallback behavior.
  */
-function getOverlappingFamily(target: HTMLElement, entries: RenderEntry[]): RenderEntry[] {
+function getOverlappingFamily(
+  target: HTMLElement,
+  entries: RenderEntry[],
+  isVisible: (el: HTMLElement) => boolean,
+): RenderEntry[] {
+  const visibleEntries = entries.filter(
+    (entry) => entry.element === target || isVisible(entry.element),
+  );
   let targetRect: DOMRect;
   try {
     targetRect = target.getBoundingClientRect();
   } catch {
-    return entries;
+    return visibleEntries;
   }
-  if (targetRect.width === 0 && targetRect.height === 0) return entries;
+  if (targetRect.width === 0 && targetRect.height === 0) return visibleEntries;
   const tr = {
     left: targetRect.left,
     top: targetRect.top,
     right: targetRect.right,
     bottom: targetRect.bottom,
   };
-  return entries.filter((entry) => {
+  return visibleEntries.filter((entry) => {
     if (entry.element === target) return true;
     try {
       const r = entry.element.getBoundingClientRect();
@@ -296,6 +378,33 @@ function buildGlobalOrder(
 }
 
 /**
+ * The shared scoping pipeline: full painting family for front/back, visible
+ * overlapping siblings for forward/backward, sorted into render order with the
+ * target's position. Null when the family/scope is too small to act on.
+ */
+function resolveScopedRenderOrder(
+  target: HTMLElement,
+  action: ZOrderAction,
+  options?: ZOrderResolveOptions,
+): { entries: RenderEntry[]; order: RenderEntry[]; pos: number } | null {
+  const { entries } = getFamily(target);
+  // Family always includes the target; fewer than 2 means no siblings at all.
+  if (entries.length < 2) return null;
+
+  const isVisible = options?.isVisible ?? isElementVisibleForZOrder;
+  const scoped =
+    action === "bring-to-front" || action === "send-to-back"
+      ? entries
+      : getOverlappingFamily(target, entries, isVisible);
+  if (scoped.length < 2) return null;
+
+  const order = toRenderOrder(scoped);
+  const pos = order.findIndex((e) => e.element === target);
+  if (pos === -1) return null;
+  return { entries, order, pos };
+}
+
+/**
  * Resolve the z-order patches for an action.
  *
  * Returns null when the action is a no-op (target already at the relevant
@@ -304,20 +413,11 @@ function buildGlobalOrder(
 export function resolveZOrderChange(
   target: HTMLElement,
   action: ZOrderAction,
+  options?: ZOrderResolveOptions,
 ): ZOrderPatch[] | null {
-  const { entries } = getFamily(target);
-  // Family always includes the target; fewer than 2 means no siblings at all.
-  if (entries.length < 2) return null;
-
-  const scoped =
-    action === "bring-to-front" || action === "send-to-back"
-      ? entries
-      : getOverlappingFamily(target, entries);
-  if (scoped.length < 2) return null;
-
-  const order = toRenderOrder(scoped);
-  const pos = order.findIndex((e) => e.element === target);
-  if (pos === -1) return null;
+  const resolved = resolveScopedRenderOrder(target, action, options);
+  if (!resolved) return null;
+  const { entries, order, pos } = resolved;
 
   const desired = [...order];
   const [moved] = desired.splice(pos, 1);
@@ -344,9 +444,70 @@ export function resolveZOrderChange(
 }
 
 /**
- * Whether a z-order action is available for the target.
- * "disabled" = the element is already at that limit.
+ * Realize an ARBITRARY repositioning of `target` within a scoped sibling set —
+ * the Layers-panel drag, which can jump several siblings in one drop, unlike
+ * the menu's four fixed actions. `desiredOrderBottomToTop` is the scoped set
+ * (target included at its new slot) in the intended render order. Reuses the
+ * menu's minimal-write realization (realizeOrder): one between-z write when a
+ * strict gap exists, band-safe scoped renumber otherwise — replacing the old
+ * LayersPanel computeReorderZValues path that stamped EVERY sibling.
+ *
+ * Null when nothing changes, the set is too small, or an element in the
+ * desired order is not actually a painting sibling of `target`.
  */
-export function isZOrderActionEnabled(target: HTMLElement, action: ZOrderAction): boolean {
-  return resolveZOrderChange(target, action) !== null;
+export function resolveZOrderReposition(
+  target: HTMLElement,
+  desiredOrderBottomToTop: readonly HTMLElement[],
+): ZOrderPatch[] | null {
+  const { entries } = getFamily(target);
+  if (entries.length < 2) return null;
+  const byElement = new Map(entries.map((entry) => [entry.element, entry]));
+  const desired: RenderEntry[] = [];
+  for (const el of desiredOrderBottomToTop) {
+    const entry = byElement.get(el);
+    if (!entry) return null;
+    desired.push(entry);
+  }
+  if (desired.length < 2 || !desired.some((entry) => entry.element === target)) return null;
+  const currentOrder = toRenderOrder(desired);
+  // A drop back into the same slot is a no-op. The menu actions guard this via
+  // their position checks before realizeOrder; an arbitrary reposition must
+  // compare the orders itself — realizeOrder would otherwise "normalize" an
+  // end-of-set target to a fresh z value it doesn't need.
+  if (currentOrder.every((entry, i) => entry.element === desired[i].element)) return null;
+  return realizeOrder(currentOrder, desired, target, entries);
+}
+
+/**
+ * The sibling a forward/backward step crosses: the visible overlapping
+ * neighbor directly above (bring-forward) or below (send-backward) the target
+ * in render order. Null for front/back, for a no-op step, or when the scope is
+ * too small. Uses the SAME scoping as resolveZOrderChange, so call it with the
+ * same options BEFORE any live styles are applied.
+ */
+export function resolveCrossedNeighbor(
+  target: HTMLElement,
+  action: ZOrderAction,
+  options?: ZOrderResolveOptions,
+): HTMLElement | null {
+  if (action !== "bring-forward" && action !== "send-backward") return null;
+  const resolved = resolveScopedRenderOrder(target, action, options);
+  if (!resolved) return null;
+  const { order, pos } = resolved;
+  const neighbor = action === "bring-forward" ? order[pos + 1] : order[pos - 1];
+  return neighbor?.element ?? null;
+}
+
+/**
+ * Whether a z-order action is available for the target.
+ * "disabled" = the element is already at that limit. Shares the resolver (and
+ * its visibility scoping), so enable/disable always matches what the action
+ * would actually do.
+ */
+export function isZOrderActionEnabled(
+  target: HTMLElement,
+  action: ZOrderAction,
+  options?: ZOrderResolveOptions,
+): boolean {
+  return resolveZOrderChange(target, action, options) !== null;
 }

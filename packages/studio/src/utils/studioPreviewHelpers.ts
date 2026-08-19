@@ -21,6 +21,15 @@ interface PreviewLocalPointer {
 // should remain canvas-selectable.
 const FULL_BLEED_RATIO = 0.95;
 
+// Media leaves (a hero/background video, a full-bleed image, an <svg>/<canvas>
+// backdrop) ARE the content a user clicks — they must stay canvas-selectable even
+// at full-bleed. Only empty containers (scene wrappers, layout backdrops) get
+// excluded. Without this, a full-bleed <video> is skipped and the click lands on
+// whatever sits behind it — the reported "can't select videos / selects the layer
+// behind" bug (and the "needs a second click" symptom, where the first click
+// resolves through the video to nothing and only the hover fallback recovers).
+const FULL_BLEED_SELECTABLE_MEDIA_TAGS = new Set(["video", "img", "canvas", "svg"]);
+
 export function coversComposition(
   elRect: { width: number; height: number },
   viewport: DomEditViewport,
@@ -33,6 +42,7 @@ export function coversComposition(
 }
 
 function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
+  if (FULL_BLEED_SELECTABLE_MEDIA_TAGS.has(el.tagName.toLowerCase())) return false;
   return coversComposition(el.getBoundingClientRect(), viewport);
 }
 

@@ -95,7 +95,10 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
 
   function buildElementSelector(el: Element): string {
     const htmlEl = el as HTMLElement;
-    if (htmlEl.id) return `#${htmlEl.id}`;
+    // Escape the ID so digit-leading or otherwise CSS-illegal ids (e.g. `#0`,
+    // `#1`) produce valid selectors — `document.querySelector("#0")` throws
+    // SyntaxError per the CSS spec. Sibling branches below already escape.
+    if (htmlEl.id) return `#${CSS.escape(htmlEl.id)}`;
     const compositionId = el.getAttribute("data-composition-id");
     if (compositionId) return `[data-composition-id="${CSS.escape(compositionId)}"]`;
     const compositionSrc = el.getAttribute("data-composition-src");

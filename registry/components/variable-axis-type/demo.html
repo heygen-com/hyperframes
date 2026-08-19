@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  variable-axis-type -- mount-contract demo. The width-axis override makes
+  glyph advances change across the requested 0.1s, 0.5s, and 0.9s snapshots,
+  while the primitive's fixed nowrap box proves the authored line stays stable.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Variable Axis Type - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        --bg: #0b1120;
+        --fg: #f8fafc;
+        --surface: #111a2c;
+        --border: rgba(148, 163, 184, 0.28);
+        --font-display: "Roboto Flex", sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 45%, #18243d 0%, #05070d 72%);
+      }
+
+      .mount-card {
+        width: 70%;
+        height: 44%;
+        left: 15%;
+        top: 28%;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 32px;
+        box-shadow: 0 44px 100px rgba(0, 0, 0, 0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="variable-axis-type-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="1.6"
+      data-fps="30"
+    >
+      <div
+        id="variable-axis-type-mount"
+        class="mount-card clip"
+        data-composition-id="variable-axis-type"
+        data-composition-src="./variable-axis-type.html"
+        data-variable-values='{"text":"IMPACT","axis":"wdth","fromValue":55,"toValue":145}'
+        data-start="0"
+        data-duration="1.6"
+        data-track-index="0"
+        data-width="1344"
+        data-height="475"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["variable-axis-type-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -57,7 +58,7 @@ export default defineCommand({
           filesScanned: lintResult.results.length,
         };
         console.log(JSON.stringify(withMeta(combined), null, 2));
-        process.exitCode = combined.ok ? 0 : 1;
+        setCommandExitCode(combined.ok ? 0 : 1);
         return;
       }
 
@@ -79,7 +80,7 @@ export default defineCommand({
       });
       for (const line of lines) console.log(line);
 
-      process.exitCode = lintResult.totalErrors > 0 ? 1 : 0;
+      setCommandExitCode(lintResult.totalErrors > 0 ? 1 : 0);
       return;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -99,11 +100,11 @@ export default defineCommand({
             2,
           ),
         );
-        process.exitCode = 1;
+        setCommandExitCode(1);
         return;
       }
       console.error(message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
     }
   },
 });

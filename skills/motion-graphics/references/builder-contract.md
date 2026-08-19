@@ -2,7 +2,7 @@
 
 ## Root must be sized
 
-Root `#stage` (`data-composition-id`) needs `position: relative; width: <W>px; height: <H>px`. Without a resolved height, flex children collapse to ~0 and content piles into the top-left — and `lint`/`inspect` won't catch it.
+Root `#stage` (`data-composition-id`) needs `position: relative; width: <W>px; height: <H>px`. Without a resolved height, flex children collapse to ~0 and content piles into the top-left. Automated gates may miss it, so inspect proof snapshots.
 
 ## Layout before animation
 
@@ -19,7 +19,7 @@ Root `#stage` (`data-composition-id`) needs `position: relative; width: <W>px; h
    box-sizing: border-box;
    ```
    Never `position:absolute; top:Npx` on a content container (it overflows). Reserve absolute for decoratives. Keep ≥80px padding (title-safe margin).
-3. **Entrances**: `gsap.from()` FROM offscreen/invisible TO the CSS position (in sub-comps use `fromTo()`). The CSS position is ground truth; the tween is the journey to it.
+3. **Entrances**: use `gsap.from()` only for a non-clip element active from `t=0`. Inside `.clip`, in sub-compositions, and for later entrances, use explicit `fromTo()`. The CSS position is ground truth; the tween is the journey to it.
 4. **Exits**: only the final scene animates elements out; between scenes the transition IS the exit.
 
 ## Timeline / clip contract
@@ -30,7 +30,7 @@ Root `#stage` (`data-composition-id`) needs `position: relative; width: <W>px; h
 
 ## Correctness
 
-- **Seek-safe reveal of delayed elements**: `gsap.set(el, {autoAlpha:0})` once, then reveal with `gsap.to(el, {autoAlpha:1})` at the entrance (paired with a motion-only `from()`). **Do NOT** gate via `set(opacity:1) + from(opacity:0)` — under a paused/seeked render the element stays invisible _forever_ (browser-play hides this; seek-capture exposes it). _(Eval finding.)_
+- **Seek-safe reveal of delayed elements**: on a non-clip element or wrapper inside a clip, use one registered timeline `fromTo()` with an explicit `{ autoAlpha: 0 }` start and `{ autoAlpha: 1, ... }` end. Do not page-load `gsap.set()` a later `.clip`, and never target `.clip` visibility; the framework owns its lifecycle. _(Eval finding.)_
 - **Count-ups** tween a proxy via `onUpdate`; they only render when the host advances the timeline **with events enabled** (`tl.time()` / non-suppressed seek). A bare `seek(t, true)` freezes them at 0 — the HF render host must seek with events on. _(Eval finding.)_
 - Clamp at tween bounds; don't let a spring overshoot past a held value.
 - Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`).

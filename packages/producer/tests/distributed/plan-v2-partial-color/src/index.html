@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="width=320, height=180" name="viewport" />
+    <title>Plan v2 partial color metadata regression</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 320px;
+        height: 180px;
+        margin: 0;
+        overflow: hidden;
+        background: #111827;
+      }
+
+      #main-comp,
+      #source {
+        position: absolute;
+        inset: 0;
+        width: 320px;
+        height: 180px;
+      }
+
+      #source {
+        object-fit: cover;
+      }
+
+      #label {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        padding: 5px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        color: #fff;
+        background: rgba(17, 24, 39, 0.75);
+        font: 700 11px Arial, sans-serif;
+        letter-spacing: 0.08em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-start="0"
+      data-duration="1"
+      data-width="320"
+      data-height="180"
+      data-no-timeline
+    >
+      <video
+        id="source"
+        class="clip"
+        src="partial-color.mp4"
+        data-start="0"
+        data-duration="1"
+        data-track-index="0"
+        muted
+        playsinline
+      ></video>
+      <div id="label">PARTIAL COLOR METADATA</div>
+    </div>
+  </body>
+</html>

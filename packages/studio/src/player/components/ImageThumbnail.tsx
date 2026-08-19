@@ -1,0 +1,117 @@
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
+
+interface ImageThumbnailProps {
+  imageSrc: string;
+  label: string;
+  labelColor: string;
+  projectId?: string;
+  sessionEpoch?: number;
+  priority?: ThumbnailPriority;
+  rich?: boolean;
+}
+
+/** A scheduler-backed still-image strip. Mounting is the sole work trigger. */
+export const ImageThumbnail = memo(function ImageThumbnail({
+  imageSrc,
+  label,
+  labelColor,
+  projectId = imageSrc,
+  sessionEpoch = 0,
+  priority = "visible",
+  rich = false,
+}: ImageThumbnailProps) {
+  const [containerWidth, setContainerWidth] = useState(0);
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const request = useMemo(
+    () => ({
+      key: createThumbnailKey({ kind: "image", source: imageSrc, rich: Number(rich) }),
+      projectId,
+      sessionEpoch,
+      kind: "image" as const,
+      priority,
+      rich,
+      load: async (signal: AbortSignal) => {
+        const aspect = await probeImageAspect(imageSrc, signal, true);
+        return {
+          value: { kind: "image" as const, url: imageSrc, aspect },
+          weight:
+            TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth *
+            TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight *
+            4,
+        };
+      },
+    }),
+    [imageSrc, priority, projectId, rich, sessionEpoch],
+  );
+  const snapshot = useThumbnailLease(request);
+  const value = snapshot.status === "ready" ? snapshot.value : null;
+  const aspect = value?.kind === "image" ? value.aspect : 16 / 9;
+  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect);
+
+  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    if (!element) return;
+    const target = element.parentElement ?? element;
+    setContainerWidth(target.clientWidth);
+    observerRef.current = new ResizeObserver(([entry]) =>
+      setContainerWidth(entry.contentRect.width),
+    );
+    observerRef.current.observe(target);
+  }, []);
+
+  useMountEffect(() => () => observerRef.current?.disconnect());
+
+  return (
+    <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
+      {value?.kind === "image" && (
+        <div className="absolute inset-0 flex">
+          {Array.from({ length: frameCount }, (_, index) => (
+            <div
+              key={index}
+              className="relative h-full flex-shrink-0 overflow-hidden bg-neutral-900"
+              style={{ width: frameW }}
+            >
+              <img
+                src={value.url}
+                alt=""
+                draggable={false}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {snapshot.status === "loading" && (
+        <div
+          className="absolute inset-0 animate-pulse"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
+          }}
+        />
+      )}
+      {label && (
+        <div
+          className="absolute inset-x-0 bottom-0 z-10 px-1.5 pb-0.5 pt-3"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
+          }}
+        >
+          <span
+            className="block truncate text-[9px] font-semibold leading-tight"
+            style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
+          >
+            {label}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+});

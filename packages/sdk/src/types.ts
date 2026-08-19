@@ -434,8 +434,16 @@ export interface Composition {
   /**
    * Current `default` value for a declared variable, or undefined if
    * undeclared/unset. Convenience over getVariableValues() (kept from #2098).
+   *
+   * `{ base: true }` returns the default as authored at open — BEFORE the
+   * T3 override-set or any setVariableValue folded into the declaration.
+   * Hosts replaying an undo that removes a `var.<id>` override should restore
+   * this value. Ids declared mid-session fall through to the live default.
    */
-  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined;
+  getVariableValue(
+    id: string,
+    opts?: { base?: boolean },
+  ): string | number | boolean | FontValue | ImageValue | undefined;
   /**
    * Every declared variable's full schema (id/type/label/default/…), or [] when
    * none. Alias of getVariableDeclarations() (kept from #2098's surface).
@@ -584,7 +592,8 @@ export interface Composition {
    * Dry-run validation — would dispatch(op) succeed?
    * Returns {ok:true} when dispatch would mutate the document, {ok:false,code,message} otherwise.
    * Use as a feature-detection gate: `const r = comp.can(op); if (!r.ok) return;`
-   * Phase 3b ops return {ok:false,code:'E_NO_GSAP_TIMELINE'} until parser engine ships.
+   * addGsapTween / addLabel return {ok:false,code:'E_NO_GSAP_TIMELINE'} when the
+   * script has no gsap.timeline() declaration to attach to.
    */
   can(op: EditOp): CanResult;
 

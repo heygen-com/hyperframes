@@ -79,6 +79,15 @@ describe("renderToLambda", () => {
     expect(handle.projectS3Uri).toMatch(
       /^s3:\/\/test-bucket\/sites\/[0-9a-f]{16}\/project\.tar\.gz$/,
     );
+    expect(Object.keys(handle)).toEqual([
+      "renderId",
+      "executionArn",
+      "bucketName",
+      "stateMachineArn",
+      "outputS3Uri",
+      "projectS3Uri",
+      "startedAt",
+    ]);
 
     expect(sfn.starts).toHaveLength(1);
     const start = sfn.starts[0]!;
@@ -89,6 +98,30 @@ describe("renderToLambda", () => {
       PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-1/",
       OutputS3Uri: "s3://test-bucket/renders/smoke-1/output.mp4",
       Config: baseConfig,
+      PlanProtocol: "v2",
+    });
+  });
+
+  it("preserves explicit plan protocol v1 compatibility", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const handle = await renderToLambda({
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: baseConfig,
+      executionName: "smoke-v1",
+      planProtocol: "v1",
+      sfn: asSFNClient(sfn),
+      s3: asS3Client(s3),
+    });
+
+    expect(sfn.starts[0]?.input).toEqual({
+      ProjectS3Uri: handle.projectS3Uri,
+      PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-v1/",
+      OutputS3Uri: "s3://test-bucket/renders/smoke-v1/output.mp4",
+      Config: baseConfig,
+      PlanProtocol: "v1",
     });
   });
 

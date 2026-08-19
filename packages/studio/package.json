@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.7.54",
+  "version": "0.8.3",
   "description": "",
   "repository": {
     "type": "git",
@@ -15,8 +15,17 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./tailwind-preset": "./src/styles/tailwind-preset.ts",
+    ".": {
+      "browser": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./tailwind-preset": {
+      "bun": "./src/styles/tailwind-preset.ts",
+      "import": "./src/styles/tailwind-preset.ts",
+      "types": "./src/styles/tailwind-preset.ts"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -40,7 +49,10 @@
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:timeline-virtualization": "TIMELINE_ROW_VIRTUALIZATION=on TIMELINE_ELEMENT_COUNT=50000 node tests/e2e/timeline-virtualization.mjs",
+    "test:watch": "vitest",
+    "report:sdk-cutover": "bun src/utils/sdkCutoverPolicy.report.ts",
+    "test:timeline-default": "bun run test:timeline-virtualization"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -60,6 +72,7 @@
     "@hyperframes/sdk": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",
@@ -72,6 +85,8 @@
     "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
+    "chokidar": "^4.0.3",
+    "fake-indexeddb": "^6.2.5",
     "postcss": "^8.4.0",
     "puppeteer-core": "^25.2.1",
     "tailwindcss": "^3.4.0",

@@ -170,13 +170,14 @@ describe("parseGsapScript", () => {
   it("extracts all GSAP properties including non-standard ones", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
-      tl.to("#el1", { opacity: 1, backgroundColor: "red", x: 50, duration: 0.5 }, 0);
+      tl.to("#el1", { opacity: 1, backgroundColor: "red", x: 50, "--hf-color-grading-intensity": 0.5, duration: 0.5 }, 0);
     `;
     const result = parseGsapScript(script);
 
     expect(result.animations[0].properties.opacity).toBe(1);
     expect(result.animations[0].properties.x).toBe(50);
     expect(result.animations[0].properties.backgroundColor).toBe("red");
+    expect(result.animations[0].properties["--hf-color-grading-intensity"]).toBe(0.5);
   });
 
   it("extracts ease from properties", () => {
@@ -653,6 +654,27 @@ describe("stagger/yoyo/repeat round-trip", () => {
     // Every per-keyframe override is gone — the single easeEach governs all segments.
     expect(result).not.toContain('ease: "custom');
     expect(result).not.toContain('ease: "power2.in"');
+  });
+});
+
+describe("object keyframe per-step duration is not an animatable property", () => {
+  it("excludes `duration` from %-keyed keyframe properties (segment timing must not become a lane)", () => {
+    // A %-keyed object keyframe carrying a stray per-step `duration` — the shape
+    // a buggy array->object conversion produces. `duration` is GSAP segment
+    // timing, not a property; it must never surface as a keyframe lane or get
+    // round-tripped as an animatable value (which corrupts the tween on edit).
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { keyframes: { "0%": { x: 0, duration: 0 }, "50%": { x: 100, duration: 6, ease: "power2.out" }, "100%": { x: 200, duration: 6 } } }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const kfs = parsed.animations[0].keyframes?.keyframes ?? [];
+    expect(kfs.length).toBe(3);
+    for (const kf of kfs) {
+      expect(kf.properties).not.toHaveProperty("duration"); // the fix
+      expect(kf.properties).toHaveProperty("x"); // real animatable prop preserved
+    }
+    expect(kfs[1]?.ease).toBe("power2.out"); // per-keyframe ease still parsed
   });
 });
 
@@ -1535,10 +1557,9 @@ describe("native GSAP keyframes parsing", () => {
     const kfs = expectKeyframesFormat(anim, "object-array", 3);
 
     // Total duration = 0.5 + 1 + 0.8 = 2.3
-    // First: cumulative = 0.5, pct = round(0.5/2.3 * 100) = 22
-    expectKeyframe(kfs[0], 22, { x: 0, opacity: 1 });
-    // Second: cumulative = 1.5, pct = round(1.5/2.3 * 100) = 65
-    expectKeyframe(kfs[1], 65, { x: 100 }, "power2.out");
+    // Preserve one decimal of authored timing precision.
+    expectKeyframe(kfs[0], 21.7, { x: 0, opacity: 1 });
+    expectKeyframe(kfs[1], 65.2, { x: 100 }, "power2.out");
     // Third: cumulative = 2.3, pct = round(2.3/2.3 * 100) = 100
     expectKeyframe(kfs[2], 100, { x: 200 });
   });
@@ -1917,6 +1938,15 @@ describe("keyframe mutations", () => {
     expect([kf[1]!.properties.x, kf[1]!.properties.y]).toEqual([503, 642]);
     expect([kf[0]!.properties.x, kf[0]!.properties.y]).toEqual([0, 0]);
     expect([kf[2]!.properties.x, kf[2]!.properties.y]).toEqual([1040, 0]);
+  });
+
+  it("updateKeyframeInScript — array-form ease-only update preserves existing properties", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, {}, "power2.inOut");
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect(kf[1]!.properties.x).toBe(520);
+    expect(kf[1]!.properties.y).toBe(120);
+    expect(kf[1]!.ease).toBe("power2.inOut");
   });
 
   it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {
@@ -2924,6 +2954,7 @@ describe("base gsap.set (off-timeline global hold)", () => {
     });
     expect(script).toContain('gsap.set("#box"');
     expect(script).not.toContain('tl.set("#box"');
+    expect(script.indexOf('gsap.set("#box"')).toBeLessThan(script.indexOf("gsap.timeline"));
   });
 
   it("updates a global set in place, keeping it gsap.set", () => {
@@ -3024,6 +3055,29 @@ describe("single position write per element (consolidation)", () => {
     // The stray gsap.set position residue is gone; opacity tween survives.
     expect(out).not.toMatch(/gsap\.set\("#box",\s*\{\s*x:/);
     expect(parseGsapScript(out).animations.some((a) => "opacity" in a.properties)).toBe(true);
+  });
+
+  it("remove-all-keyframes collapses synthetic motionPath keyframes to a held position", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", {
+        motionPath: { path: [{ x: 0, y: 10 }, { x: 200, y: 40 }] },
+        duration: 2,
+        ease: "power1.inOut",
+      }, 1);
+    `;
+    const motionPathTween = parseGsapScript(script).animations.find(
+      (animation) => animation.arcPath?.enabled,
+    )!;
+
+    const out = removeAllKeyframesFromScript(script, motionPathTween.id);
+    const kept = posWritesFor(out, "#box");
+
+    expect(out).not.toBe(script);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].arcPath).toBeUndefined();
+    expect(kept[0].duration).toBe(0);
+    expect(kept[0].properties).toMatchObject({ x: 200, y: 40 });
   });
 });
 

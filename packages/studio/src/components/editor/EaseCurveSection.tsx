@@ -1,82 +1,26 @@
-import { useCallback, useRef, useState } from "react";
-import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
+import { useEffect, useId, useRef, useState } from "react";
+import { evaluateSpringEase, parseSpringBounce } from "@hyperframes/core/spring-ease";
+import {
+  evaluateWiggleEase,
+  parseWiggleEase,
+  type WiggleEaseConfig,
+} from "@hyperframes/core/wiggle-ease";
+import { easePresetLabel } from "./easePresetLibrary";
+import {
+  DEFAULT_CURVE,
+  MODE_LABELS,
+  EaseModeToggle,
+  EasePresetGrid,
+  type EaseMode,
+  type Pts,
+} from "./EaseModeControls";
+import { holdCurvePath, MiniCurveSvg, sampledPath } from "./easeCurveSvg";
+import { EaseBezierField, SpringBounceField, WiggleField } from "./EaseParamFields";
+import { EASE_CURVES, EASE_LABELS, resolveEaseCurveTuple } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
-// Figma-canonical ordering: linear, the three core eases, then the expressive
-// (back / snappy) family. Each maps to a GSAP ease so it round-trips cleanly.
-const PRESET_GRID_EASES = [
-  "none",
-  "power2.in",
-  "power2.out",
-  "power2.inOut",
-  "back.in",
-  "back.out",
-  "back.inOut",
-  "expo.out",
-] as const;
-
-function MiniCurveSvg({
-  curve,
-  active,
-}: {
-  curve: [number, number, number, number];
-  active: boolean;
-}) {
-  const [x1, y1, x2, y2] = curve;
-  const s = 24;
-  const p = 3;
-  const g = s - p * 2;
-  const sx = (px: number) => p + g * px;
-  const sy = (py: number) => s - p - g * py;
-  const d = `M${p},${s - p} C${sx(x1)},${sy(y1)} ${sx(x2)},${sy(y2)} ${s - p},${p}`;
-  return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <path
-        d={d}
-        fill="none"
-        stroke={active ? "#3CE6AC" : "#737373"}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-const EasePresetGrid = function EasePresetGrid({
-  currentEase,
-  onSelect,
-}: {
-  currentEase: string;
-  onSelect: (ease: string) => void;
-}) {
-  return (
-    <div className="grid grid-cols-4 gap-1 mb-2">
-      {PRESET_GRID_EASES.map((name) => {
-        const curve = EASE_CURVES[name];
-        if (!curve) return null;
-        const isActive = currentEase === name;
-        return (
-          <button
-            key={name}
-            type="button"
-            onClick={() => onSelect(name)}
-            className={`flex flex-col items-center gap-0.5 rounded-md p-1 transition-colors ${
-              isActive ? "bg-panel-accent/10 ring-1 ring-panel-accent/30" : "hover:bg-neutral-800"
-            }`}
-            title={EASE_LABELS[name] ?? name}
-          >
-            <MiniCurveSvg curve={curve} active={isActive} />
-            <span
-              className={`text-[8px] leading-none ${isActive ? "text-panel-accent" : "text-neutral-500"}`}
-            >
-              {(EASE_LABELS[name] ?? name).split(" ").slice(0, 2).join(" ")}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-};
+export { MiniCurveSvg } from "./easeCurveSvg";
 
 const round2 = roundToCenti;
 
@@ -100,57 +44,285 @@ const DRAG_VMAX = 2;
 const DRAG_VMIN = -1;
 const ACCENT = "#3CE6AC";
 
-type Pts = [number, number, number, number];
+// Figma-style ease-type dropdown: the current ease (glyph + name) as a button
+// that opens the preset grid in a popover. This is where a preset is selected —
+// the grid is no longer shown inline.
+function EaseTypeDropdown({
+  kind,
+  ease,
+  label,
+  onSelect,
+}: {
+  kind: EaseMode;
+  ease: string;
+  label: string;
+  onSelect: (ease: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const selected =
+      menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]') ??
+      menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"]');
+    selected?.focus();
+
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Tab") {
+      setOpen(false);
+      return;
+    }
+    const offsets: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -4,
+      ArrowDown: 4,
+    };
+    const offset = offsets[event.key];
+    if (offset === undefined && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+    );
+    if (items.length === 0) return;
+    const current = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement));
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (current + (offset ?? 0) + items.length) % items.length;
+    items[next]?.focus();
+  };
+
+  return (
+    <div className="relative mb-2">
+      <button
+        ref={triggerRef}
+        type="button"
+        data-ease-type-dropdown=""
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-left transition-colors hover:border-white/20"
+      >
+        <MiniCurveSvg ease={ease} active size={16} />
+        <span className="text-[11px] text-neutral-200">{label}</span>
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 10 10"
+          fill="currentColor"
+          className={`ml-auto text-neutral-500 transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M2 3l3 4 3-4z" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label={`${MODE_LABELS[kind]} ease presets`}
+          onKeyDown={handleMenuKeyDown}
+          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-white/10 bg-neutral-900 p-2 shadow-xl"
+        >
+          <EasePresetGrid
+            kind={kind}
+            currentEase={ease}
+            onSelect={(next) => {
+              onSelect(next);
+              setOpen(false);
+              triggerRef.current?.focus();
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function resolveEditableCurve(ease: string, springBounce: number | null): Pts | null {
+  if (springBounce !== null) return DEFAULT_CURVE;
+  if (ease === "hold") return null;
+  if (ease.startsWith("custom(") || ease in EASE_CURVES) return resolveEaseCurveTuple(ease);
+  return null;
+}
+
+function resolveEditorLabel(ease: string, springBounce: number | null, isWiggle: boolean): string {
+  const presetLabel = easePresetLabel(ease);
+  if (presetLabel !== null) return presetLabel;
+  if (springBounce !== null) return "Custom spring";
+  if (isWiggle) return "Custom wiggle";
+  if (ease.startsWith("custom(")) return "Custom bezier";
+  return EASE_LABELS[ease] ?? ease;
+}
 
 const xToSvg = (px: number) => PADH + S * px;
 const yToSvg = (py: number) => HR + S * (1 - py);
 const clampView = (py: number) => Math.max(VMIN, Math.min(VMAX, py));
+const clampDragY = (py: number) => Math.max(DRAG_VMIN, Math.min(DRAG_VMAX, py));
 
-function cubicAt(t: number, c0: number, c1: number, c2: number, c3: number): number {
-  const mt = 1 - t;
-  return mt * mt * mt * c0 + 3 * mt * mt * t * c1 + 3 * mt * t * t * c2 + t * t * t * c3;
+function nudgeCurve(tuple: Pts, handle: "p1" | "p2", key: string, step: number): Pts | null {
+  const deltaX = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
+  const deltaY = key === "ArrowDown" ? -step : key === "ArrowUp" ? step : 0;
+  if (deltaX === 0 && deltaY === 0) return null;
+  const next: Pts = [...tuple];
+  const xIndex = handle === "p1" ? 0 : 2;
+  const yIndex = handle === "p1" ? 1 : 3;
+  next[xIndex] = round2(Math.max(0, Math.min(1, next[xIndex] + deltaX)));
+  next[yIndex] = round2(clampDragY(next[yIndex] + deltaY));
+  return next;
 }
+
+function curvePathFor(
+  ease: string,
+  springBounce: number | null,
+  wiggleConfig: WiggleEaseConfig | null,
+  tuple: Pts,
+): string {
+  if (ease === "hold") return holdCurvePath(xToSvg(0), yToSvg(0), xToSvg(1), yToSvg(1));
+  if (wiggleConfig !== null) {
+    return sampledPath(64, xToSvg, yToSvg, (progress) =>
+      evaluateWiggleEase(progress, wiggleConfig.wiggles, wiggleConfig.type, wiggleConfig.amplitude),
+    );
+  }
+  if (springBounce !== null) {
+    return sampledPath(64, xToSvg, yToSvg, (progress) =>
+      evaluateSpringEase(progress, springBounce),
+    );
+  }
+  const [x1, y1, x2, y2] = tuple;
+  return `M${xToSvg(0)},${yToSvg(0)} C${xToSvg(x1)},${yToSvg(y1)} ${xToSvg(x2)},${yToSvg(y2)} ${xToSvg(1)},${yToSvg(1)}`;
+}
+
+function EaseParameterField({
+  springBounce,
+  wiggleConfig,
+  tuple,
+  onCommit,
+}: {
+  springBounce: number | null;
+  wiggleConfig: WiggleEaseConfig | null;
+  tuple: Pts;
+  onCommit: (ease: string) => void;
+}) {
+  if (springBounce !== null) {
+    return <SpringBounceField springBounce={springBounce} onCommit={onCommit} />;
+  }
+  if (wiggleConfig !== null) return <WiggleField config={wiggleConfig} onCommit={onCommit} />;
+  return <EaseBezierField tuple={tuple} onCommit={onCommit} />;
+}
+
+/**
+ * How long an optimistically painted ease may outlive its commit. Long enough
+ * for a normal write-reparse-rerender round trip, short enough that a dropped
+ * write self-corrects while the author is still looking at the panel.
+ */
+const PENDING_EASE_TIMEOUT_MS = 2000;
 
 export function EaseCurveSection({
   ease,
-  duration,
   onCustomEaseCommit,
+  collidingAnimationTargets,
 }: {
   ease: string;
-  duration?: number;
   onCustomEaseCommit: (ease: string) => void;
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
 }) {
-  const isCustom = ease.startsWith("custom(");
-  const curveFromPreset = EASE_CURVES[ease];
-  const customPoints = isCustom ? parseCustomEaseFromString(ease) : null;
-  const curve: Pts | null =
-    isCustom && customPoints
-      ? [customPoints.x1, customPoints.y1, customPoints.x2, customPoints.y2]
-      : (curveFromPreset ?? null);
+  // The ease this section painted optimistically, still waiting for its commit
+  // to round-trip back through the `ease` prop.
+  const [pendingEase, setPendingEase] = useState<string | null>(null);
+  // Every value committed and not yet seen coming back, oldest first. It takes
+  // the whole queue, not just the latest, to tell an older commit echoing back
+  // apart from an edit made somewhere else.
+  const inFlightEasesRef = useRef<string[]>([]);
+  const displayedEase = pendingEase ?? ease;
+  const springBounce = parseSpringBounce(displayedEase);
+  const isSpring = springBounce !== null;
+  const wiggleConfig = parseWiggleEase(displayedEase);
+  const isWiggle = wiggleConfig !== null;
+  const mode: EaseMode = isSpring ? "spring" : isWiggle ? "wiggle" : "curve";
+  const curve = resolveEditableCurve(displayedEase, springBounce);
 
   const [draft, setDraft] = useState<Pts | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
   const [hover, setHover] = useState<"p1" | "p2" | null>(null);
   const draggingRef = useRef<"p1" | "p2" | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const rafRef = useRef<number>(0);
 
-  const play = useCallback(() => {
-    const start = performance.now();
-    const dur = 1100;
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / dur, 1);
-      setProgress(t);
-      if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else setTimeout(() => setProgress(null), 450);
-    };
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
+  // Keep the local draft displayed until the committed `ease` prop round-trips
+  // back (write → reparse → re-render), then drop it. Clearing on pointer-up
+  // instead would fall back to the STALE prop for a frame — the curve snaps to
+  // the old value and jumps to the new one (the commit flicker). By the time
+  // `ease` changes, `curve` already equals the draft, so the handoff is seamless.
+  useEffect(() => {
+    setDraft(null);
+    const inFlight = inFlightEasesRef.current;
+    const landed = inFlight.indexOf(ease);
+    if (landed < 0) {
+      // A value this section never sent: someone else edited the ease, so the
+      // real value wins over anything optimistic still on screen.
+      inFlight.length = 0;
+      setPendingEase(null);
+      return;
+    }
+    // One of this section's own commits came back. Everything sent before it
+    // is settled with it, but a NEWER commit may still be in flight, and
+    // repainting this older value while waiting for that one is the
+    // wiggle-then-spring-then-wiggle flicker of a fast double switch.
+    inFlight.splice(0, landed + 1);
+    if (inFlight.length === 0) setPendingEase(null);
+  }, [ease]);
 
-  const active = draft ?? curve;
-  if (!active) return null;
-  const [x1, y1, x2, y2] = active;
+  // A commit is fire-and-forget, so a write that is rejected or lands as a
+  // no-op never changes `ease`, and the optimistic value would sit on screen
+  // claiming a curve the composition does not have. Nothing downstream reports
+  // that failure, so the display is time-bounded instead: fall back to the
+  // committed truth when the round trip does not arrive.
+  useEffect(() => {
+    if (pendingEase === null) return;
+    const timer = setTimeout(() => {
+      inFlightEasesRef.current.length = 0;
+      setPendingEase(null);
+    }, PENDING_EASE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [pendingEase]);
+
+  const commitEase = (nextEase: string) => {
+    inFlightEasesRef.current.push(nextEase);
+    setPendingEase(nextEase);
+    onCustomEaseCommit(nextEase);
+  };
+
+  const activeTuple = draft ?? curve;
+  const displayTuple = activeTuple ?? DEFAULT_CURVE;
+  const [x1, y1, x2, y2] = displayTuple;
 
   // Anchors + control handles. Handle *display* is clamped to the view so an
   // extreme loaded overshoot rides the edge instead of disappearing.
@@ -158,18 +330,13 @@ export function EaseCurveSection({
   const a1 = { x: xToSvg(1), y: yToSvg(1) };
   const p1 = { x: xToSvg(x1), y: yToSvg(clampView(y1)) };
   const p2 = { x: xToSvg(x2), y: yToSvg(clampView(y2)) };
-  // Curve drawn from the true control points (so its shape is exact).
-  const cp1 = { x: xToSvg(x1), y: yToSvg(y1) };
-  const cp2 = { x: xToSvg(x2), y: yToSvg(y2) };
-  const curvePath = `M${a0.x},${a0.y} C${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${a1.x},${a1.y}`;
-
-  let dot: { x: number; y: number } | null = null;
-  if (progress !== null) {
-    dot = {
-      x: xToSvg(cubicAt(progress, 0, x1, x2, 1)),
-      y: yToSvg(cubicAt(progress, 0, y1, y2, 1)),
-    };
-  }
+  // Read the OPTIMISTIC ease everywhere the graph is derived, so a mode switch
+  // paints immediately instead of waiting for the committed prop to come back.
+  const curvePath = curvePathFor(displayedEase, springBounce, wiggleConfig, displayTuple);
+  const showGraph = activeTuple !== null || isWiggle || displayedEase === "hold";
+  // `curve !== null` is what keeps Hold handle-free: it draws a graph (a flat
+  // step) but has no editable control points to drag.
+  const showHandles = curve !== null && !isSpring && !isWiggle;
 
   const handlePointerDown = (handle: "p1" | "p2", e: React.PointerEvent) => {
     e.preventDefault();
@@ -190,7 +357,7 @@ export function EaseCurveSection({
     const px = Math.max(0, Math.min(1, (sx - PADH) / S));
     // py uses the WIDER drag bound (not clampView), so dragging keeps overshoot
     // fidelity instead of pinning the committed value to the visible view edge.
-    const py = Math.max(DRAG_VMIN, Math.min(DRAG_VMAX, 1 - (sy - HR) / S));
+    const py = clampDragY(1 - (sy - HR) / S);
     const prev = draft ?? [x1, y1, x2, y2];
     const next: Pts =
       draggingRef.current === "p1"
@@ -203,164 +370,185 @@ export function EaseCurveSection({
     if (!draggingRef.current || !draft) return;
     draggingRef.current = null;
     const path = `M0,0 C${draft[0]},${draft[1]} ${draft[2]},${draft[3]} 1,1`;
-    onCustomEaseCommit(`custom(${path})`);
-    setDraft(null);
+    // Commit only — the draft stays on screen and is cleared by the effect above
+    // once the committed `ease` prop comes back, so the curve never flickers.
+    commitEase(`custom(${path})`);
+  };
+
+  const handleKeyDown = (handle: "p1" | "p2", event: React.KeyboardEvent<SVGCircleElement>) => {
+    const next = nudgeCurve(displayTuple, handle, event.key, event.shiftKey ? 0.1 : 0.01);
+    if (!next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraft(next);
+    // Same no-flicker contract as the pointer path: commit and let the effect
+    // clear the draft, rather than dropping it on the next microtask.
+    commitEase(`custom(M0,0 C${next[0]},${next[1]} ${next[2]},${next[3]} 1,1)`);
   };
 
   const top = yToSvg(1);
   const bottom = yToSvg(0);
   const left = xToSvg(0);
   const right = xToSvg(1);
-  const label = isCustom ? "Custom curve" : (EASE_LABELS[ease] ?? ease);
-  const bezierText = `${x1} · ${y1} · ${x2} · ${y2}`;
+  const label = resolveEditorLabel(displayedEase, springBounce, isWiggle);
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
-      <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
-        <button
-          type="button"
-          onClick={play}
-          className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
-        >
-          {progress !== null ? "Playing…" : "Preview"}
-        </button>
-      </div>
-      <div
-        className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
-        style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
-      >
-        <svg
-          ref={svgRef}
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${SVGW} ${SVGH}`}
-          preserveAspectRatio="none"
-          className="touch-none select-none"
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          {/* Grid — quarter lines inside the unit square */}
-          {[0.25, 0.5, 0.75].map((q) => (
-            <line
-              key={`v${q}`}
-              x1={xToSvg(q)}
-              y1={top}
-              x2={xToSvg(q)}
-              y2={bottom}
-              stroke="white"
-              strokeOpacity="0.05"
-              strokeWidth="1"
-            />
-          ))}
-          {[0.25, 0.5, 0.75].map((q) => (
-            <line
-              key={`h${q}`}
-              x1={left}
-              y1={yToSvg(q)}
-              x2={right}
-              y2={yToSvg(q)}
-              stroke="white"
-              strokeOpacity="0.05"
-              strokeWidth="1"
-            />
-          ))}
-          {/* Unit-square frame (progress 0 → 1) */}
-          <rect
-            x={left}
-            y={top}
-            width={S}
-            height={bottom - top}
-            fill="none"
-            stroke="white"
-            strokeOpacity="0.1"
-            strokeWidth="1"
-          />
-          {/* Linear reference diagonal */}
-          <line
-            x1={a0.x}
-            y1={a0.y}
-            x2={a1.x}
-            y2={a1.y}
-            stroke="white"
-            strokeOpacity="0.08"
-            strokeWidth="1"
-            strokeDasharray="3 4"
-          />
-          {/* Tangent handle lines */}
-          <line
-            x1={a0.x}
-            y1={a0.y}
-            x2={p1.x}
-            y2={p1.y}
-            stroke={ACCENT}
-            strokeOpacity="0.5"
-            strokeWidth="1.5"
-          />
-          <line
-            x1={a1.x}
-            y1={a1.y}
-            x2={p2.x}
-            y2={p2.y}
-            stroke={ACCENT}
-            strokeOpacity="0.5"
-            strokeWidth="1.5"
-          />
-          {/* The curve */}
-          <path d={curvePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" />
-          {/* Anchors at (0,0) and (1,1) */}
-          <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
-          <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
-          {/* Animated preview dot */}
-          {dot && (
-            <>
-              <circle cx={dot.x} cy={dot.y} r="9" fill={ACCENT} fillOpacity="0.18" />
-              <circle cx={dot.x} cy={dot.y} r="4.5" fill={ACCENT} />
-            </>
-          )}
-          {/* Draggable control handles (large transparent hit area + visible dot) */}
-          {[["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
-            <g key={key}>
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r="14"
-                fill="transparent"
-                className="cursor-grab active:cursor-grabbing"
-                onPointerDown={(e) => handlePointerDown(key, e)}
-                onPointerEnter={() => setHover(key)}
-                onPointerLeave={() => setHover((h) => (h === key ? null : h))}
+      <EaseTypeDropdown kind={mode} ease={displayedEase} label={label} onSelect={commitEase} />
+      {collidingAnimationTargets && collidingAnimationTargets.length > 1 && (
+        <p className="mb-1 text-[9px] text-neutral-500">
+          Applies to {collidingAnimationTargets.length} animations
+        </p>
+      )}
+      <EaseModeToggle mode={mode} onCommit={commitEase} />
+      <span className="sr-only" aria-live="polite">
+        {MODE_LABELS[mode]} ease editor selected
+      </span>
+      {showGraph ? (
+        <>
+          <div
+            className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+            style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
+          >
+            <svg
+              ref={svgRef}
+              width="100%"
+              height="100%"
+              viewBox={`0 0 ${SVGW} ${SVGH}`}
+              preserveAspectRatio="none"
+              className="touch-none select-none"
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {/* Grid — quarter lines inside the unit square */}
+              {[0.25, 0.5, 0.75].map((q) => (
+                <line
+                  key={`v${q}`}
+                  x1={xToSvg(q)}
+                  y1={top}
+                  x2={xToSvg(q)}
+                  y2={bottom}
+                  stroke="white"
+                  strokeOpacity="0.05"
+                  strokeWidth="1"
+                />
+              ))}
+              {[0.25, 0.5, 0.75].map((q) => (
+                <line
+                  key={`h${q}`}
+                  x1={left}
+                  y1={yToSvg(q)}
+                  x2={right}
+                  y2={yToSvg(q)}
+                  stroke="white"
+                  strokeOpacity="0.05"
+                  strokeWidth="1"
+                />
+              ))}
+              {/* Unit-square frame (progress 0 → 1) */}
+              <rect
+                x={left}
+                y={top}
+                width={S}
+                height={bottom - top}
+                fill="none"
+                stroke="white"
+                strokeOpacity="0.1"
+                strokeWidth="1"
               />
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={hover === key || draggingRef.current === key ? 7 : 5.5}
-                fill="#0a0a1a"
+              {/* Linear reference diagonal */}
+              <line
+                x1={a0.x}
+                y1={a0.y}
+                x2={a1.x}
+                y2={a1.y}
+                stroke="white"
+                strokeOpacity="0.08"
+                strokeWidth="1"
+                strokeDasharray="3 4"
+              />
+              {/* Tangent handle lines */}
+              {showHandles && (
+                <>
+                  <line
+                    x1={a0.x}
+                    y1={a0.y}
+                    x2={p1.x}
+                    y2={p1.y}
+                    stroke={ACCENT}
+                    strokeOpacity="0.5"
+                    strokeWidth="1.5"
+                  />
+                  <line
+                    x1={a1.x}
+                    y1={a1.y}
+                    x2={p2.x}
+                    y2={p2.y}
+                    stroke={ACCENT}
+                    strokeOpacity="0.5"
+                    strokeWidth="1.5"
+                  />
+                </>
+              )}
+              {/* The curve */}
+              <path
+                d={curvePath}
+                fill="none"
                 stroke={ACCENT}
                 strokeWidth="2.5"
-                className="pointer-events-none transition-[r]"
+                strokeLinecap="round"
               />
-            </g>
-          ))}
-        </svg>
-      </div>
-      {/* Axis + value readout */}
-      <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
-        <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
-        <span className="tracking-wide text-neutral-500">time →</span>
-        <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
-      </div>
-      <div className="mt-1 flex items-center justify-between px-0.5">
-        <span className="text-[10px] text-neutral-400">{label}</span>
-        <span
-          className="font-mono text-[9px] tracking-tight text-neutral-600"
-          title="cubic-bezier control points"
-        >
-          {bezierText}
-        </span>
-      </div>
+              {/* Anchors at (0,0) and (1,1) */}
+              <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
+              <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
+              {/* Draggable control handles (large transparent hit area + visible dot) */}
+              {showHandles &&
+                [["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
+                  <g key={key}>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r="14"
+                      fill="transparent"
+                      role="slider"
+                      tabIndex={0}
+                      aria-label={`${key === "p1" ? "First" : "Second"} bezier control point`}
+                      aria-valuemin={0}
+                      aria-valuemax={1}
+                      aria-valuenow={key === "p1" ? x1 : x2}
+                      aria-valuetext={`x ${key === "p1" ? x1 : x2}, y ${key === "p1" ? y1 : y2}`}
+                      className="cursor-grab stroke-transparent outline-none active:cursor-grabbing focus-visible:stroke-white focus-visible:stroke-[2px]"
+                      onPointerDown={(e) => handlePointerDown(key, e)}
+                      onKeyDown={(event) => handleKeyDown(key, event)}
+                      onPointerEnter={() => setHover(key)}
+                      onPointerLeave={() => setHover((h) => (h === key ? null : h))}
+                    />
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={hover === key || draggingRef.current === key ? 7 : 5.5}
+                      fill="#0a0a1a"
+                      stroke={ACCENT}
+                      strokeWidth="2.5"
+                      className="pointer-events-none transition-[r]"
+                    />
+                  </g>
+                ))}
+            </svg>
+          </div>
+          <EaseParameterField
+            springBounce={springBounce}
+            wiggleConfig={wiggleConfig}
+            tuple={displayTuple}
+            onCommit={commitEase}
+          />
+        </>
+      ) : (
+        <p className="px-0.5 py-1.5 text-[10px] leading-relaxed text-neutral-500">
+          {label} preset: switch to Curve, Spring, or Wiggle above to shape it by hand.
+        </p>
+      )}
     </div>
   );
 }

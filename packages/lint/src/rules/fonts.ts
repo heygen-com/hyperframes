@@ -65,6 +65,7 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
 function normalizeUsedFontName(part: string): string | null {
   const name = part
     .trim()
+    .replace(/\s*!important\s*$/i, "")
     .replace(/^['"]|['"]$/g, "")
     .trim()
     .toLowerCase();
@@ -219,7 +220,10 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const googleFonts = collectGoogleFontFamilies(source, styles);
 
     const undeclared = used.filter(
-      (name) => !declared.has(name) && !FONT_ALIAS_KEYS.has(name) && !googleFonts.has(name),
+      (name) =>
+        !declared.has(name) &&
+        !FONT_ALIAS_KEYS.has(name) &&
+        !googleFonts.has(name.replace(/\+/g, " ")),
     );
     if (undeclared.length === 0) return findings;
 

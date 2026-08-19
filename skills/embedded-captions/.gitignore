@@ -19,6 +19,3 @@ matte.fps
 safe-zones.json
 
 .DS_Store
-# CDPR fan-kit source SVG (528KB) — only its extracted metrics
-# (assets/brand/cyberpunk-widths.json) are consumed at runtime.
-assets/brand/Cyberpunk2077.svg

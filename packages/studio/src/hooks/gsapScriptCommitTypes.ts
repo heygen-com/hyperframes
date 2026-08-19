@@ -2,6 +2,7 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PublishSdkSession } from "../utils/sdkCutover";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 
 export interface MutationResult {
@@ -15,16 +16,30 @@ export interface MutationResult {
 
 export interface CommitMutationOptions {
   label: string;
+  /** Observe the durable writer result without duplicating the request path. */
+  onResult?: (result: MutationResult) => void;
   coalesceKey?: string;
+  coalesceMs?: number;
   softReload?: boolean;
   skipReload?: boolean;
+  /**
+   * Write the source but leave the preview alone; the caller renders once when it
+   * is done. For a multi-write action like a group drag, rendering after each
+   * write shows a source where the members not yet written still hold their old
+   * values, so they snap back until their own write lands. This also defers the
+   * in-place runtime patch's seek, which re-renders the whole timeline and repaints
+   * the queued members the same way. Unlike `skipReload` this changes nothing about
+   * error handling — a failed write still throws.
+   */
+  deferPreviewSync?: boolean;
+  /** Shares an in-place patch miss with the final render of one multi-write action. */
+  previewFallbackLatch?: { pending: boolean };
   beforeReload?: () => void;
   /**
    * Serialize this commit against others sharing the same key. Used to chain
-   * per-animationId GSAP meta updates so overlapping read-modify-write POSTs to
-   * one file can't interleave — which would pair the shadow fidelity diff with a
-   * stale server result and report false ease mismatches. Commits without a key
-   * (and under distinct keys) run concurrently as before.
+   * per-animationId GSAP meta updates. Every commit independently takes the
+   * project/file mutation lock, so this key only adds ordering and can never
+   * bypass whole-file serialization.
    */
   serializeKey?: string;
   /**
@@ -36,13 +51,30 @@ export interface CommitMutationOptions {
    * existing soft/full reload path. Structural edits omit this and reload as before.
    */
   instantPatch?: { selector: string; change: RuntimeTweenChange };
+  /**
+   * The same fast path for a batched commit: one patch per element the batch
+   * wrote, applied in order. All of them must land for the reload to be skipped
+   * — one that can't be applied leaves the preview half-patched, so the whole
+   * batch falls back to the reload. Only the last patch re-renders (see
+   * `deferSeek`), so a ten-element batch repaints once.
+   */
+  instantPatches?: Array<{ selector: string; change: RuntimeTweenChange }>;
 }
 
-export type CommitMutation = (
-  selection: DomEditSelection,
-  mutation: Record<string, unknown>,
-  options: CommitMutationOptions,
-) => Promise<void>;
+export interface CommitMutationCall {
+  selection: DomEditSelection;
+  mutation: Record<string, unknown>;
+  options: CommitMutationOptions;
+}
+
+export interface CommitMutation {
+  (
+    selection: DomEditSelection,
+    mutation: Record<string, unknown>,
+    options: CommitMutationOptions,
+  ): Promise<void>;
+  batch?: (calls: CommitMutationCall[], options: CommitMutationOptions) => Promise<void>;
+}
 
 export type SafeGsapCommitMutation = (
   selection: DomEditSelection,
@@ -66,6 +98,7 @@ export interface GsapScriptCommitsParams {
       label: string;
       kind: EditHistoryKind;
       coalesceKey?: string;
+      coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };
@@ -76,6 +109,8 @@ export interface GsapScriptCommitsParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   /** Stage 7 §3.5: SDK session for routing GSAP tween ops through addGsapTween/setGsapTween/removeGsapTween. */
   sdkSession?: Composition | null;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: PublishSdkSession;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
   /** Resync the in-memory SDK session after a server-authoritative write. */
   forceReloadSdkSession?: () => void;

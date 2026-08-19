@@ -15,6 +15,12 @@
  * and call injectDurations() to complete the compilation.
  */
 
+import {
+  parseStrictFiniteTimingNumber,
+  readElementPlaybackRate,
+  readMediaStart,
+} from "../runtime/playbackRate.js";
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface UnresolvedElement {
@@ -25,6 +31,7 @@ export interface UnresolvedElement {
   end?: number;
   duration?: number;
   mediaStart: number;
+  playbackRate: number;
   compositionSrc?: string;
 }
 
@@ -40,6 +47,7 @@ export interface ResolvedMediaElement {
   start: number;
   duration: number;
   mediaStart: number;
+  playbackRate: number;
   loop: boolean;
 }
 
@@ -48,13 +56,27 @@ export interface CompilationResult {
   unresolved: UnresolvedElement[];
 }
 
-// ffprobe precision can differ slightly across local and CI media stacks. Also
-// the floor for the engine's hold-last-frame tolerance (a slot left unclamped is
-// short by at most this), so they must move together.
+// ffprobe precision can differ slightly across local and CI media stacks, so
+// avoid shortening authored audio for insignificant probe drift.
 export const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
 
 export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
   return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
+}
+
+/**
+ * Whether compilation should shorten an authored media slot to its source.
+ *
+ * Non-looping video intentionally keeps an explicit longer slot: browsers and
+ * the render frame injector hold its final frame until that authored slot ends.
+ * Audio has no frame to hold, so its slot remains bounded by playable source.
+ */
+export function shouldClampResolvedMediaDuration(
+  tagName: ResolvedMediaElement["tagName"],
+  declaredDuration: number,
+  maxDuration: number,
+): boolean {
+  return tagName === "audio" && shouldClampMediaDuration(declaredDuration, maxDuration);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -76,6 +98,11 @@ function hasAttr(tag: string, attr: string): boolean {
 
 function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
+}
+
+function setAttr(tag: string, attr: string, value: string): string {
+  if (!hasAttr(tag, attr)) return injectAttr(tag, attr, value);
+  return tag.replace(new RegExp(`(${attr}=["'])[^"']*(["'])`), `$1${value}$2`);
 }
 
 // Real media/timing elements never live inside comments, <script>, or <style>.
@@ -123,14 +150,16 @@ function compileTag(
     startStr = "0";
   }
   const start = parseFloat(startStr);
-  const mediaStartStr = getAttr(result, "data-media-start");
-  const mediaStart = mediaStartStr ? parseFloat(mediaStartStr) : 0;
+  const attrReader = { getAttribute: (name: string) => getAttr(result, name) };
+  const mediaStart = readMediaStart(attrReader);
+  const playbackRate = readElementPlaybackRate(attrReader);
 
   // 1. Compute data-end from data-start + data-duration
   if (!hasAttr(result, "data-end")) {
     const durationStr = getAttr(result, "data-duration");
-    if (durationStr !== null) {
-      const end = start + parseFloat(durationStr);
+    const duration = parseStrictFiniteTimingNumber(durationStr);
+    if (duration != null) {
+      const end = start + duration;
       result = injectAttr(result, "data-end", String(end));
     } else if (id) {
       // No data-duration: mark as unresolved so caller can provide it
@@ -140,6 +169,7 @@ function compileTag(
         src: getAttr(result, "src") ?? undefined,
         start,
         mediaStart,
+        playbackRate,
       };
     }
   }
@@ -201,6 +231,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
         tagName: "div",
         start: startStr ? parseFloat(startStr) : 0,
         mediaStart: 0,
+        playbackRate: 1,
         compositionSrc: compositionSrc ?? undefined,
       });
     }
@@ -227,8 +258,8 @@ export function injectDurations(html: string, resolutions: ResolvedDuration[]): 
       let result = tag;
 
       // Add data-duration if missing
-      if (!hasAttr(result, "data-duration")) {
-        result = injectAttr(result, "data-duration", String(duration));
+      if (parseStrictFiniteTimingNumber(getAttr(result, "data-duration")) == null) {
+        result = setAttr(result, "data-duration", String(duration));
       }
 
       // Add data-end if missing
@@ -265,12 +296,12 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
     const durationStr = getAttr(tag, "data-duration");
     if (!id || durationStr === null) continue;
 
-    const duration = parseFloat(durationStr);
-    if (!Number.isFinite(duration) || duration <= 0) continue;
+    const duration = parseStrictFiniteTimingNumber(durationStr);
+    if (duration == null || duration <= 0) continue;
 
     const isVideo = /^<video/i.test(tag);
     const startStr = getAttr(tag, "data-start");
-    const mediaStartStr = getAttr(tag, "data-media-start");
+    const attrReader = { getAttribute: (name: string) => getAttr(tag, name) };
 
     resolved.push({
       id,
@@ -278,7 +309,8 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       src: getAttr(tag, "src") ?? undefined,
       start: startStr !== null ? parseFloat(startStr) : 0,
       duration,
-      mediaStart: mediaStartStr ? parseFloat(mediaStartStr) : 0,
+      mediaStart: readMediaStart(attrReader),
+      playbackRate: readElementPlaybackRate(attrReader),
       loop: hasAttr(tag, "loop"),
     });
   }

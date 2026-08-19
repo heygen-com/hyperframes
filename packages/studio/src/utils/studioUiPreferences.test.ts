@@ -20,14 +20,19 @@ describe("studio UI preferences", () => {
     const storage = createStorage();
 
     writeStudioUiPreferences({ timelineVisible: false }, storage);
+    writeStudioUiPreferences({ leftWidth: 384, rightWidth: 424 }, storage);
     writeStudioUiPreferences({ playbackRate: 1.5 }, storage);
     writeStudioUiPreferences({ audioMuted: true }, storage);
+    writeStudioUiPreferences({ audioVolume: 0.4 }, storage);
     writeStudioUiPreferences({ previewZoom: { zoomPercent: 160, panX: -20, panY: 12 } }, storage);
 
     expect(readStudioUiPreferences(storage)).toEqual({
       timelineVisible: false,
+      leftWidth: 384,
+      rightWidth: 424,
       playbackRate: 1.5,
       audioMuted: true,
+      audioVolume: 0.4,
       previewZoom: { zoomPercent: 160, panX: -20, panY: 12 },
     });
   });
@@ -38,9 +43,12 @@ describe("studio UI preferences", () => {
       "hf-studio-ui-preferences",
       JSON.stringify({
         leftCollapsed: "yes",
+        leftWidth: "wide",
+        rightWidth: Number.NaN,
         timelineVisible: true,
         playbackRate: Number.NaN,
         audioMuted: "false",
+        audioVolume: 2,
         previewZoom: { zoomPercent: 150, panX: 0, panY: "bad" },
       }),
     );
@@ -62,6 +70,20 @@ describe("timelineSnapEnabled preference", () => {
     const storage = createStorage();
     storage.setItem("hf-studio-ui-preferences", JSON.stringify({ timelineSnapEnabled: "yes" }));
     expect(readStudioUiPreferences(storage).timelineSnapEnabled).toBeUndefined();
+  });
+});
+
+describe("thumbnailMode preference", () => {
+  it("round-trips the adaptive mode", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ thumbnailMode: "adaptive" }, storage);
+    expect(readStudioUiPreferences(storage).thumbnailMode).toBe("adaptive");
+  });
+
+  it("migrates the legacy boolean without retaining two owners", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ thumbnailsEnabled: false }));
+    expect(readStudioUiPreferences(storage).thumbnailMode).toBe("hidden");
   });
 });
 

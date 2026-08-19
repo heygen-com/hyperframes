@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
@@ -92,7 +93,7 @@ export default defineCommand({
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));
-      process.exit(1);
+      failCommand();
     }
 
     let text: string;
@@ -102,7 +103,7 @@ export default defineCommand({
       text = readFileSync(maybeFile, "utf-8").trim();
       if (!text) {
         console.error(c.error("File is empty."));
-        process.exit(1);
+        failCommand();
       }
     } else {
       text = input;
@@ -110,7 +111,7 @@ export default defineCommand({
 
     if (!text.trim()) {
       console.error(c.error("No text provided."));
-      process.exit(1);
+      failCommand();
     }
 
     // ── Resolve output path ───────────────────────────────────────────
@@ -120,7 +121,7 @@ export default defineCommand({
 
     if (isNaN(speed) || speed <= 0 || speed > 3) {
       console.error(c.error("Speed must be a number between 0.1 and 3.0"));
-      process.exit(1);
+      failCommand();
     }
 
     const inferredLang = inferLangFromVoiceId(voice);
@@ -129,7 +130,7 @@ export default defineCommand({
       const requested = String(args.lang).toLowerCase();
       if (!isSupportedLang(requested)) {
         errorBox("Invalid --lang", `Got "${args.lang}". Must be one of: ${langList}.`);
-        process.exit(1);
+        failCommand();
       }
       lang = requested;
     }
@@ -190,7 +191,7 @@ export default defineCommand({
       } else {
         spin?.stop(c.error(`Speech synthesis failed: ${message}`));
       }
-      process.exit(1);
+      failCommand();
     }
   },
 });

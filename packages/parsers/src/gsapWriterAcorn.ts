@@ -17,6 +17,7 @@ import {
   resolveConversionProps,
   extractArcWaypoints,
   buildMotionPathObjectCode,
+  mergePercentageKeyframes,
 } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
@@ -25,6 +26,10 @@ import {
 } from "./gsapParserAcorn.js";
 import { classifyPropertyGroup } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
+import {
+  findObjectArrayKeyframeIndex,
+  getCompatibleObjectArrayKeyframeTiming,
+} from "./gsapObjectArrayTiming.js";
 import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapSerialize.js";
 import * as acornWalk from "acorn-walk";
 
@@ -865,6 +870,77 @@ function findKfPropByPct(kfNode: Node, percentage: number): { prop: Node; idx: n
   return best;
 }
 
+function updateMotionPathPosition(
+  script: string,
+  target: ParsedGsapAcornForWrite["located"][number],
+  percentage: number,
+  properties: Record<string, number | string>,
+): string | undefined {
+  const waypoints = extractArcWaypoints(target.animation);
+  if (waypoints.length < 2) return undefined;
+  const pointIndex = Math.max(
+    0,
+    Math.min(waypoints.length - 1, Math.round((percentage / 100) * (waypoints.length - 1))),
+  );
+  const current = waypoints[pointIndex];
+  if (!current) return undefined;
+  const x = properties.x ?? current.x;
+  const y = properties.y ?? current.y;
+  if (typeof x !== "number" || typeof y !== "number") return undefined;
+  return updateMotionPathPointInScript(script, target.id, pointIndex, { x, y });
+}
+
+function updateTweenEase(script: string, animationId: string, ease: string): string | undefined {
+  const reparsed = parseGsapScriptAcornForWrite(script);
+  const target = reparsed?.located.find((entry) => entry.id === animationId);
+  if (!target) return undefined;
+  const ms = new MagicString(script);
+  upsertProp(ms, target.call.varsArg, "ease", ease);
+  return ms.toString();
+}
+
+function updateMotionPathKeyframe(
+  script: string,
+  target: ParsedGsapAcornForWrite["located"][number],
+  percentage: number,
+  properties: Record<string, number | string>,
+  ease?: string,
+): string | undefined {
+  if (!target.animation.arcPath?.enabled || !findPropertyNode(target.call.varsArg, "motionPath")) {
+    return undefined;
+  }
+  const propertyKeys = Object.keys(properties);
+  if (propertyKeys.some((key) => key !== "x" && key !== "y")) return undefined;
+  const next =
+    propertyKeys.length === 0
+      ? script
+      : updateMotionPathPosition(script, target, percentage, properties);
+  if (next === undefined || ease === undefined) return next;
+  return updateTweenEase(next, target.id, ease);
+}
+
+function updateObjectKeyframe(
+  script: string,
+  prop: Node,
+  properties: Record<string, number | string>,
+  ease?: string,
+): string {
+  const ms = new MagicString(script);
+  // Merge into the authored object so an edit cannot discard unrelated
+  // keyframed properties at the same percentage.
+  if (prop.value?.type === "ObjectExpression") {
+    for (const [key, value] of Object.entries(properties)) {
+      upsertProp(ms, prop.value, key, value);
+    }
+    if (ease !== undefined) upsertProp(ms, prop.value, "ease", ease);
+  } else {
+    const record: Record<string, number | string> = { ...properties };
+    if (ease) record.ease = ease;
+    ms.overwrite(prop.value.start, prop.value.end, recordToCode(record));
+  }
+  return ms.toString();
+}
+
 export function updateKeyframeInScript(
   script: string,
   animationId: string,
@@ -878,7 +954,12 @@ export function updateKeyframeInScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode) return script;
+  if (!kfPropNode) {
+    // motionPath waypoints are exposed to Studio as synthetic keyframes, but
+    // GSAP authors their positions in `motionPath.path` and one ease for the
+    // whole tween. Commit both parts when a Studio gesture carries x/y + ease.
+    return updateMotionPathKeyframe(script, target, percentage, properties, ease) ?? script;
+  }
 
   // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
   // — GSAP distributes them evenly, and the runtime read assigns even percentages
@@ -894,27 +975,9 @@ export function updateKeyframeInScript(
   const match = findKfPropByPct(kfPropNode.value, percentage);
   if (!match) return script;
 
-  const ms = new MagicString(script);
-  // MERGE the edited props into the existing keyframe, preserving properties already
-  // keyframed at this percentage (z, transformPerspective, rotation, …). A whole-value
-  // overwrite DROPS every prop not in this edit — e.g. editing rotationY at the 0%
-  // keyframe would strip z / transformPerspective, so the lens then animates from 0 and
-  // the element pops. Mirrors addKeyframeToScript's merge-into-existing branch.
-  if (match.prop.value?.type === "ObjectExpression") {
-    for (const [k, v] of Object.entries(properties)) {
-      upsertProp(ms, match.prop.value, k, v);
-    }
-    if (ease !== undefined) upsertProp(ms, match.prop.value, "ease", ease);
-  } else {
-    const record: Record<string, number | string> = { ...properties };
-    if (ease) record.ease = ease;
-    ms.overwrite(match.prop.value.start, match.prop.value.end, recordToCode(record));
-  }
-  return ms.toString();
+  return updateObjectKeyframe(script, match.prop, properties, ease);
 }
 
-// ponytail: even-spacing index map; if array keyframes ever carry per-element
-// `duration`, switch to matching the closest cumulative position.
 function updateArrayKeyframeByPct(
   script: string,
   arrayNode: Node,
@@ -925,13 +988,18 @@ function updateArrayKeyframeByPct(
   const elements = ((arrayNode.elements ?? []) as Array<Node | null>).filter(
     (el): el is Node => !!el && el.type === "ObjectExpression",
   );
-  const n = elements.length;
-  if (n === 0) return script;
-  const idx = n > 1 ? Math.round((percentage / 100) * (n - 1)) : 0;
-  const el = elements[Math.max(0, Math.min(n - 1, idx))];
+  if (elements.length === 0) return script;
+  const records = elements.map((element) => valueNodeToRecord(element, script));
+  const idx = findObjectArrayKeyframeIndex(
+    records.map((record) => record.duration),
+    percentage,
+    { fallbackToNearest: true },
+  );
+  if (idx === null) return script;
+  const el = elements[idx];
   if (!el) return script;
   const merged: Record<string, number | string> = {
-    ...valueNodeToRecord(el, script),
+    ...records[idx],
     ...properties,
   };
   if (ease) merged.ease = ease;
@@ -1010,23 +1078,34 @@ function locateWithKeyframes(
 }
 
 /** Locate a tween's keyframes object, converting a flat tween first if absent. */
-// Array-form keyframes (`keyframes: [{x,y}, …]`) → even-percentage object form
-// (`{ "0%": {…}, "33.3%": {…}, … }`). Inserting a keyframe needs percentage keys,
-// which an even array can't host. Runtime-identical; mirrors the recast path.
+// Array-form keyframes → percentage-object form. Duration-authored entries use
+// cumulative positions; duration metadata moves to the outer tween.
 function convertArrayKeyframesToObject(script: string, target: Node): string {
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode || kfPropNode.value?.type !== "ArrayExpression") return script;
   const els = ((kfPropNode.value.elements ?? []) as Array<Node | null>).filter(
     (el): el is Node => !!el && el.type === "ObjectExpression",
   );
-  const n = els.length;
-  if (n === 0) return script;
+  if (els.length === 0) return script;
+  const records = els.map((element) => valueNodeToRecord(element, script));
+  const outerDuration = valueNodeToRecord(target.call.varsArg, script).duration;
+  const timing = getCompatibleObjectArrayKeyframeTiming(
+    records.map((record) => record.duration),
+    outerDuration,
+  );
+  if (!timing) return script;
   const entries = els.map((el, i) => {
-    const pct = n > 1 ? Math.round((i / (n - 1)) * 1000) / 10 : 0;
-    return `${JSON.stringify(`${pct}%`)}: ${script.slice(el.start, el.end)}`;
+    const { duration: _duration, ...record } = records[i]!;
+    return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
   ms.overwrite(kfPropNode.value.start, kfPropNode.value.end, `{ ${entries.join(", ")} }`);
+  if (
+    timing.totalDuration !== undefined &&
+    findPropertyNode(target.call.varsArg, "duration") === undefined
+  ) {
+    upsertProp(ms, target.call.varsArg, "duration", timing.totalDuration);
+  }
   return ms.toString();
 }
 
@@ -1176,18 +1255,8 @@ function collapseKeyframesToFlat(
   ms.overwrite(varsNode.start, varsNode.end, `{ ${entries.join(", ")} }`);
 }
 
-/** Implicit tween-relative percentage of array-form keyframe index `i` of `n`
- *  (GSAP distributes array keyframes evenly: 0%, 1/(n-1), …, 100%). */
-function arrayKeyframePct(i: number, n: number): number {
-  return n > 1 ? (i / (n - 1)) * 100 : 0;
-}
-
-// Array-form keyframes (`keyframes: [{x,y}, …]`) carry no explicit percentages —
-// GSAP distributes them evenly. removeKeyframeFromScript only handled the
-// object-form (`keyframes: { "50%": {…} }`), so removing from an array-form tween
-// was a silent no-op (and the downstream hold-sync then stranded an `hf-hold`).
-// Resolve the element by its implicit percentage and splice it out; collapse to a
-// flat tween when fewer than two remain (parity with the object-form path).
+// Resolve an array entry through the parser's cumulative/even timing rule, then
+// splice it out; collapse when fewer than two remain.
 function removeArrayKeyframe(
   ms: MagicString,
   varsArg: Node,
@@ -1198,19 +1267,13 @@ function removeArrayKeyframe(
   const elements: Node[] = (arrNode.elements ?? []).filter(
     (e: Node | null): e is Node => !!e && e.type === "ObjectExpression",
   );
-  const n = elements.length;
-  if (n === 0) return false;
-
-  let matchIdx = -1;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < n; i++) {
-    const dist = Math.abs(arrayKeyframePct(i, n) - percentage);
-    if (dist <= PCT_TOLERANCE && dist < bestDist) {
-      matchIdx = i;
-      bestDist = dist;
-    }
-  }
-  if (matchIdx === -1) return false;
+  if (elements.length === 0) return false;
+  const records = elements.map((element) => valueNodeToRecord(element, script));
+  const matchIdx = findObjectArrayKeyframeIndex(
+    records.map((record) => record.duration),
+    percentage,
+  );
+  if (matchIdx === null) return false;
 
   const remaining = elements.filter((_, i) => i !== matchIdx);
   if (remaining.length < 2) {
@@ -1271,10 +1334,9 @@ export function removeKeyframeFromScript(
 /**
  * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
  * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
- * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
- * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
- * the animation/keyframe isn't found, the tween has no object-form keyframes, or
- * the move resolves onto the same keyframe.
+ * gesture). Re-sorts keyframes by percentage. No-op when the animation/keyframe
+ * isn't found, the tween has no object-form keyframes, the move resolves onto the
+ * same keyframe, or the destination is occupied.
  */
 export function moveKeyframeInScript(
   script: string,
@@ -1296,18 +1358,18 @@ export function moveKeyframeInScript(
   // retime, because findKfPropByPct resolves the destination back onto the
   // from-keyframe — so a deliberate 1% drag committed nothing.
   if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return src;
-  // A destination keyframe is only a real collision (overwrite) when it's a
-  // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
+  // Never overwrite another authored keyframe. Resolving the destination back
+  // onto the source keyframe is not a collision (the tolerance is intentionally
+  // wider than MOVE_NOOP_EPSILON_PCT).
   const dest = findKfPropByPct(kfNode, toPercentage);
-  const collision = dest && dest.prop !== match.prop ? dest : null;
+  if (dest && dest.prop !== match.prop) return script;
 
-  // Rebuild the keyframes object: drop the moved keyframe (and any keyframe at
-  // the destination it overwrites), re-key the moved record to toPercentage,
-  // then re-sort. recordToCode round-trips properties + per-keyframe ease + _auto.
+  // Rebuild the keyframes object: drop the moved keyframe, re-key the moved
+  // record to toPercentage, then re-sort. recordToCode round-trips properties +
+  // per-keyframe ease + _auto.
   const entries: Array<{ pct: number; record: Record<string, number | string> }> = [];
   for (const prop of percentagePropsOf(kfNode)) {
     if (prop === match.prop) continue;
-    if (collision && prop === collision.prop) continue;
     const pct = percentageFromKey(propKeyName(prop) ?? "");
     if (Number.isNaN(pct)) continue;
     entries.push({ pct, record: valueNodeToRecord(prop.value, src) });
@@ -1365,6 +1427,8 @@ export function resizeKeyframedTweenInScript(
     ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(`${to}%`));
   }
   overwritePosition(ms, target.call, newPosition);
+  // Resizing is an explicit duration-authoring gesture. Promote GSAP's implicit
+  // default to source so the dragged window is the window that plays.
   upsertProp(ms, target.call.varsArg, "duration", newDuration);
   return ms.toString();
 }
@@ -1555,7 +1619,7 @@ function buildKeyframeObjectCode(
   }>,
   easeEach?: string,
 ): string {
-  const entries = keyframes.map((kf) => {
+  const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
     if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
@@ -2074,6 +2138,105 @@ export function updateArcSegmentInScript(
   return ms.toString();
 }
 
+function hasCubicSegments(segments: ArcPathSegment[]): boolean {
+  return segments.some((segment) => segment.cp1 != null || segment.cp2 != null);
+}
+
+function writeMotionPathValue(
+  script: string,
+  target: ParsedGsapAcornForWrite["located"][number],
+  waypoints: Array<{ x: number; y: number }>,
+  segments: ArcPathSegment[],
+  autoRotate: boolean | number,
+): string {
+  const motionPath = findPropertyNode(target.call.varsArg, "motionPath");
+  if (!motionPath) return script;
+  const code = buildMotionPathObjectCode({ waypoints, segments, autoRotate });
+  const ms = new MagicString(script);
+  ms.overwrite(motionPath.value.start, motionPath.value.end, code);
+  return ms.toString();
+}
+
+export function updateMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  pointIndex: number,
+  point: { x: number; y: number },
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  if (!target?.animation.arcPath?.enabled) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (waypoints.length < 2 || pointIndex < 0 || pointIndex >= waypoints.length) return script;
+  const next = waypoints.map((waypoint, index) => (index === pointIndex ? { ...point } : waypoint));
+  return writeMotionPathValue(
+    script,
+    target,
+    next,
+    target.animation.arcPath.segments,
+    target.animation.arcPath.autoRotate,
+  );
+}
+
+export function addMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+  point: { x: number; y: number },
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  const arc = target?.animation.arcPath;
+  if (!target || !arc?.enabled || hasCubicSegments(arc.segments)) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (index < 1 || index > waypoints.length - 1) return script;
+  const segments = [...arc.segments];
+  waypoints.splice(index, 0, { ...point });
+  segments.splice(index - 1, 0, { curviness: segments[index - 1]?.curviness ?? 1 });
+  return writeMotionPathValue(script, target, waypoints, segments, arc.autoRotate);
+}
+
+export function removeMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  const arc = target?.animation.arcPath;
+  if (!target || !arc?.enabled || hasCubicSegments(arc.segments)) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (waypoints.length <= 2 || index < 0 || index >= waypoints.length) return script;
+  const segments = [...arc.segments];
+  waypoints.splice(index, 1);
+  segments.splice(Math.min(index, segments.length - 1), 1);
+  return writeMotionPathValue(script, target, waypoints, segments, arc.autoRotate);
+}
+
+export function addMotionPathToScript(
+  script: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  point: { x: number; y: number },
+  ease = "power1.inOut",
+): { script: string; id: string | null } {
+  const motionPath = buildMotionPathObjectCode({
+    waypoints: [{ x: 0, y: 0 }, { ...point }],
+    segments: [{ curviness: 1 }],
+    autoRotate: false,
+  });
+  const result = addAnimationToScript(script, {
+    targetSelector,
+    method: "to",
+    position,
+    duration,
+    ease,
+    properties: { motionPath: `__raw:${motionPath}` },
+  });
+  return { script: result.script, id: result.id || null };
+}
+
 export function removeArcPathFromScript(script: string, animationId: string): string {
   return setArcPathInScript(script, animationId, {
     enabled: false,
@@ -2131,6 +2294,69 @@ function insertInheritedStateSetInScript(
     ms.append("\n" + code);
   }
   return ms.toString();
+}
+
+const STUDIO_HOLD_MARKER = "hf-hold";
+
+function isStudioHoldSet(animation: GsapAnimation): boolean {
+  return animation.method === "set" && animation.properties.data === STUDIO_HOLD_MARKER;
+}
+
+function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): string {
+  const staleHolds = parsed.located.filter((entry) => isStudioHoldSet(entry.animation));
+  if (staleHolds.length === 0) return script;
+  const ms = new MagicString(script);
+  for (const hold of staleHolds) removeCallFromMagicString(ms, hold.call, script);
+  return ms.toString();
+}
+
+function animationStart(animation: GsapAnimation): number {
+  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
+  return typeof animation.position === "number" ? animation.position : 0;
+}
+
+function positionProperties(
+  properties: Record<string, number | string>,
+): Record<string, number | string> {
+  const position: Record<string, number | string> = {};
+  for (const [property, value] of Object.entries(properties)) {
+    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
+      position[property] = value;
+    }
+  }
+  return position;
+}
+
+function positionHoldForAnimation(
+  animation: GsapAnimation,
+): Record<string, number | string> | null {
+  if (!animation.keyframes) return null;
+  if (!(animationStart(animation) > 0.001)) return null;
+  const first = [...animation.keyframes.keyframes].sort(
+    (left, right) => left.percentage - right.percentage,
+  )[0];
+  if (!first) return null;
+  const position = positionProperties(first.properties);
+  return Object.keys(position).length > 0 ? position : null;
+}
+
+/** Acorn-native, byte-preserving hold synchronization used after mutations. */
+export function syncPositionHoldsBeforeKeyframes(script: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  let result = removeStudioHoldSets(script, parsed);
+  const current = parseGsapScriptAcornForWrite(result);
+  if (!current) return result;
+  for (const entry of current.located) {
+    const animation = entry.animation;
+    const position = positionHoldForAnimation(animation);
+    if (!position) continue;
+    result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
+      ...position,
+      data: STUDIO_HOLD_MARKER,
+    });
+  }
+  return result;
 }
 
 /**

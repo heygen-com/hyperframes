@@ -54,6 +54,7 @@ import {
 import { upsertCssRule } from "./cssWriter.js";
 import { mintHfId, EXCLUDED_TAGS } from "@hyperframes/core/hf-ids";
 import { EDIT_BASE_X_ATTR, EDIT_BASE_Y_ATTR } from "@hyperframes/core/runtime/position-edits";
+import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
@@ -462,84 +463,80 @@ function handleSetTiming(
     const el = resolveScoped(parsed.document, id);
     if (!el) continue;
 
-    const oldStartStr = el.getAttribute("data-start");
-    const oldEndStr = el.getAttribute("data-end");
-    const oldDurationStr = el.getAttribute("data-duration");
-    const oldTrackStr = el.getAttribute("data-track-index");
-
-    const oldStart = oldStartStr !== null ? parseFloat(oldStartStr) : null;
-    const oldEnd = oldEndStr !== null ? parseFloat(oldEndStr) : null;
-    const oldDurationAttr = oldDurationStr !== null ? parseFloat(oldDurationStr) : null;
-    // Prefer an explicit data-duration — the attribute clips are authored with and
-    // the runtime reads — falling back to data-end − data-start. Reading only
-    // data-end left oldDuration null for duration-authored clips, collapsing the
-    // GSAP duration-scale ratio to 1 and scaling nothing.
-    const oldDuration =
-      oldDurationAttr !== null
-        ? oldDurationAttr
-        : oldStart !== null && oldEnd !== null
-          ? oldEnd - oldStart
-          : null;
-    const oldTrack = oldTrackStr !== null ? parseInt(oldTrackStr, 10) : null;
+    const beforeAttributes = {
+      start: el.getAttribute("data-start"),
+      duration: el.getAttribute("data-duration"),
+      end: el.getAttribute("data-end"),
+      trackIndex: el.getAttribute("data-track-index"),
+      layer: el.getAttribute("data-layer"),
+    };
+    const oldTiming = readClipTiming(el);
+    const oldStart = oldTiming.start;
+    const oldDuration = oldTiming.duration;
 
     const newStart = timing.start ?? oldStart;
     const newDuration = timing.duration ?? oldDuration;
 
-    if (timing.start !== undefined && newStart !== null) {
-      const path = timingPath(id, "start");
-      const p = scalarChange(path, oldStart, newStart);
-      result.forward.push(p.forward);
-      result.inverse.push(p.inverse);
-      el.setAttribute("data-start", String(newStart));
-    }
+    writeClipTiming(el, timing);
+    const afterAttributes = {
+      start: el.getAttribute("data-start"),
+      duration: el.getAttribute("data-duration"),
+      end: el.getAttribute("data-end"),
+      trackIndex: el.getAttribute("data-track-index"),
+      layer: el.getAttribute("data-layer"),
+    };
 
-    // Write to whichever timing attribute the clip actually uses. A data-duration
-    // clip updates data-duration only on a real resize (duration is invariant
-    // under a move); a data-end clip updates data-end whenever start or duration
-    // changes (end = start + duration). Writing a fresh data-end beside a stale
-    // data-duration had no playback effect.
-    if (oldDurationStr !== null) {
-      if (timing.duration !== undefined && newDuration !== null) {
-        const path = timingPath(id, "duration");
-        const p = scalarChange(path, oldDurationAttr, newDuration);
-        result.forward.push(p.forward);
-        result.inverse.push(p.inverse);
-        el.setAttribute("data-duration", String(newDuration));
+    const recordAttributeChange = (
+      path: string,
+      before: string | null,
+      after: string | null,
+      numeric: boolean,
+    ) => {
+      if (before === after) return;
+      const toPatchValue = (value: string): string | number => {
+        if (!numeric) return value;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : value;
+      };
+      if (after === null) {
+        if (before === null) return;
+        const patch = scalarDelete(path, toPatchValue(before));
+        result.forward.push(patch.forward);
+        result.inverse.push(patch.inverse);
+        return;
       }
-      // A clip carrying BOTH data-duration and data-end must keep data-end in
-      // sync (end = start + duration) on any start/duration change, else the
-      // stale data-end inverts the clip (end < start) for runtimes that read it.
-      if (oldEndStr !== null && newStart !== null && newDuration !== null) {
-        const newEnd = newStart + newDuration;
-        const endPath = timingPath(id, "end");
-        const ep = scalarChange(endPath, oldEnd, newEnd);
-        result.forward.push(ep.forward);
-        result.inverse.push(ep.inverse);
-        el.setAttribute("data-end", String(newEnd));
-      }
-    } else if (
-      (timing.duration !== undefined || timing.start !== undefined) &&
-      newStart !== null &&
-      newDuration !== null
-    ) {
-      const newEnd = newStart + newDuration;
-      // Store the computed end value directly (not the logical duration) so the inverse
-      // patch is self-contained and doesn't require data-start to be restored first.
-      const path = timingPath(id, "end");
-      const p = scalarChange(path, oldEnd, newEnd);
-      result.forward.push(p.forward);
-      result.inverse.push(p.inverse);
-      el.setAttribute("data-end", String(newEnd));
-    }
+      const oldValue = before === null ? null : toPatchValue(before);
+      const newValue = toPatchValue(after);
+      const patch = scalarChange(path, oldValue, newValue);
+      result.forward.push(patch.forward);
+      result.inverse.push(patch.inverse);
+    };
 
-    if (timing.trackIndex !== undefined) {
-      const newTrack = timing.trackIndex;
-      const path = timingPath(id, "trackIndex");
-      const p = scalarChange(path, oldTrack, newTrack);
-      result.forward.push(p.forward);
-      result.inverse.push(p.inverse);
-      el.setAttribute("data-track-index", String(newTrack));
-    }
+    recordAttributeChange(
+      timingPath(id, "start"),
+      beforeAttributes.start,
+      afterAttributes.start,
+      true,
+    );
+    recordAttributeChange(
+      timingPath(id, "duration"),
+      beforeAttributes.duration,
+      afterAttributes.duration,
+      true,
+    );
+    recordAttributeChange(timingPath(id, "end"), beforeAttributes.end, afterAttributes.end, true);
+    recordAttributeChange(
+      timingPath(id, "trackIndex"),
+      beforeAttributes.trackIndex,
+      afterAttributes.trackIndex,
+      true,
+    );
+    recordAttributeChange(
+      attrPath(id, "data-layer"),
+      beforeAttributes.layer,
+      afterAttributes.layer,
+      false,
+    );
 
     // Sync GSAP tween positions: the GSAP script is the source of truth at play time —
     // the timeline rebuilds from it on every seek. Without this, DOM attribute edits

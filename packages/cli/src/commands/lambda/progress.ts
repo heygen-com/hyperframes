@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes lambda progress <executionArn>` — print a single progress
  * snapshot for a render. Wraps {@link getRenderProgress}. Accepts a
@@ -60,7 +61,7 @@ export async function runProgress(args: ProgressArgs): Promise<void> {
     }
   }
   if (progress.fatalErrorEncountered) {
-    process.exitCode = 1;
+    setCommandExitCode(1);
   }
 }
 

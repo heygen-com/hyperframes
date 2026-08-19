@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /*
+       * Field-signal reproducer (ts=1784039841).
+       *
+       * Composition shape:
+       *   - 1920x1080 root
+       *   - GSAP paused timeline (window.__timelines[...] pattern)
+       *   - 4 independent scenes (data-start = 0/1.5/3/4.5, each 1.5s)
+       *   - Each scene contains one <img> with position:absolute (the
+       *     "absolute PNG layer" from the field signal)
+       *   - Frame 120 @ 30fps = 4s into the timeline → scene 3 boundary.
+       *     Field report says the shift lands at exactly this frame.
+       *
+       * PNG sources are inline data URIs — 1x1 solid-color pixels the
+       * browser scales to layer size. This preserves the layout shape
+       * (absolute-positioned <img> with intrinsic dimensions from a real
+       * decoded PNG) without shipping binary assets. If the shift bug turns
+       * out to be sensitive to real image decode paths, the fix reviewer
+       * should swap these for byte-for-byte replicas of the field asset
+       * and re-run; the field envelope did not preserve the original PNGs.
+       */
+
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background-color: #101418;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #e6edf3;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+      }
+
+      .scene-label {
+        position: absolute;
+        top: 48px;
+        left: 64px;
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .frame-marker {
+        position: absolute;
+        right: 64px;
+        top: 48px;
+        font-size: 32px;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.7;
+      }
+
+      /*
+       * "Absolute PNG layer" — an <img> positioned via top/left absolute
+       * coordinates. Field signal specifies this shape explicitly. Each
+       * scene has one primary layer; total composition therefore has 4
+       * absolute PNG layers, one per scene.
+       */
+      .layer {
+        position: absolute;
+        top: 300px;
+        left: 660px;
+        width: 600px;
+        height: 480px;
+      }
+
+      /*
+       * Scene 3 anchors at data-start=3s → frame 90 (30fps). Its layer
+       * lifetime crosses frame 120 (the reported shift frame). Keep the
+       * bounding box conspicuous so a diff at frame 120 lights up.
+       */
+      .scene[data-scene="3"] .layer {
+        top: 240px;
+        left: 600px;
+        width: 720px;
+        height: 540px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="escape-hatch-fatal-fallback"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="6"
+    >
+      <div class="scene clip" data-scene="0" data-start="0" data-duration="1.5">
+        <div class="scene-label">Scene 0 · 0.0s – 1.5s</div>
+        <div class="frame-marker">frames 0–44</div>
+        <img
+          class="layer"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          style="background: #4f46e5"
+        />
+      </div>
+
+      <div class="scene clip" data-scene="1" data-start="1.5" data-duration="1.5">
+        <div class="scene-label">Scene 1 · 1.5s – 3.0s</div>
+        <div class="frame-marker">frames 45–89</div>
+        <img
+          class="layer"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGAe5wu7AAAAABJRU5ErkJggg=="
+          style="background: #0ea5e9"
+        />
+      </div>
+
+      <div class="scene clip" data-scene="2" data-start="3" data-duration="1.5">
+        <div class="scene-label">Scene 2 · 3.0s – 4.5s</div>
+        <div class="frame-marker">frames 90–134 (shift @ 120)</div>
+        <img
+          class="layer"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYP5fDwADgQGAxSSFVQAAAABJRU5ErkJggg=="
+          style="background: #22c55e"
+        />
+      </div>
+
+      <div class="scene clip" data-scene="3" data-start="4.5" data-duration="1.5">
+        <div class="scene-label">Scene 3 · 4.5s – 6.0s</div>
+        <div class="frame-marker">frames 135–179</div>
+        <img
+          class="layer"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgADkgGA+A6NvgAAAABJRU5ErkJggg=="
+          style="background: #f97316"
+        />
+      </div>
+    </div>
+
+    <script>
+      // Paused-timeline pattern — matches parallel-capture-regression and every
+      // other GSAP-driven HF regression fixture. The producer calls tl.progress()
+      // or tl.seek() from outside; the timeline never advances on its own.
+      window.__timelines = window.__timelines || {};
+
+      var tl = gsap.timeline({ paused: true });
+      var duration = 6;
+
+      // Each scene fades in as its window opens and out as the next arrives.
+      // Fade windows are 200ms; the middle 1.1s of each scene sits at opacity=1,
+      // so the "still" state at frame 120 (scene 2, ~0.5s into its 1.5s window)
+      // is unambiguous — no cross-fade interference to muddy a shift diff.
+      var scenes = document.querySelectorAll(".scene");
+      scenes.forEach(function (scene) {
+        var start = parseFloat(scene.getAttribute("data-start") || "0");
+        var dur = parseFloat(scene.getAttribute("data-duration") || "0");
+        tl.fromTo(
+          scene,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.2, ease: "power1.out" },
+          start,
+        );
+        tl.to(scene, { opacity: 0, duration: 0.2, ease: "power1.in" }, start + dur - 0.2);
+      });
+
+      // A subtle drift on the shift-frame scene's layer. If a fix eliminates
+      // the underlying compositor shift, the on-timeline motion here should
+      // still match baseline pixel-for-pixel — the "shift" being reproduced
+      // is an *unwanted* offset on top of this deliberate motion.
+      tl.to(
+        '.scene[data-scene="2"] .layer',
+        { x: 24, y: 12, duration: 1.5, ease: "none" },
+        3,
+      );
+
+      window.__timelines["escape-hatch-fatal-fallback"] = tl;
+    </script>
+  </body>
+</html>

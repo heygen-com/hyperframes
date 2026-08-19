@@ -44,6 +44,7 @@ interface VariablePromoteContextValue {
   actions: BindAction[];
   declarations: CompositionVariable[];
   persist: (label: string, mutate: (session: Composition) => void) => Promise<boolean>;
+  onPersistError: (error: unknown) => void;
 }
 
 const VariablePromoteContext = createContext<VariablePromoteContextValue | null>(null);
@@ -58,11 +59,13 @@ export function VariablePromoteProvider({
   session,
   selection,
   persist,
+  onPersistError,
   children,
 }: {
   session: Composition | null;
   selection: DomEditSelection | null;
   persist: (label: string, mutate: (session: Composition) => void) => Promise<boolean>;
+  onPersistError: (error: unknown) => void;
   children: React.ReactNode;
 }) {
   // Re-derive actions/bindings after each persisted schema edit.
@@ -85,8 +88,8 @@ export function VariablePromoteProvider({
   }, [session, revision]);
 
   const value = useMemo<VariablePromoteContextValue>(
-    () => ({ session, selection, actions, declarations, persist }),
-    [session, selection, actions, declarations, persist],
+    () => ({ session, selection, actions, declarations, persist, onPersistError }),
+    [session, selection, actions, declarations, persist, onPersistError],
   );
 
   return (
@@ -105,7 +108,7 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
 
   return useMemo(() => {
     if (!ctx || !ctx.session || !ctx.selection?.hfId) return null;
-    const { session, selection, actions, declarations, persist } = ctx;
+    const { session, selection, actions, declarations, persist, onPersistError } = ctx;
     const hfId = selection.hfId!;
     const action = matchAction(actions, channel);
     const boundId = readBinding(session, hfId, channel);
@@ -125,12 +128,14 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
         const id = uniqueId(action.suggestedId, declarations);
         void persist(`Bind ${action.label.toLowerCase()} to variable "${id}"`, (s) =>
           applyBind(s, hfId, action, id),
-        );
+        ).catch(onPersistError);
       },
       setDefault: (raw: string) => {
         if (!boundId || !declaration) return;
         const next = declaration.type === "color" ? rgbToHex(raw) : raw;
-        void persist(`Set default for "${boundId}"`, (s) => s.setVariableValue(boundId, next));
+        void persist(`Set default for "${boundId}"`, (s) =>
+          s.setVariableValue(boundId, next),
+        ).catch(onPersistError);
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -3,7 +3,7 @@ import {
   parseHtmlStructure,
   findRootTag,
   collectCompositionIds,
-  readAttr,
+  readDecodedAttr,
   stripHtmlComments,
 } from "./utils";
 import type { OpenTag, ExtractedBlock } from "./utils";
@@ -66,7 +66,7 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   const scripts = structure.scripts;
   const compositionIds = collectCompositionIds(tags);
   const rootTag = findRootTag(source, tags);
-  const rootCompositionId = readAttr(rootTag?.raw || "", "data-composition-id");
+  const rootCompositionId = readDecodedAttr(rootTag?.raw || "", "data-composition-id");
 
   return {
     source,

@@ -2,16 +2,33 @@ import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mu
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export { PROPERTY_DEFAULTS } from "./gsapShared";
+import { idSelector, matchesExactlyOne } from "./gsapShared";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 
+/**
+ * The selector to author a NEW tween against, minting an id on the element when
+ * it has no address of its own.
+ *
+ * `selection.selector` is only usable when it addresses ONE element:
+ * `buildStableSelector` hands back a bare class for an id-less element, so
+ * returning it unconditionally aimed "add animation" at every sibling sharing
+ * the class (the attribution blow-up that collapsed the timeline to one row,
+ * see writeTargetSelector). A non-unique selector falls through to the id mint
+ * below, which is the stronger fix here than a structural path: the id it writes
+ * back to the source also makes every later lookup for this element exact.
+ */
 export function ensureElementAddressable(selection: DomEditSelection): {
   selector: string;
   autoId?: string;
 } {
-  if (selection.id) return { selector: `#${selection.id}` };
-  if (selection.selector) return { selector: selection.selector };
+  if (selection.id) return { selector: idSelector(selection.id) };
 
   const el = selection.element;
   const doc = el.ownerDocument;
+  if (selection.selector && matchesExactlyOne(doc, selection.selector, el)) {
+    return { selector: selection.selector };
+  }
+
   const tag = el.tagName.toLowerCase();
   let id = tag;
   let n = 1;
@@ -20,7 +37,7 @@ export function ensureElementAddressable(selection: DomEditSelection): {
     id = `${tag}-${n}`;
   }
   el.setAttribute("id", id);
-  return { selector: `#${id}`, autoId: id };
+  return { selector: idSelector(id), autoId: id };
 }
 
 export class GsapMutationHttpError extends Error {
@@ -103,7 +120,7 @@ export async function assignGsapTargetAutoIdIfNeeded({
     `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
       body: JSON.stringify(patchBody),
     },
   );

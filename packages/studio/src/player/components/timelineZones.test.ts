@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { classifyZone, normalizeToZones } from "./timelineZones";
-import { computeStackingPatches, type StackingElement } from "./timelineStackingSync";
 
 function el(id: string, tag: string, track: number, duration = 2): TimelineElement {
   return { id, tag, start: 0, duration, track };
@@ -27,16 +26,6 @@ function expectZoningIdempotent(input: TimelineElement[]): void {
   const once = normalizeToZones(input);
   const twice = normalizeToZones(once);
   for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
-}
-
-/** The exact qa-clean live repro (array order = DOM order); fresh objects per call. */
-function qaCleanRepro(): TimelineElement[] {
-  return [
-    zClip("blue-logo", 6.37, 3, 0, 3, "img"),
-    zClip("ralu", 6.37, 3, 0, 0, "img"),
-    zClip("black-logo", 11.92, 3, 1, 1, "img"),
-    zClip("video", 0.84, 20, 3, 2, "video"),
-  ];
 }
 
 describe("classifyZone", () => {
@@ -66,52 +55,77 @@ describe("classifyZone", () => {
   });
 });
 
-describe("normalizeToZones", () => {
-  it("orders visual (top) → audio (bottom); equal-z overlap stacks by DOM order", () => {
-    // img and vid are both z=0, start=0 → they OVERLAP in time. CSS paints
-    // equal-z siblings by DOM order (later paints on top), so the later-in-array
-    // `vid` must own the upper lane. (Was: pinned img=0/vid=1 to authored order,
-    // which contradicts the canvas — updated for per-clip DOM-order tie-break.)
+describe("normalizeToZones — CapCut-stable lanes follow the track-index (never z)", () => {
+  it("orders visual lanes by authored track-index (ascending), audio at the bottom", () => {
+    // img (track 0), vid (track 2), mus (audio, track 5). Lanes follow the track
+    // index: the LOWER visual track owns the upper lane. z is irrelevant (absent).
     const out = normalizeToZones([
       el("img", "img", 0),
       el("vid", "video", 2),
       el("mus", "audio", 5),
     ]);
-    expect(trackOf(out, "vid")).toBe(0); // later in DOM → paints on top → upper lane
-    expect(trackOf(out, "img")).toBe(1); // earlier in DOM → below
-    expect(trackOf(out, "mus")).toBe(2); // audio (bottom)
+    expect(trackOf(out, "img")).toBe(0); // track 0 → top lane
+    expect(trackOf(out, "vid")).toBe(1); // track 2 → below it
+    expect(trackOf(out, "mus")).toBe(2); // audio → bottom
   });
 
-  it("keeps all visual lanes together on top; equal-z overlap stacks by DOM order", () => {
-    // All three z=0, start=0 → mutually overlapping. DOM order (later on top)
-    // decides the stack: v3 (last) top, then i1, then v0. (Was: pinned to authored
-    // order v0=0/i1=1/v3=2, which the canvas contradicts for overlapping equal-z.)
-    const out = normalizeToZones([el("v0", "video", 0), el("i1", "img", 1), el("v3", "video", 3)]);
-    expect(trackOf(out, "v3")).toBe(0);
-    expect(trackOf(out, "i1")).toBe(1);
-    expect(trackOf(out, "v0")).toBe(2);
+  it("compacts sparse visual track-indexes to contiguous lanes, preserving ascending order", () => {
+    // Distinct authored tracks 0, 3, 7 → three adjacent lanes in the same order.
+    const out = normalizeToZones([el("a", "video", 7), el("b", "img", 0), el("c", "video", 3)]);
+    expect(trackOf(out, "b")).toBe(0); // track 0
+    expect(trackOf(out, "c")).toBe(1); // track 3
+    expect(trackOf(out, "a")).toBe(2); // track 7
+  });
+
+  it("drops audio below the visual lanes even when it holds a LOWER authored index", () => {
+    // Audio authored at track 0, video at track 5 — audio must still sink below.
+    const out = normalizeToZones([zClip("a", 0, 10, 0, 0, "audio"), zClip("v", 0, 10, 5, 0)]);
+    expect(trackOf(out, "v")).toBe(0); // visual on top
+    expect(trackOf(out, "a")).toBe(1); // audio below, despite its lower track index
   });
 
   it("drops audio below the visual lanes even when sharing a track index", () => {
     const out = normalizeToZones([el("v", "video", 0), el("a", "audio", 0)]);
-    expect(trackOf(out, "v")).toBe(0); // visual
-    expect(trackOf(out, "a")).toBe(1); // audio, below
+    expect(trackOf(out, "v")).toBe(0);
+    expect(trackOf(out, "a")).toBe(1);
   });
 
-  it("groups multiple audio tracks at the bottom preserving relative order", () => {
-    const out = normalizeToZones([el("v", "video", 0), el("a1", "audio", 1), el("a2", "audio", 4)]);
+  it("groups multiple audio tracks at the bottom, ordered by their track index", () => {
+    const out = normalizeToZones([el("v", "video", 0), el("a2", "audio", 4), el("a1", "audio", 1)]);
     expect(trackOf(out, "v")).toBe(0);
-    expect(trackOf(out, "a1")).toBe(1);
+    expect(trackOf(out, "a1")).toBe(1); // audio track 1 above audio track 4
     expect(trackOf(out, "a2")).toBe(2);
   });
 
+  it("ignores z-index entirely — a high-z clip does NOT jump above a lower-track clip", () => {
+    // lo on track 0 with z=1; hi on track 1 with z=99. They fully overlap in time.
+    // The old z-rank pack lifted hi above lo; the CapCut rule keeps lane = track.
+    const out = normalizeToZones([zClip("lo", 0, 10, 0, 1), zClip("hi", 0, 10, 1, 99)]);
+    expect(trackOf(out, "lo")).toBe(0); // track 0 stays on top
+    expect(trackOf(out, "hi")).toBe(1); // higher z does NOT lift it
+  });
+
+  it("ignores z-index across authored tracks (scattered z, lanes still by track)", () => {
+    const out = normalizeToZones([
+      zClip("t0", 0, 10, 0, 3),
+      zClip("t1", 0, 10, 1, 26),
+      zClip("t2", 0, 10, 2, 0),
+    ]);
+    expect(trackOf(out, "t0")).toBe(0);
+    expect(trackOf(out, "t1")).toBe(1);
+    expect(trackOf(out, "t2")).toBe(2);
+  });
+
+  it("sequential (non-overlapping) same-track clips share a lane", () => {
+    const out = normalizeToZones([zClip("a", 0, 5, 0, 1), zClip("c", 6, 3, 0, 9)]);
+    expect(trackOf(out, "a")).toBe(0);
+    expect(trackOf(out, "c")).toBe(0); // shares the lane regardless of z
+  });
+
   it("returns the same array (identity) when already zoned", () => {
-    // A fixed-point layout: the two overlapping equal-z visual clips are already
-    // in DOM-order-consistent lanes (later-in-array `v` on the upper lane 0), so
-    // re-zoning is a no-op and the SAME array reference comes back. (Was: i=0/v=1,
-    // which the new per-clip DOM-order pack would flip — so it wasn't a fixed
-    // point under the corrected canvas semantics; swapped to the stable order.)
-    const input = [el("v", "video", 1), el("i", "img", 0), el("a", "audio", 2)];
+    // i on track 0, v on track 1, a (audio) on track 2 — already contiguous, visual
+    // above audio, so re-zoning is a no-op and the SAME reference comes back.
+    const input = [el("i", "img", 0), el("v", "video", 1), el("a", "audio", 2)];
     expect(normalizeToZones(input)).toBe(input);
   });
 
@@ -125,112 +139,11 @@ describe("normalizeToZones", () => {
     expectZoningIdempotent(input);
   });
 
-  it("splits time-overlapping clips on one track onto separate lanes (no visible overlap)", () => {
-    const clip = (id: string, start: number, duration: number): TimelineElement => ({
-      id,
-      tag: "video",
-      start,
-      duration,
-      track: 1, // all authored on the SAME track, some overlapping in time
-    });
-    // a [0,5), b [2,7) overlaps a, c [6,9) fits after a. All equal-z (absent).
-    // Per-clip pack (DOM-order tie-break): c is last in DOM so it places on the
-    // top lane 0; b overlaps c and lands on lane 1; a overlaps b (and is earlier
-    // in DOM than b, so it must paint BELOW b) → lane 2. a can NOT drop onto c's
-    // lane 0 even though it doesn't overlap c, because that would place a ABOVE b
-    // in lane order while a paints below b — the canvas-correct constraint the old
-    // whole-track packer ignored (it shared a/c on lane 0, contradicting paint).
-    const out = normalizeToZones([clip("a", 0, 5), clip("b", 2, 5), clip("c", 6, 3)]);
-    expect(trackOf(out, "c")).toBe(0); // last in DOM → top lane
-    expect(trackOf(out, "b")).toBe(1); // overlaps c → below it
-    expect(trackOf(out, "a")).toBe(2); // paints below b (earlier DOM, equal z) → lane below b
-
-    // No two time-overlapping clips share a lane (the real NLE invariant).
-    expect(trackOf(out, "a")).not.toBe(trackOf(out, "b"));
-    expect(trackOf(out, "b")).not.toBe(trackOf(out, "c"));
-
-    // Idempotent: re-laying the split result changes nothing.
-    const twice = normalizeToZones(out);
-    for (const e of out) expect(trackOf(twice, e.id)).toBe(e.track);
-  });
-});
-
-describe("normalizeToZones — reverse z→lane mapping", () => {
-  it("orders overlapping same-zone clips by z: higher z → higher (upper) lane", () => {
-    // lo (z=1) and hi (z=9) fully overlap in time on the same authored track.
-    const out = normalizeToZones([zClip("lo", 0, 10, 0, 1), zClip("hi", 0, 10, 0, 9)]);
-    expect(trackOf(out, "hi")).toBe(0); // higher z → upper lane (top)
-    expect(trackOf(out, "lo")).toBe(1); // lower z → below
-  });
-
-  it("orders three overlapping clips strictly by descending z", () => {
-    const out = normalizeToZones([
-      zClip("mid", 0, 10, 0, 5),
-      zClip("top", 0, 10, 0, 8),
-      zClip("bot", 0, 10, 0, 2),
-    ]);
-    expect(trackOf(out, "top")).toBe(0);
-    expect(trackOf(out, "mid")).toBe(1);
-    expect(trackOf(out, "bot")).toBe(2);
-  });
-
-  it("does NOT reorder non-overlapping (sequential) clips by z — they share a lane", () => {
-    // a [0,5) z=1 then c [6,9) z=9 — no time overlap, so z is irrelevant.
-    const out = normalizeToZones([zClip("a", 0, 5, 0, 1), zClip("c", 6, 3, 0, 9)]);
-    expect(trackOf(out, "a")).toBe(0);
-    expect(trackOf(out, "c")).toBe(0); // shares the lane regardless of higher z
-  });
-
-  it("leaves the audio zone unaffected by z", () => {
-    const out = normalizeToZones([
-      zClip("v", 0, 10, 0, 1),
-      zClip("m1", 0, 10, 1, 99, "audio"),
-      zClip("m2", 0, 10, 1, 0, "audio"),
-    ]);
-    // Two overlapping audio clips split onto lanes below the visual clip; their
-    // relative z does not lift one above a visual clip.
-    expect(trackOf(out, "v")).toBe(0);
-    expect(trackOf(out, "m1")).toBeGreaterThan(trackOf(out, "v"));
-    expect(trackOf(out, "m2")).toBeGreaterThan(trackOf(out, "v"));
-  });
-
-  it("treats missing / auto z as 0 (undefined z clip sinks below a positive-z overlap)", () => {
-    const out = normalizeToZones([
-      { id: "noz", tag: "video", start: 0, duration: 10, track: 0 }, // no zIndex
-      zClip("pos", 0, 10, 0, 3),
-    ]);
-    expect(trackOf(out, "pos")).toBe(0); // z=3 → upper
-    expect(trackOf(out, "noz")).toBe(1); // absent z ⇒ 0 → below
-  });
-
-  it("tie-breaks equal-z overlapping clips on the STABLE id, not the mutated lane", () => {
-    // Equal z + full overlap: order must be deterministic (id asc) and survive
-    // re-normalization — the historical oscillation bug tie-broke on the track.
-    const out = normalizeToZones([zClip("b", 0, 10, 0, 5), zClip("a", 0, 10, 0, 5)]);
-    expect(trackOf(out, "a")).toBe(0); // "a" < "b"
-    expect(trackOf(out, "b")).toBe(1);
-    const twice = normalizeToZones(out);
-    for (const e of out) expect(trackOf(twice, e.id)).toBe(e.track);
-  });
-
-  it("FIXED POINT: normalizeToZones(normalizeToZones(x)) === normalizeToZones(x) with z present", () => {
-    const input = [
-      zClip("hi", 0, 10, 0, 9),
-      zClip("lo", 0, 10, 0, 1),
-      zClip("mid", 2, 6, 0, 5),
-      zClip("seq", 12, 4, 0, 7),
-      zClip("music", 0, 16, 1, 3, "audio"),
-    ];
-    expectZoningIdempotent(input);
-  });
-
-  it("reload simulation: re-deriving lanes from the SAME z values yields identical lanes", () => {
-    // Simulate two independent discovery passes producing fresh element objects
-    // carrying the same z — lane assignment must be stable across reloads.
+  it("re-derives identical lanes from fresh objects carrying the same tracks (reload-stable)", () => {
     const build = (): TimelineElement[] => [
       zClip("hi", 0, 10, 0, 9),
-      zClip("lo", 0, 10, 0, 1),
-      zClip("mid", 3, 5, 0, 5),
+      zClip("lo", 0, 10, 1, 1),
+      zClip("mid", 3, 5, 2, 5),
     ];
     const first = normalizeToZones(build());
     const second = normalizeToZones(build());
@@ -238,188 +151,87 @@ describe("normalizeToZones — reverse z→lane mapping", () => {
   });
 });
 
-describe("normalizeToZones — cross-track z→lane (real qa-clean shape)", () => {
-  // Derived from /tmp/hf-dnd-qa/qa-clean: a full-length video on authored track 0
-  // (z=0), two logo SVGs on track 1 (z=26 and z=0), an icon on track 3 (z=5), and
-  // background music on track 2. In the canvas the z=26 / z=5 icons paint ON TOP of
-  // the z=0 video; the timeline must agree — the higher-z tracks sit on upper lanes.
-  const realProject = (): TimelineElement[] => [
-    zClip("ralu", 6.14, 3, 3, 5, "img"),
-    zClip("video", 1, 20, 0, 0, "video"),
-    zClip("blueLogo", 5.93, 3, 1, 26, "img"),
-    zClip("blackLogo", 1, 3, 1, 0, "img"),
-    zClip("music", 8.93, 8, 2, 0, "audio"),
+describe("normalizeToZones — legacy overlap spill (display-only, deterministic)", () => {
+  it("splits time-overlapping SAME-track clips onto adjacent sub-lanes (no visible overlap)", () => {
+    // a [0,5), b [2,7) overlaps a, c [6,9) sequential — all authored on track 1.
+    // The editor forbids per-track overlap, but a legacy file can carry it; the
+    // spill orders by stable id (a, b, c) and first-fits: a→lane0, b overlaps a→
+    // lane1, c fits back on lane0 (no overlap with a).
+    const clip = (id: string, start: number, duration: number): TimelineElement => ({
+      id,
+      tag: "video",
+      start,
+      duration,
+      track: 1,
+    });
+    const out = normalizeToZones([clip("a", 0, 5), clip("b", 2, 5), clip("c", 6, 3)]);
+    expect(trackOf(out, "a")).toBe(0);
+    expect(trackOf(out, "b")).toBe(1); // overlaps a → adjacent sub-lane
+    expect(trackOf(out, "c")).toBe(0); // sequential to a → shares lane 0
+    // No two time-overlapping clips share a lane.
+    expect(trackOf(out, "a")).not.toBe(trackOf(out, "b"));
+    // Idempotent: re-laying the split result changes nothing.
+    const twice = normalizeToZones(out);
+    for (const e of out) expect(trackOf(twice, e.id)).toBe(e.track);
+  });
+
+  it("spills two fully-overlapping same-track clips by stable id (a above b)", () => {
+    const out = normalizeToZones([zClip("b", 0, 10, 0, 5), zClip("a", 0, 10, 0, 5)]);
+    expect(trackOf(out, "a")).toBe(0); // "a" < "b"
+    expect(trackOf(out, "b")).toBe(1);
+    // Survives re-normalization (stable id tie-break, never the mutated lane).
+    const twice = normalizeToZones(out);
+    for (const e of out) expect(trackOf(twice, e.id)).toBe(e.track);
+  });
+});
+
+describe("normalizeToZones — legacy file with scattered z (requirement 6)", () => {
+  // Mirrors /tmp/hf-fixwave/userproj/index.html: many visual clips on contiguous
+  // authored tracks (0..17) each carrying an unrelated, scattered inline z-index,
+  // and audio on the highest tracks (18..). The display must follow the
+  // track-index, NOT the z, and a well-formed (contiguous, audio-last) legacy file
+  // must not be re-laned at all — normalize is the identity.
+  const legacy = (): TimelineElement[] => [
+    zClip("sub-0", 3, 1.15, 0, 0, "div"), // no explicit z (0)
+    zClip("cap-hit", 4.51, 1.73, 3, 26, "div"), // scattered z
+    zClip("cap-send", 5.85, 1.27, 4, 25, "div"),
+    zClip("avatar", 6.4, 1.148, 1, 26),
+    zClip("v-opener", 0, 3, 15, 12),
+    zClip("v-letters", 30.08, 4.39, 5, 25),
+    zClip("music", 3, 42.95, 18, 10, "audio"),
+    zClip("vo", 3.2, 10.3, 19, 4, "audio"),
   ];
 
-  it("stacks a higher-z track ABOVE a lower-z track on a different authored track", () => {
-    const out = normalizeToZones(realProject());
-    // Track 1 (max z 26) tops the visual zone, then track 3 (z 5), then track 0 (z 0).
-    expect(trackOf(out, "blueLogo")).toBe(0);
-    expect(trackOf(out, "blackLogo")).toBe(0); // sequential to blueLogo → shares lane
-    expect(trackOf(out, "ralu")).toBe(1);
-    expect(trackOf(out, "video")).toBe(2);
-    // Audio stays at the very bottom regardless of its authored track index.
-    expect(trackOf(out, "music")).toBe(3);
+  it("lanes follow the track-index, not the scattered z", () => {
+    const out = normalizeToZones(legacy());
+    // Visual tracks 0,1,3,4,5,15 compact to lanes 0..5 in ascending track order —
+    // z (0,26,25,26,12,25) is ignored.
+    expect(trackOf(out, "sub-0")).toBe(0); // track 0
+    expect(trackOf(out, "avatar")).toBe(1); // track 1
+    expect(trackOf(out, "cap-hit")).toBe(2); // track 3
+    expect(trackOf(out, "cap-send")).toBe(3); // track 4
+    expect(trackOf(out, "v-letters")).toBe(4); // track 5
+    expect(trackOf(out, "v-opener")).toBe(5); // track 15
+    // Audio stays below every visual lane.
+    expect(trackOf(out, "music")).toBe(6);
+    expect(trackOf(out, "vo")).toBe(7);
+    // The z=26 caption does NOT ride above the z=0 subtitle on track 0.
+    expect(trackOf(out, "cap-hit")).toBeGreaterThan(trackOf(out, "sub-0"));
   });
 
-  it("the video (z=0) no longer sits above the z=26 / z=5 icons — canvas & timeline agree", () => {
-    const out = normalizeToZones(realProject());
-    expect(trackOf(out, "video")).toBeGreaterThan(trackOf(out, "blueLogo"));
-    expect(trackOf(out, "video")).toBeGreaterThan(trackOf(out, "ralu"));
+  it("does not rewrite a well-formed (contiguous, audio-last) legacy set — identity", () => {
+    // Same shape but authored tracks already contiguous 0..7 with audio last.
+    const input = [
+      zClip("a", 0, 3, 0, 12),
+      zClip("b", 0, 3, 1, 26),
+      zClip("c", 0, 3, 2, 3),
+      zClip("m", 0, 3, 3, 9, "audio"),
+    ];
+    // Every clip already sits on its track-index lane, so normalize is a no-op.
+    expect(normalizeToZones(input)).toBe(input);
   });
 
-  it("is idempotent on the real-project shape (no lane drift on re-discovery)", () => {
-    const once = normalizeToZones(realProject());
-    const twice = normalizeToZones(once);
-    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
-  });
-
-  it("re-derives identical lanes from fresh objects carrying the same z (reload-stable)", () => {
-    const first = normalizeToZones(realProject());
-    const second = normalizeToZones(realProject());
-    for (const e of first) expect(trackOf(second, e.id)).toBe(e.track);
-  });
-
-  it("all-equal-z overlapping clips stack by DOM order (later on top), lanes contiguous", () => {
-    // Was: "keeps ascending authored track order when all tracks share z" — that
-    // pinned t0=0/t1=1/t3=2 to the authored track index. But these three all
-    // start at 0 and OVERLAP, all z=0, so CSS paints them by DOM order: t3 (last)
-    // on top. The per-clip pack now reflects that (t3 lane 0, then t1, then t0),
-    // which is what the canvas actually shows. Lanes stay contiguous 0..2.
-    const out = normalizeToZones([
-      zClip("t0", 0, 2, 0, 0),
-      zClip("t1", 0, 2, 1, 0),
-      zClip("t3", 0, 2, 3, 0),
-    ]);
-    expect(trackOf(out, "t3")).toBe(0); // last in DOM → paints on top
-    expect(trackOf(out, "t1")).toBe(1);
-    expect(trackOf(out, "t0")).toBe(2);
-  });
-});
-
-describe("normalizeToZones — EXACT qa-clean repro (per-clip constrained pack)", () => {
-  // The live repro from /tmp/hf-dnd-qa/qa-clean/index.html:
-  //   blue-logo  authored track 0, z=3, 6.37–9.37
-  //   ralu image authored track 0, z=0, 6.37–9.37   (shares track 0 with blue-logo)
-  //   black-logo authored track 1, z=1, 11.92–14.92
-  //   video      authored track 3, z=2, 0.84–20.84
-  // Canvas truth: video (z=2) covers ralu (z=0). The OLD whole-track packer
-  // ordered track 0 by its MAX z (3, from blue-logo), so ralu rode above the
-  // z=2 video — the timeline↔canvas contradiction. Array order below = DOM order.
-
-  it("ACCEPTANCE: lane order top→bottom is blue-logo, video, black-logo, ralu", () => {
-    const out = normalizeToZones(qaCleanRepro());
-    expect(trackOf(out, "blue-logo")).toBe(0); // z=3 → top
-    expect(trackOf(out, "video")).toBe(1); // z=2, overlaps blue-logo → below it
-    expect(trackOf(out, "black-logo")).toBe(2); // z=1, overlaps video (11.92–14.92 ∩ 0.84–20.84)
-    expect(trackOf(out, "ralu")).toBe(3); // z=0, overlaps blue-logo AND video → bottom
-  });
-
-  it("REGRESSION: a low-z clip must not ride its authored trackmate's high z above a clip that covers it", () => {
-    const out = normalizeToZones(qaCleanRepro());
-    // ralu (z=0) shares authored track 0 with blue-logo (z=3) but must sink BELOW
-    // the video (z=2) that overlaps and paints over it — the whole-track bug.
-    expect(trackOf(out, "ralu")).toBeGreaterThan(trackOf(out, "video"));
-    // black-logo (z=1) below video (z=2) because they overlap in time.
-    expect(trackOf(out, "black-logo")).toBeGreaterThan(trackOf(out, "video"));
-  });
-
-  it("FIXED POINT: running the NEW pack on its own output changes nothing", () => {
-    const once = normalizeToZones(qaCleanRepro());
-    const twice = normalizeToZones(once);
-    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
-    // And a third pass, to be sure convergence is genuine.
-    const thrice = normalizeToZones(twice);
-    for (const e of twice) expect(trackOf(thrice, e.id)).toBe(e.track);
-  });
-});
-
-describe("z ↔ lane round-trip convergence (both directions agree)", () => {
-  // Project a normalized TimelineElement onto the StackingElement view the
-  // forward (lane→z) mapping reasons over.
-  const toStacking = (els: TimelineElement[]): StackingElement[] =>
-    els.map((e, domIndex) => ({
-      key: e.key ?? e.id,
-      start: e.start,
-      duration: e.duration,
-      track: e.track,
-      zIndex: Number.isFinite(e.zIndex) ? (e.zIndex as number) : 0,
-      isAudio: classifyZone(e) === "audio",
-      domIndex,
-    }));
-
-  it("lane-move → z patch → re-discovery orders lanes by that same z → identical lanes (no oscillation)", () => {
-    // Two fully-overlapping visual clips. Authored: a below (z=1), b above (z=5).
-    const authored: TimelineElement[] = [zClip("a", 0, 10, 0, 1), zClip("b", 0, 10, 0, 5)];
-    const normalized = normalizeToZones(authored);
-    // z→lane placed b (z=5) on the upper lane 0, a on lane 1.
-    expect(trackOf(normalized, "b")).toBe(0);
-    expect(trackOf(normalized, "a")).toBe(1);
-
-    // USER lane-move: drag a to the TOP (lane 0) and push b down (lane 1).
-    const afterMove = normalized.map((e) =>
-      e.id === "a" ? { ...e, track: 0 } : e.id === "b" ? { ...e, track: 1 } : e,
-    );
-
-    // FORWARD: a lane-move writes the minimal z patch for the edited clip.
-    const patches = computeStackingPatches(toStacking(afterMove), ["a"]);
-    expect(patches).toEqual([{ key: "a", zIndex: 6 }]); // lifted above b (5)
-
-    // Apply the z patch back onto the elements (what handleDomZIndexReorderCommit
-    // persists; next discovery re-reads it as TimelineElement.zIndex).
-    const rediscovered = afterMove.map((e) => {
-      const p = patches.find((pp) => pp.key === (e.key ?? e.id));
-      return p ? { ...e, zIndex: p.zIndex } : e;
-    });
-
-    // REVERSE: re-normalize from the new z. a (z=6) must now own the upper lane —
-    // the same lane the user moved it to. Directions converge, they do not fight.
-    const renormalized = normalizeToZones(rediscovered);
-    expect(trackOf(renormalized, "a")).toBe(0);
-    expect(trackOf(renormalized, "b")).toBe(1);
-
-    // FIXED POINT: forward on the converged state produces NO further patch, and
-    // reverse is idempotent — the round-trip is stable.
-    expect(computeStackingPatches(toStacking(renormalized), ["a"])).toEqual([]);
-    const twice = normalizeToZones(renormalized);
-    for (const e of renormalized) expect(trackOf(twice, e.id)).toBe(e.track);
-  });
-
-  it("qa-clean: drag video BELOW ralu → z patch → re-pack keeps it below, no oscillation", () => {
-    // EXACT repro fixture (array order = DOM order).
-    const normalized = normalizeToZones(qaCleanRepro());
-    // Baseline lanes: blue-logo 0, video 1, black-logo 2, ralu 3.
-    expect(trackOf(normalized, "video")).toBe(1);
-    expect(trackOf(normalized, "ralu")).toBe(3);
-
-    // USER lane-move: drag video to the lane BELOW ralu (bottom). ralu is at
-    // lane 3, so video goes to a lane strictly greater — model it as lane 4.
-    const afterMove = normalized.map((e) => (e.id === "video" ? { ...e, track: 4 } : e));
-
-    // FORWARD: video (z=2) must drop below ralu (z=0). No integer z ≥ 0 fits
-    // strictly below 0, so the tie-aware sync cascades: video→0 and the clips that
-    // must stay above it (ralu z=0, black-logo z=1, blue-logo z=3) are bumped as
-    // needed so video paints below ralu with all z ≥ 0.
-    const patches = computeStackingPatches(toStacking(afterMove), ["video"]);
-    const patchByKey = new Map(patches.map((p) => [p.key, p.zIndex]));
-    // Video was moved; it must now be strictly below ralu in paint order.
-    const zAfter = (id: string): number =>
-      patchByKey.get(id) ?? (afterMove.find((e) => e.id === id)!.zIndex as number);
-    expect(zAfter("video")).toBeLessThan(zAfter("ralu"));
-    expect(zAfter("video")).toBeGreaterThanOrEqual(0);
-    expect(patchByKey.size).toBeGreaterThan(0);
-
-    // Apply patches and re-pack: video's lane must now be BELOW ralu's.
-    const rediscovered = afterMove.map((e) => {
-      const z = patchByKey.get(e.id);
-      return z != null ? { ...e, zIndex: z } : e;
-    });
-    const renormalized = normalizeToZones(rediscovered);
-    expect(trackOf(renormalized, "video")).toBeGreaterThan(trackOf(renormalized, "ralu"));
-
-    // FIXED POINT: re-running BOTH directions on the converged state is a no-op.
-    expect(computeStackingPatches(toStacking(renormalized), ["video"])).toEqual([]);
-    const twice = normalizeToZones(renormalized);
-    for (const e of renormalized) expect(trackOf(twice, e.id)).toBe(e.track);
+  it("is idempotent on the scattered-z legacy shape (no drift on re-discovery)", () => {
+    expectZoningIdempotent(legacy());
   });
 });

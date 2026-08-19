@@ -2,6 +2,14 @@ import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
+import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import {
+  EXCLUDED_TAGS,
+  ensureHfIds,
+  mintHfId,
+  walkCompositionDescendants,
+} from "@hyperframes/parsers/hf-ids";
+import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -134,7 +142,7 @@ export function isHTMLElement(el: Node): el is HTMLElement {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content";
+  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "rich-text";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -153,6 +161,36 @@ function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLEl
     return child && isHTMLElement(child) ? child : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Give the elements a rich-text patch just introduced their stable ids, here,
+ * in the bytes about to be written and handed back.
+ *
+ * Otherwise the next preview request mints them and writes the file a second
+ * time, after Studio has already recorded the edit in its history. The recorded
+ * "after" stops matching disk, the content check refuses, and undo reports the
+ * file as changed outside Studio — for every colour applied to a run of
+ * characters and every text layer added. The clip split stamps its own clone
+ * for exactly this reason.
+ *
+ * Minted one element at a time with the same function `ensureHfIds` uses, so
+ * these ids are the ones the next pass would have assigned. Not `ensureHfIds`
+ * itself: it takes a whole document, and handing it this element's markup would
+ * put the markup back as one.
+ */
+function stampNewChildIds(parent: Element): void {
+  const assigned = new Set<string>();
+  const root = parent.ownerDocument?.body ?? parent;
+  walkCompositionDescendants(root, (el) => {
+    const id = el.getAttribute("data-hf-id");
+    if (id) assigned.add(id);
+  });
+  for (const el of parent.querySelectorAll("*")) {
+    if (el.getAttribute("data-hf-id")) continue;
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
 }
 
@@ -213,6 +251,17 @@ export function patchElementInHtml(
           textTarget.textContent = op.value;
         }
         break;
+      // The one operation that can write markup, so the one that has to check
+      // it. Assigned first and sanitised after, rather than sanitising a
+      // string: parsing is what turns a payload into the tree the allowlist
+      // can actually judge, and linkedom never runs anything it parses.
+      case "rich-text":
+        if (op.value != null) {
+          opTarget.innerHTML = op.value;
+          sanitizeRichTextChildren(opTarget);
+          stampNewChildIds(opTarget);
+        }
+        break;
     }
   }
 
@@ -238,30 +287,16 @@ export interface SplitElementResult {
 function resolveElementTiming(el: Element): {
   start: number;
   duration: number;
-  usesDataEnd: boolean;
 } {
-  const start = parseFloat(el.getAttribute("data-start") ?? "0") || 0;
-  const usesDataEnd = el.hasAttribute("data-end");
-  const duration = usesDataEnd
-    ? parseFloat(el.getAttribute("data-end") ?? "") - start || 0
-    : parseFloat(el.getAttribute("data-duration") ?? "0") || 0;
-  return { start, duration, usesDataEnd };
+  const timing = readClipTiming(el);
+  return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
-function setElementDuration(
-  el: Element,
-  start: number,
-  duration: number,
-  usesDataEnd: boolean,
-): void {
-  if (usesDataEnd) {
-    const endTime = String(Math.round((start + duration) * 1000) / 1000);
-    el.setAttribute("data-end", endTime);
-    el.removeAttribute("data-duration");
-  } else {
-    el.setAttribute("data-duration", String(Math.round(duration * 1000) / 1000));
-    el.removeAttribute("data-end");
-  }
+function setElementDuration(el: Element, start: number, duration: number): void {
+  writeClipTiming(el, {
+    start: Math.round(start * 1000) / 1000,
+    duration: Math.round(duration * 1000) / 1000,
+  });
 }
 
 // fallow-ignore-next-line complexity
@@ -270,14 +305,19 @@ export function splitElementInHtml(
   target: SourceMutationTarget,
   splitTime: number,
   newId: string,
-  fallbackTiming?: { start: number; duration: number },
+  fallbackTiming?: {
+    start: number;
+    duration: number;
+    playbackStart?: number;
+    playbackRate?: number;
+    stampPlaybackStart?: boolean;
+  },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
 
   const timing = resolveElementTiming(el);
-  const { usesDataEnd } = timing;
   let { start, duration } = timing;
   // GSAP-animated elements carry their timing in the script, not in data-* attrs,
   // so the source has no authored duration. Fall back to the store's (GSAP-derived)
@@ -305,26 +345,47 @@ export function splitElementInHtml(
   const clone = el.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
+  const compositionId = clone.getAttribute("data-composition-id");
+  if (compositionId) {
+    const usedCompositionIds = new Set(
+      Array.from(document.querySelectorAll("[data-composition-id]"), (node) =>
+        node.getAttribute("data-composition-id"),
+      ),
+    );
+    const base = `${compositionId}-split`;
+    let nextCompositionId = base;
+    let suffix = 2;
+    while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
+    clone.setAttribute("data-composition-id", nextCompositionId);
+  }
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
   for (const node of clone.querySelectorAll("[data-hf-id]")) node.removeAttribute("data-hf-id");
-  clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
-  setElementDuration(clone, splitTime, secondDuration, usesDataEnd);
+  setElementDuration(clone, splitTime, secondDuration);
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
 
-  // Adjust media trim offset for the second half
+  // A split creates two views over the same media source. Even an untrimmed
+  // audio/video element needs an explicit zero in-point stamped on the first
+  // half so the second half can advance from it instead of restarting at zero.
   const playbackStartAttr = el.hasAttribute("data-playback-start")
     ? "data-playback-start"
     : el.hasAttribute("data-media-start")
       ? "data-media-start"
-      : null;
+      : fallbackTiming?.stampPlaybackStart
+        ? "data-playback-start"
+        : el.matches("audio, video")
+          ? "data-media-start"
+          : null;
   if (playbackStartAttr) {
-    const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
+    const currentTrim =
+      parseFloat(el.getAttribute(playbackStartAttr) ?? "") || fallbackTiming?.playbackStart || 0;
     const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate = Number.isFinite(rateRaw) ? rateRaw : 1;
+    const rate =
+      Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : (fallbackTiming?.playbackRate ?? 1);
+    el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
@@ -339,8 +400,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  el.setAttribute("data-start", String(Math.round(start * 1000) / 1000));
-  setElementDuration(el, start, firstDuration, usesDataEnd);
+  setElementDuration(el, start, firstDuration);
 
   // Insert clone after original
   if (el.nextSibling) {
@@ -349,8 +409,11 @@ export function splitElementInHtml(
     el.parentElement!.appendChild(clone);
   }
 
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
   return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
+    // The split owns its new nodes' stable ids. Leaving the clone unstamped makes
+    // the next preview request persist different bytes after history is recorded.
+    html: ensureHfIds(html),
     matched: true,
     newId,
   };

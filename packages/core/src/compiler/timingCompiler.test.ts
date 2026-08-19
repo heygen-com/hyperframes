@@ -6,6 +6,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampResolvedMediaDuration,
 } from "./timingCompiler.js";
 
 // Raw 0x00 bytes in the HFMASK delimiters shipped once and broke every render
@@ -18,6 +19,23 @@ it("source contains no raw NUL bytes", () => {
 });
 
 describe("compileTimingAttrs", () => {
+  it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN"])(
+    "does not partially parse invalid literal data-duration=%j",
+    (duration) => {
+      const html = `<video id="v1" src="a.mp4" data-start="2" data-duration="${duration}">`;
+      const { html: compiled } = compileTimingAttrs(html);
+
+      expect(compiled).not.toContain("data-end=");
+    },
+  );
+
+  it("uses Number semantics for hexadecimal literal timing", () => {
+    const { html: compiled } = compileTimingAttrs(
+      '<video id="v1" src="a.mp4" data-start="2" data-duration="0x10">',
+    );
+    expect(compiled).toContain('data-end="18"');
+  });
+
   it("adds data-end when data-start and data-duration are present on a video", () => {
     const html = '<video id="v1" src="a.mp4" data-start="2" data-duration="5">';
     const { html: compiled, unresolved } = compileTimingAttrs(html);
@@ -262,5 +280,12 @@ describe("clampDurations", () => {
 
     expect(result).toContain('data-duration="5"');
     expect(result).toContain('data-end="7"');
+  });
+});
+
+describe("shouldClampResolvedMediaDuration", () => {
+  it("preserves an explicit video slot but keeps audio source-bounded", () => {
+    expect(shouldClampResolvedMediaDuration("video", 5, 1)).toBe(false);
+    expect(shouldClampResolvedMediaDuration("audio", 5, 1)).toBe(true);
   });
 });

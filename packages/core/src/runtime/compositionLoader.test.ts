@@ -14,7 +14,7 @@ beforeAll(() => {
 describe("loadExternalCompositions", () => {
   afterEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("style").forEach((s) => s.remove());
+    document.head.querySelectorAll("style, link").forEach((node) => node.remove());
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).gsap;
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).__selectedTitle;
     delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
@@ -26,6 +26,7 @@ describe("loadExternalCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 
@@ -87,6 +88,223 @@ describe("loadExternalCompositions", () => {
     });
 
     expect(injectedStyles.length).toBeGreaterThan(0);
+  });
+
+  it("mounts <style>/<script> authored as siblings of the composition root", async () => {
+    // The canonical sub-composition shape puts <style> and <script> directly
+    // inside <template>, NEXT TO the root div rather than inside it. Collecting
+    // only from the root dropped the composition's whole stylesheet, so rules
+    // keyed on the root (`#root { container-type: size }`) never landed and every
+    // container-query unit in the composition resolved against the wrong basis.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml =
+      `
+      <html><body>
+        <template>
+          <style>#root { container-type: size; }</style>
+          <div id="root" data-composition-id="scene"><p>Scene</p></div>
+          <script>window.__sceneRan = true;</scr` +
+      `ipt>
+        </template>
+      </body></html>
+    `;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedStyles: HTMLStyleElement[] = [];
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedStyles, injectedScripts });
+
+    expect(injectedStyles.map((style) => style.textContent).join("")).toContain(
+      "container-type: size",
+    );
+    expect(injectedScripts.map((script) => script.textContent).join("")).toContain("__sceneRan");
+    // The extracted nodes are stripped from the mounted copy, not duplicated.
+    expect(host.querySelectorAll("style, script")).toHaveLength(0);
+    expect(host.querySelector("p")?.textContent).toBe("Scene");
+  });
+
+  it("preserves head stylesheets when an external composition uses a template", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href="./scene.css"></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.css"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not resolve an empty stylesheet href to the composition HTML", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href=""></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Unstyled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.html"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("does not inject stylesheet href variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <link rel="stylesheet" href=" ">
+          <link rel="stylesheet" href="#theme">
+          <link rel="stylesheet" href="?v=1">
+          <link rel="stylesheet" href="./scene.html?v=2#theme">
+          <link rel="stylesheet" href="./scene.css?v=1">
+        </head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    const injectedHrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map(
+      (link) => (link as HTMLLinkElement).href,
+    );
+    expect(injectedHrefs).toEqual(["https://example.com/compositions/scene.css?v=1"]);
+  });
+
+  it("does not execute head script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <script src="#theme"></script>
+          <script src="?v=1"></script>
+          <script src="./scene.html?v=2#theme"></script>
+        </head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not execute content script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <body>
+          <div data-composition-id="scene">
+            <p>Scene</p>
+            <script src="#theme"></script>
+            <script src="?v=1"></script>
+            <script src="./scene.html?v=2#theme"></script>
+          </div>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not fail composition mounting when a head script src is malformed", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><script src="http://[invalid"></script></head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    const onDiagnostic = vi.fn();
+    await loadExternalCompositions({ ...defaultParams, injectedScripts, onDiagnostic });
+
+    expect(injectedScripts).toHaveLength(1);
+    expect(onDiagnostic).not.toHaveBeenCalled();
   });
 
   it("calls onDiagnostic when fetch fails", async () => {
@@ -770,6 +988,34 @@ describe("loadExternalCompositions", () => {
       });
     });
 
+    it("does not redefine a CSS variable already authored on the host", async () => {
+      const style = document.createElement("style");
+      style.textContent = ":root { --accent: #4287f5; }";
+      document.head.appendChild(style);
+
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-authored-token");
+      host.setAttribute("data-variable-values", '{"accent":"blue"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"accent","type":"string","label":"Accent","default":"red"}
+        ]'>
+          <body><div data-composition-id="card-authored-token"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(host.style.getPropertyValue("--accent")).toBe("");
+      expect(window.getComputedStyle(host).getPropertyValue("--accent")).toBe("#4287f5");
+    });
+
     it("uses declared defaults when host has no data-variable-values", async () => {
       const host = document.createElement("div");
       host.setAttribute("data-composition-src", "https://example.com/card.html");
@@ -973,22 +1219,19 @@ describe("loadExternalCompositions", () => {
     });
   });
 
-  it("preserves data-composition-id unflattened for a host with no id of its own (anonymous host)", async () => {
-    // Regression test documenting why this file's own prepareFlattenedInnerRoot
-    // (line ~527) does NOT need the same anonymous-host id-restoration that
-    // producer/bundler compilation needed: an anonymous host's authoredCompositionId
-    // is null, so mountCompositionContent's innerRoot lookup never runs, and it
-    // falls through to a raw document.importNode() of the whole template content
-    // instead of prepareFlattenedInnerRoot. The composition's own
-    // data-composition-id is never stripped in the first place, so its root-styling
-    // CSS and self-referencing querySelector('[data-composition-id="X"]') calls
-    // already resolve. See PR review discussion on #1886 for the audit trail.
+  it("scopes an anonymous host's composition to the id its own content declares", async () => {
+    // A host naming no composition id used to mount the fetched content WHOLE:
+    // unflattened, and with its CSS injected unscoped, so the composition's
+    // rules landed on the host document at large. The compiler has always
+    // fallen back to the first root declared in the content, scoped to it, and
+    // restored the id that flattening strips. The mount path does the same now.
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/scoped-text.html");
     document.body.appendChild(host);
 
     const compositionHtml = `
       <template id="scoped-text-template">
+        <style>.label { color: rgb(1, 2, 3); }</style>
         <div data-composition-id="scoped-text" data-width="1080" data-height="1920">
           <div class="label">Scoped Text Should Stay Styled</div>
         </div>
@@ -997,17 +1240,76 @@ describe("loadExternalCompositions", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
-    await loadExternalCompositions({ ...defaultParams });
+    const injectedStyles: HTMLStyleElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedStyles });
 
-    // Not flattened: no data-hf-inner-root wrapper was created.
-    expect(host.querySelector("[data-hf-inner-root]")).toBeNull();
-    // The composition's own root element, with its own id intact, is a
-    // direct descendant of the (still anonymous) host.
+    // Flattened like every other mount, with the declared id restored so the
+    // composition's scoped CSS and self-referencing queries still resolve.
     const mountedRoot = host.querySelector('[data-composition-id="scoped-text"]');
-    expect(mountedRoot).not.toBeNull();
+    expect(mountedRoot?.getAttribute("data-hf-inner-root")).toBe("true");
     expect(mountedRoot?.querySelector(".label")?.textContent).toBe(
       "Scoped Text Should Stay Styled",
     );
+    // The stylesheet is scoped to the composition rather than leaking whole.
+    const injectedCss = injectedStyles.map((style) => style.textContent).join("\n");
+    expect(injectedCss).toContain('[data-composition-id="scoped-text"]');
+    expect(injectedCss).not.toMatch(/^\s*\.label\s*\{/);
+  });
+
+  // --- D1/D4 regressions: what the compiler and the mount path now agree on ---
+
+  it("executes an inline <head> script of a non-templated composition", async () => {
+    // The compiler used to drop this one on the floor (its <head> loop had a
+    // `src` branch and no else); the mount path always executed it.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/head-script.html");
+    host.setAttribute("data-composition-id", "head-script");
+    document.body.appendChild(host);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><head><script>window.__headScriptRan = true;</script></head><body>
+           <div data-composition-id="head-script"><p>Body</p></div>
+         </body></html>`,
+        { status: 200 },
+      ),
+    );
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts.map((script) => script.textContent).join("\n")).toContain(
+      "window.__headScriptRan = true;",
+    );
+  });
+
+  it("scopes scripts to the id the content declares when the host names another", async () => {
+    // Two scope ids, not one: CSS stays on the id the host asked for, scripts
+    // follow the id the content actually declares, so a script's own
+    // querySelector('[data-composition-id="..."]') resolves. Collapsing them
+    // pointed every self-query at an id that is nowhere in the content.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/captions.html");
+    host.setAttribute("data-composition-id", "captions-comp");
+    document.body.appendChild(host);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<template id="captions-comp-template">
+           <div data-composition-id="captions"><p>Caption</p></div>
+           <script>void 0;</script>
+         </template>`,
+        { status: 200 },
+      ),
+    );
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    const injectedStyles: HTMLStyleElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts, injectedStyles });
+
+    const scriptSource = injectedScripts.map((script) => script.textContent).join("\n");
+    expect(scriptSource).toContain('var __hfCompId = "captions";');
+    expect(scriptSource).not.toContain('var __hfCompId = "captions-comp";');
   });
 });
 
@@ -1021,6 +1323,7 @@ describe("loadInlineTemplateCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 

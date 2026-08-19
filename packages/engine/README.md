@@ -35,7 +35,6 @@ The engine opens your HTML composition in a headless Chrome instance, seeks fram
 ```typescript
 import {
   acquireBrowser,
-  releaseBrowser,
   createCaptureSession,
   initializeSession,
   captureFrame,
@@ -43,11 +42,11 @@ import {
 } from "@hyperframes/engine";
 
 // 1. Launch browser
-const browser = await acquireBrowser({ captureMode: "beginFrame" });
+const browserLease = await acquireBrowser({ captureMode: "beginFrame" });
 
 // 2. Open a capture session
 const session = createCaptureSession({
-  browser: browser.browser,
+  browser: browserLease.browser,
   url: "http://localhost:3000/my-composition.html",
   width: 1920,
   height: 1080,
@@ -62,7 +61,7 @@ for (let i = 0; i < totalFrames; i++) {
 
 // 4. Clean up
 await closeCaptureSession(session);
-await releaseBrowser(browser);
+await browserLease.release();
 ```
 
 Most users should use `@hyperframes/producer` or the `hyperframes` CLI instead of calling the engine directly.

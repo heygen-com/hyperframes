@@ -14,6 +14,7 @@ describe("isTransientBrowserError", () => {
     "Cannot find context with specified id",
     "Failed to launch the browser process! TROUBLESHOOTING: https://pptr.dev/troubleshooting",
     "connect ECONNREFUSED 127.0.0.1:9222",
+    "net::ERR_NETWORK_CHANGED at http://127.0.0.1:4173/index.html",
     "Navigation timeout of 60000 ms exceeded",
     // pollHfReady timed out before window.__renderReady flipped true — the
     // classic symptom of a slow/contended host (e.g. several renders running

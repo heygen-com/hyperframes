@@ -1,10 +1,19 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
-import { decodeUrlPathVariants } from "@hyperframes/parsers/composition";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
+import {
+  cleanAssetUrl,
+  isRemoteOrInlineUrl,
+  isUnresolvedAssetPlaceholder,
+  isWithinProjectRoot,
+  maskNonScannableRanges,
+  resolveExistingLocalAsset,
+  resolveLocalAssetCandidates,
+} from "@hyperframes/parsers/asset-resolution";
+import { collectLocalVideoCandidates, lintHevcPreviewCodec } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
@@ -113,57 +122,6 @@ function collectCssSources(projectDir: string, html: string, compSrcPath?: strin
   return sources;
 }
 
-function isRemoteOrInlineUrl(url: string): boolean {
-  return /^(https?:|data:|blob:|\/\/|#)/i.test(url);
-}
-
-function cleanAssetUrl(url: string): string {
-  return url.trim().split(/[?#]/, 1)[0] ?? "";
-}
-
-function isWithinProjectRoot(projectDir: string, candidate: string): boolean {
-  const projectRoot = resolve(projectDir);
-  const relativePath = relative(projectRoot, candidate);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
-}
-
-function addCandidate(candidates: string[], candidate: string): void {
-  if (!candidates.includes(candidate)) candidates.push(candidate);
-}
-
-function resolveLocalAssetCandidates(projectDir: string, url: string): string[] {
-  const cleanUrl = cleanAssetUrl(url);
-  const projectRoot = resolve(projectDir);
-  const candidates: string[] = [];
-
-  for (const variant of decodeUrlPathVariants(cleanUrl)) {
-    const projectRelative = variant.startsWith("/") ? variant.slice(1) : variant;
-    const resolved = resolve(projectRoot, projectRelative);
-    if (isWithinProjectRoot(projectRoot, resolved)) {
-      addCandidate(candidates, resolved);
-      continue;
-    }
-
-    const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
-    const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
-      addCandidate(candidates, resolve(projectRoot, clamped));
-    }
-  }
-
-  return candidates;
-}
-
-function resolveExistingLocalAsset(
-  projectDir: string,
-  url: string,
-): { resolved: string; rootRelativePath: string } | null {
-  const projectRoot = resolve(projectDir);
-  const resolved = resolveLocalAssetCandidates(projectRoot, url).find(existsSync);
-  if (!resolved) return null;
-  return { resolved, rootRelativePath: relative(projectRoot, resolved) };
-}
-
 function resolveCssAssetCandidates(
   projectDir: string,
   url: string,
@@ -175,13 +133,24 @@ function resolveCssAssetCandidates(
     return resolveLocalAssetCandidates(projectDir, join(dirname(cssRootRelativePath), url));
   }
   if (htmlCompSrcPath) {
-    return resolveLocalAssetCandidates(projectDir, rewriteAssetPath(htmlCompSrcPath, url));
+    return resolveLocalAssetCandidates(
+      projectDir,
+      rewriteAssetPath(htmlCompSrcPath, url, (path) => existsSync(join(projectDir, path))),
+    );
   }
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
-export async function lintProject(projectDir: string): Promise<ProjectLintResult> {
-  const indexPath = resolve(projectDir, "index.html");
+export async function lintProject(
+  projectDir: string,
+  entryFile?: string,
+): Promise<ProjectLintResult> {
+  const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
+  if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
+    throw new Error(`Explicit lint entry is outside the project directory: ${entryFile}`);
+  }
+  const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
+  const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
   const results: Array<{ file: string; result: HyperframeLintResult }> = [];
   let totalErrors = 0;
   let totalWarnings = 0;
@@ -190,22 +159,27 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
   const rootHtml = readFileSync(indexPath, "utf-8");
   const rootResult = await lintHyperframeHtml(rootHtml, {
     filePath: indexPath,
-    externalStyles: collectExternalStyles(projectDir, rootHtml),
+    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
-  results.push({ file: "index.html", result: rootResult });
+  results.push({ file: rootFile, result: rootResult });
   totalErrors += rootResult.errorCount;
   totalWarnings += rootResult.warningCount;
   totalInfos += rootResult.infoCount;
 
-  const allHtmlSources: HtmlSource[] = [{ html: rootHtml }];
+  const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const compositionsDir = resolve(projectDir, "compositions");
-  if (existsSync(compositionsDir)) {
+  if (!entryFile && existsSync(compositionsDir)) {
     const collectHtmlFiles = (dir: string, rel: string): string[] => {
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
-        else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
+        if (entry.isDirectory()) {
+          // Registry components are source snippets, not independently mounted
+          // sub-compositions. Linting every installed template here makes an
+          // unused component fail the assembled project check.
+          if (!rel && entry.name === "components") continue;
+          out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
+        } else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
           out.push(relPath);
         }
       }
@@ -239,9 +213,10 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
     ...lintAudioSrcNotFound(projectDir, allHtmlSources),
     ...lintMissingLocalAsset(projectDir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
-    ...lintMultipleRootCompositions(projectDir),
+    ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
+    ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
   ];
   if (projectFindings.length > 0) {
     for (const finding of projectFindings) {
@@ -311,8 +286,10 @@ function lintAudioSrcNotFound(
     while ((match = audioSrcRe.exec(html)) !== null) {
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue;
-      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      if (isUnresolvedAssetPlaceholder(src)) continue;
+      const rootRelative = compSrcPath
+        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
+        : src;
       if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
         missingSrcs.push(src);
       }
@@ -335,17 +312,6 @@ function lintAudioSrcNotFound(
   return findings;
 }
 
-function maskRange(src: string, pattern: RegExp): string {
-  return src.replace(pattern, (m) => " ".repeat(m.length));
-}
-
-function maskNonScannableRanges(html: string): string {
-  let out = maskRange(html, /<!--[\s\S]*?-->/g);
-  out = maskRange(out, /<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi);
-  out = maskRange(out, /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi);
-  return out;
-}
-
 // fallow-ignore-next-line complexity
 function lintMissingLocalAsset(
   projectDir: string,
@@ -364,11 +330,14 @@ function lintMissingLocalAsset(
     while ((match = re.exec(scannable)) !== null) {
       const tagName = (match[1] ?? "").toLowerCase();
       const rawSrc = match[2] ?? "";
+      // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+      if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue;
-      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const rootRelative = compSrcPath
+        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
+        : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
 
@@ -415,9 +384,10 @@ function lintTextureMaskAssetNotFound(
       const pattern = new RegExp(MASK_IMAGE_URL_RE.source, MASK_IMAGE_URL_RE.flags);
       while ((match = pattern.exec(cssSource.content)) !== null) {
         const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
+        // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+        if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
         const url = cleanAssetUrl(rawUrl);
         if (!url || isRemoteOrInlineUrl(url)) continue;
-        if (/^__[A-Z_]+__$/.test(url)) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,
@@ -565,7 +535,7 @@ function lintMissingOrEmptySubComposition(
     while ((match = compositionSrcRe.exec(scannable)) !== null) {
       const srcPath = (match[1] ?? "").trim();
       if (!srcPath) continue;
-      if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder
+      if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or late-bound templating token
 
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses

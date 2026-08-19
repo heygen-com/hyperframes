@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,11 +30,14 @@ const configState = vi.hoisted(
     cache: Record<string, unknown> | null;
     writeConfigCalls: Array<Record<string, unknown>>;
     failWrites: number;
+    /** Config write lands but the install-state mirror does not. */
+    failMirrors: number;
   } => ({
     disk: { telemetryEnabled: true, deParallelRouterTrialFired: true },
     cache: null,
     writeConfigCalls: [],
     failWrites: 0,
+    failMirrors: 0,
   }),
 );
 
@@ -72,15 +75,43 @@ const preflightState = vi.hoisted(() => ({
   },
 }));
 
+const ffmpegEncoderState = vi.hoisted(() => ({
+  mode: "software" as "software" | "gpu",
+  error: null as Error | null,
+}));
+const orphanCleanupState = vi.hoisted(() => ({
+  calls: 0,
+  killed: 0,
+}));
+
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
     resolveConfig: vi.fn((overrides: Record<string, unknown>) => {
       producerState.resolveConfigCalls.push(overrides);
       return { ...overrides, resolved: true };
     }),
+    createRenderRequest: vi.fn(
+      (input: {
+        projectDir: string;
+        outputPath: string;
+        engineConfig: unknown;
+        options: object;
+      }) => ({
+        version: 1,
+        projectDir: input.projectDir,
+        outputPath: input.outputPath,
+        options: { ...input.options, engineConfig: input.engineConfig },
+      }),
+    ),
+    renderConfigFromRequest: vi.fn(
+      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
+        const { engineConfig, ...options } = request.options;
+        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
+      },
+    ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
       producerState.createdJobs.push(config);
-      return { config, progress: 100 };
+      return { config, progress: 100, outcome: "completed", warnings: [] };
     }),
     executeRenderJob: vi.fn(async (job: Record<string, unknown>) => producerState.executeImpl(job)),
   })),
@@ -95,6 +126,20 @@ vi.mock("../telemetry/config.js", () => ({
     configState.cache = { ...configState.disk };
     return { ...configState.disk };
   }),
+  recordRecentRender: vi.fn((id: string, ok: boolean) => {
+    // Mirrors the real ring update (readConfigFresh → append, cap 5 → write)
+    // against the mock's disk state, so a render's recent-renders write is
+    // modeled like every other config mutation here. Fixed timestamp keeps it
+    // deterministic (tests never assert on `at`).
+    const disk = configState.disk as Record<string, unknown>;
+    const ring = [
+      ...((disk.recentRenders as unknown[]) ?? []),
+      { id, at: "2026-01-01T00:00:00Z", ok },
+    ];
+    const next = { ...disk, recentRenders: ring.slice(-5) };
+    configState.disk = next;
+    configState.cache = { ...next };
+  }),
   writeConfig: vi.fn((config: Record<string, unknown>) => {
     configState.writeConfigCalls.push({ ...config });
     if (configState.failWrites > 0) {
@@ -104,6 +149,22 @@ vi.mock("../telemetry/config.js", () => ({
     configState.disk = { ...config };
     configState.cache = { ...config };
     return true;
+  }),
+  // The breaker's safety path uses this rather than writeConfig, so it can
+  // see a mirror failure instead of having it collapsed into `true`.
+  writeConfigWithResult: vi.fn((config: Record<string, unknown>) => {
+    configState.writeConfigCalls.push({ ...config });
+    if (configState.failWrites > 0) {
+      configState.failWrites--;
+      return { ok: false, error: "mock write failure" };
+    }
+    configState.disk = { ...config };
+    configState.cache = { ...config };
+    if (configState.failMirrors > 0) {
+      configState.failMirrors--;
+      return { ok: true, mirrored: false };
+    }
+    return { ok: true };
   }),
 }));
 
@@ -120,6 +181,10 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 vi.mock("../browser/ffmpeg.js", () => ({
+  detectH264EncoderMode: vi.fn(() => {
+    if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
+    return ffmpegEncoderState.mode;
+  }),
   findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
   getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
 }));
@@ -128,44 +193,37 @@ vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
 }));
 
+// The "render command explicit composition" test below drives the real
+// `render.js` command handler, which takes the plan-based `execute.ts` path
+// (not the `renderLocal` unit under test above) — that path calls
+// `ensureBrowser` directly instead of going through the mocked preflight.
+// Unmocked, it performs a real network download of chrome-headless-shell into
+// the shared `~/.cache/hyperframes/chrome`, racing other packages' browser
+// tests in CI.
 vi.mock("../browser/manager.js", () => ({
   ensureBrowser: vi.fn(async () => ({ executablePath: "/mock/chrome", source: "cache" })),
 }));
 
+vi.mock("../utils/orphanCleanup.js", () => ({
+  killOrphanedProcesses: vi.fn(() => {
+    orphanCleanupState.calls += 1;
+    return orphanCleanupState.killed;
+  }),
+}));
+
+// Collect the heavy render module once, after Vitest has hoisted the mocks
+// above. Keeping this import out of a hook means parallel monorepo contention
+// cannot turn module collection into a `beforeAll` timeout.
+const renderModule = await import("./render.js");
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
-  let tempDirs: string[] = [];
-  // Pre-resolve once. The first dynamic `import("./render.js")` in this file
-  // cold-loads a heavy module graph (core + engine + producer, incl. linkedom),
-  // slow under the parallel monorepo run — the generous hook timeout that
-  // absorbs that contention now lives in vitest.config.ts (shared by all CLI
-  // suites). Importing once in `beforeAll` keeps every test fast and isolated.
-  let renderCommand: (typeof import("./render.js"))["default"];
-  let renderLocal: typeof import("./render.js").renderLocal;
-  let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
-  let renderLintContinuationHint: typeof import("./render.js").renderLintContinuationHint;
-  let resetTrialState: typeof import("./render.js").__resetDeParallelRouterTrialStateForTests;
-
-  beforeAll(async () => {
-    ({
-      default: renderCommand,
-      renderLocal,
-      resolveBrowserGpuForCli,
-      renderLintContinuationHint,
-      __resetDeParallelRouterTrialStateForTests: resetTrialState,
-    } = await import("./render.js"));
-  });
-
-  function createRenderProject(): string {
-    const dir = mkdtempSync(join(tmpdir(), "hf-render-command-"));
-    tempDirs.push(dir);
-    writeFileSync(
-      join(dir, "index.html"),
-      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
-      "utf8",
-    );
-    return dir;
-  }
+  const {
+    renderLocal,
+    resolveBrowserGpuForCli,
+    renderLintContinuationHint,
+    __resetDeParallelRouterTrialStateForTests: resetTrialState,
+  } = renderModule;
 
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
@@ -188,9 +246,14 @@ describe("renderLocal browser GPU config", () => {
     configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
     configState.cache = null;
     configState.failWrites = 0;
+    configState.failMirrors = 0;
     configState.writeConfigCalls = [];
     trackingState.shouldTrack = true;
     trackingState.renderObservations = [];
+    ffmpegEncoderState.mode = "software";
+    ffmpegEncoderState.error = null;
+    orphanCleanupState.calls = 0;
+    orphanCleanupState.killed = 0;
     resetTrialState();
     savedEnv.clear();
     savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
@@ -201,6 +264,22 @@ describe("renderLocal browser GPU config", () => {
     delete process.env.HYPERFRAMES_FFPROBE_PATH;
     delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
     delete process.env.HF_DE_PARALLEL_ROUTER;
+  });
+
+  it("cleans orphaned browser trees before starting a local render", async () => {
+    orphanCleanupState.killed = 1;
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(orphanCleanupState.calls).toBe(1);
   });
 
   afterEach(() => {
@@ -214,10 +293,6 @@ describe("renderLocal browser GPU config", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.restoreAllMocks();
-    for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-    tempDirs = [];
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
@@ -345,6 +420,58 @@ describe("renderLocal browser GPU config", () => {
     expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/mock/chrome");
   });
 
+  it("falls back to hardware encoding when FFmpeg omits libx264", async () => {
+    ffmpegEncoderState.mode = "gpu";
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(true);
+  });
+
+  it("lets the encoder surface its own error when capability detection fails", async () => {
+    ffmpegEncoderState.error = new Error("encoder probe timed out");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(false);
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("encoder probe timed out"));
+  });
+
+  it("diagnoses advisory encoder probe failures unless quiet", async () => {
+    ffmpegEncoderState.error = new Error("encoder probe timed out");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: false,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("encoder probe timed out"));
+  });
+
   it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {
     // Default (no flag, no env): auto — engine probes and chooses.
     expect(resolveBrowserGpuForCli(false, undefined, undefined)).toBe("auto");
@@ -420,33 +547,6 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
-  it("forwards gif loop and video frame format to batch row renders", async () => {
-    const projectDir = createRenderProject();
-    const rowsPath = join(projectDir, "rows.json");
-    writeFileSync(rowsPath, "[{}]", "utf8");
-
-    if (!renderCommand.run) throw new Error("render command missing run handler");
-    await renderCommand.run({
-      args: {
-        dir: projectDir,
-        batch: rowsPath,
-        output: join(projectDir, "renders", "{index}.gif"),
-        fps: "15",
-        quality: "standard",
-        format: "gif",
-        "gif-loop": "3",
-        "video-frame-format": "png",
-        quiet: true,
-      },
-    } as never);
-
-    expect(producerState.createdJobs[0]).toMatchObject({
-      format: "gif",
-      gifLoop: 3,
-      videoFrameFormat: "png",
-    });
-  });
-
   it("forwards debug mode to createRenderJob", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -460,6 +560,35 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.debug).toBe(true);
+  });
+
+  it("defaults to best-effort readiness", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.strictness).toBe("best-effort");
+  });
+
+  it("forwards an explicit strict readiness opt-in", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      bestEffort: false,
+    });
+
+    expect(producerState.createdJobs[0]?.strictness).toBe("strict");
   });
 
   it("omits variables from createRenderJob when not provided", async () => {
@@ -586,13 +715,10 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.outputResolution).toBeUndefined();
   });
 
-  it("can force the CLI process to exit after a successful local render", async () => {
+  it("requests a root-owned CLI exit after a successful local render", async () => {
     vi.useFakeTimers();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((code?: string | number | null): never => {
-        throw new Error(`process.exit:${code ?? ""}`);
-      });
+    const { consumeCommandResult } = await import("../utils/commandResult.js");
+    consumeCommandResult();
 
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -605,21 +731,18 @@ describe("renderLocal browser GPU config", () => {
       exitAfterComplete: true,
     });
 
-    expect(exit).not.toHaveBeenCalled();
-    expect(() => vi.advanceTimersByTime(100)).toThrow("process.exit:0");
-    expect(exit).toHaveBeenCalledWith(0);
+    vi.advanceTimersByTime(100);
+    expect(consumeCommandResult().exitCode).toBe(0);
   });
 });
 
-describe("renderLocal — DE parallel-router CLI trial", () => {
-  let renderLocal: typeof import("./render.js").renderLocal;
-  let resetTrialState: typeof import("./render.js").__resetDeParallelRouterTrialStateForTests;
+// Suite renamed with the breaker work: this is no longer an opt-in trial. The
+// bindings come from main's shared top-level `renderModule` import rather than
+// this suite's own beforeAll — same module instance every other suite uses, so
+// module-scope arm/consume state resets through the one `resetTrialState()`.
+describe("renderLocal — DE parallel-router circuit breaker", () => {
+  const { renderLocal, __resetDeParallelRouterTrialStateForTests: resetTrialState } = renderModule;
   const savedEnv = new Map<string, string | undefined>();
-
-  beforeAll(async () => {
-    ({ renderLocal, __resetDeParallelRouterTrialStateForTests: resetTrialState } =
-      await import("./render.js"));
-  });
 
   beforeEach(() => {
     producerState.createdJobs = [];
@@ -660,19 +783,52 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
     browserGpuMode: "software" as const,
     hdrMode: "auto" as const,
     quiet: true,
-    // The trial is OPT-IN (review): only the CLI's own sequential call sites
-    // set this. These tests simulate those call sites.
-    enableDeParallelRouterTrial: true,
+    // Breaker management is OPT-IN (review): only the CLI's own sequential
+    // call sites set it. These tests simulate those call sites.
+    manageDeParallelRouterBreaker: true,
   };
 
-  it("enables the trial (sets the env var) on a fresh install with telemetry on", async () => {
+  // The canary that used to gate this is gone (registry entry + guard removed
+  // together). The router is now a shipped default for every install, so the
+  // guarantee worth pinning is the inverse of the old one: an ordinary install
+  // must come out of the breaker with the var UNSET, so the producer's
+  // default-ON applies. Writing "false" here would silently disarm the fleet —
+  // that is exactly what gating at 5% did.
+  it("leaves the var unset for an ordinary install so the producer default applies", async () => {
+    configState.disk = {
+      telemetryEnabled: true,
+      deParallelRouterTrialFired: false,
+      telemetryNoticeShown: true,
+    };
+    delete process.env.HF_DE_PARALLEL_ROUTER;
+    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+  });
+
+  // An explicit user choice outranks enrolment in both directions — the
+  // documented escalation path for anyone who wants the router regardless.
+  it("never overrides an explicit user value", async () => {
+    configState.disk = {
+      telemetryEnabled: true,
+      deParallelRouterTrialFired: false,
+      telemetryNoticeShown: true,
+    };
+    process.env.HF_DE_PARALLEL_ROUTER = "true";
+    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
+  });
+
+  it("leaves the env var untouched on a fresh install — the router is default-ON", async () => {
+    // Under the old opt-in trial this armed HF_DE_PARALLEL_ROUTER="true".
+    // The router now ships on, so the breaker's job is to stay out of the
+    // way until something actually fails.
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: false,
       telemetryNoticeShown: true,
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
   });
 
   it("does not override an env var the user already set themselves", async () => {
@@ -686,48 +842,74 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
 
-  it("does not enable the trial once it has already fired for this install", async () => {
+  it("writes an explicit false once the breaker has tripped for this install", async () => {
+    // THE regression this rework exists for: the old code disabled the
+    // router by DELETING the var. With a default-ON router, absent means ON,
+    // so deleting would silently re-enable it on the very host that just
+    // failed. Only an explicit "false" is a real off-switch.
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: true,
       telemetryNoticeShown: true,
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
 
-  it("does not enable the trial when shouldTrack() is false (dev mode / DO_NOT_TRACK)", async () => {
+  for (const emptyish of ["", "   "]) {
+    it(`treats a set-but-empty env var (${JSON.stringify(emptyish)}) as default, not a user choice`, async () => {
+      // Both parsers read empty/whitespace as "unset → default ON", so the
+      // producer routes. If ownership instead treated any defined value as a
+      // user choice, the breaker would no-op and this install would keep
+      // retrying a failing router forever — losing the first-fallback
+      // protection that is the point of the breaker.
+      configState.disk = {
+        telemetryEnabled: true,
+        deParallelRouterTrialFired: false,
+        telemetryNoticeShown: true,
+      };
+      process.env.HF_DE_PARALLEL_ROUTER = emptyish;
+      producerState.executeImpl = async (job) => {
+        job.perfSummary = {
+          resolution: { width: 100, height: 100 },
+          drawElement: { parallelRouter: "reverted" },
+        };
+      };
+      await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
+      expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
+      expect(configState.writeConfigCalls).toContainEqual(
+        expect.objectContaining({ deParallelRouterTrialFired: true }),
+      );
+    });
+  }
+
+  it("does not override an explicit user opt-in even after a fallback", async () => {
+    // "Explicit user choice wins in both directions" — the opt-in half.
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: false,
       telemetryNoticeShown: true,
     };
-    trackingState.shouldTrack = false;
+    process.env.HF_DE_PARALLEL_ROUTER = "true";
+    producerState.executeImpl = async (job) => {
+      job.perfSummary = {
+        resolution: { width: 100, height: 100 },
+        drawElement: { parallelRouter: "reverted" },
+      };
+    };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
   });
 
-  it("does not enable the trial when config.telemetryEnabled is false, even if shouldTrack() is stale-true (e.g. `hyperframes telemetry off` mid-batch)", async () => {
+  it("keeps the router on for a telemetry opt-out — analytics choice must not cost performance", async () => {
+    // The old trial refused to arm without recordable telemetry (no point
+    // running an experiment you can't measure). Now that the router is a
+    // shipped default, gating it on telemetry would punish a privacy choice
+    // with a slower renderer.
     configState.disk = {
       telemetryEnabled: false,
       deParallelRouterTrialFired: false,
       telemetryNoticeShown: true,
-    };
-    trackingState.shouldTrack = true;
-    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
-  });
-
-  it("does not enable the trial before the first-run telemetry disclosure has been shown at least once", async () => {
-    // cli.ts shows this notice via a fire-and-forget, unawaited dynamic
-    // import — there's no guarantee it printed before renderLocal runs on a
-    // brand-new install's very first invocation. Requiring
-    // telemetryNoticeShown means the trial never races an opt-in message
-    // against the disclosure it depends on.
-    configState.disk = {
-      telemetryEnabled: true,
-      deParallelRouterTrialFired: false,
-      telemetryNoticeShown: false,
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
@@ -838,11 +1020,9 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
   });
 
   it("persists a later --batch row's revert even though this process already armed the trial on an earlier row", async () => {
-    // Regression test for the exact scenario a --batch run hits: multiple
-    // renderLocal calls in one process. Before the fix, row 2's
-    // maybeEnableDeParallelRouterTrial saw process.env.HF_DE_PARALLEL_ROUTER
-    // already "true" (set by row 1) and mistook that for "the user set it",
-    // returning trialArmed=false — silently dropping row 2's revert.
+    // The --batch scenario: multiple renderLocal calls in one process. Row 1
+    // succeeds (breaker stays out of the way, env untouched); row 2 reverts
+    // and must still be recorded and trip the breaker.
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: false,
@@ -856,7 +1036,7 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
       };
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
     expect(configState.disk.deParallelRouterTrialFired).toBe(false);
 
     producerState.executeImpl = async (job) => {
@@ -870,12 +1050,14 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
     expect(configState.writeConfigCalls).toContainEqual(
       expect.objectContaining({ deParallelRouterTrialFired: true }),
     );
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    // Explicit "false", not deleted: with a default-ON router, unsetting the
+    // var would re-enable it on the host that just reverted.
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
 
   it("does not arm the trial for programmatic callers that never opted in (opt-in polarity — also covers --batch-concurrency N>=2, which leaves it unset)", async () => {
     // The trial's process-wide env var and module-level flags are only safe
-    // under sequential invocation, so enableDeParallelRouterTrial is OPT-IN
+    // under sequential invocation, so manageDeParallelRouterBreaker is OPT-IN
     // (review): a programmatic renderLocal consumer that doesn't know about
     // the trial must get no trial. The CLI's concurrent-batch path relies on
     // the same default by leaving the option unset.
@@ -884,7 +1066,7 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
       deParallelRouterTrialFired: false,
       telemetryNoticeShown: true,
     };
-    const { enableDeParallelRouterTrial: _omitted, ...programmaticOptions } = baseOptions;
+    const { manageDeParallelRouterBreaker: _omitted, ...programmaticOptions } = baseOptions;
     await renderLocal("/tmp/project", "/tmp/out.mp4", programmaticOptions);
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
     expect(configState.writeConfigCalls).toHaveLength(0);
@@ -903,7 +1085,7 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
       };
     };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
 
     // A real interactive user can't do this mid-batch, but a wrapper script
     // invoking the CLI programmatically in the same process could — the
@@ -913,7 +1095,10 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
 
-  it("caps exposure at DE_PARALLEL_ROUTER_TRIAL_MAX_RENDERS even when the router never reverts", async () => {
+  it("never trips on healthy renders, however many — the old 25-render cap is gone", async () => {
+    // The cap was sampling logic for an opt-in experiment. Under a shipped
+    // default it would switch the feature off behind the user's back after
+    // 25 good renders.
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: false,
@@ -926,40 +1111,41 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
       };
     };
 
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 30; i++) {
       await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
     }
 
-    expect(configState.writeConfigCalls).toContainEqual(
-      expect.objectContaining({
-        deParallelRouterTrialFired: true,
-        deParallelRouterTrialRenderCount: 25,
-      }),
-    );
     expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
-
-    // The 26th eligible render must not re-arm it.
-    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    expect(
+      configState.writeConfigCalls.some((call) => call.deParallelRouterTrialFired === true),
+    ).toBe(false);
   });
 
-  it("observes a telemetry opt-out written by another process mid-batch (arm site reads fresh, not cached)", async () => {
+  // The config write landing is NOT enough: config.json is the copy a stale
+  // writer or a re-mint can erase, so a run that mirrored nothing has left the
+  // safety fact on the erasable store only. writeConfig() collapsed
+  // {ok:true, mirrored:false} to success and the loop stopped there.
+  it("retries when the install-state mirror fails even though config.json landed", async () => {
     configState.disk = {
       telemetryEnabled: true,
       deParallelRouterTrialFired: false,
       telemetryNoticeShown: true,
     };
-    // Row 1 arms and primes the config cache.
+    configState.failMirrors = 1; // first attempt mirrors nothing
+    producerState.executeImpl = async (job) => {
+      job.perfSummary = {
+        resolution: { width: 100, height: 100 },
+        drawElement: { parallelRouter: "reverted" },
+      };
+    };
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("true");
 
-    // Another process runs `hyperframes telemetry off`, writing straight to
-    // "disk" — this process's cache still says telemetryEnabled: true, so a
-    // cached read at the arm site would keep arming (review finding).
-    configState.disk = { ...configState.disk, telemetryEnabled: false };
-
-    await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    expect(configState.disk.deParallelRouterTrialFired).toBe(true);
+    // Two writes: the one whose mirror failed, then the retry that mirrored.
+    const firedWrites = configState.writeConfigCalls.filter(
+      (c) => c.deParallelRouterTrialFired === true,
+    );
+    expect(firedWrites.length).toBeGreaterThanOrEqual(2);
   });
 
   it("re-asserts the fired flag when the write is lost (concurrent clobber / transient failure), without re-counting the render", async () => {
@@ -1001,21 +1187,16 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
     // Nothing could persist...
     expect(configState.disk.deParallelRouterTrialFired).toBe(false);
     // ...but the in-process latch still blocks the next render from
-    // re-running the experiment that just failed (review finding).
+    // re-running the path that just failed (review finding) — and now does
+    // it by writing an explicit "false", since absent means ON.
     producerState.executeImpl = async () => undefined;
     await renderLocal("/tmp/project", "/tmp/out.mp4", baseOptions);
-    expect(process.env.HF_DE_PARALLEL_ROUTER).toBeUndefined();
+    expect(process.env.HF_DE_PARALLEL_ROUTER).toBe("false");
   });
 });
 
 describe("checkRenderResolutionPreflight", () => {
-  let checkRenderResolutionPreflight: typeof import("./render.js").checkRenderResolutionPreflight;
-
-  // Cold-imports render.js (heavy graph); the generous hook timeout for parallel
-  // CI contention lives in vitest.config.ts. See the note above.
-  beforeAll(async () => {
-    ({ checkRenderResolutionPreflight } = await import("./render.js"));
-  });
+  const { checkRenderResolutionPreflight } = renderModule;
 
   // Dims must be read the same way the producer's compiler reads them:
   // `data-width` / `data-height` on the `[data-composition-id]` root.
@@ -1098,6 +1279,122 @@ describe("checkRenderResolutionPreflight", () => {
       await checkRenderResolutionPreflight("<html><body></body></html>", "landscape", noModes),
     ).toBeUndefined();
   });
+
+  // Aspect-agnostic aliases (`--resolution 1080p` / `hd` / `4k` / `uhd`) name a
+  // resolution tier without pinning an orientation. When the flag is
+  // aspect-agnostic the pre-flight must NOT block on an aspect-ratio mismatch —
+  // the compile stage adapts the preset to the composition's orientation
+  // downstream (see `outputResolutionAspectAgnostic` on RenderConfig).
+  // Field signal ts=1784176662 (darwin/arm64, CLI 0.7.59):
+  //   "--resolution 1080p rejects a 1080x1920 portrait comp"
+  describe("aspect-agnostic (--resolution 1080p / hd / 4k / uhd)", () => {
+    const agnostic = { ...noModes, aspectAgnostic: true } as const;
+
+    it("clears a landscape preset on a portrait composition (the field-signal scenario)", async () => {
+      // The bug: --resolution 1080p normalized to `landscape` (1920×1080),
+      // then errored on a 1080×1920 portrait comp with "Output resolution
+      // incompatible." With aspectAgnostic=true the pre-flight steps aside
+      // and the compile stage re-maps landscape → portrait.
+      expect(
+        await checkRenderResolutionPreflight(portraitHtml, "landscape", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("clears a landscape-4k preset on a portrait composition (4K tier)", async () => {
+      // `--resolution 4k` → normalized `landscape-4k`. Portrait comp is fine
+      // when aspect-agnostic.
+      expect(
+        await checkRenderResolutionPreflight(portraitHtml, "landscape-4k", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("clears a landscape preset on a square composition", async () => {
+      // aspect > 1 → landscape, aspect = 1 → square. Both self-heal.
+      expect(
+        await checkRenderResolutionPreflight(comp(1080, 1080), "landscape", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("still flags alpha + aspect-agnostic (orientation isn't the issue)", async () => {
+      // alpha-incompatible is orthogonal to aspect: the alpha capture path
+      // can't apply deviceScaleFactor regardless of orientation. The
+      // aspect-agnostic downgrade must NOT swallow this.
+      const result = await checkRenderResolutionPreflight(portraitHtml, "landscape", {
+        aspectAgnostic: true,
+        alphaRequested: true,
+        hdrRequested: false,
+      });
+      expect(result?.kind).toBe("alpha-incompatible");
+    });
+
+    it("still flags HDR + aspect-agnostic", async () => {
+      const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape", {
+        aspectAgnostic: true,
+        alphaRequested: false,
+        hdrRequested: true,
+      });
+      expect(result?.kind).toBe("hdr-incompatible");
+    });
+
+    it("still flags downsampling + aspect-agnostic (same-orientation, smaller preset)", async () => {
+      // 3840×2160 comp with `--resolution 1080p` → `landscape` (1920×1080).
+      // Same orientation, but tier smaller than comp — user asked for a
+      // downsample. That's a real incompatibility, not an orientation swap.
+      const result = await checkRenderResolutionPreflight(comp(3840, 2160), "landscape", agnostic);
+      expect(result?.kind).toBe("downsampling");
+    });
+
+    it("does NOT auto-clear when the flag was explicit (orientation-locked preset stays strict)", async () => {
+      // The negative case: `--resolution landscape` on a portrait comp — the
+      // user explicitly asked for landscape orientation, and the mismatch is
+      // a genuine mistake. Pre-flight must still block with the actionable
+      // "did you mean --resolution portrait?" suggestion.
+      const result = await checkRenderResolutionPreflight(portraitHtml, "landscape", noModes);
+      expect(result?.kind).toBe("aspect-mismatch");
+      expect(result?.message).toContain("--resolution portrait");
+    });
+
+    // Rames Δ2 on PR #2529: the earlier "downgrade aspect-mismatch to
+    // undefined" preflight cleared *un-remapped* mismatches, so two input
+    // classes below regressed from an early actionable error to a late throw
+    // deep in `resolveDeviceScaleFactor` (browser + ffmpeg already up).
+    // The fix computes the *effective* preset via `suggestMatchingPreset`
+    // (mirroring the compile stage) and re-checks against that, so only
+    // genuinely-fixable mismatches clear early.
+
+    it("blocks IG 4:5 (non-preset aspect) early with an aspect-aware message", async () => {
+      // 1080×1350 is a 4:5 portrait — no canonical preset shares that aspect,
+      // so `suggestMatchingPreset` returns undefined and `adaptAspectAgnosticResolution`
+      // keeps the original preset. Before the fix, aspect-agnostic downgraded
+      // the mismatch here to undefined; now the preflight surfaces it early.
+      const result = await checkRenderResolutionPreflight(comp(1080, 1350), "landscape", agnostic);
+      expect(result?.kind).toBe("aspect-mismatch");
+      // No sibling preset to suggest → message falls back to the "pick a preset
+      // whose orientation matches" hint (see `buildAspectMismatch` in
+      // `@hyperframes/parsers/outputResolutionCompatibility`).
+      expect(result?.message).toMatch(/preset whose orientation matches|omit --resolution/i);
+    });
+
+    it("blocks a portrait-4K comp + `1080p` downsample early (orientation-flip masks the tier gap)", async () => {
+      // 2160×3840 (portrait 4K) + `--resolution 1080p` — the compile stage
+      // remaps `landscape` → `portrait` (1080×1920), and *then* the preset
+      // is smaller than the composition. The un-remapped preflight let this
+      // slip through as an aspect-mismatch downgrade; the remap-then-check
+      // catches the real failure — downsampling — early.
+      const result = await checkRenderResolutionPreflight(comp(2160, 3840), "landscape", agnostic);
+      expect(result?.kind).toBe("downsampling");
+    });
+
+    it("blocks a portrait 720p comp + `1080p` non-integer upscale early (orientation-flip masks the fractional DPR)", async () => {
+      // 720×1280 (portrait 720p) + `--resolution 1080p` — remap `landscape`
+      // → `portrait` (1080×1920). widthRatio = 1080 / 720 = 1.5, which
+      // `resolveDeviceScaleFactor` rejects. Surfacing it in preflight beats
+      // failing after Chrome + ffmpeg spin up. Same class as Miga's
+      // important note on PR #2529.
+      const result = await checkRenderResolutionPreflight(comp(720, 1280), "landscape", agnostic);
+      expect(result?.kind).toBe("non-integer-scale");
+    });
+  });
 });
 
 describe("render fps arg definition", () => {
@@ -1115,6 +1412,79 @@ describe("render fps arg definition", () => {
     expect(fpsArg).toBeDefined();
     expect(fpsArg?.default).toBeUndefined();
   });
+});
+
+describe("render command explicit composition", () => {
+  it("renders an explicit composition from a project with no index.html", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-explicit-"));
+    const outputPath = join(projectDir, "out.mp4");
+    writeFileSync(
+      join(projectDir, "standalone.html"),
+      `<html><body>
+        <div data-composition-id="standalone" data-width="1920" data-height="1080" data-duration="1"></div>
+        <script>window.__timelines = { standalone: gsap.timeline({ paused: true }) };</script>
+      </body></html>`,
+    );
+    vi.useFakeTimers();
+
+    try {
+      const command = (await import("./render.js")).default;
+      await command.run?.({
+        args: {
+          dir: projectDir,
+          composition: "standalone.html",
+          output: outputPath,
+          quiet: true,
+          quality: "standard",
+          format: "mp4",
+        },
+      } as never);
+
+      expect(producerState.createdJobs.at(-1)).toMatchObject({
+        entryFile: "standalone.html",
+      });
+    } finally {
+      vi.clearAllTimers();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe("render command batch options", () => {
+  it("forwards gif loop and video frame format to batch row renders", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-batch-options-"));
+    const rowsPath = join(projectDir, "rows.json");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
+      "utf8",
+    );
+    writeFileSync(rowsPath, "[{}]", "utf8");
+
+    try {
+      await renderModule.default.run?.({
+        args: {
+          dir: projectDir,
+          batch: rowsPath,
+          output: join(projectDir, "renders", "{index}.gif"),
+          fps: "15",
+          quality: "standard",
+          format: "gif",
+          "gif-loop": "3",
+          "video-frame-format": "png",
+          quiet: true,
+        },
+      } as never);
+
+      expect(producerState.createdJobs.at(-1)).toMatchObject({
+        format: "gif",
+        gifLoop: 3,
+        videoFrameFormat: "png",
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 // Variables-helper tests live in `../utils/variables.test.ts`.

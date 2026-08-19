@@ -262,6 +262,62 @@ describe("setText", () => {
   it("override-set key maps correctly", () => {
     expect(pathToKey("/elements/hf-title/text")).toBe("hf-title.text");
   });
+
+  // A `<br>` line break is a void element, not the element's text target. It
+  // must not make the heading read as empty (→ non-editable) nor be corrupted
+  // by setText. See getOwnText / setOwnText in model.ts.
+  describe("<br> line-break leaves", () => {
+    const brDoc = () =>
+      parseMutable(
+        '<div data-hf-id="hf-s" data-hf-root><h1 data-hf-id="hf-br">Centrifugal<br>Force</h1></div>',
+      );
+
+    it("reads a <br>-split heading as editable text (newline-joined), not empty", () => {
+      const parsed = brDoc();
+      // The inverse patch value is the pre-edit text — proves getOwnText read
+      // the heading as "Centrifugal\nForce" rather than "" (which surfaced as
+      // `text: null` → "not editable" in the studio panel).
+      const { inverse } = applyOp(parsed, { type: "setText", target: "hf-br", value: "x" });
+      expect(inverse[0]).toMatchObject({ value: "Centrifugal\nForce" });
+    });
+
+    it("preserves the <br> when setting text (no </br> corruption)", () => {
+      const parsed = brDoc();
+      applyOp(parsed, { type: "setText", target: "hf-br", value: "Centripetal\nForce" });
+      const html = serializeDocument(parsed);
+      expect(html).toContain("Centripetal");
+      expect(html).toContain("Force");
+      expect(html).toContain("<br");
+      // The <br> must stay empty — never gains a text child.
+      const br = parsed.document.querySelector('[data-hf-id="hf-br"] br');
+      expect(br?.textContent).toBe("");
+    });
+
+    it("drops the line break when the new text has no newline", () => {
+      const parsed = brDoc();
+      applyOp(parsed, { type: "setText", target: "hf-br", value: "Centrifugal Force" });
+      const h1 = parsed.document.querySelector('[data-hf-id="hf-br"]');
+      expect(h1?.querySelector("br")).toBeNull();
+      expect(h1?.textContent).toBe("Centrifugal Force");
+    });
+
+    it("reuses the existing <br> node so an in-place edit round-trips exactly", () => {
+      const parsed = parseMutable(
+        '<div data-hf-id="hf-s" data-hf-root><h1 data-hf-id="hf-br">Centrifugal<br data-hf-id="hf-x5px">Force</h1></div>',
+      );
+      const before = serializeDocument(parsed);
+      // Same line count → the <br> (and its data-hf-id) is preserved, and undo
+      // is byte-exact.
+      const { inverse } = applyOp(parsed, {
+        type: "setText",
+        target: "hf-br",
+        value: "Angular\nMomentum",
+      });
+      expect(serializeDocument(parsed)).toContain('<br data-hf-id="hf-x5px">');
+      applyPatchesToDocument(parsed, inverse);
+      expect(serializeDocument(parsed)).toBe(before);
+    });
+  });
 });
 
 // ─── setAttribute ─────────────────────────────────────────────────────────────
@@ -321,7 +377,8 @@ describe("setTiming", () => {
     const el = parsed.document.querySelector('[data-hf-id="hf-title"]');
     expect(el?.getAttribute("data-start")).toBe("1");
     // duration was 3 (0→3), so end = 1+3 = 4
-    expect(el?.getAttribute("data-end")).toBe("4");
+    expect(el?.getAttribute("data-duration")).toBe("3");
+    expect(el?.getAttribute("data-end")).toBeNull();
     const startPatch = result.forward.find((p) => p.path.endsWith("/start"));
     expect(startPatch?.value).toBe(1);
   });
@@ -330,12 +387,12 @@ describe("setTiming", () => {
     const parsed = fresh();
     applyOp(parsed, { type: "setTiming", target: "hf-title", duration: 2 });
     const el = parsed.document.querySelector('[data-hf-id="hf-title"]');
-    expect(el?.getAttribute("data-end")).toBe("2"); // start=0, duration=2 → end=2
+    expect(el?.getAttribute("data-duration")).toBe("2");
+    expect(el?.getAttribute("data-end")).toBeNull();
   });
 
   it("inverse patches restore original timing", () => {
     const parsed = fresh();
-    const before = serializeDocument(parsed);
     const { inverse } = applyOp(parsed, {
       type: "setTiming",
       target: "hf-title",
@@ -344,7 +401,11 @@ describe("setTiming", () => {
       trackIndex: 1,
     });
     applyPatchesToDocument(parsed, inverse);
-    expect(serializeDocument(parsed)).toBe(before);
+    const restored = parsed.document.querySelector('[data-hf-id="hf-title"]');
+    expect(restored?.getAttribute("data-start")).toBe("0");
+    expect(restored?.getAttribute("data-duration")).toBeNull();
+    expect(restored?.getAttribute("data-end")).toBe("3");
+    expect(restored?.getAttribute("data-track-index")).toBe("0");
   });
 });
 

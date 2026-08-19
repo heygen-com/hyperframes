@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
+import { resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import {
   parseStoryboard,
   SCRIPT_FILENAME,
@@ -45,8 +46,11 @@ export function registerStoryboardRoutes(api: Hono, adapter: StudioApiAdapter): 
   // file is absent we return `exists: false` with empty frames rather than 404,
   // so the Studio can render an opt-in empty state.
   api.get("/projects/:id/storyboard", async (c) => {
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+    // The signature lets the board bust poster caches and lets the client tell
+    // whether this payload is already current (see /projects/:id/signature).
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature } = resolved;
 
     const abs = resolveWithinProject(project.dir, STORYBOARD_FILENAME);
     if (!abs || !existsSync(abs)) {
@@ -57,6 +61,7 @@ export function registerStoryboardRoutes(api: Hono, adapter: StudioApiAdapter): 
         frames: [],
         warnings: [],
         script: readScript(project.dir),
+        signature,
       });
     }
 
@@ -75,6 +80,7 @@ export function registerStoryboardRoutes(api: Hono, adapter: StudioApiAdapter): 
       frames: resolveFrames(project.dir, manifest.frames),
       warnings: manifest.warnings,
       script: readScript(project.dir),
+      signature,
     });
   });
 }

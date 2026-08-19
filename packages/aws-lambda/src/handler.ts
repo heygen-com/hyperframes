@@ -18,10 +18,21 @@ import { S3Client } from "@aws-sdk/client-s3";
 import {
   assemble,
   type AssembleResult,
+  type ChunkRenderer,
   type ChunkResult,
   type DistributedRenderConfig,
+  listPlanV2ArtifactsForTarget,
+  materializePlanV2Target,
   plan,
+  isPlanAudioArtifactPath,
+  PLAN_AUDIO_RELATIVE_PATH,
+  resolvePlanAudioPath,
+  planV2WithPublisher,
   type PlanResult,
+  type PlanV2Artifact,
+  type PlanV2Manifest,
+  type PlanV2MaterializationTarget,
+  readPlanV2Manifest,
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
@@ -33,17 +44,22 @@ import type {
   LambdaEvent,
   LambdaResult,
   PlanEvent,
+  PlanV2Event,
   PlanLambdaResult,
   RenderChunkEvent,
+  RenderChunkV2Event,
   RenderChunkLambdaResult,
+  AssembleV2Event,
 } from "./events.js";
 import {
   downloadS3ObjectToFile,
+  downloadS3ObjectToFileVerified,
   parseS3Uri,
   tarDirectory,
   untarDirectory,
   uploadFileToS3,
 } from "./s3Transport.js";
+import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
 
 /**
  * Lazily-constructed S3 client. Cached at module scope so warm Lambda
@@ -67,7 +83,8 @@ export interface HandlerDeps {
   s3?: S3Client;
   primitives?: {
     plan: typeof plan;
-    renderChunk: typeof renderChunk;
+    planV2WithPublisher?: typeof planV2WithPublisher;
+    renderChunk: ChunkRenderer;
     assemble: typeof assemble;
   };
   /** Override the per-invocation `/tmp` workdir root (defaults to Lambda's `/tmp`). */
@@ -83,6 +100,7 @@ export interface HandlerDeps {
  */
 export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<LambdaResult> {
   const unwrapped = unwrapEvent(event);
+  validatePlanProtocolShape(unwrapped);
   validateEventS3Uris(unwrapped);
   primeRuntimeEnv();
   // Single structured boot log line — CloudWatch Logs Insights queries
@@ -109,6 +127,7 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
       }
     }
   } catch (err) {
+    normalizeTerminalErrorName(err);
     // Log before re-throwing so CloudWatch captures the structured
     // error context alongside Lambda's default stack trace. Otherwise
     // ops only sees the trace and has to correlate with execution
@@ -116,10 +135,36 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
     logEvent({
       event: "handler_error",
       action: unwrapped.Action,
+      input: summarizeEvent(unwrapped),
       message: err instanceof Error ? err.message : String(err),
       name: err instanceof Error ? err.name : undefined,
     });
     throw err;
+  }
+}
+
+/**
+ * AWS Lambda reports `Error.name` to Step Functions, while producer errors
+ * expose stable machine codes separately. Normalize workflow-facing codes
+ * whose historical class names differ from their orchestration contracts.
+ */
+// The explicit error-name mapping is the public Step Functions failure contract.
+// fallow-ignore-next-line complexity
+function normalizeTerminalErrorName(error: unknown): void {
+  if (!error || typeof error !== "object") return;
+  const candidate = error as { code?: unknown; name?: string };
+  if (
+    candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
+    candidate.code === "PLAN_TOO_LARGE" ||
+    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
+    candidate.code === "FONT_FETCH_FAILED" ||
+    candidate.code === "FONT_FETCH_UNAVAILABLE" ||
+    candidate.code === "NOT_MEDIA_PAYLOAD" ||
+    candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
+    candidate.code === "VIDEO_EXTRACTION_FAILED" ||
+    candidate.code === "INVALID_VIDEO_METADATA"
+  ) {
+    candidate.name = candidate.code;
   }
 }
 
@@ -160,6 +205,43 @@ function isLambdaAction(value: string): value is LambdaAction {
   return value === "plan" || value === "renderChunk" || value === "assemble";
 }
 
+// This is the single fail-closed boundary for the wire union. Keeping all
+// forbidden locator combinations together makes mixed-protocol input auditable.
+// fallow-ignore-next-line complexity
+function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+  const raw = event as unknown as Record<string, unknown>;
+  const protocol = raw.PlanProtocol;
+  if (protocol !== undefined && protocol !== "v1" && protocol !== "v2") {
+    const error = new Error(
+      `[handler] unsupported PlanProtocol ${JSON.stringify(protocol)}; expected "v1", "v2", or absent`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (event.Action === "plan") return;
+
+  const effectiveProtocol = protocol ?? "v2";
+  const hasV1Locator = typeof raw.PlanS3Uri === "string";
+  const hasV2Manifest = typeof raw.PlanV2ManifestS3Uri === "string";
+  const hasV2Prefix = typeof raw.PlanV2ArtifactS3Prefix === "string";
+  const valid =
+    effectiveProtocol === "v2"
+      ? !hasV1Locator && hasV2Manifest && hasV2Prefix
+      : hasV1Locator && !hasV2Manifest && !hasV2Prefix;
+  if (!valid) {
+    const error = new Error(
+      `[handler] ${effectiveProtocol} ${event.Action} event has mixed or missing plan locators`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (effectiveProtocol === "v2" && event.Action === "assemble" && event.AudioS3Uri !== null) {
+    const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+}
+
 /**
  * Emit a single JSON line to stdout. CloudWatch ingests each line as a
  * structured event; Logs Insights queries can `filter event="..."` and
@@ -178,6 +260,8 @@ function logEvent(payload: Record<string, unknown>): void {
  * the routable fields (S3 URIs, chunk index, format) needed to triage
  * a failure from CloudWatch.
  */
+// Keep event variants together so logs share one redaction and summarization boundary.
+// fallow-ignore-next-line complexity
 function summarizeEvent(
   event: PlanEvent | RenderChunkEvent | AssembleEvent,
 ): Record<string, unknown> {
@@ -186,18 +270,25 @@ function summarizeEvent(
       return {
         projectS3Uri: event.ProjectS3Uri,
         planOutputS3Prefix: event.PlanOutputS3Prefix,
+        planProtocol: event.PlanProtocol ?? "v2",
         format: event.Config.format,
         fps: event.Config.fps,
       };
     case "renderChunk":
       return {
-        planS3Uri: event.PlanS3Uri,
+        planProtocol: event.PlanProtocol ?? "v2",
+        ...(event.PlanProtocol !== "v1"
+          ? { planV2ManifestS3Uri: event.PlanV2ManifestS3Uri }
+          : { planS3Uri: event.PlanS3Uri }),
         chunkIndex: event.ChunkIndex,
         format: event.Format,
       };
     case "assemble":
       return {
-        planS3Uri: event.PlanS3Uri,
+        planProtocol: event.PlanProtocol ?? "v2",
+        ...(event.PlanProtocol !== "v1"
+          ? { planV2ManifestS3Uri: event.PlanV2ManifestS3Uri }
+          : { planS3Uri: event.PlanS3Uri }),
         chunkCount: event.ChunkS3Uris.length,
         hasAudio: event.AudioS3Uri !== null,
         outputS3Uri: event.OutputS3Uri,
@@ -225,7 +316,12 @@ function primeRuntimeEnv(): void {
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
+// The v1 handler owns one transactional download, plan, archive, upload, and cleanup lifecycle.
+// fallow-ignore-next-line complexity
 async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLambdaResult> {
+  if (event.PlanProtocol !== "v1") {
+    return handlePlanV2(event, deps);
+  }
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
@@ -266,9 +362,11 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
     const planTar = join(work, "plan.tar.gz");
     await tarDirectory(planDir, planTar);
     const planTarUri = `${trimTrailingSlash(event.PlanOutputS3Prefix)}/plan.tar.gz`;
-    const audioPath = join(planDir, "audio.aac");
+    const audioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
     const hasAudio = existsSync(audioPath) && statSync(audioPath).size > 0;
-    const audioUri = hasAudio ? `${trimTrailingSlash(event.PlanOutputS3Prefix)}/audio.aac` : null;
+    const audioUri = hasAudio
+      ? `${trimTrailingSlash(event.PlanOutputS3Prefix)}/${PLAN_AUDIO_RELATIVE_PATH}`
+      : null;
     // Plan and audio are independent S3 PUTs; run them in parallel so
     // the response returns as soon as the slower of the two completes.
     await Promise.all([
@@ -297,12 +395,67 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   }
 }
 
+// Plan v2 orchestration is kept as one transactional boundary: stage, CAS upload,
+// and manifest-last publication must stay ordered and fail together.
+// fallow-ignore-next-line complexity
+async function handlePlanV2(
+  event: PlanV2Event,
+  deps?: HandlerDeps,
+): Promise<Extract<PlanLambdaResult, { PlanProtocol: "v2" }>> {
+  const started = Date.now();
+  const s3 = deps?.s3 ?? getS3Client();
+  const primitive = deps?.primitives?.planV2WithPublisher ?? planV2WithPublisher;
+  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
+  }
+
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-v2-"));
+  const projectArchive = join(work, "project.tar.gz");
+  const projectDir = join(work, "project");
+  try {
+    await downloadS3ObjectToFile(s3, event.ProjectS3Uri, projectArchive);
+    await untarDirectory(projectArchive, projectDir);
+    const publisher = new S3PlanV2ArtifactPublisher({
+      s3,
+      planOutputS3Prefix: event.PlanOutputS3Prefix,
+      temporaryRoot: work,
+    });
+    const manifest: PlanV2Manifest = await primitive(projectDir, { ...event.Config }, publisher, {
+      stagingParentDir: work,
+    });
+
+    return {
+      Action: "plan",
+      PlanProtocol: "v2",
+      PlanV2ManifestS3Uri: publisher.manifestUri,
+      PlanV2ArtifactS3Prefix: publisher.artifactPrefix,
+      PlanHash: manifest.planHash,
+      ChunkCount: manifest.chunkCount,
+      TotalFrames: manifest.totalFrames,
+      Fps: manifest.fps,
+      Width: manifest.width,
+      Height: manifest.height,
+      Format: manifest.format,
+      HasAudio: manifest.artifacts.some((artifact) => isPlanAudioArtifactPath(artifact.path)),
+      AudioS3Uri: null,
+      FfmpegVersion: manifest.ffmpegVersion,
+      ProducerVersion: manifest.producerVersion,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
 // ── RenderChunk ─────────────────────────────────────────────────────────────
 
 async function handleRenderChunk(
   event: RenderChunkEvent,
   deps?: HandlerDeps,
 ): Promise<RenderChunkLambdaResult> {
+  if (event.PlanProtocol !== "v1") {
+    return handleRenderChunkV2(event, deps);
+  }
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
@@ -357,6 +510,55 @@ async function handleRenderChunk(
       ChunkIndex: event.ChunkIndex,
       Sha256: result.sha256,
       FramesEncoded: result.framesEncoded,
+      CaptureMode: result.captureMode,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
+// The v2 chunk handler deliberately keeps download, verified materialization,
+// render, and upload in one lifecycle so cleanup and errors remain atomic.
+// fallow-ignore-next-line complexity
+async function handleRenderChunkV2(
+  event: RenderChunkV2Event,
+  deps?: HandlerDeps,
+): Promise<RenderChunkLambdaResult> {
+  const started = Date.now();
+  const s3 = deps?.s3 ?? getS3Client();
+  const primitive = deps?.primitives?.renderChunk ?? renderChunk;
+  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = await resolveChromeExecutablePath();
+  }
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-chunk-v2-"));
+  try {
+    const planDir = await downloadAndMaterializePlanV2(
+      s3,
+      event,
+      { role: "chunk", chunkIndex: event.ChunkIndex },
+      work,
+    );
+    const chunkOutputBase = join(
+      work,
+      event.Format === "png-sequence"
+        ? `chunk-${pad(event.ChunkIndex)}`
+        : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
+    );
+    const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase);
+    const chunkUri = await uploadChunkOutput(
+      s3,
+      result,
+      event.ChunkOutputS3Prefix,
+      event.ChunkIndex,
+    );
+    return {
+      Action: "renderChunk",
+      ChunkS3Uri: chunkUri,
+      ChunkIndex: event.ChunkIndex,
+      Sha256: result.sha256,
+      FramesEncoded: result.framesEncoded,
+      CaptureMode: result.captureMode,
       DurationMs: Date.now() - started,
     };
   } finally {
@@ -393,6 +595,9 @@ async function handleAssemble(
   event: AssembleEvent,
   deps?: HandlerDeps,
 ): Promise<AssembleLambdaResult> {
+  if (event.PlanProtocol !== "v1") {
+    return handleAssembleV2(event, deps);
+  }
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.assemble ?? assemble;
@@ -409,7 +614,7 @@ async function handleAssemble(
 
     let audioPath: string | null = null;
     if (event.AudioS3Uri) {
-      audioPath = join(planDir, "audio.aac");
+      audioPath = resolvePlanAudioPath(planDir) ?? join(planDir, PLAN_AUDIO_RELATIVE_PATH);
       await downloadS3ObjectToFile(s3, event.AudioS3Uri, audioPath);
     }
 
@@ -440,6 +645,132 @@ async function handleAssemble(
   } finally {
     cleanupDir(work);
   }
+}
+
+// Assembly mirrors the chunk lifecycle while adding assembler-only artifacts;
+// keeping the steps local makes its temporary-storage ownership explicit.
+// fallow-ignore-next-line complexity
+async function handleAssembleV2(
+  event: AssembleV2Event,
+  deps?: HandlerDeps,
+): Promise<AssembleLambdaResult> {
+  const started = Date.now();
+  const s3 = deps?.s3 ?? getS3Client();
+  const primitive = deps?.primitives?.assemble ?? assemble;
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-assemble-v2-"));
+  try {
+    const planDir = await downloadAndMaterializePlanV2(s3, event, { role: "assembler" }, work);
+    // `downloadAndMaterializePlanV2` materializes atomically. Audio is
+    // assembler-only and lives at the familiar v1-compatible location.
+    const audioPath = resolvePlanAudioPath(planDir);
+    const chunkPaths = await downloadChunkObjects(s3, event.ChunkS3Uris, work, event.Format);
+    const finalOutput =
+      event.Format === "png-sequence"
+        ? join(work, "output-frames")
+        : join(work, `output${formatExtension(event.Format)}`);
+    const result = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
+      cfr: event.Cfr === true,
+    });
+    if (event.Format === "png-sequence") {
+      const tarball = `${finalOutput}.tar.gz`;
+      await tarDirectory(finalOutput, tarball);
+      await uploadFileToS3(s3, tarball, event.OutputS3Uri, "application/gzip");
+    } else {
+      await uploadFileToS3(s3, finalOutput, event.OutputS3Uri);
+    }
+    return {
+      Action: "assemble",
+      OutputS3Uri: event.OutputS3Uri,
+      FramesEncoded: result.framesEncoded,
+      FileSize: result.fileSize,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
+async function downloadAndMaterializePlanV2(
+  s3: S3Client,
+  event: {
+    PlanV2ManifestS3Uri: string;
+    PlanV2ArtifactS3Prefix: string;
+    PlanHash: string;
+  },
+  target: PlanV2MaterializationTarget,
+  work: string,
+): Promise<string> {
+  const transportDir = join(work, "plan-v2");
+  mkdirSync(transportDir, { recursive: true });
+  await downloadS3ObjectToFile(s3, event.PlanV2ManifestS3Uri, join(transportDir, "plan.json"));
+  const manifest = readPlanV2Manifest(transportDir);
+  if (manifest.planHash !== event.PlanHash) {
+    throwPlanHashMismatch(event.PlanHash, manifest.planHash);
+  }
+  const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const uniqueArtifacts = [
+    ...new Map(artifacts.map((artifact) => [artifact.sha256, artifact])).values(),
+  ];
+  await mapConcurrent(uniqueArtifacts, 16, async (artifact) => {
+    await downloadPlanV2Artifact(s3, event.PlanV2ArtifactS3Prefix, transportDir, artifact);
+  });
+  const planDir = join(work, "plan");
+  materializePlanV2Target(transportDir, target, planDir);
+  return planDir;
+}
+
+async function downloadPlanV2Artifact(
+  s3: S3Client,
+  artifactPrefix: string,
+  planV2Dir: string,
+  artifact: Readonly<PlanV2Artifact>,
+): Promise<void> {
+  await downloadS3ObjectToFileVerified(
+    s3,
+    planV2BlobUri(artifactPrefix, artifact.sha256),
+    planV2BlobPath(planV2Dir, artifact.sha256),
+    artifact.sha256,
+  );
+}
+
+function planV2BlobPath(planV2Dir: string, digest: string): string {
+  return join(planV2Dir, "artifacts", "sha256", digest.slice(0, 2), digest);
+}
+
+function planV2BlobUri(prefix: string, digest: string): string {
+  return `${trimTrailingSlash(prefix)}/${digest.slice(0, 2)}/${digest}`;
+}
+
+function throwPlanHashMismatch(expected: string, actual: string): never {
+  const error = new Error(
+    `PLAN_HASH_MISMATCH: event PlanHash=${expected} did not match v2 manifest planHash=${actual}`,
+  );
+  error.name = "PLAN_HASH_MISMATCH";
+  throw error;
+}
+
+async function mapConcurrent<T>(
+  values: readonly T[],
+  concurrency: number,
+  fn: (value: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < values.length) {
+      const index = cursor++;
+      await fn(values[index]!);
+    }
+  }
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
+  );
+  const failure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  // Do not reject while sibling workers may still be writing into invocation
+  // scratch. The caller removes that directory in `finally`; draining the pool
+  // first prevents late S3 streams from racing cleanup after another GET fails.
+  if (failure) throw failure.reason;
 }
 
 async function downloadChunkObjects(
@@ -479,16 +810,25 @@ async function downloadChunkObjects(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Collect every S3 URI that the handler will touch for a given event. */
+// This is an exhaustive event-union projection used only for safe log summaries.
+// fallow-ignore-next-line complexity
 function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): string[] {
   switch (event.Action) {
     case "plan":
       return [event.ProjectS3Uri, event.PlanOutputS3Prefix];
     case "renderChunk":
-      return [event.PlanS3Uri, event.ChunkOutputS3Prefix];
+      return event.PlanProtocol !== "v1"
+        ? [event.PlanV2ManifestS3Uri, event.PlanV2ArtifactS3Prefix, event.ChunkOutputS3Prefix]
+        : [event.PlanS3Uri, event.ChunkOutputS3Prefix];
     case "assemble":
-      return [event.PlanS3Uri, ...event.ChunkS3Uris, event.OutputS3Uri, event.AudioS3Uri].filter(
-        (u): u is string => u != null,
-      );
+      return [
+        ...(event.PlanProtocol !== "v1"
+          ? [event.PlanV2ManifestS3Uri, event.PlanV2ArtifactS3Prefix]
+          : [event.PlanS3Uri]),
+        ...event.ChunkS3Uris,
+        event.OutputS3Uri,
+        event.AudioS3Uri,
+      ].filter((u): u is string => u != null);
   }
 }
 

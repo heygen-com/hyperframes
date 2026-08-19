@@ -1,10 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
+import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
+  buildElementInfoText,
   EMPTY_STYLES,
   formatPxMetricValue,
   parsePxMetricValue,
@@ -12,10 +13,11 @@ import {
   readGsapRuntimeValuesForPanel,
   readGsapBorderRadiusForPanel,
   isSelectedElementHidden,
+  selectionIdentityKey,
 } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
-import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
+import { resolveAnimIdForProperty } from "../../player/components/TimelinePropertyLanes";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import { MediaSection } from "./propertyPanelMediaSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
@@ -24,12 +26,16 @@ import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
-import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
-import { usePlayerStore, liveTime } from "../../player";
+import { STUDIO_FLAT_INSPECTOR_ENABLED } from "./manualEditingAvailability";
+import { PropertyPanelFlat } from "./PropertyPanelFlat";
+import { createGsapLivePreview } from "./gsapLivePreview";
+import { usePlayerStore } from "../../player";
+import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
+import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -46,90 +52,77 @@ export {
 } from "./propertyPanelHelpers";
 
 // fallow-ignore-next-line complexity
-export const PropertyPanel = memo(function PropertyPanel({
-  projectId,
-  projectDir,
-  assets,
-  element,
-  multiSelectCount = 0,
-  copiedAgentPrompt: _copiedAgentPrompt,
-  onClearSelection,
-  onUngroup,
-  onSetStyle,
-  onSetAttribute,
-  onSetAttributeLive,
-  onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
-  onSetManualOffset,
-  onSetManualSize,
-  onSetManualRotation,
-  onSetText,
-  onSetTextFieldStyle,
-  onAddTextField,
-  onRemoveTextField,
-  onAskAgent: _onAskAgent,
-  onToggleElementHidden,
-  onImportAssets,
-  fontAssets = [],
-  onImportFonts,
-  previewIframeRef,
-  gsapAnimations = [],
-  gsapMultipleTimelines,
-  gsapUnsupportedTimelinePattern,
-  onUpdateGsapProperty,
-  onUpdateGsapMeta,
-  onDeleteGsapAnimation,
-  onAddGsapProperty,
-  onRemoveGsapProperty,
-  onUpdateGsapFromProperty,
-  onAddGsapFromProperty,
-  onRemoveGsapFromProperty,
-  onAddGsapAnimation,
-  onSetArcPath,
-  onUpdateArcSegment,
-  onUnroll,
-  onUpdateKeyframeEase,
-  onSetAllKeyframeEases,
-  onAddKeyframe,
-  onRemoveKeyframe,
-  onConvertToKeyframes,
-  onCommitAnimatedProperty,
-  onCommitAnimatedProperties,
-  onSeekToTime,
-  recordingState,
-  recordingDuration,
-  onToggleRecording,
-}: PropertyPanelProps) {
+export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelProps) {
+  const {
+    projectId,
+    projectDir,
+    assets,
+    element,
+    multiSelectCount = 0,
+    multiSelectedElements,
+    onGroupSelection,
+    onHideAllSelected,
+    copiedAgentPrompt: _copiedAgentPrompt,
+    onClearSelection,
+    onUngroup,
+    onSetStyle,
+    onSetAttribute,
+    onSetAttributeLive,
+    onApplyColorGradingScope,
+    onSetHtmlAttribute,
+    onRemoveBackground,
+    onSetManualOffset,
+    onSetManualSize,
+    onSetManualRotation,
+    onSetText,
+    onSetTextFieldStyle,
+    onAddTextField,
+    onRemoveTextField,
+    onToggleElementHidden,
+    onImportAssets,
+    fontAssets = [],
+    onImportFonts,
+    previewIframeRef,
+    gsapAnimations = [],
+    gsapMultipleTimelines,
+    gsapUnsupportedTimelinePattern,
+    onUpdateGsapProperty,
+    onUpdateGsapMeta,
+    onDeleteGsapAnimation,
+    onAddGsapProperty,
+    onRemoveGsapProperty,
+    onUpdateGsapFromProperty,
+    onAddGsapFromProperty,
+    onRemoveGsapFromProperty,
+    onAddGsapAnimation,
+    onSetArcPath,
+    onUpdateArcSegment,
+    onUnroll,
+    onUpdateKeyframeEase,
+    onUpdateSegmentEase,
+    onSetAllKeyframeEases,
+    onAddKeyframe,
+    onRemoveKeyframe,
+    onConvertToKeyframes,
+    onCommitAnimatedProperty,
+    onCommitAnimatedProperties,
+    onSeekToTime,
+    recordingState,
+    recordingDuration,
+    onToggleRecording,
+  } = props;
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const storeTime = usePlayerStore((s) => s.currentTime);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const timelineElements = usePlayerStore((s) => s.elements);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
   const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
-  const liveTimeRef = useRef(storeTime);
-  const [, forceRender] = useState(0);
-  useEffect(() => {
-    if (!isPlaying) return;
-    let timerId: ReturnType<typeof setTimeout> | 0 = 0;
-    const unsub = liveTime.subscribe((t) => {
-      liveTimeRef.current = t;
-      if (!timerId)
-        timerId = setTimeout(() => {
-          timerId = 0;
-          forceRender((v) => v + 1);
-        }, 33);
-    });
-    return () => {
-      unsub();
-      if (timerId) clearTimeout(timerId);
-    };
-  }, [isPlaying]);
-  const currentTime = isPlaying ? liveTimeRef.current : storeTime;
+  // Live during playback, the store's when paused — see the hook. Shared with the
+  // audio FX panel, which follows the playhead for the same reason: a value the
+  // timeline drives has to be shown moving, not frozen at what the attribute says.
+  const currentTime = useLivePlayheadTime();
   const cacheElementKey = element?.id ?? element?.selector ?? "";
   const cacheEntry = usePlayerStore((s) => s.keyframeCache.get(cacheElementKey));
 
@@ -170,18 +163,27 @@ export const PropertyPanel = memo(function PropertyPanel({
   };
 
   if (!element) {
-    return <PropertyPanelEmptyState multiSelectCount={multiSelectCount} />;
+    return (
+      <PropertyPanelEmptyState
+        flat={STUDIO_FLAT_INSPECTOR_ENABLED}
+        multiSelectCount={multiSelectCount}
+        multiSelectedElements={multiSelectedElements}
+        onGroupSelection={onGroupSelection}
+        onHideAllSelected={onHideAllSelected}
+        onClearSelection={onClearSelection}
+      />
+    );
   }
 
   const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
   const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
   const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
-  const sourceLabel = element.id ? `#${element.id}` : element.selector;
-  const showEditableSections = element.capabilities.canEditStyles;
+  const sourceLabel = element.id ? `#${element.id}` : (element.selector ?? "");
   // Capabilities are already resolved on the selection; recompute only sections,
   // feeding the live GSAP tween count (arrives on the gsapAnimations prop, not the
   // selection) so the Timing section shows for pure-GSAP elements with no data-start.
   const sections = resolveEditingSections(domEditSelectionToFacts(element, gsapAnimations.length));
+  const showEditableSections = element.capabilities.canEditStyles && sections.style;
   const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
@@ -221,12 +223,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   const navKeyframes = cacheEntry?.keyframes ?? gsapKeyframes;
   const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
 
-  const animIdForProp = (prop: string): string => {
-    const group = classifyPropertyGroup(prop);
-    const groupAnim = gsapAnimations?.find((a) => a.propertyGroup === group);
-    if (groupAnim) return groupAnim.id;
-    return gsapAnimId ?? "";
-  };
+  const animIdForProp = (prop: string): string =>
+    resolveAnimIdForProperty(prop, gsapAnimations, gsapAnimId);
 
   const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
   const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
@@ -234,48 +232,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
-  // fallow-ignore-next-line complexity
   const handleCopyElementInfo = () => {
-    const file = element.sourceFile ?? "index.html";
-    let lineNum: number | null = null;
-    try {
-      const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
-      if (src && element.id) {
-        const idx = src.indexOf(`id="${element.id}"`);
-        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-      }
-      if (!lineNum && element.selector) {
-        const tag = element.tagName.toLowerCase();
-        const cls = element.selector.startsWith(".")
-          ? element.selector.slice(1).split(".")[0]
-          : null;
-        const search = cls ? `class="${cls}` : `<${tag}`;
-        const idx = src.indexOf(search);
-        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-      }
-    } catch {}
-    const fileLoc = lineNum ? `${file}:${lineNum}` : file;
-    const lines = [
-      `Element: ${element.label} (${sourceLabel})`,
-      `File: ${fileLoc}`,
-      `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
-      `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
-      `Tag: <${element.tagName}>`,
-    ];
-    if (element.computedStyles["z-index"] && element.computedStyles["z-index"] !== "auto") {
-      lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
-    }
-    if (gsapAnimations.length > 0) {
-      const anim = gsapAnimations[0];
-      lines.push(
-        `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
-      );
-      const props = Object.entries(anim.properties)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(", ");
-      if (props) lines.push(`Properties: ${props}`);
-    }
-    const text = lines.join("\n");
+    const text = buildElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef);
     void navigator.clipboard.writeText(text);
     showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
     setClipboardCopied(true);
@@ -283,51 +241,80 @@ export const PropertyPanel = memo(function PropertyPanel({
     clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
   };
 
-  return (
+  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+    // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
+    // the values the legacy path already computed above (so they aren't derived
+    // twice). PropertyPanelFlat owns the one-open group state.
+    return (
+      <PropertyPanelFlat
+        {...props}
+        key={selectionIdentityKey(element)}
+        element={element}
+        styles={styles}
+        sections={sections}
+        sourceLabel={sourceLabel}
+        gsapBorderRadius={gsapBorderRadius}
+        showEditableSections={showEditableSections}
+        selectedElementHidden={selectedElementHidden}
+        selectedElementId={selectedElementId}
+        clipboardCopied={clipboardCopied}
+        onCopyElementInfo={handleCopyElementInfo}
+        displayX={displayX}
+        displayY={displayY}
+        displayW={displayW}
+        displayH={displayH}
+        displayR={displayR}
+        manualOffsetEditingDisabled={manualOffsetEditingDisabled}
+        manualSizeEditingDisabled={manualSizeEditingDisabled}
+        manualRotationEditingDisabled={manualRotationEditingDisabled}
+        commitManualOffset={commitManualOffset}
+        commitManualSize={commitManualSize}
+        commitManualRotation={commitManualRotation}
+        gsapAnimId={gsapAnimId}
+        navKeyframes={navKeyframes}
+        currentTime={currentTime}
+        animIdForProp={animIdForProp}
+        gsapRuntimeValues={gsap3dValues}
+        elStart={elStart}
+        elDuration={elDuration}
+      />
+    );
+  }
+
+  const classicPanel = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-neutral-100">
-              {element.label}
+      <DesignPanelInputProvider section="header">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold text-neutral-100">
+                {element.label}
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
             </div>
-            <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
-          </div>
-          <div className="flex items-center gap-1">
-            {selectedElementId && onToggleElementHidden && (
-              <button
-                type="button"
-                aria-label={visibilityToggleLabel}
-                title={visibilityToggleLabel}
-                onClick={() => {
-                  void onToggleElementHidden(selectedElementId, !selectedElementHidden);
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-              >
-                {selectedElementHidden ? (
-                  <EyeSlash size={13} weight="bold" aria-hidden="true" />
-                ) : (
-                  <Eye size={13} weight="bold" aria-hidden="true" />
-                )}
-              </button>
-            )}
             <InspectorHeaderActions
               element={element}
               copied={clipboardCopied}
               onCopy={handleCopyElementInfo}
               onClear={onClearSelection}
               onUngroup={onUngroup}
+              selectedElementId={selectedElementId}
+              selectedElementHidden={selectedElementHidden}
+              visibilityLabel={visibilityToggleLabel}
+              onToggleHidden={onToggleElementHidden}
             />
           </div>
         </div>
-      </div>
+      </DesignPanelInputProvider>
       <div className="flex-1 overflow-y-auto">
         {onToggleRecording && (
-          <GestureRecordPanelButton
-            recordingState={recordingState}
-            recordingDuration={recordingDuration}
-            onToggleRecording={onToggleRecording}
-          />
+          <DesignPanelInputProvider section="footer">
+            <GestureRecordPanelButton
+              recordingState={recordingState}
+              recordingDuration={recordingDuration}
+              onToggleRecording={onToggleRecording}
+            />
+          </DesignPanelInputProvider>
         )}
 
         <TextSection
@@ -353,12 +340,7 @@ export const PropertyPanel = memo(function PropertyPanel({
         )}
         {sections.colorGrading && (
           <ColorGradingSection
-            key={[
-              element.id ?? "",
-              element.hfId ?? "",
-              element.selector ?? "",
-              String(element.selectorIndex ?? ""),
-            ].join("|")}
+            key={selectionIdentityKey(element)}
             projectId={projectId}
             element={element}
             assets={assets}
@@ -381,178 +363,181 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
-        <Section title="Layout" icon={<Move size={15} />}>
-          <div className={RESPONSIVE_GRID}>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="X"
-                  value={formatPxMetricValue(displayX)}
-                  disabled={manualOffsetEditingDisabled}
-                  scrub
-                  onCommit={(next) => commitManualOffset("x", next)}
-                />
+        {sections.layout && (
+          <Section title="Layout" icon={<Move size={15} />}>
+            <div className={RESPONSIVE_GRID}>
+              <div className="flex items-center gap-1">
+                <div className="flex-1">
+                  <MetricField
+                    label="X"
+                    value={formatPxMetricValue(displayX)}
+                    disabled={manualOffsetEditingDisabled}
+                    scrub
+                    onCommit={(next) => commitManualOffset("x", next)}
+                  />
+                </div>
+                {gsapAnimId && (
+                  <KeyframeNavigation
+                    property="x"
+                    keyframes={navKeyframes}
+                    currentPercentage={currentPct}
+                    onSeek={seekFromKfPct}
+                    onAddKeyframe={() =>
+                      onCommitAnimatedProperty &&
+                      void onCommitAnimatedProperty(element, "x", displayX)
+                    }
+                    onRemoveKeyframe={(pct, animationId) =>
+                      onRemoveKeyframe?.(animationId ?? animIdForProp("x"), pct)
+                    }
+                    onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("x"))}
+                  />
+                )}
               </div>
-              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
-                <KeyframeNavigation
-                  property="x"
-                  keyframes={navKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={seekFromKfPct}
-                  onAddKeyframe={() =>
-                    onCommitAnimatedProperty &&
-                    void onCommitAnimatedProperty(element, "x", displayX)
-                  }
-                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp("x"), pct)}
-                  onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("x"))}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="Y"
-                  value={formatPxMetricValue(displayY)}
-                  disabled={manualOffsetEditingDisabled}
-                  scrub
-                  onCommit={(next) => commitManualOffset("y", next)}
-                />
+              <div className="flex items-center gap-1">
+                <div className="flex-1">
+                  <MetricField
+                    label="Y"
+                    value={formatPxMetricValue(displayY)}
+                    disabled={manualOffsetEditingDisabled}
+                    scrub
+                    onCommit={(next) => commitManualOffset("y", next)}
+                  />
+                </div>
+                {gsapAnimId && (
+                  <KeyframeNavigation
+                    property="y"
+                    keyframes={navKeyframes}
+                    currentPercentage={currentPct}
+                    onSeek={seekFromKfPct}
+                    onAddKeyframe={() =>
+                      onCommitAnimatedProperty &&
+                      void onCommitAnimatedProperty(element, "y", displayY)
+                    }
+                    onRemoveKeyframe={(pct, animationId) =>
+                      onRemoveKeyframe?.(animationId ?? animIdForProp("y"), pct)
+                    }
+                    onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("y"))}
+                  />
+                )}
               </div>
-              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
-                <KeyframeNavigation
-                  property="y"
-                  keyframes={navKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={seekFromKfPct}
-                  onAddKeyframe={() =>
-                    onCommitAnimatedProperty &&
-                    void onCommitAnimatedProperty(element, "y", displayY)
-                  }
-                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp("y"), pct)}
-                  onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("y"))}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="W"
-                  value={formatPxMetricValue(displayW)}
-                  disabled={manualSizeEditingDisabled}
-                  scrub
-                  onCommit={(next) => commitManualSize("width", next)}
-                />
+              <div className="flex items-center gap-1">
+                <div className="flex-1">
+                  <MetricField
+                    label="W"
+                    value={formatPxMetricValue(displayW)}
+                    disabled={manualSizeEditingDisabled}
+                    scrub
+                    onCommit={(next) => commitManualSize("width", next)}
+                  />
+                </div>
+                {gsapAnimId && (
+                  <KeyframeNavigation
+                    property="width"
+                    keyframes={navKeyframes}
+                    currentPercentage={currentPct}
+                    onSeek={seekFromKfPct}
+                    onAddKeyframe={() =>
+                      onCommitAnimatedProperty &&
+                      void onCommitAnimatedProperty(element, "width", displayW)
+                    }
+                    onRemoveKeyframe={(pct, animationId) =>
+                      onRemoveKeyframe?.(animationId ?? animIdForProp("width"), pct)
+                    }
+                    onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("width"))}
+                  />
+                )}
               </div>
-              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
-                <KeyframeNavigation
-                  property="width"
-                  keyframes={navKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={seekFromKfPct}
-                  onAddKeyframe={() =>
-                    onCommitAnimatedProperty &&
-                    void onCommitAnimatedProperty(element, "width", displayW)
-                  }
-                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp("width"), pct)}
-                  onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("width"))}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="H"
-                  value={formatPxMetricValue(displayH)}
-                  disabled={manualSizeEditingDisabled}
-                  scrub
-                  onCommit={(next) => commitManualSize("height", next)}
-                />
+              <div className="flex items-center gap-1">
+                <div className="flex-1">
+                  <MetricField
+                    label="H"
+                    value={formatPxMetricValue(displayH)}
+                    disabled={manualSizeEditingDisabled}
+                    scrub
+                    onCommit={(next) => commitManualSize("height", next)}
+                  />
+                </div>
+                {gsapAnimId && (
+                  <KeyframeNavigation
+                    property="height"
+                    keyframes={navKeyframes}
+                    currentPercentage={currentPct}
+                    onSeek={seekFromKfPct}
+                    onAddKeyframe={() =>
+                      onCommitAnimatedProperty &&
+                      void onCommitAnimatedProperty(element, "height", displayH)
+                    }
+                    onRemoveKeyframe={(pct, animationId) =>
+                      onRemoveKeyframe?.(animationId ?? animIdForProp("height"), pct)
+                    }
+                    onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("height"))}
+                  />
+                )}
               </div>
-              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
-                <KeyframeNavigation
-                  property="height"
-                  keyframes={navKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={seekFromKfPct}
-                  onAddKeyframe={() =>
-                    onCommitAnimatedProperty &&
-                    void onCommitAnimatedProperty(element, "height", displayH)
-                  }
-                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp("height"), pct)}
-                  onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("height"))}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="R"
-                  value={`${displayR}°`}
-                  disabled={manualRotationEditingDisabled}
-                  onCommit={(next) => commitManualRotation(next.replace("°", ""))}
-                />
+              <div className="flex items-center gap-1">
+                <div className="flex-1">
+                  <MetricField
+                    label="R"
+                    value={`${displayR}°`}
+                    disabled={manualRotationEditingDisabled}
+                    onCommit={(next) => commitManualRotation(next.replace("°", ""))}
+                  />
+                </div>
+                {gsapAnimId && (
+                  <KeyframeNavigation
+                    property="rotation"
+                    keyframes={navKeyframes}
+                    currentPercentage={currentPct}
+                    onSeek={seekFromKfPct}
+                    onAddKeyframe={() =>
+                      onCommitAnimatedProperty &&
+                      void onCommitAnimatedProperty(element, "rotation", displayR)
+                    }
+                    onRemoveKeyframe={(pct, animationId) =>
+                      onRemoveKeyframe?.(animationId ?? animIdForProp("rotation"), pct)
+                    }
+                    onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("rotation"))}
+                  />
+                )}
               </div>
-              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
-                <KeyframeNavigation
-                  property="rotation"
-                  keyframes={navKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={seekFromKfPct}
-                  onAddKeyframe={() =>
-                    onCommitAnimatedProperty &&
-                    void onCommitAnimatedProperty(element, "rotation", displayR)
-                  }
-                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp("rotation"), pct)}
-                  onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp("rotation"))}
-                />
-              )}
             </div>
-          </div>
-          <PropertyPanel3dTransform
-            gsapRuntimeValues={gsap3dValues}
-            gsapAnimId={gsapAnimId}
-            resolveAnimIdForProp={animIdForProp}
-            gsapKeyframes={navKeyframes}
-            currentPct={currentPct}
-            elStart={elStart}
-            elDuration={elDuration}
-            element={element}
-            onCommitAnimatedProperty={onCommitAnimatedProperty}
-            onCommitAnimatedProperties={onCommitAnimatedProperties}
-            onSeekToTime={onSeekToTime}
-            onRemoveKeyframe={onRemoveKeyframe}
-            onConvertToKeyframes={onConvertToKeyframes}
-            onLivePreviewProps={(el, props) => {
-              const iframe = iframeRef.current;
-              const win = iframe?.contentWindow as
-                | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
-                | null
-                | undefined;
-              const sel = el.id ? `#${el.id}` : el.selector;
-              const node = sel ? iframe?.contentDocument?.querySelector(sel) : null;
-              if (win?.gsap && node) win.gsap.set(node, props);
-            }}
-          />
-          <div className="mt-3">
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
-              Stacking
-            </div>
-            <MetricField
-              label="Z-index"
-              value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
-              scrub
-              onCommit={(next) => onSetStyle("z-index", next)}
+            <PropertyPanel3dTransform
+              gsapRuntimeValues={gsap3dValues}
+              gsapAnimId={gsapAnimId}
+              resolveAnimIdForProp={animIdForProp}
+              gsapKeyframes={navKeyframes}
+              currentPct={currentPct}
+              elStart={elStart}
+              elDuration={elDuration}
+              element={element}
+              onCommitAnimatedProperty={onCommitAnimatedProperty}
+              onCommitAnimatedProperties={onCommitAnimatedProperties}
+              onSeekToTime={onSeekToTime}
+              onRemoveKeyframe={onRemoveKeyframe}
+              onConvertToKeyframes={onConvertToKeyframes}
+              onLivePreviewProps={createGsapLivePreview(iframeRef)}
             />
-          </div>
-        </Section>
+            <div className="mt-3">
+              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+                Stacking
+              </div>
+              <MetricField
+                label="Z-index"
+                value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
+                scrub
+                onCommit={(next) => onSetStyle("z-index", next)}
+              />
+            </div>
+          </Section>
+        )}
 
-        {STUDIO_GSAP_PANEL_ENABLED &&
-          onUpdateGsapProperty &&
+        {onUpdateGsapProperty &&
           onUpdateGsapMeta &&
           onDeleteGsapAnimation &&
           onAddGsapProperty &&
           onAddGsapAnimation && (
             <GsapAnimationSection
+              elementId={scopedElementKey(element)}
               animations={gsapAnimations}
               multipleTimelines={gsapMultipleTimelines}
               unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
@@ -569,6 +554,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               onUpdateArcSegment={onUpdateArcSegment}
               onUnroll={onUnroll}
               onUpdateKeyframeEase={onUpdateKeyframeEase}
+              onUpdateSegmentEase={onUpdateSegmentEase}
               onSetAllKeyframeEases={onSetAllKeyframeEases}
             />
           )}
@@ -587,4 +573,5 @@ export const PropertyPanel = memo(function PropertyPanel({
       </div>
     </div>
   );
+  return <DesignPanelInputProvider ui="classic">{classicPanel}</DesignPanelInputProvider>;
 });

@@ -5,11 +5,21 @@
  */
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
+import { writeTargetSelector } from "../../hooks/gsapShared";
 
+/**
+ * The selector the overlay both MEASURES the element by and authors a new
+ * motion path against.
+ *
+ * Both halves need exactly one element. The selection's own selector is a bare
+ * class for an id-less element, so a `.group` sibling read its home position off
+ * the FIRST sibling (skewing the destination the click computes) and then wrote
+ * `add-motion-path` onto all five. `writeTargetSelector` is the same one-element
+ * narrowing every other new-tween writer goes through; null means no such form
+ * exists, and the overlay hides "set destination" rather than write a wrong one.
+ */
 export function selectorFor(sel: DomEditSelection | null): string | null {
-  if (!sel) return null;
-  if (sel.id) return `#${CSS.escape(sel.id)}`;
-  return sel.selector ?? null;
+  return sel ? writeTargetSelector(sel) : null;
 }
 
 /** The animation whose path is editable on-canvas: literal, statically resolved,

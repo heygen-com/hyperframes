@@ -3,6 +3,24 @@
 // All position values are in overlay-space (screen) pixels.
 
 export const SNAP_THRESHOLD_PX = 6;
+/**
+ * Pointer travel a MOVE must reach before snapping is allowed to touch it.
+ *
+ * An element resting within the threshold of a guide is already "snappable", so
+ * a snap computed on the very first frame displaces it by up to the threshold
+ * while the pointer has moved nothing — pick a selection up and the whole thing
+ * teleports before you have dragged at all. Snapping is meant to pull toward a
+ * guide as the user drags, so it does not participate until the drag is real.
+ * The value matches the distance a drag must cover to count as a drag rather
+ * than a click, so nothing below it moves anything.
+ */
+const SNAP_ENGAGE_TRAVEL_PX = 4;
+
+/** Whether a move of this size has travelled far enough for snapping to apply. */
+export function snapEngagedForTravel(dx: number, dy: number): boolean {
+  return Math.hypot(dx, dy) >= SNAP_ENGAGE_TRAVEL_PX;
+}
+
 const EQUIDISTANCE_TOLERANCE_PX = 1;
 
 // ---------------------------------------------------------------------------
@@ -359,8 +377,10 @@ export function resolveSnapAdjustment(input: {
   gridEdges?: { x: SnapEdge[]; y: SnapEdge[] };
   threshold: number;
   disabled: boolean;
+  /** Set when the gesture has not travelled far enough for snapping yet. */
+  disabledForTravel?: boolean;
 }): SnapResult {
-  if (input.disabled || input.threshold <= 0) {
+  if (input.disabled || input.disabledForTravel || input.threshold <= 0) {
     return DISABLED_RESULT(input.proposedDx, input.proposedDy);
   }
 
@@ -410,62 +430,22 @@ export function resolveSnapAdjustment(input: {
 }
 
 // ---------------------------------------------------------------------------
-// resolveResizeSnapAdjustment — resize variant (only right/bottom snap)
+// resolveGuideLineRect — screen rect for rendering a snap guide line
 // ---------------------------------------------------------------------------
 
-// fallow-ignore-next-line complexity
-export function resolveResizeSnapAdjustment(input: {
-  movingRect: Rect;
-  proposedDx: number;
-  proposedDy: number;
-  targets: SnapTarget[];
-  gridEdges?: { x: SnapEdge[]; y: SnapEdge[] };
-  threshold: number;
-  disabled: boolean;
-}): SnapResult {
-  if (input.disabled || input.threshold <= 0) {
-    return DISABLED_RESULT(input.proposedDx, input.proposedDy);
+/**
+ * Full-length guide line spanning the composition: a vertical line (axis "x")
+ * runs the composition's height at the snapped x position; a horizontal line
+ * (axis "y") runs the composition's width. `composition` is the composition
+ * rect in overlay space — guide positions are already overlay-space, so the
+ * line must be offset by the composition's left/top (the canvas is usually
+ * letterboxed inside the overlay).
+ */
+export function resolveGuideLineRect(guide: SnapGuide, composition: Rect): Rect {
+  if (guide.axis === "x") {
+    return { left: guide.position, top: composition.top, width: 1, height: composition.height };
   }
-
-  const mr = input.movingRect;
-  const proposedRight = rectRight(mr) + input.proposedDx;
-  const proposedBottom = rectBottom(mr) + input.proposedDy;
-
-  const xCandidates = collectCandidates(
-    [proposedRight],
-    input.targets,
-    (t) => [t.left, t.centerX, t.right],
-    input.gridEdges?.x,
-    input.threshold,
-  );
-  const yCandidates = collectCandidates(
-    [proposedBottom],
-    input.targets,
-    (t) => [t.top, t.centerY, t.bottom],
-    input.gridEdges?.y,
-    input.threshold,
-  );
-
-  const bestX = pickBest(xCandidates);
-  const bestY = pickBest(yCandidates);
-  const adjustedDx = input.proposedDx + (bestX?.adjustment ?? 0);
-  const adjustedDy = input.proposedDy + (bestY?.adjustment ?? 0);
-
-  const adjustedRect: Rect = {
-    left: mr.left,
-    top: mr.top,
-    width: mr.width + adjustedDx,
-    height: mr.height + adjustedDy,
-  };
-
-  const targetMap = new Map(input.targets.map((t) => [t.id, t]));
-
-  return {
-    dx: adjustedDx,
-    dy: adjustedDy,
-    guides: buildGuidesFromMatches(bestX, bestY, adjustedRect, targetMap),
-    spacingGuides: [], // computed separately via resolveEquidistanceGuides
-  };
+  return { left: composition.left, top: guide.position, width: composition.width, height: 1 };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,5 @@
+import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
@@ -10,6 +12,9 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["Keep preview running after this command exits", "hyperframes preview --background"],
+  ["Show the background preview for this project", "hyperframes preview --status"],
+  ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
   [
@@ -18,8 +23,21 @@ export const examples: Example[] = [
   ],
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
+  [
+    "Disable auto-proxying of browser-hostile video codecs (HEVC, ProRes, AV1)",
+    "hyperframes preview --no-proxy",
+  ],
 ];
-import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
+import { parseStoryboard, STORYBOARD_FILENAME } from "@hyperframes/core/storyboard";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -43,7 +61,23 @@ import {
   type FindPortResult,
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, resolveProjectOrThrow } from "../utils/project.js";
+import { resolveAutoProxy } from "../utils/projectConfig.js";
+import { studioProxyEnv } from "../utils/studioProxyEnv.js";
+import {
+  listBackgroundPreviewStatuses,
+  readBackgroundPreviewStatus,
+  startBackgroundPreview,
+  stopBackgroundPreview,
+} from "./previewLifecycle.js";
+import {
+  lifecycleFailurePayload,
+  lifecyclePayload,
+  writeLifecycleJson,
+  type PreviewLifecycleOperation,
+  type PreviewLifecycleSession,
+} from "./previewLifecycleOutput.js";
+import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -55,10 +89,13 @@ interface BrowserLaunchOptions {
 
 interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
+  autoProxy?: boolean;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
   forceNew?: boolean;
+  autoProxy?: boolean;
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -88,6 +125,21 @@ export default defineCommand({
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
+    background: {
+      type: "boolean",
+      description: "Start an embedded preview that remains running after the command exits",
+      default: false,
+    },
+    status: {
+      type: "boolean",
+      description: "Show the background preview for this project and exit",
+      default: false,
+    },
+    stop: {
+      type: "boolean",
+      description: "Stop the background preview for this project and exit",
       default: false,
     },
     list: {
@@ -149,38 +201,104 @@ export default defineCommand({
       description:
         "Launch the opened browser with --disable-gpu (requires --browser-path). For hosts where hardware acceleration crashes the graphics driver (e.g. NVIDIA Xid resets); with the system default browser use --no-open instead.",
     },
+    "browser-gpu": {
+      type: "boolean",
+      description:
+        "Use hardware GPU for Studio thumbnails and frame capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect)",
+      default: undefined,
+    },
+    proxy: {
+      type: "boolean",
+      description:
+        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached authoring proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
+      negativeDescription: "Disable auto-proxying of browser-hostile video codecs",
+    },
   },
   async run({ args }) {
+    const browserGpuMode = resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined);
+    if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
+    if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
     const startPort = parseInt(args.port ?? "3002", 10);
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
-    // --list: scan and display active servers
-    if (args.list) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers found.\n");
-        return;
-      }
-      console.log(`\n  ${c.bold("Active preview servers:")}\n`);
-      for (const s of servers) {
-        const pidStr = s.pid ? c.dim(` (PID ${s.pid})`) : "";
+    if (args.status || args.stop) {
+      try {
+        // Under --json a missing project is a lifecycle failure document, not a
+        // human-shaped nudge, so the throwing resolver is the right one there.
+        const project = args.json ? resolveProjectOrThrow(args.dir) : resolveProject(args.dir);
+        if (args.stop) {
+          const stopped = await stopBackgroundPreview(project.dir, startPort);
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload(
+                "stop",
+                stopped
+                  ? { state: "stopped", projectDir: project.dir }
+                  : { state: "not-running", projectDir: project.dir },
+              ),
+            );
+          } else {
+            console.log(
+              stopped
+                ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+                : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+            );
+          }
+          return;
+        }
+        const status = await readBackgroundPreviewStatus(project.dir, startPort);
+        if (!status) {
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload("status", { state: "not-running", projectDir: project.dir }),
+            );
+          } else {
+            console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+          }
+          return;
+        }
+        if (args.json) {
+          writeLifecycleJson(
+            lifecyclePayload(
+              "status",
+              previewLifecycleSession({
+                state: "running",
+                mode: "background",
+                projectName: project.name,
+                projectDir: project.dir,
+                port: status.port,
+                pid: status.pid,
+                logPath: status.logPath,
+              }),
+            ),
+          );
+          return;
+        }
+        console.log(`\n  ${c.success("Background preview running")}`);
         console.log(
-          `  ${c.accent(`Port ${s.port}`)}  ${s.projectName}  ${c.dim(s.projectDir)}${pidStr}`,
+          `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
+        );
+        console.log(`  ${c.dim(status.logPath)}\n`);
+      } catch (error) {
+        reportPreviewFailure(
+          Boolean(args.json),
+          args.stop ? "stop" : "status",
+          args.stop ? "preview-stop-failed" : "preview-status-failed",
+          errorMessage(error),
         );
       }
-      console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+      return;
+    }
+
+    // --list: scan and display active servers
+    if (args.list) {
+      await handlePreviewList(startPort, Boolean(args.json));
       return;
     }
 
     // --kill-all: kill all active servers
     if (args["kill-all"]) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers to kill.\n");
-        return;
-      }
-      const killed = await killActiveServers(startPort);
-      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+      await handlePreviewKillAll(startPort, Boolean(args.json));
       return;
     }
 
@@ -204,14 +322,6 @@ export default defineCommand({
       );
     }
 
-    // Kill orphaned chrome-headless-shell processes from previous crashed sessions.
-    const orphansKilled = killOrphanedProcesses();
-    if (orphansKilled > 0) {
-      console.log(
-        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
-      );
-    }
-
     const rawArg = args.dir;
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
     const project = resolveProject(rawArg);
@@ -229,7 +339,7 @@ export default defineCommand({
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     // Validation: --remote-debugging-port deps
@@ -240,7 +350,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -251,7 +361,7 @@ export default defineCommand({
       clack.log.error(
         "--browser-no-gpu requires --browser-path (the system default browser cannot receive Chromium flags — use --no-open on GPU-unstable hosts)",
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     const userDataDir = args["user-data-dir"] as string | undefined;
@@ -262,11 +372,30 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
+    }
+    // Resolve once so embedded, monorepo-dev, and locally installed Studio
+    // modes all receive identical --proxy/--no-proxy + config semantics.
+    const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
+
+    // Kill orphaned chrome-headless-shell processes from previous crashed
+    // sessions. Deliberately last: this reaches outside the process and kills
+    // other people's PIDs, so it must not run for an invocation that turns out
+    // to be a validation error and never starts anything.
+    const orphansKilled = killOrphanedProcesses();
+    if (orphansKilled > 0) {
+      console.log(
+        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
+      );
     }
 
     if (isDevMode()) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        setCommandExitCode(1);
+        return;
+      }
       return runDevMode(dir, {
         projectName,
         noOpen,
@@ -274,11 +403,17 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        setCommandExitCode(1);
+        return;
+      }
       return runLocalStudioMode(dir, {
         projectName,
         noOpen,
@@ -286,21 +421,241 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
+    }
+
+    if (args.background) {
+      let background;
+      try {
+        background = await startBackgroundPreview(dir, startPort, {
+          forceNew: Boolean(args["force-new"]),
+          browserGpuMode,
+        });
+      } catch (error) {
+        clack.log.error(errorMessage(error));
+        setCommandExitCode(1);
+        return;
+      }
+      const url = `http://localhost:${background.port}`;
+      clack.intro(c.bold("hyperframes preview"));
+      printStudioSummary(projectName, url, {
+        details: [
+          background.type === "reused"
+            ? "Reusing the background server already running for this project."
+            : `Running in the background. Log: ${background.logPath}`,
+          "Changes reload automatically in the studio.",
+        ],
+        footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+      });
+      openStudioBrowser(url, projectName, dir, {
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+      });
+      return;
     }
 
     const forceNew = !!args["force-new"];
     return runEmbeddedMode(dir, startPort, {
       projectName,
       forceNew,
+      autoProxy,
       noOpen,
       browserPath,
       userDataDir,
       remoteDebuggingPort,
       browserNoGpu,
+      browserGpuMode,
     });
   },
 });
+
+function previewLifecycleSession(options: {
+  state: PreviewLifecycleSession["state"];
+  mode: PreviewLifecycleSession["mode"];
+  projectName: string;
+  projectDir: string;
+  port: number;
+  pid: number | null;
+  host?: string;
+  logPath?: string;
+}): PreviewLifecycleSession {
+  const host = options.host ?? "127.0.0.1";
+  const serverUrl = previewBaseUrl(options.port, host);
+  return {
+    state: options.state,
+    mode: options.mode,
+    projectName: options.projectName,
+    projectDir: options.projectDir,
+    host,
+    port: options.port,
+    pid: options.pid,
+    serverUrl,
+    studioUrl: studioDeepLink(serverUrl, options.projectName, options.projectDir),
+    ready: true,
+    ...(options.logPath ? { logPath: options.logPath } : {}),
+  };
+}
+
+function reportPreviewFailure(
+  json: boolean,
+  operation: PreviewLifecycleOperation,
+  code: string,
+  message: string,
+): void {
+  if (json) writeLifecycleJson(lifecycleFailurePayload(operation, code, message));
+  else clack.log.error(message);
+  setCommandExitCode(1);
+}
+
+interface PreviewActionDependencies {
+  scan?: typeof scanActiveServers;
+  listManaged?: typeof listBackgroundPreviewStatuses;
+  stopManaged?: typeof stopBackgroundPreview;
+  killScanned?: typeof killActiveServers;
+}
+
+/**
+ * Managed previews first, then anything else answering on the scanned range.
+ * A managed session is the authoritative entry for its project and port — the
+ * scan would otherwise list the same server again from its own self-report.
+ */
+export async function handlePreviewList(
+  startPort: number,
+  json: boolean,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  try {
+    const [scannedServers, managedSessions] = await Promise.all([
+      (dependencies.scan ?? scanActiveServers)(startPort),
+      (dependencies.listManaged ?? listBackgroundPreviewStatuses)(),
+    ]);
+    const managedKeys = new Set(
+      managedSessions.map((session) => `${resolve(session.projectDir)}\0${session.port}`),
+    );
+    const servers = [
+      ...managedSessions.map((session) => ({
+        port: session.port,
+        host: "127.0.0.1",
+        projectName: basename(session.projectDir),
+        projectDir: session.projectDir,
+        version: "managed",
+        pid: String(session.pid),
+      })),
+      ...scannedServers.filter(
+        (server) => !managedKeys.has(`${resolve(server.projectDir)}\0${server.port}`),
+      ),
+    ];
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("list", {
+          state: "listed",
+          sessions: servers.map((server) =>
+            previewLifecycleSession({
+              state: "running",
+              mode: server.version === "managed" ? "background" : "unknown",
+              projectName: server.projectName,
+              projectDir: server.projectDir,
+              port: server.port,
+              pid: server.pid ? Number(server.pid) : null,
+              host: server.host,
+            }),
+          ),
+        }),
+      );
+      return;
+    }
+    if (servers.length === 0) {
+      console.log("\n  No active preview servers found.\n");
+      return;
+    }
+    console.log(`\n  ${c.bold("Active preview servers:")}\n`);
+    for (const server of servers) {
+      const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+      console.log(
+        `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+      );
+    }
+    console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+  } catch (error) {
+    reportPreviewFailure(json, "list", "preview-list-failed", errorMessage(error));
+  }
+}
+
+/**
+ * Stop every managed preview through its ownership record, then sweep whatever
+ * else is still listening.
+ *
+ * Per-record failures are collected rather than propagated: one record whose
+ * ownership cannot be proven must not abandon the servers after it, which would
+ * leave them running AND unreported.
+ */
+export async function handlePreviewKillAll(
+  startPort: number,
+  json: boolean,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  try {
+    const managedSessions = await (dependencies.listManaged ?? listBackgroundPreviewStatuses)();
+    let killed = 0;
+    // One unprovable record must not abandon the servers after it. A stop pass
+    // collects per-record failures and keeps going; propagating the first one
+    // left every later preview running AND unreported.
+    const failures: string[] = [];
+    for (const session of managedSessions) {
+      try {
+        if (
+          await (dependencies.stopManaged ?? stopBackgroundPreview)(
+            session.projectDir,
+            session.port,
+          )
+        ) {
+          killed++;
+        }
+      } catch (error) {
+        failures.push(`${session.projectDir}: ${errorMessage(error)}`);
+      }
+    }
+    const swept = await (dependencies.killScanned ?? killActiveServers)(startPort);
+    killed += swept.killed;
+    // Ports whose owner the OS could not confirm are skipped rather than
+    // signalled; an agent reading this envelope needs to see that too, not just
+    // a lower count.
+    const unverified = swept.unverified;
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("kill-all", {
+          state: "killed-all",
+          stopped: killed,
+          ...(failures.length > 0 ? { failed: failures } : {}),
+          ...(unverified.length > 0 ? { unverifiedPorts: unverified } : {}),
+        }),
+      );
+    } else if (failures.length > 0 || unverified.length > 0) {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
+      for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
+      if (unverified.length > 0) {
+        const plural = unverified.length === 1 ? "" : "s";
+        clack.log.warn(
+          `Left ${unverified.length} server${plural} alone (port${plural} ` +
+            `${unverified.join(", ")}): the OS could not confirm which process owns the ` +
+            `socket, and the server's own claim is not proof. Install lsof, or stop it ` +
+            `with its own preview --stop.`,
+        );
+      }
+      console.log();
+    } else if (killed === 0) {
+      console.log("\n  No active preview servers to kill.\n");
+    } else {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+    }
+  } catch (error) {
+    reportPreviewFailure(json, "kill-all", "preview-kill-all-failed", errorMessage(error));
+  }
+}
 
 // `host` is the loopback the server actually bound (Vite binds `[::1]`, embedded
 // binds `127.0.0.1`); default to IPv4 for the embedded/legacy callers.
@@ -323,7 +678,7 @@ function printSelectionFailure(code: string, message: string, json: boolean): vo
   } else {
     clack.log.error(message);
   }
-  process.exitCode = 1;
+  setCommandExitCode(1);
 }
 
 function previewServerPayload(server: {
@@ -653,9 +1008,47 @@ function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSel
   };
 }
 
-function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
+// Land the browser on the Storyboard view while the project is still planning
+// or sketching — the timeline only becomes the right landing once frames are
+// animated (or the storyboard never tracked statuses at all, e.g. beat plans).
+export function studioLandingSearch(projectDir: string): string {
+  const storyboardPath = join(projectDir, STORYBOARD_FILENAME);
+  if (!existsSync(storyboardPath)) return "";
+  let frames;
+  try {
+    frames = parseStoryboard(readFileSync(storyboardPath, "utf8")).frames;
+  } catch {
+    return "";
+  }
+  // Sketch review in progress — the board is the review surface.
+  if (frames.some((f) => f.status === "built")) return "?view=storyboard";
+  // Pure planning stage: frames declare src paths but none are built yet.
+  const srcs = frames
+    .map((f) => f.src)
+    .filter((s): s is string => typeof s === "string" && s.length > 0);
+  const planning =
+    frames.length > 0 &&
+    frames.every((f) => f.status === "outline") &&
+    srcs.length > 0 &&
+    !srcs.some((s) => existsSync(join(projectDir, s)));
+  return planning ? "?view=storyboard" : "";
+}
+
+// The full Studio URL to open or hand to the user: status-aware landing view
+// plus the project hash route. `url` never carries a trailing slash (both the
+// embedded server and the Vite `Local:` match strip it).
+function studioDeepLink(url: string, projectName: string, projectDir: string): string {
+  return `${url}/${studioLandingSearch(projectDir)}#project/${projectName}`;
+}
+
+function openStudioBrowser(
+  url: string,
+  projectName: string,
+  projectDir: string,
+  options?: BrowserLaunchOptions,
+): void {
   if (options?.noOpen) return;
-  openBrowser(`${url}#project/${projectName}`, {
+  openBrowser(studioDeepLink(url, projectName, projectDir), {
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
@@ -740,6 +1133,7 @@ function attachStudioReadyHandler(
   child: StudioChildProcess,
   spinner: ReturnType<typeof clack.spinner>,
   projectName: string,
+  projectDir: string,
   options?: BrowserLaunchOptions,
 ): void {
   let detected = false;
@@ -751,7 +1145,7 @@ function attachStudioReadyHandler(
     detected = true;
     spinner.stop(c.success("Studio running"));
     printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
-    openStudioBrowser(url, projectName, options);
+    openStudioBrowser(url, projectName, projectDir, options);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
@@ -787,17 +1181,18 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev"], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
-  attachStudioReadyHandler(child, s, pName, options);
+  attachStudioReadyHandler(child, s, pName, dir, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Kill the child's entire process tree on SIGTERM/SIGINT. Ctrl+C sends
   // SIGINT to the foreground process group (covers the common case), but
   // `kill <pid>` only targets this process — the child tree (Vite + Chrome)
   // would survive without explicit cleanup.
-  // On Windows, killProcessTree is a no-op (pgrep/ps unavailable); Ctrl+C
-  // propagates via the console process group instead.
+  // On Windows, killProcessTree delegates to taskkill's tree mode, which force
+  // kills the whole tree immediately — no grace period, unlike the POSIX path.
   registerChildTreeShutdown(child);
   return waitForChildClose(child);
 }
@@ -836,9 +1231,10 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
-  attachStudioReadyHandler(child, s, pName, options);
+  attachStudioReadyHandler(child, s, pName, dir, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
@@ -878,11 +1274,16 @@ async function runEmbeddedMode(
     console.error();
     console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);
     console.error();
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
-  const { app } = createStudioServer({ projectDir: dir, projectName: pName });
+  const { app } = createStudioServer({
+    projectDir: dir,
+    projectName: pName,
+    autoProxy: options?.autoProxy,
+    browserGpuMode: options?.browserGpuMode,
+  });
   const serverBuildSignature = await loadPreviewServerBuildSignature();
 
   let result: FindPortResult;
@@ -893,13 +1294,15 @@ async function runEmbeddedMode(
       dir,
       !!options?.forceNew,
       serverBuildSignature,
+      undefined,
+      options?.browserGpuMode,
     );
   } catch (err: unknown) {
     s.stop(c.error("Failed to start studio"));
     console.error();
     console.error(`  ${(err as Error).message}`);
     console.error();
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -909,7 +1312,7 @@ async function runEmbeddedMode(
     printStudioSummary(pName, url, {
       details: ["Reusing existing server. Use --force-new to start a fresh instance."],
     });
-    openStudioBrowser(url, pName, options);
+    openStudioBrowser(url, pName, dir, options);
     return;
   }
 
@@ -927,7 +1330,7 @@ async function runEmbeddedMode(
     ],
     footer: "Press Ctrl+C to stop",
   });
-  openStudioBrowser(url, pName, options);
+  openStudioBrowser(url, pName, dir, options);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
@@ -962,7 +1365,7 @@ async function runEmbeddedMode(
       // Hard deadline: if cleanup hangs (e.g. dead Chrome never responds to
       // browser.close()), force exit. Armed before awaiting cleanup so it
       // can't be blocked by a stuck drainBrowserPool().
-      setTimeout(() => process.exit(0), 3000).unref();
+      setTimeout(() => requestCliExit(0), 3000).unref();
 
       // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
       const cleanup = async () => {

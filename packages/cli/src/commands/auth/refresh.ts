@@ -1,3 +1,4 @@
+import { failCommand } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth refresh` — force-refresh the OAuth access_token
  * using the stored refresh_token.
@@ -26,7 +27,7 @@ export default defineCommand({
     const { credentials, source } = await readStore();
     if (source === "absent" || !credentials.oauth?.refresh_token) {
       console.error(c.warn("No OAuth refresh token to use. Run `hyperframes auth login` first."));
-      process.exit(1);
+      failCommand();
     }
 
     try {
@@ -40,7 +41,7 @@ export default defineCommand({
       if (isAuthError(err) && err.code === "REFRESH_FAILED") {
         console.error(c.error(err.message));
         if (err.hint) console.error(c.dim(err.hint));
-        process.exit(1);
+        failCommand();
       }
       throw err;
     }

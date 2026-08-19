@@ -246,45 +246,28 @@ export function findElementForSelection(
   selection: FindElementSelection,
   activeCompositionPath: string | null = null,
 ): HTMLElement | null {
+  const sourceMatches = (candidate: Element): candidate is HTMLElement =>
+    isHtmlElement(candidate) &&
+    (!selection.sourceFile ||
+      getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
+        selection.sourceFile);
+  const findAll = (selector: string): HTMLElement[] =>
+    querySelectorAllSafely(doc, selector).filter(sourceMatches);
+
   if (selection.hfId) {
-    const byHfId = doc.querySelector(`[data-hf-id="${CSS.escape(selection.hfId)}"]`);
-    if (isHtmlElement(byHfId)) return byHfId;
+    const byHfId = findAll(`[data-hf-id="${escapeCssString(selection.hfId)}"]`)[0];
+    if (byHfId) return byHfId;
   }
 
   if (selection.id) {
-    const byId = doc.getElementById(selection.id);
-    if (
-      isHtmlElement(byId) &&
-      (!selection.sourceFile ||
-        getSourceFileForElement(byId, activeCompositionPath).sourceFile === selection.sourceFile)
-    ) {
-      return byId;
-    }
+    // Flattened sub-compositions can repeat authored ids. getElementById returns
+    // only the first document match, so filter every id match by source first.
+    const byId = findAll(`[id="${escapeCssString(selection.id)}"]`)[0];
+    if (byId) return byId;
   }
 
   if (!selection.selector) return null;
-
-  // fallow-ignore-next-line code-duplication
-  if (selection.selector.startsWith(".") && selection.selectorIndex != null) {
-    const matches = querySelectorAllSafely(doc, selection.selector).filter(
-      (candidate): candidate is HTMLElement =>
-        isHtmlElement(candidate) &&
-        (!selection.sourceFile ||
-          getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
-            selection.sourceFile),
-    );
-    return matches[selection.selectorIndex] ?? null;
-  }
-
-  // fallow-ignore-next-line code-duplication
-  const matches = querySelectorAllSafely(doc, selection.selector).filter(
-    (candidate): candidate is HTMLElement =>
-      isHtmlElement(candidate) &&
-      (!selection.sourceFile ||
-        getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
-          selection.sourceFile),
-  );
-  return matches[0] ?? null;
+  return findAll(selection.selector)[selection.selectorIndex ?? 0] ?? null;
 }
 
 // fallow-ignore-next-line complexity

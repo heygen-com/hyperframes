@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LABEL } from "./propertyPanelHelpers";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const SLIDER_THUMB_SIZE = 10;
 const SLIDER_THUMB_RADIUS = SLIDER_THUMB_SIZE / 2;
@@ -59,9 +60,11 @@ export function ColorGradingSliderControl({
     onClick: () => void;
   };
 }) {
+  const track = useTrackDesignInput();
   const [draftState, setDraftState] = useState<{ value: number; source: number } | null>(null);
   const [inputDraft, setInputDraft] = useState<{ value: string; source: number } | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionChangedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
 
@@ -92,9 +95,13 @@ export function ColorGradingSliderControl({
     (nextValue: number) => {
       const clamped = setLocalDraft(nextValue);
       if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+      if (interactionChangedRef.current) {
+        interactionChangedRef.current = false;
+        track("slider", label);
+      }
       if (clamped !== valueRef.current) onCommit(clamped);
     },
-    [onCommit, setLocalDraft],
+    [label, onCommit, setLocalDraft, track],
   );
 
   const scheduleCommit = useCallback(
@@ -115,6 +122,7 @@ export function ColorGradingSliderControl({
   const commitInputDraft = useCallback(() => {
     const parsed = parseNumericInput(inputValue, scale);
     if (parsed === null) {
+      interactionChangedRef.current = false;
       setInputDraft(null);
       return;
     }
@@ -123,6 +131,7 @@ export function ColorGradingSliderControl({
 
   const nudge = useCallback(
     (direction: -1 | 1) => {
+      interactionChangedRef.current = true;
       commitDraft(draft + step * direction);
     },
     [commitDraft, draft, step],
@@ -166,6 +175,7 @@ export function ColorGradingSliderControl({
             aria-label={`Reset ${label}`}
             onClick={(event) => {
               event.stopPropagation();
+              track("button", `Reset ${label}`);
               onReset();
             }}
             className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
@@ -205,7 +215,10 @@ export function ColorGradingSliderControl({
           value={draft}
           disabled={disabled}
           aria-label={label}
-          onChange={(event) => scheduleCommit(Number(event.currentTarget.value))}
+          onChange={(event) => {
+            interactionChangedRef.current = true;
+            scheduleCommit(Number(event.currentTarget.value));
+          }}
           onMouseUp={() => commitDraft(draft)}
           onTouchEnd={() => commitDraft(draft)}
           onBlur={() => commitDraft(draft)}
@@ -223,9 +236,10 @@ export function ColorGradingSliderControl({
             max={max / scale}
             step={step / scale}
             disabled={disabled}
-            onChange={(event) =>
-              setInputDraft({ value: event.currentTarget.value, source: valueRef.current })
-            }
+            onChange={(event) => {
+              interactionChangedRef.current = true;
+              setInputDraft({ value: event.currentTarget.value, source: valueRef.current });
+            }}
             onBlur={commitInputDraft}
             onKeyDown={(event) => {
               if (event.key === "Enter") {

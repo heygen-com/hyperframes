@@ -1,7 +1,9 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 import {
   readAttr,
+  readDecodedAttr,
   truncateSnippet,
   stripJsComments,
   extractCompositionIdsFromCss,
@@ -24,6 +26,87 @@ function selectorTargetsCompositionId(selector: string, compositionId: string): 
   ).test(selector);
 }
 
+function repeatedDescendantId(selector: string): string | null {
+  let repeated: string | null = null;
+
+  const requiredPseudoIds = (pseudo: selectorParser.Pseudo): Set<string> => {
+    if (![":is", ":where"].includes(pseudo.value.toLowerCase()) || pseudo.nodes.length === 0) {
+      return new Set<string>();
+    }
+
+    const optionIdSets: Set<string>[] = [];
+    for (const option of pseudo.nodes) {
+      // Only promote ids from a single compound. For selector-list branches with
+      // combinators, determining which compound is the subject requires fuller
+      // selector semantics; skipping them avoids false positives.
+      if (option.nodes.some((node) => node.type === "combinator")) return new Set<string>();
+      const optionIds = new Set<string>(
+        option.nodes.filter((node) => node.type === "id").map((node) => node.value),
+      );
+      optionIdSets.push(optionIds);
+    }
+    const [firstOptionIds, ...remainingOptionIds] = optionIdSets;
+    return new Set<string>(
+      [...(firstOptionIds ?? [])].filter((id) =>
+        remainingOptionIds.every((optionIds) => optionIds.has(id)),
+      ),
+    );
+  };
+
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const firstCompoundById = new Map<string, number>();
+        let compound = 0;
+        selectorNode.each((node) => {
+          if (repeated) return;
+          if (node.type === "combinator") {
+            compound += 1;
+            return;
+          }
+          const requiredIds =
+            node.type === "id"
+              ? [node.value]
+              : node.type === "pseudo"
+                ? [...requiredPseudoIds(node)]
+                : [];
+          for (const id of requiredIds) {
+            const firstCompound = firstCompoundById.get(id);
+            if (firstCompound !== undefined && firstCompound !== compound) {
+              repeated = id;
+              return;
+            }
+            firstCompoundById.set(id, compound);
+          }
+        });
+      });
+    }).processSync(selector);
+  } catch {
+    return null;
+  }
+  return repeated;
+}
+
+function resolvedRuleSelectors(rule: postcss.Rule): string[] {
+  let ancestor: postcss.AnyNode | undefined = rule.parent;
+  while (ancestor && ancestor.type !== "rule") ancestor = ancestor.parent;
+  if (!ancestor || ancestor.type !== "rule") return rule.selectors;
+
+  const parentSelectors = resolvedRuleSelectors(ancestor);
+  return parentSelectors.flatMap((parentSelector) =>
+    rule.selectors.map((childSelector) => {
+      const nestingToken = /(^|[\s>+~,(])&/g;
+      if (nestingToken.test(childSelector)) {
+        return childSelector.replace(
+          nestingToken,
+          (_, separator: string) => separator + parentSelector,
+        );
+      }
+      return `${parentSelector} ${childSelector}`;
+    }),
+  );
+}
+
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
   if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) {
     return false;
@@ -40,7 +123,7 @@ function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
 function describeStudioElement(tag: { raw: string; name: string }): string {
   const parts = [`<${tag.name}`];
   const className = readAttr(tag.raw, "class");
-  const compositionId = readAttr(tag.raw, "data-composition-id");
+  const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
   const dataStart = readAttr(tag.raw, "data-start");
   const dataTrack = readAttr(tag.raw, "data-track-index") ?? readAttr(tag.raw, "data-track");
 
@@ -203,7 +286,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
-    if (!rootTag || !readAttr(rootTag.raw, "data-composition-id")) {
+    if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
       findings.push({
         code: "root_missing_composition_id",
         severity: "error",
@@ -300,15 +383,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // timeline_id_mismatch
-  ({ source }) => {
+  ({ source, compositionIds }) => {
     const findings: HyperframeLintFinding[] = [];
-    const htmlCompIds = new Set<string>();
+    const htmlCompIds = new Set(compositionIds);
     const timelineRegKeys = new Set<string>();
-    const compIdRe = /data-composition-id\s*=\s*["']([^"']+)["']/gi;
-    let m: RegExpExecArray | null;
-    while ((m = compIdRe.exec(source)) !== null) {
-      if (m[1]) htmlCompIds.add(m[1]);
-    }
     for (const key of extractTimelineRegistryKeys(source)) {
       timelineRegKeys.add(key);
     }
@@ -321,6 +399,35 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           fixHint: `Change window.__timelines["${key}"] to match the data-composition-id attribute, or vice versa.`,
         });
       }
+    }
+    return findings;
+  },
+
+  // repeated_id_descendant_selector
+  ({ styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const reported = new Set<string>();
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkRules((rule) => {
+        for (const selector of resolvedRuleSelectors(rule)) {
+          const repeatedId = repeatedDescendantId(selector);
+          if (!repeatedId || reported.has(repeatedId)) continue;
+          reported.add(repeatedId);
+          findings.push({
+            code: "repeated_id_descendant_selector",
+            severity: "error",
+            message: `Selector "${selector}" requires #${repeatedId} to be nested inside another #${repeatedId}. IDs must be unique, so this selector cannot match a valid composition.`,
+            selector,
+            fixHint: `Remove the duplicate ancestor: change \`#${repeatedId} #${repeatedId}\` to \`#${repeatedId}\`.`,
+          });
+        }
+      });
     }
     return findings;
   },
@@ -369,7 +476,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     for (const tag of tags) {
       const src = readAttr(tag.raw, "data-composition-src");
       if (!src) continue;
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       findings.push({
         code: "host_missing_composition_id",
         severity: "error",
@@ -452,8 +559,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         code: "studio_missing_editable_id",
         severity: "warning",
         message: `${descriptor} has no id, so Studio cannot use a stable edit target for its timeline and canvas controls.`,
-        selector: readAttr(tag.raw, "data-composition-id")
-          ? `[data-composition-id="${readAttr(tag.raw, "data-composition-id")}"]`
+        selector: readDecodedAttr(tag.raw, "data-composition-id")
+          ? `[data-composition-id="${readDecodedAttr(tag.raw, "data-composition-id")}"]`
           : undefined,
         fixHint:
           'Add a stable, human-readable id such as id="hero-title" or id="scene-1-card" to every timeline-visible element you want agents or Studio to edit.',
@@ -491,6 +598,17 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         pattern: /crypto\.getRandomValues\s*\(/,
         label: "crypto.getRandomValues()",
         hint: "Remove time-dependent code. Use a seeded PRNG for deterministic renders.",
+      },
+      {
+        pattern: /gsap\.utils\.random\s*\(/,
+        label: "gsap.utils.random()",
+        hint: "Each render worker initializes independently, so random values diverge across chunks. Use a seeded PRNG or fixed values.",
+      },
+      {
+        // GSAP string form: "random(...)" / "+=random(...)" — re-rolls at tween init.
+        pattern: /["'`](?:[+-]=)?random\(\s*[-\d[]/,
+        label: '"random(...)" tween value',
+        hint: "GSAP random string values re-roll at tween init and each render worker initializes independently. Use fixed values or precompute with a seeded PRNG.",
       },
     ];
 

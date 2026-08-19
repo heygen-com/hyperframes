@@ -4,6 +4,7 @@
  * No imports from other domEditing* modules — safe to import from anywhere.
  */
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
 
 // ─── Type guard ───────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ export function findClosestByAttribute(
 // mounted root (it keeps `data-composition-id` but drops `data-composition-src`/
 // `-file`), so a subcomp element's DOM ancestors no longer say which file it came
 // from. This project-global map (composition-id → source file, built once from
-// index.html's clips — see NLELayout) recovers it. The studio loads one project at a
+// index.html's clips — see NLEContext/EditorShell) recovers it. The studio loads one project at a
 // time, so module scope is the right lifetime; it's empty until set, in which case
 // resolution falls back to the historical attribute-only behavior.
 let compositionSourceMap: Map<string, string> = new Map();
@@ -296,11 +297,9 @@ export function getSelectorIndex(
 ): number | undefined {
   if (!selector?.startsWith(".")) return undefined;
 
-  const candidates = querySelectorAllSafely(doc, selector).filter(
-    (candidate): candidate is HTMLElement =>
-      isHtmlElement(candidate) &&
-      getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
+  return getSourceScopedSelectorIndex(doc, el, selector, sourceFile, (candidate) =>
+    isHtmlElement(candidate)
+      ? getSourceFileForElement(candidate, activeCompositionPath).sourceFile
+      : undefined,
   );
-  const index = candidates.indexOf(el);
-  return index >= 0 ? index : undefined;
 }

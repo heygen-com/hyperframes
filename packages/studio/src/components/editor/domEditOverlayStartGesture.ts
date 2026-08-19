@@ -20,15 +20,20 @@ import {
 } from "./manualEdits";
 import {
   type OverlayRect,
+  elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
+  overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
   type GestureKind,
   type GestureState,
+  type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
+import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
+import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
 
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
@@ -66,6 +71,22 @@ export function startGroupDrag(
     }
     members.push(result.member);
   }
+  resetDragMoveLog();
+  logDrag("group-start", {
+    // A member whose mapping differs from its neighbours travels a different
+    // distance for the same pointer delta, which is the group coming apart.
+    members: Object.fromEntries(
+      members.map((member) => [
+        member.key,
+        {
+          map: `${member.screenToOffset.a.toFixed(3)},${member.screenToOffset.d.toFixed(3)}`,
+          base: `${Math.round(member.baseGsap.x)},${Math.round(member.baseGsap.y)}`,
+          offset: `${Math.round(member.initialOffset.x)},${Math.round(member.initialOffset.y)}`,
+        },
+      ]),
+    ),
+    at: readDragPositions(members),
+  });
 
   const overlayEl = opts.overlayRef.current;
   const iframe = opts.iframeRef.current;
@@ -100,7 +121,11 @@ export function startGesture(
   kind: GestureKind,
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
-  options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+  options?: {
+    selection?: DomEditSelection;
+    rect?: OverlayRect | null;
+    resizeHandle?: ResizeHandle;
+  },
 ): boolean {
   const sel = options?.selection ?? opts.selectionRef.current;
   const rect = options?.rect ?? opts.overlayRectRef.current;
@@ -173,7 +198,29 @@ export function startGesture(
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    // Center-anchored corner resize (CapCut model): the element scales about its
+    // CENTER, which stays planted. All four corners behave identically, so EVERY
+    // corner needs the manual-offset member that translates the element to re-pin
+    // its center per frame (the memberless else-branch is only a defensive fallback
+    // if member creation fails, e.g. the element can't take a manual offset).
+    const needsAnchorOffset = kind === "resize" && sel.capabilities.canApplyManualOffset;
+    if (needsAnchorOffset) {
+      const result = createManualOffsetDragMember({
+        key: selectionCacheKey(sel),
+        selection: sel,
+        element: sel.element,
+        rect,
+      });
+      if (result.ok) {
+        pathOffsetMember = result.member;
+        initialPathOffset = result.member.initialPathOffset;
+        manualEditDragToken = result.member.gestureToken;
+      } else {
+        manualEditDragToken = beginStudioManualEditGesture(sel.element);
+      }
+    } else {
+      manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    }
   }
 
   const overlayBounds = overlayEl?.getBoundingClientRect();
@@ -181,6 +228,17 @@ export function startGesture(
   const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
   const iframe = opts.iframeRef.current;
+
+  // For a center-anchored corner resize, capture the element's rendered CENTER (the
+  // centroid of its four real, rotation-aware corners) now, so per-frame anchoring
+  // can pin that exact point instead of an axis-aligned width/height delta (which
+  // only holds the center still when the element grows symmetrically from an
+  // unrotated layout box). Present whenever an anchor member exists (all corners).
+  let resizeFixedCenterStart: { x: number; y: number } | undefined;
+  if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
+    const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
+    if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
+  }
   const snapContext =
     (kind === "drag" || kind === "resize") && overlayEl && iframe
       ? collectSnapContext({
@@ -219,6 +277,25 @@ export function startGesture(
     resizeAnchor,
     manualEditDragToken,
     snapContext,
+    resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
+    resizeFixedCenterStart,
   };
+  if (kind === "resize") {
+    resetResizeMoveLog();
+    logResize("start", {
+      handle: options?.resizeHandle ?? "se",
+      pointer: { x: e.clientX, y: e.clientY },
+      center: { x: centerX, y: centerY },
+      origin: { left: rect.left, top: rect.top, w: rect.width, h: rect.height },
+      actual: { w: actualWidth, h: actualHeight },
+      editScale: { x: rect.editScaleX, y: rect.editScaleY },
+      contentScale: { x: contentScaleX, y: contentScaleY },
+      rotation: rotation.angle,
+      hasOffsetMember: !!pathOffsetMember,
+      fixedCenterStart: resizeFixedCenterStart ?? null,
+      initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
+      initialInlineStyle: sel.element.getAttribute("style"),
+    });
+  }
   return true;
 }

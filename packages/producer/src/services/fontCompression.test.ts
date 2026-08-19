@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { compressToWoff2, fontToDataUri } from "./fontCompression.js";
 
 /**
@@ -41,6 +43,26 @@ describe("compressToWoff2", () => {
 });
 
 describe("fontToDataUri", () => {
+  it("reuses cached compression across calls", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
+    const raw = Buffer.from("stable-font-content");
+    let compressionCalls = 0;
+    const compressImpl = async () => {
+      compressionCalls += 1;
+      return Buffer.from("compressed-font-content");
+    };
+
+    try {
+      const first = await fontToDataUri(raw, "ttf", { cacheDir, compressImpl });
+      const second = await fontToDataUri(raw, "ttf", { cacheDir, compressImpl });
+
+      expect(second).toBe(first);
+      expect(compressionCalls).toBe(1);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
   it("skips compression for woff2 input and returns a data URI", async () => {
     const raw = Buffer.from("fake-woff2-bytes");
     const uri = await fontToDataUri(raw, "woff2");
@@ -72,9 +94,17 @@ describe("fontToDataUri", () => {
     expect(uri).toMatch(/^data:font\/otf;base64,/);
   });
 
-  it("falls back with correct MIME type for ttc", async () => {
-    const garbage = Buffer.from("not a font");
-    const uri = await fontToDataUri(garbage, "ttc");
-    expect(uri).toMatch(/^data:font\/collection;base64,/);
+  it("embeds ttc collections raw without attempting slow woff2 compression", async () => {
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      const raw = Buffer.from("ttc-bytes");
+      const uri = await fontToDataUri(raw, "ttc");
+      expect(uri).toBe(`data:font/collection;base64,${raw.toString("base64")}`);
+      expect(warnings).toHaveLength(0);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });

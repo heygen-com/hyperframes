@@ -10,13 +10,24 @@ import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
+import { logSelect } from "../../utils/selectDebug";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
+/** Which corner handle initiated a resize gesture. */
+export type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
-const MIN_RESIZE_EDGE_PX = 20;
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
+/**
+ * Above this rotation, resize/move edge-snapping is bypassed. Industry editors
+ * (tldraw/Figma) don't edge-snap rotated boxes — the snap targets are axis-aligned
+ * AABBs, so snapping a rotated box's AABB to them shifts the box in a way the user
+ * can't predict; a wrong snap is worse than none. Rotation ~0 keeps snapping exactly
+ * as before.
+ */
+export const ROTATED_SNAP_BYPASS_DEGREES = 0.5;
 
 export interface GestureState {
   kind: GestureKind;
@@ -62,6 +73,19 @@ export interface GestureState {
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  /** Corner the resize gesture grabbed (resize gestures only). */
+  resizeHandle?: ResizeHandle;
+  /** Last anchoring translation applied during a corner resize (overlay px). */
+  lastResizeAnchor?: { dx: number; dy: number };
+  /**
+   * The element's rendered CENTER in overlay px at gesture start (the centroid of
+   * its four real — possibly rotated — corners). A center-anchored resize keeps this
+   * point pinned; the per-frame anchor translation is computed as the shift of this
+   * exact center, not an AABB width/height delta (which only holds the center still
+   * when the element grows symmetrically from an unrotated layout box). Undefined
+   * when the corner geometry can't be measured (member creation still succeeded).
+   */
+  resizeFixedCenterStart?: { x: number; y: number };
 }
 
 export interface GroupGestureState {
@@ -89,48 +113,64 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
   element?.focus({ preventScroll: true });
 }
 
-export function resolveDomEditResizeGesture(input: {
+/**
+ * Whether the hover cache may stand in for a hit-test at this point.
+ *
+ * The cache is filled asynchronously as the pointer moves, so it can describe an
+ * element the pointer has already left. That is harmless for drawing a hover
+ * outline and wrong for a shift-click, which would add the stale element to the
+ * selection instead of the one under the pointer. True only when the cached
+ * element IS the element at the point, or contains it — the resolver is allowed
+ * to hand back a clip ancestor of the raw target, and that still describes the
+ * same click.
+ */
+export function hoverCacheDescribesPoint(
+  cachedElement: Element | null | undefined,
+  elementAtPoint: Element | null | undefined,
+): boolean {
+  if (!cachedElement || !elementAtPoint) return false;
+  return cachedElement === elementAtPoint || cachedElement.contains(elementAtPoint);
+}
+
+/**
+ * The element a shift-click should add, or null to let the slower path resolve it.
+ *
+ * Reading the hover cache without checking is safe for a hover outline and wrong
+ * for a shift-click: the click silently adds whatever the pointer last passed
+ * over instead of the element under it, which reads as multi-select picking
+ * things at random. Returning null means "not confident", and the caller must
+ * then fall through untouched so the mousedown path resolves the point properly.
+ */
+export function resolveShiftClickCandidate<T extends { element: Element }>(input: {
+  cached: T | null;
+  elementAtPoint: Element | null;
+}): T | null {
+  const describes = hoverCacheDescribesPoint(input.cached?.element, input.elementAtPoint);
+  logSelect("shift-pointerdown", {
+    candidate: input.cached ? ((input.cached as { selector?: string }).selector ?? null) : null,
+    pointTarget: input.elementAtPoint?.id ?? input.elementAtPoint?.tagName ?? null,
+    cacheIsAboutThisPoint: describes,
+  });
+  return describes ? input.cached : null;
+}
+
+/**
+ * Overlay-px translation that keeps the element's CENTER fixed while a corner
+ * resizes: a CSS width/height change grows the layout box from its top-left, so
+ * the center drifts by half the size change on each axis; translating back by that
+ * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
+ * when the element's real transformed corners can't be measured — the primary path
+ * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
+ */
+export function resolveResizeCenterAnchorOffset(input: {
   originWidth: number;
   originHeight: number;
-  actualWidth: number;
-  actualHeight: number;
-  scaleX: number;
-  scaleY: number;
-  // Rendered-per-CSS-pixel factor of the element itself (its live GSAP scale).
-  // The CSS width/height the draft writes get multiplied by this on screen, so
-  // the cursor delta must be divided by it — otherwise the box outruns the
-  // pointer on a rescaled element and snaps back on release. Defaults to 1.
-  contentScaleX?: number;
-  contentScaleY?: number;
-  dx: number;
-  dy: number;
-  uniform: boolean;
-}): { overlayWidth: number; overlayHeight: number; width: number; height: number } {
-  const scaleX = input.scaleX > 0 ? input.scaleX : 1;
-  const scaleY = input.scaleY > 0 ? input.scaleY : 1;
-  const contentScaleX =
-    input.contentScaleX !== undefined && input.contentScaleX > 0 ? input.contentScaleX : 1;
-  const contentScaleY =
-    input.contentScaleY !== undefined && input.contentScaleY > 0 ? input.contentScaleY : 1;
-
-  if (input.uniform) {
-    const deltaX = input.dx / (scaleX * contentScaleX);
-    const deltaY = input.dy / (scaleY * contentScaleY);
-    const delta = Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
-    const side = Math.max(1, Math.max(input.actualWidth, input.actualHeight) + delta);
-    return {
-      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, side * scaleX * contentScaleX),
-      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, side * scaleY * contentScaleY),
-      width: side,
-      height: side,
-    };
-  }
-
+  overlayWidth: number;
+  overlayHeight: number;
+}): { dx: number; dy: number } {
   return {
-    overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, input.originWidth + input.dx),
-    overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
-    width: Math.max(1, input.actualWidth + input.dx / (scaleX * contentScaleX)),
-    height: Math.max(1, input.actualHeight + input.dy / (scaleY * contentScaleY)),
+    dx: (input.originWidth - input.overlayWidth) / 2,
+    dy: (input.originHeight - input.overlayHeight) / 2,
   };
 }
 
@@ -214,7 +254,12 @@ export type UseDomEditOverlayGesturesOptions = {
     (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
   >;
   onBoxSizeCommitRef: RefObject<
-    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
+    (
+      s: DomEditSelection,
+      n: { width: number; height: number },
+      offset?: { x: number; y: number },
+      restore?: () => void,
+    ) => Promise<void> | void
   >;
   onRotationCommitRef: RefObject<
     (s: DomEditSelection, n: { angle: number }) => Promise<void> | void

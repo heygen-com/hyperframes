@@ -63,6 +63,9 @@ const flag = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
 };
+// Deliberate escape from the bgm_pending refusal below — for previewing while a detached
+// generate is still running. Off by default so a silent film can't ship by accident.
+const allowPendingBgm = argv.includes("--allow-pending-bgm");
 function die(msg) {
   console.error(`✗ assemble-index.mjs: ${msg}`);
   process.exit(1);
@@ -78,7 +81,7 @@ function ensureBgmCovers(relPath, hyperframesDir, total) {
   const abs = join(hyperframesDir, relPath);
   const probe = spawnSync(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", abs],
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", abs],
     { encoding: "utf8" },
   );
   if (probe.status !== 0) return { looped: false, short: false, reason: "ffprobe unavailable" };
@@ -177,7 +180,7 @@ function escapeHtmlAttr(value) {
 
 function approvedVideoAttrs(attrs) {
   const forwarded = [];
-  for (const name of ["id", "src", "poster", "preload", "aria-label"]) {
+  for (const name of ["id", "src", "poster", "preload", "aria-label", "data-media-start"]) {
     const value = attrValueFrom(attrs, name);
     if (value !== null) forwarded.push(`${name}="${escapeHtmlAttr(value)}"`);
   }
@@ -185,6 +188,42 @@ function approvedVideoAttrs(attrs) {
     if (attrPresent(attrs, name)) forwarded.push(name);
   }
   return forwarded.join(" ");
+}
+
+function approvedVideoLayout(attrs) {
+  const names = ["x", "y", "width", "height"];
+  const raw = Object.fromEntries(
+    names.map((name) => [name, attrValueFrom(attrs, `data-frame-video-${name}`)]),
+  );
+  const rawFit = attrValueFrom(attrs, "data-frame-video-fit");
+  const values = Object.fromEntries(names.map((name) => [name, Number(raw[name])]));
+  if (
+    names.some(
+      (name) => raw[name] === null || raw[name].trim() === "" || !Number.isFinite(values[name]),
+    ) ||
+    values.width <= 0 ||
+    values.height <= 0
+  ) {
+    return {
+      style: null,
+      error:
+        "approved frame video layout data-frame-video-x/y/width/height must all be finite numeric values, with positive width and height",
+    };
+  }
+
+  const fit = rawFit ?? "cover";
+  if (!["cover", "contain", "fill", "none", "scale-down"].includes(fit)) {
+    return {
+      style: null,
+      error:
+        'approved frame video layout data-frame-video-fit must be "cover", "contain", "fill", "none", or "scale-down"',
+    };
+  }
+
+  return {
+    style: `position:absolute;left:${values.x}px;top:${values.y}px;width:${values.width}px;height:${values.height}px;object-fit:${fit}`,
+    error: null,
+  };
 }
 
 function hoistApprovedVideos(html, label) {
@@ -221,7 +260,19 @@ function hoistApprovedVideos(html, label) {
       );
       return full;
     }
-    videos.push({ attrs: approvedVideoAttrs(attrs), inner, start, duration, track });
+    const layout = approvedVideoLayout(attrs);
+    if (layout.error) {
+      errors.push(`${label}: ${layout.error}`);
+      return full;
+    }
+    videos.push({
+      attrs: approvedVideoAttrs(attrs),
+      inner,
+      start,
+      duration,
+      track,
+      layoutStyle: layout.style,
+    });
     return "<!-- approved frame video hoisted by assemble-index -->";
   });
   return { html: repaired, videos, errors };
@@ -393,6 +444,33 @@ for (const m of mounted) {
   acc += m.durationSeconds;
 }
 const TOTAL = r3(acc);
+
+// ---------- duration expectation (advisory) ----------
+// Frontmatter `duration:` carries the brief's rough length expectation
+// (storyboard-format.md § Frontmatter). Never blocks the build: report where
+// the cut lands, and flag a large gap so the agent judges whether the drift
+// serves the piece.
+let durationNote = "";
+const rawTarget = manifest.globals.extra?.duration;
+if (rawTarget != null && String(rawTarget).trim() !== "") {
+  const targetMatch = String(rawTarget).match(/(\d+(?:\.\d+)?)/);
+  const target = targetMatch ? parseFloat(targetMatch[1]) : NaN;
+  if (!Number.isFinite(target) || target <= 0) {
+    anomalies.push(
+      `frontmatter duration "${rawTarget}" is not parseable (e.g. "22s") — skipped the expectation check`,
+    );
+  } else {
+    const diff = r3(TOTAL - target);
+    durationNote = ` (expected ~${target}s, ${diff >= 0 ? "+" : ""}${diff}s)`;
+    const pct = Math.abs((diff / target) * 100);
+    if (pct > 10) {
+      anomalies.push(
+        `total ${TOTAL}s lands ${Math.round(pct)}% ${diff > 0 ? "over" : "under"} the brief's ~${target}s expectation — ` +
+          `judge whether the drift serves the piece (pacing, narration fit); re-pace, or update \`duration:\` if the new length is intended`,
+      );
+    }
+  }
+}
 const startOfFrameNumber = new Map();
 for (const m of mounted) if (m.frame.number != null) startOfFrameNumber.set(m.frame.number, m);
 
@@ -401,7 +479,14 @@ let audio = { bgm: null, voices: [], sfx: [] };
 if (existsSync(audioMetaPath)) {
   try {
     const parsed = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-    audio = { bgm: parsed.bgm ?? null, voices: parsed.voices ?? [], sfx: parsed.sfx ?? [] };
+    // bgm_pending rides along: without it this step cannot tell a detached generate that has
+    // not landed yet from a film that is silent by design, and it would build the silent one.
+    audio = {
+      bgm: parsed.bgm ?? null,
+      bgm_pending: !!parsed.bgm_pending,
+      voices: parsed.voices ?? [],
+      sfx: parsed.sfx ?? [],
+    };
   } catch (e) {
     die(`audio_meta.json parse: ${e.message}`);
   }
@@ -458,6 +543,7 @@ for (const [frameIndex, m] of mounted.entries()) {
     body.push(
       `      <video${id} ${video.attrs}`,
       `        class="clip"`,
+      ...(video.layoutStyle ? [`        style="${video.layoutStyle}"`] : []),
       `        data-start="${globalStart}"`,
       `        data-duration="${r3(video.duration)}"`,
       `        data-track-index="${track}"`,
@@ -502,6 +588,21 @@ if (audio.bgm?.path) {
   } else {
     anomalies.push(`bgm ${audio.bgm.path} not on disk — skipped`);
   }
+} else if (audio.bgm_pending) {
+  // The distinction the flag exists to make. A warning is not enough here: assemble is re-run
+  // on Step 6 rework, long after the audio step's own warning scrolled past, and it would
+  // happily build a silent film from a snapshot whose JSON says the bed is still generating.
+  // Refuse by default; --allow-pending-bgm is the deliberate escape for previewing mid-generate.
+  if (!allowPendingBgm) {
+    die(
+      "audio_meta.json says bgm_pending — the music bed is still generating and is NOT in this " +
+        "assembly. Wait for the track, re-run the audio step, then assemble again. To assemble a " +
+        "deliberately silent preview anyway, pass --allow-pending-bgm.",
+    );
+  }
+  anomalies.push(
+    "bgm still generating (bgm_pending) — assembled without a bed per --allow-pending-bgm",
+  );
 }
 
 // (track 2) captions — captions.mjs writes this or legally skips; key off existence.
@@ -656,7 +757,7 @@ console.log(`  bgm    (track 11): ${bgmEmitted ? "yes" + bgmNote : "no"}`);
 console.log(`  captions (track 2): ${captionsEmitted ? "yes" : "no"}`);
 console.log(`  sfx    (track 20+): ${sfxEmitted}`);
 console.log(`  assets staged:     ${staged}/${wanted.size}`);
-console.log(`  total duration:    ${TOTAL}s`);
+console.log(`  total duration:    ${TOTAL}s${durationNote}`);
 if (repairs.length) {
   console.log(`\nrepaired (frame files updated in place):`);
   for (const rp of repairs) console.log(`  - ${rp}`);

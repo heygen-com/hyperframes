@@ -25,6 +25,7 @@ import {
   writeFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   cpSync,
   rmSync,
 } from "node:fs";
@@ -204,8 +205,7 @@ async function runBenchmark(): Promise<void> {
       console.log(`  Run ${r + 1}/${runs}...`);
 
       // Copy src to temp dir for isolation
-      const tmpRoot = join(tmpdir(), `benchmark-${fixture.id}-${Date.now()}`);
-      mkdirSync(tmpRoot, { recursive: true });
+      const tmpRoot = mkdtempSync(join(tmpdir(), `benchmark-${fixture.id}-`));
       cpSync(join(fixture.dir, "src"), join(tmpRoot, "src"), { recursive: true });
 
       const projectDir = join(tmpRoot, "src");

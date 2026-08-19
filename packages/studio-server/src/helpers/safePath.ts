@@ -6,7 +6,13 @@ import { readdirSync } from "node:fs";
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
 export { isSafePath, resolveWithinProject } from "@hyperframes/core";
 
-const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
+const IGNORE_DIRS = new Set([
+  ".thumbnails",
+  ".transcode-cache",
+  ".waveform-cache",
+  "node_modules",
+  ".git",
+]);
 
 function shouldIgnoreDir(rel: string): boolean {
   return rel === ".hyperframes/backup";

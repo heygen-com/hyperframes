@@ -3,26 +3,26 @@ import { formatFrameTime, frameToSeconds, secondsToFrame, stepFrameTime, formatT
 
 describe("formatTime", () => {
   it("formats zero seconds", () => {
-    expect(formatTime(0)).toBe("0:00");
+    expect(formatTime(0)).toBe("00:00");
   });
 
   // fallow-ignore-next-line code-duplication
   it("formats seconds less than a minute", () => {
-    expect(formatTime(5)).toBe("0:05");
-    expect(formatTime(30)).toBe("0:30");
-    expect(formatTime(59)).toBe("0:59");
+    expect(formatTime(5)).toBe("00:05");
+    expect(formatTime(30)).toBe("00:30");
+    expect(formatTime(59)).toBe("00:59");
   });
 
   it("formats exact minutes", () => {
-    expect(formatTime(60)).toBe("1:00");
-    expect(formatTime(120)).toBe("2:00");
+    expect(formatTime(60)).toBe("01:00");
+    expect(formatTime(120)).toBe("02:00");
     expect(formatTime(600)).toBe("10:00");
   });
 
   it("formats minutes and seconds", () => {
-    expect(formatTime(65)).toBe("1:05");
-    expect(formatTime(90)).toBe("1:30");
-    expect(formatTime(125)).toBe("2:05");
+    expect(formatTime(65)).toBe("01:05");
+    expect(formatTime(90)).toBe("01:30");
+    expect(formatTime(125)).toBe("02:05");
   });
 
   it("formats large values (over an hour)", () => {
@@ -32,28 +32,28 @@ describe("formatTime", () => {
   });
 
   it("floors fractional seconds", () => {
-    expect(formatTime(0.9)).toBe("0:00");
-    expect(formatTime(1.5)).toBe("0:01");
-    expect(formatTime(59.99)).toBe("0:59");
-    expect(formatTime(60.5)).toBe("1:00");
+    expect(formatTime(0.9)).toBe("00:00");
+    expect(formatTime(1.5)).toBe("00:01");
+    expect(formatTime(59.99)).toBe("00:59");
+    expect(formatTime(60.5)).toBe("01:00");
   });
 
-  it("pads single-digit seconds with leading zero", () => {
-    expect(formatTime(1)).toBe("0:01");
-    expect(formatTime(61)).toBe("1:01");
+  it("pads single-digit minutes and seconds with leading zeros", () => {
+    expect(formatTime(1)).toBe("00:01");
+    expect(formatTime(61)).toBe("01:01");
     expect(formatTime(609)).toBe("10:09");
   });
 
   it("guards against negative values", () => {
-    expect(formatTime(-1)).toBe("0:00");
+    expect(formatTime(-1)).toBe("00:00");
   });
 
   it("guards against NaN", () => {
-    expect(formatTime(NaN)).toBe("0:00");
+    expect(formatTime(NaN)).toBe("00:00");
   });
 
   it("guards against Infinity", () => {
-    expect(formatTime(Infinity)).toBe("0:00");
+    expect(formatTime(Infinity)).toBe("00:00");
   });
 });
 

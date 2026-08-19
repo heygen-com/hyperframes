@@ -23,4 +23,106 @@ describe("hyperframes-core contract docs", () => {
     expect(brief).toContain("`hyperframes check`");
     expect(brief).not.toContain("`lint` / `validate` / `inspect`");
   });
+
+  it("requires actionable reproduction packets in CLI defect feedback", () => {
+    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
+
+    expect(skill).toContain("reproduction packet");
+    expect(renderReference).toContain("REPRO COMMAND:");
+    expect(renderReference).toContain("EXPECTED / ACTUAL:");
+    expect(renderReference).toContain("EXACT ERROR:");
+    expect(renderReference).toContain("OUTCOME:");
+    expect(renderReference).toContain("WORKAROUND:");
+  });
+
+  it("mandates a composition-structure block for visual-defect feedback", () => {
+    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
+
+    // Skill teaches the mandate at a high level.
+    expect(skill).toContain("COMPOSITION_STRUCTURE:");
+    // Reference carries the fillable block + agent-helper pointer.
+    expect(renderReference).toContain("COMPOSITION_STRUCTURE:");
+    expect(renderReference).toContain("elements: video=");
+    expect(renderReference).toContain("attributes:");
+    expect(renderReference).toContain("timeline:");
+    expect(renderReference).toContain("buildCompositionCensus");
+  });
+
+  it("teaches safe cloud archive size remediation", () => {
+    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const cloudReference = read("skills", "hyperframes-cli", "references", "cloud.md");
+
+    expect(skill).toContain("cloud render --dry-run --json");
+    expect(skill).toContain("Never ignore an asset merely because it is large");
+    expect(cloudReference).toContain(".hyperframesignore");
+    expect(cloudReference).toContain("Never ignore all of `assets/`");
+    expect(cloudReference).toContain("dynamically computed asset path");
+  });
+});
+
+describe("media-use TTS documentation", () => {
+  it("does not advertise flags unsupported by the published tts command", () => {
+    const tts = read("skills", "media-use", "audio", "references", "tts.md");
+    const captions = read("skills", "media-use", "audio", "references", "tts-to-captions.md");
+
+    expect(tts).not.toMatch(/hyperframes tts[^\n]*--provider/);
+    expect(tts).not.toMatch(/hyperframes tts[^\n]*--words/);
+    expect(captions).not.toMatch(/hyperframes tts[^\n]*--provider/);
+    expect(captions).toContain("heygen-tts.mjs");
+  });
+});
+
+describe("media treatment routing documentation", () => {
+  it("routes vague composition-media feedback to the canonical workflow", () => {
+    const router = read("skills", "hyperframes", "SKILL.md");
+    const mediaUse = read("skills", "media-use", "SKILL.md");
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+
+    expect(router).toContain("dark/flat/boring footage");
+    expect(router).toContain("`/media-use`");
+    expect(mediaUse).toContain("references/media-treatments.md");
+    expect(mediaUse).toContain("`hyperframes media-treatment`");
+    expect(treatments).toContain("Persist pixel settings with `hyperframes media-treatment`");
+    expect(treatments).toContain("apply to the entire selected real `<img>` or");
+    expect(treatments).toContain("external segmentation/tracking tool");
+  });
+
+  it("keeps discovery progressive and verification visual", () => {
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+    const recipes = read("skills", "media-use", "references", "media-treatment-recipes.md");
+
+    expect(treatments).toContain("hyperframes media-treatment --capabilities --json");
+    expect(treatments).toContain("--capability <id>");
+    expect(treatments).toContain("Recipes are optional macros");
+    expect(recipes).toContain("optional tested seeds");
+    expect(treatments).toContain("hyperframes add <name> --dir <project>");
+    expect(treatments).toContain("snapshots/treatment-before/contact-sheet.jpg");
+    expect(treatments).toMatch(/Do not report visual\s+quality from command success alone/);
+  });
+
+  it("indexes calibrated treatment recipes without making them mandatory", () => {
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+    const recipes = read("skills", "media-use", "references", "media-treatment-recipes.md");
+
+    for (const heading of [
+      "Monochrome Screen Print",
+      "Engraved Illustration",
+      "Crosshatched Sketch",
+      "CRT Display",
+    ]) {
+      expect(treatments).toContain(`\`${heading}\``);
+      expect(recipes).toContain(`## ${heading}`);
+    }
+  });
+
+  it("places the media-treatment discovery gate in new project instructions", () => {
+    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+      const template = read("packages", "cli", "src", "templates", "_shared", file);
+      expect(template).toContain("Changing how real footage or images look or reveal?");
+      expect(template).toContain("Load `/media-use`");
+      expect(template).toContain("do not improvise equivalent CSS/SVG filters or overlays");
+    }
+  });
 });

@@ -214,6 +214,29 @@ describe("core rules", () => {
     expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
   });
 
+  it("does not mistake a <tag>-shaped CSS comment inside <style> for the composition root", async () => {
+    // Regression: a CSS comment referencing an SVG tag name (e.g. `/* <g> wrapper */`)
+    // inside a <style> block reads as a real open tag to the flat TAG_PATTERN scan,
+    // manufacturing a phantom root before the real composition root and firing
+    // root_missing_composition_id/root_missing_dimensions/head_leaked_text on an
+    // otherwise valid sub-composition.
+    const html = `
+<html><body>
+  <style>
+    /* <g> wrapper for icon groups */
+    .icon { fill: currentColor; }
+  </style>
+  <svg id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <g class="icon"></g>
+  </svg>
+  <script>window.__timelines = window.__timelines || {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "head_leaked_text")).toBeUndefined();
+  });
+
   it("reports error when timeline registry is missing", async () => {
     const html = `
 <html><body>
@@ -778,6 +801,20 @@ body {
       expect(finding).toBeUndefined();
     });
 
+    it("matches timeline keys against browser-decoded composition ids", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="&#99;1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeUndefined();
+    });
+
     it("accepts object-literal timeline registration and extracts its keys", async () => {
       const html = `
 <html><body>
@@ -809,6 +846,108 @@ body {
       expect(finding).toBeDefined();
       expect(finding?.message).toContain('Timeline registered as "main"');
     });
+  });
+
+  describe("repeated_id_descendant_selector", () => {
+    it("reports a selector that nests the same id inside itself", async () => {
+      const html = `<div id="scene_01" data-composition-id="root" data-width="1920" data-height="1080">
+        <style>#scene_01 #scene_01 .headline { color: red; }</style>
+      </div>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "repeated_id_descendant_selector");
+      expect(finding?.severity).toBe("error");
+      expect(finding?.selector).toBe("#scene_01 #scene_01 .headline");
+    });
+
+    it("does not report distinct descendant ids", async () => {
+      const html = `<div id="scene_01" data-composition-id="root" data-width="1920" data-height="1080">
+        <style>#scene_01 #headline { color: red; }</style>
+      </div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "repeated_id_descendant_selector"),
+      ).toBeUndefined();
+    });
+
+    it.each(["#scene_01 > #scene_01", "#scene_01 .wrapper #scene_01"])(
+      "reports repeated ids across descendant combinators: %s",
+      async (selector) => {
+        const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+          <style>${selector} { color: red; }</style>
+        </div>`;
+        const result = await lintHyperframeHtml(html);
+        expect(
+          result.findings.find((f) => f.code === "repeated_id_descendant_selector"),
+        ).toBeDefined();
+      },
+    );
+
+    it.each([
+      ":is(#scene_01) #scene_01",
+      ":where(#scene_01) #scene_01",
+      "#scene_01 :is(#scene_01)",
+    ])("reports repeated ids required by selector pseudos: %s", async (selector) => {
+      const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+          <style>${selector} { color: red; }</style>
+        </div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "repeated_id_descendant_selector"),
+      ).toBeDefined();
+    });
+
+    it.each([
+      ":is(#scene_01, .scene) #scene_01",
+      ":not(#scene_01) #scene_01",
+      ":has(#scene_01) #scene_01",
+    ])("does not report ids that are not required by a selector pseudo: %s", async (selector) => {
+      const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+          <style>${selector} { color: red; }</style>
+        </div>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "repeated_id_descendant_selector"),
+      ).toBeUndefined();
+    });
+
+    it.each(["& #scene_01 .headline", "#scene_01 .headline"])(
+      "reports repeated ids created by nested CSS: %s",
+      async (nestedSelector) => {
+        const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+          <style>#scene_01 { ${nestedSelector} { color: red; } }</style>
+        </div>`;
+        const result = await lintHyperframeHtml(html);
+        const finding = result.findings.find(
+          (candidate) => candidate.code === "repeated_id_descendant_selector",
+        );
+        expect(finding).toBeDefined();
+        expect(finding?.selector).toContain("#scene_01 #scene_01");
+      },
+    );
+
+    it("preserves dollar sequences while resolving nested selectors", async () => {
+      const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+        <style>#scene_01[data-query="$1"] { & #scene_01 { color: red; } }</style>
+      </div>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (candidate) => candidate.code === "repeated_id_descendant_selector",
+      );
+      expect(finding?.selector).toBe('#scene_01[data-query="$1"] #scene_01');
+    });
+
+    it.each(['[data-query="#scene_01 #scene_01"]', String.raw`#scene_01 #scene_01\:child`])(
+      "does not report non-repeated parsed ids: %s",
+      async (selector) => {
+        const html = `<div data-composition-id="root" data-width="1920" data-height="1080">
+        <style>${selector} { color: red; }</style>
+      </div>`;
+        const result = await lintHyperframeHtml(html);
+        expect(
+          result.findings.find((f) => f.code === "repeated_id_descendant_selector"),
+        ).toBeUndefined();
+      },
+    );
   });
 
   it("warns when a timeline-visible element has no stable id for Studio editing", async () => {
@@ -883,6 +1022,72 @@ body {
     window.__timelines = window.__timelines || {};
     // const x = Math.random();
     // Date.now() is not used here
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeUndefined();
+    });
+
+    it("detects gsap.utils.random() in script content", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: gsap.utils.random(-100, 100), duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("gsap.utils.random");
+    });
+
+    it("detects GSAP 'random(...)' string tween values", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: "random(-100, 100)", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain('"random(...)"');
+    });
+
+    it("detects prefixed '+=random(...)' string tween values", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: "+=random(-10, 10)", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+    });
+
+    it("does NOT flag prose strings that merely mention random(", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const note = "avoid random(seed) helpers in render code";
     window.__timelines["c1"] = gsap.timeline({ paused: true });
   </script>
 </body></html>`;

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@hyperframes/core/slideshow": resolve(coreRoot, "slideshow/index.ts"),
+      "@hyperframes/core/runtime/protocol": resolve(coreRoot, "runtime/protocol.ts"),
     },
   },
   test: {

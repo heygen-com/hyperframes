@@ -1,0 +1,113 @@
+---
+title: "Color grading implementation"
+sidebarTitle: "Color grading"
+description: "Persist, automate, animate, and spatially isolate media color grading."
+---
+
+Use this reference when Studio controls are not enough: you need to write a
+grade into HTML, apply it from automation, animate a supported property, or
+limit an effect to a composited region. For visual correction and everyday
+Studio use, start with [Color grading](/guides/color-grading).
+
+## Persist a grade
+
+Studio and the CLI store the resolved grade in `data-color-grading`:
+
+```html
+<video
+  id="interview"
+  src="./assets/interview.mp4"
+  data-color-grading='{"preset":"skin-soft","intensity":0.7}'
+></video>
+```
+
+Apply the same validated payload from the CLI:
+
+```bash
+npx hyperframes media-treatment \
+  --selector '#interview' \
+  --grading '{"preset":"skin-soft","intensity":0.7}' \
+  --apply
+```
+
+Add `--dry-run --json` to inspect the change without writing it. Use `--clear`
+to remove the treatment.
+
+## Animate a supported property
+
+Nine grading properties expose CSS custom properties that a paused timeline
+can tween directly:
+
+```text
+--hf-color-grading-ascii
+--hf-color-grading-bloom
+--hf-color-grading-blur
+--hf-color-grading-dither
+--hf-color-grading-exposure
+--hf-color-grading-intensity
+--hf-color-grading-kuwahara
+--hf-color-grading-pixelate
+--hf-color-grading-lut-intensity
+```
+
+Start the value at identity in both the payload and inline style, then animate
+it on the registered timeline:
+
+```js
+tl.to(
+  "#plate",
+  {
+    "--hf-color-grading-pixelate": 0.5,
+    duration: 3,
+    ease: "power2.inOut",
+  },
+  0.3,
+);
+```
+
+`--hf-color-grading-intensity` scales the primary correction, wheels, curves,
+selections, and LUT. It is not a master control for detail and effect families
+such as grain, halftone, bloom, tape, or CRT. Animate the specific exposed
+property and verify that it moves before relying on it.
+
+## Limit a grade to part of the frame
+
+Grading selects pixels by value, not position. To treat one region, isolate it
+as its own media layer:
+
+| Result | Layer stack |
+| --- | --- |
+| Grade the subject only | Clean original plate, then a graded subject cutout |
+| Grade the background only | Graded original plate, then a clean subject cutout |
+| Grade one region of the subject | Clean cutout, then a second graded cutout clipped to the region |
+
+```html
+<video
+  src="media/room.mp4"
+  muted
+  data-start="0"
+  data-duration="4"
+  data-track-index="2"
+></video>
+<video
+  src="media/subject.webm"
+  muted
+  data-start="0"
+  data-duration="4"
+  data-track-index="3"
+></video>
+<video
+  src="media/subject.webm"
+  muted
+  data-start="0"
+  data-duration="4"
+  data-track-index="4"
+  style="clip-path: ellipse(9.8% 15.5% at 50.7% 14.5%)"
+  data-color-grading='{"intensity":1,"effects":{"pixelate":0.5}}'
+></video>
+```
+
+Use the original clip as the background plate. A subject-removed plate leaves a
+hole and can create a dark edge beneath a feathered cutout. A fixed `clip-path`
+works only when the subject barely moves; real movement needs a tracked matte
+produced outside HyperFrames.

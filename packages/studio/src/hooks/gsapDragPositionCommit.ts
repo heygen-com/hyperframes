@@ -2,6 +2,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { KEYFRAME_PCT_MATCH, resolveEditableTweenDuration } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import {
@@ -10,6 +11,31 @@ import {
   parkPlayheadOnKeyframe,
   materializeIfDynamic,
 } from "./gsapDragCommit";
+
+/**
+ * The tween's keyframes with one inserted at `percentage`. Any existing keyframe
+ * within {@link KEYFRAME_PCT_MATCH} of the insert is REPLACED, not kept: the
+ * server takes a replace-with-keyframes list verbatim, so an append-only build
+ * could hand it two keyframes a fraction of a percent apart. The invariant lives
+ * here rather than in each caller's own pre-check, which is how the two callers
+ * ended up with different tolerances in the first place.
+ */
+export function buildTemporalArcKeyframes(
+  anim: GsapAnimation,
+  percentage: number,
+  properties: Record<string, number>,
+) {
+  return [
+    ...(anim.keyframes?.keyframes ?? [])
+      .filter((keyframe) => Math.abs(keyframe.percentage - percentage) > KEYFRAME_PCT_MATCH)
+      .map((keyframe) => ({
+        percentage: keyframe.percentage,
+        properties: { ...keyframe.properties },
+        ...(keyframe.ease ? { ease: keyframe.ease } : {}),
+      })),
+    { percentage, properties },
+  ].sort((a, b) => a.percentage - b.percentage);
+}
 
 async function extendTweenAndAddKeyframe(
   selection: DomEditSelection,
@@ -143,7 +169,7 @@ async function commitFlatViaKeyframes(
 ): Promise<void> {
   const ct = usePlayerStore.getState().currentTime;
   const ts = resolveTweenStart(anim);
-  const td = resolveTweenDuration(anim);
+  const td = resolveEditableTweenDuration(anim, selection);
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const outsideRange =
     activeKeyframePct == null && ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
@@ -184,8 +210,13 @@ async function commitFlatViaKeyframes(
       { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
     );
     const fresh = callbacks.fetchAnimations ? await callbacks.fetchAnimations() : [];
+    // By id first: a target with several tweens (two `to`s on the same selector)
+    // matches the selector lookup on whichever one happens to be first, and the
+    // extend-and-add below would then rewrite a tween the drag never touched.
     const converted =
-      fresh.find((a) => a.targetSelector === anim.targetSelector && a.keyframes) ?? anim;
+      fresh.find((a) => a.id === anim.id && a.keyframes) ??
+      fresh.find((a) => a.targetSelector === anim.targetSelector && a.keyframes) ??
+      anim;
     const convertedStart = resolveTweenStart(converted) ?? ts;
     const convertedDur = resolveTweenDuration(converted) || td;
     await extendTweenAndAddKeyframe(
@@ -259,13 +290,61 @@ export async function commitGsapPositionFromDrag(
 
   const backfillDefaults: Record<string, number> = { x: baseGsapX, y: baseGsapY };
   const ct = usePlayerStore.getState().currentTime;
+  if (anim.arcPath?.enabled) {
+    const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+    const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+    const keyframes = anim.keyframes?.keyframes ?? [];
+    // Same tolerance as applyArcKeyframeAtPlayhead and isMotionPathEndpoint. A
+    // tighter one here meant a drag that landed a fraction of a percent off an
+    // authored waypoint skipped the update-point branch and appended instead.
+    const pointIndex = keyframes.findIndex(
+      (kf) => Math.abs(kf.percentage - pct) <= KEYFRAME_PCT_MATCH,
+    );
+    if (pointIndex >= 0) {
+      await callbacks.commitMutation(
+        selection,
+        {
+          type: "update-motion-path-point",
+          animationId: anim.id,
+          pointIndex,
+          x: newX,
+          y: newY,
+        },
+        { label: "Move layer (waypoint)", softReload: true, beforeReload: restoreOffset },
+      );
+      setActiveKeyframePct(null);
+      parkPlayheadOnKeyframe(anim, pct);
+      return;
+    }
+
+    const tweenStart = resolveTweenStart(anim);
+    // Clip-wide, same as applyArcKeyframeAtPlayhead: authoring GSAP's 0.5s
+    // default here would collapse a duration-less arc's window on drag.
+    const tweenDuration = resolveEditableTweenDuration(anim, selection);
+    if (tweenStart === null || tweenDuration <= 0 || keyframes.length < 2) return;
+    const temporalKeyframes = buildTemporalArcKeyframes(anim, pct, { x: newX, y: newY });
+    await callbacks.commitMutation(
+      selection,
+      {
+        type: "replace-with-keyframes",
+        animationId: anim.id,
+        targetSelector: anim.targetSelector,
+        position: roundTo3(tweenStart),
+        duration: roundTo3(tweenDuration),
+        keyframes: temporalKeyframes,
+        ease: "none",
+      },
+      { label: "Move layer (new keyframe)", softReload: true, beforeReload: restoreOffset },
+    );
+    return;
+  }
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
     const effectiveAnim = newId ? { ...anim, id: newId } : anim;
     const dragProps: Record<string, number> = { x: newX, y: newY };
 
     const ts = resolveTweenStart(effectiveAnim);
-    const td = resolveTweenDuration(effectiveAnim);
+    const td = resolveEditableTweenDuration(effectiveAnim, selection);
     const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
     const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
     if (outsideRange && !hasSelectedKeyframe) {
@@ -293,7 +372,7 @@ export async function commitGsapPositionFromDrag(
   } else if (anim.method === "from" || anim.method === "fromTo") {
     const ct = usePlayerStore.getState().currentTime;
     const ts = resolveTweenStart(anim);
-    const td = resolveTweenDuration(anim);
+    const td = resolveEditableTweenDuration(anim, selection);
     const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
     const outsideRange =
       !hasSelectedKeyframe && ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
@@ -313,7 +392,7 @@ export async function commitGsapPositionFromDrag(
 
       if (existingPosAnim?.keyframes) {
         const posTs = resolveTweenStart(existingPosAnim);
-        const posTd = resolveTweenDuration(existingPosAnim);
+        const posTd = resolveEditableTweenDuration(existingPosAnim, selection);
         if (posTs !== null) {
           await extendTweenAndAddKeyframe(
             selection,

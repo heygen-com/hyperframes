@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes lambda policies role|user|validate` — IAM bootstrap.
  *
@@ -245,7 +246,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
           "[lambda policies validate] usage: hyperframes lambda policies validate <policy.json>";
         if (args.json) {
           console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-          process.exitCode = 1;
+          setCommandExitCode(1);
           return;
         }
         throw new Error(msg);
@@ -257,16 +258,16 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
         const msg = normalizeErrorMessage(err);
         if (args.json) {
           console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-          process.exitCode = 1;
+          setCommandExitCode(1);
           return;
         }
         console.error(c.error(`Failed to validate ${args.inputPath}: ${msg}`));
-        process.exitCode = 1;
+        setCommandExitCode(1);
         return;
       }
       if (args.json) {
         console.log(JSON.stringify({ ok: result.missing.length === 0, ...result }, null, 2));
-        if (result.missing.length > 0) process.exitCode = 1;
+        if (result.missing.length > 0) setCommandExitCode(1);
         return;
       }
       for (const warning of result.warnings) {
@@ -284,7 +285,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
       console.log(
         c.dim("Run `hyperframes lambda policies user` to print the full required policy."),
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
   }

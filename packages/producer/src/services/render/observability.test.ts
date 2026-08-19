@@ -209,6 +209,98 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
+  // Field signal ts=1784019503: a healthy ~64s browser calibration
+  // pre-capture emitted heartbeats saying "stage still running /
+  // framesCompleted: 0" and read as broken to downstream consumers. The
+  // calibration call sites now pass `heartbeatMessage: "browser calibrating
+  // (frames not started)"` so operator-facing logs and metrics can
+  // distinguish healthy calibration waits from actual zero-frame stalls
+  // once capture is meant to be underway.
+  it("uses a custom heartbeat message during calibration stages", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-calibrating",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_calibration",
+      { stagePhase: "calibrating", framesCompleted: 0, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+      { heartbeatMessage: "browser calibrating (frames not started)" },
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) =>
+        message === "[Render:trace]" &&
+        meta?.phase === "capture_calibration" &&
+        meta?.status === "checkpoint",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        message: "browser calibrating (frames not started)",
+        stagePhase: "calibrating",
+        framesCompleted: 0,
+        heartbeatIndex: 1,
+      }),
+    );
+    // No "stage still running" for this stage — the calibration override
+    // must fully replace the default, not sit alongside it.
+    expect(
+      log.info.mock.calls.some(
+        ([message, meta]) =>
+          message === "[Render:trace]" && meta?.message === "stage still running",
+      ),
+    ).toBe(false);
+
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
+  it("keeps the default heartbeat message when no override is passed", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-default",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      { stagePhase: "capturing", framesCompleted: 42, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        stagePhase: "capturing",
+        framesCompleted: 42,
+      }),
+    );
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
   it("clears pending heartbeats when a stage rejects", async () => {
     vi.useFakeTimers();
     const log = makeLog();
@@ -313,5 +405,64 @@ describe("RenderObservabilityRecorder", () => {
         status: "error",
       }),
     );
+  });
+});
+
+describe("init observability fallback (parallel workers)", () => {
+  const makeRecorder = () =>
+    new RenderObservabilityRecorder({ renderJobId: "render-par", pipelineStartMs: Date.now() });
+
+  it("uses the structured fallback when the console has no INIT line — the parallel success path", () => {
+    const summary = makeRecorder().summary({
+      lastBrowserConsole: ["[FrameCapture:NAV] page.goto start"],
+      capture: { forceScreenshot: false, captureMode: "screenshot" },
+      initFallback: { initDurationMs: 850, tweenCount: 1200, elementCount: 3400 },
+    });
+    expect(summary.init).toEqual({ initDurationMs: 850, tweenCount: 1200, elementCount: 3400 });
+  });
+
+  it("max-merges console INIT lines over the fallback, matching multi-session semantics", () => {
+    const summary = makeRecorder().summary({
+      lastBrowserConsole: [
+        "[FrameCapture:INIT] complete initDurationMs=1234 tweenCount=42 elementCount=5000",
+      ],
+      capture: { forceScreenshot: false, captureMode: "screenshot" },
+      initFallback: { initDurationMs: 850, tweenCount: 1200, elementCount: 3400 },
+    });
+    expect(summary.init).toEqual({ initDurationMs: 1234, tweenCount: 1200, elementCount: 5000 });
+  });
+
+  // The single-session path has no structured fallback — it parses the console
+  // line only. This is the path that covers renders the routing gate cannot
+  // measure, so the element count must survive it.
+  // The collector omits `elementCount=` entirely when the page.evaluate that
+  // measures it failed, rather than emitting 0 — a 0 there is
+  // indistinguishable from a legitimately empty comp, and evaluate failures
+  // concentrate on exactly the huge-DOM tail this field exists to observe.
+  it("leaves elementCount absent when the INIT line omits it (measurement failed)", () => {
+    const summary = makeRecorder().summary({
+      lastBrowserConsole: ["[FrameCapture:INIT] complete initDurationMs=90 tweenCount=7"],
+      capture: { forceScreenshot: false, captureMode: "screenshot" },
+    });
+    expect(summary.init).toEqual({ initDurationMs: 90, tweenCount: 7, elementCount: undefined });
+    expect(summary.init?.elementCount).not.toBe(0);
+  });
+
+  it("parses elementCount from the console INIT line with no fallback at all", () => {
+    const summary = makeRecorder().summary({
+      lastBrowserConsole: [
+        "[FrameCapture:INIT] complete initDurationMs=90 tweenCount=7 elementCount=1420",
+      ],
+      capture: { forceScreenshot: false, captureMode: "screenshot" },
+    });
+    expect(summary.init).toEqual({ initDurationMs: 90, tweenCount: 7, elementCount: 1420 });
+  });
+
+  it("stays undefined when neither source has anything", () => {
+    const summary = makeRecorder().summary({
+      lastBrowserConsole: [],
+      capture: { forceScreenshot: false, captureMode: "screenshot" },
+    });
+    expect(summary.init).toBeUndefined();
   });
 });

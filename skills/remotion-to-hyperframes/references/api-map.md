@@ -31,7 +31,7 @@ See [sequencing.md](sequencing.md) for nesting and stagger details.
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `<Sequence from={F} durationInFrames={D}>` | `<div data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">`                                 |
 | `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                              |
-| `<Loop durationInFrames={D}>`              | not a primitive — emit a custom GSAP `repeat: -1` loop with manual offset math                            |
+| `<Loop durationInFrames={D}>`              | not a primitive — emit a bounded GSAP repeat from the available duration                                  |
 | `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op |
 
 ## Timing

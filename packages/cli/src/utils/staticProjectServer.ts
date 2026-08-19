@@ -2,6 +2,21 @@ import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
+import { resolveAutoProxy } from "./projectConfig.js";
+import { injectMediaCodecMap } from "./compositionServer.js";
+import {
+  resolveProxy,
+  ProxyCapacityError,
+  ProxyTranscodeError,
+} from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  decideMediaProxyEligibility,
+  isProxyVariantRequest,
+  probeAssetCodec,
+  resolveProxyVariantRequest,
+  PROXY_VARIANT_CONFIG,
+  type ProxyVariantRequest,
+} from "@hyperframes/studio-server/media-codec-map";
 
 export interface StaticProjectServer {
   url: string;
@@ -21,10 +36,11 @@ function serveFileWithRange(
   filePath: string,
   rangeHeader: string | undefined,
   res: ServerResponse,
+  contentType = getMimeType(filePath),
 ) {
   const size = statSync(filePath).size;
   const headers: Record<string, string> = {
-    "Content-Type": getMimeType(filePath),
+    "Content-Type": contentType,
     "Accept-Ranges": "bytes",
   };
 
@@ -67,6 +83,73 @@ function serveFileWithRange(
   });
 }
 
+/**
+ * Serves an alpha-aware `?hf-proxy=` variant for a media request: 404s (no transcode attempted)
+ * when auto-proxying is off or the asset isn't a video, resolves+serves the
+ * cached proxy with Range support on success, and answers 502 on a
+ * transcode failure (never a silent black frame). Shared by every one of
+ * `serveStaticProjectHtml`'s seven callers (check/snapshot/validate/compare/
+ * grade-compare/motionShot/layout) — see the KTD in
+ * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md.
+ */
+/** Map a transcode failure to a response; never a silent black frame. */
+function writeProxyError(err: unknown, res: ServerResponse): void {
+  if (err instanceof ProxyCapacityError) {
+    res.writeHead(503, { "Content-Type": "text/plain", "Retry-After": "1" });
+    res.end(`Proxy transcode deferred: ${err.message}`);
+    return;
+  }
+  if (err instanceof ProxyTranscodeError) {
+    res.writeHead(502, { "Content-Type": "text/plain" });
+    res.end(`Proxy transcode failed: ${err.message}`);
+    return;
+  }
+  res.writeHead(500);
+  res.end();
+}
+
+async function serveProxyRequest(
+  projectDir: string,
+  filePath: string,
+  request: ProxyVariantRequest,
+  autoProxy: boolean,
+  rangeHeader: string | undefined,
+  res: ServerResponse,
+): Promise<void> {
+  const contentType = getMimeType(filePath);
+  if (!autoProxy || !contentType.startsWith("video/")) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  try {
+    const facts = await probeAssetCodec(filePath);
+    const eligibility = decideMediaProxyEligibility(facts);
+    if (!eligibility.eligible) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end(`media proxy unavailable: ${eligibility.reason}`);
+      return;
+    }
+    if (!facts) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy unavailable: unknown_codec");
+      return;
+    }
+    const variant = resolveProxyVariantRequest(request, facts);
+    if (!variant) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy variant does not match asset");
+      return;
+    }
+    const proxyPath = await resolveProxy(projectDir, filePath, variant);
+    // The await above can span a whole transcode; the client may be gone.
+    if (res.writableEnded || res.destroyed) return;
+    serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
+  } catch (err) {
+    writeProxyError(err, res);
+  }
+}
+
 export async function serveStaticProjectHtml(
   projectDir: string,
   html: string,
@@ -74,24 +157,51 @@ export async function serveStaticProjectHtml(
   // Extra dirs to resolve non-index requests against, after projectDir (e.g. a
   // temp dir of localized remote assets).
   assetRoots: readonly string[] = [],
+  // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
+  // committed hyperframes.json setting.
+  autoProxyOverride?: boolean,
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
+  // Codec-map injection lives here (not per-caller) so all seven callers of
+  // this function inherit it in one place; computed once since `html` is
+  // static for the lifetime of this server, not re-scanned per request.
+  const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
+  const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
+
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
+      res.end(servedHtml);
       return;
     }
 
-    const requestPath = decodeURIComponent(url).replace(/^\//, "");
+    const queryIndex = url.indexOf("?");
+    const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
+    const proxyParam =
+      queryIndex === -1 ? null : new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy");
+    const proxyRequest =
+      proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
+
+    const requestPath = decodeURIComponent(pathOnly).replace(/^\//, "");
     for (const root of roots) {
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
       if (existsSync(filePath)) {
-        serveFileWithRange(filePath, req.headers.range, res);
+        if (proxyRequest) {
+          void serveProxyRequest(
+            projectDir,
+            filePath,
+            proxyRequest,
+            autoProxy,
+            req.headers.range,
+            res,
+          );
+        } else {
+          serveFileWithRange(filePath, req.headers.range, res);
+        }
         return;
       }
     }

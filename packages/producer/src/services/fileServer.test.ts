@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import {
   closeFileServerSafely,
   createFileServer,
+  RENDER_CAPTURE_MODE_SHIM,
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
@@ -315,6 +316,51 @@ describe("parseRangeHeader", () => {
 });
 
 describe("createFileServer", () => {
+  it("marks producer pages as render capture before the runtime loads", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-render-mode-"));
+    try {
+      writeFileSync(
+        join(projectDir, "index.html"),
+        "<!doctype html><html><head></head><body></body></html>",
+      );
+      const runtimeScript = "globalThis.__hfRuntimeLoaded = true;";
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [runtimeScript],
+      });
+      try {
+        const response = await fetch(`${server.url}/index.html`);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        expect(html).toContain(RENDER_CAPTURE_MODE_SHIM);
+        expect(html.indexOf(RENDER_CAPTURE_MODE_SHIM)).toBeLessThan(html.indexOf(runtimeScript));
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves ES modules with a JavaScript MIME type", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mjs-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "scene.mjs"), "export const scene = true;");
+      const server = await createFileServer({ projectDir, preHeadScripts: [], headScripts: [] });
+      try {
+        const response = await fetch(`${server.url}/scene.mjs`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   async function expectInjectedRenderFps(
     fps: Parameters<typeof createFileServer>[0]["fps"],
     expected: {

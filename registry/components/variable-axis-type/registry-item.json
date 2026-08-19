@@ -1,0 +1,63 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "variable-axis-type",
+  "type": "hyperframes:component",
+  "title": "Variable Axis Type",
+  "description": "A locked one-line headline whose weight or width axis morphs into a decisive emphasis beat.",
+  "tags": ["typography", "variable-font", "kinetic-type", "axis", "emphasize"],
+  "jobs": ["emphasize"],
+  "family": "typography",
+  "profile": "burst",
+  "evidence": "hyperframes-research-type-svg.md, VariableAxisType: stable complete axis lists, font-ready registration, layout lock, and midpoint verification.",
+  "files": [
+    {
+      "path": "variable-axis-type.html",
+      "target": "compositions/components/variable-axis-type.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Word or short headline to emphasize.",
+      "default": "IMPACT"
+    },
+    {
+      "id": "axis",
+      "type": "enum",
+      "role": "motion",
+      "label": "Axis",
+      "description": "Variable-font axis used for the emphasis morph.",
+      "default": "wght",
+      "options": [
+        { "value": "wght", "label": "Weight" },
+        { "value": "wdth", "label": "Width" }
+      ]
+    },
+    {
+      "id": "fromValue",
+      "type": "number",
+      "role": "motion",
+      "label": "From value",
+      "description": "Starting coordinate on the selected font axis.",
+      "default": 200,
+      "min": 25,
+      "max": 1000,
+      "step": 1
+    },
+    {
+      "id": "toValue",
+      "type": "number",
+      "role": "motion",
+      "label": "To value",
+      "description": "Ending coordinate on the selected font axis.",
+      "default": 900,
+      "min": 25,
+      "max": 1000,
+      "step": 1
+    }
+  ]
+}

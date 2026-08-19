@@ -1,0 +1,12 @@
+{
+  "name": "Nested sub-composition depth-3 inlining",
+  "description": "Regression test for the fix in 693768d21 (core: inlineSubCompositions now discovers [data-composition-src] hosts to a fixed point instead of a single flat pass) and fa4a7f012 (producer: hostIdentityMap now lazily assigns runtime composition ids to hosts discovered mid-inline). Before these fixes, a sub-composition hosting another sub-composition (root -> level-2 -> level-3) silently dropped level-3's content: two-level nesting always worked because the second-level host already existed in the root document before inlining began, but a third-level host only appears inside content the single pass had already finished walking, so it was never discovered or inlined. This fixture's level-3 composition contributes a large, uniquely colored and positioned marker element covering more than half the frame; if the single-pass bug is reintroduced, level-3 is dropped entirely and the rendered PSNR against the golden baseline falls well below threshold.",
+  "tags": ["sub-composition", "regression", "nested"],
+  "minPsnr": 20,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}

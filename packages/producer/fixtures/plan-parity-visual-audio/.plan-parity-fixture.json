@@ -1,0 +1,8 @@
+{
+  "generatedAudio": {
+    "path": "assets/tone.wav",
+    "durationSeconds": 2,
+    "frequencyHz": 440,
+    "sampleRate": 48000
+  }
+}

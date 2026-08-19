@@ -2,13 +2,21 @@ import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
+import ignore, { type Ignore } from "ignore";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { buildAuthHeaders } from "../auth/client.js";
+import { tryResolveCredential } from "../auth/index.js";
+import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
+const HYPERFRAMES_IGNORE_FILE = ".hyperframesignore";
+const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
+const PUBLISH_TRANSPORT_ATTEMPTS = 2;
+const PUBLISH_RETRY_DELAY_MS = 200;
 // Conservative floor — most connections are faster, but this prevents
 // premature aborts on slow/unstable networks (hotel wifi, tethering).
 const PUBLISH_UPLOAD_BYTES_PER_SECOND = 500_000;
@@ -24,6 +32,8 @@ export interface PublishedProjectResponse {
   fileCount: number;
   url: string;
   claimToken: string;
+  /** True when the project is owned by the authenticated publisher (created-and-owned or updated in place). */
+  claimed: boolean;
 }
 
 interface StagedUploadResponse {
@@ -56,9 +66,14 @@ function parsePublishedProjectResponse(payload: unknown): PublishedProjectRespon
   const projectId = stringField(data, "project_id");
   const title = stringField(data, "title");
   const url = stringField(data, "url");
-  const claimToken = stringField(data, "claim_token");
+  const claimToken = stringField(data, "claim_token") ?? "";
+  const claimed = data["claimed"] === true;
   const fileCount = data["file_count"];
-  if (!projectId || !title || !url || !claimToken || typeof fileCount !== "number") {
+  if (!projectId || !title || !url || typeof fileCount !== "number") {
+    return null;
+  }
+  // Anonymous publishes must return a claim token; owned (claimed) ones need none.
+  if (!claimed && !claimToken) {
     return null;
   }
   return {
@@ -67,6 +82,7 @@ function parsePublishedProjectResponse(payload: unknown): PublishedProjectRespon
     fileCount,
     url,
     claimToken,
+    claimed,
   };
 }
 
@@ -152,6 +168,83 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   return text.trim() ? `${fallback}: ${text.trim().slice(0, 180)}` : fallback;
 }
 
+function systemErrorMetadata(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const metadata: string[] = [];
+  if (typeof value["code"] === "string") metadata.push(value["code"]);
+  if (typeof value["syscall"] === "string") metadata.push(`syscall=${value["syscall"]}`);
+  if (typeof value["errno"] === "string" || typeof value["errno"] === "number") {
+    metadata.push(`errno=${value["errno"]}`);
+  }
+  return metadata;
+}
+
+function redactUrlQuery(message: string): string {
+  return message.replace(/(https?:\/\/[^\s?]+)\?[^\s]+/gu, "$1?[redacted]");
+}
+
+function proxySupportHint(): string {
+  const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((key) =>
+    Boolean(process.env[key]?.trim()),
+  );
+  const proxyEnabled =
+    process.env["NODE_USE_ENV_PROXY"] === "1" ||
+    process.execArgv.includes("--use-env-proxy") ||
+    process.env["NODE_OPTIONS"]?.split(/\s+/u).includes("--use-env-proxy") === true;
+  if (!proxyConfigured || proxyEnabled) return "";
+  return (
+    ". Proxy variables are set but ignored by Node fetch; if this network requires them, retry with " +
+    "NODE_USE_ENV_PROXY=1 (Node 22.21+)"
+  );
+}
+
+function describeFetchFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error ? error.cause : undefined;
+  const causeMessage = cause instanceof Error ? cause.message : "";
+  const metadata = [...systemErrorMetadata(cause), ...systemErrorMetadata(error)].filter(
+    (value, index, all) => all.indexOf(value) === index,
+  );
+  const distinctCauseMessage = causeMessage && causeMessage !== message ? causeMessage : "";
+  const detail = [metadata.join(", "), distinctCauseMessage].filter(Boolean).join(": ");
+  return `${redactUrlQuery(message)}${detail ? ` (${redactUrlQuery(detail)})` : ""}${proxySupportHint()}`;
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return (
+    error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")
+  );
+}
+
+function waitBeforePublishRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, PUBLISH_RETRY_DELAY_MS));
+}
+
+async function fetchForPublish(
+  input: string,
+  createInit: () => RequestInit,
+  failureStage: string,
+  attempts = 1,
+): Promise<Response> {
+  if (attempts < 1) throw new RangeError("Publish fetch attempts must be at least 1");
+  let lastError: unknown;
+  let attemptsMade = 0;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    attemptsMade = attempt;
+    try {
+      return await fetch(input, createInit());
+    } catch (error) {
+      lastError = error;
+      if (isRequestTimeout(error) || attempt === attempts) break;
+      await waitBeforePublishRetry();
+    }
+  }
+  const attemptDetail = attemptsMade > 1 ? ` after ${attemptsMade} attempts` : "";
+  throw new Error(`${failureStage}${attemptDetail}: ${describeFetchFailure(lastError)}`, {
+    cause: lastError instanceof Error ? lastError : undefined,
+  });
+}
+
 export function uploadTimeoutMs(byteLength: number): number {
   return Math.max(
     PUBLISH_UPLOAD_MIN_TIMEOUT_MS,
@@ -163,7 +256,21 @@ function shouldIgnoreSegment(segment: string): boolean {
   return segment.startsWith(".") || IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
 }
 
-function collectProjectFiles(rootDir: string, currentDir: string, paths: string[]): void {
+function createProjectIgnore(rootDir: string): Ignore {
+  const matcher = ignore().add(DEFAULT_PROJECT_IGNORE);
+  const ignorePath = join(rootDir, HYPERFRAMES_IGNORE_FILE);
+  if (existsSync(ignorePath)) {
+    matcher.add(readFileSync(ignorePath, "utf-8"));
+  }
+  return matcher;
+}
+
+function collectProjectFiles(
+  rootDir: string,
+  currentDir: string,
+  paths: string[],
+  matcher: Ignore,
+): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     if (shouldIgnoreSegment(entry.name)) continue;
     const absolutePath = join(currentDir, entry.name);
@@ -171,11 +278,13 @@ function collectProjectFiles(rootDir: string, currentDir: string, paths: string[
     if (!relativePath) continue;
 
     if (entry.isDirectory()) {
-      collectProjectFiles(rootDir, absolutePath, paths);
+      if (matcher.ignores(`${relativePath}/`)) continue;
+      collectProjectFiles(rootDir, absolutePath, paths, matcher);
       continue;
     }
 
     if (!statSync(absolutePath).isFile()) continue;
+    if (matcher.ignores(relativePath)) continue;
     paths.push(relativePath);
   }
 }
@@ -243,18 +352,44 @@ function rewriteCssUrls(
   return { css: rewritten, modified };
 }
 
-function rewriteHtmlAttributes(
-  ctx: ExternalAssetContext,
+/** Resolves a raw attribute value (plus the referrer's absolute directory) to
+ * the archive path it should point at, or `null` to leave it untouched. */
+export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
+
+interface RewriteHtmlAttributesOptions {
+  /** Attributes to inspect (default: src + href, matching the external-asset
+   * localization use case below). */
+  attrs?: string[];
+  /** CSS selector narrowing which elements are inspected (default: derived
+   * from `attrs`, e.g. `"[src], [href]"`). Callers that only care about one
+   * tag (e.g. `<video>`) pass something like `"video[src]"`. */
+  selector?: string;
+}
+
+/**
+ * Walk every element matching `selector` (default: anything with `src`/
+ * `href`) and rewrite the given `attrs` whose value `resolveTarget` maps to an
+ * archive path. Shared by `localizeHtmlEntry` below (external-asset
+ * localization) and `publishProxyBake.ts` (proxy baking only rewrites
+ * `<video src>`), so the rewrite mechanics (attribute walk + entry-relative
+ * path rewrite) live in one place while each caller supplies its own
+ * resolution rule.
+ */
+export function rewriteHtmlAttributes(
   document: Document,
   referrerAbsDir: string,
   entryPath: string,
+  resolveTarget: HtmlAttributeResolver,
+  options: RewriteHtmlAttributesOptions = {},
 ): boolean {
+  const attrs = options.attrs ?? ["src", "href"];
+  const selector = options.selector ?? attrs.map((attr) => `[${attr}]`).join(", ");
   let modified = false;
-  for (const el of document.querySelectorAll("[src], [href]")) {
-    for (const attr of ["src", "href"]) {
+  for (const el of document.querySelectorAll(selector)) {
+    for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const archivePath = tryResolveExternal(ctx, val, referrerAbsDir);
+      const archivePath = resolveTarget(val, referrerAbsDir);
       if (!archivePath) continue;
       el.setAttribute(attr, posix.relative(posix.dirname(entryPath), archivePath));
       modified = true;
@@ -294,7 +429,9 @@ function rewriteStyleBlocks(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const attrsChanged = rewriteHtmlAttributes(ctx, document, referrerAbsDir, entryPath);
+  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, (val, dir) =>
+    tryResolveExternal(ctx, val, dir),
+  );
   const stylesChanged = rewriteStyleBlocks(ctx, document, referrerAbsDir, entryPath);
   if (attrsChanged || stylesChanged) {
     ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
@@ -339,12 +476,21 @@ export function localizeExternalAssets(
   return ctx.externalMap.size;
 }
 
-export function createPublishArchive(projectDir: string): PublishArchiveResult {
+/**
+ * Walk the project dir, read every non-ignored file, and localize external
+ * (out-of-project) asset references. Returns the in-memory archive file map —
+ * the seam `publish.ts` hooks a proxy-baking transform into (U6) between this
+ * and `zipPublishFileMap` below. `cloud render` never sees this seam: it
+ * keeps calling `createPublishArchive` directly.
+ */
+export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(absProjectDir, absProjectDir, filePaths);
+  collectProjectFiles(absProjectDir, absProjectDir, filePaths, createProjectIgnore(absProjectDir));
   if (!filePaths.includes("index.html")) {
-    throw new Error("Project must include an index.html file at the root before publish.");
+    throw new Error(
+      "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",
+    );
   }
 
   const fileContents = new Map<string, Buffer>();
@@ -353,7 +499,12 @@ export function createPublishArchive(projectDir: string): PublishArchiveResult {
   }
 
   localizeExternalAssets(absProjectDir, fileContents);
+  return fileContents;
+}
 
+/** Zip an in-memory archive file map (from `buildPublishFileMap`, optionally
+ * transformed in between, e.g. by proxy baking) into the final archive buffer. */
+export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArchiveResult {
   const archive = new AdmZip();
   for (const [filePath, content] of fileContents) {
     archive.addFile(filePath, content);
@@ -363,6 +514,17 @@ export function createPublishArchive(projectDir: string): PublishArchiveResult {
     buffer: archive.toBuffer(),
     fileCount: fileContents.size,
   };
+}
+
+/**
+ * Thin composition of `buildPublishFileMap` + `zipPublishFileMap` — signature
+ * and behavior UNCHANGED from before the U6 split. `cloud render` composes the
+ * same two functions without an intermediate transform and must stay
+ * byte-identical (never see baked proxies); only `publish.ts` inserts a baking
+ * transform between them.
+ */
+export function createPublishArchive(projectDir: string): PublishArchiveResult {
+  return zipPublishFileMap(buildPublishFileMap(projectDir));
 }
 
 export function getPublishApiBaseUrl(): string {
@@ -384,24 +546,29 @@ async function publishProjectArchiveDirect(
   title: string,
   archive: PublishArchiveResult,
   isPublic: boolean,
+  authHeaders: Record<string, string>,
+  projectId: string | undefined,
 ): Promise<PublishedProjectResponse> {
   const body = new FormData();
   body.set("title", title);
   if (isPublic) body.set("is_public", "true");
+  if (projectId) body.set("project_id", projectId);
   body.set(
     "file",
     new File([archiveArrayBuffer(archive)], `${title}.zip`, { type: PUBLISH_CONTENT_TYPE }),
   );
-  const headers: Record<string, string> = {
-    heygen_route: "canary",
-  };
+  const headers: Record<string, string> = { ...authHeaders };
 
-  const response = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish`, {
-    method: "POST",
-    body,
-    headers,
-    signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
-  });
+  const response = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish`,
+    () => ({
+      method: "POST",
+      body,
+      headers,
+      signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
+    }),
+    "Failed to publish project",
+  );
 
   const payload = await readJson(response);
   const publishedProject = parsePublishedProjectResponse(payload);
@@ -412,26 +579,56 @@ async function publishProjectArchiveDirect(
   return publishedProject;
 }
 
+async function uploadArchiveToPresignedUrl(
+  stagedUpload: StagedUploadResponse,
+  archive: PublishArchiveResult,
+): Promise<void> {
+  const presignedUrlTtlMs = stagedUpload.expiresInSeconds * 1000 - PUBLISH_METADATA_TIMEOUT_MS;
+  const s3Response = await fetchForPublish(
+    stagedUpload.uploadUrl,
+    () => ({
+      method: "PUT",
+      body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
+      headers: stagedUpload.uploadHeaders,
+      signal: AbortSignal.timeout(
+        Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
+      ),
+    }),
+    "Failed to upload project archive",
+    PUBLISH_TRANSPORT_ATTEMPTS,
+  );
+  if (!s3Response.ok) {
+    throw new Error(await readErrorMessage(s3Response, "Failed to upload project archive"));
+  }
+}
+
 async function publishProjectArchiveStaged(
   apiBaseUrl: string,
   title: string,
   archive: PublishArchiveResult,
   isPublic: boolean,
+  authHeaders: Record<string, string>,
+  projectId: string | undefined,
 ): Promise<PublishedProjectResponse | null> {
   const fileName = `${title}.zip`;
-  const uploadResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/upload`, {
-    method: "POST",
-    body: JSON.stringify({
-      file_name: fileName,
-      content_type: PUBLISH_CONTENT_TYPE,
-      content_length: archive.buffer.byteLength,
+  const uploadResponse = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish/upload`,
+    () => ({
+      method: "POST",
+      body: JSON.stringify({
+        file_name: fileName,
+        content_type: PUBLISH_CONTENT_TYPE,
+        content_length: archive.buffer.byteLength,
+      }),
+      headers: {
+        ...authHeaders,
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(PUBLISH_METADATA_TIMEOUT_MS),
     }),
-    headers: {
-      "content-type": "application/json",
-      heygen_route: "canary",
-    },
-    signal: AbortSignal.timeout(PUBLISH_METADATA_TIMEOUT_MS),
-  });
+    "Failed to prepare project upload",
+    PUBLISH_TRANSPORT_ATTEMPTS,
+  );
 
   if (uploadResponse.status === 404 || uploadResponse.status === 405) {
     return null;
@@ -443,33 +640,27 @@ async function publishProjectArchiveStaged(
     throw new Error(await readErrorMessage(uploadResponse, "Failed to prepare project upload"));
   }
 
-  const presignedUrlTtlMs = stagedUpload.expiresInSeconds * 1000 - PUBLISH_METADATA_TIMEOUT_MS;
-  const s3Response = await fetch(stagedUpload.uploadUrl, {
-    method: "PUT",
-    body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
-    headers: stagedUpload.uploadHeaders,
-    signal: AbortSignal.timeout(
-      Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
-    ),
-  });
-  if (!s3Response.ok) {
-    throw new Error(await readErrorMessage(s3Response, "Failed to upload project archive"));
-  }
+  await uploadArchiveToPresignedUrl(stagedUpload, archive);
 
-  const completeResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/complete`, {
-    method: "POST",
-    body: JSON.stringify({
-      upload_key: stagedUpload.uploadKey,
-      file_name: fileName,
-      title,
-      ...(isPublic ? { is_public: true } : {}),
+  const completeResponse = await fetchForPublish(
+    `${apiBaseUrl}/v1/hyperframes/projects/publish/complete`,
+    () => ({
+      method: "POST",
+      body: JSON.stringify({
+        upload_key: stagedUpload.uploadKey,
+        file_name: fileName,
+        title,
+        ...(isPublic ? { is_public: true } : {}),
+        ...(projectId ? { project_id: projectId } : {}),
+      }),
+      headers: {
+        ...authHeaders,
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
     }),
-    headers: {
-      "content-type": "application/json",
-      heygen_route: "canary",
-    },
-    signal: AbortSignal.timeout(uploadTimeoutMs(archive.buffer.byteLength)),
-  });
+    "Failed to finalize project publish",
+  );
 
   const completePayload = await readJson(completeResponse);
   const publishedProject = parsePublishedProjectResponse(completePayload);
@@ -482,6 +673,18 @@ async function publishProjectArchiveStaged(
 
 export interface PublishOptions {
   public?: boolean;
+  /** Stable project id to update in place. Only sent when authenticated. */
+  projectId?: string;
+  /** Shared team space id, sent as X-Space-Id so team members converge. Only when authenticated. */
+  spaceId?: string;
+  /**
+   * Pre-built archive to upload instead of building one fresh from
+   * `projectDir` via `createPublishArchive`. `publish.ts` passes this so it
+   * can bake proxies into the file map between `buildPublishFileMap` and
+   * `zipPublishFileMap` (U6); callers that omit it (e.g. `feedback`'s
+   * minimal-repro publish) keep today's behavior unchanged.
+   */
+  archive?: PublishArchiveResult;
 }
 
 export async function publishProjectArchive(
@@ -490,9 +693,37 @@ export async function publishProjectArchive(
 ): Promise<PublishedProjectResponse> {
   const isPublic = opts.public === true;
   const title = basename(projectDir);
-  const archive = createPublishArchive(projectDir);
+  const archive = opts.archive ?? createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const stagedResult = await publishProjectArchiveStaged(apiBaseUrl, title, archive, isPublic);
-  if (stagedResult) return stagedResult;
-  return publishProjectArchiveDirect(apiBaseUrl, title, archive, isPublic);
+  const credential = await tryResolveCredential();
+  const authHeaders = credential ? buildAuthHeaders(credential) : {};
+  // A stable id / team space only mean something to an authenticated owner — the server
+  // ignores them otherwise, and anonymous publishes always mint a fresh project.
+  const projectId = credential ? opts.projectId : undefined;
+  const spaceId = credential ? opts.spaceId : undefined;
+  // X-Space-Id rides with the auth headers on the metadata requests only (never the
+  // presigned S3 PUT), so the server resolves the shared team space instead of the personal one.
+  const metadataHeaders = spaceId ? { ...authHeaders, "x-space-id": spaceId } : authHeaders;
+  const result =
+    (await publishProjectArchiveStaged(
+      apiBaseUrl,
+      title,
+      archive,
+      isPublic,
+      metadataHeaders,
+      projectId,
+    )) ??
+    (await publishProjectArchiveDirect(
+      apiBaseUrl,
+      title,
+      archive,
+      isPublic,
+      metadataHeaders,
+      projectId,
+    ));
+  // Remember the server's id + url so the next publish of this directory updates in place.
+  if (credential) {
+    writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
+  }
+  return result;
 }

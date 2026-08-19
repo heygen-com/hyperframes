@@ -1,4 +1,5 @@
 import type { HfColorGradingTarget } from "../colorGrading";
+import type { RuntimeAnalyticsEvent } from "./analytics";
 
 export type RuntimeJson =
   | string
@@ -10,6 +11,7 @@ export type RuntimeJson =
 
 import type { HyperframeControlAction } from "../inline-scripts/runtimeContract.js";
 import type { HyperframePickerElementInfo } from "../inline-scripts/pickerApi.js";
+import type { RuntimeProtocolV1 } from "./protocol.js";
 
 export type RuntimeBridgeControlAction =
   | HyperframeControlAction
@@ -27,6 +29,7 @@ export type RuntimeBridgeControlMessage = {
   type: "control";
   action: RuntimeBridgeControlAction;
   frame?: number;
+  timeSeconds?: number;
   muted?: boolean;
   volume?: number;
   durationSeconds?: number;
@@ -62,6 +65,8 @@ export type RuntimeTimelineClip = {
   parentCompositionId: string | null;
   nodePath: string | null;
   compositionSrc: string | null;
+  playbackStart: number;
+  playbackRate: number;
   assetUrl: string | null;
   timelineRole: string | null;
   timelineLabel: string | null;
@@ -78,9 +83,11 @@ export type RuntimeTimelineScene = {
   avatarName: string | null;
 };
 
-export type RuntimeTimelineMessage = {
+export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
   source: "hf-preview";
   type: "timeline";
+  compositionContractVersion: 1;
+  durationSeconds: number;
   durationInFrames: number;
   clips: RuntimeTimelineClip[];
   scenes: RuntimeTimelineScene[];
@@ -171,13 +178,7 @@ export type RuntimeReadyMessage = {
 export type RuntimeAnalyticsMessage = {
   source: "hf-preview";
   type: "analytics";
-  event:
-    | "composition_loaded"
-    | "composition_played"
-    | "composition_paused"
-    | "composition_seeked"
-    | "composition_ended"
-    | "element_picked";
+  event: RuntimeAnalyticsEvent;
   properties: Record<string, string | number | boolean | null>;
 };
 

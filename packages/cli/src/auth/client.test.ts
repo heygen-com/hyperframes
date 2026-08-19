@@ -3,6 +3,8 @@ import {
   AuthClient,
   HEYGEN_CLI_SOURCE,
   HEYGEN_CLI_SOURCE_HEADER,
+  HEYGEN_CLIENT_SOURCE,
+  HEYGEN_CLIENT_SOURCE_HEADER,
   apiBaseUrl,
   buildAuthHeaders,
 } from "./client.js";
@@ -81,12 +83,14 @@ describe("auth/client", () => {
     expect(buildAuthHeaders(cred)).toEqual({
       authorization: "Bearer at_123",
       [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
+      [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
     });
   });
 
-  it("buildAuthHeaders uses x-api-key for api_key, without the cli-source header", () => {
+  it("buildAuthHeaders uses x-api-key for api_key, without the cli-source header but with the tool tag", () => {
     expect(buildAuthHeaders(apiKeyCred())).toEqual({
       "x-api-key": "hg_x",
+      [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
     });
   });
 

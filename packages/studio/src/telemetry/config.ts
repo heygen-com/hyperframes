@@ -22,12 +22,26 @@ export function getAnonymousId(): string {
   return resolveStudioDistinctId();
 }
 
+// safeLocalStorage() guards the REFERENCE, not the access: in a partitioned
+// or sandboxed context the object resolves and `getItem` still throws (the
+// case distinctId.ts already documents). These are read from the telemetry
+// policy, which is called from event tracking that must never throw into a
+// caller — `trackStudioEvent` sits in a post-commit catch block, so a throw
+// there reported an already-committed edit as failed.
+function readStoredFlag(key: string): boolean {
+  try {
+    return safeLocalStorage()?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function isOptedOut(): boolean {
-  return safeLocalStorage()?.getItem(OPT_OUT_KEY) === "1";
+  return readStoredFlag(OPT_OUT_KEY);
 }
 
 export function hasShownNotice(): boolean {
-  return safeLocalStorage()?.getItem(NOTICE_KEY) === "1";
+  return readStoredFlag(NOTICE_KEY);
 }
 
 export function markNoticeShown(): void {

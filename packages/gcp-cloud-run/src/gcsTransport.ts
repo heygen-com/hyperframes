@@ -19,7 +19,15 @@
  * is the same shape as `@hyperframes/aws-lambda`'s `s3Transport.ts`.
  */
 
-import { createWriteStream, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Storage } from "@google-cloud/storage";
@@ -70,6 +78,26 @@ export async function downloadGcsObjectToFile(
   await pipeline(file.createReadStream(), createWriteStream(destPath));
 }
 
+/** Download and verify an immutable plan-v2 artifact before materialization. */
+export async function downloadGcsObjectToFileVerified(
+  storage: Storage,
+  uri: string,
+  destPath: string,
+  expectedSha256: string,
+): Promise<void> {
+  assertSha256(expectedSha256);
+  await downloadGcsObjectToFile(storage, uri, destPath);
+  const actual = await sha256File(destPath);
+  if (actual !== expectedSha256) {
+    rmSync(destPath, { force: true });
+    const error = new Error(
+      `[gcsTransport] PLAN_ARTIFACT_DIGEST_MISMATCH: ${uri} expected ${expectedSha256}, got ${actual}`,
+    );
+    error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
+    throw error;
+  }
+}
+
 /**
  * Upload a local file's contents to a GCS URI using a resumable upload.
  * GCS objects have no practical size ceiling for the artifacts this adapter
@@ -94,6 +122,118 @@ export async function uploadFileToGcs(
     // chunks are reliably above that, so let the client pick by default.
     contentType,
   });
+}
+
+/**
+ * Upload one content-addressed plan-v2 artifact exactly once.
+ *
+ * The zero-generation precondition makes creation atomic. Existing objects
+ * are reused only when their immutable digest metadata and byte length agree;
+ * a conflict is never overwritten because another render may already consume
+ * that object.
+ */
+export async function uploadContentAddressedFileToGcs(
+  storage: Storage,
+  localPath: string,
+  uri: string,
+  expectedSha256: string,
+  contentType?: string,
+): Promise<"uploaded" | "reused"> {
+  assertSha256(expectedSha256);
+  if (!existsSync(localPath)) {
+    throw new Error(`[gcsTransport] upload source missing: ${localPath}`);
+  }
+  const actualSha256 = await sha256File(localPath);
+  if (actualSha256 !== expectedSha256) {
+    throwDigestMismatch(
+      `local artifact ${localPath} expected ${expectedSha256}, got ${actualSha256}`,
+    );
+  }
+
+  const { bucket, key } = parseGcsUri(uri);
+  const bucketHandle = storage.bucket(bucket);
+  const file = bucketHandle.file(key);
+  const size = statSync(localPath).size;
+  if (await isReusableContentAddressedObject(file, uri, size, expectedSha256)) {
+    return "reused";
+  }
+
+  try {
+    await bucketHandle.upload(localPath, {
+      destination: key,
+      contentType,
+      metadata: { metadata: { sha256: expectedSha256 } },
+      preconditionOpts: { ifGenerationMatch: 0 },
+    });
+    return "uploaded";
+  } catch (error) {
+    // A concurrent planner may win the create-only race. Reuse only after
+    // verifying that the winning object is exactly the immutable CAS value.
+    if (
+      isGcsPreconditionFailed(error) &&
+      (await isReusableContentAddressedObject(file, uri, size, expectedSha256))
+    ) {
+      return "reused";
+    }
+    throw error;
+  }
+}
+
+interface GcsFileLike {
+  exists(): Promise<[boolean, ...unknown[]]>;
+  getMetadata(): Promise<
+    [
+      {
+        size?: string | number;
+        metadata?: Record<string, string | number | boolean | null>;
+      },
+      ...unknown[],
+    ]
+  >;
+}
+
+async function isReusableContentAddressedObject(
+  file: GcsFileLike,
+  uri: string,
+  expectedSize: number,
+  expectedSha256: string,
+): Promise<boolean> {
+  const [exists] = await file.exists();
+  if (!exists) return false;
+  const [metadata] = await file.getMetadata();
+  if (Number(metadata.size) === expectedSize && metadata.metadata?.sha256 === expectedSha256) {
+    return true;
+  }
+  throwDigestMismatch(
+    `immutable object ${uri} already exists with different digest metadata or size`,
+  );
+}
+
+export async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
+}
+
+function assertSha256(value: string): void {
+  if (!/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error(
+      `[gcsTransport] expected lowercase SHA-256 digest, got ${JSON.stringify(value)}`,
+    );
+  }
+}
+
+function throwDigestMismatch(detail: string): never {
+  const error = new Error(`[gcsTransport] PLAN_ARTIFACT_DIGEST_MISMATCH: ${detail}`);
+  error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
+  throw error;
+}
+
+function isGcsPreconditionFailed(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { code?: unknown }).code === 412;
 }
 
 /**

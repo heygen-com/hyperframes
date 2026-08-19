@@ -12,7 +12,7 @@
  * commit adds the acorn motionPath parser itself.
  */
 import { describe, it, expect } from "vitest";
-import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
+import { gsapScriptUsesMotionPath, parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { serializeGsapAnimations } from "./gsapSerialize.js";
 import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapSerialize.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
@@ -84,6 +84,24 @@ const REAL_WORLD_SCRIPT = `(function () {
 // ── parseGsapScript ───────────────────────────────────────────────────────────
 
 describe("parseGsapScript", () => {
+  it("excludes per-step `duration` from %-keyed keyframe properties (segment timing is not a lane)", () => {
+    // A %-keyed object keyframe carrying a stray per-step `duration` — the shape
+    // a buggy array->object conversion produces. `duration` is GSAP segment
+    // timing, not an animatable property; it must not surface as a keyframe lane
+    // or round-trip as a property (which corrupts the tween on the next edit).
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { keyframes: { "0%": { x: 0, duration: 0 }, "50%": { x: 100, duration: 6, ease: "power2.out" }, "100%": { x: 200, duration: 6 } } }, 0);
+    `;
+    const anim = parseGsapScript(script).animations[0]!;
+    const kfs = expectKeyframesFormat(anim, "percentage", 3);
+    for (const kf of kfs) {
+      expect(kf.properties).not.toHaveProperty("duration"); // the fix
+      expect(kf.properties).toHaveProperty("x"); // real animatable prop preserved
+    }
+    expect(kfs[1]!.ease).toBe("power2.out"); // per-keyframe ease still parsed
+  });
+
   it("parses a basic timeline with .to()", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
@@ -685,6 +703,19 @@ describe("variable-target resolution (querySelector pattern)", () => {
     expect(result.animations[2].extras?.stagger).toBe("__raw:0.1");
   });
 
+  it("does not leak same-named constants across IIFE scopes", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      (() => { const T = 0; tl.to("#x", { opacity: 1, duration: 1 }, T + 0); })();
+      (() => { const T = 10; tl.to("#x", { opacity: 0, duration: 1 }, T + 0); })();
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations.map((animation) => animation.position)).toEqual([
+      "__raw:T + 0",
+      "__raw:T + 0",
+    ]);
+  });
+
   it("marks unresolvable variable targets with __unresolved__ and hasUnresolvedSelector", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
@@ -851,8 +882,8 @@ describe("native GSAP keyframes parsing", () => {
     const anim = parseSingleAnimation(script);
     const kfs = expectKeyframesFormat(anim, "object-array", 3);
 
-    expectKeyframe(kfs[0], 22, { x: 0, opacity: 1 });
-    expectKeyframe(kfs[1], 65, { x: 100 }, "power2.out");
+    expectKeyframe(kfs[0], 21.7, { x: 0, opacity: 1 });
+    expectKeyframe(kfs[1], 65.2, { x: 100 }, "power2.out");
     expectKeyframe(kfs[2], 100, { x: 200 });
   });
 
@@ -923,6 +954,69 @@ describe("native GSAP keyframes parsing", () => {
 // ── motionPath parsing ────────────────────────────────────────────────────────
 
 describe("motionPath parsing", () => {
+  it("detects standalone and ESM MotionPathPlugin tween properties", () => {
+    expect(gsapScriptUsesMotionPath('gsap.to("#dot", { motionPath: { path: "#route" } });')).toBe(
+      true,
+    );
+    expect(
+      gsapScriptUsesMotionPath(`
+        import { gsap } from "gsap";
+        const tl = gsap.timeline();
+        tl.to("#dot", { motionPath: { path: "#route" } });
+      `),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath('gsap.timeline().to("#dot", { motionPath: { path: "#route" } });'),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath('gsap.to("#dot", { x: 10 }).to("#dot", { motionPath: {} });'),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath(`
+        const vars = { x: 100 };
+        function build() {
+          const vars = { motionPath: { path: "#route" } };
+          return vars;
+        }
+        gsap.to("#dot", vars);
+      `),
+    ).toBe(false);
+    expect(
+      gsapScriptUsesMotionPath(`
+        function buildTimeline() {
+          const tl = gsap.timeline();
+          return tl;
+        }
+        function unrelated() {
+          const tl = { to() {} };
+          tl.to("#dot", { motionPath: { path: "#route" } });
+        }
+      `),
+    ).toBe(false);
+    expect(
+      gsapScriptUsesMotionPath(`
+        const intro = gsap.timeline();
+        const outro = gsap.timeline();
+        const fromVars = { motionPath: { path: "#route" } };
+        outro.to("#other", { opacity: 0 }).fromTo("#dot", fromVars, { opacity: 1 });
+      `),
+    ).toBe(true);
+    expect(gsapScriptUsesMotionPath('const config = { motionPath: { path: "#route" } };')).toBe(
+      false,
+    );
+  });
+
+  it("parses ESM plugin-native selector paths even when they cannot become editable arc data", () => {
+    const result = parseGsapScriptAcorn(`
+      import { gsap } from "gsap";
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    `);
+
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0]?.arcPath).toBeUndefined();
+  });
+
   it("parses motionPath with waypoint array and curviness", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

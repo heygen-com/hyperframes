@@ -10,6 +10,8 @@ export const SMOKE_COMPOSITION_HTML =
   '<!doctype html><html><body><div data-composition-id="root" data-width="1920" ' +
   'data-height="1080" data-duration="1" data-start="0"><div class="clip" ' +
   'data-hf-id="title" data-start="0" data-duration="1">Test</div></div></body></html>';
+const SMOKE_THUMBNAIL_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="9"><rect width="16" height="9"/></svg>';
 
 function json(body, status = 200) {
   return { status, contentType: "application/json", body: JSON.stringify(body) };
@@ -36,6 +38,7 @@ const GET_RESPONSES = new Map([
     }),
   ],
   [`${PROJECT_PATH}/preview`, text(SMOKE_COMPOSITION_HTML, "text/html")],
+  [`${PROJECT_PATH}/thumbnail/index.html`, text(SMOKE_THUMBNAIL_SVG, "image/svg+xml")],
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
   [
@@ -54,6 +57,11 @@ const GET_RESPONSES = new Map([
   ["/api/fonts", json({ fonts: [] })],
   ["/api/fonts/google", json({ fonts: [] })],
   ["/api/assets/global", json({ assets: [] })],
+  // Studio asks this on load so it can warn before Export instead of failing
+  // at encode time. A usable encoder is the case this smoke run wants: the
+  // interesting assertion is that the shell mounts clean, not that a blocking
+  // notice renders. The notice has its own tests.
+  ["/api/environment/ffmpeg", json({ ok: true })],
 ]);
 const MUTATION_RESPONSES = new Map([
   [`${PROJECT_PATH}/selection`, json({ ok: true, selection: null, updatedAt: null })],

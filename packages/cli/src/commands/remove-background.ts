@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
@@ -94,23 +95,23 @@ export default defineCommand({
           "Input file is required. Run `hyperframes remove-background --info` for providers.",
         ),
       );
-      process.exit(1);
+      failCommand();
     }
     if (!args.output) {
       console.error(c.error("--output (-o) is required. Use a .webm, .mov, or .png path."));
-      process.exit(1);
+      failCommand();
     }
     if (!isDevice(args.device)) {
       console.error(
         c.error(`Invalid --device '${String(args.device)}'. Use: ${DEVICES.join(", ")}.`),
       );
-      process.exit(1);
+      failCommand();
     }
     if (!isQuality(args.quality)) {
       console.error(
         c.error(`Invalid --quality '${String(args.quality)}'. Use: ${QUALITIES.join(", ")}.`),
       );
-      process.exit(1);
+      failCommand();
     }
 
     const inputPath = resolve(args.input);
@@ -184,7 +185,7 @@ export default defineCommand({
       } else {
         spin?.stop(c.error(`Background removal failed: ${message}`));
       }
-      process.exit(1);
+      failCommand();
     }
   },
 });

@@ -1,3 +1,4 @@
+import { failCommand } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth logout` — remove the credential file. With
  * `--keep-api-key`, only the OAuth block is cleared (no-op for
@@ -38,7 +39,7 @@ export default defineCommand({
 
     if (!(await ensureConfirmed(Boolean(args.yes), keepApiKey))) {
       console.log("Aborted.");
-      process.exit(1);
+      failCommand();
     }
 
     // Best-effort revoke before we wipe local state. RFC 7009 says

@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { INSERT_BOUNDARY_BAND } from "./timelineLayout";
 
 /**
  * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
@@ -115,7 +116,10 @@ export function resolveZoneDropPlacement(input: {
     trackOrder: zoneTracks,
     excludeKey: dragKey,
   });
-  if (placement.needsInsert) {
+  const originTrack = elements.find((element) => (element.key ?? element.id) === dragKey)?.track;
+  const snappedBackToOrigin =
+    originTrack != null && desired !== originTrack && placement.track === originTrack;
+  if (placement.needsInsert || snappedBackToOrigin) {
     const desiredRow = order.indexOf(desired);
     if (desiredRow < 0) {
       return {
@@ -123,41 +127,31 @@ export function resolveZoneDropPlacement(input: {
         insertRow: outOfRangeZoneInsertRow(order, zoneTracks, audioRow, desired),
       };
     }
-    // Prefer the gap NEAREST the pointer: insert above the aimed row when the
-    // pointer sits in its upper half AND that boundary is in the clip's own zone
-    // (else the visual/audio split would be crossed) — otherwise fall to below.
-    // `desired` is clamped into the zone, so both boundaries stay in-zone.
-    const insertRow =
-      preferInsertAbove && isInsertAllowedForZone(desiredRow, audioRow, isAudio)
-        ? desiredRow
-        : desiredRow + 1;
+    // When collision fallback found only the origin lane, insert on the far side
+    // of the aimed lane so normalization cannot turn the gesture into a no-op.
+    // Otherwise prefer the gap nearest the pointer, preserving normal insertion.
+    const originRow = originTrack == null ? -1 : order.indexOf(originTrack);
+    const insertAbove = snappedBackToOrigin
+      ? originRow > desiredRow
+      : preferInsertAbove && isInsertAllowedForZone(desiredRow, audioRow, isAudio);
+    const insertRow = insertAbove ? desiredRow : desiredRow + 1;
     return { track: desired, insertRow };
   }
   return { track: placement.track, insertRow: null };
 }
 
 /**
- * Fallback half-width (fraction of a track height) of the insert band straddling
- * a lane boundary — used only when the caller passes no explicit band. Production
- * threads the geometry-exact `INSERT_BOUNDARY_BAND` (timelineLayout.ts, = the clip
- * inset `CLIP_Y / TRACK_H`) so the band matches the rendered inter-clip gutter and
- * NEVER reaches into a clip body. Kept in sync with that constant; do not widen it
- * back toward the old 0.32 (which armed an insert across ~64% of every row — the
- * misfire that turned a plain horizontal drag into a phantom track insert).
- */
-const INSERT_BAND = 3 / 48;
-
-/**
  * Decide whether a vertical drag is inserting a new track at a lane boundary.
  * `rowFloat` is the pointer's position in track-height units from the top of the
  * first lane (0 = top of lane 0). Returns the boundary row to insert at
  * (0 = above the top lane, `trackCount` = below the bottom), or null when the
- * pointer is over a lane's middle band (a normal move/target).
+ * pointer is over a lane's middle band (a normal move/target). The default band
+ * preserves collapsed-row behavior; production passes the concrete row's band.
  */
 export function resolveInsertRow(
   rowFloat: number,
   trackCount: number,
-  band: number = INSERT_BAND,
+  band: number = INSERT_BOUNDARY_BAND,
 ): number | null {
   if (trackCount === 0) return 0;
   if (rowFloat <= 0) return 0;

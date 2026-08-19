@@ -7,261 +7,128 @@ metadata:
 
 # Card Morph Anchor
 
-A container smoothly transforms its width, height, border-radius, and (optionally) background between two visual states. The morph itself **IS the shot transition** — no separate transition effect needed. The viewer's eye tracks the morphing container as the anchor between shots.
+A free-floating container morphs apparent size, corner radius, and surface treatment between two shots — the morph itself IS the transition; the viewer's eye tracks the persistent container. Distinct from [anchored-layout-expand.md](anchored-layout-expand.md) (an edge-pinned live layout participant that grows along one axis and reflows neighbors — here nothing is pushed) and [theme-crossfade-morph.md](theme-crossfade-morph.md) (a whole-theme reskin under a fixed anchor — here a single container changes shape).
 
 ## How It Works
 
-A single GSAP tween animates multiple container properties simultaneously (width / height / border-radius / background). At the same time:
+Since `width`/`height` tweens are forbidden, **substitute uniform `scale` for apparent size**; the remaining morph channels are **paint-only**: `borderRadius`, `background`, `boxShadow`. All channels ride ONE tween (one ease, one duration) so the shape morphs in lockstep. Content choreography: old content fades out during the first ~40% of the morph, new content fades in during the last ~40% — the shape-only gap between is the natural "blink." Optionally the morph card itself fades at the very end, revealing the real next-shot element rendered behind it.
 
-1. **Old content** fades out during the first ~40% of the morph
-2. **New content** fades in during the last ~40% of the morph
-3. **Optional final fade** — the morph container itself fades to 0, revealing the actual next-shot element rendered behind it
-
-The persistent container provides visual continuity even as content and shape change.
-
-## HTML
+## Recipe
 
 ```html
-<div
-  class="scene"
-  id="morph-scene"
-  data-composition-id="morph-scene"
-  data-start="0"
-  data-duration="4"
-  data-track-index="0"
->
-  <!-- The persistent morph container -->
-  <div class="morph-card">
-    <div class="content-old">
-      <h2>{shotOneHeadline}</h2>
-      <p>{shotOneSubcopy}</p>
-    </div>
-    <div class="content-new">
-      <img src="{shotTwoIcon}" alt="logo" />
-    </div>
-  </div>
-
-  <!-- Optional: actual next-shot element behind the morph -->
-  <div class="next-shot-anchor">
-    <img src="{nextShotAnchor}" alt="anchor" />
-  </div>
+<!-- inside a standard scene clip (hyperframes-core) -->
+<!-- DOM order = stacking: the anchor renders BEFORE the card, so the card is on top -->
+<div class="next-shot-anchor"><img src="{nextShotAnchor}" alt="anchor" /></div>
+<div class="morph-card">
+  <div class="content-old">{shotOneContent}</div>
+  <div class="content-new">{shotTwoContent}</div>
 </div>
 ```
 
-## CSS (hero-frame layout)
-
-Card starts as a wide rectangle (shot 1 state). All properties present from the start; only opacities differ:
-
 ```css
-.scene {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-}
-
 .morph-card {
-  position: relative;
-  width: {SHOT_ONE_W}px;
-  height: {SHOT_ONE_H}px;
-  border-radius: {SHOT_ONE_RADIUS}px;
+  width: SHOT_ONE_W;
+  height: SHOT_ONE_H; /* shot-1 geometry; the morph is scale, never width/height */
+  border-radius: SHOT_ONE_RADIUS;
   background: {surfaceShotOne};
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  overflow: hidden; /* content must clip during the shape change */
   display: grid;
   place-items: center;
+  will-change: transform;
 }
-
 .content-old,
 .content-new {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 32px;
-}
-
-.content-old {
-  opacity: 1;
 }
 .content-new {
-  opacity: 0;
+  opacity: 0; /* author its inner sizes at apparent-size ÷ END_SCALE — it scales with the card */
 }
-
 .next-shot-anchor {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0; /* GSAP fades this in as morph card fades out */
-  /* Use DOM ORDER for stacking — render .next-shot-anchor BEFORE .morph-card
-     in markup so the morph card is naturally on top. Do NOT use z-index: -1
-     and then snap it positive mid-fade — that causes a visible pop. */
+  opacity: 0; /* fades in as the morph card fades out */
 }
 ```
 
-## GSAP Timeline
+```js
+const END_SCALE = SHOT_TWO_W / SHOT_ONE_W; // uniform — keep the two shots aspect-matched
 
-```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-<script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+// Hold shot 1 for HOLD_BEAT first — an instant morph reads as glitchy.
 
-  // Named constants — assign in your example only. See "How to Choose Values".
-  const HOLD_BEAT; // s — pre-morph dwell on shot 1
-  const MORPH_START; // s — usually = HOLD_BEAT
-  const MORPH_DUR; // s — full container morph length
-  const SHOT_TWO_W; // px — final container width
-  const SHOT_TWO_H; // px — final container height
-  const SHOT_TWO_RADIUS; // px — ≤ min(SHOT_TWO_W, SHOT_TWO_H) / 2
-  const OLD_FADE_FRAC; // 0..0.5 — fraction of MORPH_DUR for old content fade
-  const NEW_FADE_FRAC; // 0..0.5 — fraction of MORPH_DUR for new content fade
-  const FINAL_FADE_FRAC; // 0..0.3 — optional tail fade for handoff
-  // {surfaceShotTwo} is a CSS background token (solid or gradient).
+// One tween, all channels: uniform scale + paint-only properties.
+tl.to(
+  ".morph-card",
+  {
+    scale: END_SCALE,
+    borderRadius: SHOT_TWO_RADIUS / END_SCALE, // borderRadius is pre-scale — divide to land the APPARENT radius
+    background: "{surfaceShotTwo}",
+    boxShadow: "{shadowShotTwo}",
+    duration: MORPH_DUR,
+    ease: "power2.inOut",
+  },
+  MORPH_START,
+);
 
-  // Hold shot 1 — let the viewer register the wide banner before morphing.
+tl.to(
+  ".content-old",
+  { opacity: 0, duration: MORPH_DUR * OLD_FADE_FRAC, ease: "power1.in" },
+  MORPH_START,
+);
+tl.to(
+  ".content-new",
+  { opacity: 1, duration: MORPH_DUR * NEW_FADE_FRAC, ease: "power1.out" },
+  MORPH_START + MORPH_DUR * (1 - NEW_FADE_FRAC),
+);
 
-  // Phase 1 — Morph container properties simultaneously
-  tl.to(
-    ".morph-card",
-    {
-      width: SHOT_TWO_W,
-      height: SHOT_TWO_H,
-      borderRadius: SHOT_TWO_RADIUS,
-      background: "{surfaceShotTwo}",
-      duration: MORPH_DUR,
-      ease: "power2.inOut",
-    },
-    MORPH_START,
-  );
-
-  // Phase 2 — Old content fades during the FIRST OLD_FADE_FRAC of the morph
-  tl.to(
-    ".content-old",
-    {
-      opacity: 0,
-      duration: MORPH_DUR * OLD_FADE_FRAC,
-      ease: "power1.in",
-    },
-    MORPH_START,
-  );
-
-  // Phase 3 — New content fades in during the LAST NEW_FADE_FRAC of the morph
-  tl.to(
-    ".content-new",
-    {
-      opacity: 1,
-      duration: MORPH_DUR * NEW_FADE_FRAC,
-      ease: "power1.out",
-    },
-    MORPH_START + MORPH_DUR * (1 - NEW_FADE_FRAC),
-  );
-
-  // Optional Phase 4 — Final fade: morph container disappears at the very end,
-  // revealing the actual next-shot element behind it.
-  tl.to(
-    ".morph-card",
-    {
-      opacity: 0,
-      duration: MORPH_DUR * FINAL_FADE_FRAC,
-      ease: "power1.in",
-    },
-    MORPH_START + MORPH_DUR * (1 - FINAL_FADE_FRAC),
-  );
-
-  window.__timelines["morph-scene"] = tl;
-</script>
+// Optional handoff — card fades out over the pixel-identical real anchor.
+tl.to(
+  ".morph-card",
+  { opacity: 0, duration: MORPH_DUR * FINAL_FADE_FRAC, ease: "power1.in", immediateRender: false },
+  MORPH_START + MORPH_DUR * (1 - FINAL_FADE_FRAC),
+);
+tl.to(
+  ".next-shot-anchor",
+  { opacity: 1, duration: MORPH_DUR * FINAL_FADE_FRAC, ease: "power1.out" },
+  MORPH_START + MORPH_DUR * (1 - FINAL_FADE_FRAC),
+);
 ```
 
-## Key Properties to Morph
+## Morph channels
 
-| Property           | Shape of change                                                | Visual effect                |
-| ------------------ | -------------------------------------------------------------- | ---------------------------- |
-| `width` / `height` | `SHOT_ONE_W × SHOT_ONE_H` → `SHOT_TWO_W × SHOT_TWO_H`          | wide card shrinks to an icon |
-| `borderRadius`     | `SHOT_ONE_RADIUS` → `SHOT_TWO_RADIUS` (≤ half of smaller side) | rectangle becomes a circle   |
-| `background`       | `{surfaceShotOne}` → `{surfaceShotTwo}` (solid or gradient)    | container identity shifts    |
-| `boxShadow`        | base shadow → accent glow token                                | emphasis changes             |
+| channel        | how                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| apparent size  | uniform `scale` — the substitution for the forbidden `width`/`height` tween; aspect preserved  |
+| `borderRadius` | paint-only; pre-scale units — tween to `APPARENT_RADIUS / END_SCALE`, ≤ half the smaller side  |
+| `background`   | paint-only; gradients interpolate only with equal stop counts (solid→solid: `backgroundColor`) |
+| `boxShadow`    | paint-only; base shadow → accent glow shifts emphasis                                          |
 
-GSAP tweens all of these simultaneously when included in one `tl.to(...)` call.
+## Variations
 
-## How to Choose Values
+- **Landing on a non-centered target** (dock icon, sidebar slot): add `x`/`y` to the same tween, computed as the FLIP-style delta between the card's and the target's rects — `getBoundingClientRect()` both at build time (single-scene only, per the contract) and tween the difference. Don't hand-compute from CSS values: paddings, borders, and parent transforms compound, and center-vs-edge arithmetic is the classic off-by-half bug.
+- **Aspect change between shots**: uniform scale preserves aspect — morph to the nearest uniform fit and let the crossfade/handoff absorb the small delta, or drop the handoff and hold the card's final state.
 
-- **HOLD_BEAT** — pre-morph dwell so the viewer registers shot 1 before it changes
-  - Range: 0.6-1.5 s
-  - Effects: low end feels rushed / glitchy; high end stalls pacing
-  - Constraints: must be ≥ shot 1's content entry settle time
-- **MORPH_START** — when the container morph begins
-  - Range: equal to `HOLD_BEAT` in the canonical pattern
-  - Constraints: must be > any shot-1 entry tween end
-- **MORPH_DUR** — full length of the simultaneous container morph
-  - Range: 0.6-1.2 s
-  - Effects: low end reads as a snap; high end loses momentum
-  - Constraints: short morphs (<0.5s) cannot fit both old-fade and new-fade
-- **SHOT_TWO_W / SHOT_TWO_H** — final container dimensions
-  - Range: 80-400 px when handing off to an icon-sized anchor
-  - Constraints: if handing off (`.next-shot-anchor`), MUST match the anchor's dimensions exactly to avoid a visible pop
-- **SHOT_TWO_RADIUS** — final corner radius (use to read as circle / pill / soft-rect)
-  - Range: 0 to `min(SHOT_TWO_W, SHOT_TWO_H) / 2`
-  - Effects: half-of-smaller-side = perfect circle; smaller = soft rect
-  - Constraints: > half is visually clamped — wastes the tween
-- **OLD_FADE_FRAC** — fraction of `MORPH_DUR` over which shot-1 content fades out, starting at `MORPH_START`
-  - Range: 0.3-0.5
-  - Effects: low end clips shot 1 too early; high end overlaps with shot 2 content
-  - Constraints: `OLD_FADE_FRAC + NEW_FADE_FRAC ≤ 1` (gap between is the "shape-only" moment)
-- **NEW_FADE_FRAC** — fraction of `MORPH_DUR` over which shot-2 content fades in, ending at `MORPH_START + MORPH_DUR`
-  - Range: 0.3-0.5
-  - Effects: symmetric to OLD_FADE_FRAC
-- **FINAL_FADE_FRAC** — optional tail fraction during which the morph container itself fades to 0 for handoff
-  - Range: 0 (no handoff) or 0.1-0.2
-  - Constraints: only use when `.next-shot-anchor` matches the morph's final visual exactly
-- **Ease family** — discrete choice
-  - Options: `power2.inOut` (canonical, balanced), `power3.inOut` (snappier), `expo.inOut` (most cinematic but can feel sluggish at low durations)
-  - Avoid `back.out` / `elastic.out` on the morph itself — overshoot fights the dimensional change
+## Values
 
-CSS-side placeholders (`SHOT_ONE_W`, `SHOT_ONE_H`, `SHOT_ONE_RADIUS`, `{surfaceShotOne}`, `{surfaceShotTwo}`) take real values in the example. Pick `{surfaceShotOne}` and `{surfaceShotTwo}` so the gradient/solid stops counts match (GSAP can interpolate background gradients only when stop counts agree).
-
-## Key Principles
-
-- **All target properties in one tween** — they share a single ease and duration so they morph in lockstep
-- **Old content fades early, new content fades late** — the container shape change happens between, providing a natural "blink" moment
-- **Final fade is optional** — use it when the next shot has a real anchor element to hand off to (e.g. avatar that the icon morphed into "is")
-- **Same easing for shape and crossfade** — avoid mixing `power2.inOut` morph with `bounce.out` content, looks unsynchronized
-- **❗ If you use `.next-shot-anchor` for handoff, its visuals must be pixel-identical to `.morph-card`'s final state** — same `width` / `height`, same `border-radius`, same `background`, same `box-shadow`, same internal icon dimensions. Any visual delta between the two = visible pop during the crossfade. If you can't match exactly, **drop the handoff** and just hold the morph card at its final state (add a breath if needed for life).
+| token             | range                     | notes                                                                                |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| HOLD_BEAT         | 0.6–1.5s                  | ≥ shot 1's entry settle; the viewer must register shot 1 first                       |
+| MORPH_DUR         | 0.6–1.2s                  | < 0.5s can't fit both content fades                                                  |
+| END_SCALE         | SHOT_TWO_W / SHOT_ONE_W   | icon-sized handoffs typically land at 80–400px apparent width                        |
+| SHOT_TWO_RADIUS   | ≤ min(W, H)/2 apparent    | half the smaller side = perfect circle; beyond is clamped                            |
+| OLD/NEW_FADE_FRAC | 0.3–0.5 each, sum ≤ 1     | the gap between is the shape-only "blink"                                            |
+| FINAL_FADE_FRAC   | 0 (no handoff) or 0.1–0.2 | only when a pixel-identical anchor exists                                            |
+| ease              | `power2.inOut` canonical  | `power3`/`expo.inOut` OK; never `back`/`elastic` — overshoot fights the shape change |
 
 ## Critical Constraints
 
-- **`overflow: hidden`** on the morph container — content must clip during shape change, otherwise content overflows the morphing border radius
-- **Hold a beat before morphing** — let the viewer register shot 1's content before morphing; instant morph reads as glitchy
-- **Timeline must be paused**: `gsap.timeline({ paused: true })`. Never `tl.play()`
-- **Registry key = `data-composition-id`**: `window.__timelines["morph-scene"]` must match scene root
-- **Use `background` tween, not `background-color`**: gradients need `background` (GSAP supports gradient interpolation when targets are gradients with same number of stops). For solid → solid, `backgroundColor` works.
-- **`borderRadius` should be ≤ half the smaller dimension** at end state — otherwise the radius is visually clamped and the morph looks abrupt at the boundary
-- **❗ Don't snap `z-index` mid-fade** — if you need `.next-shot-anchor` to appear from behind the morph card, use **DOM order** (render `.next-shot-anchor` BEFORE `.morph-card` so the morph card is naturally on top), then crossfade their opacities. A `tl.set({ zIndex: ... })` call during an active opacity tween causes a visible flicker as the stacking order flips before the opacity transition finishes.
+- **❗ Uniform-scale substitution** — never tween `width`/`height`; `scale` + the paint-only channels (`borderRadius`, `background`, `boxShadow`) are the ONLY morph properties.
+- **❗ Handoff anchor must be pixel-identical to the card's final state** — same apparent size, radius, background, shadow, inner icon dimensions. Any delta = a visible pop during the crossfade. Can't match exactly? Drop the handoff and hold the morph card.
+- **❗ Stacking by DOM order, never a z-index snap mid-fade** — render the anchor before the card; a `tl.set({ zIndex })` during an active opacity tween flips stacking before the fade finishes and flickers.
+- **`overflow: hidden`** on the card — content must clip as the radius changes.
+- **Hold a beat before morphing**; same ease family for shape and crossfade (mixed eases read unsynchronized).
 
-## Variation: Morphing to a target element's position
+## See also
 
-When shot 2 isn't centered (e.g. the morph card "lands" on a specific icon in a dock, sidebar, or grid), compute the target `top` / `left` from the **target element's element-position**, not its visual center. Common mistake: subtracting `height/2` to get center, then applying that to the morph-card's `top` — but if `.morph-card` uses absolute positioning with `top` + `margin: 0` (no transform-centering), `top` represents the **element top edge**, not the center.
-
-Math template (example: morph card lands on icon at bottom dock):
-
-```
-target_element_top = viewport_height − dock_bottom_offset − dock_padding_y − icon_height
-                   = 1080 − 60 − 22 − 110 = 888 px
-```
-
-Then tween `.morph-card { top: 888 }` so its element-top aligns with the target icon's element-top. If you mistakenly tween to `888 + icon_height/2 = 943` you'll land below; tweening to a "center" value like `top: 933` (off-by-arithmetic) will be even worse.
-
-Always **measure the target element with `getBoundingClientRect()`** before the timeline starts, and use those numbers — don't hand-compute from CSS values, since paddings, borders, and parent transforms compound.
-
-## Combinations
-
-- [scale-swap-transition.md](scale-swap-transition.md) — simpler morph without dimension change (just scale + content swap)
-- [sine-wave-loop.md](sine-wave-loop.md) — gentle breathing on the final state (e.g. final small circular icon idles with a breath)
-
-## Pairs with HF skills
-
-- `/hyperframes-animation` — timeline + multi-property tween reference
-- `/hyperframes-core` — composition wiring, `data-*` attributes
-- `/hyperframes-cli` — `hyperframes lint` to verify scene structure
+`anchored-layout-expand` (edge-pinned one-axis growth with reflow) · `theme-crossfade-morph` (whole-theme reskin under a fixed anchor) · `scale-swap-transition` (content swap without shape change) · `sine-wave-loop` (a breath on the final state).

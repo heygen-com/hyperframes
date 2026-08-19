@@ -57,13 +57,11 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
     The release commit can include the version bump, `releases/v0.6.53.md`, and the docs changelog update.
   </Step>
   <Step title="Publish">
-    Push the release tag:
-    ```bash
-    git push origin main --tags
-    ```
-    The publish workflow uses `releases/v0.6.53.md` as the GitHub Release body when the file exists. If no reviewed release file is present, it falls back to GitHub-generated notes.
+    Push the `release/v0.6.53` branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow pins its checkout to the exact merge SHA, verifies that SHA, creates `v0.6.53`, and uses `releases/v0.6.53.md` as the GitHub Release body. If no reviewed release file is present, it falls back to GitHub-generated notes.
 
-    The generated compare link points to the future `v0.6.53` tag. It may not resolve between the PR merge and the final tag push.
+    To recover a failed publish, rerun the original merged-PR workflow. Do not push the stable tag or use a manual dispatch; those paths are intentionally disabled so recovery cannot publish a different commit.
+
+    The generated compare link points to the future `v0.6.53` tag. It may not resolve until the release PR merges and the publish workflow creates the tag.
   </Step>
 </Steps>
 
@@ -79,7 +77,13 @@ Without `--force`, the draft command leaves an existing `releases/vX.Y.Z.md` fil
 
 ## Weekly digest workflow
 
-Weekly updates are editorial rollups, not release notes. Keep `docs/changelog.mdx` versioned and use `docs/weekly-updates.mdx` for curated weekly highlights that can also be adapted for Discord and X.
+Weekly packets are editorial source material, not a public documentation page. Keep `docs/changelog.mdx` versioned. Only publish a human-readable product update when there is a real story, an owner, and enough context to help users act.
+
+When `docs/product-updates.mdx` is public, the release owner reviews it during
+the first stable release of each month. Update it only when several changes form
+a useful user story; otherwise keep the latest dated edition and confirm that
+its claims still describe the current product. Remove the page from navigation
+if no one owns that review.
 
 Generate an editable weekly packet from the repository root:
 
@@ -89,13 +93,21 @@ bun run changelog:weekly --from 2026-06-01 --to 2026-06-07 --write
 
 Run it from an up-to-date `main` branch so the selected range reflects public history, not a feature branch.
 
-This creates:
+This writes three internal editorial drafts:
 
 - `updates/weekly/2026-06-07.md`
 - `updates/social/2026-06-07.discord.md`
 - `updates/social/2026-06-07.x.md`
 
-It also prepends a matching entry to `docs/weekly-updates.mdx`. Review and rewrite the generated files before publishing. Social drafts are never posted automatically.
+<Warning>
+  It also writes a fourth file, and that one is public. `--write` prepends the
+  generated entry straight into `docs/weekly-updates.mdx`, which ships in the
+  sidebar under **Explore**. Review that diff with the same care as the page it
+  is — it is not a draft. Re-running for a range already present is a no-op, so
+  the entry is safe to edit in place afterwards.
+</Warning>
+
+Review and rewrite all four before publishing anything. Social drafts are never posted automatically. Exact versioned release notes stay in the [Changelog](/changelog); [Weekly updates](/weekly-updates) carries the curated highlights and an RSS feed.
 
 ## Writing style
 

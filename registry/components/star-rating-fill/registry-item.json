@@ -1,0 +1,56 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "star-rating-fill",
+  "type": "hyperframes:component",
+  "title": "Star Rating Fill",
+  "description": "A token-driven star row whose colored layer sweeps to a rating, preserves the fractional final star, and can count the value in sync.",
+  "tags": ["data", "rating", "stars", "fractional", "fill", "prove"],
+  "jobs": ["prove"],
+  "family": "data",
+  "profile": "holdable",
+  "evidence": "GAP A2+B1 convergent miss; rules stat-bars-and-fills: a colored star layer clips left to right over a muted layer and stops at the fractional rating.",
+  "syncPoints": [{ "id": "fill-settled", "phase": "in", "offset": 1.3 }],
+  "files": [
+    {
+      "path": "star-rating-fill.html",
+      "target": "compositions/components/star-rating-fill.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "rating",
+      "type": "number",
+      "role": "content",
+      "label": "Rating",
+      "description": "Target rating in star units from 0 to 5.",
+      "default": 4.8,
+      "min": 0,
+      "max": 5,
+      "step": 0.1
+    },
+    {
+      "id": "starCount",
+      "type": "number",
+      "role": "layout",
+      "label": "Star count",
+      "description": "Number of stars shown in the row.",
+      "default": 5,
+      "min": 1,
+      "max": 10,
+      "step": 1
+    },
+    {
+      "id": "showValue",
+      "type": "enum",
+      "role": "content",
+      "label": "Show value",
+      "description": "Show or hide the synchronized numeric rating.",
+      "default": "yes",
+      "options": [
+        { "value": "yes", "label": "Yes" },
+        { "value": "no", "label": "No" }
+      ]
+    }
+  ]
+}

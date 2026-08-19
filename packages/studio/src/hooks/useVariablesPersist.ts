@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
-import { persistSdkSerialize } from "../utils/sdkCutover";
+import { cutoverCommittedOrThrow, persistSdkCandidateMutation } from "../utils/sdkCutover";
 import type { UseSlideshowPersistParams } from "./useSlideshowPersist";
 
 /** Same single-writer dependency set the slideshow persist path uses. */
@@ -21,6 +21,7 @@ export function useVariablesPersist({
   recordEdit,
   reloadPreview,
   domEditSaveTimestampRef,
+  publishSdkSession,
 }: UseVariablesPersistParams): (
   label: string,
   mutate: (session: Composition) => void,
@@ -30,11 +31,8 @@ export function useVariablesPersist({
       if (!sdkSession) return false;
       const path = activeCompPath ?? "index.html";
       const originalContent = await readProjectFile(path);
-      mutate(sdkSession);
-      const after = sdkSession.serialize();
-      if (after === originalContent) return false;
-      await persistSdkSerialize(
-        after,
+      const result = await persistSdkCandidateMutation(
+        sdkSession,
         path,
         originalContent,
         {
@@ -43,10 +41,13 @@ export function useVariablesPersist({
           reloadPreview,
           domEditSaveTimestampRef,
           compositionPath: activeCompPath,
+          readProjectFile,
+          publishSession: publishSdkSession,
         },
+        mutate,
         { label },
       );
-      return true;
+      return cutoverCommittedOrThrow(result);
     },
     [
       sdkSession,
@@ -56,6 +57,7 @@ export function useVariablesPersist({
       recordEdit,
       reloadPreview,
       domEditSaveTimestampRef,
+      publishSdkSession,
     ],
   );
 }

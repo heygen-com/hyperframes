@@ -10,6 +10,7 @@ export {
   captureFrameToBuffer,
   getCompositionDuration,
   getCapturePerfSummary,
+  isTransientBrowserError,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
   type CaptureResult,

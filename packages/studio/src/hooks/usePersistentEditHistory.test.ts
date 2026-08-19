@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyEditHistory } from "../utils/editHistory";
 import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
 import { createMemoryEditHistoryStorage } from "../utils/editHistoryStorage";
+import {
+  serializeStudioFileMutation,
+  serializeStudioFileMutations,
+} from "../utils/studioFileMutationCoordinator";
 import {
   createPersistentEditHistoryController,
   createPersistentEditHistoryStore,
@@ -211,6 +215,83 @@ describe("createPersistentEditHistoryController", () => {
     });
     expect(store.snapshot().canUndo).toBe(false);
     expect(store.snapshot().canRedo).toBe(true);
+  });
+
+  it("waits for same-file mutations before checking an undo hash", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: createEmptyEditHistory(),
+      now: () => 100,
+      onChange: () => {},
+    });
+    await store.recordEdit({
+      label: "Edit source",
+      kind: "source",
+      files: { "index.html": { before: "before", after: "after" } },
+    });
+
+    let disk = "after";
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writeFile = vi.fn(async (_path: string, content: string) => {
+      disk = content;
+    });
+    const priorMutation = serializeStudioFileMutation(writeFile, "index.html", async () => {
+      await blocked;
+      disk = "newer-edit";
+    });
+    const readFile = vi.fn(async () => disk);
+    const undo = store.undo({
+      readFile,
+      writeFile,
+      serialize: (paths, task) => serializeStudioFileMutations(writeFile, paths, task),
+    });
+
+    await Promise.resolve();
+    expect(readFile).not.toHaveBeenCalled();
+    release();
+    await priorMutation;
+    await expect(undo).resolves.toMatchObject({ ok: false, reason: "content-mismatch" });
+    expect(disk).toBe("newer-edit");
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(store.snapshot().canUndo).toBe(true);
+  });
+
+  it("returns per-file restored/previous content so the preview can soft-apply", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: createEmptyEditHistory(),
+      now: () => 100,
+      onChange: () => {},
+    });
+    await store.recordEdit({
+      label: "Move layer",
+      kind: "manual",
+      files: { "index.html": { before: "OLD", after: "NEW" } },
+    });
+    const disk: Record<string, string> = { "index.html": "NEW" };
+    const undo = await store.undo({
+      readFile: async (p) => disk[p],
+      writeFile: async (p, c) => {
+        disk[p] = c;
+      },
+    });
+    // `restored` = bytes written (the undo target), `previous` = the current live bytes.
+    expect(undo.files).toEqual({ "index.html": { previous: "NEW", restored: "OLD" } });
+
+    const redo = await store.redo({
+      readFile: async (p) => disk[p],
+      writeFile: async (p, c) => {
+        disk[p] = c;
+      },
+    });
+    expect(redo.files).toEqual({ "index.html": { previous: "OLD", restored: "NEW" } });
   });
 
   it("rolls back files when an undo write fails partway through", async () => {

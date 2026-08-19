@@ -1,0 +1,143 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spiral-galaxy",
+  "type": "hyperframes:block",
+  "title": "Spiral Galaxy",
+  "description": "A spiral galaxy seen from outside, turning with real differential rotation: inner stars orbit faster than outer ones, so the arms wind up over the shot instead of spinning rigidly. 20,000 additive GPU sprites, seeded once and solved directly from time, so any frame can be rendered on its own.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "tags": ["hero", "space", "particles", "webgl", "background"],
+  "variables": [
+    {
+      "id": "stars",
+      "type": "number",
+      "label": "Star count",
+      "default": 20000,
+      "min": 2000,
+      "max": 40000,
+      "step": 1000
+    },
+    {
+      "id": "arms",
+      "type": "number",
+      "label": "Arm count",
+      "default": 3,
+      "min": 2,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "id": "rate",
+      "type": "number",
+      "label": "Rotation rate",
+      "default": 0.25,
+      "min": 0,
+      "max": 1.5,
+      "step": 0.05,
+      "unit": "rad/s"
+    },
+    {
+      "id": "glow",
+      "type": "number",
+      "label": "Core brightness",
+      "default": 1.9,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1
+    },
+    {
+      "id": "size",
+      "type": "number",
+      "label": "Star size",
+      "default": 10,
+      "min": 2,
+      "max": 40,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "id": "core",
+      "type": "color",
+      "label": "Core colour",
+      "default": "#ffa575"
+    },
+    {
+      "id": "rim",
+      "type": "color",
+      "label": "Rim colour",
+      "default": "#311599"
+    }
+  ],
+  "files": [
+    {
+      "path": "spiral-galaxy.html",
+      "target": "compositions/spiral-galaxy.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "params": [
+    {
+      "key": "stars",
+      "label": "Star count",
+      "type": "number",
+      "default": 20000,
+      "min": 2000,
+      "max": 40000,
+      "step": 1000
+    },
+    {
+      "key": "arms",
+      "label": "Arm count",
+      "type": "number",
+      "default": 3,
+      "min": 2,
+      "max": 8,
+      "step": 1
+    },
+    {
+      "key": "rate",
+      "label": "Rotation rate",
+      "type": "number",
+      "default": 0.25,
+      "min": 0,
+      "max": 1.5,
+      "step": 0.05,
+      "unit": "rad/s"
+    },
+    {
+      "key": "glow",
+      "label": "Core brightness",
+      "type": "number",
+      "default": 1.9,
+      "min": 0.2,
+      "max": 4,
+      "step": 0.1
+    },
+    {
+      "key": "size",
+      "label": "Star size",
+      "type": "number",
+      "default": 10,
+      "min": 2,
+      "max": 40,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "key": "core",
+      "label": "Core colour",
+      "type": "color",
+      "default": "#ffa575"
+    },
+    {
+      "key": "rim",
+      "label": "Rim colour",
+      "type": "color",
+      "default": "#311599"
+    }
+  ]
+}

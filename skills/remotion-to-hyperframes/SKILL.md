@@ -7,7 +7,7 @@ description: 'Port an existing Remotion (React) composition''s source to HyperFr
 
 # Remotion to HyperFrames
 
-> **Confirm the route before you build.** Use this **only** to port an existing **Remotion** (React) composition's source into HyperFrames. Authoring a **new** composition (even one inspired by a Remotion video) → the creation workflows / `/general-video`. **Out of scope** (one-way, Remotion-only): no reverse export (HyperFrames → Remotion or any framework), and a **non-Remotion** source (After Effects, Framer Motion, plain React / CSS) has no Remotion source to translate → re-create via `/general-video`. Unsure, or only a passing Remotion mention? **Read `/hyperframes` first.**
+> **The front door is `/hyperframes`.** Use this **only** to port an existing **Remotion** (React) composition's source into HyperFrames, one way. Authoring a **new** composition, re-creating from a non-Remotion source (After Effects, Framer Motion, plain React / CSS — there is no Remotion source to translate), a passing Remotion mention, or any uncertainty → read `/hyperframes` first: the intent layer owns every route decision.
 
 ## Overview
 

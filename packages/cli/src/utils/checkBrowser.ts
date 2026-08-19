@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
+  DENSE_GEOMETRY_SEEK_OPTIONS,
   DEFAULT_ZOOM_PADDING_PX,
   DEFAULT_ZOOM_SCALE,
   captureRegionCrop,
@@ -18,6 +19,13 @@ import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
+import { resolveAutoProxy } from "./projectConfig.js";
+import {
+  decideMediaProxyEligibility,
+  proxyVariantFor,
+  scanProjectMediaCodecMap,
+} from "@hyperframes/studio-server/media-codec-map";
+import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -34,7 +42,11 @@ import type {
   ContrastAuditEntry,
   ContrastCapture,
   GeometryCandidateRequest,
+  LayoutOptions,
   MotionSpecResolution,
+  OffPivotFrame,
+  OffPivotRotationSample,
+  RotationSample,
   RunAuditGrid,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
@@ -46,6 +58,7 @@ interface RuntimeDraft {
   time: number;
   url?: string;
   line?: number;
+  count?: number;
 }
 
 interface AnchorRequest {
@@ -82,6 +95,54 @@ interface FinishedContrast {
   bg: string;
 }
 
+/**
+ * Awaits the H.264 authoring proxy for every browser-hostile local video
+ * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
+ * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
+ * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
+ * cannot fit inside that window — without this, a project's first
+ * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
+ * instead of paying a bounded one-time transcode cost
+ * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
+ * Best-effort: a probe or transcode failure does not fail `check`; one summary
+ * line records the pre-resolve outcome before the runtime attempts playback.
+ */
+export async function preResolveHostileMediaProxies(
+  projectDir: string,
+  html: string,
+  autoProxyOverride?: boolean,
+): Promise<void> {
+  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return;
+  let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
+  try {
+    codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
+  } catch (err) {
+    console.info(
+      `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
+    );
+    return;
+  }
+  const hostileEntries = Object.entries(codecMap).filter(
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+  );
+  if (hostileEntries.length === 0) return;
+
+  const startedAt = Date.now();
+  const results = await Promise.allSettled(
+    hostileEntries.map(([pathname, facts]) =>
+      resolveProxy(
+        projectDir,
+        resolve(projectDir, pathname.replace(/^\/+/, "")),
+        proxyVariantFor(facts),
+      ),
+    ),
+  );
+  const failed = results.filter((result) => result.status === "rejected").length;
+  console.info(
+    `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
+  );
+}
+
 export async function runBrowserCheck(
   project: ProjectDir,
   options: CheckOptions,
@@ -90,7 +151,14 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  const server = await serveStaticProjectHtml(project.dir, html, "Failed to bind check server");
+  await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
+  const server = await serveStaticProjectHtml(
+    project.dir,
+    html,
+    "Failed to bind check server",
+    [],
+    options.autoProxy,
+  );
   const drafts: RuntimeDraft[] = [];
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
@@ -98,9 +166,10 @@ export async function runBrowserCheck(
   try {
     const launchSettleStart = Date.now();
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
     });
     chromeBrowser = session.browser;
@@ -147,14 +216,21 @@ export async function captureFindingCrops(
   if (requests.length === 0) return [];
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  const server = await serveStaticProjectHtml(project.dir, html, "Failed to bind check server");
+  const server = await serveStaticProjectHtml(
+    project.dir,
+    html,
+    "Failed to bind check server",
+    [],
+    options.autoProxy,
+  );
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   const written: string[] = [];
   try {
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "capturing finding crops",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     });
     chromeBrowser = session.browser;
     const page = session.page;
@@ -180,13 +256,47 @@ export async function captureFindingCrops(
   }
 }
 
+// `swapToProxy` / `emitUnavailableDiagnostic` (packages/core/src/runtime/
+// mediaProxy.ts) embed their stable diagnostic codes in the console.info line
+// precisely so this scraper can match a token instead of prose. Matching the
+// shared "runtime_media_proxy_" prefix surfaces both codes; only those
+// runtime-emitted info lines should ever become findings here — an ordinary
+// `console.info` from a composition author's own script must not.
+const MEDIA_PROXY_MARKER_PREFIX = "[hyperframes] runtime_media_proxy_";
+const MEDIA_PROXY_UNAVAILABLE_MARKER = "[hyperframes] runtime_media_proxy_unavailable";
+const WEBGPU_RUNTIME_FAILURE =
+  /\b(?:GPUValidationError|GPUOutOfMemoryError|GPUInternalError)\b|WebGPU uncaptured error|(?:destroyed\b.*\b(?:GPU )?(?:resource|buffer|texture)\b.*\bsubmit)|(?:(?:GPU )?(?:resource|buffer|texture)\b.*\bdestroyed\b.*\bsubmit)/i;
+
+function isWebGpuRuntimeFailure(text: string): boolean {
+  return WEBGPU_RUNTIME_FAILURE.test(text);
+}
+
+function pushRuntimeDraft(drafts: RuntimeDraft[], draft: RuntimeDraft): void {
+  if (draft.code !== "webgpu_runtime_error") {
+    drafts.push(draft);
+    return;
+  }
+  const duplicate = drafts.find(
+    (entry) =>
+      entry.code === draft.code &&
+      entry.message === draft.message &&
+      entry.url === draft.url &&
+      entry.line === draft.line,
+  );
+  if (duplicate) {
+    duplicate.count = (duplicate.count ?? 1) + 1;
+    return;
+  }
+  drafts.push({ ...draft, count: 1 });
+}
+
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
     const type = message.type();
     const text = message.text();
     if (type === "error" && !text.startsWith("Failed to load resource")) {
       const location = message.location();
-      drafts.push({
+      pushRuntimeDraft(drafts, {
         code: "console_error",
         severity: "error",
         message: text,
@@ -196,9 +306,22 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       });
     } else if (type === "warn") {
       const location = message.location();
-      drafts.push({
-        code: "console_warning",
-        severity: "warning",
+      const webGpuFailure = isWebGpuRuntimeFailure(text);
+      pushRuntimeDraft(drafts, {
+        code: webGpuFailure ? "webgpu_runtime_error" : "console_warning",
+        severity: webGpuFailure ? "error" : "warning",
+        message: text,
+        time: currentTime(),
+        url: location.url,
+        line: location.lineNumber,
+      });
+    } else if (type === "info" && text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) {
+      const location = message.location();
+      pushRuntimeDraft(drafts, {
+        code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
+          ? "media_proxy_unavailable"
+          : "media_proxy_fallback",
+        severity: "info",
         message: text,
         time: currentTime(),
         url: location.url,
@@ -211,7 +334,12 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (message.includes("Unexpected token '<'") || message.includes("Unexpected token '&lt;'")) {
       return;
     }
-    drafts.push({ code: "page_error", severity: "error", message, time: currentTime() });
+    pushRuntimeDraft(drafts, {
+      code: "page_error",
+      severity: "error",
+      message,
+      time: currentTime(),
+    });
   });
   wireNetworkListeners(page, drafts, currentTime);
 }
@@ -256,8 +384,15 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
       setTime(time);
       await seekCompositionTimeline(page, time, AUDIT_SEEK_OPTIONS);
     },
-    collectLayout: (time, tolerance) => collectLayout(page, time, tolerance),
+    seekGeometry: async (time) => {
+      setTime(time);
+      await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
+    },
+    collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
+    collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
+    collectRotationSample: (time) => collectRotationSample(page, time),
+    collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -357,15 +492,35 @@ async function collectLayout(
   page: Page,
   time: number,
   tolerance: number,
+  layout?: LayoutOptions,
 ): Promise<AnchoredLayoutIssue[]> {
   const raw = await page.evaluate(
-    (options: { time: number; tolerance: number }) => {
+    (options: { time: number; tolerance: number; proseCoverageFloor?: number }) => {
       const audit = Reflect.get(window, "__hyperframesLayoutAudit");
       if (typeof audit !== "function") return [];
       const result = Reflect.apply(audit, window, [options]);
       return Array.isArray(result) ? result : [];
     },
-    { time, tolerance },
+    {
+      time,
+      tolerance,
+      ...(typeof layout?.proseCoverageFloor === "number"
+        ? { proseCoverageFloor: layout.proseCoverageFloor }
+        : {}),
+    },
+  );
+  return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
+}
+
+async function collectOverlap(page: Page, time: number): Promise<AnchoredLayoutIssue[]> {
+  const raw = await page.evaluate(
+    (options: { time: number }) => {
+      const audit = Reflect.get(window, "__hyperframesOverlapAudit");
+      if (typeof audit !== "function") return [];
+      const result = Reflect.apply(audit, window, [options]);
+      return Array.isArray(result) ? result : [];
+    },
+    { time },
   );
   return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
 }
@@ -377,6 +532,82 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
     const result = Reflect.apply(geometry, window, []);
     return typeof result === "string" ? result : "";
   });
+}
+
+/** Invoke a `window.__hyperframes*` sampler injected by layout-audit.browser.js
+ * and return its array result (or [] when absent / non-array). Shared by the
+ * per-frame sample collectors so the page.evaluate boilerplate lives once. */
+async function evaluateSampler(page: Page, globalName: string): Promise<unknown[]> {
+  return page.evaluate((name) => {
+    const sample = Reflect.get(window, name);
+    if (typeof sample !== "function") return [];
+    const result = Reflect.apply(sample, window, []);
+    return Array.isArray(result) ? result : [];
+  }, globalName);
+}
+
+async function collectRotationSample(page: Page, time: number): Promise<RotationSample[]> {
+  const raw = await evaluateSampler(page, "__hyperframesRotationSample");
+  return raw.flatMap((value) => parseRotationSample(value, time));
+}
+
+function parseRotationSample(value: unknown, time: number): RotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const cx = numberValue(value, "cx");
+  const cy = numberValue(value, "cy");
+  const w = numberValue(value, "w");
+  const h = numberValue(value, "h");
+  const angle = numberValue(value, "angle");
+  if (!selector || cx === null || cy === null || w === null || h === null || angle === null) {
+    return [];
+  }
+  return [{ time, selector, cx, cy, w, h, angle }];
+}
+
+async function collectOffPivotRotationSample(page: Page, time: number): Promise<OffPivotFrame> {
+  const raw = await evaluateSampler(page, "__hyperframesOffPivotRotationSample");
+  return { time, samples: raw.flatMap(parseOffPivotRotationSample) };
+}
+
+/** Read every named key as a finite number; null if ANY is missing/non-finite.
+ * The mapped return type keeps each field a plain `number` (not `number |
+ * undefined`) so callers read `nums.ax` without re-narrowing. */
+function requiredNumbers<K extends string>(
+  value: Record<string, unknown>,
+  keys: readonly K[],
+): { [P in K]: number } | null {
+  const out = {} as { [P in K]: number };
+  for (const key of keys) {
+    const num = numberValue(value, key);
+    if (num === null) return null;
+    out[key] = num;
+  }
+  return out;
+}
+
+const OFF_PIVOT_REQUIRED_NUMBERS = ["ax", "ay", "bx", "by", "len", "angle", "hubCount"] as const;
+
+function parseOffPivotRotationSample(value: unknown): OffPivotRotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const nums = requiredNumbers(value, OFF_PIVOT_REQUIRED_NUMBERS);
+  if (!selector || !nums) return [];
+  return [
+    {
+      selector,
+      ax: nums.ax,
+      ay: nums.ay,
+      bx: nums.bx,
+      by: nums.by,
+      len: nums.len,
+      angle: nums.angle,
+      hx: numberValue(value, "hx"),
+      hy: numberValue(value, "hy"),
+      hr: numberValue(value, "hr"),
+      hubCount: nums.hubCount,
+    },
+  ];
 }
 
 async function collectGeometryCandidates(
@@ -510,7 +741,11 @@ async function collectContrast(
     // This screenshot is the one contrast math is sampled from below — it must
     // stay untouched by the annotation overlay (finishContrast reads real
     // painted pixels), so annotation only ever happens on a SECOND shot.
-    const measurementShot = await page.screenshot({ encoding: "base64", type: "png" });
+    const measurementShot = await page.screenshot({
+      encoding: "base64",
+      type: "png",
+      omitBackground: true,
+    });
     if (typeof measurementShot !== "string") throw new Error("Contrast screenshot was not base64");
     const raw = await finishContrast(
       page,
@@ -520,6 +755,12 @@ async function collectContrast(
     );
     const finished = raw.flatMap(parseFinishedContrast);
     const entries = joinContrastEntries(finished, prepared);
+    // __contrastAuditFinish restores the text paint hidden by prepare. The
+    // measurement screenshot intentionally has glyphs removed so contrast
+    // can sample the pixels behind them; never persist that image as visual
+    // QA evidence. Capture the restored page for the overview instead.
+    const overviewShot = await page.screenshot({ encoding: "base64", type: "png" });
+    if (typeof overviewShot !== "string") throw new Error("Overview screenshot was not base64");
     // Contrast failures are only known once measurement above completes, so
     // they're appended to the layout-derived annotations passed in by the
     // pipeline rather than being requested up front.
@@ -527,7 +768,7 @@ async function collectContrast(
       ...layoutAnnotations,
       ...contrastFailureAnnotations(entries, layoutAnnotations.length),
     ];
-    const pngBase64 = await captureOverviewShot(page, annotations, measurementShot);
+    const pngBase64 = await captureOverviewShot(page, annotations, overviewShot);
     return { entries, pngBase64 };
   } finally {
     await page
@@ -879,7 +1120,8 @@ function runtimeFinding(draft: RuntimeDraft, root: CheckAnchor): CheckFinding {
   return {
     code: draft.code,
     severity: draft.severity,
-    message: draft.message,
+    message:
+      (draft.count ?? 1) > 1 ? `${draft.message} (repeated ${draft.count} times)` : draft.message,
     selector: root.selector,
     dataAttributes: root.dataAttributes,
     sourceFile: root.sourceFile,
@@ -949,6 +1191,11 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "text_not_painted",
   "caption_zone_collision",
   "frame_out_of_frame",
+  "escaped_container",
+  "panel_out_of_canvas",
+  "connector_detached",
+  "rotation_pivot_drift",
+  "off_pivot_rotation",
   "motion_appears_late",
   "motion_out_of_order",
   "motion_off_frame",

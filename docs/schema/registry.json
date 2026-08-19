@@ -21,6 +21,19 @@
       "format": "uri",
       "description": "Registry homepage URL."
     },
+    "catalogArtifact": {
+      "type": "object",
+      "description": "Published on-device vector artifact for this registry.",
+      "required": ["revision"],
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 identity of the searchable corpus and embedding contract."
+        }
+      }
+    },
     "items": {
       "type": "array",
       "description": "Items in this registry. Each entry is a shorthand reference; the full item manifest lives at <type-dir>/<name>/registry-item.json.",

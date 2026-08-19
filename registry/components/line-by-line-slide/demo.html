@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Line-by-Line Slide - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 900px;
+        min-height: 500px;
+        padding: 64px;
+        /* ponytail: scale wrapper — not a GSAP target, so CSS transform is safe */
+        transform: scale(2.8);
+        transform-origin: center center;
+      }
+      .hf-catalog-line-by-line-slide {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-catalog-line-by-line-slide {
+        display: grid;
+        gap: 10px;
+        font-size: 64px;
+        line-height: 1.05;
+        overflow: hidden;
+      }
+      .hf-catalog-line-by-line-slide span {
+        display: block;
+        transform: translate(var(--hf-line-x, 0px), var(--hf-line-y, 0px));
+        filter: blur(var(--hf-line-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="line-by-line-slide-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div
+          class="hf-catalog-line-by-line-slide"
+          data-composition-variables='[
+    {"id": "size", "type": "enum", "role": "layout", "label": "Size", "description": "Type size of the whole stack.", "default": "standard", "options": [{"value": "compact", "label": "Compact"}, {"value": "standard", "label": "Standard"}, {"value": "display", "label": "Display"}]},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: ink for light frames, paper for dark ones, accent rides the brand token.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]},
+    {"id": "density", "type": "enum", "role": "layout", "label": "Density", "description": "The gap between lines, from a tight block to an airy stack.", "default": "standard", "options": [{"value": "fine", "label": "Fine"}, {"value": "standard", "label": "Standard"}, {"value": "coarse", "label": "Coarse"}]},
+    {"id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side the lines slide in from as the timeline drives the offset.", "default": "left", "options": [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]}
+  ]'
+        >
+          <span>Design faster</span><span>Render cleaner</span><span>Ship louder</span>
+        </div>
+      </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var sizes = { compact: "40px", standard: "52px", display: "68px" };
+          var tones = {
+            ink: "#18181b",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+          var gaps = { fine: "4px", standard: "10px", coarse: "20px" };
+          var axes = { left: 1, right: -1 };
+
+          var size = sizes[pick(sizes, vars.size, "standard")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+          var gap = gaps[pick(gaps, vars.density, "standard")];
+          var axis = axes[pick(axes, vars.direction, "left")];
+
+          var roots = document.querySelectorAll(".hf-catalog-line-by-line-slide");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-line-size", size);
+            root.style.setProperty("--hf-line-color", tone);
+            root.style.setProperty("--hf-line-gap", gap);
+            root.style.setProperty("--hf-line-axis-x", String(axis));
+          }
+        })();
+      </script>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-catalog-line-by-line-slide span",
+          { opacity: 0, "--hf-line-x": "-36px", "--hf-line-y": "18px", "--hf-line-blur": "6px" },
+          {
+            opacity: 1,
+            "--hf-line-x": "0px",
+            "--hf-line-y": "0px",
+            "--hf-line-blur": "0px",
+            duration: 0.34,
+            stagger: 0.08,
+            ease: "power3.out",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["line-by-line-slide-demo"] = tl;
+      </script>
+    </div>
+    <style>
+      .hf-catalog-line-by-line-slide {
+        color: var(--hf-line-color, #18181b);
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-catalog-line-by-line-slide {
+        display: grid;
+        gap: var(--hf-line-gap, 10px);
+        font-size: var(--hf-line-size, 52px);
+        line-height: 1;
+        overflow: hidden;
+      }
+      .hf-catalog-line-by-line-slide span {
+        display: block;
+        transform: translate(
+          calc(var(--hf-line-x, 0px) * var(--hf-line-axis-x, 1)),
+          var(--hf-line-y, 0px)
+        );
+        filter: blur(var(--hf-line-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </body>
+</html>

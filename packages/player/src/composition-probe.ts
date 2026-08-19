@@ -19,8 +19,9 @@ import {
   isRuntimeDurationAdapter,
 } from "./timeline-adapters.js";
 
-const RUNTIME_CDN_URL =
-  "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js";
+import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
+
+export { runtimeCdnUrlForVersion };
 
 export interface ProbeResult {
   duration: number;

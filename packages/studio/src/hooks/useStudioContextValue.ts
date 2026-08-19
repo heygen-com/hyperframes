@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
+import type { DomEditSelection } from "../components/editor/domEditing";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
+import { usePlayerStore } from "../player";
 
 interface StudioContextInput {
   projectId: string;
@@ -18,24 +20,14 @@ interface StudioContextInput {
   editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
   handleUndo: StudioContextValue["handleUndo"];
   handleRedo: StudioContextValue["handleRedo"];
-  renderQueue: {
-    jobs: unknown[];
-    isRendering: boolean;
-    loadError: string | null;
-    actionError: string | null;
-    dismissActionError: () => void;
-    reloadRenders: () => void;
-    deleteRender: (id: string) => void;
-    cancelRender: (id: string) => void;
-    clearCompleted: () => void;
-    startRender: (options: unknown) => Promise<void>;
-  };
+  // Was a second copy of the same shape, which meant every field added to the
+  // context had to be added here too or the build broke. Same idiom as the
+  // fields around it: the context type owns it.
+  renderQueue: StudioContextValue["renderQueue"];
   compositionDimensions: { width: number; height: number } | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
   refreshPreviewDocumentVersion: () => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -61,8 +53,6 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     waitForPendingDomEditSaves: input.waitForPendingDomEditSaves,
     handlePreviewIframeRef: input.handlePreviewIframeRef,
     refreshPreviewDocumentVersion: input.refreshPreviewDocumentVersion,
-    timelineVisible: input.timelineVisible,
-    toggleTimelineVisibility: input.toggleTimelineVisibility,
   };
 }
 
@@ -71,6 +61,7 @@ export interface InspectorState {
   designPanelActive: boolean;
   inspectorPanelActive: boolean;
   inspectorButtonActive: boolean;
+  shouldShowMotionPath: boolean;
   shouldShowSelectedDomBounds: boolean;
 }
 
@@ -79,24 +70,26 @@ export function useInspectorState(
   rightInspectorPanes: RightInspectorPanes,
   rightCollapsed: boolean,
   isPlaying: boolean,
+  domEditSelection: DomEditSelection | null,
   isGestureRecording?: boolean,
 ): InspectorState {
   // fallow-ignore-next-line complexity
   return useMemo(() => {
     const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
-    const layersPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.layers;
-    const designPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
+    const layersPanelActive = inspectorTabActive && rightInspectorPanes.layers;
+    const designPanelActive = inspectorTabActive && rightInspectorPanes.design;
     const inspectorPanelActive = layersPanelActive || designPanelActive;
     return {
       layersPanelActive,
       designPanelActive,
       inspectorPanelActive,
-      inspectorButtonActive:
-        STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
-      // Keep the selection box + motion path drawn even when the Inspector is
-      // collapsed — closing the panel shouldn't visually deselect the element.
+      inspectorButtonActive: !rightCollapsed && inspectorPanelActive,
+      // Deliberately wider than shouldShowSelectedDomBounds: the on-canvas path
+      // handles ARE the arc-drag affordance, so gating them on an open Inspector
+      // would make keyframe path editing reachable only from a side panel.
+      shouldShowMotionPath: !!domEditSelection && !isPlaying && !isGestureRecording,
+      // Keep the selection box drawn even when the Inspector is collapsed —
+      // closing the panel shouldn't visually deselect the element.
       // The Variables tab also works against the canvas selection (bind card),
       // so the selection outline stays visible there too.
       shouldShowSelectedDomBounds:
@@ -104,11 +97,18 @@ export function useInspectorState(
         !isPlaying &&
         !isGestureRecording,
     };
-  }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
+  }, [
+    rightPanelTab,
+    rightInspectorPanes,
+    rightCollapsed,
+    isPlaying,
+    isGestureRecording,
+    domEditSelection,
+  ]);
 }
 
 // fallow-ignore-next-line complexity
-export function useDragOverlay(onImportFiles: (files: FileList) => void) {
+function useDragOverlay(onImportFiles: (files: FileList) => void) {
   const [active, setActive] = useState(false);
   const counterRef = useRef(0);
   const onDragOver = useCallback((e: DragEvent) => {
@@ -136,4 +136,16 @@ export function useDragOverlay(onImportFiles: (files: FileList) => void) {
     [onImportFiles],
   );
   return { active, onDragOver, onDragEnter, onDragLeave, onDrop };
+}
+
+/** Global OS file drop: imports and places at the playhead position. */
+export function useGlobalFileDrop(handleTimelineFileDrop: TimelineFileDropHandler) {
+  const onDrop = useCallback(
+    (files: FileList) => {
+      const start = usePlayerStore.getState().currentTime;
+      void handleTimelineFileDrop(Array.from(files), { start, track: 0 });
+    },
+    [handleTimelineFileDrop],
+  );
+  return useDragOverlay(onDrop);
 }

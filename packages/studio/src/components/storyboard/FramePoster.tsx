@@ -10,6 +10,13 @@ export interface FramePosterProps {
   title: string;
   /** `cover` fills+crops (contact-sheet tile); `contain` letterboxes (focus hero). */
   fit?: "cover" | "contain";
+  /**
+   * Project content signature to key the poster URL on. The thumbnail route
+   * regenerates when the frame's source changes, but the browser only refetches
+   * when the URL does — so bake the signature in to pick up fresh posters after
+   * a background board refresh.
+   */
+  posterVersion?: string;
 }
 
 /**
@@ -18,11 +25,19 @@ export interface FramePosterProps {
  * no postMessage seek, and no client-side fps assumption. Shared by the
  * contact-sheet tile and the frame-focus view.
  */
-export function FramePoster({ projectId, src, seconds, title, fit = "cover" }: FramePosterProps) {
+export function FramePoster({
+  projectId,
+  src,
+  seconds,
+  title,
+  fit = "cover",
+  posterVersion,
+}: FramePosterProps) {
   const [failed, setFailed] = useState(false);
   // The <img> is reused (no key) when a tile/hero swaps to a different frame, so a
-  // prior load error would stick. Reset when the poster target changes.
-  useEffect(() => setFailed(false), [src, seconds]);
+  // prior load error would stick. Reset when the poster target changes — including
+  // a new posterVersion, so a frame that failed mid-write retries once it settles.
+  useEffect(() => setFailed(false), [src, seconds, posterVersion]);
   if (failed) {
     return (
       <div className="flex h-full w-full items-center justify-center text-[11px] text-neutral-600">
@@ -30,12 +45,17 @@ export function FramePoster({ projectId, src, seconds, title, fit = "cover" }: F
       </div>
     );
   }
-  const url = buildCompositionThumbnailUrl({
+  let url = buildCompositionThumbnailUrl({
     previewUrl: `/api/projects/${projectId}/preview/comp/${src}`,
     seekTime: seconds,
     duration: 0,
     origin: window.location.origin,
   });
+  if (posterVersion) {
+    const withVersion = new URL(url, window.location.origin);
+    withVersion.searchParams.set("sig", posterVersion);
+    url = withVersion.toString();
+  }
   return (
     <img
       src={url}

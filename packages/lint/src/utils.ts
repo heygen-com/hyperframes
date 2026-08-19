@@ -121,7 +121,7 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
   const bodyTag = tags.find((tag) => tag.name === "body");
   if (
     bodyTag &&
-    (readAttr(bodyTag.raw, "data-composition-id") ||
+    (readDecodedAttr(bodyTag.raw, "data-composition-id") ||
       readAttr(bodyTag.raw, "data-width") ||
       readAttr(bodyTag.raw, "data-height"))
   ) {
@@ -148,7 +148,7 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
     // still eligible as the root.
     if (
       tag.name === "svg" &&
-      !readAttr(tag.raw, "data-composition-id") &&
+      !readDecodedAttr(tag.raw, "data-composition-id") &&
       !readAttr(tag.raw, "data-width") &&
       !readAttr(tag.raw, "data-height")
     ) {
@@ -171,6 +171,22 @@ export function readAttr(tagSource: string, attr: string): string | null {
   // The lookbehind requires the match to start a fresh attribute name.
   const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
   return match?.[1] || null;
+}
+
+/** Read an HTML attribute using browser-equivalent character-reference decoding. */
+export function readDecodedAttr(tagSource: string, attr: string): string | null {
+  if (!tagSource) return null;
+  let value: string | null = null;
+  const parser = new Parser(
+    {
+      onattribute(name, decodedValue) {
+        if (value === null && name.toLowerCase() === attr.toLowerCase()) value = decodedValue;
+      },
+    },
+    { decodeEntities: true, lowerCaseAttributeNames: false, lowerCaseTags: true },
+  );
+  parser.end(tagSource);
+  return value;
 }
 
 /**
@@ -200,7 +216,7 @@ export function readJsonAttr(tagSource: string, attr: string): string | null {
 export function collectCompositionIds(tags: OpenTag[]): Set<string> {
   const ids = new Set<string>();
   for (const tag of tags) {
-    const compId = readAttr(tag.raw, "data-composition-id");
+    const compId = readDecodedAttr(tag.raw, "data-composition-id");
     if (compId) ids.add(compId);
   }
   return ids;

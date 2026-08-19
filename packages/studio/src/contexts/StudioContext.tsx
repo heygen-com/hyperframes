@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { FfmpegStatus } from "../components/renders/useFfmpegStatus";
 
 export interface StudioShellValue {
   projectId: string;
@@ -27,12 +28,16 @@ export interface StudioShellValue {
     cancelRender: (jobId: string) => void;
     clearCompleted: () => void;
     startRender: (options: unknown) => Promise<void>;
+    /** Encoder availability. `null` means "no answer", not "missing". */
+    ffmpeg: FfmpegStatus | null;
+    /** True only when the server positively reported no usable FFmpeg. */
+    ffmpegMissing: boolean;
+    ffmpegChecking: boolean;
+    recheckFfmpeg: () => void;
   };
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 export interface StudioPlaybackValue {
@@ -56,10 +61,23 @@ export function useStudioShellContext(): StudioShellValue {
   return ctx;
 }
 
+/**
+ * Optional access — returns null outside a provider. Lets the player-package
+ * <Timeline> (a public standalone export) read shell state when embedded in the
+ * NLE without hard-requiring the provider in standalone/test mounts.
+ */
+export function useStudioShellContextOptional(): StudioShellValue | null {
+  return useContext(StudioShellContext);
+}
+
 export function useStudioPlaybackContext(): StudioPlaybackValue {
   const ctx = useContext(StudioPlaybackContext);
   if (!ctx) throw new Error("useStudioPlaybackContext must be used within StudioPlaybackProvider");
   return ctx;
+}
+
+export function useStudioPlaybackContextOptional(): StudioPlaybackValue | null {
+  return useContext(StudioPlaybackContext);
 }
 
 /** @deprecated Use useStudioShellContext and/or useStudioPlaybackContext instead. */
@@ -90,8 +108,6 @@ export function StudioShellProvider({
     compositionDimensions,
     waitForPendingDomEditSaves,
     handlePreviewIframeRef,
-    timelineVisible,
-    toggleTimelineVisibility,
   } = value;
 
   const stable = useMemo<StudioShellValue>(
@@ -108,14 +124,11 @@ export function StudioShellProvider({
       compositionDimensions,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      timelineVisible,
-      toggleTimelineVisibility,
     }),
     [
       projectId,
       activeCompPath,
       compositionDimensions,
-      timelineVisible,
       editHistory,
       renderQueue,
       setActiveCompPath,
@@ -125,7 +138,6 @@ export function StudioShellProvider({
       handleRedo,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      toggleTimelineVisibility,
     ],
   );
   return <StudioShellContext value={stable}>{children}</StudioShellContext>;

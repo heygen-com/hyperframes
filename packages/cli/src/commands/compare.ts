@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
@@ -407,7 +408,7 @@ export default defineCommand({
       } else {
         console.error(`\n${c.error("✗")} Compare failed: ${message}`);
       }
-      process.exit(1);
+      failCommand();
     }
   },
 });

@@ -1,7 +1,10 @@
 // fallow-ignore-file complexity
 import { defineCommand } from "citty";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { dirname } from "node:path";
+import { resolveExtractCacheDir } from "@hyperframes/engine";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
@@ -133,6 +136,101 @@ function checkDisk(): CheckResult {
   return { ok: true, detail: `${freeGb} GB free` };
 }
 
+/**
+ * Report the effective extracted-frame cache directory. Long renders can
+ * accumulate multi-GB of extracted video frames here; on Windows the OS
+ * `%TEMP%` default lives on C:, so users with output on a data drive but the
+ * OS on a small SSD have hit disk-exhaustion mid-render (field signal
+ * `ts=1784219488` · CLI 0.7.58 · 15GB/8-core). Surfacing the effective path
+ * + free space at that path lets `hyperframes doctor` catch the mismatch
+ * before the render, and reminds users the relocation knob exists.
+ *
+ * `statfsSync` requires the path to exist. When the configured cache dir has
+ * not been created yet, walk up to the nearest existing ancestor and report
+ * the free space there (which is the same filesystem in practice — free space
+ * is per-mount, not per-directory).
+ */
+export function checkFramesCache(
+  env: Record<string, string | undefined> = process.env,
+  freeDiskMb: (path: string) => number | null = getFreeDiskMb,
+  fileExists: (path: string) => boolean = existsSync,
+): CheckResult {
+  const resolution = resolveExtractCacheDir(env);
+  if (resolution.disabled) {
+    return {
+      ok: true,
+      detail: `Disabled (${resolution.rawValue}) — frames extract into per-render workDir`,
+    };
+  }
+  const dir = resolution.dir;
+  const probePath = firstExistingAncestor(dir, fileExists) ?? dir;
+  const freeMb = freeDiskMb(probePath);
+  if (freeMb === null) {
+    return {
+      ok: true,
+      detail: `${dir} (free space unknown; ${sourceLabel(resolution.source)})`,
+    };
+  }
+  const freeGb = (freeMb / 1024).toFixed(1);
+  const suffix = `${freeGb} GB free at ${probePath} · ${sourceLabel(resolution.source)}`;
+  if (freeMb < 2048) {
+    return {
+      ok: false,
+      detail: `${dir} · ${suffix}`,
+      hint:
+        "Low free space at the extract cache location — long renders can exhaust the drive. " +
+        "Relocate via HYPERFRAMES_EXTRACT_CACHE_DIR=<path> or `hyperframes render --frames-cache-dir <path>`.",
+    };
+  }
+  return { ok: true, detail: `${dir} · ${suffix}` };
+}
+
+function firstExistingAncestor(path: string, fileExists: (p: string) => boolean): string | null {
+  let current = path;
+  for (let i = 0; i < 64; i += 1) {
+    if (fileExists(current)) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+  return null;
+}
+
+function sourceLabel(source: "env" | "default"): string {
+  return source === "env" ? "HYPERFRAMES_EXTRACT_CACHE_DIR" : "default";
+}
+
+function commandExists(command: string): boolean {
+  try {
+    execFileSync("which", [command], { stdio: "ignore", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puppeteer's managed Chrome download delegates ZIP extraction to `unzip` on
+ * macOS and Linux. Windows has built-in tar/PowerShell extraction paths, so it
+ * does not need this Unix dependency.
+ */
+export function checkArchiveExtractor(
+  hostPlatform = platform(),
+  exists: (command: string) => boolean = commandExists,
+): CheckResult {
+  if (hostPlatform === "win32") {
+    return { ok: true, detail: "Built into Windows" };
+  }
+  if (exists("unzip")) {
+    return { ok: true, detail: "unzip" };
+  }
+  return {
+    ok: false,
+    detail: "Not found",
+    hint: "Install unzip so HyperFrames can extract its managed Chrome download.",
+  };
+}
+
 function checkEnvironment(): CheckResult {
   const sys = getSystemMeta();
   const parts: string[] = [];
@@ -238,6 +336,8 @@ export default defineCommand({
       { name: "CPU", run: checkCPU },
       { name: "Memory", run: checkMemory },
       { name: "Disk", run: checkDisk },
+      { name: "Frames cache", run: () => checkFramesCache() },
+      { name: "Archive extractor", run: checkArchiveExtractor },
     ];
 
     // /dev/shm is only relevant on Linux (especially Docker)

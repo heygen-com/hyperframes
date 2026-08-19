@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Sheet Spring Up</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        background: #101413;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse 70% 90% at 26% 30%,
+            rgba(60, 230, 172, 0.07) 0%,
+            rgba(60, 230, 172, 0) 60%
+          ),
+          linear-gradient(160deg, #1a201d 0%, #121614 55%, #0e1210 100%);
+      }
+      /* the device */
+      .spec-phone {
+        position: absolute;
+        left: 430px;
+        top: 158px;
+        width: 438px;
+        height: 764px;
+        border-radius: 64px;
+        background: #3a3d42;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.22),
+          0 34px 80px rgba(0, 0, 0, 0.55);
+      }
+      .spec-screen {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 410px;
+        height: 736px;
+        border-radius: 52px;
+        overflow: hidden;
+        background: #000;
+      }
+      /* interior is authored at 1080x1920 and scaled into the screen */
+      .spec-int {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        transform: scale(0.3796);
+        transform-origin: 0 0;
+      }
+      /* the caption column */
+      .spec-cap {
+        position: absolute;
+        left: 1010px;
+        top: 300px;
+        width: 730px;
+      }
+      .spec-cap .name {
+        font:
+          600 46px/1.1 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #3ce6ac;
+        letter-spacing: -0.5px;
+      }
+      .spec-cap .rule {
+        width: 84px;
+        height: 3px;
+        background: #3ce6ac;
+        margin: 26px 0;
+      }
+      .spec-cap .desc {
+        font:
+          400 21px/1.6 ui-sans-serif,
+          -apple-system,
+          sans-serif;
+        color: #b9c2bd;
+        max-width: 620px;
+      }
+      .spec-cap .stats {
+        margin-top: 30px;
+        display: grid;
+        gap: 12px;
+      }
+      .spec-cap .stat {
+        font:
+          500 16px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
+        color: #78827d;
+      }
+      .spec-cap .stat b {
+        color: #e8ece9;
+        font-weight: 600;
+      }
+
+      .ssu-ground {
+        position: absolute;
+        inset: -80px;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 70%, #3ce6ac 120%);
+        filter: blur(0px);
+      }
+      .ssu-blob1 {
+        position: absolute;
+        left: 60px;
+        top: 200px;
+        width: 600px;
+        height: 600px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(60, 230, 172, 0.5) 0%, rgba(60, 230, 172, 0) 70%);
+        filter: blur(30px);
+      }
+      .ssu-blob2 {
+        position: absolute;
+        right: -100px;
+        top: 900px;
+        width: 700px;
+        height: 700px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(233, 171, 85, 0.35) 0%, rgba(233, 171, 85, 0) 70%);
+        filter: blur(30px);
+      }
+      .ssu-card {
+        position: absolute;
+        left: 106px;
+        top: 473px;
+        width: 868px;
+        height: 1100px;
+        background: #f9f9f9;
+        border-radius: 44px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+        opacity: 0;
+      }
+      .ssu-title {
+        position: absolute;
+        top: 60px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 54px;
+        font-weight: 600;
+        color: #101010;
+      }
+      .ssu-sub {
+        position: absolute;
+        top: 145px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 36px;
+        color: #313131;
+      }
+      .ssu-sub b {
+        font-weight: 700;
+      }
+      .ssu-prev {
+        position: absolute;
+        left: 56px;
+        top: 235px;
+        width: 756px;
+        height: 620px;
+        border-radius: 30px;
+        overflow: hidden;
+        background: linear-gradient(165deg, #0f3a2c 0%, #0a9c6b 78%, #3ce6ac 100%);
+      }
+      .ssu-play {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: rgba(253, 253, 253, 0.94);
+      }
+      .ssu-play svg {
+        position: absolute;
+        left: 50px;
+        top: 42px;
+      }
+      .ssu-div {
+        position: absolute;
+        left: 0;
+        top: 920px;
+        width: 100%;
+        height: 2px;
+        background: #dfdfdf;
+      }
+      .ssu-btn {
+        position: absolute;
+        top: 922px;
+        bottom: 0;
+        width: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 42px;
+      }
+      .ssu-dec {
+        left: 0;
+        color: #6f6f73;
+      }
+      .ssu-acc {
+        right: 0;
+        color: #087a57;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hf-ssu-demo-root"
+      class="hf-ui-demo-canvas"
+      data-composition-id="sheet-spring-up-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-composition-variables='[
+    { "id": "width", "type": "number", "role": "style", "label": "Width", "description": "Sheet width in pixels.", "default": 668, "min": 400, "max": 900, "step": 4, "unit": "px" },
+    { "id": "radius", "type": "number", "role": "style", "label": "Radius", "description": "Sheet corner radius.", "default": 34, "min": 16, "max": 48, "step": 1, "unit": "px" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Light is the reference near-white sheet; dark is the raised surface token.", "default": "light", "options": [{ "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" }] }
+  ]'
+    >
+      <section
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+        style="position: absolute; inset: 0"
+      >
+        <div class="spec-phone">
+          <div class="spec-screen">
+            <div class="spec-int">
+              <div class="ssu-ground"></div>
+              <div class="ssu-blob1"></div>
+              <div class="ssu-blob2"></div>
+              <div class="ssu-card" id="ssu-sheet">
+                <div class="ssu-title">Share</div>
+                <div class="ssu-sub"><b>HyperFrames</b> would like to share a video</div>
+                <div class="ssu-prev">
+                  <div class="ssu-play">
+                    <svg width="48" height="54" viewBox="0 0 44 48" fill="none">
+                      <path
+                        d="M40.5 20.6 C43.2 22.1 43.2 25.9 40.5 27.4 L6.2 46.6 C3.5 48.1 0.2 46.2 0.2 43.2 L0.2 4.8 C0.2 1.8 3.5 -0.1 6.2 1.4 Z"
+                        fill="#0d0d0d"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ssu-div"></div>
+                <div class="ssu-btn ssu-dec">Decline</div>
+                <div class="ssu-btn ssu-acc">Accept</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-cap">
+          <div class="name">sheet-spring-up</div>
+          <div class="rule"></div>
+          <div class="desc">
+            A bottom sheet rushes up from below the frame on a real spring sampled frame by frame —
+            overshoot, then a long soft settle. No ease approximates it; the table ships.
+          </div>
+          <div class="stats">
+            <div class="stat"><b>22 steps</b> — the sampled y/alpha table</div>
+            <div class="stat"><b>192px</b> — overshoot past rest</div>
+            <div class="stat"><b>0.72s</b> — launch to settle</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        // Unrecognised overrides return to their declared defaults.
+        function pick(table, value, fallback) {
+          return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+        }
+
+        function clampNumber(value, min, max, fallback) {
+          var n = typeof value === "number" ? value : parseFloat(value);
+          if (!isFinite(n)) {
+            return fallback;
+          }
+          return Math.min(max, Math.max(min, n));
+        }
+
+        var tones = {
+          light: { surface: "#f9f9f9", ink: "#101010", inkMuted: "#313131" },
+          dark: {
+            surface: "var(--_hf-ui-surface-raised)",
+            ink: "var(--_hf-ui-text-strong)",
+            inkMuted: "var(--_hf-ui-text-muted)",
+          },
+        };
+
+        var width = clampNumber(vars.width, 400, 900, 668);
+        var radius = clampNumber(vars.radius, 16, 48, 34);
+        var tone = tones[pick(tones, vars.tone, "light")];
+
+        var roots = document.querySelectorAll(".hf-ui-sheet-spring-up");
+        for (var i = 0; i < roots.length; i += 1) {
+          roots[i].style.setProperty("--hf-ssu-width", width + "px");
+          roots[i].style.setProperty("--hf-ssu-radius", radius + "px");
+          roots[i].style.setProperty("--hf-ssu-surface", tone.surface);
+          roots[i].style.setProperty("--hf-ssu-ink", tone.ink);
+          roots[i].style.setProperty("--hf-ssu-ink-muted", tone.inkMuted);
+        }
+      })();
+    </script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      /* the measured spring, verbatim */
+      var SPRING = [
+        [0.0, 1450, 0.0],
+        [0.057, 1198, 0.13],
+        [0.09, 903, 0.21],
+        [0.123, 648, 0.36],
+        [0.157, 437, 0.43],
+        [0.19, 262, 0.5],
+        [0.223, 120, 0.62],
+        [0.257, 8, 0.78],
+        [0.29, -76, 0.89],
+        [0.323, -138, 1.0],
+        [0.357, -175, null],
+        [0.39, -191, null],
+        [0.423, -192, null],
+        [0.457, -181, null],
+        [0.49, -159, null],
+        [0.523, -131, null],
+        [0.557, -100, null],
+        [0.59, -68, null],
+        [0.623, -41, null],
+        [0.657, -18, null],
+        [0.69, -5, null],
+        [0.723, 0, null],
+      ];
+      var START = 0.6;
+      SPRING.forEach(function (s) {
+        var p = { y: s[1] };
+        if (s[2] !== null) p.autoAlpha = s[2];
+        tl.set("#ssu-sheet", p, START + s[0]);
+      });
+      /* accept press beat */
+      tl.set("#ssu-sheet", { y: 3 }, 3.0);
+      tl.set("#ssu-sheet", { y: 0 }, 3.33);
+      tl.set({}, {}, 4);
+      window.__timelines["sheet-spring-up-demo"] = tl;
+    </script>
+    <style>
+      /* hf-ui:tokens:start */
+      /* prettier-ignore */
+      [data-hf-ui-root] {
+    --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
+    --_hf-ui-action: var(--hf-ui-action, #eeeeee);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
+    --_hf-ui-border: var(--hf-ui-border, #2a2a2a);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #383838);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #0a0a0a);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #686868);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #777777);
+    --_hf-ui-control-height: var(--hf-ui-control-height, 40px);
+    --_hf-ui-danger: var(--hf-ui-danger, #ff7878);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #3ce6ac);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #63a5ff);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #e9ab55);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #a78bfa);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #ff8a75);
+    --_hf-ui-duration-drawer-enter: var(--hf-ui-duration-drawer-enter, 360ms);
+    --_hf-ui-duration-drawer-exit: var(--hf-ui-duration-drawer-exit, 240ms);
+    --_hf-ui-duration-modal-enter: var(--hf-ui-duration-modal-enter, 280ms);
+    --_hf-ui-duration-modal-exit: var(--hf-ui-duration-modal-exit, 180ms);
+    --_hf-ui-duration-overlay-enter: var(--hf-ui-duration-overlay-enter, 210ms);
+    --_hf-ui-duration-overlay-exit: var(--hf-ui-duration-overlay-exit, 140ms);
+    --_hf-ui-duration-press: var(--hf-ui-duration-press, 120ms);
+    --_hf-ui-duration-state: var(--hf-ui-duration-state, 160ms);
+    --_hf-ui-ease-enter: var(--hf-ui-ease-enter, cubic-bezier(0.32, 0.72, 0, 1));
+    --_hf-ui-ease-exit: var(--hf-ui-ease-exit, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-ease-response: var(--hf-ui-ease-response, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-font-mono: var(--hf-ui-font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    --_hf-ui-font-sans: var(--hf-ui-font-sans, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+    --_hf-ui-hit-target: var(--hf-ui-hit-target, 44px);
+    --_hf-ui-radius-control: var(--hf-ui-radius-control, 5px);
+    --_hf-ui-radius-overlay: var(--hf-ui-radius-overlay, 10px);
+    --_hf-ui-radius-surface: var(--hf-ui-radius-surface, 7px);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 8px 18px rgba(0, 0, 0, 0.38));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.035));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(0, 0, 0, 0.52));
+    --_hf-ui-space-1: var(--hf-ui-space-1, 4px);
+    --_hf-ui-space-12: var(--hf-ui-space-12, 48px);
+    --_hf-ui-space-16: var(--hf-ui-space-16, 64px);
+    --_hf-ui-space-2: var(--hf-ui-space-2, 8px);
+    --_hf-ui-space-3: var(--hf-ui-space-3, 12px);
+    --_hf-ui-space-4: var(--hf-ui-space-4, 16px);
+    --_hf-ui-space-6: var(--hf-ui-space-6, 24px);
+    --_hf-ui-space-8: var(--hf-ui-space-8, 32px);
+    --_hf-ui-surface: var(--hf-ui-surface, #141414);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #101010);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #1a1a1a);
+    --_hf-ui-text: var(--hf-ui-text, #e5e5e5);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #7e7e7e);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #929292);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #f3f3f3);
+    --_hf-ui-warning: var(--hf-ui-warning, #e9ab55);
+    --_hf-ui-weight-medium: var(--hf-ui-weight-medium, 500);
+    --_hf-ui-weight-regular: var(--hf-ui-weight-regular, 400);
+    --_hf-ui-weight-semibold: var(--hf-ui-weight-semibold, 600);
+    box-sizing: border-box;
+    color-scheme: dark;
+    font-family: var(--_hf-ui-font-sans);
+  }
+      /* prettier-ignore */
+      [data-hf-ui-root] *,
+  [data-hf-ui-root] *::before,
+  [data-hf-ui-root] *::after {
+    box-sizing: border-box;
+  }
+      /* prettier-ignore */
+      [data-hf-theme="light"] [data-hf-ui-root],
+  [data-hf-ui-root][data-hf-theme="light"] {
+    --_hf-ui-accent: var(--hf-ui-accent, #087a57);
+    --_hf-ui-action: var(--hf-ui-action, #171717);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #ffffff);
+    --_hf-ui-border: var(--hf-ui-border, #e0dfdb);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #cbc9c3);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #f6f5f1);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #888888);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #6f6e68);
+    --_hf-ui-danger: var(--hf-ui-danger, #a61b1b);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #087a57);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #245ea8);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #8a4b00);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #6d3fc0);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #a83d2d);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 7px 16px rgba(26, 24, 20, 0.13));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.78));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(26, 24, 20, 0.18));
+    --_hf-ui-surface: var(--hf-ui-surface, #ffffff);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #f0efeb);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #ffffff);
+    --_hf-ui-text: var(--hf-ui-text, #171717);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #6f6e68);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #5f5f5a);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #0a0a0a);
+    --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
+    color-scheme: light;
+  }
+      /* prettier-ignore */
+      [data-hf-ui-root]:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+      /* hf-ui:tokens:end */
+
+      .hf-ui-sheet-spring-up {
+        position: relative;
+      }
+      .hf-ssu-sheet {
+        position: relative;
+        width: var(--hf-ssu-width, 668px);
+        border-radius: var(--hf-ssu-radius, 34px);
+        background: var(--hf-ssu-surface, #f9f9f9);
+        color: var(--hf-ssu-ink, #101010);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        padding: 49px 43px 43px;
+        will-change: opacity, transform;
+      }
+      .hf-ssu-title {
+        text-align: center;
+        font-size: 44px;
+        font-weight: var(--_hf-ui-weight-semibold);
+        line-height: 1;
+        letter-spacing: 0.2px;
+      }
+      .hf-ssu-body {
+        margin-top: 24px;
+        text-align: center;
+        font-size: 29px;
+        color: var(--hf-ssu-ink-muted, #313131);
+      }
+    </style>
+  </body>
+</html>

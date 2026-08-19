@@ -6,17 +6,19 @@ import type {
 } from "./types";
 import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
-import { readElementPlaybackRate } from "./media";
+import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
+import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
+import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
+import { runtimeProtocolMetadata } from "./protocol.js";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
 
 function parseNum(value: string | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseStrictFiniteTimingNumber(value);
 }
 
 function parseElementDurationAttr(element: Element): number | null {
@@ -52,57 +54,15 @@ function maxDefinedNumber(...values: Array<number | null>): number | null {
 }
 
 /**
- * When multiple content kinds share the same track number, split them
- * onto separate tracks so the timeline UI shows distinct rows.
- *
- * Preferred kind order (top → bottom): composition, video, image, element, audio.
- * Tracks that contain only one kind are left untouched.
+ * Parse an authored track attribute, honoring 0 (a valid top-lane index).
+ * `parseInt(...) || fallback` silently replaced authored track 0 with the
+ * synthetic fallback, so track-0 clips drifted to the bottom of the timeline.
  */
-const KIND_ORDER: Record<string, number> = {
-  composition: 0,
-  video: 1,
-  image: 2,
-  element: 3,
-  audio: 4,
-};
-
-function normalizeTrackAssignments(clips: RuntimeTimelineClip[]): void {
-  if (clips.length === 0) return;
-
-  // Group clips by their raw track number and detect which tracks have mixed kinds
-  const trackKinds = new Map<number, Set<string>>();
-  for (const clip of clips) {
-    const kinds = trackKinds.get(clip.track) ?? new Set();
-    kinds.add(clip.kind);
-    trackKinds.set(clip.track, kinds);
-  }
-
-  const hasMixedTracks = Array.from(trackKinds.values()).some((kinds) => kinds.size > 1);
-  if (!hasMixedTracks) return;
-
-  // Build new contiguous track numbers, splitting mixed tracks by kind
-  let nextTrack = 0;
-  const newTrackMap = new Map<string, number>(); // "origTrack:kind" → newTrack
-
-  const sortedTracks = [...trackKinds.keys()].sort((a, b) => a - b);
-  for (const track of sortedTracks) {
-    const kinds = trackKinds.get(track)!;
-    if (kinds.size === 1) {
-      newTrackMap.set(`${track}:${[...kinds][0]}`, nextTrack++);
-    } else {
-      // Split by kind in preferred order
-      const sorted = [...kinds].sort((a, b) => (KIND_ORDER[a] ?? 99) - (KIND_ORDER[b] ?? 99));
-      for (const kind of sorted) {
-        newTrackMap.set(`${track}:${kind}`, nextTrack++);
-      }
-    }
-  }
-
-  for (const clip of clips) {
-    const key = `${clip.track}:${clip.kind}`;
-    const newTrack = newTrackMap.get(key);
-    if (newTrack != null) clip.track = newTrack;
-  }
+function parseAuthoredTrack(el: Element, fallback: number): number {
+  const raw = el.getAttribute("data-track-index") ?? el.getAttribute("data-track");
+  if (raw == null) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null {
@@ -219,12 +179,8 @@ export function collectRuntimeTimelinePayload(params: {
     if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
-    const playbackStart =
-      parseNum(mediaEl.getAttribute("data-playback-start")) ??
-      parseNum(mediaEl.getAttribute("data-media-start")) ??
-      0;
-    if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
-      return Math.max(0, (mediaEl.duration - playbackStart) / readElementPlaybackRate(mediaEl));
+    if (Number.isFinite(mediaEl.duration)) {
+      return resolveNaturalMediaTimelineDuration(mediaEl, mediaEl.duration);
     }
     return null;
   };
@@ -396,23 +352,15 @@ export function collectRuntimeTimelinePayload(params: {
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseElementDurationAttr(node);
-    if (
-      (duration == null || duration <= 0) &&
-      nodeCompositionId &&
-      nodeCompositionId !== rootCompositionId
-    ) {
+    if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
-    if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
-      const mediaStart =
-        parseNum(node.getAttribute("data-playback-start")) ??
-        parseNum(node.getAttribute("data-media-start")) ??
-        0;
-      if (Number.isFinite(node.duration) && node.duration > 0) {
-        duration = Math.max(0, node.duration - mediaStart);
+    if (duration == null && node instanceof HTMLMediaElement) {
+      if (Number.isFinite(node.duration)) {
+        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
-    if (duration == null || duration <= 0) {
+    if (duration == null) {
       const inheritedDuration = compositionContext.inheritedDuration;
       if (inheritedDuration != null && inheritedDuration > 0) {
         const inheritedStart = compositionContext.inheritedStart ?? 0;
@@ -441,13 +389,9 @@ export function collectRuntimeTimelinePayload(params: {
       label: buildTimelineClipLabel(node, kind, clips.length),
       start,
       duration,
-      track:
-        Number.parseInt(
-          node.getAttribute("data-track-index") ?? node.getAttribute("data-track") ?? String(i),
-          10,
-        ) || 0,
+      track: parseAuthoredTrack(node, i),
       zIndex: readInlineZIndex(node),
-      stackingContextId: compositionContext.parentCompositionId ?? rootCompositionId,
+      stackingContextId: resolveCssStackingContextId(node),
       kind,
       tagName: tag,
       compositionId: node.getAttribute("data-composition-id"),
@@ -455,6 +399,8 @@ export function collectRuntimeTimelinePayload(params: {
       parentCompositionId: compositionContext.parentCompositionId,
       nodePath: null,
       compositionSrc: toAbsoluteAssetUrl(node.getAttribute("data-composition-src")),
+      playbackStart: readElementPlaybackStart(node),
+      playbackRate: readElementPlaybackRate(node),
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
       timelineLabel: node.getAttribute("data-timeline-label"),
@@ -554,13 +500,9 @@ export function collectRuntimeTimelinePayload(params: {
               el.id,
             start: range.start,
             duration: clampedDuration,
-            track:
-              Number.parseInt(
-                el.getAttribute("data-track-index") ?? el.getAttribute("data-track") ?? "",
-                10,
-              ) || gsapTrack,
+            track: parseAuthoredTrack(el, gsapTrack),
             zIndex: readInlineZIndex(el),
-            stackingContextId: rootCompositionIdForGsap,
+            stackingContextId: resolveCssStackingContextId(el),
             kind: "element",
             tagName: el.tagName.toLowerCase(),
             compositionId: el.getAttribute("data-composition-id"),
@@ -568,6 +510,8 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
+            playbackStart: readElementPlaybackStart(el),
+            playbackRate: readElementPlaybackRate(el),
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
             timelineLabel: el.getAttribute("data-timeline-label"),
@@ -613,13 +557,9 @@ export function collectRuntimeTimelinePayload(params: {
           el.id,
         start: 0,
         duration: clampedDuration,
-        track:
-          Number.parseInt(
-            el.getAttribute("data-track-index") ?? el.getAttribute("data-track") ?? "",
-            10,
-          ) || overlayTrack,
+        track: parseAuthoredTrack(el, overlayTrack),
         zIndex: readInlineZIndex(el),
-        stackingContextId: rootCompositionIdForGsap,
+        stackingContextId: resolveCssStackingContextId(el),
         kind: "element",
         tagName: tag,
         compositionId: el.getAttribute("data-composition-id"),
@@ -627,6 +567,8 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
+        playbackStart: readElementPlaybackStart(el),
+        playbackRate: readElementPlaybackRate(el),
         assetUrl: null,
         timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),
@@ -637,11 +579,12 @@ export function collectRuntimeTimelinePayload(params: {
     }
   }
 
-  // ── Track normalization ────────────────────────────────────────────────
-  // When multiple content kinds (composition, audio, video, …) share the same
-  // data-track-index value, split them onto separate tracks so the timeline UI
-  // shows distinct rows for each kind.
-  normalizeTrackAssignments(clips);
+  // Track assignment honors the authored data-track-index verbatim: a clip stays
+  // on the track it was placed on, regardless of kind. (Previously mixed-kind
+  // tracks were split onto separate rows, but that renumbered tracks — breaking
+  // "drop a clip onto an existing track" and causing the written track to drift
+  // from the displayed one on every move. Track index is display-only; render
+  // never reads it, so honoring it verbatim is the correct NLE behavior.)
 
   for (const compositionNode of compositionNodes) {
     if (compositionNode === root) continue;
@@ -682,8 +625,11 @@ export function collectRuntimeTimelinePayload(params: {
     ? Number.POSITIVE_INFINITY
     : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
+    ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",
     type: "timeline",
+    compositionContractVersion: COMPOSITION_CONTRACT_VERSION,
+    durationSeconds: shouldEmitNonDeterministicInf ? Number.POSITIVE_INFINITY : safeDuration,
     durationInFrames,
     clips,
     scenes,

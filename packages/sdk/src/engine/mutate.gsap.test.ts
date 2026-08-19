@@ -1081,7 +1081,7 @@ describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
     expect(script).not.toMatch(/tl\.to\("#box",[^)]*\}, \d/);
   });
 
-  it("R5 #7: a clip with BOTH data-duration and data-end keeps data-end in sync on move", () => {
+  it("canonicalizes a clip carrying both authored duration and derived end", () => {
     const parsed = timingDoc(
       `data-start="1" data-duration="2" data-end="3"`,
       `tl.to("#box", { x: 1, duration: 2 }, 1);`,
@@ -1090,8 +1090,8 @@ describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
     const el = parsed.document.querySelector('[data-hf-id="hf-box"]');
     expect(el?.getAttribute("data-start")).toBe("5");
     expect(el?.getAttribute("data-duration")).toBe("2");
-    // data-end recomputed (5 + 2); the bug left it stale at 3 → inverted clip.
-    expect(el?.getAttribute("data-end")).toBe("7");
+    // Source mutations retain authored duration and remove compiler-derived end.
+    expect(el?.getAttribute("data-end")).toBeNull();
   });
 });
 

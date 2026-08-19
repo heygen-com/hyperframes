@@ -1,6 +1,6 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import type { LintRule } from "../types";
-import { readAttr } from "../utils";
+import { readAttr, readDecodedAttr } from "../utils";
 import {
   parseSlideshowManifest,
   resolveSlideshow,
@@ -30,7 +30,7 @@ function parseTiming(raw: string): { start: number; duration: number } | null {
 
 function collectCompositionIdScenes(ctx: LintContext, seen: Set<string>, out: Scene[]): void {
   for (const tag of ctx.tags) {
-    const compositionId = readAttr(tag.raw, "data-composition-id");
+    const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
     if (!compositionId || !isSceneLikeCompositionId(compositionId) || seen.has(compositionId))
       continue;
     const timing = parseTiming(tag.raw);

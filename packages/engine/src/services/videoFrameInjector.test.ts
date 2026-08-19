@@ -183,6 +183,16 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     return `data:image/png;base64,fake-${framePath}`;
   }
 
+  function makeGpuInjector() {
+    const evaluate = vi.fn(async () => undefined);
+    const page = { evaluate } as unknown as Page;
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "facet", framePath: "/f", frameIndex: 3 }),
+      { frameSrcResolver: inlineResolver },
+    );
+    return { evaluate, page, hook };
+  }
+
   beforeEach(() => {
     injectVideoFramesBatchMock.mockReset();
     syncVideoFrameVisibilityMock.mockReset();
@@ -256,18 +266,33 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("reinjects frame zero when a whole-chunk retry uses a fresh hook and page", async () => {
+    const table = fakeTable({ videoId: "hero", framePath: "/frame-0", frameIndex: 0 });
+    const beginFramePage = { evaluate: async () => undefined } as unknown as Page;
+    const screenshotPage = { evaluate: async () => undefined } as unknown as Page;
+    const beginFrameHook = createVideoFrameInjector(table, {
+      frameSrcResolver: inlineResolver,
+    });
+    const screenshotRetryHook = createVideoFrameInjector(table, {
+      frameSrcResolver: inlineResolver,
+    });
+
+    injectVideoFramesBatchMock.mockResolvedValue(["hero"]);
+    await beginFrameHook!(beginFramePage, 0);
+    await screenshotRetryHook!(screenshotPage, 0);
+
+    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
+    expect(injectVideoFramesBatchMock.mock.calls[0]?.[0]).toBe(beginFramePage);
+    expect(injectVideoFramesBatchMock.mock.calls[1]?.[0]).toBe(screenshotPage);
+  });
+
   // Regression: WebGL/WebGPU compositions that sample a <video> as a texture
   // render on `hf-seek` BEFORE frames are injected. After injecting the
   // decoded frames, the hook must re-render the GPU adapters at the same time
   // (window.__hfReseekGpu) so they re-upload their textures from the fresh
   // frames — otherwise the facet flickers / goes black non-deterministically.
   it("re-renders GPU adapters after injecting frames (post-injection reseek)", async () => {
-    const evaluate = vi.fn(async () => undefined);
-    const page = { evaluate } as unknown as Page;
-    const hook = createVideoFrameInjector(
-      fakeTable({ videoId: "facet", framePath: "/f", frameIndex: 3 }),
-      { frameSrcResolver: inlineResolver },
-    );
+    const { evaluate, page, hook } = makeGpuInjector();
 
     injectVideoFramesBatchMock.mockResolvedValueOnce(["facet"]);
     await hook!(page, 1.5);
@@ -284,12 +309,7 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
   });
 
   it("does not reseek GPU when the page injected no frames", async () => {
-    const evaluate = vi.fn(async () => undefined);
-    const page = { evaluate } as unknown as Page;
-    const hook = createVideoFrameInjector(
-      fakeTable({ videoId: "facet", framePath: "/f", frameIndex: 3 }),
-      { frameSrcResolver: inlineResolver },
-    );
+    const { evaluate, page, hook } = makeGpuInjector();
 
     // Page dropped the video (e.g. hidden host) → nothing injected → no reseek.
     injectVideoFramesBatchMock.mockResolvedValueOnce([]);

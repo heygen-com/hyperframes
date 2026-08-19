@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import { renderProvenanceArgs } from "../utils/renderProvenance.js";
 
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==",
@@ -90,6 +91,12 @@ function emitClose(proc: FakeProc, code: number): void {
 }
 
 async function flushMuxCodecResolution(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function flushManagedProcessResolution(): Promise<void> {
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
 }
@@ -310,7 +317,7 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
 
     expect(calls).toHaveLength(1);
     emitClose(calls[0]!.proc, 0);
-    await Promise.resolve();
+    await flushManagedProcessResolution();
 
     expect(calls).toHaveLength(2);
     const concatProc = calls[1]!.proc;
@@ -353,7 +360,7 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
     expect(chunkProc.kill).not.toHaveBeenCalled();
 
     emitClose(chunkProc, 0);
-    await Promise.resolve();
+    await flushManagedProcessResolution();
 
     expect(calls).toHaveLength(2);
     const concatProc = calls[1]!.proc;
@@ -397,6 +404,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "+faststart",
       "-avoid_negative_ts",
       "make_zero",
+      ...renderProvenanceArgs("/tmp/output.mp4"),
       "-r",
       "30",
       "-y",
@@ -404,12 +412,64 @@ describe("muxVideoWithAudio audio codec handling", () => {
     ]);
     expect(calls[0]!.args).not.toContain("-shortest");
     expect(calls[0]!.args).not.toContain("-use_editlist");
+    // The faststart flag set above must survive the provenance flag: ffmpeg
+    // takes the last -movflags occurrence, and a non-additive one would drop it.
+    expect(calls[0]!.args.filter((a) => a === "-movflags")).toHaveLength(2);
+    expect(calls[0]!.args).toContain("+faststart");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({
       success: true,
       outputPath: "/tmp/output.mp4",
     });
+  });
+
+  it("keeps negative-timestamp repair for an M4A without a known priming edit list", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac" },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("copy");
+    expect(calls[0]!.args).toContain("-avoid_negative_ts");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("preserves a known M4A priming edit list instead of shifting copied video", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac", preserveAudioPrimingEditList: true },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("copy");
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
   });
 
   it("uses the caller-provided AAC codec contract instead of the sidecar extension", async () => {
@@ -894,7 +954,17 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv");
+  });
+
+  it("adds the pad after range conversion for odd CPU output dimensions", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, height: 1081, codec: "h264", preset: "medium", quality: 23 },
+      inputArgs,
+      "out.mp4",
+    );
+    const vfIdx = args.indexOf("-vf");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2");
   });
 
   it("prepends range conversion to VAAPI filter chain", () => {
@@ -912,7 +982,14 @@ describe("buildEncoderArgs color space", () => {
   it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
     for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
       const args = buildEncoderArgs(
-        { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+        {
+          ...baseOptions,
+          height: 1081,
+          codec: "h264",
+          preset: "medium",
+          quality: 23,
+          useGpu: true,
+        },
         inputArgs,
         "out.mp4",
         gpu,
@@ -927,10 +1004,21 @@ describe("buildEncoderArgs color space", () => {
     }
   });
 
+  it("does not require the pad filter for even GPU output dimensions", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "videotoolbox",
+    );
+    expect(args).not.toContain("-vf");
+  });
+
   it("pads odd dimensions for 10-bit (yuv420p10le) GPU HDR encoding", () => {
     const args = buildEncoderArgs(
       {
         ...baseOptions,
+        height: 1081,
         codec: "h265",
         preset: "medium",
         quality: 23,

@@ -11,16 +11,49 @@ interface KeyframeNavigationProps {
     tweenPercentage?: number;
     properties: Record<string, number | string>;
     ease?: string;
+    /** The tween that authored this keyframe, when the cache knows it. */
+    animationId?: string;
   }> | null;
   /** Current playhead percentage within the element's lifetime (0-100) */
   currentPercentage: number;
   onSeek: (percentage: number) => void;
   onAddKeyframe: (percentage: number) => void;
-  onRemoveKeyframe: (percentage: number) => void;
+  /** `animationId` is the clicked keyframe's OWN tween; see handleDiamondClick. */
+  onRemoveKeyframe: (percentage: number, animationId?: string) => void;
   onConvertToKeyframes: () => void;
 }
 
 const TOLERANCE = 0.5;
+
+interface NavigableKeyframe {
+  percentage: number;
+  tweenPercentage?: number;
+  properties: Record<string, number | string>;
+}
+
+export function getKeyframeNavigationState<Keyframe extends NavigableKeyframe>(
+  keyframes: readonly Keyframe[],
+  currentPercentage: number,
+  property?: string,
+) {
+  const propertyKeyframes = property
+    ? keyframes.filter((keyframe) => property in keyframe.properties)
+    : keyframes;
+  return {
+    propertyKeyframes,
+    prevKeyframe:
+      propertyKeyframes
+        .filter((keyframe) => keyframe.percentage < currentPercentage - TOLERANCE)
+        .at(-1) ?? null,
+    nextKeyframe:
+      propertyKeyframes.find((keyframe) => keyframe.percentage > currentPercentage + TOLERANCE) ??
+      null,
+    currentKeyframe:
+      propertyKeyframes.find(
+        (keyframe) => Math.abs(keyframe.percentage - currentPercentage) <= TOLERANCE,
+      ) ?? null,
+  };
+}
 
 /**
  * Convert a clip-relative percentage (element lifetime, used for display/seek) to
@@ -92,18 +125,12 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
-  // Find keyframes that contain this property
-  const propertyKeyframes = keyframes?.filter((kf) => property in kf.properties) ?? [];
-
-  const prevKf =
-    propertyKeyframes.filter((kf) => kf.percentage < currentPercentage - TOLERANCE).at(-1) ?? null;
-
-  const nextKf =
-    propertyKeyframes.find((kf) => kf.percentage > currentPercentage + TOLERANCE) ?? null;
-
-  const atCurrent =
-    propertyKeyframes.find((kf) => Math.abs(kf.percentage - currentPercentage) <= TOLERANCE) ??
-    null;
+  const {
+    propertyKeyframes,
+    prevKeyframe: prevKf,
+    nextKeyframe: nextKf,
+    currentKeyframe: atCurrent,
+  } = getKeyframeNavigationState(keyframes ?? [], currentPercentage, property);
 
   // Diamond state
   let diamondState: DiamondState;
@@ -128,13 +155,23 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
     if (diamondState === "ghost") {
       onConvertToKeyframes();
     } else if (diamondState === "active" && atCurrent) {
-      onRemoveKeyframe(atCurrent.tweenPercentage ?? atCurrent.percentage);
+      // Report the keyframe's OWN tween. A merged gutter row shows the keyframes
+      // of every tween in the property group, so the caller's "the group's
+      // animation" guess names the wrong tween whenever the clicked keyframe
+      // belongs to a sibling — and the writer then finds no keyframe at that
+      // percentage and silently does nothing.
+      onRemoveKeyframe(atCurrent.tweenPercentage ?? atCurrent.percentage, atCurrent.animationId);
     } else {
       onAddKeyframe(clipToTweenPercentage(propertyKeyframes, currentPercentage));
     }
   };
 
   return (
+    // The two 12x20 steppers sit gap-0.5 apart with a 9px diamond between them,
+    // so they stay below the 24px WCAG 2.2 (2.5.8) minimum under that criterion's
+    // own spacing/inline exception: centred 24px targets here would overlap each
+    // other AND the diamond, and one control swallowing its neighbour's clicks is
+    // a worse 2.5.8 failure than a small target. Do not "fix" these to 24.
     <div className="flex h-5 items-center gap-0.5">
       <button
         type="button"

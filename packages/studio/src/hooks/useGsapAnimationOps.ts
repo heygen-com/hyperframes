@@ -7,6 +7,7 @@ import {
   sdkGsapDeleteAllForSelectorPersist,
   sdkAddWithKeyframesPersist,
   sdkReplaceWithKeyframesPersist,
+  cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
 import {
@@ -52,7 +53,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
@@ -74,7 +75,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label: "Delete GSAP animation" },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
@@ -96,7 +97,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label: "Delete all animations for element" },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       void commitMutation(
         selection,
@@ -162,7 +163,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label: `Add GSAP ${method} animation` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
 
       await commitMutation(
@@ -213,7 +214,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       void commitMutation(
         selection,
@@ -256,7 +257,7 @@ export function useGsapAnimationOps({
           sdkDeps,
           { label },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       void commitMutation(
         selection,

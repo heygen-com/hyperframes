@@ -1,0 +1,42 @@
+<template id="level2-template">
+  <div id="level2" data-composition-id="level2" data-width="1920" data-height="1080">
+    <div class="level2-bg"></div>
+    <div
+      id="scene-level3"
+      class="level3-host"
+      data-composition-id="level3"
+      data-composition-src="level-3.html"
+      data-start="0"
+      data-duration="2"
+      data-track-index="0"
+    ></div>
+    <style>
+      #level2 {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #1a2a3a;
+        overflow: hidden;
+      }
+      #level2 .level2-bg {
+        position: absolute;
+        inset: 0;
+        background: #1a2a3a;
+      }
+      #level2 .level3-host {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        tl.set({}, {}, 2);
+        window.__timelines["level2"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
-import type { MutableRefObject } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+import type { PublishSdkSession } from "../utils/sdkCutover";
+import { addExternalFileReloadListener } from "./externalFileReloadBus";
 
 /**
  * Read a project file's content, or undefined on a non-2xx (optional read).
@@ -46,22 +48,6 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * stale. The session has NO persist queue — Studio is the sole file writer; see
  * the open effect below.
  */
-// Reload-suppression baseline: a file-change within this window of our own SDK
-// cutover write is a CANDIDATE echo, but the decision is content-identity based
-// (isSelfWriteEcho) not time-only — so an undo write that lands inside the window
-// still reloads (its reverted bytes were never registered as a self-write). The
-// window only bounds how long a registered self-write stays suppressible.
-const SELF_WRITE_SUPPRESS_MS = 2000;
-
-/** Best-effort read of the changed file's content from a file-change payload. */
-function readFileChangeContent(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (typeof record.content === "string") return record.content;
-  if ("data" in record) return readFileChangeContent(record.data);
-  return null;
-}
-
 /**
  * Decide whether a file-change for the active composition should reload the SDK
  * session. `content` is the new on-disk bytes (from the payload or a re-read);
@@ -82,6 +68,8 @@ export function shouldReloadOnFileChange(
 
 export interface SdkSessionHandle {
   session: Composition | null;
+  /** Atomically publish a fully persisted candidate session. */
+  publish: PublishSdkSession;
   /**
    * Force a session reload immediately, bypassing the self-write suppress
    * window. Call after undo/redo writes the active composition file so the
@@ -90,58 +78,114 @@ export interface SdkSessionHandle {
   forceReload: () => void;
 }
 
+interface SdkSessionOwner {
+  projectId: string;
+  path: string;
+  reloadToken: number;
+  generation: number;
+}
+
+interface OwnedSdkSession extends SdkSessionOwner {
+  session: Composition;
+}
+
+function isSessionOwnerActive(
+  owner: SdkSessionOwner | undefined,
+  projectId: string | null,
+  path: string | null,
+  targetPath: string,
+): owner is SdkSessionOwner {
+  if (!owner) return false;
+  return owner.projectId === projectId && owner.path === path && owner.path === targetPath;
+}
+
+function isSessionOwnerCurrent(
+  owner: SdkSessionOwner,
+  generation: number,
+  projectId: string | null,
+  path: string | null,
+  reloadToken: number,
+): boolean {
+  return (
+    owner.generation === generation &&
+    owner.projectId === projectId &&
+    owner.path === path &&
+    owner.reloadToken === reloadToken
+  );
+}
+
+function ownsExpectedSession(
+  current: OwnedSdkSession | null,
+  expectedOwner: SdkSessionOwner,
+  expectedSession: Composition,
+  reloadToken: number,
+): current is OwnedSdkSession {
+  if (!current) return false;
+  return (
+    current.session === expectedSession &&
+    current.generation === expectedOwner.generation &&
+    current.reloadToken === reloadToken
+  );
+}
+
+function disposeSdkSession(session: Composition): void {
+  try {
+    session.dispose();
+  } catch (error) {
+    trackStudioEvent("sdk_session_dispose_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
-  domEditSaveTimestampRef?: MutableRefObject<number>,
 ): SdkSessionHandle {
-  const [session, setSession] = useState<Composition | null>(null);
+  const [ownedSession, setOwnedSession] = useState<OwnedSdkSession | null>(null);
+  const ownedSessionRef = useRef<OwnedSdkSession | null>(null);
+  const sessionOwnersRef = useRef(new WeakMap<Composition, SdkSessionOwner>());
+  const generationRef = useRef(0);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const activeCompPathRef = useRef(activeCompPath);
+  activeCompPathRef.current = activeCompPath;
   const [reloadToken, setReloadToken] = useState(0);
+  const reloadTokenRef = useRef(reloadToken);
+  reloadTokenRef.current = reloadToken;
 
-  // ── Re-open on external change to the active composition ──
-  useEffect(() => {
-    if (!activeCompPath) return;
-    const compPath = activeCompPath;
-    const readProjectId = projectId ?? null;
-    const handler = (payload?: unknown) => {
-      if (!shouldReloadSdkSession(payload, compPath)) return;
-      const withinWindow =
-        !!domEditSaveTimestampRef &&
-        Date.now() - domEditSaveTimestampRef.current < SELF_WRITE_SUPPRESS_MS;
-      const decide = (content: string | null) => {
-        if (shouldReloadOnFileChange(compPath, content, withinWindow)) setReloadToken((t) => t + 1);
-      };
-      const payloadContent = readFileChangeContent(payload);
-      // Prefer payload content; otherwise re-read so the decision is by IDENTITY
-      // (an undo's reverted bytes won't match a registered self-write → reload).
-      if (payloadContent != null || readProjectId == null) {
-        decide(payloadContent);
-        return;
-      }
-      readProjectFileOptional(readProjectId, compPath)
-        .then((c) => decide(c ?? null))
-        .catch(() => decide(null));
-    };
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", handler);
-      return () => import.meta.hot?.off?.("hf:file-change", handler);
-    }
-    // SSE fallback for the embedded studio server.
-    const es = new EventSource("/api/events");
-    es.addEventListener("file-change", handler);
-    return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCompPath, projectId]);
+  useEffect(
+    () =>
+      addExternalFileReloadListener((changedPath) => {
+        if (changedPath === activeCompPathRef.current) setReloadToken((token) => token + 1);
+      }),
+    [],
+  );
 
   // ── Open / re-open the session ──
   useEffect(() => {
+    const generation = ++generationRef.current;
+    let cancelled = false;
+
+    // The preceding effect normally released its generation first. Clear any
+    // remaining owner defensively so an invalid project/path cannot retain it.
+    const previous = ownedSessionRef.current;
+    ownedSessionRef.current = null;
+    setOwnedSession(null);
+    if (previous) disposeSdkSession(previous.session);
+
     if (!projectId || !activeCompPath) {
-      setSession(null);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    let cancelled = false;
-    const compRef = { current: null as Composition | null };
+    const owner: SdkSessionOwner = {
+      projectId,
+      path: activeCompPath,
+      reloadToken,
+      generation,
+    };
 
     readProjectFileOptional(projectId, activeCompPath)
       .then(async (content) => {
@@ -157,24 +201,77 @@ export function useSdkSession(
         const comp = await openComposition(content, { history: false });
         // Cleanup may have fired while openComposition was awaited; dispose immediately.
         if (cancelled) {
-          comp.dispose();
+          disposeSdkSession(comp);
           return;
         }
-        compRef.current = comp;
-        setSession(comp);
+        if (
+          !isSessionOwnerCurrent(
+            owner,
+            generationRef.current,
+            projectIdRef.current,
+            activeCompPathRef.current,
+            reloadTokenRef.current,
+          )
+        ) {
+          disposeSdkSession(comp);
+          return;
+        }
+        const displaced = ownedSessionRef.current;
+        const installed = { ...owner, session: comp };
+        sessionOwnersRef.current.set(comp, owner);
+        ownedSessionRef.current = installed;
+        setOwnedSession(installed);
+        if (displaced && displaced.session !== comp) disposeSdkSession(displaced.session);
       })
       .catch(() => {
-        if (!cancelled) setSession(null);
+        if (!cancelled && generationRef.current === generation) setOwnedSession(null);
       });
 
     return () => {
       cancelled = true;
-      // No queue to flush; dispose only. (Flushing here would serialize the
-      // pre-undo in-memory doc and race the revert write on undo/redo reload.)
-      compRef.current?.dispose();
+      // Publication preserves this generation, so cleanup releases whichever
+      // session it currently owns (the initially opened one or its candidate).
+      const owned = ownedSessionRef.current;
+      if (owned?.generation === generation) {
+        ownedSessionRef.current = null;
+        disposeSdkSession(owned.session);
+      }
     };
   }, [projectId, activeCompPath, reloadToken]);
 
   const forceReload = useCallback(() => setReloadToken((t) => t + 1), []);
-  return { session, forceReload };
+  const publish = useCallback<PublishSdkSession>(({ candidate, expectedSession, targetPath }) => {
+    const expectedOwner = sessionOwnersRef.current.get(expectedSession);
+    const current = ownedSessionRef.current;
+    if (
+      !isSessionOwnerActive(
+        expectedOwner,
+        projectIdRef.current,
+        activeCompPathRef.current,
+        targetPath,
+      )
+    ) {
+      return "rejected-inactive-target";
+    }
+    if (!ownsExpectedSession(current, expectedOwner, expectedSession, reloadTokenRef.current)) {
+      // The durable write won, but another session was installed for this same
+      // path before publication. Its self-write echo will be suppressed, so
+      // explicitly re-open it from disk instead of leaving it stale.
+      setReloadToken((t) => t + 1);
+      return "rejected-active-target";
+    }
+    const next: OwnedSdkSession = { ...current, session: candidate };
+    sessionOwnersRef.current.set(candidate, current);
+    ownedSessionRef.current = next;
+    setOwnedSession(next);
+    if (current.session !== candidate) disposeSdkSession(current.session);
+    return "published";
+  }, []);
+  const session =
+    ownedSession?.projectId === projectId &&
+    ownedSession.path === activeCompPath &&
+    ownedSession.reloadToken === reloadToken
+      ? ownedSession.session
+      : null;
+  return { session, publish, forceReload };
 }

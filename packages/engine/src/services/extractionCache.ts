@@ -62,8 +62,11 @@ export const GC_MARKER = ".hf-last-gc";
  * VFR-to-CFR re-encode, changing frame contents for VFR sources under
  * identical key tuples. Without the bump, warm v2 entries (two-pass frames)
  * would keep being served across the deploy boundary.
+ * v3 -> v4: the target fps identity is the exact FFmpeg argument instead of
+ * a JavaScript number. This invalidates entries created after rational NTSC
+ * rates had already been rounded to a decimal.
  */
-export const SCHEMA_PREFIX = "hfcache-v3-";
+export const SCHEMA_PREFIX = "hfcache-v4-";
 
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;
@@ -84,8 +87,8 @@ export interface CacheKeyInput {
    *  so callers that pass an unresolved "natural duration" still produce a
    *  stable key across invocations. */
   duration: number;
-  /** Target output frames-per-second. */
-  fps: number;
+  /** Exact target output frame-rate argument (for example `30000/1001`). */
+  fps: string;
   /** Output image format. */
   format: CacheFrameFormat;
   /** Optional source transform applied during extraction. */
@@ -136,7 +139,7 @@ function canonicalKeyBlob(input: CacheKeyInput): string {
     s: number;
     ms: number;
     d: number;
-    f: number;
+    f: string;
     fmt: CacheFrameFormat;
     t?: string;
   } = {

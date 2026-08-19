@@ -10,8 +10,10 @@ import { smoothGestureKeyframes } from "../utils/gestureSmoother";
 import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
+import { isInstantHold, idSelector, writeTargetSelector, tweenTargetsElement } from "./gsapShared";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -68,9 +70,17 @@ interface GestureSessionRef {
   selectedGsapAnimations?: GsapAnimation[];
   commitMutation?: (
     mutation: Record<string, unknown>,
-    options: { label: string; softReload?: boolean },
+    options: CommitMutationOptions,
   ) => Promise<void>;
 }
+
+/** Only the LAST group in a per-group commit loop reloads the preview; the
+ *  earlier ones skip it, so a multi-group gesture recording is one reload. */
+function reloadOnlyLast(index: number, count: number): Partial<CommitMutationOptions> {
+  return index === count - 1 ? { softReload: true } : { skipReload: true };
+}
+
+let gestureRecordingCommitCounter = 0;
 
 interface UseGestureCommitParams {
   domEditSessionRef: React.MutableRefObject<GestureSessionRef>;
@@ -112,6 +122,10 @@ export function useGestureCommit({
       return;
     }
     commitInFlightRef.current = true;
+    const coalesceOptions = {
+      coalesceKey: `gesture-recording:${++gestureRecordingCommitCounter}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+    };
     gestureStateRef.current = "idle";
     isGestureRecordingRef.current = false;
     const frozenSamples = gestureRecording.stopRecording();
@@ -154,9 +168,22 @@ export function useGestureCommit({
         if (!sortedPcts.includes(0)) sortedPcts.unshift(0);
       }
 
-      const selector = sel.id ? `#${sel.id}` : sel.selector;
+      // Two different jobs, two different selectors. `selector` is the string an
+      // ALREADY-AUTHORED tween is matched against (and retargeted with, so a
+      // tween aimed at a whole group stays aimed at it). `writeSelector` is what
+      // a NEW tween is authored with: the bare class the id-less case yields here
+      // would record the gesture onto every sibling sharing it.
+      const selector = sel.id ? idSelector(sel.id) : sel.selector;
       if (!selector) {
         showToast("Cannot save — element has no selector", "error");
+        return;
+      }
+      // A recorded gesture becomes a NEW tween, so its target must address one
+      // element; the selection's own selector would record the motion onto
+      // every sibling sharing its class (see writeTargetSelector).
+      const writeSelector = writeTargetSelector(sel);
+      if (!writeSelector) {
+        showToast("Cannot save: element has no unique selector", "error");
         return;
       }
       if (liveSession.commitMutation) {
@@ -172,12 +199,16 @@ export function useGestureCommit({
         );
         const allAnims = liveSession.selectedGsapAnimations ?? [];
         const existingPositionTween = hasPositionProps
-          ? allAnims.find((a) => a.propertyGroup === "position" && a.targetSelector === selector)
+          ? allAnims.find(
+              (a) =>
+                a.propertyGroup === "position" &&
+                tweenTargetsElement(a.targetSelector, selector, sel.element),
+            )
           : undefined;
         if (existingPositionTween) {
-          if (existingPositionTween.method === "set") {
-            // A `set` is a static hold, not a tween to merge into — replace it with
-            // the recorded motion (which already starts from the set's position).
+          if (isInstantHold(existingPositionTween)) {
+            // An instant hold is not a tween to merge into — replace it with the
+            // recorded motion (which already starts from the held position).
             await liveSession.commitMutation(
               {
                 type: "replace-with-keyframes",
@@ -242,11 +273,12 @@ export function useGestureCommit({
               // Emit one tween per property group so a mixed-prop gesture (e.g.
               // x/y + opacity) doesn't collapse into an untagged legacy mixed
               // tween that the position-only drag intercept can't edit.
-              for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
+              const keyframeGroups = partitionKeyframesByGroup(keyframes);
+              for (const [index, groupKfs] of keyframeGroups.entries()) {
                 await liveSession.commitMutation(
                   {
                     type: "add-with-keyframes",
-                    targetSelector: selector,
+                    targetSelector: writeSelector,
                     position: roundTo3(recStart),
                     duration: roundTo3(duration),
                     keyframes: groupKfs,
@@ -256,25 +288,34 @@ export function useGestureCommit({
                     // not inherit a sigmoid.
                     easeEach: "none",
                   },
-                  { label: "Gesture recording (new range)", softReload: true },
+                  {
+                    label: "Gesture recording (new range)",
+                    ...coalesceOptions,
+                    ...reloadOnlyLast(index, keyframeGroups.length),
+                  },
                 );
               }
             }
           }
         } else {
           // No existing tween — same per-group split as the new-range branch above.
-          for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
+          const keyframeGroups = partitionKeyframesByGroup(keyframes);
+          for (const [index, groupKfs] of keyframeGroups.entries()) {
             await liveSession.commitMutation(
               {
                 type: "add-with-keyframes",
-                targetSelector: selector,
+                targetSelector: writeSelector,
                 position: roundTo3(recStart),
                 duration: roundTo3(duration),
                 keyframes: groupKfs,
                 // Linear fallback (see above) — constant-speed segments stay linear.
                 easeEach: "none",
               },
-              { label: "Gesture recording", softReload: true },
+              {
+                label: "Gesture recording",
+                ...coalesceOptions,
+                ...reloadOnlyLast(index, keyframeGroups.length),
+              },
             );
           }
         }

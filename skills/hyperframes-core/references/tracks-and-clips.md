@@ -43,6 +43,18 @@ When adding a new clip to an existing composition:
 
 `data-media-start` (on `<video>`/`<audio>`) is an offset _into the source media_. Use it to skip the first few seconds of a media file without trimming the file itself.
 
+## Cut one source into multiple ranges
+
+For a hard cut, trim, splice, or reorder, duplicate the same video source into
+multiple clip elements. Each copy selects its source range with
+`data-media-start` plus `data-duration`, and places that range on the authored
+timeline with `data-start`. Change the source offsets and placement order; do
+not try to keyframe source cutting.
+
+Separately authored audio gives each audio copy the identical source range and
+timing as its matching video clip (`data-media-start`, `data-duration`, and
+`data-start`). Video stays muted; the separate audio elements carry sound.
+
 ## Relative Timing
 
 `data-start` accepts a clip ID instead of a number, meaning "start when that clip ends". Add `+ N` / `- N` to offset; negative produces overlap (useful for crossfades).

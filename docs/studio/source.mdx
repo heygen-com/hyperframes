@@ -1,0 +1,121 @@
+---
+title: "Work with source and an agent"
+sidebarTitle: "Source and agent"
+description: "Edit project files, diagnose a failed check, and hand the right context to an AI agent."
+---
+
+Studio, your agent, and the CLI work on the same project files. Use **Code** for
+a small source change you understand. Use the agent when the change crosses
+files, affects project structure, or starts from an unfamiliar failure.
+
+## Choose the smallest safe surface
+
+| Change                                                           | Best starting point            |
+| ---------------------------------------------------------------- | ------------------------------ |
+| Visible text, layout, style, media, timing, or supported motion  | Canvas, Inspector, or timeline |
+| One known value in one known file                                | Code                           |
+| Story, several scenes, generated animation, or project structure | Agent                          |
+| A reported lint problem with a clear direct fix                  | Studio or Code                 |
+| An unfamiliar failure or a fix spanning files                    | Copy to Agent                  |
+
+The choice is about the change, not a permanent workflow. You can move between
+the surfaces without exporting or converting the project.
+
+## Make a focused source edit
+
+1. Open **Code** in the left sidebar.
+2. Select the exact file in the project tree.
+3. Find the value responsible for the visible result.
+4. Make one focused change.
+5. Wait for the preview to refresh, then play the affected moment.
+
+The Code editor saves user edits automatically and records them in Studio
+history. If a save fails, Studio says that the latest edit was not persisted;
+fix the preview-server or connection problem before continuing.
+
+<Warning>
+  Creating, renaming, moving, or deleting a file can break references elsewhere in the project.
+  Search for the old path or ask the agent to update every reference.
+</Warning>
+
+Avoid editing the same file in Studio and another tool at the same time. If an
+external change lands first, the Code editor rejects the conflicting save and
+tells you that the latest edit was not persisted. Reload the current file,
+review the external change, then apply your edit again. The separate queue for
+visual canvas edits can pause and show a banner while a conflict is resolved.
+
+## Ask about the selected element
+
+When a visible element needs source work, select it and choose **Ask agent about
+this element**. Studio prepares the element and project context, combines it
+with your instruction, and copies the prompt to the clipboard. Paste that
+prompt into your agent chat.
+
+<Frame caption="Studio prepares a prompt for the selected element; you paste it into your agent chat.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/ask-agent-v1.jpg"
+    alt="HyperFrames Studio dialog for copying a prompt about the selected element and project context"
+  />
+</Frame>
+
+```text
+Keep the current narration and scene order. Make this product panel readable
+at the final video size, and do not change the following scene.
+```
+
+The copied context tells the agent where to look. Your sentence tells it what
+must remain true.
+
+## Run Studio Lint
+
+Choose **Lint** at the bottom of the left sidebar. Studio opens **HyperFrame
+Lint Results** with errors, warnings, file locations, and fix hints when they
+are available.
+
+Fix a simple, understood issue directly, then run Lint again. Use **Copy to
+Agent** when the source location is unfamiliar or the fix may affect other
+files. Add what happened before the error and what you expected:
+
+```text
+This appeared after I shortened the intro clip. I expected the title animation
+to keep its current timing. Fix the issue without changing the rest of the
+opening.
+```
+
+Do not paste only the error message when the intended result matters. A
+technically valid repair can still make the wrong creative change.
+
+## Use the project-level gates before delivery
+
+Studio Lint is a quick in-editor pass. The project-level commands remain the
+final gate, especially when the project contains nested compositions:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+`lint` checks the composition structure. `check` adds browser, runtime, layout,
+motion, and WCAG contrast verification.
+
+Passing checks do not approve the story or the final encode. Play the project
+after a source fix, then watch the rendered file before sharing it.
+
+## When the preview and source disagree
+
+1. Stop editing until the latest save finishes.
+2. Keep the first exact error or save warning.
+3. Reload the project only after checking whether another tool changed the file.
+4. Run the project checks.
+5. Ask the agent with the error, project path, action that caused it, and result
+   you expected.
+
+Use [Studio troubleshooting](/studio/troubleshooting) for editor, preview, and
+render-queue failures. Use [Finish and share](/guides/export-and-share) for the
+complete approval, validation, render, and delivery path.
+
+## Related topics
+
+- [Recover from a Studio problem](/studio/troubleshooting)
+- [Understand a HyperFrames project](/concepts)
+- [Finish, render, and share](/guides/export-and-share)

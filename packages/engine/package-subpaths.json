@@ -1,0 +1,29 @@
+{
+  "package": "@hyperframes/engine",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./alpha-blit": {
+      "source": "./src/utils/alphaBlit.ts",
+      "runtime": "./dist/utils/alphaBlit.js",
+      "types": "./dist/utils/alphaBlit.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./shader-transitions": {
+      "source": "./src/utils/shaderTransitions.ts",
+      "runtime": "./dist/utils/shaderTransitions.js",
+      "types": "./dist/utils/shaderTransitions.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

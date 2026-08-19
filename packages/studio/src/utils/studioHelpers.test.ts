@@ -1,12 +1,19 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveDroppedAssetDimensions,
   resolveTimelineIdForSelection,
   resolveTimelineSelectionSeekTime,
 } from "./studioHelpers";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("resolveTimelineSelectionSeekTime", () => {
   it("keeps the current time when it is already inside the clip range", () => {
@@ -47,6 +54,51 @@ describe("findMatchingTimelineElementId", () => {
 
   it("returns null for an unmatched element in index.html", () => {
     expect(findMatchingTimelineElementId({ id: "ghost", sourceFile: "index.html" }, [])).toBe(null);
+  });
+
+  it("resolves the correct repeated composition host by domId, not the first host sharing the same compositionSrc", () => {
+    // Two hosts import the SAME sub-composition — only compositionSrc alone
+    // can't tell them apart, but each still has its own domId (as any
+    // element does). Selecting the SECOND host must not collapse to the
+    // first one just because an earlier, unrelated element also happens to
+    // share its compositionSrc.
+    const els = [
+      el({ id: "host-a", domId: "host-a", sourceFile: "index.html", compositionSrc: "scene.html" }),
+      el({ id: "host-b", domId: "host-b", sourceFile: "index.html", compositionSrc: "scene.html" }),
+    ];
+    expect(
+      findMatchingTimelineElementId(
+        {
+          id: "host-b",
+          sourceFile: "index.html",
+          compositionSrc: "scene.html",
+          isCompositionHost: true,
+        },
+        els,
+      ),
+    ).toBe("host-b");
+  });
+
+  it("falls back to compositionSrc-only matching when the host selection has neither a domId nor a selector", () => {
+    const els = [
+      el({
+        id: "host-only",
+        domId: undefined,
+        sourceFile: "index.html",
+        compositionSrc: "scene.html",
+      }),
+    ];
+    expect(
+      findMatchingTimelineElementId(
+        {
+          id: undefined,
+          sourceFile: "index.html",
+          compositionSrc: "scene.html",
+          isCompositionHost: true,
+        },
+        els,
+      ),
+    ).toBe("host-only");
   });
 });
 
@@ -101,5 +153,45 @@ describe("resolveTimelineIdForSelection", () => {
       "comps/panel.html#card",
     );
     expect(resolveTimelineIdForSelection(selection, els, null)).toBe(null);
+  });
+});
+
+describe("resolveDroppedAssetDimensions", () => {
+  it("aborts an image probe when metadata times out", async () => {
+    vi.useFakeTimers();
+    const probe = {
+      addEventListener: vi.fn(),
+      naturalHeight: 0,
+      naturalWidth: 0,
+      src: "",
+    };
+    vi.stubGlobal(
+      "Image",
+      vi.fn(() => probe),
+    );
+
+    const result = resolveDroppedAssetDimensions("demo", "assets/hung.png", "image");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(result).resolves.toBeNull();
+    expect(probe.src).toBe("");
+  });
+
+  it("aborts a video probe when metadata times out", async () => {
+    vi.useFakeTimers();
+    const video = document.createElement("video");
+    const load = vi.fn();
+    Object.defineProperty(video, "load", { configurable: true, value: load });
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tagName, options) =>
+      tagName === "video" ? video : createElement(tagName, options),
+    );
+
+    const result = resolveDroppedAssetDimensions("demo", "assets/hung.mp4", "video");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(result).resolves.toBeNull();
+    expect(video.getAttribute("src")).toBe("");
+    expect(load).toHaveBeenCalledOnce();
   });
 });

@@ -4,7 +4,7 @@ import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 
-function parseTimingValue(input: string): number | null {
+export function parseTimingValue(input: string): number | null {
   const cleaned = input.replace(/s$/i, "").trim();
   const parsed = Number.parseFloat(cleaned);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;

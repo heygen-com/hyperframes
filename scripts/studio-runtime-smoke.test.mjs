@@ -8,7 +8,7 @@ import {
 
 function bodyOf(method, path) {
   const response = studioSmokeApiResponse(method, `http://localhost:5199${path}`);
-  assert.ok(response && response !== null);
+  assert.ok(response);
   return JSON.parse(response.body);
 }
 
@@ -42,6 +42,15 @@ describe("Studio runtime smoke fixtures", () => {
       postamble: "",
     });
     assert.deepEqual(bodyOf("GET", "/api/projects/smoke-test/lint"), { findings: [] });
+  });
+
+  it("returns an image for composition thumbnail requests", () => {
+    const response = studioSmokeApiResponse(
+      "GET",
+      "http://localhost:5199/api/projects/smoke-test/thumbnail/index.html?t=3",
+    );
+    assert.ok(response);
+    assert.equal(response.contentType, "image/svg+xml");
   });
 
   it("marks unknown API requests as fixture failures", () => {

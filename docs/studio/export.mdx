@@ -1,0 +1,55 @@
+---
+title: "Export and manage renders"
+description: "Choose a format, quality, resolution, and frame rate, then manage the render queue."
+---
+
+Click **Export** in the top bar when the project is ready for a finished file. Studio opens the **Renders** panel.
+
+<Frame caption="The Renders panel contains delivery settings and the render queue.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/export-v1.jpg"
+    alt="The Renders panel with format, resolution, frame rate, and quality controls"
+  />
+</Frame>
+
+## Choose the format
+
+- **MP4** — the normal choice for sharing and uploading.
+- **WebM** — useful for web delivery and some transparency workflows.
+- **MOV (ProRes)** — useful when another editing or production workflow expects a high-quality intermediate.
+
+Choose the format required by the destination rather than the one with the most options.
+
+## Choose quality and size
+
+Use the project’s authored resolution unless you need a specific delivery size.
+
+The resolution control includes **Auto** and compatible preset sizes. Increasing resolution makes the render slower and the file larger; it does not repair low-resolution source media.
+
+Choose 24, 30, or 60 fps only when the destination or source material requires it. MOV uses a fixed ProRes quality, so the separate quality choice is hidden for that format.
+
+## Start and manage a render
+
+The render queue shows active and completed jobs. From there you can:
+
+- watch progress;
+- cancel an active job;
+- download a completed file;
+- delete an unwanted result;
+- choose **Hide finished** to remove completed rows from the list without deleting their files.
+
+## Before you send the file
+
+1. Open the exported file itself.
+2. Watch the beginning and end.
+3. Check captions, cuts, audio, and the most complex transition.
+4. Confirm dimensions and duration.
+5. Use a clear filename that identifies the version.
+
+If a render fails, keep the error and open [Studio troubleshooting](/studio/troubleshooting).
+
+## Related topics
+
+- [Finish, render, and share a project](/guides/export-and-share)
+- [Render from the command line](/guides/rendering)
+- [Recover from a Studio problem](/studio/troubleshooting)

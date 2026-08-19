@@ -238,6 +238,8 @@ describe("cross-worker idempotency", () => {
         expect(b.outputKind).toBe("file");
         expect(a.framesEncoded).toBeGreaterThan(0);
         expect(b.framesEncoded).toBe(a.framesEncoded);
+        expect(a.captureMode).toBe("beginframe");
+        expect(b.captureMode).toBe("beginframe");
 
         expect(a.sha256).toBe(b.sha256);
         assertBytesEqual(outA, outB, "file", `mp4 chunk ${chunkIndex}`);

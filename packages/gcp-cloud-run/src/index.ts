@@ -21,26 +21,42 @@
 export { createApp, dispatch, type HandlerDeps, startServer, unwrapEvent } from "./server.js";
 export {
   type AssembleEvent,
+  type AssembleV1Event,
+  type AssembleV2Event,
   type AssembleResultBody,
   type CloudRunAction,
   type CloudRunEvent,
+  type CloudRunPlanProtocol,
   type CloudRunResult,
   type PlanEvent,
   type PlanResultBody,
+  type PlanV1Event,
+  type PlanV1ResultBody,
+  type PlanV2Event,
+  type PlanV2ResultBody,
   type RenderChunkEvent,
   type RenderChunkResultBody,
+  type RenderChunkV1Event,
+  type RenderChunkV2Event,
   type SerializableDistributedRenderConfig,
 } from "./events.js";
 export { ChromeBinaryUnavailableError, resolveChromeExecutablePath } from "./chromium.js";
 export {
   downloadGcsObjectToFile,
+  downloadGcsObjectToFileVerified,
   formatGcsUri,
   type GcsLocation,
   parseGcsUri,
+  sha256File,
   tarDirectory,
   untarDirectory,
+  uploadContentAddressedFileToGcs,
   uploadFileToGcs,
 } from "./gcsTransport.js";
+export {
+  GcsPlanV2ArtifactPublisher,
+  type GcsPlanV2ArtifactPublisherOptions,
+} from "./gcsPlanV2Publisher.js";
 
 // ── Client-side SDK ─────────────────────────────────────────────────────────
 export { deploySite, type DeploySiteOptions, type SiteHandle } from "./sdk/deploySite.js";
@@ -62,3 +78,4 @@ export {
   type RenderCost,
 } from "./sdk/costAccounting.js";
 export { InvalidConfigError, validateDistributedRenderConfig } from "./sdk/validateConfig.js";
+export { getTerraformModuleDir } from "./terraform.js";

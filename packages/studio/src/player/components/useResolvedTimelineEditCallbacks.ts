@@ -6,7 +6,12 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 // the rest of the callback bag still comes from TimelineEditContext.
 export type TimelineEditOverrides = Pick<
   TimelineEditCallbacks,
-  "onMoveElement" | "onResizeElement" | "onBlockedEditAttempt" | "onSplitElement"
+  | "onMoveElement"
+  | "onMoveElements"
+  | "onResizeElement"
+  | "onResizeElements"
+  | "onBlockedEditAttempt"
+  | "onSplitElement"
 >;
 
 // Merge any prop overrides over the context callbacks. Used so NLELayout can
@@ -16,15 +21,32 @@ export function useResolvedTimelineEditCallbacks(
   overrides: TimelineEditOverrides,
 ): TimelineEditCallbacks {
   const ctx = useTimelineEditContextOptional();
-  const { onMoveElement, onResizeElement, onBlockedEditAttempt, onSplitElement } = overrides;
+  const {
+    onMoveElement,
+    onMoveElements,
+    onResizeElement,
+    onResizeElements,
+    onBlockedEditAttempt,
+    onSplitElement,
+  } = overrides;
   return useMemo(
     () => ({
       ...ctx,
       onMoveElement: onMoveElement ?? ctx.onMoveElement,
+      onMoveElements: onMoveElements ?? ctx.onMoveElements,
       onResizeElement: onResizeElement ?? ctx.onResizeElement,
+      onResizeElements: onResizeElements ?? ctx.onResizeElements,
       onBlockedEditAttempt: onBlockedEditAttempt ?? ctx.onBlockedEditAttempt,
       onSplitElement: onSplitElement ?? ctx.onSplitElement,
     }),
-    [ctx, onMoveElement, onResizeElement, onBlockedEditAttempt, onSplitElement],
+    [
+      ctx,
+      onMoveElement,
+      onMoveElements,
+      onResizeElement,
+      onResizeElements,
+      onBlockedEditAttempt,
+      onSplitElement,
+    ],
   );
 }

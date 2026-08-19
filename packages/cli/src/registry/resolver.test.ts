@@ -5,6 +5,7 @@ import {
   loadAllItems,
   resolveItem,
   resolveItemWithDependencies,
+  unreachableRegistryMessage,
 } from "./resolver.js";
 
 const MANIFEST: RegistryManifest = {
@@ -203,5 +204,32 @@ describe("registry resolver", () => {
         /Circular registryDependencies detected: gamma -> beta -> alpha -> gamma/,
       );
     });
+  });
+});
+
+describe("unreachableRegistryMessage", () => {
+  it("names a private registry, so the reader looks at the right host", () => {
+    // Same dead end the item-file failure used to be: without the host, a
+    // project that set `registry` in hyperframes.json reads this as the public
+    // catalog having lost the item.
+    const message = unreachableRegistryMessage("blur-in", "https://private.example/registry");
+
+    expect(message).toContain("https://private.example/registry");
+    expect(message).toContain("hyperframes.json");
+  });
+
+  it("stays quiet when the registry is the public one", () => {
+    const message = unreachableRegistryMessage(
+      "blur-in",
+      "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+    );
+
+    expect(message).toBe('Item "blur-in" not found \u2014 registry unreachable or empty.');
+  });
+
+  it("stays quiet when no registry was supplied at all", () => {
+    expect(unreachableRegistryMessage("blur-in")).toBe(
+      'Item "blur-in" not found \u2014 registry unreachable or empty.',
+    );
   });
 });

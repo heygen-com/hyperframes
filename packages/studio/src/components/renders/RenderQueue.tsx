@@ -1,6 +1,11 @@
-import { memo, useState, useRef, useEffect, useId } from "react";
+import { memo, useState, useRef, useEffect, useLayoutEffect, useId } from "react";
+import { createPortal } from "react-dom";
+import { CANVAS_DIMENSIONS } from "@hyperframes/parsers";
 import { RenderQueueItem } from "./RenderQueueItem";
+import { FfmpegRequiredNotice } from "./FfmpegRequiredNotice";
+import type { FfmpegStatus } from "./useFfmpegStatus";
 import { Button } from "../ui/Button";
+import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -38,6 +43,13 @@ interface RenderQueueProps {
    * a 1080p or 4K scale. `null` falls back to landscape (legacy default).
    */
   compositionDimensions?: CompositionDimensions | null;
+  /**
+   * Encoder availability, owned by useRenderQueue so the panel's Export button
+   * and the header's agree. `null` means "no answer", not "missing".
+   */
+  ffmpeg: FfmpegStatus | null;
+  ffmpegChecking: boolean;
+  onRecheckFfmpeg: () => void;
 }
 
 // Orientation is derived from the composition's authored aspect ratio,
@@ -51,17 +63,6 @@ const SCALE_LABEL: Record<RenderScale, string> = {
   auto: "Auto",
   "1080p": "1080p",
   "4k": "4K",
-};
-
-// Mirrors `CANVAS_DIMENSIONS` in @hyperframes/core. Studio can't import from
-// the core barrel (it transitively pulls in node:fs) and the values are stable.
-const CANVAS_DIMENSIONS: Record<ResolutionPreset, CompositionDimensions> = {
-  landscape: { width: 1920, height: 1080 },
-  portrait: { width: 1080, height: 1920 },
-  "landscape-4k": { width: 3840, height: 2160 },
-  "portrait-4k": { width: 2160, height: 3840 },
-  square: { width: 1080, height: 1080 },
-  "square-4k": { width: 2160, height: 2160 },
 };
 
 type CompAspect = "landscape" | "portrait" | "square";
@@ -142,12 +143,20 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
   },
 };
 
+// Estimated, like COLOR_PICKER_SIZE in propertyPanelColor: only the flip
+// decision uses the height, and the clamp keeps the panel on screen either way.
+const FORMAT_PANEL_SIZE = { width: 208, height: 150 };
+
 // Rich format guidance in a keyboard-reachable disclosure: the trigger is a
 // real button (focusable, labelled), the panel is tied to it via
 // aria-describedby, and Escape dismisses (WCAG 1.4.13). Content is too rich
 // for the one-line ui/Tooltip primitive, so this stays a local popover.
+// It renders in a portal because the right panel is overflow-hidden: an
+// in-flow absolute panel gets clipped at the panel edge.
 function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<FloatingPosition | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panelId = useId();
 
@@ -161,6 +170,22 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
 
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
+  // Positioned once on open, so it does not follow panel scroll. The popover
+  // is hover-lived; add a scroll listener only if that ever shows up.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = triggerRef.current;
+    if (!el) return;
+    setPosition(
+      resolveFloatingPanelPosition(
+        el.getBoundingClientRect(),
+        { width: window.innerWidth, height: window.innerHeight },
+        FORMAT_PANEL_SIZE,
+        { offset: 6 },
+      ),
+    );
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -173,7 +198,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   const info = FORMAT_INFO[format];
 
   return (
-    <div className="relative" onPointerEnter={show} onPointerLeave={hide}>
+    <div ref={triggerRef} className="relative" onPointerEnter={show} onPointerLeave={hide}>
       <button
         type="button"
         aria-label="About video formats"
@@ -200,27 +225,32 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
           <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
       </button>
-      {open && (
-        <div
-          id={panelId}
-          role="tooltip"
-          className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50"
-        >
-          <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
-          <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
-          <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
-            {(["mp4", "mov", "webm"] as const)
-              .filter((f) => f !== format)
-              .map((f) => (
-                <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
-                  <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
-                  {" — "}
-                  {FORMAT_INFO[f].desc}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            id={panelId}
+            role="tooltip"
+            onPointerEnter={show}
+            onPointerLeave={hide}
+            className="fixed w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-[200]"
+            style={{ left: position?.left ?? -9999, top: position?.top ?? -9999 }}
+          >
+            <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
+            <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
+            <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
+              {(["mp4", "mov", "webm"] as const)
+                .filter((f) => f !== format)
+                .map((f) => (
+                  <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
+                    <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
+                    {" — "}
+                    {FORMAT_INFO[f].desc}
+                  </p>
+                ))}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -245,17 +275,29 @@ function FormatExportButton({
   isRendering,
   compositionDimensions,
   lastRenderDurationMs,
+  ffmpeg,
+  ffmpegChecking,
+  onRecheckFfmpeg,
 }: {
   onStartRender: StartRenderHandler;
   isRendering: boolean;
   compositionDimensions?: CompositionDimensions | null;
   lastRenderDurationMs?: number;
+  ffmpeg: FfmpegStatus | null;
+  ffmpegChecking: boolean;
+  onRecheckFfmpeg: () => void;
 }) {
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
-  const [resolution, setResolution] = useState<ResolutionPreset | "auto">("auto");
+  const [resolution, setResolution] = useState<RenderScale>("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
+
+  // Only a definite "not installed" blocks Export. A null status means the
+  // probe gave no answer, and refusing to export on no answer would break
+  // setups that are perfectly fine. Holding the narrowed value rather than a
+  // boolean keeps the notice from re-testing what this line already decided.
+  const missingFfmpeg = ffmpeg && !ffmpeg.ok ? ffmpeg : null;
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
@@ -265,6 +307,13 @@ function FormatExportButton({
 
   return (
     <div className="flex flex-col gap-3">
+      {missingFfmpeg && (
+        <FfmpegRequiredNotice
+          status={missingFfmpeg}
+          checking={ffmpegChecking}
+          onRecheck={onRecheckFfmpeg}
+        />
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">
@@ -290,7 +339,7 @@ function FormatExportButton({
           <span className="text-[10px] text-panel-text-4">Resolution</span>
           <select
             value={resolution}
-            onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
+            onChange={(e) => setResolution(e.target.value as RenderScale)}
             disabled={isRendering}
             className={selectCls}
           >
@@ -348,12 +397,15 @@ function FormatExportButton({
         variant="primary"
         size="md"
         loading={isRendering}
+        disabled={missingFfmpeg !== null}
+        title={missingFfmpeg ? "Install FFmpeg to export. See the note above." : undefined}
         onClick={() => {
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
-          if (isRendering) return;
-          trackStudioEvent("render_start", { format, quality, resolution, fps });
-          void onStartRender(format, quality, resolution, fps);
+          if (isRendering || missingFfmpeg) return;
+          const outputResolution = resolveResolution(resolution, compositionDimensions);
+          trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
+          void onStartRender(format, quality, outputResolution, fps);
         }}
         className="w-full text-[11px] font-semibold"
       >
@@ -381,6 +433,9 @@ export const RenderQueue = memo(function RenderQueue({
   actionError,
   onDismissActionError,
   compositionDimensions,
+  ffmpeg,
+  ffmpegChecking,
+  onRecheckFfmpeg,
 }: RenderQueueProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -405,6 +460,9 @@ export const RenderQueue = memo(function RenderQueue({
           isRendering={isRendering}
           compositionDimensions={compositionDimensions}
           lastRenderDurationMs={lastRenderDurationMs}
+          ffmpeg={ffmpeg}
+          ffmpegChecking={ffmpegChecking}
+          onRecheckFfmpeg={onRecheckFfmpeg}
         />
       </div>
 

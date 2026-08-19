@@ -1,0 +1,32 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "editorial-flash-overlay",
+  "type": "hyperframes:block",
+  "title": "Editorial Flash Overlay",
+  "description": "Finite neutral-warm light layers for a seek-safe camera-flash cut or social reveal",
+  "tags": [
+    "flash",
+    "editorial",
+    "social",
+    "light",
+    "transition",
+    "overlay",
+    "media-treatment-overlay"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4,
+  "files": [
+    {
+      "path": "editorial-flash-overlay.html",
+      "target": "compositions/editorial-flash-overlay.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/editorial-flash-overlay.mp4"
+  }
+}

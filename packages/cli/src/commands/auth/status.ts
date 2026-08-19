@@ -1,3 +1,4 @@
+import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth status` — print the active credential's source,
  * type, and identity (verified against `GET /v3/users/me`).
@@ -81,7 +82,7 @@ export default defineCommand({
     const status = await verify(credential);
     if (asJson) printJsonStatus(status);
     else printHumanStatus(status);
-    process.exit(status.apiError ? 1 : 0);
+    setCommandExitCode(status.apiError ? 1 : 0);
   },
 });
 
@@ -123,7 +124,7 @@ function handleUnconfigured(asJson: boolean): never {
     ? JSON.stringify(buildUnconfiguredJson(ctx, engines))
     : buildUnconfiguredLines(ctx, engines).join("\n");
   console.log(output);
-  process.exit(1);
+  failCommand();
 }
 
 // fallow-ignore-next-line complexity
@@ -135,7 +136,7 @@ function handleResolveError(err: unknown, asJson: boolean): never {
     console.error(c.error(err.message));
     if (err.hint) console.error(c.dim(err.hint));
   }
-  process.exit(1);
+  failCommand();
 }
 
 async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {

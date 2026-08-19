@@ -13,7 +13,7 @@
  * No real ffmpeg/ffprobe runs in these tests.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import {
   buildPadTrimAudioArgs,
   buildPadTrimAudioPlan,
@@ -24,56 +24,42 @@ import {
 } from "./audioPadTrim.js";
 
 describe("buildPadTrimAudioArgs", () => {
-  it("emits a concat-copy pad plan when audio is shorter than target", () => {
-    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0, {
-      sampleRate: 48000,
-      channels: 2,
-    });
+  it("emits a decode/filter/re-encode pad plan when audio is shorter than target", () => {
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
     expect(plan.operation).toBe("pad");
-    expect(plan.steps).toHaveLength(2);
-
-    const silenceArgs = plan.steps[0]!.args;
-    expect(plan.steps[0]!.kind).toBe("pad-silence");
-    expect(silenceArgs).not.toContain("/tmp/in.aac");
-    expect(silenceArgs[silenceArgs.indexOf("-i") + 1]).toBe(
-      "anullsrc=channel_layout=stereo:sample_rate=48000",
-    );
-    expect(silenceArgs[silenceArgs.indexOf("-t") + 1]).toBe("1.000000");
-    expect(silenceArgs[silenceArgs.indexOf("-c:a") + 1]).toBe("aac");
-
-    const concatArgs = plan.steps[1]!.args;
-    expect(plan.steps[1]!.kind).toBe("pad-concat");
-    expect(concatArgs).toContain("concat");
-    expect(concatArgs[concatArgs.indexOf("-i") + 1]).toBe("pipe:0");
-    expect(concatArgs[concatArgs.indexOf("-c:a") + 1]).toBe("copy");
-    expect(concatArgs[concatArgs.length - 1]).toBe("/tmp/out.aac");
-    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/in.aac'");
-    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/out.aac.pad-silence.aac'");
-    expect(plan.cleanupPaths).toEqual(["/tmp/out.aac.pad-silence.aac"]);
-
-    const reencodedSourceStep = plan.steps.find(
-      (step) =>
-        step.args.includes("/tmp/in.aac") && step.args[step.args.indexOf("-c:a") + 1] === "aac",
-    );
-    expect(reencodedSourceStep).toBeUndefined();
+    expect(plan.steps).toHaveLength(1);
+    const args = plan.steps[0]!.args;
+    expect(args[args.indexOf("-i") + 1]).toBe("/tmp/in.aac");
+    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
+    expect(args.join(" ")).not.toContain("whole_dur");
+    expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
+    expect(args[args.indexOf("-c:a") + 1]).toBe("aac");
+    // The single-step filter plan has no intermediate artifacts to clean up.
+    expect(plan.cleanupPaths).toEqual([]);
   });
 
   it("keeps the legacy args helper on the first pad materialization step", () => {
     const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
     expect(operation).toBe("pad");
-    expect(args).not.toContain("/tmp/in.aac");
-    expect(args[args.indexOf("-t") + 1]).toBe("1.000000");
+    expect(args).toContain("/tmp/in.aac");
+    expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
   });
 
-  it("emits -t when audio is longer than target", () => {
-    const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 6.123, 5.0);
+  it("filter-trims and re-encodes AAC packet padding beyond the target", () => {
+    const { args, operation } = buildPadTrimAudioArgs(
+      "/tmp/in.aac",
+      "/tmp/out.m4a",
+      15.018667,
+      15.0,
+    );
     expect(operation).toBe("trim");
-    const tIdx = args.indexOf("-t");
-    expect(tIdx).toBeGreaterThan(-1);
-    expect(args[tIdx + 1]).toBe("5.000000");
-    // Trim preserves AAC stream copy.
+    const filterIdx = args.indexOf("-af");
+    expect(args[filterIdx + 1]).toBe("atrim=duration=15.000000,asetpts=PTS-STARTPTS");
+    expect(args[args.indexOf("-t") + 1]).toBe("15.000000");
     const codecIdx = args.indexOf("-c:a");
-    expect(args[codecIdx + 1]).toBe("copy");
+    expect(args[codecIdx + 1]).toBe("aac");
+    expect(args[args.indexOf("-b:a") + 1]).toBe("192k");
+    expect(args.at(-1)).toBe("/tmp/out.m4a");
   });
 
   it("emits a plain copy when source duration matches target within ~1ms", () => {
@@ -105,6 +91,22 @@ describe("buildPadTrimAudioArgs", () => {
     expect(padNeeded.operation).toBe("pad");
     const trimNeeded = buildPadTrimAudioArgs("/tmp/a.aac", "/tmp/o.aac", 5.002, 5.0);
     expect(trimNeeded.operation).toBe("trim");
+  });
+
+  it("uses the portable apad/atrim filter for Windows duration normalization", () => {
+    // Bundled Windows FFmpeg builds reject `apad=whole_dur`. Match the
+    // portable finite-padding shape used by the main audio mixer.
+    const winPlan = buildPadTrimAudioPlan(
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.m4a",
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio-padded.m4a",
+      4.0,
+      5.0,
+    );
+    expect(winPlan.operation).toBe("pad");
+    const args = winPlan.steps[0]!.args;
+    expect(args).toContain("-af");
+    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
+    expect(args.join(" ")).not.toContain("whole_dur");
   });
 });
 
@@ -138,6 +140,24 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     return { input, captured };
   }
 
+  it("passes the render abort signal to the audio metadata probe", async () => {
+    const controller = new AbortController();
+    const probeVideoFrameInfo = mock(async () => ({ frameCount: 30, fpsNum: 30, fpsDen: 1 }));
+    const probeAudioInfo = mock(async () => ({ durationSeconds: 1 }));
+
+    await padOrTrimAudioToVideoFrameCount({
+      videoPath: "/tmp/v.mp4",
+      audioPath: "/tmp/a.aac",
+      outputPath: "/tmp/o.aac",
+      signal: controller.signal,
+      probeVideoFrameInfo,
+      probeAudioInfo,
+      runFfmpeg: mock(async () => ({ success: true })),
+    });
+
+    expect(probeAudioInfo).toHaveBeenCalledWith("/tmp/a.aac", controller.signal);
+  });
+
   it("pads a video of N=180 frames at 30/1 fps with shorter audio", async () => {
     const { input, captured } = harness({
       video: { frameCount: 180, fpsNum: 30, fpsDen: 1 },
@@ -148,11 +168,10 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
     expect(result.sourceDurationSeconds).toBe(5.5);
-    expect(captured.args).toHaveLength(2);
+    expect(captured.args).toHaveLength(1);
     const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toBe("0.500000");
-    expect(captured.args[0]).not.toContain("/tmp/a.aac");
-    expect(captured.args[1]![captured.args[1]!.indexOf("-c:a") + 1]).toBe("copy");
+    expect(captured.args[0]![tIdx + 1]).toBe("6.000000");
+    expect(captured.args[0]![captured.args[0]!.indexOf("-c:a") + 1]).toBe("aac");
   });
 
   it("trims a video of N=120 frames at 30/1 fps with longer audio", async () => {
@@ -165,8 +184,8 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("trim");
     expect(result.targetDurationSeconds).toBe(4);
     expect(captured.args).toHaveLength(1);
-    const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toBe("4.000000");
+    const filterIdx = captured.args[0]!.indexOf("-af");
+    expect(captured.args[0]![filterIdx + 1]).toBe("atrim=duration=4.000000,asetpts=PTS-STARTPTS");
   });
 
   it("emits a copy when audio duration already equals frameCount/fps", async () => {
@@ -193,7 +212,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBeCloseTo((120 * 1001) / 30000, 9);
     const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toMatch(/^0\.004\d+$/);
+    expect(captured.args[0]![tIdx + 1]).toBe("4.004000");
   });
 
   it("propagates video probe failure as success=false", async () => {
@@ -249,5 +268,114 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.error).toBe("synthetic ffmpeg failure");
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
+  });
+});
+
+// ── Public-path path redaction ────────────────────────────────────────────
+//
+// The redaction helpers have their own unit tests, but those pass whether or
+// not this module actually CALLS them: deleting the wiring in
+// padOrTrimAudioToVideoFrameCount left every one of them green. These drive
+// the public entry point and assert on the public `PadTrimAudioResult.error`,
+// which is what reaches logs, telemetry, and the caller.
+describe("PadTrimAudioResult.error never carries the input path", () => {
+  const cases: Array<{ name: string; videoPath: string; secret: string }> = [
+    {
+      name: "a dash-prefixed relative path",
+      videoPath: "./assets/-customer-secret-intro.mp4",
+      secret: "customer-secret-intro",
+    },
+    {
+      name: "a non-allowlisted absolute root",
+      videoPath: "/data/acme-secret/video.mp4",
+      secret: "acme-secret",
+    },
+    {
+      name: "a bare relative path",
+      videoPath: "customer/acme-secret/video.mp4",
+      secret: "acme-secret",
+    },
+  ];
+
+  for (const { name, videoPath, secret } of cases) {
+    it(`redacts ${name} raised by the video probe`, async () => {
+      const result = await padOrTrimAudioToVideoFrameCount({
+        videoPath,
+        audioPath: "/tmp/audio.m4a",
+        outputPath: "/tmp/out.aac",
+        // Reproduces the real thrower: defaultProbeVideoFrameInfo raises
+        // `ffprobe found no video stream in ${videoPath}` with the raw path.
+        probeVideoFrameInfo: () =>
+          Promise.reject(new Error(`ffprobe found no video stream in ${videoPath}`)),
+        probeAudioInfo: () => Promise.resolve({ durationSeconds: 1 }),
+        runFfmpeg: () => Promise.resolve({ success: true }),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error ?? "").not.toContain(secret);
+      expect(result.error ?? "").not.toContain(videoPath);
+      // Still diagnosable — the failure mode survives redaction.
+      expect(result.error ?? "").toContain("failed to probe video");
+    });
+  }
+
+  it("redacts raw ffprobe stderr surfaced through the audio probe", async () => {
+    const result = await padOrTrimAudioToVideoFrameCount({
+      videoPath: "/tmp/v.mp4",
+      audioPath: "/data/acme-secret/audio.m4a",
+      outputPath: "/tmp/out.aac",
+      probeVideoFrameInfo: () => Promise.resolve({ frameCount: 30, fpsNum: 30, fpsDen: 1 }),
+      probeAudioInfo: () =>
+        Promise.reject(
+          new Error("/data/acme-secret/audio.m4a: Invalid data found when processing input"),
+        ),
+      runFfmpeg: () => Promise.resolve({ success: true }),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error ?? "").not.toContain("acme-secret");
+    expect(result.error ?? "").toContain("failed to probe audio");
+  });
+
+  // An injected probe can reject with anything. Casting the reason to Error and
+  // reading `.message` yielded undefined, which threw inside the redactor and
+  // turned a returned failure result into a rejected promise.
+  describe("a probe that rejects with a non-Error value", () => {
+    const nonErrors: Array<[string, unknown]> = [
+      ["a string", "probe failed"],
+      ["undefined", undefined],
+      ["null", null],
+      ["a number", 42],
+      ["a plain object", { code: "ENOENT" }],
+    ];
+
+    for (const [label, reason] of nonErrors) {
+      it(`still returns a failed result when the video probe rejects with ${label}`, async () => {
+        const result = await padOrTrimAudioToVideoFrameCount({
+          videoPath: "/data/acme-secret/video.mp4",
+          audioPath: "/tmp/audio.m4a",
+          outputPath: "/tmp/out.aac",
+          probeVideoFrameInfo: () => Promise.reject(reason),
+          probeAudioInfo: () => Promise.resolve({ durationSeconds: 1 }),
+          runFfmpeg: () => Promise.resolve({ success: true }),
+        });
+        expect(result.success).toBe(false);
+        expect(result.error ?? "").toContain("failed to probe video");
+      });
+
+      it(`still returns a failed result when the audio probe rejects with ${label}`, async () => {
+        const result = await padOrTrimAudioToVideoFrameCount({
+          videoPath: "/tmp/v.mp4",
+          audioPath: "/data/acme-secret/audio.m4a",
+          outputPath: "/tmp/out.aac",
+          probeVideoFrameInfo: () => Promise.resolve({ frameCount: 30, fpsNum: 30, fpsDen: 1 }),
+          probeAudioInfo: () => Promise.reject(reason),
+          runFfmpeg: () => Promise.resolve({ success: true }),
+        });
+        expect(result.success).toBe(false);
+        expect(result.error ?? "").toContain("failed to probe audio");
+      });
+    }
   });
 });

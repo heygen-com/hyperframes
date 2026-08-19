@@ -90,7 +90,7 @@ function isGsapScript(text: string): boolean {
   );
 }
 
-function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
+export function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
   const results: HTMLScriptElement[] = [];
   const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
   for (const script of scripts) {
@@ -102,8 +102,9 @@ function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
 /**
  * Extract the GSAP timeline script text from a serialized HTML document, for
  * feeding into applySoftReload. Returns null when zero or multiple GSAP scripts
- * are present (ambiguous — caller should fall back to a full reload), matching
- * applySoftReload's own single-script requirement.
+ * are present (ambiguous — a serialized snapshot can't say WHICH script a
+ * single rewritten text corresponds to; caller should fall back to a full
+ * reload), matching applySoftReload's own single-script requirement.
  */
 export function extractGsapScriptText(html: string): string | null {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -181,6 +182,55 @@ export interface SoftReloadOptions {
   currentTimeOverride?: number;
   /** After-write file HTML — the primary source for authored-opacity restore. */
   authoredHtml?: string;
+}
+
+/**
+ * The soft reload's finalization step, shared with the rebind-only preview sync
+ * below: seek → force timeline rebind → reapply studio manual edits.
+ *
+ * Seek BEFORE rebind: __hfForceTimelineRebind's own internal force-render
+ * (see init.ts) renders the freshly-created timeline at whatever the
+ * runtime's internal scrub position already is, not at whatever we pass
+ * here afterward — a redundant seek() call after rebind can be a GSAP
+ * no-op if the timeline already reports being at that time internally.
+ */
+function finalizeSoftReload(win: IframeWindow, currentTime: number): void {
+  win.__player?.seek?.(currentTime);
+  win.__hfForceTimelineRebind?.();
+  win.__hfStudioManualEditsApply?.();
+}
+
+/**
+ * Run ONLY applySoftReload's finalization (seek → __hfForceTimelineRebind →
+ * manual-edits reapply) against the live iframe — executing NO scripts and
+ * touching NO script elements. `__hfForceTimelineRebind` makes the runtime
+ * re-derive every clip's visibility window from the live DOM's `data-start` /
+ * `data-duration` attributes (init.ts: bindRootTimelineIfAvailable +
+ * syncTimedElementVisibility), so this is the flashless sync for a timing edit
+ * whose attributes were already live-patched and whose GSAP scripts are
+ * unchanged (`window.__timelines` still valid). Works for compositions with
+ * zero GSAP scripts too — the rebind hook is installed unconditionally by the
+ * runtime, independent of any animation library.
+ *
+ * Returns false when the iframe/runtime hook is unavailable or the run threw —
+ * the caller should escalate to a full reload.
+ */
+export function applySoftReloadFinalization(
+  iframe: HTMLIFrameElement | null,
+  currentTime: number,
+): boolean {
+  const win = iframe?.contentWindow as IframeWindow | null;
+  if (!win?.__hfForceTimelineRebind) return false;
+  try {
+    if (win.__hfSuppressSceneMutations) {
+      win.__hfSuppressSceneMutations(() => finalizeSoftReload(win, currentTime));
+    } else {
+      finalizeSoftReload(win, currentTime);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function applySoftReload(
@@ -370,14 +420,7 @@ export function applySoftReload(
       const s = doc.createElement("script");
       s.textContent = `(function(){${scriptText}\n})();`;
       doc.body.appendChild(s);
-      // Seek BEFORE rebind: __hfForceTimelineRebind's own internal force-render
-      // (see init.ts) renders the freshly-created timeline at whatever the
-      // runtime's internal scrub position already is, not at whatever we pass
-      // here afterward — a redundant seek() call after rebind can be a GSAP
-      // no-op if the timeline already reports being at that time internally.
-      win.__player?.seek?.(currentTime);
-      win.__hfForceTimelineRebind?.();
-      win.__hfStudioManualEditsApply?.();
+      finalizeSoftReload(win, currentTime);
     };
 
     const needsMotionPath = /motionPath\s*[:{]/.test(scriptText);

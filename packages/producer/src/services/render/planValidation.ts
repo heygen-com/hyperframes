@@ -67,17 +67,15 @@ export interface ValidateNoGpuEncodeInput {
  */
 export const SYSTEM_FONT_USED = "SYSTEM_FONT_USED";
 
-/**
- * Typed code for {@link validateDistributedDuration}. A duration this large
- * almost always means an unbounded runtime timeline escaped into plan(),
- * e.g. GSAP `repeat: -1` reporting its internal sentinel duration. Letting
- * that reach chunk planning creates billions of frames and turns an authoring
- * error into worker churn.
- */
+/** Typed code for invalid duration metadata resolved by the shared browser probe. */
 export const DISTRIBUTED_DURATION_OUT_OF_RANGE = "DISTRIBUTED_DURATION_OUT_OF_RANGE";
+/** Generic alias; the legacy value remains stable for workflow retry policies. */
+export const RENDER_DURATION_OUT_OF_RANGE = DISTRIBUTED_DURATION_OUT_OF_RANGE;
 
-/** Distributed renders are operationally bounded to one day of output. */
+/** All render paths are operationally bounded to one day of output. */
 export const MAX_DISTRIBUTED_DURATION_SECONDS = 24 * 60 * 60;
+/** Generic alias retained alongside the distributed public API. */
+export const MAX_RENDER_DURATION_SECONDS = MAX_DISTRIBUTED_DURATION_SECONDS;
 
 /**
  * Reject any config that would let GPU encode or hardware-GL slip into a
@@ -143,13 +141,13 @@ export function validateNoSystemFonts(compiledHtml: string): void {
   }
 }
 
-export function validateDistributedDuration(input: {
+export function validateRenderDuration(input: {
   duration: number;
   totalFrames: number;
   fps: number;
 }): void {
   const { duration, totalFrames, fps } = input;
-  const maxFrames = Math.ceil(MAX_DISTRIBUTED_DURATION_SECONDS * fps);
+  const maxFrames = Math.ceil(MAX_RENDER_DURATION_SECONDS * fps);
   if (
     Number.isFinite(duration) &&
     duration > 0 &&
@@ -163,12 +161,21 @@ export function validateDistributedDuration(input: {
   }
 
   throw new PlanValidationError(
-    DISTRIBUTED_DURATION_OUT_OF_RANGE,
-    `[planValidation] Distributed render duration is out of range: ` +
+    RENDER_DURATION_OUT_OF_RANGE,
+    `[planValidation] Render duration is out of range: ` +
       `duration=${String(duration)}s totalFrames=${String(totalFrames)} fps=${String(fps)} ` +
-      `(maxDuration=${String(MAX_DISTRIBUTED_DURATION_SECONDS)}s, maxFrames=${String(maxFrames)}). ` +
+      `(maxDuration=${String(MAX_RENDER_DURATION_SECONDS)}s, maxFrames=${String(maxFrames)}). ` +
       `This usually means an unbounded timeline escaped into render planning, such as ` +
       `GSAP repeat:-1 / yoyo loops without an explicit finite root duration. Add a finite ` +
       `data-duration or replace infinite repeats with a finite repeat count before rendering.`,
   );
+}
+
+/** Backward-compatible distributed entry point for existing adopters. */
+export function validateDistributedDuration(input: {
+  duration: number;
+  totalFrames: number;
+  fps: number;
+}): void {
+  validateRenderDuration(input);
 }

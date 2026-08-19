@@ -1,167 +1,70 @@
 ---
-title: 4K Rendering
-description: "Render any composition to 4K (3840×2160) without rewriting it — the CLI supersamples a 1080p composition via Chrome's device scale factor."
+title: Render in 4K
+description: Author at 4K or supersample an existing composition at render time.
 ---
 
-Hyperframes renders to 4K (3840×2160) two ways. Both produce a true 4K MP4; pick the one that matches your project.
+## Render an existing project in 4K
 
-<CardGroup cols={2}>
-  <Card title="Author at 4K" icon="ruler">
-    Scaffold the project at 4K so the composition is laid out at 4K natively. Best when you want crisp 4K-native typography and assets.
-    ```bash
-    npx hyperframes init my-video --resolution 4k
-    ```
-  </Card>
-  <Card title="Supersample at render" icon="up-right-and-down-left-from-center">
-    Keep your existing 1080p composition. Pass `--resolution 4k` at render time and Chrome renders at 2× DPR so the screenshot lands at 4K.
-    ```bash
-    npx hyperframes render --resolution 4k --output 4k.mp4
-    ```
-  </Card>
-</CardGroup>
-
-## Quickstart
-
-<Steps>
-  <Step title="Render an existing project at 4K">
-    ```bash Terminal
-    npx hyperframes render --resolution 4k --output my-video-4k.mp4
-    ```
-
-    The composition's `data-width` / `data-height` are unchanged. Chrome's `deviceScaleFactor` is set to `2`, so the captured screenshot for each frame is 3840×2160. ffmpeg auto-detects the dimensions from the screenshot stream and encodes at 4K.
-  </Step>
-  <Step title="Or scaffold a new project at 4K">
-    ```bash Terminal
-    npx hyperframes init my-video --resolution 4k
-    ```
-
-    Every scaffolded HTML file is patched in place: `data-width="3840"`, `data-height="2160"`, `data-resolution="landscape-4k"`, `#stage` CSS dimensions, and the `<meta viewport>` tag.
-  </Step>
-  <Step title="Verify the output is 4K">
-    ```bash Terminal
-    ffprobe -v error -select_streams v:0 -show_entries stream=width,height my-video-4k.mp4
-    ```
-
-    Expected:
-    ```
-    width=3840
-    height=2160
-    ```
-  </Step>
-</Steps>
-
-## Resolution presets
-
-`--resolution` accepts these values on both `init` and `render`:
-
-| Preset | Dimensions | Aliases |
-|--------|-----------|---------|
-| `landscape` | 1920×1080 | `1080p`, `hd` |
-| `portrait` | 1080×1920 | `1080p-portrait` |
-| `square` | 1080×1080 | `1080p-square`, `square-1080p` |
-| `landscape-4k` | 3840×2160 | `4k`, `uhd` |
-| `portrait-4k` | 2160×3840 | `4k-portrait` |
-| `square-4k` | 2160×2160 | `4k-square` |
-
-Examples:
-
-```bash Terminal
-npx hyperframes render --resolution 4k         # landscape 4K
-npx hyperframes render --resolution portrait-4k # vertical 4K (TikTok / Reels at max quality)
-npx hyperframes render --resolution 1080p       # explicit 1080p (no-op on 1080p compositions)
+```bash
+npx hyperframes render --resolution 4k --output final-4k.mp4
 ```
 
-## How `--resolution` works (supersampling)
+HyperFrames keeps the composition's layout unchanged and captures it at a higher device-pixel ratio. A 1920×1080 composition becomes a 3840×2160 file.
 
-The composition stays at its authored dimensions. Hyperframes computes a `deviceScaleFactor` from the ratio of output to composition dimensions and passes it to Chrome:
+Use the matching preset for portrait or square work:
 
-| Composition | `--resolution` | `deviceScaleFactor` | Output |
-|-------------|---------------|--------------------|--------|
-| 1920×1080 | `4k` | 2 | 3840×2160 |
-| 1080×1920 | `portrait-4k` | 2 | 2160×3840 |
-| 3840×2160 | `4k` | 1 (no-op) | 3840×2160 |
+| Preset | Output |
+| --- | --- |
+| `4k` or `landscape-4k` | 3840×2160 |
+| `portrait-4k` | 2160×3840 |
+| `square-4k` | 2160×2160 |
 
-Chrome then renders the page at the higher DPR — effectively rendering each CSS pixel as 2×2 device pixels — so the captured screenshot is at the requested resolution.
+## Author a project at 4K
 
-<Tip>
-  This approach is intentionally simple — no composition edits, no second authoring pass. The tradeoff: 4K renders take roughly 4× as long per frame because there are 4× the pixels to capture and encode.
-</Tip>
+If the project should use a 4K canvas from the start:
 
-## What scales, what doesn't
+```bash
+npx hyperframes init my-video --resolution 4k
+```
 
-Supersampling re-renders the page at higher DPR. That genuinely helps anything the browser rasterizes from a vector or high-resolution source, and does nothing for content already locked to a fixed pixel grid. Knowing which is which sets correct expectations before a 4K render:
+Choose this when canvas or WebGL code, fixed-resolution media, or layout decisions need to know the final pixel dimensions while you author.
 
-| Asset type | Behavior at `--resolution 4k` |
-|------------|------------------------------|
-| Text (HTML, SVG `<text>`, web fonts) | ✅ **Re-rasterized at 4K.** Glyphs are vector and the browser shapes/rasterizes them at the new DPR. Crisp at any scale. |
-| SVG / vector graphics | ✅ **Re-rasterized at 4K.** Same story as text — paths are vector. |
-| CSS shapes, gradients, borders, shadows | ✅ **Re-rasterized at 4K.** Browser-generated raster. |
-| Images with intrinsic dimensions ≥ 4K | ✅ **Full benefit.** A 3840×2160 source serves all the detail. |
-| Images smaller than 4K (e.g. a 1920×1080 PNG) | ⚠️ **No new detail.** Browser upscales the source bitmap; output is no sharper than rendering at 1080p and upscaling externally — but no worse either. |
-| `<video>` elements | ❌ **Locked to source resolution.** A 1080p MP4 stays 1080p; the supersample only helps the surrounding DOM. Encode source video at the target resolution if you need 4K throughout. |
-| `<canvas>` (2D and WebGL) | ❌ **Locked to canvas's intrinsic dimensions.** `<canvas width="1920" height="1080">` is a 1080p bitmap regardless of DPR. To render canvas content at 4K, multiply `canvas.width` / `canvas.height` by your target DPR and scale the drawing context (`ctx.scale(2, 2)` for a 2× canvas with the same logical layout). |
-| Pre-rendered video frames injected by the engine | ❌ **Locked to extraction resolution.** When the producer pre-extracts `<video>` frames via ffmpeg, they're decoded at the source video's dimensions. |
+## What gets sharper
 
-**Rule of thumb**: if the asset is *vector or generated by the browser*, supersampling helps. If it's a *bitmap with fixed pixel dimensions* (video, canvas, low-res PNG), it doesn't — author it at the target resolution instead.
+| Content | Result when supersampled |
+| --- | --- |
+| HTML text, SVG, CSS shapes, gradients | Re-rasterized at 4K |
+| High-resolution images | Use their available source detail |
+| 1080p images and video | Scaled up; no new source detail |
+| `<canvas>` and WebGL | Limited by the canvas's intrinsic dimensions |
+
+For a fully sharp 4K result, use 4K source media and size canvas/WebGL buffers for the target resolution.
 
 ## Constraints
 
-`--resolution` enforces three guards before any frames are captured. If any fail, the render exits before doing work.
+`--resolution` only works when:
 
-### Aspect ratio must match
+- the preset has the same aspect ratio as the composition;
+- the target is an integer multiple of the authored dimensions;
+- the target is not smaller than the composition;
+- the output is MP4 rather than an alpha format;
+- HDR is not forced for the same render.
+
+HyperFrames checks these conditions before opening the browser. Render at the composition's native size and resize separately when a combination is unsupported.
+
+## Verify the file
 
 ```bash
-# OK — both landscape
-hyperframes render --resolution 4k         # composition is 1920×1080
-
-# Error — composition is landscape, target is portrait
-hyperframes render --resolution portrait-4k  # composition is 1920×1080
-# → outputResolution portrait-4k (2160×3840) does not match the aspect ratio
-#   of the composition (1920×1080). Pick a preset whose orientation matches.
+ffprobe -v error -select_streams v:0 \
+  -show_entries stream=width,height final-4k.mp4
 ```
 
-### The scale must be an integer
+For landscape 4K, the output should report `3840` by `2160`.
 
-The width ratio (output ÷ composition) must be a positive integer. 1080p → 4K is exactly `2×`. 720p → 4K would be `3×` and works. Non-integer scales like 900p → 4K (`2.4×`) introduce aliasing on subpixel-positioned text — Hyperframes refuses rather than producing a blurry render.
+4K captures four times as many pixels as 1080p, so expect more render time, memory use, and output data. Start with `--quality draft` for review, then render the approved version at the quality you need.
 
-### Downsampling is not supported
+## Related topics
 
-`--resolution` only supersamples. A 4K composition cannot be downsampled to 1080p with this flag — render at the composition's native resolution and downscale separately with ffmpeg if needed.
-
-### Not yet supported with `--hdr`
-
-The HDR layered compositor processes pixel buffers at composition dimensions; supersample + HDR would need parallel scaling for those buffers. The combination is rejected with a clear error message. Render in two passes if you need both: HDR at composition resolution, then upscale separately.
-
-## Performance
-
-A 1080p → 4K supersample is roughly 4× more pixels to capture, encode, and write. Expect:
-
-- **Per-frame capture**: 3–4× slower (Chrome paints 4× the pixels and the screenshot transfer is 4× larger)
-- **Encoding**: 2–3× slower (depends on codec; H.264 scales sublinearly with resolution)
-- **Memory**: bounded — the engine's frame data-URI cache is byte-budgeted (default 1500 MB per worker, configurable via `PRODUCER_FRAME_DATA_URI_CACHE_BYTES_MB`)
-- **Output file size**: at the default CRF, expect 3–5× the file size of the 1080p render. Pass `--video-bitrate 25M` (or higher) for predictable file sizes.
-
-For a 4K render of a 30-second composition, plan on a few minutes of wall time on a modern laptop. Add `--workers 4` (or more) on a render box for parallel capture.
-
-## Studio support
-
-The Renders panel in Studio includes a resolution dropdown next to the format and quality selectors. Pick `4K` (or `4K ↕` for portrait) and hit **Export** — the same supersampling path runs as the CLI flag, no composition edits required.
-
-The dropdown defaults to `Auto` (render at the composition's authored size). Available presets:
-
-- **Auto** — composition's native dimensions
-- **1080p ↔** / **1080p ↕** — 1920×1080 / 1080×1920
-- **4K ↔** / **4K ↕** — 3840×2160 / 2160×3840
-
-The resolution applies per render, not per project — your composition files are unchanged. The same [constraints](#constraints) apply; when the producer rejects a combination, the failure surfaces in the Studio render queue.
-
-You can also drive resolution from the CLI:
-
-- **New project**: `hyperframes init my-video --resolution 4k`
-- **Existing project**: `hyperframes render --resolution 4k --output 4k.mp4`
-
-## See also
-
-- [`render` CLI reference](/packages/cli#render) — every render flag including `--video-bitrate` and `--crf`
-- [`init` CLI reference](/packages/cli#init) — the `--resolution` flag at scaffold time
-- [HDR Rendering](/guides/hdr) — color pipeline guide; HDR + 4K is not yet a supported combination
+- [Render from the command line](/guides/rendering)
+- [Improve render performance](/guides/performance)
+- [Deliver an HDR project](/guides/hdr)
