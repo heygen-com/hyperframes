@@ -1,5 +1,6 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
+import { isAudioDomElement } from "../../utils/timelineInspector";
 
 function FlatEmptyState() {
   return (
@@ -67,6 +68,7 @@ function FlatMultiSelectState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  const hasAudio = multiSelectedElements.some((el) => isAudioDomElement(el.element));
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
@@ -124,20 +126,30 @@ function FlatMultiSelectState({
         })}
       </div>
       <div className="flex gap-2">
-        <button
-          type="button"
-          data-flat-multiselect-group="true"
-          onClick={onGroupSelection}
-          className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
-        >
-          <Layers size={13} />
-          Group selection
-        </button>
+        {/* A layout group is a positioned wrapper around a bounding box, and an
+            <audio> clip has none — grouping audio produced a 0x0 div with inline
+            left/top on elements that are never laid out. `handleGroupSelection`
+            refuses the same case (it also owns the G shortcut, which no hidden
+            button can gate); withholding the button is so the refusal is not
+            the first the author hears of it. */}
+        {!hasAudio && (
+          <button
+            type="button"
+            data-flat-multiselect-group="true"
+            onClick={onGroupSelection}
+            className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
+          >
+            <Layers size={13} />
+            Group selection
+          </button>
+        )}
         <button
           type="button"
           data-flat-multiselect-hide-all="true"
           onClick={onHideAllSelected}
-          className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
+          className={`flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2 ${
+            hasAudio ? "flex-1 justify-center" : ""
+          }`}
         >
           <Eye size={13} />
           Hide all

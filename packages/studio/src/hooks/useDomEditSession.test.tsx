@@ -58,6 +58,8 @@ const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined }
   fn: undefined,
 };
 const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
+const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
+const groupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
 
 function createSessionParams(
@@ -131,7 +133,7 @@ vi.mock("./useDomSelection", () => ({
     domEditHoverSelection: null,
     activeGroupElement: null,
     domEditSelectionRef,
-    domEditGroupSelectionsRef: { current: [] },
+    domEditGroupSelectionsRef,
     setActiveGroupElement: vi.fn(),
     applyDomSelection: vi.fn(),
     clearDomSelection: vi.fn(),
@@ -190,7 +192,7 @@ vi.mock("./useGsapScriptCommits", () => ({
 }));
 vi.mock("./useGroupCommits", () => ({
   useGroupCommits: () => ({
-    groupSelection: vi.fn(),
+    groupSelection: (...args: unknown[]) => groupSelectionSpy(...args),
     ungroupSelection: vi.fn(),
   }),
 }));
@@ -405,5 +407,58 @@ describe("bulk segment ease commits", () => {
       domEditSelectionRef.current = null;
       act(() => root.unmount());
     }
+  });
+});
+
+// ── Grouping refuses audio ───────────────────────────────────────────────────
+//
+// A layout group is a positioned wrapper: it takes the members' bounding box,
+// rebases each child's left/top against it and adopts the topmost z-index. An
+// <audio> clip has no box — offsetWidth/Height are 0 — so this produced a 0x0
+// div with inline left/top on elements that are never laid out. Enforced here
+// rather than only by hiding the button, because the G shortcut routes through
+// the same handler and no hidden button can gate a keystroke.
+
+describe("handleGroupSelection with audio in the selection", () => {
+  const sel = (tag: string): DomEditSelection =>
+    ({
+      id: tag,
+      element: document.createElement(tag),
+      sourceFile: "index.html",
+    }) as unknown as DomEditSelection;
+
+  async function group(members: DomEditSelection[]) {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    groupSelectionSpy.mockClear();
+    domEditGroupSelectionsRef.current = members;
+    const showToast = vi.fn();
+    const captured: { fn?: () => void } = {};
+    function Probe() {
+      captured.fn = useDomEditSession(createSessionParams({ showToast })).handleGroupSelection;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    act(() => captured.fn?.());
+    act(() => root.unmount());
+    domEditGroupSelectionsRef.current = [];
+    return { showToast };
+  }
+
+  it("refuses a selection of audio clips, and says where grouping audio lives", async () => {
+    const { showToast } = await group([sel("audio"), sel("audio")]);
+    expect(groupSelectionSpy).not.toHaveBeenCalled();
+    expect(String(showToast.mock.calls[0]?.[0])).toContain("bus");
+  });
+
+  it("refuses a mixed selection, since the wrapper would take the audio in too", async () => {
+    const { showToast } = await group([sel("div"), sel("audio")]);
+    expect(groupSelectionSpy).not.toHaveBeenCalled();
+    expect(String(showToast.mock.calls[0]?.[0])).toContain("layout");
+  });
+
+  it("still groups a selection of layout elements", async () => {
+    await group([sel("div"), sel("span")]);
+    expect(groupSelectionSpy).toHaveBeenCalledTimes(1);
   });
 });

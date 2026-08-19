@@ -71,4 +71,58 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
     expect(onClearSelection).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
+
+  // A layout group is a positioned wrapper around a bounding box; an <audio>
+  // clip has none (offsetWidth/Height are 0), so grouping audio produced a 0x0
+  // div with inline left/top on elements that are never laid out. Withheld
+  // rather than offered-then-refused.
+  const audioElements = (tags: string[]) =>
+    tags.map((tag, i) => ({
+      id: `el-${i}`,
+      selector: `#el-${i}`,
+      label: `El ${i}`,
+      tagName: tag,
+      element: document.createElement(tag),
+    })) as unknown as DomEditSelection[];
+
+  it("withholds Group selection when the selection includes audio", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["audio", "audio"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    // Hide all still applies — hiding an audio clip is what mutes it.
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).not.toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("withholds it for a mixed selection too, since the wrapper would still take audio in", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["div", "audio"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("still offers it for a selection of layout elements", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["div", "span"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).not.toBeNull();
+    act(() => root.unmount());
+  });
 });

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { isAudioDomElement } from "../utils/timelineInspector";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -372,6 +373,23 @@ export function useDomEditSession({
     const members = group.length > 0 ? group : single ? [single] : [];
     if (members.length < 2) {
       showToast("Select at least 2 elements to group", "info");
+      return;
+    }
+    // A layout group is a positioned wrapper: it takes the members' bounding
+    // box, rebases each child's left/top against it, and adopts the topmost
+    // z-index. An <audio> clip has no box — offsetWidth/Height are 0 — so
+    // grouping audio produced a 0x0 div with inline left/top written onto
+    // elements that have never been laid out, and the timeline gained a
+    // wrapper standing for nothing audible. The audio answer to "these clips
+    // belong together" is an <hf-audio-group> bus, which the timeline's own FX
+    // pointer creates, so the refusal names it rather than just declining.
+    if (members.some((m) => isAudioDomElement(m.element))) {
+      showToast(
+        members.every((m) => isAudioDomElement(m.element))
+          ? "Audio clips group into a bus — use FX on the track header"
+          : "Can't group audio clips with layout elements",
+        "info",
+      );
       return;
     }
     trackStudioEvent("group", { action: "create", count: members.length });

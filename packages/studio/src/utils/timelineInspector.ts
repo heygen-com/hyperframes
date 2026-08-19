@@ -4,6 +4,23 @@ const AUDIO_TIMELINE_TAGS = new Set(["audio", "music", "sfx", "sound", "narratio
 const AUDIO_SOURCE_EXT_RE = /\.(aac|flac|m4a|mp3|ogg|opus|wav)(?:[?#].*)?$/i;
 const MUSIC_ID_RE = /\b(music|bgm|soundtrack|background[-_]?music)\b/i;
 
+/**
+ * Is this DOM node an audio clip, judged the way `isAudioTimelineElement`
+ * judges a timeline element?
+ *
+ * The selection layer holds real elements rather than timeline records, and
+ * layout grouping is decided there — so it needs the same question asked of a
+ * node. Same tag set and same source-extension fallback, so the two cannot
+ * drift into disagreeing about what counts as audio.
+ */
+export function isAudioDomElement(node: Element | null | undefined): boolean {
+  if (!node) return false;
+  return isAudioTimelineElement({
+    tag: node.tagName,
+    src: node.getAttribute("src") ?? undefined,
+  });
+}
+
 export function isAudioTimelineElement(
   element: Pick<TimelineElement, "tag" | "src"> | null | undefined,
 ): boolean {
