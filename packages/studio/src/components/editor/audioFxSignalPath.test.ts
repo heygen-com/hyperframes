@@ -13,9 +13,12 @@ const group = (over: Partial<HfAudioGroup> = {}): HfAudioGroup => ({
 
 describe("audioFxSignalPath", () => {
   // The design doc's §5 mockup, both columns.
+  // Copy taken from the rendered designs, which are more specific than the
+  // ASCII stand-ins in the markdown: "vo-1 and vo-2, together" / "into
+  // Voiceover", not "vo-1, vo-2" / "to Voiceover".
   it("names what a group sums, and sends it to the mix", () => {
     expect(audioFxSignalPath("hf-audio-group", "voiceover", [group()])).toEqual({
-      inLabel: "vo-1, vo-2",
+      inLabel: "vo-1 and vo-2, together",
       outLabel: "to mix",
       subject: "group",
     });
@@ -24,7 +27,7 @@ describe("audioFxSignalPath", () => {
   it("names the group a member feeds, so routing reads from either end", () => {
     expect(audioFxSignalPath("audio", "vo-1", [group()])).toEqual({
       inLabel: "this track",
-      outLabel: "to Voiceover",
+      outLabel: "into Voiceover",
       subject: "track",
     });
   });

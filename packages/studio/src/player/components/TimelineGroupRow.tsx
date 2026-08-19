@@ -15,6 +15,7 @@ import { TimelineGroupBusStrip } from "./TimelineGroupBusStrip";
 import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
+import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
 import { STRIP_H, TRACK_H } from "./timelineLayout";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
@@ -202,6 +203,19 @@ export function TimelineGroupRow({
       {/* The group's OWN curves, under the strip. Selected-gated exactly like a
           clip's: the binder writes through the dom-edit selection, so a lane is
           editable once the group is selected — which clicking its name does. */}
+      {/* The label column for those lanes, on the accent rail. Outside the
+          offset content cell below, because the labels belong to the sticky
+          gutter the row header occupies, not to the scrolling canvas. */}
+      {isLaneOpen && (
+        <TimelineGroupLaneLabels
+          groupElement={groupElement}
+          groupLabel={group.label}
+          top={TRACK_H + STRIP_H}
+          columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
+          gutterBackground={theme.gutterBackground}
+          accentColor={GROUP_LANE_ACCENT}
+        />
+      )}
       {isLaneOpen && (
         // The same offset content cell a track row wraps its lanes in — the
         // slot positions absolutely, so mounted straight on the row it resolved

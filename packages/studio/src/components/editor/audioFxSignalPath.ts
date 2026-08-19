@@ -37,6 +37,12 @@ export const CLIP_SIGNAL_PATH: AudioFxSignalPath = {
  * `groups` is the resolved set from the composition; `elementId` and `tag` come
  * from the selection. Pure so the labels can be asserted without a DOM.
  */
+/** "a", "a and b", "a, b and c" — how the designs read a member list aloud. */
+function joinNatural(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 export function audioFxSignalPath(
   tag: string | undefined,
   elementId: string | undefined,
@@ -49,11 +55,17 @@ export function audioFxSignalPath(
     // making one, so it must not look like a bug.
     const members = group?.memberIds ?? [];
     return {
-      inLabel: members.length > 0 ? members.join(", ") : "nothing yet",
+      // "vo-1 and vo-2, together" — the rendered design's exact phrasing, not a
+      // comma list. The trailing "together" is the point: it says the group is
+      // ONE signal hearing both, which is the thing two separate copies of a
+      // chain cannot do, and it says it without "sum" or "bus".
+      inLabel: members.length > 0 ? `${joinNatural(members)}, together` : "nothing yet",
       outLabel: "to mix",
       subject: "group",
     };
   }
   const owner = elementId ? groups.find((g) => g.memberIds.includes(elementId)) : undefined;
-  return owner ? { ...CLIP_SIGNAL_PATH, outLabel: `to ${owner.label}` } : CLIP_SIGNAL_PATH;
+  // "into Voiceover", not "to" — a member feeds the group, and the design uses
+  // the preposition that says so.
+  return owner ? { ...CLIP_SIGNAL_PATH, outLabel: `into ${owner.label}` } : CLIP_SIGNAL_PATH;
 }

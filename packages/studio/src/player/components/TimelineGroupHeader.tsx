@@ -117,7 +117,13 @@ export function TimelineGroupHeader({
         <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
           ▤
         </span>
-        <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+        {/* Struck through, not merely dimmed — the designs are explicit that "a
+            muted track that only looks dim is a track someone re-mutes by
+            accident", and a muted GROUP silences every member at once, so it is
+            the most expensive one to misread. */}
+        <span className={`min-w-0 flex-1 truncate font-medium${hidden ? " line-through" : ""}`}>
+          {label}
+        </span>
         <span
           className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
           aria-hidden="true"
