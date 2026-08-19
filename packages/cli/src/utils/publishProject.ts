@@ -504,10 +504,31 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
 
 /** Zip an in-memory archive file map (from `buildPublishFileMap`, optionally
  * transformed in between, e.g. by proxy baking) into the final archive buffer. */
+/**
+ * Fixed entry timestamp, so the same files always zip to the same bytes.
+ *
+ * adm-zip stamps every entry with `new Date()` as it is constructed, and a ZIP
+ * timestamp has two-second granularity — so archiving identical content twice
+ * produced different bytes whenever the two runs landed either side of a
+ * two-second boundary. That makes the archive's digest a function of the clock
+ * rather than of its contents, which is the opposite of what a
+ * content-addressed artifact needs.
+ *
+ * Built from local components on purpose: `fromDate2DOS` reads `getFullYear`,
+ * `getMonth`, `getHours` and friends, so a fixed *instant* would still encode
+ * differently in different timezones. Fixing the wall-clock reading is what
+ * makes the bytes match across machines. 1980-01-01 is the earliest a DOS
+ * timestamp can represent.
+ */
+const ARCHIVE_ENTRY_TIME = new Date(1980, 0, 1, 0, 0, 0, 0);
+
 export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArchiveResult {
   const archive = new AdmZip();
   for (const [filePath, content] of fileContents) {
     archive.addFile(filePath, content);
+  }
+  for (const entry of archive.getEntries()) {
+    entry.header.time = ARCHIVE_ENTRY_TIME;
   }
 
   return {
