@@ -17,6 +17,8 @@ import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
 import { Scissors } from "../icons/SystemIcons";
+import { TRIM_TOOL_ICONS } from "../icons/TrimToolIcons";
+import { TIMELINE_TRIM_TOOLS } from "../player/components/timelineTrimTools";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -215,6 +217,25 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <Scissors size={16} />
             </button>
           </Tooltip>
+          {/* Trim tools: one per NLE edit operation, so grabbing the same pixel
+              can mean ripple or roll without a hidden modifier. */}
+          {TIMELINE_TRIM_TOOLS.map((tool) => {
+            const Icon = TRIM_TOOL_ICONS[tool.mode];
+            const active = activeTool === tool.mode;
+            return (
+              <Tooltip key={tool.mode} label={`${tool.label} (${tool.shortcut}) — ${tool.hint}`}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTool(active ? "select" : tool.mode)}
+                  aria-label={tool.label}
+                  aria-pressed={active}
+                  className={active ? flatActive : flatIdle}
+                >
+                  <Icon size={16} />
+                </button>
+              </Tooltip>
+            );
+          })}
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>

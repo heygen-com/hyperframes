@@ -2,6 +2,7 @@ import { useState, useCallback, useId, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { TIMELINE_TRIM_TOOLS } from "./timelineTrimTools";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -40,6 +41,14 @@ const SHORTCUT_SECTIONS = [
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element" },
+    ],
+  },
+  {
+    title: "Timeline tools",
+    hints: [
+      { key: "V", label: "Selection tool" },
+      { key: "B", label: "Razor tool" },
+      ...TIMELINE_TRIM_TOOLS.map((tool) => ({ key: tool.shortcut, label: tool.label })),
     ],
   },
   {

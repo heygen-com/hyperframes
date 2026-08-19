@@ -24,7 +24,7 @@ import type { TimelineElement } from "./timelineElement";
 
 export type { TimelineElement };
 export type ZoomMode = "fit" | "manual";
-type TimelineTool = "select" | "razor";
+import type { TimelineTool } from "../components/timelineTrimTools";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;

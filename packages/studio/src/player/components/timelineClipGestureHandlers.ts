@@ -8,6 +8,9 @@ import {
 import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { CLIP_HANDLE_W } from "./timelineLayout";
+import type { TimelineTrimMode } from "./timelineTrimOps";
+import { canStartTimelineTrim } from "./timelineTrimSession";
+import { trimToolFor } from "./timelineTrimTools";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 
 export interface ClipGestureDeps {
@@ -32,22 +35,43 @@ export interface ClipGestureDeps {
   onSelectElement?: (element: TimelineElement | null) => void;
 }
 
-/** Whether a resize-handle drag on `edge` is allowed to begin at all. */
-function canStartResize(
-  edge: "start" | "end",
+/** Whether the clip can take a trim on this edge at all. */
+const canTrimEdge = (edge: "start" | "end", caps: TimelineEditCapabilities): boolean =>
+  edge === "start" ? caps.canTrimStart : caps.canTrimEnd;
+
+/** The opening state of a clip-move gesture, before any pointer movement. */
+function openDrag(
+  el: TimelineElement,
   e: ReactPointerEvent,
-  capabilities: TimelineEditCapabilities,
-  onResizeElement: ClipGestureDeps["onResizeElement"],
-): boolean {
-  if (e.button !== 0 || e.shiftKey || !onResizeElement) return false;
-  if (edge === "start") return capabilities.canTrimStart;
-  return capabilities.canTrimEnd;
+  rect: DOMRect,
+  scroll: HTMLDivElement | null,
+): DraggedClipState {
+  return {
+    pointerId: e.pointerId,
+    element: el,
+    originClientX: e.clientX,
+    originClientY: e.clientY,
+    originScrollLeft: scroll?.scrollLeft ?? 0,
+    originScrollTop: scroll?.scrollTop ?? 0,
+    pointerClientX: e.clientX,
+    pointerClientY: e.clientY,
+    pointerOffsetX: e.clientX - rect.left,
+    pointerOffsetY: e.clientY - rect.top,
+    previewStart: el.start,
+    previewTrack: el.track,
+    desiredTrack: el.track,
+    insertRow: null,
+    snapTime: null,
+    snapType: null,
+    started: false,
+  };
 }
 
 type PointerDownAction =
   | { kind: "ignore" }
   | { kind: "arm-shift-click" }
   | { kind: "block"; intent: BlockedTimelineEditIntent; rect: DOMRect }
+  | { kind: "trim"; mode: TimelineTrimMode }
   | { kind: "move"; rect: DOMRect };
 
 /**
@@ -78,7 +102,14 @@ function resolvePointerDownAction(
   onMoveElement: ClipGestureDeps["onMoveElement"],
 ): PointerDownAction {
   if (e.button !== 0) return { kind: "ignore" };
-  if (usePlayerStore.getState().activeTool === "razor") return { kind: "ignore" };
+  // Any tool but Select owns the body outright: it either claims it (slip,
+  // slide) or wants nothing from it (razor, ripple, roll — whose body drag
+  // means nothing, so ignoring it leaves plain click-to-select working).
+  const tool = usePlayerStore.getState().activeTool;
+  if (tool !== "select") {
+    const mode = trimToolFor(tool, "body");
+    return mode ? { kind: "trim", mode } : { kind: "ignore" };
+  }
   if (e.shiftKey) return { kind: "arm-shift-click" };
 
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -127,8 +158,53 @@ export function createClipGestureHandlers(
     onSelectElement,
   } = deps;
 
+  /**
+   * Open a trim gesture, or arm the blocked-attempt report when the tool cannot
+   * act on this clip (a roll with nothing across the cut, a slip on generated
+   * pixels, a locked neighbour). Refusing here — rather than starting a gesture
+   * that silently does nothing — is what makes the tools legible.
+   */
+  const startTrim = (mode: TimelineTrimMode, edge: "start" | "end", e: ReactPointerEvent): void => {
+    blockedClipRef.current = null;
+    if (!canStartTimelineTrim(el, mode, edge, usePlayerStore.getState().elements)) {
+      blockedClipRef.current = {
+        pointerId: e.pointerId,
+        element: el,
+        intent: mode,
+        originClientX: e.clientX,
+        originClientY: e.clientY,
+        started: false,
+      };
+      return;
+    }
+    setShowPopover(false);
+    setRangeSelection(null);
+    setResizingClip({
+      pointerId: e.pointerId,
+      element: el,
+      edge,
+      trimMode: mode,
+      originClientX: e.clientX,
+      originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
+      previewStart: el.start,
+      previewDuration: el.duration,
+      previewPlaybackStart: el.playbackStart,
+      started: false,
+    });
+  };
+
   const onResizeStart = (edge: "start" | "end", e: ReactPointerEvent): void => {
-    if (!canStartResize(edge, e, capabilities, onResizeElement)) return;
+    if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
+    const tool = usePlayerStore.getState().activeTool;
+    const trim = trimToolFor(tool, "edge");
+    if (trim) {
+      e.stopPropagation();
+      startTrim(trim, edge, e);
+      return;
+    }
+    // A body tool (slip, slide) or the razor lets the handle fall through to
+    // the clip body, which is where those gestures actually live.
+    if (tool !== "select" || !canTrimEdge(edge, capabilities)) return;
     e.stopPropagation();
     blockedClipRef.current = null;
     setShowPopover(false);
@@ -150,6 +226,13 @@ export function createClipGestureHandlers(
     const action = resolvePointerDownAction(e, capabilities, onResizeElement, onMoveElement);
     if (action.kind === "ignore") return;
 
+    if (action.kind === "trim") {
+      if (!onResizeElement) return;
+      // Slip and slide are whole-clip gestures: `edge` is inert for them.
+      startTrim(action.mode, "end", e);
+      return;
+    }
+
     if (action.kind === "arm-shift-click") {
       shiftClickClipRef.current = { element: el, anchorX: e.clientX, anchorY: e.clientY };
       return;
@@ -167,29 +250,10 @@ export function createClipGestureHandlers(
       return;
     }
 
-    const { rect } = action;
     blockedClipRef.current = null;
     setShowPopover(false);
     setRangeSelection(null);
-    setDraggedClip({
-      pointerId: e.pointerId,
-      element: el,
-      originClientX: e.clientX,
-      originClientY: e.clientY,
-      originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
-      originScrollTop: scrollRef.current?.scrollTop ?? 0,
-      pointerClientX: e.clientX,
-      pointerClientY: e.clientY,
-      pointerOffsetX: e.clientX - rect.left,
-      pointerOffsetY: e.clientY - rect.top,
-      previewStart: el.start,
-      previewTrack: el.track,
-      desiredTrack: el.track,
-      insertRow: null,
-      snapTime: null,
-      snapType: null,
-      started: false,
-    });
+    setDraggedClip(openDrag(el, e, action.rect, scrollRef.current));
   };
 
   const onClick = (e: ReactMouseEvent): void => {

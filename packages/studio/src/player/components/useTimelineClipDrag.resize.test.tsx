@@ -6,6 +6,7 @@ import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import type { TimelineTrimMode } from "./timelineTrimOps";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -105,12 +106,18 @@ function renderResizeHarness(
         started: false,
       };
     },
-    startResize(element: TimelineElement, edge: "start" | "end", pointerId = 0) {
+    startResize(
+      element: TimelineElement,
+      edge: "start" | "end",
+      pointerId = 0,
+      trimMode?: TimelineTrimMode,
+    ) {
       act(() => {
         apply({
           pointerId,
           element,
           edge,
+          trimMode,
           originClientX: 0,
           previewStart: element.start,
           previewDuration: element.duration,
@@ -438,6 +445,106 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
     expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").duration).toBe(3);
     expect(h.onResizeElement).not.toHaveBeenCalled();
+    h.unmount();
+  });
+});
+
+/**
+ * Trim tools drive the SAME resize gesture: `trimMode` swaps the preview math,
+ * and the projection then rides the group-resize commit unchanged. Lane under
+ * test: a(0-2), b(2-5, in point 1s), c(5-6) butted together, plus d alone on
+ * lane 1 to prove a trim never reaches across lanes.
+ */
+function startTrim(mode: TimelineTrimMode, grabbed: "a" | "b" | "c", edge: "start" | "end") {
+  const a = el("a", { start: 0, duration: 2 });
+  const b = el("b", { start: 2, duration: 3, playbackStart: 1, sourceDuration: 20 });
+  const c = el("c", { start: 5, duration: 1 });
+  const d = el("d", { start: 0, duration: 6, track: 1 });
+  const h = renderResizeHarness([a, b, c, d], []);
+  h.startResize({ a, b, c }[grabbed], edge, 0, mode);
+  return { a, b, c, d, h };
+}
+
+function persistedTrim(h: ReturnType<typeof renderResizeHarness>) {
+  const changes: Array<{ element: TimelineElement; start: number; duration: number }> =
+    h.onResizeElements.mock.calls[0]?.[0] ?? [];
+  return changes.map((change) => [change.element.id, change.start, change.duration]);
+}
+
+describe("useTimelineClipDrag — trim tools", () => {
+  it("ripples an out point: the clip grows and the rest of the lane follows", async () => {
+    const { h } = startTrim("ripple", "a", "end");
+    h.movePointer(50); // +0.5s at 100 pps
+    await h.dropPointer();
+
+    expect(h.onResizeElements).toHaveBeenCalledTimes(1);
+    expect(persistedTrim(h)).toEqual([
+      ["a", 0, 2.5],
+      ["b", 2.5, 3],
+      ["c", 5.5, 1],
+    ]);
+    expect(h.storeById("d").start).toBe(0); // another lane is never rippled
+    h.unmount();
+  });
+
+  it("ripples an in point: the clip keeps its start and the lane closes behind it", async () => {
+    const { h } = startTrim("ripple", "b", "start");
+    h.movePointer(50);
+    await h.dropPointer();
+
+    expect(persistedTrim(h)).toEqual([
+      ["b", 2, 2.5],
+      ["c", 4.5, 1],
+    ]);
+    expect(h.onResizeElements.mock.calls[0][0][0].playbackStart).toBe(1.5);
+    h.unmount();
+  });
+
+  it("rolls an edit point without moving anything downstream", async () => {
+    const { h } = startTrim("roll", "a", "end");
+    h.movePointer(50);
+    await h.dropPointer();
+
+    expect(persistedTrim(h)).toEqual([
+      ["a", 0, 2.5],
+      ["b", 2.5, 2.5],
+    ]);
+    expect(h.storeById("c").start).toBe(5);
+    h.unmount();
+  });
+
+  it("slips the source window and leaves the lane untouched", async () => {
+    const { h } = startTrim("slip", "b", "end");
+    h.movePointer(50);
+    await h.dropPointer();
+
+    expect(persistedTrim(h)).toEqual([["b", 2, 3]]);
+    expect(h.onResizeElements.mock.calls[0][0][0].playbackStart).toBe(0.5);
+    h.unmount();
+  });
+
+  it("slides a clip while its neighbours absorb the move", async () => {
+    const { h } = startTrim("slide", "b", "end");
+    h.movePointer(50);
+    await h.dropPointer();
+
+    expect(persistedTrim(h)).toEqual([
+      ["a", 0, 2.5],
+      ["b", 2.5, 3],
+      ["c", 5.5, 0.5],
+    ]);
+    h.unmount();
+  });
+
+  it("Escape abandons a trim without persisting or touching the store", () => {
+    const { h } = startTrim("ripple", "a", "end");
+    h.movePointer(50);
+    expect(h.getResizeProjection()).toHaveLength(3);
+
+    h.pressEscape();
+    expect(h.getResizeProjection()).toHaveLength(0);
+    expect(h.storeById("b").start).toBe(2);
+    expect(h.onResizeElements).not.toHaveBeenCalled();
     h.unmount();
   });
 });

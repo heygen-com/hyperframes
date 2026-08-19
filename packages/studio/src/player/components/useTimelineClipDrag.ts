@@ -15,6 +15,7 @@ import { collectTimelineSnapTargets, type TimelineSnapTarget } from "./timelineS
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import {
+  compensateResizeScroll,
   computeDragPreview,
   computeResizePreview,
   previewGroupResize,
@@ -27,6 +28,8 @@ import type {
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { TimelineTrimMode } from "./timelineTrimOps";
+import { applyTimelineTrimPreview, reuseOrOpenTrimSession } from "./timelineTrimSession";
 import {
   mountTimelineClipDragGestureLifecycle,
   type TimelineGestureKind,
@@ -282,20 +285,75 @@ export function useTimelineClipDrag({
     [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, buildSnapTargets],
   );
 
+  /**
+   * Trim-tool branch of the resize gesture (ripple / roll / slip / slide). The
+   * session is opened lazily on first movement — like the group-resize session —
+   * and, being a group-resize session, rides the very same projection, cancel and
+   * commit plumbing from there on.
+   */
+  const applyTrimPointer = useCallback(
+    (
+      resize: ResizingClipState,
+      mode: TimelineTrimMode,
+      clientX: number,
+      setResizeState: (v: ResizePreviewResult & Pick<ResizingClipState, "groupPreview">) => void,
+    ) => {
+      const { originScrollLeft, effectiveClientX } = compensateResizeScroll(
+        resize,
+        clientX,
+        scrollRef.current,
+      );
+      const pps = Math.max(ppsRef.current, 1e-6);
+      const session = reuseOrOpenTrimSession(
+        groupResizeRef.current,
+        resize.element,
+        mode,
+        resize.edge,
+        {
+          elements: elementsRef.current,
+          playheadTime: usePlayerStore.getState().currentTime,
+          beatTimes: snapContextRef.current.beatTimes,
+          snapEnabled: snapContextRef.current.enabled,
+        },
+      );
+      groupResizeRef.current = session;
+
+      // A refused gesture (pointerdown already reported why) holds the clip at
+      // its authored timing rather than falling back to a plain trim.
+      const grabbed = session
+        ? applyTimelineTrimPreview(session, (effectiveClientX - resize.originClientX) / pps, pps)
+        : undefined;
+      setResizeState({
+        originScrollLeft,
+        previewStart: grabbed?.start ?? resize.element.start,
+        previewDuration: grabbed?.duration ?? resize.element.duration,
+        previewPlaybackStart: grabbed?.playbackStart ?? resize.element.playbackStart,
+        groupPreview: session?.changes,
+      });
+    },
+    [scrollRef, ppsRef],
+  );
+
   // Recompute the trim preview for a pointer x. Shared by the pointermove resize
   // branch and the edge auto-scroll stepper (re-runs as content scrolls under a
   // stationary pointer). computeResizePreview is pure; here we only apply state.
   const applyResizePointer = useCallback(
     (resize: ResizingClipState, clientX: number) => {
+      const setResizeState = (v: ResizePreviewResult) =>
+        publishResizingClip(
+          resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
+        );
+
+      if (resize.trimMode) {
+        applyTrimPointer(resize, resize.trimMode, clientX, setResizeState);
+        return;
+      }
+
       const next = computeResizePreview(resize, clientX, {
         scroll: scrollRef.current,
         pps: ppsRef.current,
         buildSnapTargets,
       });
-      const setResizeState = (v: ResizePreviewResult) =>
-        publishResizingClip(
-          resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
-        );
 
       // Group resize: a capability-clean multi-selection resizes rigidly by one
       // shared, member-clamped delta (legacy main 36413da7f). The grabbed clip
@@ -327,7 +385,7 @@ export function useTimelineClipDrag({
       }
       previewGroupResize(session, next, setResizeState);
     },
-    [scrollRef, ppsRef, buildSnapTargets, publishResizingClip],
+    [scrollRef, ppsRef, buildSnapTargets, publishResizingClip, applyTrimPointer],
   );
   const applyResizePointerRef = useRef(applyResizePointer);
   applyResizePointerRef.current = applyResizePointer;

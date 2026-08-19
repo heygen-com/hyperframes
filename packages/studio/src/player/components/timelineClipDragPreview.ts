@@ -222,6 +222,24 @@ export interface ResizePreviewContext {
   buildSnapTargets: BuildSnapTargets;
 }
 
+/**
+ * Fold the gesture's scroll delta into the pointer x: edge auto-scroll moves
+ * the content while the pointer stays put, so the raw clientX under-reports the
+ * drag. Mirrors resolveTimelineMove's originScrollLeft handling, and is shared
+ * by the plain resize and the trim tools so both read the same pointer.
+ */
+export function compensateResizeScroll(
+  resize: Pick<ResizingClipState, "originScrollLeft">,
+  clientX: number,
+  scroll: HTMLDivElement | null,
+): { originScrollLeft: number; effectiveClientX: number } {
+  const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
+  return {
+    originScrollLeft,
+    effectiveClientX: clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft),
+  };
+}
+
 export interface ResizePreviewResult {
   originScrollLeft: number;
   previewStart: number;
@@ -237,11 +255,7 @@ export function computeResizePreview(
   ctx: ResizePreviewContext,
 ): ResizePreviewResult {
   const { scroll, pps, buildSnapTargets } = ctx;
-  // Scroll compensation: auto-scroll moves the content while the pointer stays
-  // put, so fold the scroll delta into the pointer x (mirrors
-  // resolveTimelineMove's originScrollLeft handling).
-  const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
-  const effectiveClientX = clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
+  const { originScrollLeft, effectiveClientX } = compensateResizeScroll(resize, clientX, scroll);
 
   const sourceRemaining =
     resize.element.sourceDuration != null

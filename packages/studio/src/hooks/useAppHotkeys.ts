@@ -9,6 +9,7 @@ import { isTypingTarget } from "../utils/typingTarget";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
+import { TRIM_TOOL_KEYS } from "../player/components/timelineTrimTools";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
@@ -293,6 +294,17 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
   if (key === "v" && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     usePlayerStore.getState().setActiveTool("select");
+    return;
+  }
+
+  // Trim tools, paired by what they act on: T/⇧T move an edit point (ripple,
+  // roll), Y/⇧Y move the media inside one (slip, slide). Pressing the active
+  // tool's own key returns to Select, so a tool is never a trap.
+  const trimTool = TRIM_TOOL_KEYS[`${event.shiftKey ? "shift+" : ""}${key}`];
+  if (trimTool && !event.altKey && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault();
+    const { activeTool, setActiveTool } = usePlayerStore.getState();
+    setActiveTool(activeTool === trimTool ? "select" : trimTool);
     return;
   }
 
