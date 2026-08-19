@@ -18,7 +18,7 @@ import { parseNumeric, parseStartExpression } from "@hyperframes/core";
 export interface RefResolverEl {
   getAttribute(name: string): string | null;
 }
-interface RefResolverDoc {
+export interface RefResolverDoc {
   getElementById(id: string): RefResolverEl | null;
   querySelector(selector: string): RefResolverEl | null;
 }

@@ -20,6 +20,9 @@ import {
   parseVideoElements,
   parseImageElements,
   parseAudioElements,
+  resolveReferencedStart,
+  type RefResolverEl,
+  type RefResolverDoc,
   type VideoElement,
   type ImageElement,
   type AudioElement,
@@ -50,13 +53,18 @@ function parseNumeric(value: string | null): number | null {
 /**
  * Fold a media element's chain of composition hosts into one window.
  *
- * Mirrors the offset arithmetic `parseSubCompositions` applied while walking
- * the composition file tree, so a document that has no id collisions produces
- * exactly the timings it did before. Only `data-end` bounds a host: a host
- * carrying just `data-duration` was unbounded there too, and widening that here
- * would silently retime existing compositions rather than fix identity.
+ * Host `data-start` is resolved the same way media is (`resolveReferencedStart`):
+ * numeric literals, or an id / `data-composition-id` ref to a sibling slot's
+ * end (`data-start="hook"`). `parseFloat("hook")` is 0, which stacked every
+ * chained scene at 0–2s. Only `data-end` bounds a host: a host carrying just
+ * `data-duration` was unbounded in the file-tree walk too.
  */
-function resolveHostWindow(element: Element): HostWindow {
+function resolveHostWindow(
+  element: Element,
+  document: RefResolverDoc,
+  startCache: Map<RefResolverEl, number>,
+  visiting: Set<RefResolverEl>,
+): HostWindow {
   const hosts: Element[] = [];
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
     if (ancestor.hasAttribute(COMPOSITION_HOST_ATTR)) hosts.push(ancestor);
@@ -67,7 +75,7 @@ function resolveHostWindow(element: Element): HostWindow {
   let limit = Infinity;
   // parentElement walks leaf → root; the offsets accumulate root → leaf.
   for (const host of hosts.reverse()) {
-    const hostStart = parseNumeric(host.getAttribute("data-start")) ?? 0;
+    const hostStart = resolveReferencedStart(document, host, startCache, visiting);
     const hostEnd = parseNumeric(host.getAttribute("data-end"));
     if (hostEnd != null) limit = Math.min(limit, offset + hostEnd);
     offset += hostStart;
@@ -83,10 +91,15 @@ function resolveHostWindow(element: Element): HostWindow {
 function collectHostWindows(html: string): Map<string, HostWindow> {
   const { document } = parseHTML(html);
   const windows = new Map<string, HostWindow>();
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
   for (const element of document.querySelectorAll(`[${MEDIA_RENDER_ID_ATTR}]`)) {
     const renderId = element.getAttribute(MEDIA_RENDER_ID_ATTR);
     if (!renderId) continue;
-    windows.set(renderId, resolveHostWindow(element as unknown as Element));
+    windows.set(
+      renderId,
+      resolveHostWindow(element as unknown as Element, document, startCache, visiting),
+    );
   }
   return windows;
 }
