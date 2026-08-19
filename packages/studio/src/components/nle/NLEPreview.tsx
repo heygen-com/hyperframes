@@ -355,28 +355,6 @@ export const NLEPreview = memo(function NLEPreview({
   }, [applyZoom, applyPan]);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const handleDblClick = (event: MouseEvent) => {
-      if (isPreviewAtFit(zoomRef.current)) return;
-      const rect = viewport.getBoundingClientRect();
-      if (
-        event.clientX < rect.left ||
-        event.clientX > rect.right ||
-        event.clientY < rect.top ||
-        event.clientY > rect.bottom
-      ) {
-        return;
-      }
-      applyZoom(DEFAULT_PREVIEW_ZOOM);
-    };
-
-    document.addEventListener("dblclick", handleDblClick, { capture: true });
-    return () => document.removeEventListener("dblclick", handleDblClick, { capture: true });
-  }, [applyZoom]);
-
-  useEffect(() => {
     const isInsideViewport = (clientX: number, clientY: number): DOMRect | null => {
       const viewport = viewportRef.current;
       if (!viewport) return null;

@@ -101,7 +101,7 @@ interface EditHistoryHandle {
 }
 
 interface UseAppHotkeysParams {
-  handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
@@ -142,7 +142,7 @@ interface UseAppHotkeysParams {
 // ── Extracted keydown dispatch (pure function, no hooks) ──
 
 interface HotkeyCallbacks {
-  handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   handleUndo: () => Promise<void>;
@@ -322,17 +322,18 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
         return;
       }
     }
-    // Delete acts on the primary selection OR the marquee multi-selection —
-    // the delete handler expands a clip that is part of the multi-selection
-    // into an atomic delete of the whole selection (single undo).
+    // Delete acts on the primary selection OR the marquee multi-selection, and
+    // takes the WHOLE selection: `find` returned the first match, so selecting
+    // every clip and pressing Delete removed exactly one of them and left the
+    // rest — with the selection still drawn around them.
     const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
     const selectionKeys = new Set(selectedElementIds);
     if (selectedElementId) selectionKeys.add(selectedElementId);
     if (selectionKeys.size > 0) {
-      const el = elements.find((e) => selectionKeys.has(e.key ?? e.id));
-      if (el) {
+      const selected = elements.filter((e) => selectionKeys.has(e.key ?? e.id));
+      if (selected.length > 0) {
         event.preventDefault();
-        void cb.handleTimelineElementDelete(el);
+        void cb.handleTimelineElementsDelete(selected);
         return;
       }
     }
@@ -353,7 +354,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
 // ── Hook ──
 
 export function useAppHotkeys({
-  handleTimelineElementDelete,
+  handleTimelineElementsDelete,
   handleTimelineElementSplit,
   handleDomEditElementDelete,
   domEditSelectionRef,
@@ -454,7 +455,7 @@ export function useAppHotkeys({
 
   const cbRef = useRef<HotkeyCallbacks>(null!);
   cbRef.current = {
-    handleTimelineElementDelete,
+    handleTimelineElementsDelete,
     handleTimelineElementSplit,
     handleDomEditElementDelete,
     handleUndo,
