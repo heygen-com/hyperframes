@@ -96,6 +96,12 @@ export function useElementLifecycleOps({
         selections.length === 1
           ? selection.label || selection.id || selection.selector || selection.tagName
           : `${selections.length} elements`;
+      // Say the press landed before doing the work. Deleting a marquee selection
+      // takes seconds — reading the file, removing every member, saving, then
+      // reloading the preview — and until it finishes the canvas looks exactly
+      // like it did before. With nothing acknowledging the key, that silence is
+      // indistinguishable from Delete being broken, which is how it got read.
+      if (selections.length > 1) showToast(`Deleting ${label}...`, "info");
 
       // One file per pass; anything authored elsewhere is dropped rather than
       // patched into the wrong document.
@@ -136,40 +142,38 @@ export function useElementLifecycleOps({
         }
 
         domEditSaveTimestampRef.current = Date.now();
-        let patchedContent = originalContent;
-        // A member the file no longer holds answers `changed: false`, which is
-        // normal for one nested inside another member already removed. All of
-        // them answering that is not: the preview is describing a document the
-        // file does not have, so every target misses and the delete is a no-op.
-        let removedAny = false;
-        for (const target of patchTargets) {
-          const removeResponse = await fetch(
-            `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-              body: JSON.stringify({ target }),
-            },
+        // One request for the whole selection. Removing members one at a time
+        // cost a round trip and a rewrite of the file EACH, and a canvas
+        // selection runs to hundreds of members — the file ended up correct, but
+        // only after long enough that Delete looked like it had done nothing.
+        const removeResponse = await fetch(
+          `/api/projects/${pid}/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+            body: JSON.stringify({ targets: patchTargets }),
+          },
+        );
+        if (!removeResponse.ok) {
+          throw await createStudioSaveHttpError(
+            removeResponse,
+            `Failed to delete element from ${targetPath}`,
           );
-          if (!removeResponse.ok) {
-            throw await createStudioSaveHttpError(
-              removeResponse,
-              `Failed to delete element from ${targetPath}`,
-            );
-          }
-          const removeData = (await removeResponse.json()) as {
-            changed?: boolean;
-            content?: string;
-          };
-          if (removeData.changed) removedAny = true;
-          if (typeof removeData.content === "string") patchedContent = removeData.content;
         }
-        if (!removedAny) {
-          // Reporting "Deleted 503 elements" here is how this looked like the
-          // Delete key doing nothing at all, with nothing on screen to explain it.
+        const removeData = (await removeResponse.json()) as {
+          changed?: boolean;
+          content?: string;
+        };
+        if (!removeData.changed) {
+          // A member the file no longer holds simply does not match, which is
+          // normal for one nested inside another member already removed. Nothing
+          // matching at all means the preview is describing a document the file
+          // does not have — say so rather than reporting a delete that happened.
           reloadPreview();
           throw new Error("Nothing to delete — the preview was out of date. Try again.");
         }
+        const patchedContent =
+          typeof removeData.content === "string" ? removeData.content : originalContent;
         // ponytail: the server remove-element route (removeElementFromHtml) strips
         // only the element node — it does NOT cascade-remove GSAP tweens targeting
         // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This

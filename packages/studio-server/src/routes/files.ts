@@ -2496,6 +2496,48 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     );
   });
 
+  // Removing a marquee selection one element at a time meant one request and
+  // one rewrite of the whole file per element. A canvas selection runs to
+  // hundreds of members, so a single Delete press became hundreds of serial
+  // round trips: the file ended up correct, but only after long enough that the
+  // key looked like it had done nothing at all.
+  api.post("/projects/:id/file-mutations/remove-elements/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "remove-elements");
+    if ("error" in ctx) return ctx.error;
+
+    if (!existsSync(ctx.absPath)) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const body = (await c.req.json().catch(() => null)) as { targets?: MutationTarget[] } | null;
+    const targets = body?.targets;
+    if (!Array.isArray(targets) || targets.length === 0) {
+      return c.json({ error: "targets required" }, 400);
+    }
+
+    const originalContent = readFileSync(ctx.absPath, "utf-8");
+    // A member nested inside one already removed simply no longer matches, and
+    // that is a normal outcome here rather than a failure — `removed` reports
+    // how many actually left so the caller can tell a partial pass from a no-op.
+    let next = originalContent;
+    let removed = 0;
+    for (const target of targets) {
+      const after = removeElementFromHtml(next, target);
+      if (after !== next) removed += 1;
+      next = after;
+    }
+    const response = writeIfChanged(
+      c,
+      ctx.project.dir,
+      ctx.filePath,
+      ctx.absPath,
+      originalContent,
+      next,
+    );
+    c.header("x-hf-removed", String(removed));
+    return response;
+  });
+
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {
     const body = (await c.req.json().catch(() => null)) as {
       files?: unknown;

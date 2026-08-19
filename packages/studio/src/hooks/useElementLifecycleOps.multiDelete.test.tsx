@@ -15,19 +15,24 @@ function selectionFor(id: string) {
 
 describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
   const removed: string[] = [];
+  const requests: string[] = [];
   let changes = true;
 
   beforeEach(() => {
     removed.length = 0;
+    requests.length = 0;
     changes = true;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push(String(url));
         const body = JSON.parse(String(init?.body ?? "{}")) as {
-          target?: { id?: string; selector?: string };
+          targets?: { id?: string; selector?: string }[];
         };
-        const key = body.target?.id ?? body.target?.selector;
-        if (key) removed.push(key);
+        for (const target of body.targets ?? []) {
+          const key = target.id ?? target.selector;
+          if (key) removed.push(key);
+        }
         return {
           ok: true,
           json: async () => ({ changed: changes, content: "<html></html>" }),
@@ -62,6 +67,9 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
 
     // The defect: only the first was ever removed.
     expect(removed).toEqual(["a", "b", "c"]);
+    // And one request for the selection, not one per member: a canvas selection
+    // runs to hundreds, and a round trip each made Delete look like a no-op.
+    expect(requests.filter((url) => url.includes("remove-elements"))).toHaveLength(1);
   });
 
   it("says so when the preview is stale instead of claiming a delete", async () => {
