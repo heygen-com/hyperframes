@@ -306,6 +306,15 @@ describe("WebAudioTransport", () => {
   });
 
   describe("schedulePlayback timing", () => {
+    it("keeps author boost above unity on the per-element gain node", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+
+      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, 0, 1, gen);
+      transport.setElementVolume(mockEl, 3.98);
+
+      expect(mock.gainNode.gain.value).toBeCloseTo(3.98, 5);
+    });
+
     it("starts in-progress clips immediately with correct buffer offset", async () => {
       const { transport, mock, gen } = setupTransport(100);
 

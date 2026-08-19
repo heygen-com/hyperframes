@@ -3159,7 +3159,12 @@ export function initSandboxRuntimeModular(): void {
         if (!(el instanceof HTMLMediaElement)) continue;
         const parsed = parseFloat(el.dataset.volume ?? "");
         const clipVolume = Number.isFinite(parsed) ? parsed : 1;
-        el.volume = clipVolume * volume;
+        // `data-volume` carries authored gain, which goes above unity now that
+        // the ceiling is 12 dB — and `el.volume` is spec-pinned to [0,1], so
+        // assigning the product raw THROWS IndexSizeError and takes the rest of
+        // the loop with it. The element carries the legal part; the boost above
+        // unity belongs to Web Audio, which already has it from `setVolume`.
+        el.volume = Math.max(0, Math.min(1, clipVolume * volume));
       }
     },
     onSetMediaOutputMuted: (muted) => {

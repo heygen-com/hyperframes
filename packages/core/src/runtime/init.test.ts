@@ -140,6 +140,37 @@ describe("initSandboxRuntimeModular", () => {
     },
   );
 
+  it("keeps a boosted clip legal on the element when the bridge sets volume", () => {
+    // `data-volume` may hold up to 12 dB of authored gain. `el.volume` is
+    // spec-pinned to [0,1] and THROWS outside it, so assigning the product raw
+    // aborted the loop — every element after the boosted one kept its old
+    // volume, and the bridge's own state said otherwise.
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true">` +
+      `<audio data-start="0" data-volume="3.98"></audio>` +
+      `<audio data-start="0" data-volume="0.5"></audio>` +
+      `</div>`;
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+
+    const [boosted, quiet] = Array.from(document.querySelectorAll("audio"));
+    if (!boosted || !quiet) throw new Error("expected both clips");
+    // Sentinels, so the assertions cannot be satisfied by what the runtime
+    // already applied while starting up.
+    boosted.volume = 0.2;
+    quiet.volume = 0.1;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
+      }),
+    );
+
+    expect(boosted.volume).toBe(1);
+    // The clip after the boosted one is what a throw mid-loop strands.
+    expect(quiet.volume).toBeCloseTo(0.5, 5);
+  });
+
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
     document.body.innerHTML = "";
