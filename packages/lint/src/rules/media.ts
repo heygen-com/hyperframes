@@ -647,7 +647,12 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintFinding[] {
   const boosted = ctx.tags
     .filter((tag) => isMediaTag(tag.name))
-    .map((tag) => ({ tag, volume: Number(readAttr(tag.raw, "data-volume")) }))
+    // Absent means unity, as it does everywhere else. Reading it raw gave
+    // `Number(null)` — 0, finite and not 1, so a clip with NO `data-volume`
+    // cleared both filters and was reported as authored at silence. That is the
+    // shape the docs recommend for a tweened clip, so the rule fired on exactly
+    // the case it exists to bless.
+    .map((tag) => ({ tag, volume: Number(readAttr(tag.raw, "data-volume") ?? "1") }))
     .filter((entry) => Number.isFinite(entry.volume) && entry.volume !== 1)
     // A lane already has its own rule, and it wins over both of these.
     .filter((entry) => !readDecodedAttr(entry.tag.raw, "data-automation"))
