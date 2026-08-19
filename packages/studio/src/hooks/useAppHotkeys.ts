@@ -103,7 +103,10 @@ interface EditHistoryHandle {
 interface UseAppHotkeysParams {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
-  handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
+  handleDomEditElementDelete: (
+    selection: DomEditSelection,
+    options?: { expandGroup?: boolean },
+  ) => Promise<void>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   clearDomSelectionRef: React.MutableRefObject<() => void>;
   editHistory: EditHistoryHandle;
@@ -144,7 +147,10 @@ interface UseAppHotkeysParams {
 interface HotkeyCallbacks {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
-  handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
+  handleDomEditElementDelete: (
+    selection: DomEditSelection,
+    options?: { expandGroup?: boolean },
+  ) => Promise<void>;
   handleUndo: () => Promise<void>;
   handleRedo: () => Promise<void>;
   handleCopy: () => boolean;
@@ -332,7 +338,8 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     const domSel = cb.domEditSelectionRef.current;
     if (domSel) {
       event.preventDefault();
-      void cb.handleDomEditElementDelete(domSel);
+      // The whole marquee group, not just the primary the ref holds.
+      void cb.handleDomEditElementDelete(domSel, { expandGroup: true });
       return;
     }
     // Takes the WHOLE selection: `find` returned the first match, so selecting

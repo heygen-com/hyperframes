@@ -114,9 +114,29 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     const e = press("Delete");
     dispatchPlainKey(e, "delete", cb);
 
-    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection);
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection, {
+      expandGroup: true,
+    });
     expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("asks for the whole group, so Cut can still take just the one it copied", () => {
+    // Expanding inside the delete handler meant every caller got the group.
+    // Cut copies the primary alone, so it put one element on the clipboard and
+    // removed every other member with it; paste brought back one.
+    usePlayerStore.setState({
+      elements: [],
+      selectedElementId: null,
+      selectedElementIds: new Set(),
+    });
+    const domSelection = { selector: ".title", selectorIndex: 0, sourceFile: "index.html" };
+
+    const cb = callbacks();
+    cb.domEditSelectionRef = { current: domSelection } as typeof cb.domEditSelectionRef;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection, { expandGroup: true });
   });
 
   it("includes the primary selection alongside the marquee set", () => {

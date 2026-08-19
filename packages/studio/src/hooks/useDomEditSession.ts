@@ -73,6 +73,22 @@ export interface UseDomEditSessionParams {
   forceReloadSdkSession?: () => void;
 }
 
+/**
+ * Which elements a delete acts on. `expandGroup` widens the primary to the
+ * whole marquee group, which is what the Delete key means.
+ *
+ * The caller chooses rather than the delete deciding for everyone: Cut copies
+ * the primary alone, so expanding for it put one element on the clipboard and
+ * removed every other member of the group with it.
+ */
+export function membersForDelete(
+  selection: DomEditSelection,
+  group: DomEditSelection[],
+  options?: { expandGroup?: boolean },
+): DomEditSelection[] {
+  return options?.expandGroup && group.length > 0 ? group : [selection];
+}
+
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -335,15 +351,8 @@ export function useDomEditSession({
     forceReloadSdkSession,
   });
 
-  /**
-   * Delete the canvas selection — the marquee group when there is one, else the
-   * single selected element. Callers pass the primary selection; expanding it is
-   * this hook's job because this is where the group lives. Without the
-   * expansion, selecting several elements and pressing Delete removed only the
-   * primary one and left the rest selected.
-   */
   const handleDomEditElementDelete = useCallback(
-    async (selection: DomEditSelection) => {
+    async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
       // Same structural edit the timeline delete refuses mid-recording, so it
       // refuses here too — this is now the path a Delete press takes whenever
       // the canvas holds a selection.
@@ -351,8 +360,7 @@ export function useDomEditSession({
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
-      const group = domEditGroupSelectionsRef.current;
-      const members = group.length > 0 ? group : [selection];
+      const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
       await handleDomEditElementsDelete(members);
     },
     [domEditGroupSelectionsRef, handleDomEditElementsDelete, isRecordingRef, showToast],
