@@ -74,7 +74,11 @@ function rmsDb(path: string, atSeconds: number): number {
   const match = /RMS level dB:\s*(\S+)/.exec(overall);
   if (!match) throw new Error(`astats reported no RMS level for ${path} at ${atSeconds}s`);
   const raw = match[1]!;
-  return raw.endsWith("inf") ? (raw.startsWith("-") ? -Infinity : Infinity) : Number.parseFloat(raw);
+  return raw.endsWith("inf")
+    ? raw.startsWith("-")
+      ? -Infinity
+      : Infinity
+    : Number.parseFloat(raw);
 }
 
 describe.skipIf(!hasFfmpeg)("mixed audio branch padding", () => {
