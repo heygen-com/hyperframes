@@ -190,20 +190,28 @@ export function TimelineGroupHeader({
           aria-pressed={isSoloed}
           aria-label="Hear only this"
           title="Hear only this"
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[13px] font-semibold transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
-            isSoloed
-              ? "text-[#F5C542] hover:text-white"
-              : isHalfLitSolo
-                ? "text-[#F5C542]/50 hover:text-white"
-                : "text-white/35 hover:text-white/75"
-          }`}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC]"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             onToggleSolo({ add: event.metaKey || event.ctrlKey });
           }}
         >
-          <span aria-hidden="true">⌗</span>
+          {/* Three states, not two: filled when this group is soloed, and
+              HALF-lit when a member is — the affordance for "this bus is
+              passing audio, but I did not solo it" (groups doc §2.2). */}
+          <span
+            aria-hidden="true"
+            className={`flex h-[15px] w-[15px] items-center justify-center rounded-[3px] border text-[10px] font-bold leading-none transition-colors ${
+              isSoloed
+                ? "border-[#F5C542] bg-[#F5C542] text-black"
+                : isHalfLitSolo
+                  ? "border-[#F5C542]/60 bg-[#F5C542]/25 text-[#F5C542]"
+                  : "border-white/30 text-white/45 hover:border-white/60 hover:text-white/80"
+            }`}
+          >
+            S
+          </span>
         </button>
         <TimelineFxButton
           fxChainRaw={fxChain}

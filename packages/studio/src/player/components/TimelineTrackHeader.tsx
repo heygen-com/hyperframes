@@ -493,7 +493,7 @@ export function TimelineTrackHeader({
       className={`sticky left-0 z-[12] shrink-0 ${
         !isKeyframeLayer
           ? showTrackLabel
-            ? "flex items-center gap-1 px-1.5 text-white/55"
+            ? "flex flex-col justify-center gap-0.5 px-1.5 text-white/55"
             : "flex flex-col items-center justify-center gap-0.5"
           : ""
       }`}
@@ -529,25 +529,30 @@ export function TimelineTrackHeader({
             isSoloed={soloTargetId !== null && soloed.has(soloTargetId)}
             onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
             onToggleTrackHidden={onToggleTrackHidden}
+            // On the control line, beside mute and solo — not a third row.
+            trailing={
+              <>
+                {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
+                  <TimelineFxButton
+                    variant="chain"
+                    fxChainRaw={singleAudioClip.fxChain}
+                    trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
+                    onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
+                    onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+                    // Muted, an audition is silent — so the hover lifts the mute on
+                    // the running graph and puts it back on the way out, the same
+                    // borrow-and-return it already does with the playhead.
+                    auditionSpans={[singleAudioClip]}
+                    isMuted={isTrackHidden}
+                    onSetMutedLive={(muted) =>
+                      onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
+                    }
+                    onOpenRack={() => openClipFxRack(singleAudioClip)}
+                  />
+                )}
+              </>
+            }
           />
-          {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
-            <TimelineFxButton
-              variant="chain"
-              fxChainRaw={singleAudioClip.fxChain}
-              trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
-              onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
-              onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
-              // Muted, an audition is silent — so the hover lifts the mute on
-              // the running graph and puts it back on the way out, the same
-              // borrow-and-return it already does with the playhead.
-              auditionSpans={[singleAudioClip]}
-              isMuted={isTrackHidden}
-              onSetMutedLive={(muted) =>
-                onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
-              }
-              onOpenRack={() => openClipFxRack(singleAudioClip)}
-            />
-          )}
           {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
               a group, so it needs `audio-groups` too — without it a user outside
               that canary could create a group and then have no UI to manage it. */}

@@ -433,7 +433,10 @@ describe("Timeline provider boundary", () => {
       button.click();
     });
 
-    const row = button.parentElement?.parentElement;
+    // Up from the rowheader rather than counting parents: the header now lays
+    // its name and its controls out on two lines, so the button sits one level
+    // deeper than it used to.
+    const row = button.closest('[role="rowheader"]')?.parentElement;
     // Row children: [TimelineTrackHeader (sticky column), time-mapped content].
     const trackContent = row?.children.item(1);
     expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);

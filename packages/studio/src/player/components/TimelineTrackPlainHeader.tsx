@@ -1,3 +1,4 @@
+import type React from "react";
 import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { isCanaryEnabled } from "../../telemetry/canary";
 import { Music } from "../../icons/SystemIcons";
@@ -72,6 +73,7 @@ export function PlainTrackHeader({
   isSoloed,
   onToggleSolo,
   onToggleTrackHidden,
+  trailing,
 }: {
   trackNumber: number;
   trackDisplayNumber: number | null;
@@ -84,41 +86,52 @@ export function PlainTrackHeader({
   isGroupMuted: boolean;
   isSoloed: boolean;
   onToggleSolo?: (options?: { add?: boolean }) => void;
+  /** Trailing controls that belong on the control line — the FX entry points,
+   *  which the caller owns because only it knows the clip they act on. */
+  trailing?: React.ReactNode;
 }) {
   return (
     <>
-      {isAudioTrack && (
-        <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
-      )}
-      {showTrackLabel && (
-        <span
-          className={`min-w-0 flex-1 truncate text-[11px] ${
-            isAudioTrack && (isTrackHidden || isGroupMuted) && isCanaryEnabled("audio-track-mute")
-              ? "line-through"
-              : ""
-          }`}
-          title={isGroupMuted && !isTrackHidden ? `${trackLabel} (group muted)` : trackLabel}
-        >
-          {trackLabel}
-        </span>
-      )}
-      {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
-      {/* Not on an audio track. The control is the old visibility eye, and on
+      {/* Line one: what the row IS. Line two (below) is what you can do to it —
+          the same split the group header uses, for the same reason: a name and
+          four controls sharing 232px truncated the name to a few characters. */}
+      <div className="flex min-w-0 items-center gap-1">
+        {isAudioTrack && (
+          <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
+        )}
+        {showTrackLabel && (
+          <span
+            className={`min-w-0 flex-1 truncate text-[11px] ${
+              isAudioTrack && (isTrackHidden || isGroupMuted) && isCanaryEnabled("audio-track-mute")
+                ? "line-through"
+                : ""
+            }`}
+            title={isGroupMuted && !isTrackHidden ? `${trackLabel} (group muted)` : trackLabel}
+          >
+            {trackLabel}
+          </span>
+        )}
+        {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
+      </div>
+      <div className="flex items-center gap-1">
+        {/* Not on an audio track. The control is the old visibility eye, and on
           audio it silences rather than hides — but a row that already says what
           it is with a speaker does not also need the hide affordance sitting in
           the eye's slot. `visible={false}` rather than omitting the element, so
           the spacer keeps every row's control columns aligned. */}
-      <VisibilityButton
-        hidden={isTrackHidden}
-        trackNumber={trackNumber}
-        trackDisplayNumber={trackDisplayNumber}
-        visible={!isAudioTrack}
-        isAudioTrack={isAudioTrack}
-        onToggle={onToggleTrackHidden}
-      />
-      {isAudioTrack && isCanaryEnabled("audio-track-mute") && onToggleSolo && (
-        <TimelineSoloButton isSoloed={isSoloed} onToggle={onToggleSolo} />
-      )}
+        <VisibilityButton
+          hidden={isTrackHidden}
+          trackNumber={trackNumber}
+          trackDisplayNumber={trackDisplayNumber}
+          visible={!isAudioTrack}
+          isAudioTrack={isAudioTrack}
+          onToggle={onToggleTrackHidden}
+        />
+        {isAudioTrack && isCanaryEnabled("audio-track-mute") && onToggleSolo && (
+          <TimelineSoloButton isSoloed={isSoloed} onToggle={onToggleSolo} />
+        )}
+        {trailing}
+      </div>
     </>
   );
 }
