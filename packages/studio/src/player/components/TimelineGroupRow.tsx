@@ -133,6 +133,7 @@ export function TimelineGroupRow({
         fxChain={group.fxChain}
         onFxChainChange={(next) => writeGroupFxChain(next, false)}
         onFxChainPreview={(next) => writeGroupFxChain(next, true)}
+        auditionSpans={memberElements}
         onSetMutedLive={setGroupMutedLive}
         onOpenFxRack={openGroupFxRack}
         // Same width as every other row's header. The group row needs a real

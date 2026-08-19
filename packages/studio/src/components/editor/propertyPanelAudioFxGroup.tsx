@@ -45,6 +45,7 @@ import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { useFxChainObserved } from "./useFxChainObserved.js";
 import { useFxCarve } from "./useFxCarve.js";
 import { audioFxSignalPath } from "./audioFxSignalPath.js";
+import type { AuditionSpan } from "./useAuditionTransport.js";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
 
@@ -240,6 +241,19 @@ export function AudioFxGroup({
     );
   }, [element]);
 
+  /**
+   * The clip this rack belongs to, so hovering a preset auditions where it
+   * sounds. A group's rack reaches this file too, but a group has no span of
+   * its own — its members carry the audio, and this panel does not see them,
+   * so it passes none and the transport plays from the playhead as before.
+   */
+  const auditionSpans = useMemo((): AuditionSpan[] => {
+    const start = Number.parseFloat(element.dataAttributes?.["start"] ?? "");
+    const duration = Number.parseFloat(element.dataAttributes?.["duration"] ?? "");
+    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return [];
+    return [{ start, duration }];
+  }, [element]);
+
   const { carvedAgainstBy, sourceOptions, setCarve } = useFxCarve(
     element,
     chain,
@@ -288,7 +302,7 @@ export function AudioFxGroup({
         )
       }
       signalPath={signalPath}
-      onAuditionTransport={auditionTransport}
+      onAuditionTransport={(on) => auditionTransport(on, auditionSpans)}
       onChainPreview={(next) =>
         // Live writes skip the preview refresh entirely, so dragging a knob no
         // longer reloads the composition and restarts playback on every pixel.

@@ -493,6 +493,7 @@ export function TimelineTrackHeader({
               // Muted, an audition is silent — so the hover lifts the mute on
               // the running graph and puts it back on the way out, the same
               // borrow-and-return it already does with the playhead.
+              auditionSpans={[singleAudioClip]}
               isMuted={isTrackHidden}
               onSetMutedLive={(muted) =>
                 onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
