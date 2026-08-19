@@ -59,6 +59,42 @@ interface UseTimelineSyncCallbacksParams {
  * playhead (the clamp below is the one sanctioned move — content shrank past it).
  */
 /**
+ * Run the per-load preview setup, one step at a time, keyboard first.
+ *
+ * The steps are independent, but they used to run as one sequence inside a
+ * `catch {}` that swallowed everything. Attaching the preview's keyboard
+ * listeners was last, so a throw from either DOM pass before it — which an
+ * unusual composition can cause — silently cost the user every playback
+ * shortcut. The transport buttons kept working, because those are React
+ * handlers on the parent document, so the failure presented as "space is
+ * broken" rather than as an error anyone could see.
+ *
+ * Isolating each step means one failure can no longer disable the others, and
+ * ordering the shortcuts first means input works even if the rest of the setup
+ * is having a bad day. `onError` exists so a genuine failure leaves a trace
+ * instead of vanishing.
+ */
+export function runPreviewSetupSteps(steps: {
+  attachShortcuts: () => void;
+  normalizeViewport: () => void;
+  healCompositionIds: () => void;
+  onError?: (step: string, error: unknown) => void;
+}): void {
+  const ordered: [string, () => void][] = [
+    ["shortcuts", steps.attachShortcuts],
+    ["viewport", steps.normalizeViewport],
+    ["composition-ids", steps.healCompositionIds],
+  ];
+  for (const [name, run] of ordered) {
+    try {
+      run();
+    } catch (error) {
+      steps.onError?.(name, error);
+    }
+  }
+}
+
+/**
  * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
  * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
  * completion + failure path funnels through here so the preview can never get
@@ -351,9 +387,13 @@ export function useTimelineSyncCallbacks({
       const doc = iframe?.contentDocument;
       const iframeWin = iframe?.contentWindow as IframeWindow | null;
       if (doc && iframeWin) {
-        normalizePreviewViewport(doc, iframeWin);
-        autoHealMissingCompositionIds(doc);
-        attachIframeShortcutListeners();
+        runPreviewSetupSteps({
+          attachShortcuts: attachIframeShortcutListeners,
+          normalizeViewport: () => normalizePreviewViewport(doc, iframeWin),
+          healCompositionIds: () => autoHealMissingCompositionIds(doc),
+          onError: (step, error) =>
+            console.warn(`[studio] preview setup step "${step}" failed:`, error),
+        });
       }
 
       const manifest = iframeWin?.__clipManifest;

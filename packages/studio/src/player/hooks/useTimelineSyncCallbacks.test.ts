@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import {
+  runPreviewSetupSteps,
   resolveReloadSeekTime,
   resolveTimelineTotalDuration,
   revealIframe,
@@ -215,5 +216,83 @@ describe("resolveTimelineTotalDuration", () => {
         authoredRootDurationSeconds,
       }),
     ).toBe(44.5);
+  });
+});
+
+describe("runPreviewSetupSteps", () => {
+  function steps(overrides: Partial<Record<string, () => void>> = {}) {
+    const ran: string[] = [];
+    const errors: string[] = [];
+    const make = (name: string) => () => {
+      ran.push(name);
+      overrides[name]?.();
+    };
+    return {
+      ran,
+      errors,
+      args: {
+        attachShortcuts: make("shortcuts"),
+        normalizeViewport: make("viewport"),
+        healCompositionIds: make("composition-ids"),
+        onError: (step: string) => errors.push(step),
+      },
+    };
+  }
+
+  it("THE BUG: a throwing viewport pass used to cost the user every shortcut", () => {
+    // These ran as one sequence inside a silent catch, with the shortcuts last.
+    // A composition that made either DOM pass throw left space, J/K/L and the
+    // arrows dead while the transport buttons kept working, because those are
+    // React handlers on the parent document.
+    const s = steps({
+      viewport: () => {
+        throw new Error("unusual composition");
+      },
+    });
+
+    runPreviewSetupSteps(s.args);
+
+    expect(s.ran).toContain("shortcuts");
+    expect(s.errors).toEqual(["viewport"]);
+  });
+
+  it("attaches shortcuts before anything that can break them", () => {
+    const s = steps();
+    runPreviewSetupSteps(s.args);
+    expect(s.ran[0]).toBe("shortcuts");
+  });
+
+  it("runs every remaining step after one throws", () => {
+    const s = steps({
+      shortcuts: () => {
+        throw new Error("no preview window");
+      },
+    });
+
+    runPreviewSetupSteps(s.args);
+
+    expect(s.ran).toEqual(["shortcuts", "viewport", "composition-ids"]);
+    expect(s.errors).toEqual(["shortcuts"]);
+  });
+
+  it("reports a failure rather than swallowing it", () => {
+    const seen: unknown[] = [];
+    runPreviewSetupSteps({
+      attachShortcuts: () => {
+        throw new Error("boom");
+      },
+      normalizeViewport: () => {},
+      healCompositionIds: () => {},
+      onError: (_step, error) => seen.push(error),
+    });
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as Error).message).toBe("boom");
+  });
+
+  it("stays quiet when every step succeeds", () => {
+    const s = steps();
+    runPreviewSetupSteps(s.args);
+    expect(s.errors).toEqual([]);
   });
 });
