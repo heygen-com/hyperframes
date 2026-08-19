@@ -147,6 +147,7 @@ export function createTimelineElementFromManifestClip(params: {
       entry.audioGroupVolume = info.volume;
       entry.audioGroupHidden = info.hidden;
       if (info.fxChain) entry.audioGroupFxChain = info.fxChain;
+      if (info.automation) entry.audioGroupAutomation = info.automation;
     }
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
@@ -374,6 +375,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       entry.audioGroupVolume = domGroupInfo.volume;
       entry.audioGroupHidden = domGroupInfo.hidden;
       if (domGroupInfo.fxChain) entry.audioGroupFxChain = domGroupInfo.fxChain;
+      if (domGroupInfo.automation) entry.audioGroupAutomation = domGroupInfo.automation;
     }
 
     // Sub-compositions

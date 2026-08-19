@@ -33,6 +33,9 @@ export interface TimelineTrackGroupInfo {
   hidden: boolean;
   /** The group element's serialized `data-fx-chain`, mirrored from a member's parse (C1's FX entry). */
   fxChain?: string;
+  /** The group element's serialized `data-automation` — the group's OWN lanes,
+   *  which are what its `∿` discloses (groups doc §5). */
+  automation?: string;
 }
 
 interface GroupMembership {
@@ -42,6 +45,7 @@ interface GroupMembership {
   volumeByGroup: Map<string, number>;
   hiddenByGroup: Map<string, boolean>;
   fxChainByGroup: Map<string, string | undefined>;
+  automationByGroup: Map<string, string | undefined>;
 }
 
 /** Which track belongs to which group, and each group's label/volume/hidden/fxChain — one pass over raw tracks. */
@@ -52,6 +56,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
   const volumeByGroup = new Map<string, number>();
   const hiddenByGroup = new Map<string, boolean>();
   const fxChainByGroup = new Map<string, string | undefined>();
+  const automationByGroup = new Map<string, string | undefined>();
   for (const [trackNum, elements] of rawTracks) {
     const owner = elements.find((el) => el.audioGroup);
     if (!owner?.audioGroup) continue;
@@ -61,6 +66,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
       volumeByGroup.set(owner.audioGroup, owner.audioGroupVolume ?? 1);
       hiddenByGroup.set(owner.audioGroup, owner.audioGroupHidden ?? false);
       fxChainByGroup.set(owner.audioGroup, owner.audioGroupFxChain);
+      automationByGroup.set(owner.audioGroup, owner.audioGroupAutomation);
     }
     const members = memberTracksByGroup.get(owner.audioGroup) ?? [];
     members.push(trackNum);
@@ -73,6 +79,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
     volumeByGroup,
     hiddenByGroup,
     fxChainByGroup,
+    automationByGroup,
   };
 }
 
@@ -87,6 +94,7 @@ function buildGroupInfo(
     (a, b) => a - b,
   );
   const fxChain = membership.fxChainByGroup.get(groupId);
+  const automation = membership.automationByGroup.get(groupId);
   return {
     id: groupId,
     label: membership.labelByGroup.get(groupId) ?? groupId,
@@ -96,6 +104,7 @@ function buildGroupInfo(
     volume: membership.volumeByGroup.get(groupId) ?? 1,
     hidden: membership.hiddenByGroup.get(groupId) ?? false,
     ...(fxChain ? { fxChain } : {}),
+    ...(automation ? { automation } : {}),
   };
 }
 

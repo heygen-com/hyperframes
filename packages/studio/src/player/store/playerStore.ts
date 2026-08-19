@@ -245,6 +245,8 @@ export interface DomClipChild {
   audioGroupVolume?: number;
   audioGroupHidden?: boolean;
   audioGroupFxChain?: string;
+  /** The group element's `data-automation`, mirrored the same way. */
+  audioGroupAutomation?: string;
 }
 
 interface BeatHistoryEntry {

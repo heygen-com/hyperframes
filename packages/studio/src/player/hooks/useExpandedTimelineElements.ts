@@ -168,6 +168,7 @@ function childGroupState(
     audioGroupVolume: source.audioGroupVolume,
     audioGroupHidden: source.audioGroupHidden,
     audioGroupFxChain: source.audioGroupFxChain,
+    audioGroupAutomation: source.audioGroupAutomation,
   };
 }
 

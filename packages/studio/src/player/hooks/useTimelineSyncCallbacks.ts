@@ -107,6 +107,7 @@ function readChildAudioGroupState(child: Element): Partial<DomClipChild> {
     audioGroupVolume: info.volume,
     audioGroupHidden: info.hidden,
     ...(info.fxChain ? { audioGroupFxChain: info.fxChain } : {}),
+    ...(info.automation ? { audioGroupAutomation: info.automation } : {}),
   };
 }
 

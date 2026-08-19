@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
 import type { TimelineElementPatch } from "../player/store/timelineElement";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
@@ -52,6 +53,7 @@ const GROUP_ATTR_TO_MIRROR: Record<
   "data-volume": (value) => ({ audioGroupVolume: mirroredGroupVolume(value) }),
   "data-label": (value, groupId) => ({ audioGroupLabel: value ?? groupId }),
   [HF_AUDIO_FX_ATTR]: (value) => ({ audioGroupFxChain: value ?? undefined }),
+  [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ audioGroupAutomation: value ?? undefined }),
 };
 
 /**

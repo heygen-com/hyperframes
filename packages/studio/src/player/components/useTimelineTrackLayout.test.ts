@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { LANE_H, TRACK_H } from "./timelineLayout";
+import { LANE_H, STRIP_H, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { resolveTrackKeyframeClip, useTimelineTrackLayout } from "./useTimelineTrackLayout";
@@ -73,6 +73,47 @@ describe("collapsed audio groups", () => {
     if (!layout) throw new Error("Timeline track layout did not render");
     return { layout, unmount: () => act(() => root.unmount()) };
   }
+
+  // The `∿` area holds the bus strip (B7) AND the group's own automation rows
+  // (B2). Sized for only the strip, every lane the count had just promised was
+  // clipped out of the row — which is what "expanding automation on a group
+  // doesn't show the automation" looked like from outside.
+  it("reserves room for the group's own automation rows, not just the strip", () => {
+    enabledCanaries.add("audio-groups");
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 5, v: 0.4 },
+          ],
+        },
+      ],
+    });
+    const elements = [
+      { ...member("voice-1", 0), audioGroupAutomation: automation },
+      { ...member("voice-2", 1), audioGroupAutomation: automation },
+    ];
+    let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
+    function Probe() {
+      layout = useTimelineTrackLayout(elements, new Map(), null, new Set());
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => {
+      usePlayerStore.setState({ expandedLaneOwnerIds: new Set(["voiceover"]) });
+      root.render(React.createElement(Probe));
+    });
+    // The group's anchor row: the first member track minus 0.5.
+    const anchorIndex = layout!.tracks.findIndex(([track]) => track === -0.5);
+    expect(anchorIndex).toBeGreaterThanOrEqual(0);
+    const openHeight = layout!.rowHeights[anchorIndex];
+    // One lane of headroom beyond header + strip.
+    expect(openHeight).toBe(TRACK_H + STRIP_H + AUTOMATION_LANE_H);
+    act(() => root.unmount());
+  });
 
   // buildTimelineLogicalRows stops emitting member rows once a group is
   // collapsed, so TimelineLanes renders null for them. Rows left in `tracks`

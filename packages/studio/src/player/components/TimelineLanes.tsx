@@ -103,6 +103,9 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
+  // synthetic lane element spans the whole composition rather than a clip.
+  const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
   const expandClips = usePlayerStore((s) => s.expandClips);
   const setClipExpanded = usePlayerStore((s) => s.setClipExpanded);
@@ -179,6 +182,13 @@ export function TimelineLanes({
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
                 toggleGroupExpanded={toggleGroupExpanded}
                 toggleLaneOwnerExpanded={toggleLaneOwnerExpanded}
+                lanes={automationLanes}
+                pps={pps}
+                currentTime={currentTime}
+                compositionDuration={compositionDuration}
+                beatTimes={beatAnalysis?.beatTimes}
+                contentGutter={contentGutter}
+                trackContentWidth={trackContentWidth}
               />
             );
           }

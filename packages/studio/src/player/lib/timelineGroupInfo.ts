@@ -21,6 +21,7 @@ interface GroupInfo {
   volume: number;
   hidden: boolean;
   fxChain?: string;
+  automation?: string;
 }
 
 /**
@@ -123,6 +124,7 @@ export function groupInfoFor(doc: Document | null | undefined, groupId: string):
           volume: group.volume,
           hidden: group.hidden,
           ...(group.fxChain ? { fxChain: group.fxChain } : {}),
+          ...(group.automation ? { automation: group.automation } : {}),
         },
       ]),
     );
