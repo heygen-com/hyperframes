@@ -106,7 +106,6 @@ jobs:
       - name: Install ffmpeg (parity shard only)
         if: matrix.shard == 'parity'
         uses: ./.github/actions/install-ffmpeg-linux
-          ffmpeg -version | head -n 1
 
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player
