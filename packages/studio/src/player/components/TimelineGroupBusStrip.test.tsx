@@ -63,14 +63,21 @@ function setSliderValue(input: HTMLInputElement, value: string) {
 }
 
 describe("TimelineGroupBusStrip", () => {
-  it('renders "Holds …" from the member labels, comma-joined', () => {
+  // "vo-1 and vo-2", the designs' own phrasing. A comma list reads as data;
+  // this line is a sentence about what the group holds.
+  it('renders "Holds …" from the member labels, joined as a sentence', () => {
     renderStrip({ memberLabels: ["vo-1", "vo-2"] });
-    expect(container.textContent).toContain("Holds vo-1, vo-2");
+    expect(container.textContent).toContain("Holdsvo-1 and vo-2");
+  });
+
+  it("keeps the serial comma out of a two-name list but uses it beyond that", () => {
+    renderStrip({ memberLabels: ["vo-1", "vo-2", "vo-3"] });
+    expect(container.textContent).toContain("vo-1, vo-2 and vo-3");
   });
 
   it("falls back to a neutral line when a group has no members yet", () => {
     renderStrip({ memberLabels: [] });
-    expect(container.textContent).toContain("Holds nothing yet");
+    expect(container.textContent).toContain("Holdsnothing yet");
   });
 
   it("live-writes on every drag tick, but only commits once on release", () => {

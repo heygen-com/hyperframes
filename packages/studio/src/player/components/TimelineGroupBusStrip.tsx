@@ -64,8 +64,13 @@ export function TimelineGroupBusStrip({
 
   const shownVolume = dragValue ?? volume;
   const level = Math.min(1, reading?.level ?? 0);
-  const holdsText =
-    memberLabels.length > 0 ? `Holds ${memberLabels.join(", ")}` : "Holds nothing yet";
+  // "vo-1 and vo-2", the designs' own phrasing — a comma list reads as data,
+  // and this line is a sentence about what the group is holding.
+  const holds =
+    memberLabels.length > 1
+      ? `${memberLabels.slice(0, -1).join(", ")} and ${memberLabels[memberLabels.length - 1]}`
+      : (memberLabels[0] ?? "nothing yet");
+  const holdsText = `Holds ${holds}`;
 
   return (
     <div
@@ -110,8 +115,11 @@ export function TimelineGroupBusStrip({
         />
       </div>
       {clipped && <span className="shrink-0 font-medium text-[#ff5c5c]">⚠ Too loud</span>}
+      {/* Label and value, as the designs split them: "Holds" is chrome, the
+          member list is the answer. */}
+      <span className="shrink-0 text-white/45">Holds</span>
       <span className="min-w-0 flex-1 truncate" title={holdsText}>
-        {holdsText}
+        {holds}
       </span>
     </div>
   );

@@ -10,7 +10,13 @@
 import { HF_AUDIO_FX_DATA_KEY, parseAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { DomEditSelection } from "./domEditingTypes";
 
-export function audioFxSummary(element: DomEditSelection): string {
+export function audioFxSummary(element: DomEditSelection, groupLabel?: string): string {
+  // A clip inside a group reads "in Voiceover" — the designs use this line to
+  // answer "where does this go?" before the author opens anything, which is
+  // the same job the rack's OUT does from the other end. It outranks the effect
+  // count: a member with no effects of its own is still IN the group, and that
+  // is the more useful thing to say about it.
+  if (groupLabel) return `in ${groupLabel}`;
   const raw = element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY];
   const carveAttr = element.dataAttributes?.["fx-carve"];
   let handBuilt = 0;

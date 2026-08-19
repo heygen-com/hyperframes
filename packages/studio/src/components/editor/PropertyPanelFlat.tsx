@@ -7,6 +7,7 @@ import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
@@ -266,6 +267,17 @@ export function PropertyPanelFlat({
 
   const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
 
+  // The group this clip belongs to, if any — the Audio FX summary reads
+  // "in Voiceover" for a member (see `audioFxSummary`). Resolved from the live
+  // document because membership lives on the members, so the owning group's
+  // LABEL is not on the selected element.
+  const audioGroupLabel = ((): string | undefined => {
+    const doc = element.element?.ownerDocument;
+    const id = element.id;
+    if (!doc || !id) return undefined;
+    return resolveAudioGroups(doc).find((g) => g.memberIds.includes(id))?.label;
+  })();
+
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
     groups.push({
@@ -441,7 +453,7 @@ export function PropertyPanelFlat({
     groups.push({
       id: "audio-fx",
       title: "Audio FX",
-      summary: audioFxSummary(element),
+      summary: audioFxSummary(element, audioGroupLabel),
       content: (
         <AudioFxGroup
           element={element}
