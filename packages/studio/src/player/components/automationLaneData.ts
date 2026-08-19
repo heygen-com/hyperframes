@@ -92,8 +92,25 @@ export function elementAutomation(element: TimelineElement): HfAutomation {
 }
 
 /** Lanes in the order they are drawn, one row each. */
+/**
+ * The lanes a TIMELINE row should draw — the author's own curves.
+ *
+ * Lanes belonging to carve-generated nodes are excluded. The carve writes those
+ * itself and `withoutCarveLanes` replaces every one of them on each re-run, so
+ * they are not the author's to edit: a drag on one is silently discarded the
+ * next time the carve analyses. They are also invisible as effects — the rack
+ * deliberately counts the carve as ONE module rather than the filters it
+ * compiles to — so drawing a lane per band contradicts the surface that owns
+ * them, and reads as "automation on effects I removed".
+ */
 export function elementAutomationLanes(element: TimelineElement): HfAutomationLane[] {
-  return elementAutomation(element).lanes;
+  const chain = elementFxChain(element);
+  const carvePrefixes = (chain?.nodes ?? [])
+    .filter((node) => node.fromCarve && node.id)
+    .map((node) => `fx.${node.id}.`);
+  const lanes = elementAutomation(element).lanes;
+  if (carvePrefixes.length === 0) return lanes;
+  return lanes.filter((lane) => !carvePrefixes.some((prefix) => lane.target.startsWith(prefix)));
 }
 
 /** The frequency the lane's effect sits at, when it has one. */

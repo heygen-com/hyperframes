@@ -4,6 +4,7 @@ import {
   automationLaneLabel,
   automationLaneLabelParts,
   elementAutomation,
+  elementAutomationLanes,
   groupAutomationLanes,
   laneGroupKey,
   elementFxChain,
@@ -266,5 +267,83 @@ describe("groupAutomationLanes", () => {
   it("skips a target that does not resolve against its clip's chain", () => {
     const stale = el({ ...narration2, automation: lanesOf("fx.gone.q", "volume") });
     expect(groupAutomationLanes([stale]).map((g) => g.key)).toEqual(["Volume"]);
+  });
+});
+
+// A carve writes its own filter bands AND the lanes that drive them, and
+// `withoutCarveLanes` replaces every one of them on each re-run — so a drag on
+// one is discarded the next time the carve analyses. The rack also counts the
+// carve as ONE module rather than the filters it compiles to, so a lane per
+// band reads as "automation on effects I removed", which is exactly how it was
+// reported.
+describe("carve-generated lanes", () => {
+  const carved = (): TimelineElement => ({
+    id: "vo",
+    tag: "audio",
+    start: 0,
+    duration: 5,
+    track: 0,
+    fxChain: JSON.stringify({
+      version: 1,
+      nodes: [
+        {
+          type: "peaking",
+          id: "n1",
+          fromCarve: true,
+          params: { frequency: 160, gain: -6, q: 1.4 },
+        },
+        { type: "peaking", id: "n2", params: { frequency: 900, gain: -3, q: 1 } },
+      ],
+    }),
+    automation: JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "fx.n1.gain",
+          points: [
+            { t: 0, v: 0 },
+            { t: 1, v: -4 },
+          ],
+        },
+        {
+          target: "fx.n2.gain",
+          points: [
+            { t: 0, v: 0 },
+            { t: 1, v: -2 },
+          ],
+        },
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 1, v: 0.5 },
+          ],
+        },
+      ],
+    }),
+  });
+
+  it("keeps the author's lanes and drops the carve's", () => {
+    const targets = elementAutomationLanes(carved()).map((lane) => lane.target);
+    expect(targets).toEqual(["fx.n2.gain", "volume"]);
+  });
+
+  it("does not count a carve band as a timeline row", () => {
+    const rows = groupAutomationLanes([carved()]);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => !row.entries.some((e) => e.lane.target === "fx.n1.gain"))).toBe(
+      true,
+    );
+  });
+
+  it("leaves an element with no carve untouched", () => {
+    const plain = {
+      ...carved(),
+      fxChain: JSON.stringify({
+        version: 1,
+        nodes: [{ type: "peaking", id: "n1", params: { frequency: 160, gain: -6, q: 1.4 } }],
+      }),
+    };
+    expect(elementAutomationLanes(plain).map((l) => l.target)).toContain("fx.n1.gain");
   });
 });

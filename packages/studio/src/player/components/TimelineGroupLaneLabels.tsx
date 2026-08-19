@@ -13,7 +13,11 @@
  */
 
 import { sampleAutomationLane } from "@hyperframes/core/audio-automation";
-import { automationLaneLabelParts, elementAutomation, elementFxChain } from "./automationLaneData";
+import {
+  automationLaneLabelParts,
+  elementAutomationLanes,
+  elementFxChain,
+} from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { TimelineElement } from "../store/playerStore";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
@@ -40,7 +44,7 @@ export function TimelineGroupLaneLabels({
   // which is precisely the failure this number exists to prevent.
   const currentTime = useLivePlayheadTime();
   const chain = elementFxChain(groupElement);
-  const lanes = elementAutomation(groupElement).lanes;
+  const lanes = elementAutomationLanes(groupElement);
   return (
     <>
       {lanes.map((lane, index) => {
