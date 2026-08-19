@@ -25,7 +25,7 @@ interface UseDomEditPreviewSyncParams {
   ) => void;
   buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
-  syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
@@ -45,7 +45,7 @@ export function useDomEditPreviewSync({
   refreshDomEditGroupSelectionsFromPreview,
   buildDomSelectionFromTarget,
   refreshPreviewDocumentVersion,
-  syncPreviewHistoryHotkey,
+  syncPreviewHotkeys,
   applyStudioManualEditsToPreviewRef,
   openSourceForSelection,
   getSidebarTab,
@@ -103,13 +103,13 @@ export function useDomEditPreviewSync({
       }
     };
 
-    syncPreviewHistoryHotkey(previewIframe);
+    syncPreviewHotkeys(previewIframe);
     void applyStudioManualEditsToPreviewRef.current(previewIframe);
     void syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
 
     const handleLoad = () => {
-      syncPreviewHistoryHotkey(previewIframe);
+      syncPreviewHotkeys(previewIframe);
       void applyStudioManualEditsToPreviewRef.current(previewIframe);
       void syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
@@ -129,7 +129,7 @@ export function useDomEditPreviewSync({
     previewIframe,
     refreshDomEditGroupSelectionsFromPreview,
     refreshPreviewDocumentVersion,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     gsapCacheVersion,
   ]);

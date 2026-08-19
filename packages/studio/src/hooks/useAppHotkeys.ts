@@ -382,7 +382,6 @@ export function useAppHotkeys({
   activeCompPath,
   forceReloadSdkSession,
 }: UseAppHotkeysParams) {
-  const previewHotkeyWindowRef = useRef<Window | null>(null);
   const previewHistoryCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Undo / Redo ──
@@ -496,33 +495,6 @@ export function useAppHotkeys({
 
   // ── Preview iframe forwarding ──
 
-  const syncPreviewTimelineHotkey = useCallback(
-    (iframe: HTMLIFrameElement | null) => {
-      const nextWindow = iframeContentWindow(iframe);
-      if (previewHotkeyWindowRef.current === nextWindow) return;
-      safeRemoveListener(
-        previewHotkeyWindowRef.current,
-        "keydown",
-        handleAppKeyDown as EventListener,
-      );
-      previewHotkeyWindowRef.current = nextWindow;
-      safeAddListener(nextWindow, "keydown", handleAppKeyDown as EventListener, true);
-    },
-    [handleAppKeyDown],
-  );
-
-  useEffect(
-    () => () => {
-      safeRemoveListener(
-        previewHotkeyWindowRef.current,
-        "keydown",
-        handleAppKeyDown as EventListener,
-      );
-      previewHotkeyWindowRef.current = null;
-    },
-    [handleAppKeyDown],
-  );
-
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || shouldIgnoreHistoryShortcut(event.target)) return;
     handleUndoRedoKey(
@@ -532,7 +504,18 @@ export function useAppHotkeys({
     );
   }, []);
 
-  const syncPreviewHistoryHotkey = useCallback(
+  /**
+   * Give the preview iframe the app's hotkeys, because a keypress lands in
+   * whichever document has focus and clicking the canvas puts focus in there.
+   *
+   * Must run on every iframe LOAD, not once when the element mounts: a reload
+   * keeps the same element (so no ref callback) and the same WindowProxy (so an
+   * identity check sees no change) while replacing the inner window that holds
+   * the listeners. Attaching once left Delete dead in the canvas after the first
+   * reload — press it with a selection and nothing happened, no toast, nothing
+   * to explain it — while undo/redo kept working because they re-attached here.
+   */
+  const syncPreviewHotkeys = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       previewHistoryCleanupRef.current?.();
       previewHistoryCleanupRef.current = null;
@@ -545,14 +528,19 @@ export function useAppHotkeys({
       }
       if (!win && !doc) return;
       const handler = handleHistoryHotkey as EventListener;
+      const appHandler = handleAppKeyDown as EventListener;
       safeAddListener(win, "keydown", handler, true);
+      // Window only: the history pair also listens on the document, and a
+      // capture listener on both would run the app handler twice per press.
+      safeAddListener(win, "keydown", appHandler, true);
       doc?.addEventListener("keydown", handleHistoryHotkey, true);
       previewHistoryCleanupRef.current = () => {
         safeRemoveListener(win, "keydown", handler);
+        safeRemoveListener(win, "keydown", appHandler);
         doc?.removeEventListener("keydown", handleHistoryHotkey, true);
       };
     },
-    [handleHistoryHotkey],
+    [handleAppKeyDown, handleHistoryHotkey],
   );
 
   useEffect(
@@ -566,7 +554,6 @@ export function useAppHotkeys({
   return {
     handleUndo,
     handleRedo,
-    syncPreviewTimelineHotkey,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
   };
 }

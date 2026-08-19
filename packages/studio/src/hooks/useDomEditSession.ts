@@ -62,7 +62,7 @@ export interface UseDomEditSessionParams {
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
-  syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
@@ -104,7 +104,7 @@ export function useDomEditSession({
   previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
-  syncPreviewHistoryHotkey,
+  syncPreviewHotkeys,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
   openSourceForSelection,
@@ -426,7 +426,7 @@ export function useDomEditSession({
     bumpGsapCache,
     showToast,
     refreshPreviewDocumentVersion,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     applyDomSelection,
     buildDomSelectionFromTarget,
