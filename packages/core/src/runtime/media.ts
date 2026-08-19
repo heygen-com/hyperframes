@@ -3,6 +3,7 @@ import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelop
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
 import { clampAudioGain } from "../audioGain.js";
+import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
 export function readElementPlaybackStart(el: Element): number {
@@ -410,8 +411,7 @@ export function syncRuntimeMedia(params: {
         // effect during render, and the per-tick set just kicks Chrome's
         // media pipeline for nothing. Preview is unaffected (the sibling
         // only exists during render).
-        const skipForInjectedVideo =
-          el.tagName === "VIDEO" && el.id && !!document.getElementById(`__render_frame_${el.id}__`);
+        const skipForInjectedVideo = el.tagName === "VIDEO" && !!findInjectedRenderFrame(el);
         if (!skipForInjectedVideo) {
           try {
             el.currentTime = relTime;

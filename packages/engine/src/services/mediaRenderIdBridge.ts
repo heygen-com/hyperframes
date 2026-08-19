@@ -12,6 +12,11 @@
  * Every call site keeps a `getElementById` fallback for documents that were
  * never compiled by the producer (snapshot, check, and direct engine callers),
  * where the authored id already is the identity.
+ *
+ * `__hfMediaId` mirrors core's `readMediaRenderId`, which is the definition of
+ * this rule; the copy exists only because code serialized into `page.evaluate`
+ * cannot import. The runtime readers in core call that function directly, and
+ * `renderFrameSibling.test.ts` pins the sibling-id format both sides build.
  */
 
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";

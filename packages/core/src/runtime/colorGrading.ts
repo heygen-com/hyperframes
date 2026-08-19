@@ -41,6 +41,7 @@ import {
 import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
 import { readVariablesForElement } from "./variableScope";
 import { swallow } from "./diagnostics";
+import { findInjectedRenderFrame } from "./renderFrameSibling";
 
 type ColorGradingMediaElement = HTMLVideoElement | HTMLImageElement;
 
@@ -2470,9 +2471,8 @@ function isDrawableSource(source: TexImageSource): boolean {
 }
 
 function findRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null {
-  if (!video.id) return null;
-  const frame = document.getElementById(`__render_frame_${video.id}__`);
-  return frame instanceof HTMLImageElement && isDrawableSource(frame) ? frame : null;
+  const frame = findInjectedRenderFrame(video);
+  return frame && isDrawableSource(frame) ? frame : null;
 }
 
 function hasInjectedRenderFrame(element: ColorGradingMediaElement): boolean {

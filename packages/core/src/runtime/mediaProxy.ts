@@ -1,6 +1,7 @@
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
 import { evictMediaSyncState } from "./media";
+import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 
 /**
@@ -62,11 +63,7 @@ function currentSrcValue(el: HTMLMediaElement): string {
  */
 function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
-  return (
-    el instanceof HTMLVideoElement &&
-    !!el.id &&
-    !!document.getElementById(`__render_frame_${el.id}__`)
-  );
+  return el instanceof HTMLVideoElement && !!findInjectedRenderFrame(el);
 }
 
 /**
