@@ -143,6 +143,38 @@ describe("useTimelineSelectionPreviewSync", () => {
     harness.cleanup();
   });
 
+  it("drops a canvas selection that points outside the timeline selection", async () => {
+    // The reveal paths (sidebar audio/asset click, asset drop) select a clip
+    // with no canvas node. Bailing here kept whatever the canvas held, and
+    // Delete acts on the canvas first — so pressing it deleted the element the
+    // user had selected before, and left the clip they had just picked.
+    const { firstSelection, timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    // clip-2 is a timeline element with no DOM node — an audio clip.
+    const buildDomSelectionForTimelineElement = vi.fn(async () => null);
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-2",
+      selectedElementIds: new Set(["clip-2"]),
+      timelineElements,
+      domEditSelection: firstSelection,
+      domEditGroupSelections: [firstSelection],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    });
+
+    // Quietly: announcing the clear would deselect the clip just picked.
+    expect(applyDomSelection).toHaveBeenCalledWith(null, {
+      revealPanel: false,
+      announce: false,
+    });
+    harness.cleanup();
+  });
+
   it("warns once while retrying a timeline selection after preview refreshes", async () => {
     const { secondSelection, timelineElements } = makeSyncFixture();
     const applyDomSelection = vi.fn();

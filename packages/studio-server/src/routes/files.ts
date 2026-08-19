@@ -2516,26 +2516,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const originalContent = readFileSync(ctx.absPath, "utf-8");
-    // A member nested inside one already removed simply no longer matches, and
-    // that is a normal outcome here rather than a failure — `removed` reports
-    // how many actually left so the caller can tell a partial pass from a no-op.
+    // A member nested inside one already removed simply no longer matches, which
+    // is a normal outcome here rather than a failure. The response says whether
+    // the file changed, not how many of the targets landed — so a caller can
+    // tell a no-op from a write, but not a partial pass from a complete one.
     let next = originalContent;
-    let removed = 0;
     for (const target of targets) {
-      const after = removeElementFromHtml(next, target);
-      if (after !== next) removed += 1;
-      next = after;
+      next = removeElementFromHtml(next, target);
     }
-    const response = writeIfChanged(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      originalContent,
-      next,
-    );
-    c.header("x-hf-removed", String(removed));
-    return response;
+    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, next);
   });
 
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {

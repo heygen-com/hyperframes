@@ -56,7 +56,7 @@ function observeDoc(doc: Document, markDirty: () => void): MutationObserver | nu
 export const RECOMPUTE_INTERVAL_MS = 100;
 
 /** Dirty, and far enough past the last rebuild to be worth paying for another. */
-function rebuildDue(dirty: boolean, lastAt: number, now: number): boolean {
+export function rebuildDue(dirty: boolean, lastAt: number, now: number): boolean {
   return dirty && now - lastAt >= RECOMPUTE_INTERVAL_MS;
 }
 
