@@ -36,7 +36,7 @@ const GROUP: TimelineTrackGroupInfo = {
   hidden: false,
 };
 
-function renderRow() {
+function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
   const onSetAudioGroupAttributeQuiet = vi.fn();
   const onSetElementAttributeQuiet = vi.fn();
   const host = document.createElement("div");
@@ -47,7 +47,7 @@ function renderRow() {
         <TimelineGroupRow
           index={0}
           rowKey={0}
-          group={GROUP}
+          group={{ ...GROUP, ...overrides }}
           logicalRow={{ id: "g", level: 1, kind: "track" } as never}
           top={0}
           height={48}
@@ -92,5 +92,29 @@ describe("TimelineGroupRow", () => {
     expect(attr).toBe("data-fx-chain");
     // The members are the point: not one write reaches them.
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+  });
+
+  // A disclosure over nothing tells the author their group has no automation
+  // only AFTER they open an empty row. Track headers already gate their own
+  // toggle on having something to disclose; the group's did not.
+  it("hides the lane toggle until the group actually automates something", () => {
+    const laneToggle = (host: HTMLElement) =>
+      Array.from(host.querySelectorAll("button")).find((b) =>
+        /lanes$/.test(b.getAttribute("aria-label") ?? ""),
+      );
+
+    expect(laneToggle(renderRow().host)).toBeUndefined();
+
+    const automated = renderRow({
+      fxChain: JSON.stringify({
+        version: 1,
+        nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
+      }),
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
+      }),
+    });
+    expect(laneToggle(automated.host)).toBeDefined();
   });
 });
