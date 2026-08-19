@@ -284,7 +284,7 @@ async function setVideoElementsVisibility(
         }
       };
       for (const id of ids) {
-        const video = document.getElementById(id);
+        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
         if (!video) continue;
         apply(video);
         apply(document.getElementById(`__render_frame_${id}__`));
@@ -307,8 +307,10 @@ export async function queryVideoElementBounds(
 ): Promise<VideoElementBounds[]> {
   if (videoIds.length === 0) return [];
   return page.evaluate((ids: string[]): VideoElementBounds[] => {
+    const resolveVideo = (id: string): HTMLVideoElement | null =>
+      (window.__hfMediaEl?.(id) ?? document.getElementById(id)) as HTMLVideoElement | null;
     return ids.map((id) => {
-      const el = document.getElementById(id) as HTMLVideoElement | null;
+      const el = resolveVideo(id);
       if (!el) {
         return {
           videoId: id,
@@ -651,7 +653,8 @@ export async function queryElementStacking(
     }
 
     for (const el of elements) {
-      const id = el.id;
+      // Report the render id so callers can match these back to the media list.
+      const id = window.__hfMediaId?.(el) ?? el.id;
       if (!id) continue;
       const rect = el.getBoundingClientRect();
       const style = window.getComputedStyle(el);

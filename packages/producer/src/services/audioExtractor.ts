@@ -45,7 +45,10 @@ export function parseAudioElements(html: string): AudioElement[] {
     const tagName = (match[1] ?? "").toLowerCase() as "audio" | "video";
     const start = parseFloat(match[2] ?? "");
 
-    const idMatch = fullTag.match(/id=["']([^"']+)["']/);
+    // `(?<![\w-])` keeps the plain-id pattern off `data-hf-render-id="…"` (and
+    // `data-hf-id`), which would otherwise match first and report the wrong id.
+    const idMatch = fullTag.match(/(?<![\w-])id=["']([^"']+)["']/);
+    const renderIdMatch = fullTag.match(/data-hf-render-id=["']([^"']+)["']/);
     const srcMatch = fullTag.match(/src=["']([^"']+)["']/);
     if (!srcMatch) continue;
 
@@ -65,7 +68,9 @@ export function parseAudioElements(html: string): AudioElement[] {
           : 0;
 
     elements.push({
-      id: idMatch?.[1] || `media-${elements.length}`,
+      // The stamped render id is document-unique; the authored id is only
+      // unique within one composition file. See core's mediaRenderIds.ts.
+      id: renderIdMatch?.[1] || idMatch?.[1] || `media-${elements.length}`,
       src: srcMatch[1] ?? "",
       start: isNaN(start) ? 0 : start,
       duration,

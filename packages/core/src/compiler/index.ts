@@ -89,3 +89,5 @@ export {
 
 // Asset-path primitives (shared across core, producer, CLI)
 export { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl, isPathInside } from "./assetPaths";
+
+export { MEDIA_RENDER_ID_ATTR, assignMediaRenderIds } from "./mediaRenderIds";

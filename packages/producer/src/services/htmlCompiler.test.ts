@@ -2561,3 +2561,135 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     expect(warnings.join("\n")).toContain("a1");
   });
 });
+
+describe("duplicate media ids across nested compositions", () => {
+  // Element ids are unique per composition FILE; the render document is the
+  // inlined union of every file. The producer used to merge the per-file media
+  // lists and deduplicate by id, so colliding clips collapsed into one entry
+  // and the survivor's frames were injected onto whichever element came first
+  // in the document — leaving the visible scene without footage (#3340).
+  function sceneWithVideoId(label: string, mediaStart: number): string {
+    return `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video id="clip" src="../assets/long-take.mp4" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`;
+  }
+
+  function writeTwoSceneProject(
+    sceneAFile: string,
+    sceneBFile: string = sceneAFile,
+    sceneBody: (label: string, mediaStart: number) => string = sceneWithVideoId,
+  ): { projectDir: string; indexPath: string } {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-dup-media-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head></head><body>
+  <div id="root" data-composition-id="root" data-start="0" data-duration="6"
+       data-width="640" data-height="360">
+    <div id="scene-a-host" data-composition-id="scene-a" data-composition-src="compositions/${sceneAFile}"
+         data-start="0" data-duration="3" data-width="640" data-height="360"></div>
+    <div id="scene-b-host" data-composition-id="scene-b" data-composition-src="compositions/${sceneBFile}"
+         data-start="3" data-duration="3" data-width="640" data-height="360"></div>
+  </div>
+</body></html>`,
+    );
+
+    const wrap = (label: string, mediaStart: number) =>
+      `<template id="${label}-template">\n${sceneBody(label, mediaStart)}\n</template>`;
+    writeFileSync(join(compositionsDir, sceneAFile), wrap("scene-a", 5));
+    if (sceneBFile !== sceneAFile) {
+      writeFileSync(join(compositionsDir, sceneBFile), wrap("scene-b", 50));
+    }
+
+    return { projectDir, indexPath: join(projectDir, "index.html") };
+  }
+
+  it("keeps both clips when two scenes declare the same video id", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
+    expect(compiled.videos[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+
+  it("gives the colliding clips ids that each address one element", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    const ids = compiled.videos.map((v) => v.id);
+    expect(new Set(ids).size).toBe(2);
+
+    // One element per id is exactly what the frame injector relies on.
+    const { document } = parseHTML(compiled.html);
+    for (const id of ids) {
+      expect(document.querySelectorAll(`[data-hf-render-id="${id}"]`)).toHaveLength(1);
+    }
+  });
+
+  it("keeps author ids intact so scene CSS and scripts still resolve", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    expect(document.querySelectorAll('video[id="clip"]')).toHaveLength(2);
+  });
+
+  it("keeps both clips when the same scene file is mounted twice", async () => {
+    // The author cannot make these unique: it is one file, mounted twice.
+    const { projectDir, indexPath } = writeTwoSceneProject("scene.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos[0]).toMatchObject({ start: 0, end: 3 });
+    expect(compiled.videos[1]).toMatchObject({ start: 3, end: 6 });
+  });
+
+  it("keeps both clips when neither scene names its video", async () => {
+    // No authored id at all: the timing compiler numbers auto-ids per file, so
+    // both scenes arrive as `hf-video-0`.
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video src="../assets/long-take.mp4" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos.map((v) => v.mediaStart)).toEqual([5, 50]);
+  });
+
+  it("keeps both audio tracks when two scenes declare the same audio id", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <audio id="vo" src="../assets/narration.wav" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="1"></audio>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.audios).toHaveLength(2);
+    expect(compiled.audios[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
+    expect(compiled.audios[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+});

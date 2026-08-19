@@ -10,6 +10,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } fr
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import {
+  MEDIA_RENDER_ID_ATTR,
   decodeUrlPathVariants,
   fpsToFfmpegArg,
   fpsToNumber,
@@ -539,7 +540,13 @@ export function parseVideoElements(html: string): VideoElement[] {
     if (!src) continue;
     // Generate a stable ID for videos without one — the producer needs IDs
     // to track extracted frames and composite them during encoding.
-    const id = el.getAttribute("id") || `hf-video-${autoIdCounter++}`;
+    // A compiled render document stamps a document-unique render id; prefer it,
+    // because element ids are only unique within one composition file and the
+    // render document inlines many.
+    const id =
+      el.getAttribute(MEDIA_RENDER_ID_ATTR) ||
+      el.getAttribute("id") ||
+      `hf-video-${autoIdCounter++}`;
     if (!el.getAttribute("id")) {
       el.setAttribute("id", id);
     }
@@ -609,7 +616,9 @@ export function parseImageElements(html: string): ImageElement[] {
     const src = el.getAttribute("src");
     if (!src) continue;
 
-    const id = el.getAttribute("id") || `hf-img-${autoIdCounter++}`;
+    // See parseVideoElements: the stamped render id wins over the authored id.
+    const id =
+      el.getAttribute(MEDIA_RENDER_ID_ATTR) || el.getAttribute("id") || `hf-img-${autoIdCounter++}`;
     if (!el.getAttribute("id")) {
       el.setAttribute("id", id);
     }

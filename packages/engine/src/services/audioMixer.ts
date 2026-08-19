@@ -42,6 +42,7 @@ import {
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import {
+  MEDIA_RENDER_ID_ATTR,
   normalizePlaybackRate,
   parseStrictFiniteTimingNumber,
   readMediaStart,
@@ -486,15 +487,21 @@ export function parseAudioElements(html: string): AudioElement[] {
     };
   };
 
+  // A compiled render document stamps a document-unique render id; prefer it,
+  // because element ids are only unique within one composition file and the
+  // render document inlines many. See core's mediaRenderIds.ts.
+  const trackId = (el: RefResolverEl): string | null =>
+    el.getAttribute(MEDIA_RENDER_ID_ATTR) || el.getAttribute("id");
+
   for (const el of document.querySelectorAll("audio[id][src]")) {
-    const id = el.getAttribute("id");
+    const id = trackId(el);
     if (!id || !el.getAttribute("src") || isHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, id, "audio"));
   }
 
   for (const el of document.querySelectorAll('video[id][src][data-has-audio="true"]')) {
-    const id = el.getAttribute("id");
+    const id = trackId(el);
     if (!id || !el.getAttribute("src") || isHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, `${id}-audio`, "video"));

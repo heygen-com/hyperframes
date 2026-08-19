@@ -144,6 +144,8 @@ export {
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
 } from "./compiler/timingCompiler";
 
+export { MEDIA_RENDER_ID_ATTR, assignMediaRenderIds } from "./compiler/mediaRenderIds";
+
 // Lint moved to @hyperframes/lint. Import lint APIs from @hyperframes/lint
 // directly, or via the back-compat stub at @hyperframes/core/lint. Not
 // re-exported here — doing so would cycle core's main entry through the lint
