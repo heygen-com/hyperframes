@@ -458,10 +458,14 @@ export function countDomEditChildLayers(
   return count;
 }
 
+// Every editable element under `root`, in document order. `maxItems` is a
+// caller's rendering budget, not a property of the document: hit-testing
+// callers (marquee, off-canvas indicators) must see all of it, and sharing a
+// truncated list left everything past the cut unselectable however far you drag.
 export function collectDomEditLayerItems(
   root: HTMLElement | null | undefined,
   options: DomEditContextOptions,
-  maxItems = 80,
+  maxItems = Number.POSITIVE_INFINITY,
 ): DomEditLayerItem[] {
   if (!root) return [];
 
