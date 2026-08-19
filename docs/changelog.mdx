@@ -9,6 +9,38 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.4"
+  description="Released - 2026-08-19"
+  tags={["Release", "CLI", "Studio", "Producer"]}
+>
+A new `normalize-audio` command matches one clip's loudness to another, and the volume fader now tells the truth about the gain it writes.
+Previews keep running in the background in every launch mode, and pressing Delete in Studio now removes the whole selection.
+
+## Features
+
+- **CLI:** Add normalize-audio to match one clip's loudness to another ([b3c43e248](https://github.com/heygen-com/hyperframes/commit/b3c43e24804e632ef2437e2ebd6789094ced2569), [#3306](https://github.com/heygen-com/hyperframes/pull/3306)).
+- **CLI:** Run a managed background preview in every launch mode ([9da422fd7](https://github.com/heygen-com/hyperframes/commit/9da422fd7f75b0d5fe7f7f2defd889239bb82fe6), [#3310](https://github.com/heygen-com/hyperframes/pull/3310)).
+- **CLI:** Give every preview lifecycle op one JSON document ([0e3c5f6be](https://github.com/heygen-com/hyperframes/commit/0e3c5f6bef4760d863309e997619bb1db99f5530), [#3309](https://github.com/heygen-com/hyperframes/pull/3309)).
+
+## Fixes
+
+- **CLI:** Zip the publish archive to the same bytes every time ([d464f60b9](https://github.com/heygen-com/hyperframes/commit/d464f60b9600485cd97c537338e25b7f77f9ca90), [#3358](https://github.com/heygen-com/hyperframes/pull/3358)).
+- **Studio:** Make the volume fader tell the truth about the gain it writes ([228eabd43](https://github.com/heygen-com/hyperframes/commit/228eabd43fa6164dc1296e4615bae33dcca98696), [#3305](https://github.com/heygen-com/hyperframes/pull/3305)).
+- **Producer:** Give inlined media a document-unique render id ([634df5a5a](https://github.com/heygen-com/hyperframes/commit/634df5a5af7aad3e529035d62d324aca1512df35), [#3342](https://github.com/heygen-com/hyperframes/pull/3342)).
+- **Studio:** Make Delete remove the whole canvas selection ([ec0b23f3c](https://github.com/heygen-com/hyperframes/commit/ec0b23f3cec98ea9bb4b61d54ad18bb48ee1c721), [#3339](https://github.com/heygen-com/hyperframes/pull/3339)).
+- **Audio:** Raise the authoring gain ceiling and carry it through the probes ([e282ff15c](https://github.com/heygen-com/hyperframes/commit/e282ff15cc8b8ef519d514c7741e6b27cfd92aae), [#3333](https://github.com/heygen-com/hyperframes/pull/3333)).
+- **CLI:** Keep a live preview's ownership record and stop past a bad one ([74149e249](https://github.com/heygen-com/hyperframes/commit/74149e249ac5a2e7a88d15f241d12ec58db01283), [#3308](https://github.com/heygen-com/hyperframes/pull/3308)).
+- **Producer:** Clamp embedded video/audio windows to the scene ([b31dde35b](https://github.com/heygen-com/hyperframes/commit/b31dde35b13a3c23c677ba3b648d01a7d735f5be), [#3332](https://github.com/heygen-com/hyperframes/pull/3332)).
+- **CLI:** Signal only processes the OS says own the port ([c1c70f44b](https://github.com/heygen-com/hyperframes/commit/c1c70f44bd9d43e22e80449d1b084d6e4d8ae034), [#3307](https://github.com/heygen-com/hyperframes/pull/3307)).
+
+## Internal
+
+- Bound the ffmpeg apt fetch so a stalled mirror costs a retry, not the job ([7e96e60fe](https://github.com/heygen-com/hyperframes/commit/7e96e60fe228548fe4813aa5e9917bbde9a50feb), [#3356](https://github.com/heygen-com/hyperframes/pull/3356)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.3...v0.8.4).
+</Update>
+
+<Update
   label="HyperFrames v0.8.3"
   description="Released - 2026-08-18"
   tags={["Release"]}
