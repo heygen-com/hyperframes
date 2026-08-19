@@ -27,6 +27,7 @@ import type { TimelineLanesProps } from "./timelineLaneProps";
 import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
+import { resolveClipFadeBinding } from "./clipFadeBinding";
 import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
@@ -389,6 +390,11 @@ export function TimelineLanes({
                     const passengerOffsetPx = isPassenger
                       ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
                       : 0;
+                    // Fades ride the clip's own volume envelope; the binding is
+                    // read-only until the clip is selected, exactly as its lanes are.
+                    const fadeBinding = resolveClipFadeBinding(el, (target) =>
+                      automationLanes.bind(target, isSelected),
+                    );
                     const clipGestures = createClipGestureHandlers(
                       el,
                       elementKey,
@@ -436,6 +442,7 @@ export function TimelineLanes({
                         }
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
+                        fades={fadeBinding}
                         onResizeStart={clipGestures.onResizeStart}
                         onPointerDown={clipGestures.onPointerDown}
                         onClick={clipGestures.onClick}

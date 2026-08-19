@@ -4,6 +4,7 @@ import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
+import { TimelineClipFades, type TimelineClipFadesProps } from "./TimelineClipFades";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -27,6 +28,12 @@ interface TimelineClipProps {
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /**
+   * Fade grips for this clip, when it can carry a fade at all. Geometry is not
+   * part of it — the clip already knows its own width and length, and passing
+   * them in would be two owners for one number.
+   */
+  fades?: Omit<TimelineClipFadesProps, "duration" | "pixelsPerSecond" | "width" | "showGrips">;
   children?: ReactNode;
 }
 
@@ -53,6 +60,7 @@ export const TimelineClip = memo(function TimelineClip({
   onClick,
   onDoubleClick,
   onContextMenu,
+  fades,
   children,
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
@@ -180,6 +188,15 @@ export const TimelineClip = memo(function TimelineClip({
             }}
           />
         </div>
+      )}
+      {fades && (
+        <TimelineClipFades
+          {...fades}
+          duration={el.duration}
+          pixelsPerSecond={pps}
+          width={widthPx}
+          showGrips={showHandles}
+        />
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
       {showDefaultText && (
