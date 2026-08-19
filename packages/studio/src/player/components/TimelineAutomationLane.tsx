@@ -616,8 +616,8 @@ export interface TimelineAutomationLaneSlotProps {
   /** Keyframe lanes already stacked above, which automation sits under. */
   laneCount: number;
   /** Exact y for the first lane, overriding `laneCount`. A group's lanes sit
-   *  under its bus strip, and TRACK_H + STRIP_H is not a whole number of
-   *  keyframe lanes, so it cannot be said in `laneCount`. */
+   *  directly under its header row rather than under a stack of keyframe
+   *  lanes, so it cannot be said in `laneCount`. */
   topOffset?: number;
   accentColor: string;
   /** Composition-time playhead; the slot converts it to clip-local. */

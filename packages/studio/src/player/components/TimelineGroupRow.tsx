@@ -8,12 +8,11 @@ import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { TimelineGroupHeader } from "./TimelineGroupHeader";
-import { TimelineGroupBusStrip } from "./TimelineGroupBusStrip";
 import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
 import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
-import { STRIP_H, TRACK_H } from "./timelineLayout";
+import { TRACK_H } from "./timelineLayout";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 
@@ -86,10 +85,6 @@ export function TimelineGroupRow({
   // its name in the header does.
   const domSelection = useDomEditSelectionContextOptional()?.domEditSelection ?? null;
   const isGroupSelected = domSelection?.id === group.id;
-  const memberLabels = group.memberTracks.map((track, i) => {
-    const owner = memberElements.find((el) => el.track === track && el.audioGroup);
-    return owner?.label ?? owner?.id ?? `track ${i + 1}`;
-  });
   const isLaneOpen = expandedLaneOwnerIds.has(group.id);
   // Optional, like every sibling row: Timeline renders outside the edit
   // provider in read-only hosts (Timeline.test.ts asserts it), and the throwing
@@ -152,7 +147,6 @@ export function TimelineGroupRow({
         columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />
-      {isLaneOpen && <TimelineGroupBusStrip memberLabels={memberLabels} />}
       {/* The group's OWN curves, under the strip. Selected-gated exactly like a
           clip's: the binder writes through the dom-edit selection, so a lane is
           editable once the group is selected — which clicking its name does. */}
@@ -163,7 +157,7 @@ export function TimelineGroupRow({
         <TimelineGroupLaneLabels
           groupElement={groupElement}
           groupLabel={group.label}
-          top={TRACK_H + STRIP_H}
+          top={TRACK_H}
           columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
           gutterBackground={theme.gutterBackground}
           accentColor={GROUP_LANE_ACCENT}
@@ -187,7 +181,7 @@ export function TimelineGroupRow({
             pps={pps}
             // Below the strip, which sits directly under the header row.
             laneCount={0}
-            topOffset={TRACK_H + STRIP_H}
+            topOffset={TRACK_H}
             accentColor={GROUP_LANE_ACCENT}
             currentTime={currentTime}
             beatTimes={beatTimes}

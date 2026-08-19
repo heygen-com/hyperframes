@@ -7,7 +7,6 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
-  STRIP_H,
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
@@ -139,8 +138,8 @@ function computeLaneCounts(
 /** Group anchor rows have no elements of their own (`groupTimelineTracks`
  *  pushes them as `[anchorKey, []]`), so `trackHeights` — which only ever
  *  looks at a row's clips — always gives them TRACK_H. Override those
- *  specific rows post-hoc: TRACK_H while collapsed, +STRIP_H and the group's
- *  own automation rows once its `∿` is open. */
+ *  specific rows post-hoc: TRACK_H while collapsed, plus the group's own
+ *  automation rows once its `∿` is open. */
 function applyGroupStripHeights(
   tracks: readonly (readonly [number, readonly TimelineElement[]])[],
   rowHeights: number[],
@@ -152,10 +151,9 @@ function applyGroupStripHeights(
   return tracks.map(([track], index) => {
     const group = groupByAnchor.get(track);
     if (!group || !expandedLaneOwnerIds.has(group.id)) return rowHeights[index] ?? TRACK_H;
-    // The strip AND the group's own automation rows: `∿` discloses both (B7 put
-    // the bus strip in this area, B2 put the lanes here), so a row sized for
-    // only the strip clipped every lane it had just promised in the count.
-    return TRACK_H + STRIP_H + groupOwnLaneCount(group) * AUTOMATION_LANE_H;
+    // The group's own automation rows, which its `∿` discloses. A row sized
+    // without them clipped every lane it had just promised in the count.
+    return TRACK_H + groupOwnLaneCount(group) * AUTOMATION_LANE_H;
   });
 }
 

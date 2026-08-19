@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { LANE_H, STRIP_H, TRACK_H } from "./timelineLayout";
+import { LANE_H, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { resolveTrackKeyframeClip, useTimelineTrackLayout } from "./useTimelineTrackLayout";
@@ -74,10 +74,10 @@ describe("collapsed audio groups", () => {
     return { layout, unmount: () => act(() => root.unmount()) };
   }
 
-  // The `∿` area holds the bus strip (B7) AND the group's own automation rows
-  // (B2). Sized for only the strip, every lane the count had just promised was
-  // clipped out of the row — which is what "expanding automation on a group
-  // doesn't show the automation" looked like from outside.
+  // The `∿` area holds the group's own automation rows. Sized without them,
+  // every lane the count had just promised was clipped out of the row — which
+  // is what "expanding automation on a group doesn't show the automation"
+  // looked like from outside.
   it("reserves room for the group's own automation rows, not just the strip", () => {
     enabledCanaries.add("audio-groups");
     const automation = JSON.stringify({
@@ -110,8 +110,8 @@ describe("collapsed audio groups", () => {
     const anchorIndex = layout!.tracks.findIndex(([track]) => track === -0.5);
     expect(anchorIndex).toBeGreaterThanOrEqual(0);
     const openHeight = layout!.rowHeights[anchorIndex];
-    // One lane of headroom beyond header + strip.
-    expect(openHeight).toBe(TRACK_H + STRIP_H + AUTOMATION_LANE_H);
+    // One lane of headroom beyond the header row itself.
+    expect(openHeight).toBe(TRACK_H + AUTOMATION_LANE_H);
     act(() => root.unmount());
   });
 
