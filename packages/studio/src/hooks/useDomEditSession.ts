@@ -20,6 +20,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 interface RecordEditInput {
   label: string;
@@ -238,7 +239,7 @@ export function useDomEditSession({
     handleDomRemoveTextField,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
-    handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditCommits({
     activeCompPath,
@@ -331,6 +332,22 @@ export function useDomEditSession({
     clearDomSelection,
     forceReloadSdkSession,
   });
+
+  /**
+   * Delete the canvas selection — the marquee group when there is one, else the
+   * single selected element. Callers pass the primary selection; expanding it is
+   * this hook's job because this is where the group lives. Without the
+   * expansion, selecting several elements and pressing Delete removed only the
+   * primary one and left the rest selected.
+   */
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection) => {
+      const group = domEditGroupSelectionsRef.current;
+      const members = group.length > 0 ? group : [selection];
+      await handleDomEditElementsDelete(members);
+    },
+    [domEditGroupSelectionsRef, handleDomEditElementsDelete],
+  );
 
   const handleGroupSelection = useCallback(() => {
     const group = domEditGroupSelectionsRef.current;

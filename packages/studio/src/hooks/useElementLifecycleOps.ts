@@ -85,51 +85,79 @@ export function useElementLifecycleOps({
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
   // fallow-ignore-next-line complexity
-  const handleDomEditElementDelete = useCallback(
+  const handleDomEditElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: DomEditSelection) => {
+    async (selections: DomEditSelection[]) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const label = selection.label || selection.id || selection.selector || selection.tagName;
+      const [selection] = selections;
+      if (!selection) return;
+      const label =
+        selections.length === 1
+          ? selection.label || selection.id || selection.selector || selection.tagName
+          : `${selections.length} elements`;
 
+      // One file per pass; anything authored elsewhere is dropped rather than
+      // patched into the wrong document.
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const sameFile = selections.filter(
+        (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
+      );
       try {
         const originalContent = await readProjectFileContent(pid, targetPath);
 
-        const patchTarget = buildDomEditPatchTarget(selection);
-        if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
+        const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
+        if (patchTargets.some((t) => !t.id && !t.selector && !t.hfId)) {
           throw new Error("Selected element has no patchable target");
         }
 
-        if (onTrySdkDelete && selection.hfId) {
-          const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
-          if (cutoverCommittedOrThrow(handled)) {
+        // The SDK path can take the whole selection only when every member is
+        // addressable in the SDK doc; otherwise fall through to REST for all of
+        // them rather than deleting a subset through each route.
+        if (onTrySdkDelete && sameFile.every((member) => member.hfId)) {
+          let sdkContent = originalContent;
+          let allHandled = true;
+          for (const member of sameFile) {
+            const handled = await onTrySdkDelete(member.hfId!, sdkContent, targetPath);
+            if (!cutoverCommittedOrThrow(handled)) {
+              allHandled = false;
+              break;
+            }
+          }
+          if (allHandled) {
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
-            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+            showToast(
+              `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+              "info",
+            );
             return;
           }
         }
 
         domEditSaveTimestampRef.current = Date.now();
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-            body: JSON.stringify({ target: patchTarget }),
-          },
-        );
-        if (!removeResponse.ok) {
-          throw await createStudioSaveHttpError(
-            removeResponse,
-            `Failed to delete element from ${targetPath}`,
+        let patchedContent = originalContent;
+        for (const target of patchTargets) {
+          const removeResponse = await fetch(
+            `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+              body: JSON.stringify({ target }),
+            },
           );
+          if (!removeResponse.ok) {
+            throw await createStudioSaveHttpError(
+              removeResponse,
+              `Failed to delete element from ${targetPath}`,
+            );
+          }
+          const removeData = (await removeResponse.json()) as {
+            changed?: boolean;
+            content?: string;
+          };
+          if (typeof removeData.content === "string") patchedContent = removeData.content;
         }
-
-        const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
-        const patchedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
         // ponytail: the server remove-element route (removeElementFromHtml) strips
         // only the element node — it does NOT cascade-remove GSAP tweens targeting
         // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This
@@ -155,8 +183,11 @@ export function useElementLifecycleOps({
         // SDK edit doesn't resurrect the deleted element.
         forceReloadSdkSession?.();
         reloadPreview();
-        onElementDeleted?.(selection);
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        for (const member of sameFile) onElementDeleted?.(member);
+        showToast(
+          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+          "info",
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
@@ -337,8 +368,16 @@ export function useElementLifecycleOps({
     [commitDomEditPatchBatches, onReorderShadow],
   );
 
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection) => {
+      await handleDomEditElementsDelete([selection]);
+    },
+    [handleDomEditElementsDelete],
+  );
+
   return {
     handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };
 }
