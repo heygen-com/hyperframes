@@ -208,9 +208,10 @@ describe("useAppHotkeys text-field ownership", () => {
     const canvasDelete = pressBackspace(canvas);
 
     expect(canvasDelete.defaultPrevented).toBe(true);
-    // The clip delete now goes through the whole-selection handler.
-    expect(timelineDeleteMany).toHaveBeenCalledTimes(1);
-    expect(domDelete).not.toHaveBeenCalled();
+    // The canvas holds a selection, so it owns the delete — the timeline's copy
+    // of that selection is derived and drops any member without a timeline row.
+    expect(domDelete).toHaveBeenCalledTimes(1);
+    expect(timelineDeleteMany).not.toHaveBeenCalled();
     expect(keyframeDelete).not.toHaveBeenCalled();
   });
 });

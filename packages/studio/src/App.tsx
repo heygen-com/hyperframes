@@ -282,6 +282,7 @@ export function StudioApp() {
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,
+    isRecordingRef: isGestureRecordingRef,
     refreshPreviewDocumentVersion,
     queueDomEditSave: previewPersistence.queueDomEditSave,
     readProjectFile: fileManager.readProjectFile,
@@ -365,7 +366,6 @@ export function StudioApp() {
     isGestureRecordingRef,
   });
   handleToggleRecordingRef.current = handleToggleRecording;
-  const recordingToggle = handleToggleRecording;
   const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
@@ -526,7 +526,7 @@ export function StudioApp() {
                           }}
                           recordingState={gestureState}
                           recordingDuration={gestureRecording.recordingDuration}
-                          onToggleRecording={recordingToggle}
+                          onToggleRecording={handleToggleRecording}
                           sdkSession={sdkHandle.session}
                           publishSdkSession={sdkHandle.publish}
                           forceReloadSdkSession={sdkHandle.forceReload}
@@ -561,7 +561,7 @@ export function StudioApp() {
                     shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                     isGestureRecording={gestureState === "recording"}
                     recordingState={gestureState}
-                    onToggleRecording={recordingToggle}
+                    onToggleRecording={handleToggleRecording}
                     blockPreview={blockPreview}
                     gestureOverlay={
                       gestureState === "recording" && previewIframe ? (

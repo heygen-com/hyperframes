@@ -96,6 +96,29 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
+  it("hands a canvas selection its whole group instead of the timeline's partial copy", () => {
+    // The reported bug: marquee 73 elements on the canvas, press Delete, and 14
+    // vanish. Only those 14 owned a timeline row, and the timeline mirror drops
+    // every member that does not — so deleting through it left 59 behind, still
+    // drawn as selected.
+    const clips = ["a", "b"].map((id) => ({ ...bgmElement, id, key: id }));
+    usePlayerStore.setState({
+      elements: clips,
+      selectedElementId: null,
+      selectedElementIds: new Set(["a", "b"]),
+    });
+    const domSelection = { selector: ".title", selectorIndex: 0, sourceFile: "index.html" };
+
+    const cb = callbacks();
+    cb.domEditSelectionRef = { current: domSelection } as typeof cb.domEditSelectionRef;
+    const e = press("Delete");
+    dispatchPlainKey(e, "delete", cb);
+
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   it("includes the primary selection alongside the marquee set", () => {
     const clips = ["a", "b"].map((id) => ({ ...bgmElement, id, key: id }));
     usePlayerStore.setState({

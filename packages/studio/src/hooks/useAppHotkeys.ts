@@ -322,25 +322,28 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
         return;
       }
     }
-    // Delete acts on the primary selection OR the marquee multi-selection, and
-    // takes the WHOLE selection: `find` returned the first match, so selecting
-    // every clip and pressing Delete removed exactly one of them and left the
-    // rest — with the selection still drawn around them.
-    const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
-    const selectionKeys = new Set(selectedElementIds);
-    if (selectedElementId) selectionKeys.add(selectedElementId);
-    if (selectionKeys.size > 0) {
-      const selected = elements.filter((e) => selectionKeys.has(e.key ?? e.id));
-      if (selected.length > 0) {
-        event.preventDefault();
-        void cb.handleTimelineElementsDelete(selected);
-        return;
-      }
-    }
+    // The canvas selection is what the user actually drew a marquee around, so
+    // it owns Delete whenever it holds something. The timeline mirror of that
+    // selection is derived and lossy — a member with no timeline row of its own
+    // is dropped from it — so deleting through the timeline removed the handful
+    // of clips it knew about and left every other selected element behind,
+    // still drawn as selected. The timeline path stays as the fallback for rows
+    // with no canvas node to select (audio, a comp that is not the active one).
     const domSel = cb.domEditSelectionRef.current;
     if (domSel) {
       event.preventDefault();
       void cb.handleDomEditElementDelete(domSel);
+      return;
+    }
+    // Takes the WHOLE selection: `find` returned the first match, so selecting
+    // every clip and pressing Delete removed exactly one of them.
+    const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
+    const selectionKeys = new Set(selectedElementIds);
+    if (selectedElementId) selectionKeys.add(selectedElementId);
+    const selected = elements.filter((e) => selectionKeys.has(e.key ?? e.id));
+    if (selected.length > 0) {
+      event.preventDefault();
+      void cb.handleTimelineElementsDelete(selected);
     }
     return;
   }

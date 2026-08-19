@@ -43,6 +43,7 @@ export interface UseDomEditSessionParams {
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
+  isRecordingRef?: React.RefObject<boolean>;
   refreshPreviewDocumentVersion: () => void;
   queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
@@ -86,6 +87,7 @@ export function useDomEditSession({
   setRightCollapsed,
   setRightPanelTab,
   showToast,
+  isRecordingRef,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
   readProjectFile,
@@ -342,11 +344,18 @@ export function useDomEditSession({
    */
   const handleDomEditElementDelete = useCallback(
     async (selection: DomEditSelection) => {
+      // Same structural edit the timeline delete refuses mid-recording, so it
+      // refuses here too — this is now the path a Delete press takes whenever
+      // the canvas holds a selection.
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
       const group = domEditGroupSelectionsRef.current;
       const members = group.length > 0 ? group : [selection];
       await handleDomEditElementsDelete(members);
     },
-    [domEditGroupSelectionsRef, handleDomEditElementsDelete],
+    [domEditGroupSelectionsRef, handleDomEditElementsDelete, isRecordingRef, showToast],
   );
 
   const handleGroupSelection = useCallback(() => {
