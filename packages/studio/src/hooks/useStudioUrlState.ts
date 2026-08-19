@@ -27,7 +27,7 @@ interface UseStudioUrlStateParams {
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
-    options?: { preferClipAncestor?: boolean },
+    options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
   ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
     selection: DomEditSelection | null,
@@ -124,10 +124,16 @@ async function buildOptionalDomSelection(
   buildDomSelection: UseStudioUrlStateParams["buildDomSelectionFromTarget"],
 ): Promise<DomEditSelection | null> {
   if (!element) return null;
-  return buildDomSelection(element, { preferClipAncestor: false });
+  // No source probe for group members. Each one costs a request, they are
+  // resolved one after another, and the URL carries the whole selection — so a
+  // marquee over a captured page turned every reload into hundreds of serial
+  // round trips before the canvas answered anything, including a Delete press.
+  // The marquee that produced these members already skips the probe for the
+  // same reason; only the primary, whose panel reads the flag, still pays it.
+  return buildDomSelection(element, { preferClipAncestor: false, skipSourceProbe: true });
 }
 
-async function resolveUrlSelections({
+export async function resolveUrlSelections({
   doc,
   primaryElement,
   selection,
