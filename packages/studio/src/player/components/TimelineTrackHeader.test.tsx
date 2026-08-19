@@ -263,6 +263,34 @@ describe("TimelineTrackHeader", () => {
     act(() => view.root.unmount());
   });
 
+  // The visibility control is the old hide eye. On an audio track it silences
+  // rather than hides, and the row already says so with a speaker elsewhere —
+  // so the eye's slot stays empty there. A non-audio track is untouched.
+  it("keeps the visibility control off audio track headers", () => {
+    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+    const view = renderHeader({
+      keyframeClip: audio,
+      trackElements: [audio],
+      isAudioTrack: true,
+      animations: [],
+    });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^(Hide|Show) track/.test(l))).toBe(false);
+    expect(labels).not.toContain("Mute");
+    act(() => view.root.unmount());
+  });
+
+  it("keeps it on a non-audio track", () => {
+    const view = renderHeader({ isAudioTrack: false });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^Hide track/.test(l))).toBe(true);
+    act(() => view.root.unmount());
+  });
+
   // The eye acts on the layer, so it has to be reachable without a pointer and
   // in every disclosure state — a hover-gated eye is unusable by keyboard.
   it("keeps the visibility eye mounted whether the layer is expanded or collapsed", () => {

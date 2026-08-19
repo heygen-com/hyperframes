@@ -600,7 +600,7 @@ export function TimelineTrackHeader({
               hidden={isTrackHidden}
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
-              visible
+              visible={!isAudioTrack}
               isAudioTrack={isAudioTrack}
               onToggle={onToggleTrackHidden}
             />

@@ -103,11 +103,16 @@ export function PlainTrackHeader({
         </span>
       )}
       {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
+      {/* Not on an audio track. The control is the old visibility eye, and on
+          audio it silences rather than hides — but a row that already says what
+          it is with a speaker does not also need the hide affordance sitting in
+          the eye's slot. `visible={false}` rather than omitting the element, so
+          the spacer keeps every row's control columns aligned. */}
       <VisibilityButton
         hidden={isTrackHidden}
         trackNumber={trackNumber}
         trackDisplayNumber={trackDisplayNumber}
-        visible
+        visible={!isAudioTrack}
         isAudioTrack={isAudioTrack}
         onToggle={onToggleTrackHidden}
       />
