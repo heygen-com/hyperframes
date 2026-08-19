@@ -495,8 +495,11 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
   const project = resolveProject(options.dir);
   const html = readFileSync(project.indexPath, "utf8");
   const { referenceTag, targetTag } = selectedTags(html, options.reference, options.target);
-  const plan = await measuredPlan(project.dir, referenceTag, targetTag);
+  // Before the measurement, not after: each EBU R128 pass is bounded at 120s, so
+  // validating this afterwards made a typo'd --tolerance cost two of them before
+  // failing on an argument that was wrong the whole time.
   const tolerance = parsedTolerance(options.tolerance);
+  const plan = await measuredPlan(project.dir, referenceTag, targetTag);
   const withinTolerance = Math.abs(plan.referenceLufs - plan.targetLufs) <= tolerance;
   const wrote = options.write && !withinTolerance;
   // Re-read: two EBU R128 passes ran since the snapshot above, each bounded
