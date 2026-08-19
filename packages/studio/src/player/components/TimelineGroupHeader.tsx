@@ -133,7 +133,7 @@ export function TimelineGroupHeader({
       </div>
       {/* Line two: what you can DO to it. Its own row so the name is not
           squeezed to a few characters by five controls sharing 232px. */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex w-full items-center gap-1.5">
         <TimelineFxButton
           fxChainRaw={fxChain}
           onChainChange={onFxChainChange}
@@ -147,7 +147,8 @@ export function TimelineGroupHeader({
           aria-expanded={isLaneOpen}
           aria-label={`${isLaneOpen ? "Hide" : "Show"} ${label} lanes`}
           title={`${isLaneOpen ? "Hide" : "Show"} lanes`}
-          className={`flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+          // Anchored right, matching every other header's lane toggle.
+          className={`ml-auto flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
             isLaneOpen ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
           }`}
           onPointerDown={(event) => event.stopPropagation()}

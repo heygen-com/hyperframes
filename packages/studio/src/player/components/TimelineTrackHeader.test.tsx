@@ -771,6 +771,7 @@ describe("TimelineTrackHeader", () => {
 
       expect(header()?.style.paddingLeft).toBe("");
       expect(header()?.style.borderLeft).toBe("");
+      expect(header()?.style.background).not.toContain("linear-gradient");
 
       view.rerender({
         keyframeClip: VOICE,
@@ -781,6 +782,10 @@ describe("TimelineTrackHeader", () => {
       });
       expect(header()?.style.paddingLeft).toBe("14px");
       expect(header()?.style.borderLeft).toContain("2px");
+      // And a lighter gutter, so the row reads as sitting INSIDE its group
+      // rather than beside it. Overlaid on the theme's own fill rather than a
+      // hard-coded colour, so it follows whatever the gutter is.
+      expect(header()?.style.background).toContain("linear-gradient");
       act(() => view.root.unmount());
     });
 

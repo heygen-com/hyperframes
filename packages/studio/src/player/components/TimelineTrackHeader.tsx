@@ -34,6 +34,17 @@ import { timelineLogicalRowCellId, timelinePropertyRowId } from "./timelineNavig
  *  nesting its `aria-level` already reports. */
 const GROUP_MEMBER_RAIL = "#3CE6AC59";
 const GROUP_MEMBER_INDENT = 14;
+/** A hair lighter than `gutterBackground`, so a member row reads as sitting
+ *  INSIDE its group rather than beside it. Overlaid rather than hard-coded so
+ *  it tracks whatever the theme's gutter is. */
+const GROUP_MEMBER_TINT = "rgba(255,255,255,0.035)";
+
+/** The gutter fill for a row, tinted when it belongs to a group. */
+function gutterFill(base: string, isGroupMember: boolean): string {
+  return isGroupMember
+    ? `linear-gradient(${GROUP_MEMBER_TINT}, ${GROUP_MEMBER_TINT}), ${base}`
+    : base;
+}
 
 interface TimelineTrackHeaderProps {
   /** The track's real key: a FRACTIONAL z-order sort value. Routes callbacks;
@@ -489,7 +500,7 @@ export function TimelineTrackHeader({
       }`}
       style={{
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
-        background: theme.gutterBackground,
+        background: gutterFill(theme.gutterBackground, isGroupMember),
         borderRight: `1px solid ${theme.gutterBorder}`,
         // A group's member rows are `aria-level="2"`, and until this they read
         // as level 2 to a screen reader while looking identical to every
@@ -578,7 +589,7 @@ export function TimelineTrackHeader({
             }
             clipCount={clipCount}
             isExpanded={isExpanded}
-            gutterBackground={theme.gutterBackground}
+            gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
             columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
             lanesId={lanesId}
             onToggleClipExpanded={onToggleClipExpanded}
@@ -615,7 +626,7 @@ export function TimelineTrackHeader({
                 expandedElement={keyframeClip}
                 currentTime={currentTime}
                 clipPercentage={clipPercentage}
-                gutterBackground={theme.gutterBackground}
+                gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
                 columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
                 onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
                 onSeek={onSeek}
@@ -638,7 +649,7 @@ export function TimelineTrackHeader({
                 }
                 top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
                 isLastLane={index === automationRows.length - 1}
-                gutterBackground={theme.gutterBackground}
+                gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
                 columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
                 onRemove={onRemoveAutomationLane}
               />
