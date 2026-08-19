@@ -115,10 +115,15 @@ export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
 }
 
 /**
- * The filled wedge a fade draws on the clip, in SVG path form: the region the
- * fade takes AWAY, from the clip's corner to where the level reaches full.
+ * The two SVG paths a fade draws, as one pair so they cannot disagree:
  *
- * Sampled through the same interpolator the runtime plays back, so a curved
+ * - `line` is the level itself, and the only thing that gets stroked. It is an
+ *   open path: stroking a closed wedge outlines the fill's straight top and
+ *   side too, which reads as a rectangle butted onto the curve.
+ * - `fill` is that same line closed back to the clip's corner — the region the
+ *   fade takes away — and is never stroked.
+ *
+ * Both are sampled through the interpolator the runtime plays back, so a curved
  * fade is drawn as the curve it will sound like rather than a straight line
  * standing in for one.
  */
@@ -129,10 +134,10 @@ export function fadeWedgePath(input: {
   pixelsPerSecond: number;
   width: number;
   height: number;
-}): string {
+}): { line: string; fill: string } {
   const { edge, seconds, curve, pixelsPerSecond, width, height } = input;
   const span = Math.min(seconds * pixelsPerSecond, width);
-  if (span <= 0) return "";
+  if (span <= 0) return { line: "", fill: "" };
   const curvature = FADE_CURVES[curve];
   const lane: HfAutomationLane = {
     target: "volume",
@@ -154,14 +159,18 @@ export function fadeWedgePath(input: {
   const xAt = (progress: number) =>
     edge === "in" ? span * progress : width - span * (1 - progress);
   const steps = curvature === 0 ? 1 : WEDGE_SAMPLES;
-  const line: string[] = [];
+  const points: string[] = [];
   for (let i = 0; i <= steps; i += 1) {
     const progress = i / steps;
     const level = sampleAutomationLane(lane, seconds * progress, "linear");
-    line.push(`L ${xAt(progress).toFixed(2)} ${((1 - level) * height).toFixed(2)}`);
+    points.push(`${xAt(progress).toFixed(2)} ${((1 - level) * height).toFixed(2)}`);
   }
+  const line = `M ${points.join(" L ")}`;
+  // The fill closes through the clip's own corner: up to the top for a fade-in,
+  // back along the top for a fade-out. Never stroked, so those closing edges
+  // stay invisible and only the level reads as a line.
   const corner = edge === "in" ? 0 : width;
-  return `M ${corner} 0 ${line.join(" ")} L ${corner} 0 Z`;
+  return { line, fill: `${line} L ${corner} 0 Z` };
 }
 
 /** Segments used to draw a curved wedge; a straight one needs no sampling. */

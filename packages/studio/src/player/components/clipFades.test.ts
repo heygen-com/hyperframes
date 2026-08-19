@@ -117,23 +117,22 @@ describe("fadeWedgePath", () => {
     edge: "in" | "out",
     curve: Parameters<typeof fadeWedgePath>[0]["curve"] = "linear",
   ) =>
-    fadeWedgePath({ edge, seconds: 2, curve, pixelsPerSecond: 25, width: WIDTH, height: HEIGHT });
+    fadeWedgePath({ edge, seconds: 2, curve, pixelsPerSecond: 25, width: WIDTH, height: HEIGHT })
+      .line;
   /** Every [x, y] the path visits, in order. */
   const points = (d: string) =>
     [...d.matchAll(/[ML] (-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
 
   it("draws a fade in rising out of the clip's start", () => {
     const path = points(wedge("in"));
-    expect(path[0]).toEqual([0, 0]); // the corner it shades from
-    expect(path[1]).toEqual([0, HEIGHT]); // silent, at the very start
-    expect(path[2]).toEqual([50, 0]); // full level, 2s in at 25px/s
+    expect(path[0]).toEqual([0, HEIGHT]); // silent, at the very start
+    expect(path[1]).toEqual([50, 0]); // full level, 2s in at 25px/s
   });
 
   it("draws a fade out falling INTO the clip's end, not out of it", () => {
     const path = points(wedge("out"));
-    expect(path[0]).toEqual([WIDTH, 0]);
-    expect(path[1]).toEqual([WIDTH - 50, 0]); // still at full level, 2s from the end
-    expect(path[2]).toEqual([WIDTH, HEIGHT]); // silent, exactly on the end
+    expect(path[0]).toEqual([WIDTH - 50, 0]); // still at full level, 2s from the end
+    expect(path[1]).toEqual([WIDTH, HEIGHT]); // silent, exactly on the end
   });
 
   it("samples a curved fade instead of drawing a straight line", () => {
@@ -154,7 +153,27 @@ describe("fadeWedgePath", () => {
         width: WIDTH,
         height: HEIGHT,
       }),
-    ).toBe("");
+    ).toEqual({ line: "", fill: "" });
+  });
+
+  it("keeps the stroked line open so the fill's closing edges are not outlined", () => {
+    const { line, fill } = fadeWedgePath({
+      edge: "in",
+      seconds: 2,
+      curve: "linear",
+      pixelsPerSecond: 25,
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    // The line is the level and nothing else: no close, no corner.
+    expect(line).not.toContain("Z");
+    expect(points(line)).toEqual([
+      [0, HEIGHT],
+      [50, 0],
+    ]);
+    // The fill is that line closed back through the clip's corner.
+    expect(fill.startsWith(line)).toBe(true);
+    expect(fill.endsWith("L 0 0 Z")).toBe(true);
   });
 });
 

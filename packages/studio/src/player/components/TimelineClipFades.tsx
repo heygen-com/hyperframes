@@ -178,22 +178,29 @@ export function TimelineClipFades({
         {(["in", "out"] as const).map((edge) => {
           const seconds = edge === "in" ? shown.fadeIn : shown.fadeOut;
           if (seconds <= 0) return null;
+          const { line, fill } = fadeWedgePath({
+            edge,
+            seconds,
+            curve,
+            pixelsPerSecond,
+            width,
+            height: VIEW_HEIGHT,
+          });
+          // Two paths, not one: stroking the closed wedge would outline the
+          // fill's straight top and side as well, which reads as a rectangle
+          // butted onto the curve instead of one continuous level line.
           return (
-            <path
-              key={edge}
-              d={fadeWedgePath({
-                edge,
-                seconds,
-                curve,
-                pixelsPerSecond,
-                width,
-                height: VIEW_HEIGHT,
-              })}
-              fill="rgba(0,0,0,0.45)"
-              stroke="rgba(255,255,255,0.75)"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
+            <g key={edge}>
+              <path d={fill} fill="rgba(0,0,0,0.45)" stroke="none" />
+              <path
+                d={line}
+                fill="none"
+                stroke="rgba(255,255,255,0.75)"
+                strokeWidth={1}
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
           );
         })}
       </svg>
