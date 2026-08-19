@@ -9,7 +9,7 @@
  * it gets the grouping pointer instead of the popover).
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   enabledAudioFxNodes,
@@ -22,6 +22,104 @@ import {
   useAuditionTransport,
   type AuditionSpan,
 } from "../../components/editor/useAuditionTransport.js";
+
+/**
+ * Naming a group is the moment the whole feature is explained.
+ *
+ * The design doc calls the sentence below "the highest-leverage copy in this
+ * plan and it should be written before the routing is" — it is the concept of a
+ * submix bus delivered without the word, to an author who has never met one.
+ * The old pointer skipped both the name and the sentence: it made an
+ * auto-named group on one click and said only "Group these clips to add effects
+ * to all of them", which leaves out the shared volume entirely.
+ */
+function GroupNameDialog({
+  anchorRect,
+  clipCount,
+  defaultLabel,
+  refusal,
+  onCancel,
+  onConfirm,
+}: {
+  anchorRect: DOMRect;
+  clipCount: number;
+  defaultLabel?: string;
+  refusal?: string;
+  onCancel: () => void;
+  onConfirm: (label: string) => void;
+}) {
+  const [label, setLabel] = useState(defaultLabel ?? "Voiceover");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // Focused on open so the name can be typed over without a second click —
+  // the field is the only thing here that wants input.
+  useEffect(() => inputRef.current?.select(), []);
+  if (refusal) {
+    return (
+      <div
+        role="dialog"
+        aria-label="This track cannot be grouped"
+        className="z-50 w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] leading-snug text-white/75 shadow-xl"
+        style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          onCancel();
+        }}
+      >
+        <p>{refusal}</p>
+      </div>
+    );
+  }
+  const confirm = () => onConfirm(label.trim() || defaultLabel || "Voiceover");
+  return (
+    <div
+      role="dialog"
+      aria-label="Name this group"
+      className="z-50 w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] text-white/75 shadow-xl"
+      style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+        if (event.key === "Enter") confirm();
+      }}
+    >
+      <p className="mb-1.5 font-medium text-white">Name this group</p>
+      <input
+        ref={inputRef}
+        type="text"
+        aria-label="Group name"
+        value={label}
+        onChange={(event) => setLabel(event.currentTarget.value)}
+        className="w-full rounded border border-white/20 bg-black/30 px-1.5 py-1 text-[11px] text-white outline-none focus:border-[#3CE6AC]"
+      />
+      {/* The sentence. No jargon, and it names both things a bus does. */}
+      <p className="mt-2 leading-snug">
+        Effects you add to the group apply to {clipCount === 2 ? "both" : `all ${clipCount}`} clips
+        at once, and they share one volume.
+      </p>
+      <div className="mt-2.5 flex justify-end gap-1.5">
+        <button
+          type="button"
+          className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/75 hover:bg-white/10"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="rounded border border-[#3CE6AC] bg-[#3CE6AC]/15 px-2 py-1 text-[10px] font-semibold text-[#3CE6AC] hover:bg-[#3CE6AC]/25"
+          onClick={confirm}
+        >
+          Group
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function parseFxChainOrEmpty(raw: string | undefined): HfAudioFxChain {
   if (!raw) return { version: 1, nodes: [] };
@@ -52,7 +150,18 @@ interface TimelineFxButtonChainProps {
 
 interface TimelineFxButtonGroupPointerProps {
   variant: "group-pointer";
-  onGroupClips: () => void;
+  /** Create the group under this name. */
+  onGroupClips: (label: string) => void;
+  /** How many clips are about to be grouped, for the copy that explains it. */
+  clipCount: number;
+  /** Seeded into the name field — "Voiceover" per the design's own mockup. */
+  defaultLabel?: string;
+  /** Why this track cannot be grouped at all. Present, the dialog states the
+   *  limit instead of offering a name field — groups are audio-only in v1
+   *  (§1.4), and the doc is explicit that a deliberate limit has to be said:
+   *  "silent ones just send authors hunting for something that was never
+   *  built." */
+  refusal?: string;
 }
 
 type TimelineFxButtonProps = TimelineFxButtonChainProps | TimelineFxButtonGroupPointerProps;
@@ -94,25 +203,17 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
         {open &&
           anchorRect &&
           createPortal(
-            <div
-              role="dialog"
-              aria-label="Group these clips to add effects"
-              className="z-50 w-56 rounded-md border border-white/10 bg-[#1b1b1f] p-2.5 text-[11px] text-white/75 shadow-xl"
-              style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <p>Group these clips to add effects to all of them.</p>
-              <button
-                type="button"
-                className="mt-2 w-full rounded border border-white/20 py-1 text-[10px] font-semibold text-white hover:bg-white/10"
-                onClick={() => {
-                  setOpen(false);
-                  props.onGroupClips();
-                }}
-              >
-                Group
-              </button>
-            </div>,
+            <GroupNameDialog
+              refusal={props.refusal}
+              anchorRect={anchorRect}
+              clipCount={props.clipCount}
+              defaultLabel={props.defaultLabel}
+              onCancel={() => setOpen(false)}
+              onConfirm={(label) => {
+                setOpen(false);
+                props.onGroupClips(label);
+              }}
+            />,
             document.body,
           )}
       </div>

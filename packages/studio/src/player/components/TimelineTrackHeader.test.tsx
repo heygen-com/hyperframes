@@ -148,6 +148,63 @@ function click(host: HTMLElement, label: string) {
 }
 
 describe("TimelineTrackHeader", () => {
+  // §5: gain stages multiply. A group fading to 0.42 under a clip fading to
+  // 0.80 plays at 0.34, and an author who drew both hears something quieter
+  // than either with nothing on screen to say why. Not a warning; an
+  // explanation.
+  it("says so when the clip's group is fading the same parameter", () => {
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 0.4 },
+          ],
+        },
+      ],
+    });
+    const clip: TimelineElement = {
+      ...ELEMENT,
+      tag: "audio",
+      automation,
+      audioGroup: "voiceover",
+      audioGroupLabel: "Voiceover",
+      audioGroupAutomation: automation,
+    };
+    const view = renderHeader({ keyframeClip: clip, trackElements: [clip], animations: [] });
+    expect(view.host.textContent).toContain("Voiceover is also fading this.");
+    act(() => view.root.unmount());
+  });
+
+  // The same clip with an un-automated group must stay quiet — the note is
+  // only honest when the two curves actually multiply.
+  it("stays quiet when the group automates nothing", () => {
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 0.4 },
+          ],
+        },
+      ],
+    });
+    const clip: TimelineElement = {
+      ...ELEMENT,
+      tag: "audio",
+      automation,
+      audioGroup: "voiceover",
+      audioGroupLabel: "Voiceover",
+    };
+    const view = renderHeader({ keyframeClip: clip, trackElements: [clip], animations: [] });
+    expect(view.host.textContent).not.toContain("is also fading this");
+    act(() => view.root.unmount());
+  });
+
   // An expanded sub-composition child sits on the MASTER timeline at a
   // host-absolute start, but its tweens are parsed from its own file and are
   // local to it. Feeding the raw start straight into the clip-% math put every

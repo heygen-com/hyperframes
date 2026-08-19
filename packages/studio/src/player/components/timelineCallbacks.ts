@@ -80,7 +80,11 @@ export interface TimelineEditCallbacks {
   /** C1's ungrouped-track FX pointer: "Group these clips" — write
    *  `data-audio-group` on every one of them, atomically. Same shape B6's
    *  carve auto-grouping uses. */
-  onGroupClips?: (clipIds: readonly string[], groupId: string) => Promise<void>;
+  onGroupClips?: (
+    clipIds: readonly string[],
+    groupId: string,
+    groupLabel?: string,
+  ) => Promise<void>;
   /** C1's single-clip FX write: addressed by the clip itself rather than the
    *  current selection, mirroring `onSetAudioGroupAttributeLive/Quiet`. */
   onSetElementAttributeLive?: (

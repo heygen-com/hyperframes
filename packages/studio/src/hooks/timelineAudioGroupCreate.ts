@@ -88,7 +88,12 @@ const GROUP_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
  * target, and `resolveAudioGroups` reads the flattened document, so co-location
  * buys nothing.
  */
-function insertGroupElement(html: string, groupId: string): string {
+/** Attribute-safe, for a name the author typed. */
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function insertGroupElement(html: string, groupId: string, label?: string): string {
   const existing = readTagSnippetByTarget(html, { id: groupId });
   if (existing !== undefined) {
     // Only OUR tag counts as "already there". The id was minted against the
@@ -100,7 +105,11 @@ function insertGroupElement(html: string, groupId: string): string {
     if (new RegExp(`^<\\s*${HF_AUDIO_GROUP_TAG}\\b`, "i").test(existing)) return html;
     throw new Error(`Cannot create audio group: id ${groupId} is already used in this file`);
   }
-  const tag = `<${HF_AUDIO_GROUP_TAG} id="${groupId}"></${HF_AUDIO_GROUP_TAG}>`;
+  // The author's name for the group, from the naming dialog (groups doc §5).
+  // Without it the timeline falls back to the minted id, which is the one thing
+  // the dialog exists to stop an author having to read.
+  const labelAttr = label ? ` data-label="${escapeAttr(label)}"` : "";
+  const tag = `<${HF_AUDIO_GROUP_TAG} id="${groupId}"${labelAttr}></${HF_AUDIO_GROUP_TAG}>`;
   const closeBody = html.lastIndexOf("</body>");
   if (closeBody < 0) return `${html}\n${tag}\n`;
   return `${html.slice(0, closeBody)}  ${tag}\n  ${html.slice(closeBody)}`;
@@ -109,11 +118,16 @@ function insertGroupElement(html: string, groupId: string): string {
 /** The same element in the live preview, so the group is editable before the
  *  next reload. Returns true when it created one (only then may the unwind
  *  remove it — a pre-existing group element is not ours to delete). */
-function patchLiveGroupElement(iframe: HTMLIFrameElement | null, groupId: string): boolean {
+function patchLiveGroupElement(
+  iframe: HTMLIFrameElement | null,
+  groupId: string,
+  label?: string,
+): boolean {
   const doc = iframe?.contentDocument;
   if (!doc?.body || doc.getElementById(groupId)) return false;
   const el = doc.createElement(HF_AUDIO_GROUP_TAG);
   el.id = groupId;
+  if (label) el.setAttribute("data-label", label);
   doc.body.appendChild(el);
   invalidateGroupInfoCache(doc);
   return true;
@@ -124,6 +138,8 @@ interface CreateAudioGroupAndAssignMembersInput {
   activeCompPath: string | null;
   elements: readonly TimelineElement[];
   groupId: string;
+  /** The author's name for it, from the naming dialog (groups doc §5). */
+  groupLabel?: string;
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
@@ -144,6 +160,7 @@ export async function createAudioGroupAndAssignMembers({
   activeCompPath,
   elements,
   groupId,
+  groupLabel,
   previewIframe,
   writeProjectFile,
   recordEdit,
@@ -162,7 +179,7 @@ export async function createAudioGroupAndAssignMembers({
 
   const priorGroups = captureAudioGroupState(previewIframe, elements, activeCompPath);
   patchLiveAudioGroupState(previewIframe, elements, groupId, activeCompPath);
-  const createdLiveGroupElement = patchLiveGroupElement(previewIframe, groupId);
+  const createdLiveGroupElement = patchLiveGroupElement(previewIframe, groupId, groupLabel);
   reseekPreviewRuntime(previewIframe);
 
   const groupOperation: PatchOperation = {
@@ -199,7 +216,7 @@ export async function createAudioGroupAndAssignMembers({
       groupContent = await readFileContent(projectId, groupPath);
       originalByPath.set(groupPath, groupContent);
     }
-    const withGroupElement = insertGroupElement(groupContent, groupId);
+    const withGroupElement = insertGroupElement(groupContent, groupId, groupLabel);
     if (withGroupElement !== groupContent) {
       files[groupPath] = withGroupElement;
       pendingTimelineEditPathRef.current.add(groupPath);
@@ -208,7 +225,9 @@ export async function createAudioGroupAndAssignMembers({
     domEditSaveTimestampRef.current = Date.now();
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
-      label: `Group ${elements.length} voice clips`,
+      label: groupLabel
+        ? `Group ${elements.length} clips as ${groupLabel}`
+        : `Group ${elements.length} voice clips`,
       kind: "timeline",
       files,
       readFile: async (path) => {
@@ -256,10 +275,11 @@ export function useAudioGroupCarveAssignment({
 }: UseTimelineElementVisibilityEditingInput): (
   clipIds: readonly string[],
   groupId: string,
+  groupLabel?: string,
 ) => Promise<void> {
   const expandedElements = useExpandedTimelineElements();
   return useCallback(
-    async (clipIds: readonly string[], groupId: string) => {
+    async (clipIds: readonly string[], groupId: string, groupLabel?: string) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
@@ -286,6 +306,7 @@ export function useAudioGroupCarveAssignment({
           throw new Error(`Cannot group: no timeline clip for ${missing.join(", ")}`);
         }
         await createAudioGroupAndAssignMembers({
+          groupLabel,
           projectId: pid,
           activeCompPath,
           elements,

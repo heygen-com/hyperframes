@@ -248,6 +248,7 @@ function AutomationLaneHeaderRow({
   label,
   name,
   param,
+  alsoAutomatedBy,
   top,
   isLastLane,
   gutterBackground,
@@ -264,6 +265,12 @@ function AutomationLaneHeaderRow({
   name: string;
   /** Which knob the envelope drives. Empty when there is no second line to draw. */
   param: string;
+  /** Set when this clip's group automates the SAME parameter. Gain stages
+   *  multiply — 0.42 on the group under 0.80 here plays at 0.34 — so an author
+   *  who drew one curve and then another hears something quieter than either
+   *  with nothing on screen to say why (groups doc §5). Not a warning; an
+   *  explanation. */
+  alsoAutomatedBy?: string;
   top: number;
   isLastLane: boolean;
   gutterBackground: string;
@@ -305,6 +312,15 @@ function AutomationLaneHeaderRow({
             className="truncate font-mono text-[9px] text-white/40"
           >
             {param}
+          </span>
+        ) : null}
+        {alsoAutomatedBy ? (
+          <span
+            data-automation-lane-also=""
+            className="truncate text-[9px] text-[#F5C542]/80"
+            title={`${alsoAutomatedBy} is also fading this — the two multiply.`}
+          >
+            {alsoAutomatedBy} is also fading this.
           </span>
         ) : null}
       </span>
@@ -379,6 +395,32 @@ export function TimelineTrackHeader({
   // order. `target` is the ACTIVE clip's lane in that row, which is the only one
   // the remove button can write to; null when the row belongs to its siblings.
   const activeKey = keyframeClip ? (keyframeClip.key ?? keyframeClip.id) : null;
+  const groupOwner = trackElements.find((el) => el.audioGroup)?.audioGroup;
+  const groupLabelForNote = trackElements.find((el) => el.audioGroupLabel)?.audioGroupLabel;
+  const groupAutomationRaw = trackElements.find(
+    (el) => el.audioGroupAutomation,
+  )?.audioGroupAutomation;
+  const groupFxChainRaw = trackElements.find((el) => el.audioGroupFxChain)?.audioGroupFxChain;
+  // Which parameters this track's GROUP also automates. Gain stages multiply,
+  // and §5 asks for the explanation rather than leaving the author to wonder
+  // why two curves they drew sound quieter than either.
+  const groupAutomatedTargets = new Set(
+    groupAutomationLanes(
+      groupOwner
+        ? [
+            {
+              id: groupOwner,
+              tag: "audio",
+              start: 0,
+              duration: 0,
+              track: 0,
+              ...(groupAutomationRaw ? { automation: groupAutomationRaw } : {}),
+              ...(groupFxChainRaw ? { fxChain: groupFxChainRaw } : {}),
+            },
+          ]
+        : [],
+    ).map((lane) => lane.key),
+  );
   const automationRows = groupAutomationLanes(trackElements).map((group) => ({
     key: group.key,
     label: group.key,
@@ -413,6 +455,11 @@ export function TimelineTrackHeader({
   const singleAudioClip =
     isAudioTrack && clipCount === 1 && trackElements.length > 0 ? trackElements[0] : null;
   const isTrackGrouped = trackElements.some((el) => el.audioGroup);
+  // A video track carries sound the render mixes but preview never routes
+  // through Web Audio, which is why §1.4 keeps groups audio-only. It still
+  // needs to be TOLD that, so it earns the button and a refusal.
+  const isVideoWithAudioTrack =
+    !isAudioTrack && trackElements.some((el) => el.tag.toLowerCase() === "video");
   const writeClipFxChain = (clip: TimelineElement, next: HfAudioFxChain, live: boolean) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
     if (live) onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
@@ -432,11 +479,11 @@ export function TimelineTrackHeader({
   const groupableClipIds = trackElements.map(runtimeAudioId);
   const canGroupWholeTrack =
     groupableClipIds.length >= 2 && groupableClipIds.every((id) => id !== null);
-  const groupUngroupedClips = () => {
+  const groupUngroupedClips = (label: string) => {
     const doc = domEditActions?.previewIframeRef.current?.contentDocument;
     if (!doc || !onGroupClips) return;
     if (!canGroupWholeTrack) return;
-    void onGroupClips(groupableClipIds as string[], mintGroupId(doc));
+    void onGroupClips(groupableClipIds as string[], mintGroupId(doc), label);
   };
 
   return (
@@ -504,13 +551,25 @@ export function TimelineTrackHeader({
           {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
               a group, so it needs `audio-groups` too — without it a user outside
               that canary could create a group and then have no UI to manage it. */}
-          {isAudioTrack &&
-            clipCount > 1 &&
+          {clipCount > 1 &&
             !isTrackGrouped &&
-            canGroupWholeTrack &&
+            (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
             isCanaryEnabled("audio-fx-rack") &&
             isCanaryEnabled("audio-groups") && (
-              <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />
+              <TimelineFxButton
+                variant="group-pointer"
+                clipCount={trackElements.length}
+                defaultLabel={trackLabel}
+                // Groups are audio-only in v1 (§1.4). A video track showing no
+                // button at all is the silent limit §5 forbids, so it gets the
+                // button and a reason instead.
+                refusal={
+                  isAudioTrack
+                    ? undefined
+                    : "Video audio can't be grouped yet — only audio clips can join a group."
+                }
+                onGroupClips={groupUngroupedClips}
+              />
             )}
         </>
       ) : (
@@ -583,6 +642,9 @@ export function TimelineTrackHeader({
                 label={row.label}
                 name={row.name}
                 param={row.param}
+                alsoAutomatedBy={
+                  groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
+                }
                 top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
                 isLastLane={index === automationRows.length - 1}
                 gutterBackground={theme.gutterBackground}

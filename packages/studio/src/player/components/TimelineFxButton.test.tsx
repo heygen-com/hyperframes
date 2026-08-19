@@ -144,14 +144,80 @@ describe("TimelineFxButton", () => {
     expect(presets.size).toBe(1);
   });
 
-  it("group-pointer variant offers Group instead of a popover", () => {
+  // The design doc calls the sentence this dialog carries "the highest-leverage
+  // copy in this plan": it is the concept of a submix bus delivered without the
+  // word, to an author who has never met one. The old pointer auto-named the
+  // group on one click and never mentioned the shared volume.
+  it("group-pointer variant names the group and explains what one is", () => {
     const onGroupClips = vi.fn();
-    const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={onGroupClips} />);
+    const host = mount(
+      <TimelineFxButton variant="group-pointer" clipCount={2} onGroupClips={onGroupClips} />,
+    );
     act(() => byTextButton(host, "FX")?.click());
-    const groupButton = document.body.querySelectorAll("button");
-    const group = Array.from(groupButton).find((b) => b.textContent === "Group");
-    expect(group).toBeDefined();
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain(
+      "Effects you add to the group apply to both clips at once, and they share one volume.",
+    );
+    const group = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent === "Group",
+    );
     act(() => group?.click());
-    expect(onGroupClips).toHaveBeenCalledTimes(1);
+    expect(onGroupClips).toHaveBeenCalledWith("Voiceover");
+  });
+
+  // Three or more must not read "both".
+  it("counts the clips in the explanation", () => {
+    mount(<TimelineFxButton variant="group-pointer" clipCount={3} onGroupClips={vi.fn()} />);
+    act(() => byTextButton(document.body as HTMLElement, "FX")?.click());
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("all 3 clips at once");
+  });
+
+  // §1.4 keeps groups audio-only in v1, and §5 is explicit that a deliberate
+  // limit must be stated: "silent ones just send authors hunting for something
+  // that was never built."
+  it("states the video limit instead of offering a name field", () => {
+    const onGroupClips = vi.fn();
+    const host = mount(
+      <TimelineFxButton
+        variant="group-pointer"
+        clipCount={2}
+        refusal="Video audio can't be grouped yet — only audio clips can join a group."
+        onGroupClips={onGroupClips}
+      />,
+    );
+    act(() => byTextButton(host, "FX")?.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Video audio can't be grouped yet");
+    expect(document.querySelector('input[aria-label="Group name"]')).toBeNull();
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some((b) => b.textContent === "Group"),
+    ).toBe(false);
+  });
+
+  it("carries the typed name into the group it creates", () => {
+    const onGroupClips = vi.fn();
+    const host = mount(
+      <TimelineFxButton variant="group-pointer" clipCount={2} onGroupClips={onGroupClips} />,
+    );
+    act(() => byTextButton(host, "FX")?.click());
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Group name"]');
+    expect(input).not.toBeNull();
+    // React tracks the input's value on the node, so assigning `.value`
+    // directly is swallowed — the native setter is what makes onChange fire.
+    const setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      if (input && setValue) {
+        setValue.call(input, "SFX");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    const group = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent === "Group",
+    );
+    act(() => group?.click());
+    expect(onGroupClips).toHaveBeenCalledWith("SFX");
   });
 });
