@@ -85,18 +85,23 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
       element: document.createElement(tag),
     })) as unknown as DomEditSelection[];
 
-  it("withholds Group selection when the selection includes audio", () => {
+  it("withholds both actions when the selection includes audio", () => {
     const { host, root } = renderInto(
       <PropertyPanelEmptyState
         flat
         multiSelectCount={2}
         multiSelectedElements={audioElements(["audio", "audio"])}
         onGroupSelection={vi.fn()}
+        onHideAllSelected={vi.fn()}
       />,
     );
     expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
-    // Hide all still applies — hiding an audio clip is what mutes it.
-    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).not.toBeNull();
+    // Hiding is visibility, and `data-hidden` on audio is what MUTES it — the
+    // timeline withholds the eye on an audio track for that reason, and this
+    // panel was the way back to the same write.
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
+    // The list still names what is selected; only the actions go.
+    expect(host.textContent).toContain("2 elements selected");
     act(() => root.unmount());
   });
 
@@ -110,10 +115,24 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
       />,
     );
     expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
     act(() => root.unmount());
   });
 
-  it("still offers it for a selection of layout elements", () => {
+  it("counts an <hf-audio-group> bus as audio too", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["hf-audio-group", "div"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("still offers both for a selection of layout elements", () => {
     const { host, root } = renderInto(
       <PropertyPanelEmptyState
         flat
@@ -123,6 +142,7 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
       />,
     );
     expect(host.querySelector('[data-flat-multiselect-group="true"]')).not.toBeNull();
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).not.toBeNull();
     act(() => root.unmount());
   });
 });

@@ -85,6 +85,7 @@ interface RenderHeaderOptions {
   onRemoveAutomationLane?: (target: string) => void;
   isAudioTrack?: boolean;
   isGroupMember?: boolean;
+  isTrackHidden?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -105,6 +106,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
       currentTime: 0,
       isAudioTrack: false,
       isGroupMember: false,
+      isTrackHidden: false,
       onToggleTrackHidden: vi.fn(),
       ...raw,
     };
@@ -124,7 +126,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           isExpanded={next.expanded !== false}
           animations={next.animations}
           currentTime={next.currentTime}
-          isTrackHidden={false}
+          isTrackHidden={next.isTrackHidden}
           isAudioTrack={next.isAudioTrack}
           isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
@@ -279,6 +281,27 @@ describe("TimelineTrackHeader", () => {
     );
     expect(labels.some((l) => l && /^(Hide|Show) track/.test(l))).toBe(false);
     expect(labels).not.toContain("Mute");
+    act(() => view.root.unmount());
+  });
+
+  // The escape hatch. `data-hidden` on audio silences it in preview and drops it
+  // from the render; the panel's "Muted" is the unrelated HTML `muted`
+  // attribute, and nothing else writes it. Withholding the eye unconditionally
+  // meant a track hidden by "Hide all" (or by hand, or before that rule existed)
+  // was silent with no control anywhere to bring it back.
+  it("offers the eye on an audio track that is already hidden, so it can be restored", () => {
+    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+    const view = renderHeader({
+      keyframeClip: audio,
+      trackElements: [audio],
+      isAudioTrack: true,
+      isTrackHidden: true,
+      animations: [],
+    });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^Show track/.test(l))).toBe(true);
     act(() => view.root.unmount());
   });
 

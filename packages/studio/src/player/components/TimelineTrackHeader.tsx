@@ -603,7 +603,8 @@ export function TimelineTrackHeader({
               hidden={isTrackHidden}
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
-              visible={!isAudioTrack}
+              // Audio: only while hidden — see the plain header.
+              visible={!isAudioTrack || isTrackHidden}
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>

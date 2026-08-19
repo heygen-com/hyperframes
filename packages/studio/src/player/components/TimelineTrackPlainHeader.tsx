@@ -99,12 +99,21 @@ export function PlainTrackHeader({
           audio it silences rather than hides — but a row that already says what
           it is with a speaker does not also need the hide affordance sitting in
           the eye's slot. `visible={false}` rather than omitting the element, so
-          the spacer keeps every row's control columns aligned. */}
+          the spacer keeps every row's control columns aligned.
+
+          EXCEPT when the audio track is ALREADY hidden. Withholding the control
+          unconditionally withheld the only way back: `data-hidden` silences the
+          clip in preview and drops it from the render, the panel's "Muted" is
+          the unrelated HTML `muted` attribute, and nothing else writes it — so a
+          track hidden before this rule (or by "Hide all", or by hand) was
+          silent with no control anywhere to restore it. Offering the eye only
+          in that state keeps the affordance off a normal audio row while
+          leaving the door open from the inside. */}
         <VisibilityButton
           hidden={isTrackHidden}
           trackNumber={trackNumber}
           trackDisplayNumber={trackDisplayNumber}
-          visible={!isAudioTrack}
+          visible={!isAudioTrack || isTrackHidden}
           onToggle={onToggleTrackHidden}
         />
         {trailing}

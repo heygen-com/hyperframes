@@ -26,6 +26,7 @@ import {
   type ColorGradingScope,
 } from "./studioColorGradingScope";
 import { timelineKeysForSelections } from "../utils/studioHelpers";
+import { canHideSelections } from "../utils/timelineInspector";
 import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useRemoveBackground } from "../hooks/useRemoveBackground";
 
@@ -246,6 +247,17 @@ export function StudioRightPanel({
     [handleDomAttributeLiveCommit],
   );
   const handleHideAllSelected = () => {
+    // Audio has no visual to hide, and `data-hidden` on an audio element is what
+    // MUTES it — preview silences it and the render drops it from the mix. The
+    // timeline withholds the eye on an audio track for that reason
+    // (`visible={!isAudioTrack}`), and the single-selection panel gates the same
+    // write on `audioSelection`; this multi-selection path was the way back to
+    // it. Checked here as well as in the panel because the button is not the
+    // only caller.
+    if (!canHideSelections(domEditGroupSelections)) {
+      showToast("Audio can't be hidden — use the group's own controls", "info");
+      return;
+    }
     const { elements } = usePlayerStore.getState();
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
     if (keys.length > 0) void onToggleElementHidden?.(keys, true);
