@@ -423,12 +423,6 @@ export class WebAudioTransport {
     }
   }
 
-  /** Every group id currently routing audio (built lazily by `groupInput` —
-   *  a group with no active member yet has no entry here). */
-  groupIds(): string[] {
-    return [...this._groups.keys()];
-  }
-
   /** Master, unless `el` belongs to a group — then that group's bus (built on
    *  first use, per `groupInput`). */
   private resolveDestination(
