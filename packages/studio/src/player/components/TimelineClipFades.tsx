@@ -6,6 +6,7 @@ import {
   MIN_FADE_SECONDS,
   type ClipFades,
   type FadeCurve,
+  type FadeSampler,
 } from "./clipFades";
 
 /**
@@ -26,6 +27,8 @@ export interface TimelineClipFadesProps {
   pixelsPerSecond: number;
   width: number;
   curve: FadeCurve;
+  /** How the level rises across the fade — the medium decides. */
+  sample: FadeSampler;
   /** Grips are hidden until the clip is worth aiming at. */
   showGrips: boolean;
   /** True when this is not the selected clip, which is what makes it editable. */
@@ -55,6 +58,7 @@ export function TimelineClipFades({
   pixelsPerSecond,
   width,
   curve,
+  sample,
   showGrips,
   readOnly,
   onPreview,
@@ -181,7 +185,7 @@ export function TimelineClipFades({
           const { line, fill } = fadeWedgePath({
             edge,
             seconds,
-            curve,
+            sample,
             pixelsPerSecond,
             width,
             height: VIEW_HEIGHT,

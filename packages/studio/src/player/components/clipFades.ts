@@ -3,31 +3,38 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import { fadeEase, type HfFadeCurve } from "@hyperframes/core/clip-fade";
 import { roundToCenti } from "../../utils/rounding";
 
 /**
- * Fade-handle math: turning the grips on a clip's top corners into the volume
- * envelope underneath them, and back.
+ * Fade-handle math, shared by both kinds of clip.
  *
- * A fade is not stored as a fade — it is the leading and trailing segment of
- * the clip's ordinary automation envelope. That is what makes the handle
- * two-way: it reads the shape it wrote. It also means a hand-drawn envelope
- * must survive being touched, so every write here rewrites ONLY the head and
- * tail segments and carries whatever the author put between them across
- * untouched.
+ * The two store a fade in the place their medium already keeps that kind of
+ * information, and this module is what lets one gesture drive both:
+ *
+ * - **Visual** clips carry `data-fade-in` / `data-fade-out`, which the runtime
+ *   applies. The curve is one of the runtime's own easings.
+ * - **Audio** clips carry the fade as the leading and trailing segment of their
+ *   volume envelope, so it stays editable as breakpoints afterwards. The curve
+ *   is the envelope's own segment curvature.
+ *
+ * Everything below is about the lengths, which behave identically either way;
+ * only the sampler used to DRAW the fade differs, and that is passed in.
  */
 
-/** Curve shapes a fade can take, and the segment curvature each one writes. */
-export const FADE_CURVES = {
-  /** Straight line: the default, and what a constant-power fade is not. */
+export type FadeCurve = HfFadeCurve;
+
+/** Envelope curvature that best matches each named curve, for audio fades. */
+export const FADE_CURVES: Record<FadeCurve, number> = {
+  /** Straight line. */
   linear: 0,
   /** Eases out of silence and into it — the usual choice for music. */
   smooth: 0.35,
   /** Holds the level then drops late; useful under a voice. */
   sharp: -0.45,
-} as const;
+};
 
-export type FadeCurve = keyof typeof FADE_CURVES;
+export const FADE_CURVE_ORDER: readonly FadeCurve[] = ["linear", "smooth", "sharp"];
 
 /** Shortest fade the handle will write; below this it reads as "no fade". */
 export const MIN_FADE_SECONDS = 0.05;
@@ -50,10 +57,11 @@ const atFloor = (v: number, min: number) => Math.abs(v - min) <= LEVEL_EPSILON;
 const atCeiling = (v: number, max: number) => Math.abs(v - max) <= LEVEL_EPSILON;
 
 /**
- * Read the fades out of an envelope, conservatively: a head segment counts as a
- * fade-in only when it starts at the clip's first frame, starts at silence, and
- * rises to full level. Anything else is somebody's automation and is reported
- * as no fade, so the handle never claims to own a curve it would flatten.
+ * Read the fades out of a volume envelope, conservatively: a head segment counts
+ * as a fade-in only when it starts at the clip's first frame, starts at silence,
+ * and rises to full level. Anything else is somebody's automation and is
+ * reported as no fade, so the handle never claims to own a curve it would
+ * flatten.
  */
 export function readClipFades(
   points: readonly HfAutomationPoint[],
@@ -94,8 +102,9 @@ export function readClipFades(
 
 /**
  * The longest each fade may be: together they may not overlap, and each is
- * capped at the clip. Split evenly when both are dragged past the middle, so a
- * long fade-in shortens the room left for a fade-out rather than fighting it.
+ * capped at the clip. Split in proportion when both are dragged past the middle,
+ * so a long fade-in shortens the room left for a fade-out rather than fighting
+ * it — the same rule the runtime applies when it plays them.
  */
 export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
   const fadeIn = Math.max(0, Math.min(fades.fadeIn, duration));
@@ -106,13 +115,36 @@ export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
       fadeOut: fadeOut >= MIN_FADE_SECONDS ? roundToCenti(fadeOut) : 0,
     };
   }
-  // Overlapping: give each what it asked for, in proportion, so neither jumps.
   const total = fadeIn + fadeOut;
   return clampClipFades(
     { fadeIn: (fadeIn / total) * duration, fadeOut: (fadeOut / total) * duration },
     duration,
   );
 }
+
+/** How a fade's level rises across its length, for whichever medium draws it. */
+export type FadeSampler = (progress: number) => number;
+
+/** The sampler a VISUAL fade is drawn with: the runtime's own easing. */
+export function visualFadeSampler(curve: FadeCurve): FadeSampler {
+  return (progress) => fadeEase(progress, curve);
+}
+
+/** The sampler an AUDIO fade is drawn with: the envelope's segment curvature. */
+export function audioFadeSampler(curve: FadeCurve): FadeSampler {
+  const curvature = FADE_CURVES[curve];
+  const lane: HfAutomationLane = {
+    target: "volume",
+    points: [
+      { t: 0, v: 0, curve: curvature || undefined },
+      { t: 1, v: 1 },
+    ],
+  };
+  return (progress) => sampleAutomationLane(lane, progress, "linear");
+}
+
+/** Segments a wedge is drawn with; enough that any easing reads smooth. */
+const WEDGE_SAMPLES = 24;
 
 /**
  * The two SVG paths a fade draws, as one pair so they cannot disagree:
@@ -122,64 +154,45 @@ export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
  *   side too, which reads as a rectangle butted onto the curve.
  * - `fill` is that same line closed back to the clip's corner — the region the
  *   fade takes away — and is never stroked.
- *
- * Both are sampled through the interpolator the runtime plays back, so a curved
- * fade is drawn as the curve it will sound like rather than a straight line
- * standing in for one.
  */
 export function fadeWedgePath(input: {
   edge: "in" | "out";
   seconds: number;
-  curve: FadeCurve;
+  sample: FadeSampler;
   pixelsPerSecond: number;
   width: number;
   height: number;
 }): { line: string; fill: string } {
-  const { edge, seconds, curve, pixelsPerSecond, width, height } = input;
+  const { edge, seconds, sample, pixelsPerSecond, width, height } = input;
   const span = Math.min(seconds * pixelsPerSecond, width);
   if (span <= 0) return { line: "", fill: "" };
-  const curvature = FADE_CURVES[curve];
-  const lane: HfAutomationLane = {
-    target: "volume",
-    points:
-      edge === "in"
-        ? [
-            { t: 0, v: 0, curve: curvature || undefined },
-            { t: seconds, v: 1 },
-          ]
-        : [
-            { t: 0, v: 1, curve: curvature || undefined },
-            { t: seconds, v: 0 },
-          ],
-  };
   // Both wedges are drawn left to right, which is the direction the level line
   // is read in: a fade-in rises out of the clip's start, a fade-out falls into
-  // its end. The out wedge therefore begins `span` short of the right edge, not
-  // at it — drawing it from the edge inward mirrors the fade.
+  // its end. The out wedge therefore begins `span` short of the right edge.
   const xAt = (progress: number) =>
     edge === "in" ? span * progress : width - span * (1 - progress);
-  const steps = curvature === 0 ? 1 : WEDGE_SAMPLES;
+  // Always sampled, never "detect a straight line and shortcut it": every
+  // symmetric easing passes through 0.5 at its midpoint, so the obvious probe
+  // says smoothstep is a straight line and draws it as one.
   const points: string[] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    const progress = i / steps;
-    const level = sampleAutomationLane(lane, seconds * progress, "linear");
+  for (let i = 0; i <= WEDGE_SAMPLES; i += 1) {
+    const progress = i / WEDGE_SAMPLES;
+    // A fade-out is the same rise read backwards.
+    const level = edge === "in" ? sample(progress) : sample(1 - progress);
     points.push(`${xAt(progress).toFixed(2)} ${((1 - level) * height).toFixed(2)}`);
   }
   const line = `M ${points.join(" L ")}`;
-  // The fill closes through the clip's own corner: up to the top for a fade-in,
-  // back along the top for a fade-out. Never stroked, so those closing edges
-  // stay invisible and only the level reads as a line.
+  // The fill closes through the clip's own corner. Never stroked, so those
+  // closing edges stay invisible and only the level reads as a line.
   const corner = edge === "in" ? 0 : width;
   return { line, fill: `${line} L ${corner} 0 Z` };
 }
 
-/** Segments used to draw a curved wedge; a straight one needs no sampling. */
-const WEDGE_SAMPLES = 24;
-
 /**
- * Rewrite the envelope's head and tail to match `fades`, keeping every point
- * the author placed in between. Returns an empty list when there is nothing
- * left to describe — the caller drops the lane rather than storing a flat line.
+ * Rewrite a volume envelope's head and tail to match `fades`, keeping every
+ * point the author placed in between. Returns an empty list when there is
+ * nothing left to describe — the caller drops the lane rather than storing a
+ * flat line. Audio only; a visual fade is two attributes, not an envelope.
  */
 export function writeClipFades(
   points: readonly HfAutomationPoint[],

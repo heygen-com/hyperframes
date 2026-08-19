@@ -63,6 +63,16 @@ export {
 // TimelineElement factories
 // ---------------------------------------------------------------------------
 
+/** Carry the clip's fade attributes verbatim; the grips rewrite the text. */
+function readFadeAttributes(entry: TimelineElement, el: Element): void {
+  const fadeIn = el.getAttribute("data-fade-in");
+  if (fadeIn) entry.fadeIn = fadeIn;
+  const fadeOut = el.getAttribute("data-fade-out");
+  if (fadeOut) entry.fadeOut = fadeOut;
+  const fadeCurve = el.getAttribute("data-fade-curve");
+  if (fadeCurve) entry.fadeCurve = fadeCurve;
+}
+
 function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
 }
@@ -142,6 +152,7 @@ export function createTimelineElementFromManifestClip(params: {
     if (fxChain) entry.fxChain = fxChain;
     const automation = hostEl.getAttribute("data-automation");
     if (automation) entry.automation = automation;
+    readFadeAttributes(entry, hostEl);
     entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
@@ -345,6 +356,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     if (domFxChain) entry.fxChain = domFxChain;
     const domAutomation = el.getAttribute("data-automation");
     if (domAutomation) entry.automation = domAutomation;
+    readFadeAttributes(entry, el);
 
     if (el.hasAttribute("data-timeline-locked")) {
       entry.timelineLocked = true;

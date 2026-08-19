@@ -57,6 +57,15 @@ export interface TimelineElement {
   /** Verbatim `data-fx-chain` / `data-automation`; see automationLaneData. */
   fxChain?: string;
   automation?: string;
+  /**
+   * Verbatim `data-fade-in` / `data-fade-out` / `data-fade-curve`. Carried as
+   * written rather than parsed here: the fade grips read and rewrite the
+   * attributes, and round-tripping the text is what keeps the timeline, the
+   * file and the running composition on one source of truth.
+   */
+  fadeIn?: string;
+  fadeOut?: string;
+  fadeCurve?: string;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
   /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
@@ -76,3 +85,24 @@ export interface TimelineElement {
   expandedParentStart?: number;
   expandedHostKey?: string;
 }
+
+/**
+ * The fields a timeline edit may write straight back onto an element.
+ *
+ * Optimistic application is the pattern every timing edit here uses: apply,
+ * then persist, then reassert — so the surface that can be applied that way is
+ * named once rather than re-listed at each writer.
+ */
+export type EditableTimelineFields = Pick<
+  TimelineElement,
+  | "start"
+  | "duration"
+  | "track"
+  | "zIndex"
+  | "hasExplicitZIndex"
+  | "playbackStart"
+  | "hidden"
+  | "fadeIn"
+  | "fadeOut"
+  | "fadeCurve"
+>;
