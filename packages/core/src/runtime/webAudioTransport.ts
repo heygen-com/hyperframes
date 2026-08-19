@@ -6,7 +6,7 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf, isAudibleUnderSolo, readAudioGroupVolume } from "../audioGroups.js";
+import { audioGroupOf, readAudioGroupVolume } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -101,11 +101,6 @@ function scheduleVolumeLane(
 type ScheduledSourceBase = {
   el: HTMLMediaElement;
   gainNode: GainNode;
-  /** Solo ("Hear only this") attenuation — dedicated node, parallel to the
-   *  volume gain, so a solo toggle never fights `scheduleVolumeLane`'s ramps
-   *  on the same param (same hazard B5's group-mute gain was split out to
-   *  avoid). 0 while silenced by an active solo elsewhere, 1 otherwise. */
-  soloGain: GainNode;
   /** FX chain spliced between source and gain, when the element carries one. */
   fx?: ElementFxHandle | null;
   compositionStart: number;
@@ -171,10 +166,6 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
-  // Session-only "Hear only this" set (clip ids and group ids). Never read
-  // from or written to any attribute — studio pushes it in directly via
-  // `setSolo`; see `isAudibleUnderSolo` for the exact predicate.
-  private _soloed: ReadonlySet<string> = new Set();
 
   async init(): Promise<boolean> {
     try {
@@ -506,7 +497,6 @@ export class WebAudioTransport {
       sourceNode.disconnect();
       scheduled.fx?.dispose();
       scheduled.gainNode.disconnect();
-      scheduled.soloGain.disconnect();
     } catch {
       // Already torn down.
     }
@@ -559,10 +549,7 @@ export class WebAudioTransport {
       // output — the same order the offline render uses. Preview and render run
       // the identical graph builders, so what is heard here is what is written.
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      const soloGain = this._ctx.createGain();
-      soloGain.gain.value = isAudibleUnderSolo(this._soloed, el.id, audioGroupOf(el)) ? 1 : 0;
-      gainNode.connect(soloGain);
-      soloGain.connect(
+      gainNode.connect(
         this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
       );
 
@@ -586,7 +573,6 @@ export class WebAudioTransport {
         sourceNode.disconnect();
         fx?.dispose();
         gainNode.disconnect();
-        soloGain.disconnect();
         return null;
       }
 
@@ -600,7 +586,6 @@ export class WebAudioTransport {
         sourceNode,
         sourceKind: "buffer",
         gainNode,
-        soloGain,
         compositionStart,
         mediaStart,
         scheduledAt,
@@ -682,7 +667,6 @@ export class WebAudioTransport {
         source.sourceNode.disconnect();
         source.fx?.dispose();
         source.gainNode.disconnect();
-        source.soloGain.disconnect();
       } catch {
         // already stopped
       }
@@ -729,31 +713,6 @@ export class WebAudioTransport {
 
   private applyMasterGain(): void {
     if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
-  }
-
-  /**
-   * Push the current "Hear only this" set and re-evaluate every active
-   * source's solo gain against it — a gain-stage update, never a graph
-   * rebuild (rule 3 of B5's step doc). Group buses are never touched here:
-   * per `isAudibleUnderSolo`, a group is never attenuated by solo, so a
-   * soloed member's path through its (unattenuated) group stays open by
-   * construction.
-   */
-  setSolo(soloed: ReadonlySet<string>): void {
-    this._soloed = soloed;
-    for (const source of this._activeSources) {
-      try {
-        source.soloGain.gain.value = isAudibleUnderSolo(
-          this._soloed,
-          source.el.id,
-          audioGroupOf(source.el),
-        )
-          ? 1
-          : 0;
-      } catch (err) {
-        swallow("webAudioTransport.setSolo", err);
-      }
-    }
   }
 
   isActive(): boolean {

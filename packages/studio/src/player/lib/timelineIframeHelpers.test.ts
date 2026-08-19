@@ -94,9 +94,6 @@ describe("applyPreviewAudioFlags", () => {
     const calls: Record<string, unknown[]> = {};
     const win = {
       __hf: {
-        setAudioSolo: (ids: readonly string[]) => {
-          calls.solo = [...ids];
-        },
         setCanaries: (states: Record<string, boolean>) => {
           calls.canaries = [states];
         },
@@ -111,23 +108,13 @@ describe("applyPreviewAudioFlags", () => {
   }
 
   // Everything pushed here is state the runtime loses on reload and nothing
-  // else re-sends: the solo bridge's effect deps do not change across a
-  // reload, so the button stayed lit while every track played.
-  it("re-pushes the whole audio state, solo included", () => {
+  // else re-sends, so the push has to carry all of it every time.
+  it("re-pushes the whole audio state", () => {
     const { iframe, calls } = fakeIframe();
 
-    applyPreviewAudioFlags(iframe, false, 1, new Set(["voice-1"]));
+    applyPreviewAudioFlags(iframe, false, 1);
 
-    expect(calls.solo).toEqual(["voice-1"]);
     // Every runtime-visible flag in one push, each resolved by the host.
     expect(calls.canaries?.[0]).toMatchObject({ "audio-track-mute": expect.any(Boolean) });
-  });
-
-  it("pushes an empty solo set rather than skipping the call", () => {
-    const { iframe, calls } = fakeIframe();
-
-    applyPreviewAudioFlags(iframe, false, 1, new Set());
-
-    expect(calls.solo).toEqual([]);
   });
 });

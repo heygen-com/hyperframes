@@ -19,7 +19,7 @@ function hasKeyframedTimelineClips(
  * for the same reason a keyframed clip does — a row whose name has nowhere else
  * to go. A track row survives a narrow gutter because its CLIPS carry the name
  * on the bar; a group row has no clips at all, so in the 80px gutter its label
- * rendered at zero width and its solo, FX and lane buttons were clipped off the
+ * rendered at zero width and its FX and lane buttons were clipped off the
  * side.
  *
  * Widening the column for the whole timeline, rather than letting just the

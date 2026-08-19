@@ -42,7 +42,7 @@ import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
-import { HF_AUDIO_GROUP_TAG, audioGroupOf, isAudibleUnderSolo } from "../audioGroups";
+import { HF_AUDIO_GROUP_TAG } from "../audioGroups";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
@@ -178,20 +178,7 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
-  // Studio's "Hear only this" push channel — session-only, so it rides a
-  // dedicated `__hf` field (mirrors `colorGrading`'s lazy-init pattern) rather
-  // than a DOM attribute: solo must never be written to the document (design
-  // doc §2.2 / the export-safety guarantee), so there is nothing here for
-  // `syncTimedElementVisibility`'s attribute-diffing to key off. Kept in this
-  // closure too (not just inside `webAudio`) so `syncRuntimeMedia`'s
-  // HTMLMedia-fallback path (video/non-transport audio) can apply the same
-  // predicate per tick, the same split A2 used for `data-hidden`.
-  let soloedIds: ReadonlySet<string> = new Set();
   window.__hf = window.__hf || {};
-  window.__hf.setAudioSolo = (ids) => {
-    soloedIds = new Set(ids);
-    webAudio.setSolo(soloedIds);
-  };
   // Canary states the HOST resolved, keyed by registry name. Core cannot
   // resolve one itself — bucketing needs an install id it has no access to —
   // so every runtime-visible flag arrives through this one channel rather than
@@ -2116,7 +2103,6 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
-        isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
         silenceHiddenAudio: silenceHiddenAudioEnabled(),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;

@@ -16,7 +16,6 @@ import {
 } from "./automationSelectionSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
-import { createAudioSoloSlice, type AudioSoloSlice } from "./audioSoloSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -48,8 +47,7 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState
-  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, AudioSoloSlice {
+interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -278,7 +276,6 @@ export function createTimelineResetState() {
     automationSelection: null,
     expandedClipIds: new Set<string>(),
     // Per-composition: ids from comp A match nothing in B, silencing all of it.
-    soloed: new Set<string>(),
     collapsedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),
     focusedEaseSegment: null,
@@ -331,7 +328,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   ...createThumbnailSlice(set),
 
   ...createAutomationSelectionSlice(set),
-  ...createAudioSoloSlice(set, get),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),

@@ -6,7 +6,6 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { useSoloBannerText } from "../../hooks/useAudioSoloBridge";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
@@ -154,34 +153,6 @@ const FullscreenButton = memo(function FullscreenButton({
   );
 });
 
-const SoloBanner = memo(function SoloBanner({
-  previewIframeRef,
-}: {
-  previewIframeRef: { current: HTMLIFrameElement | null };
-}) {
-  const bannerText = useSoloBannerText(previewIframeRef);
-  const clearSolo = usePlayerStore.getState().clearSolo;
-  if (bannerText === null) return null;
-  return (
-    <div
-      role="status"
-      className="flex h-7 items-center justify-center gap-2 border-b border-neutral-800 bg-neutral-900/90 px-3 text-[11px] text-neutral-300"
-    >
-      <span>
-        Hearing only <span className="font-medium text-neutral-100">{bannerText}</span> — your
-        export is not affected
-      </span>
-      <button
-        type="button"
-        onClick={() => clearSolo()}
-        className="rounded px-1.5 py-0.5 font-medium text-studio-accent transition-colors hover:text-white"
-      >
-        Clear
-      </button>
-    </div>
-  );
-});
-
 /* ── Main component ──────────────────────────────────────────────── */
 
 interface PlayerControlsProps {
@@ -190,7 +161,6 @@ interface PlayerControlsProps {
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  previewIframeRef?: { current: HTMLIFrameElement | null };
 }
 
 export const PlayerControls = memo(function PlayerControls({
@@ -199,7 +169,6 @@ export const PlayerControls = memo(function PlayerControls({
   disabled = false,
   isFullscreen = false,
   onToggleFullscreen,
-  previewIframeRef,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
@@ -252,7 +221,6 @@ export const PlayerControls = memo(function PlayerControls({
 
   return (
     <div>
-      {previewIframeRef && <SoloBanner previewIframeRef={previewIframeRef} />}
       <div
         className="grid h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
         aria-disabled={disabled || undefined}

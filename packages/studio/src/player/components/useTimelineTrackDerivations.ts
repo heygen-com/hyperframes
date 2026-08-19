@@ -22,7 +22,7 @@ export interface TimelineTrackGroupInfo {
    *
    * Collapsing a group stops emitting its member rows into `tracks`, so anything
    * that recovered member elements by looking them up there got an empty list in
-   * the default (collapsed) state — silently disabling half-lit solo, the
+   * the default (collapsed) state — silently disabling the
    * automation-lane count, and the bus strip's member labels. Membership is not
    * a display concern, so it does not travel through the display list.
    */

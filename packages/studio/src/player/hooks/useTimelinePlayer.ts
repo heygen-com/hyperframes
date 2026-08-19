@@ -232,8 +232,8 @@ export function useTimelinePlayer() {
     } catch {}
   }, []);
   const applyPreviewAudioState = useCallback(() => {
-    const { audioMuted, audioVolume, soloed } = usePlayerStore.getState();
-    applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume, soloed);
+    const { audioMuted, audioVolume } = usePlayerStore.getState();
+    applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
     stopRAFLoop();

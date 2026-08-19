@@ -217,11 +217,6 @@ export function syncRuntimeMedia(params: {
   /** Native media routed through WebAudio keeps its upstream element volume at
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
-  /** "Hear only this" gate for the HTMLMedia fallback path (video / any audio
-   *  not owned by the Web Audio transport, which applies its own dedicated
-   *  solo gain instead — see `WebAudioTransport.setSolo`). Absent when solo
-   *  isn't wired up at all, which reads as "always audible". */
-  isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
   /** Silence media under a `data-hidden` ancestor, matching the render. Opt-in:
    *  the host pushes it via `__hf.setCanaries` when the `audio-track-mute`
    *  canary is on. Absent/false = the shipped behaviour (hidden audio still
@@ -329,16 +324,11 @@ export function syncRuntimeMedia(params: {
       // it); preview matches once the host opts in (`silenceHiddenAudio`, the
       // `audio-track-mute` canary — see init.ts). Folded into the per-tick
       // volume, not el.muted (RULES trap: el.muted is the transport's ownership
-      // flag). Solo rides the same fold for the same reason — never el.muted,
-      // and never touching any attribute (it is session-only, unlike hidden) —
-      // but is NOT gated: it is a session control with no shipped behaviour to
-      // preserve.
+      // flag).
       const silencedByHidden = params.silenceHiddenAudio
         ? el.closest("[data-hidden]") !== null
         : false;
-      const silencedBySolo = params.isAudibleUnderSolo ? !params.isAudibleUnderSolo(el) : false;
-      const effectiveVolume =
-        silencedByHidden || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
+      const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

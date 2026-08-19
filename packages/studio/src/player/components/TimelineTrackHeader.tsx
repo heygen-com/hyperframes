@@ -5,7 +5,7 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import { classifyAudioName } from "@hyperframes/core/audio-carve";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { type TimelineElement } from "../store/playerStore";
 import { VisibilityButton, PlainTrackHeader } from "./TimelineTrackPlainHeader";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -434,16 +434,6 @@ export function TimelineTrackHeader({
   // left an audio clip's envelopes unreachable, since the track could not expand.
   const disclosable = lanes.length > 0 || automationRows.length > 0;
   const isKeyframeLayer = !!keyframeClip && disclosable;
-  // Solo is per-clip/per-group, never per track (design doc §2.2) — this header
-  // acts on the track's first clip as a pragmatic stand-in for "this track",
-  // the same simplification the mute button doesn't need to make (it patches
-  // every clip on the track at once).
-  // A bare DOM id, not the store key: the set lands in the runtime, which
-  // compares it against `el.id` (see `runtimeAudioId`). A track whose first
-  // clip has no DOM id simply has no solo button.
-  const soloTargetId = trackElements[0] ? runtimeAudioId(trackElements[0]) : null;
-  const soloed = usePlayerStore((s) => s.soloed);
-  const toggleSolo = usePlayerStore((s) => s.toggleSolo);
 
   // C1: the FX entry point. A single audio clip has one chain to point at; a
   // track holding several ungrouped ones has no single chain — the design
@@ -525,11 +515,8 @@ export function TimelineTrackHeader({
             showTrackLabel={showTrackLabel}
             isTrackHidden={isTrackHidden}
             isAudioTrack={isAudioTrack}
-            isGroupMuted={trackElements.some((el) => el.audioGroupHidden)}
-            isSoloed={soloTargetId !== null && soloed.has(soloTargetId)}
-            onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
             onToggleTrackHidden={onToggleTrackHidden}
-            // On the control line, beside mute and solo — not a third row.
+            // On the control line rather than a third row of its own.
             trailing={
               <>
                 {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
@@ -606,7 +593,6 @@ export function TimelineTrackHeader({
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
               visible={!isAudioTrack}
-              isAudioTrack={isAudioTrack}
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>

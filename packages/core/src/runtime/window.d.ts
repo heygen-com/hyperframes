@@ -38,12 +38,6 @@ declare global {
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
       /**
-       * Studio's "Hear only this" push: the full set of soloed clip/group ids,
-       * replaced wholesale on every change. Session-only by design — never
-       * read from or written to any document attribute.
-       */
-      setAudioSolo?: (ids: readonly string[]) => void;
-      /**
        * Canary states resolved by the HOST and pushed in, because core cannot
        * resolve one itself: bucketing needs an install id, which lives in the
        * studio's localStorage or the CLI's seed.

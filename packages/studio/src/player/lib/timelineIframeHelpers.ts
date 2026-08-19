@@ -167,23 +167,9 @@ function setPreviewCanaries(iframe: HTMLIFrameElement | null): void {
   } catch {}
 }
 
-/** Replace the runtime's soloed set. Same channel `useAudioSoloBridge` uses for
- *  live changes; repeated here because the bridge's effect deps do not change
- *  across a preview reload, so it never re-fires and the reloaded runtime would
- *  keep an empty set while the button stays lit. */
-function setPreviewSolo(iframe: HTMLIFrameElement | null, ids: readonly string[]): void {
-  if (!iframe) return;
-  try {
-    const win = iframe.contentWindow as
-      | (Window & { __hf?: { setAudioSolo?: (ids: readonly string[]) => void } })
-      | null;
-    win?.__hf?.setAudioSolo?.(ids);
-  } catch {}
-}
-
 /**
  * Everything the preview runtime has to be told about audio after it loads:
- * the transport's mute, the session's solo set, and the canary flags core
+ * the transport's mute and the canary flags core
  * cannot resolve for itself. Called from `applyPreviewAudioState`, which is the
  * path that re-runs after a preview reload — the runtime comes back with every
  * one of these at its default and nothing else pushes them again.
@@ -192,14 +178,12 @@ export function applyPreviewAudioFlags(
   iframe: HTMLIFrameElement | null,
   muted: boolean,
   volume: number,
-  soloed: ReadonlySet<string>,
 ): void {
   setPreviewMediaMuted(iframe, muted);
   // Volume too: the transport comes back at unity after a reload, so a preview
   // the author had turned down came back loud.
   setPreviewMediaVolume(iframe, volume);
   setPreviewCanaries(iframe);
-  setPreviewSolo(iframe, [...soloed]);
 }
 
 export function setPreviewPlaybackRate(

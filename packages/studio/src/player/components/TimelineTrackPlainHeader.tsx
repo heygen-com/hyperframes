@@ -1,21 +1,18 @@
 import type React from "react";
-import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
-import { isCanaryEnabled } from "../../telemetry/canary";
+import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { Music } from "../../icons/SystemIcons";
-import { TimelineSoloButton } from "./TimelineSoloButton";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
-// Audio tracks say "Mute", not "Hide" — the eye IS mute for sound-only rows.
-// Gated: the relabel ships behind the canary, unlike the preview fix.
-function visibilityButtonLabel(showAsMute: boolean, hidden: boolean, suffix: string): string {
-  if (showAsMute) return hidden ? "Muted" : "Mute";
+// Hide, plainly. The speaker variant was the mute presentation; with mute gone
+// this is the visibility eye it always was, and audio rows do not render it.
+function visibilityButtonLabel(hidden: boolean, suffix: string): string {
   return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
 }
 
-function visibilityButtonIcon(showAsMute: boolean, hidden: boolean) {
-  const Icon = showAsMute ? (hidden ? SpeakerSlash : SpeakerHigh) : hidden ? EyeSlash : Eye;
+function visibilityButtonIcon(hidden: boolean) {
+  const Icon = hidden ? EyeSlash : Eye;
   return <Icon size={14} weight="bold" aria-hidden="true" />;
 }
 
@@ -24,22 +21,19 @@ export function VisibilityButton({
   trackNumber,
   trackDisplayNumber,
   visible,
-  isAudioTrack,
   onToggle,
 }: {
   hidden: boolean;
   trackNumber: number;
   trackDisplayNumber: number | null;
   visible: boolean;
-  isAudioTrack?: boolean;
   onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
 }) {
   if (!visible) return <span aria-hidden="true" className="h-6 w-6 shrink-0" />;
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const showAsMute = Boolean(isAudioTrack) && isCanaryEnabled("audio-track-mute");
-  const label = visibilityButtonLabel(showAsMute, hidden, suffix);
+  const label = visibilityButtonLabel(hidden, suffix);
   return (
     <button
       type="button"
@@ -54,7 +48,7 @@ export function VisibilityButton({
         void onToggle?.(trackNumber, !hidden);
       }}
     >
-      {visibilityButtonIcon(showAsMute, hidden)}
+      {visibilityButtonIcon(hidden)}
     </button>
   );
 }
@@ -69,9 +63,6 @@ export function PlainTrackHeader({
   showTrackLabel,
   isTrackHidden,
   isAudioTrack,
-  isGroupMuted,
-  isSoloed,
-  onToggleSolo,
   onToggleTrackHidden,
   trailing,
 }: {
@@ -83,9 +74,6 @@ export function PlainTrackHeader({
   isAudioTrack: boolean;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   showTrackLabel: boolean;
-  isGroupMuted: boolean;
-  isSoloed: boolean;
-  onToggleSolo?: (options?: { add?: boolean }) => void;
   /** Trailing controls that belong on the control line — the FX entry points,
    *  which the caller owns because only it knows the clip they act on. */
   trailing?: React.ReactNode;
@@ -100,14 +88,7 @@ export function PlainTrackHeader({
           <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
         )}
         {showTrackLabel && (
-          <span
-            className={`min-w-0 flex-1 truncate text-[11px] ${
-              isAudioTrack && (isTrackHidden || isGroupMuted) && isCanaryEnabled("audio-track-mute")
-                ? "line-through"
-                : ""
-            }`}
-            title={isGroupMuted && !isTrackHidden ? `${trackLabel} (group muted)` : trackLabel}
-          >
+          <span className="min-w-0 flex-1 truncate text-[11px]" title={trackLabel}>
             {trackLabel}
           </span>
         )}
@@ -124,12 +105,8 @@ export function PlainTrackHeader({
           trackNumber={trackNumber}
           trackDisplayNumber={trackDisplayNumber}
           visible={!isAudioTrack}
-          isAudioTrack={isAudioTrack}
           onToggle={onToggleTrackHidden}
         />
-        {isAudioTrack && isCanaryEnabled("audio-track-mute") && onToggleSolo && (
-          <TimelineSoloButton isSoloed={isSoloed} onToggle={onToggleSolo} />
-        )}
         {trailing}
       </div>
     </>

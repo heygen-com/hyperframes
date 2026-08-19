@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { getTimelineLaneTop, LABEL_COL_W } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -757,20 +757,6 @@ describe("TimelineTrackHeader", () => {
     // The set is pushed straight into the runtime, which compares it against
     // `el.id`. A store key here matches nothing, `isAudibleUnderSolo` returns
     // false for every element, and soloing silences the whole preview.
-    it("solos by bare DOM id, not by the store key", () => {
-      enabledCanaries.add("audio-track-mute");
-      const view = renderHeader({
-        keyframeClip: VOICE,
-        animations: [],
-        expanded: false,
-        isAudioTrack: true,
-      });
-      click(view.host, "Hear only this");
-      expect([...usePlayerStore.getState().soloed]).toEqual(["voice-1"]);
-      act(() => view.root.unmount());
-      usePlayerStore.getState().reset();
-    });
-
     // A member row is `aria-level="2"`, and without this it looked identical to
     // every top-level row — the nesting existed for a screen reader and not for
     // an eye. B2's design called for the accent rail; only the semantics shipped.

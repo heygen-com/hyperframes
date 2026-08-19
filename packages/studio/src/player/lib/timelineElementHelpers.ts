@@ -361,13 +361,12 @@ export function getTimelineElementIdentity(element: { key?: string | null; id: s
  * Studio addresses rows by `buildTimelineElementKey`'s composite
  * `<sourceFile>#<domId>`, but everything audio in `@hyperframes/core` keys off
  * the live document: `resolveAudioGroups` collects `member.id`,
- * `isAudibleUnderSolo` compares `el.id`, `resolveCarveSourceIds` and
- * `resolveSoloLabel` both go through `getElementById`. Anything crossing into
- * that space — a solo id, a group membership list, a carve source — has to be
+ * `resolveCarveSourceIds` goes through `getElementById`. Anything crossing into
+ * that space — a group membership list, a carve source — has to be
  * converted here first; a composite key silently matches nothing.
  *
  * `null` for a row with no DOM id at all (selector-addressed elements): such an
- * element cannot be soloed or grouped, because `resolveAudioGroups` skips
+ * element cannot be grouped, because `resolveAudioGroups` skips
  * members without an `id` and would build a group that is half there.
  */
 export function runtimeAudioId(element: { domId?: string | null }): string | null {
