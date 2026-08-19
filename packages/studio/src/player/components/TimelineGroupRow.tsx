@@ -152,25 +152,7 @@ export function TimelineGroupRow({
         columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
         theme={theme}
       />
-      {isLaneOpen && (
-        <TimelineGroupBusStrip
-          groupId={group.id}
-          volume={group.volume}
-          memberLabels={memberLabels}
-          onVolumeChange={(value) =>
-            onSetAudioGroupAttributeLive?.(group.id, "data-volume", String(value))
-          }
-          onVolumeCommit={(value) =>
-            onSetAudioGroupAttributeQuiet?.(
-              group.id,
-              "data-volume",
-              String(value),
-              "Set group volume",
-            )
-          }
-          theme={theme}
-        />
-      )}
+      {isLaneOpen && <TimelineGroupBusStrip memberLabels={memberLabels} />}
       {/* The group's OWN curves, under the strip. Selected-gated exactly like a
           clip's: the binder writes through the dom-edit selection, so a lane is
           editable once the group is selected — which clicking its name does. */}

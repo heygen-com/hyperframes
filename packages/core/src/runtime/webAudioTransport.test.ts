@@ -928,66 +928,6 @@ describe("WebAudioTransport", () => {
         expect(() => transport.setGroupMuted("never-played", true)).not.toThrow();
       });
     });
-
-    describe("groupLevel meter (B7)", () => {
-      it("groupLevel returns null for an unknown/idle group id", () => {
-        const { transport } = setupGroupTransport();
-        expect(transport.groupLevel("never-played")).toBeNull();
-      });
-
-      it("creates exactly one analyser per group, lazily, on first member", async () => {
-        const { transport, mock, gen } = setupGroupTransport();
-        expect(mock.analysers).toHaveLength(0);
-
-        await scheduleGrouped(transport, gen, "a", "vo");
-        expect(mock.analysers).toHaveLength(1);
-        expect(mock.analysers[0]!.fftSize).toBe(256); // level, not spectrum
-
-        await scheduleGrouped(transport, gen, "b", "vo");
-        expect(mock.analysers).toHaveLength(1); // second member reuses the bus
-
-        expect(transport.groupIds()).toEqual(["vo"]);
-      });
-
-      it("groupLevel reads RMS off the group's own analyser once a member is scheduled", async () => {
-        const { transport, mock, gen } = setupGroupTransport();
-        await scheduleGrouped(transport, gen, "a", "vo");
-
-        const analyser = mock.analysers[0]!;
-        analyser.getFloatTimeDomainData.mockImplementation((buf: Float32Array) => {
-          buf.fill(0.5);
-        });
-
-        const reading = transport.groupLevel("vo");
-        expect(reading).not.toBeNull();
-        expect(reading!.level).toBeCloseTo(0.5, 5);
-        expect(reading!.clipped).toBe(false);
-      });
-
-      it("flags clipped when any sample hits the ceiling", async () => {
-        const { transport, mock, gen } = setupGroupTransport();
-        await scheduleGrouped(transport, gen, "a", "vo");
-
-        const analyser = mock.analysers[0]!;
-        analyser.getFloatTimeDomainData.mockImplementation((buf: Float32Array) => {
-          buf.fill(0.1);
-          buf[0] = 0.995;
-        });
-
-        expect(transport.groupLevel("vo")!.clipped).toBe(true);
-      });
-
-      it("disposes the analyser along with the rest of the group bus", async () => {
-        const { transport, mock, gen } = setupGroupTransport();
-        await scheduleGrouped(transport, gen, "a", "vo");
-        const analyser = mock.analysers[0]!;
-
-        transport.destroy();
-
-        expect(analyser.disconnect).toHaveBeenCalled();
-        expect(transport.groupLevel("vo")).toBeNull();
-      });
-    });
   });
 
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {

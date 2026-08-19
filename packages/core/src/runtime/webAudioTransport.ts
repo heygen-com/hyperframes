@@ -147,8 +147,6 @@ export class WebAudioTransport {
       /** Post-FX fader: `data-volume` plus the volume lane. */
       fader: GainNode;
       muteGain: GainNode;
-      analyser: AnalyserNode;
-      levelBuf: Float32Array;
       /** Kept so `setRate` can re-aim this bus's FX automation, the way it does
        *  every source's — its docblock claims it already did. */
       fx: ElementFxHandle | null;
@@ -347,16 +345,10 @@ export class WebAudioTransport {
     const input = this._ctx.createGain();
     // Stable point the FX chain (or, when there's none, the dry passthrough —
     // see `attachElementFxChain`'s `detach()`) always lands on before master,
-    // regardless of whether a chain is attached/detached/rebuilt later. B7's
-    // meter taps here. The mute gain splices in BEFORE `output` (between the
-    // FX chain and here), never after — the meter is defined to read the
-    // group's true, honestly-muted level (design doc §5), and this node is
-    // that contract's anchor.
+    // regardless of whether a chain is attached/detached/rebuilt later. The
+    // mute gain splices in BEFORE `output`, between the FX chain and here.
     const output = this._ctx.createGain();
     output.connect(this._masterGain);
-    const analyser = this._ctx.createAnalyser();
-    analyser.fftSize = 256; // level, not spectrum
-    output.connect(analyser);
 
     const groupEl = doc.getElementById(groupId);
     const muteGain = this._ctx.createGain();
@@ -384,8 +376,6 @@ export class WebAudioTransport {
       input,
       fader,
       muteGain,
-      analyser,
-      levelBuf: new Float32Array(analyser.fftSize),
       fx,
       generation: this._playGeneration,
       reanchor: (at: AutomationTiming) => {
@@ -407,7 +397,6 @@ export class WebAudioTransport {
           fader.disconnect();
           muteGain.disconnect();
           output.disconnect();
-          analyser.disconnect();
         } catch {
           // Already torn down.
         }
@@ -418,7 +407,7 @@ export class WebAudioTransport {
 
   /**
    * Group mute, preview side — a separate gain from `input`'s volume fader
-   * (B7) so a mute toggle never fights `scheduleVolumeLane`'s ramps on the
+   * so a mute toggle never fights `scheduleVolumeLane`'s ramps on the
    * same param (the same hazard the design doc flags for §2.1). A no-op
    * until the group has an active member: at that point `groupInput` reads
    * the element's own `data-hidden` for its initial value, so there is
@@ -438,24 +427,6 @@ export class WebAudioTransport {
    *  a group with no active member yet has no entry here). */
   groupIds(): string[] {
     return [...this._groups.keys()];
-  }
-
-  /**
-   * RMS-ish level 0..1 and whether the last block clipped, for the group's
-   * meter — or null when the group has no active member (idle/unknown).
-   * Reuses a per-group buffer; no per-frame allocation.
-   */
-  groupLevel(groupId: string): { level: number; clipped: boolean } | null {
-    const g = this._groups.get(groupId);
-    if (!g) return null;
-    g.analyser.getFloatTimeDomainData(g.levelBuf);
-    let sumSquares = 0;
-    let clipped = false;
-    for (const sample of g.levelBuf) {
-      sumSquares += sample * sample;
-      if (Math.abs(sample) >= 0.99) clipped = true;
-    }
-    return { level: Math.sqrt(sumSquares / g.levelBuf.length), clipped };
   }
 
   /** Master, unless `el` belongs to a group — then that group's bus (built on
