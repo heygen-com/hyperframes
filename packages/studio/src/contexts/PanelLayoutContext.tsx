@@ -1,9 +1,10 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { usePanelLayout } from "../hooks/usePanelLayout";
+import { useContext, useMemo, type ReactNode } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 
 type PanelLayoutValue = ReturnType<typeof usePanelLayout>;
 
-const PanelLayoutContext = createContext<PanelLayoutValue | null>(null);
+const PanelLayoutContext = createStableContext<PanelLayoutValue | null>("PanelLayoutContext", null);
 
 export function usePanelLayoutContext(): PanelLayoutValue {
   const ctx = useContext(PanelLayoutContext);

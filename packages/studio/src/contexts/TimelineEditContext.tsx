@@ -1,7 +1,11 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { useContext, useMemo, type ReactNode } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 import type { TimelineEditCallbacks } from "../player/components/timelineCallbacks";
 
-const TimelineEditContext = createContext<TimelineEditCallbacks | null>(null);
+const TimelineEditContext = createStableContext<TimelineEditCallbacks | null>(
+  "TimelineEditContext",
+  null,
+);
 
 export function useTimelineEditContext(): TimelineEditCallbacks {
   const ctx = useContext(TimelineEditContext);
