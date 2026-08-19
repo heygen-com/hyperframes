@@ -1,6 +1,11 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
+import {
+  defaultTimelineTheme,
+  getClipHandleOpacity,
+  getTimelineTrackStyle,
+  type TimelineTheme,
+} from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
@@ -33,7 +38,10 @@ interface TimelineClipProps {
    * part of it — the clip already knows its own width and length, and passing
    * them in would be two owners for one number.
    */
-  fades?: Omit<TimelineClipFadesProps, "duration" | "pixelsPerSecond" | "width" | "showGrips">;
+  fades?: Omit<
+    TimelineClipFadesProps,
+    "duration" | "pixelsPerSecond" | "width" | "showGrips" | "accent"
+  >;
   children?: ReactNode;
 }
 
@@ -196,6 +204,7 @@ export const TimelineClip = memo(function TimelineClip({
           pixelsPerSecond={pps}
           width={widthPx}
           showGrips={showHandles}
+          accent={getTimelineTrackStyle(el.tag).accent}
         />
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}

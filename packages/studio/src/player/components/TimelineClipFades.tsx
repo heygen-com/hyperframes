@@ -29,6 +29,13 @@ export interface TimelineClipFadesProps {
   curve: FadeCurve;
   /** How the level rises across the fade — the medium decides. */
   sample: FadeSampler;
+  /**
+   * The clip's accent. The same colour, weight and opacity the automation lane
+   * strokes an envelope with — a fade IS an envelope, and drawing the two alike
+   * is what makes the wedge on the clip and the curve in the expanded lane read
+   * as one line rather than two unrelated marks.
+   */
+  accent: string;
   /** Grips are hidden until the clip is worth aiming at. */
   showGrips: boolean;
   /** True when this is not the selected clip, which is what makes it editable. */
@@ -59,6 +66,7 @@ export function TimelineClipFades({
   width,
   curve,
   sample,
+  accent,
   showGrips,
   readOnly,
   onPreview,
@@ -199,8 +207,9 @@ export function TimelineClipFades({
               <path
                 d={line}
                 fill="none"
-                stroke="rgba(255,255,255,0.75)"
-                strokeWidth={1}
+                stroke={accent}
+                strokeWidth={1.5}
+                strokeOpacity={0.95}
                 strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
               />
