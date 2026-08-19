@@ -12,7 +12,9 @@
  * dragged as well as while it is playing.
  */
 import { useEffect, useRef, useState } from "react";
-import { liveTime, usePlayerStore } from "../player";
+// The store's own module, not the `player` barrel: the barrel pulls the whole
+// timeline in, and a timeline component importing this hook closes a cycle.
+import { liveTime, usePlayerStore } from "../player/store/playerStore";
 
 /** Long enough to be much cheaper than a frame, short enough to read as motion. */
 const THROTTLE_MS = 33;
