@@ -5,6 +5,7 @@ import {
   resolveTrimDeltaBounds,
   resolveTrimPlan,
   trimPlanKeys,
+  trimPreviewFrames,
   trimSnapAnchor,
   type TrimClip,
   type TrimPlan,
@@ -212,6 +213,46 @@ describe("gesture plumbing helpers", () => {
     expect(trimSnapAnchor(planOf("a", "roll", "end"))).toEqual({ time: 4, sign: 1 });
     expect(trimSnapAnchor(planOf("b", "slide"))).toEqual({ time: 4, sign: 1 });
     expect(trimSnapAnchor(planOf("b", "slip"))).toBeNull();
+  });
+
+  it("frames the precision view on the edit point the gesture is moving", () => {
+    const frame = 1 / 30;
+    // Out-point ripple: the cut lands at the clip's new end.
+    expect(trimPreviewFrames(planOf("b", "ripple", "end"), 1, frame)).toEqual({
+      outTime: 7 - frame,
+      inTime: 7,
+    });
+    // Head ripple pins the start, so the edit point does not move with the drag.
+    expect(trimPreviewFrames(planOf("b", "ripple", "start"), 1, frame)).toEqual({
+      outTime: 4 - frame,
+      inTime: 4,
+    });
+    // Roll: the shared cut, moved.
+    expect(trimPreviewFrames(planOf("a", "roll", "end"), 1, frame)).toEqual({
+      outTime: 5 - frame,
+      inTime: 5,
+    });
+    // Slide: the clip's new start.
+    expect(trimPreviewFrames(planOf("b", "slide"), 1, frame)).toEqual({
+      outTime: 5 - frame,
+      inTime: 5,
+    });
+  });
+
+  it("frames a slip on the clip's own first and last frame — it has no edit point", () => {
+    const frame = 1 / 30;
+    expect(trimPreviewFrames(planOf("b", "slip"), 1, frame)).toEqual({
+      outTime: 4,
+      inTime: 6 - frame,
+    });
+  });
+
+  it("never asks the preview for a negative time", () => {
+    const lane: TrimClip[] = [{ key: "head", start: 0, duration: 4 }];
+    expect(trimPreviewFrames(planOf("head", "ripple", "start", lane), 0, 1 / 30)).toEqual({
+      outTime: 0,
+      inTime: 0,
+    });
   });
 
   it("lists every clip a plan may rewrite so the snap pass can ignore them", () => {

@@ -321,7 +321,12 @@ export function useTimelineClipDrag({
       // A refused gesture (pointerdown already reported why) holds the clip at
       // its authored timing rather than falling back to a plain trim.
       const grabbed = session
-        ? applyTimelineTrimPreview(session, (effectiveClientX - resize.originClientX) / pps, pps)
+        ? applyTimelineTrimPreview(
+            session,
+            (effectiveClientX - resize.originClientX) / pps,
+            pps,
+            usePlayerStore.getState().setTrimPreview,
+          )
         : undefined;
       setResizeState({
         originScrollLeft,

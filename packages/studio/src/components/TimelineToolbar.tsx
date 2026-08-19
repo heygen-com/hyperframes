@@ -16,9 +16,9 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
-import { Scissors } from "../icons/SystemIcons";
+import { Compare, Scissors } from "../icons/SystemIcons";
 import { TRIM_TOOL_ICONS } from "../icons/TrimToolIcons";
-import { TIMELINE_TRIM_TOOLS } from "../player/components/timelineTrimTools";
+import { activeTrimMode, TIMELINE_TRIM_TOOLS } from "../player/components/timelineTrimTools";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -127,6 +127,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
+  const precisionTrimViewEnabled = usePlayerStore((s) => s.precisionTrimViewEnabled);
+  const setPrecisionTrimViewEnabled = usePlayerStore((s) => s.setPrecisionTrimViewEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
@@ -236,6 +238,25 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               </Tooltip>
             );
           })}
+          {activeTrimMode(activeTool) && (
+            <Tooltip
+              label={
+                precisionTrimViewEnabled
+                  ? "Precision view on — both sides of the cut, live"
+                  : "Precision view off"
+              }
+            >
+              <button
+                type="button"
+                onClick={() => setPrecisionTrimViewEnabled(!precisionTrimViewEnabled)}
+                aria-label="Toggle precision trim view"
+                aria-pressed={precisionTrimViewEnabled}
+                className={precisionTrimViewEnabled ? flatActive : flatIdle}
+              >
+                <Compare size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          )}
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>

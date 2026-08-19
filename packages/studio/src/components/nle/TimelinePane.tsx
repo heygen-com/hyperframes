@@ -3,6 +3,7 @@ import { Timeline } from "../../player";
 import type { TimelineElement } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { TimelineResizeDivider } from "./TimelineResizeDivider";
+import { PrecisionTrimView } from "./PrecisionTrimView";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import { useNLEContext } from "./NLEContext";
@@ -271,6 +272,7 @@ export function TimelinePane({
           }}
         >
           <div className="flex-shrink-0">{timelineToolbar}</div>
+          <PrecisionTrimView previewUrl={compositionStack.at(-1)?.previewUrl ?? null} />
           <Timeline
             sessionEpoch={timelineSessionEpoch}
             onSeek={seek}

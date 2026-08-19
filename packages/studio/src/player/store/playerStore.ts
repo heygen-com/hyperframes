@@ -16,6 +16,7 @@ import {
 } from "./automationSelectionSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
+import { createTrimPreviewSlice, type TrimPreviewSlice } from "./trimPreviewSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -47,7 +48,8 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
+interface PlayerState
+  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, TrimPreviewSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -318,6 +320,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     timelineSessionEpoch: get().timelineSessionEpoch,
   })),
   ...createThumbnailSlice(set),
+  ...createTrimPreviewSlice(set),
 
   ...createAutomationSelectionSlice(set),
 

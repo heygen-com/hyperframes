@@ -24,6 +24,8 @@ export interface StudioUiPreferences {
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
+  /** Two-up precision view above the timeline while a trim tool is active. */
+  precisionTrimViewEnabled?: boolean;
   /** Transport + ruler readout mode: timecode or frame number. */
   timeDisplayMode?: TimelineTimeDisplayMode;
   /**

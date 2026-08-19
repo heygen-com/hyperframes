@@ -334,6 +334,38 @@ export function trimSnapAnchor(plan: TrimPlan): { time: number; sign: 1 | -1 } |
   }
 }
 
+/**
+ * The pair of composition times the precision view shows for this gesture:
+ * the frame on either side of the edit point being moved. Slip has no edit
+ * point — it moves the media inside one clip — so it reports that clip's own
+ * first and last frame instead, which is what actually changes.
+ */
+export function trimPreviewFrames(
+  plan: TrimPlan,
+  delta: number,
+  frame: number,
+): { outTime: number; inTime: number } {
+  const cutAt = (boundary: number) => ({
+    outTime: Math.max(0, boundary - frame),
+    inTime: Math.max(0, boundary),
+  });
+  switch (plan.mode) {
+    case "ripple":
+      // A head ripple pins the clip's start, so the edit point never moves —
+      // what changes is the material that starts there.
+      return cutAt(plan.edge === "end" ? endOf(plan.grabbed) + delta : plan.grabbed.start);
+    case "roll":
+      return cutAt(endOf(plan.left) + delta);
+    case "slide":
+      return cutAt(plan.grabbed.start + delta);
+    case "slip":
+      return {
+        outTime: Math.max(0, plan.grabbed.start),
+        inTime: Math.max(0, endOf(plan.grabbed) - frame),
+      };
+  }
+}
+
 /** Every clip key a plan may rewrite — the set the snap pass must ignore. */
 export function trimPlanKeys(plan: TrimPlan): Set<string> {
   switch (plan.mode) {

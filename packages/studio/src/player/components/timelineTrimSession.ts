@@ -14,11 +14,14 @@ import {
   type TimelineSnapTarget,
 } from "./timelineSnapping";
 import { isMusicTrack } from "../../utils/timelineInspector";
+import { frameToSeconds } from "../lib/time";
+import type { TimelineTrimPreview } from "../store/trimPreviewSlice";
 import {
   applyTrimDelta,
   clampTrimDelta,
   resolveTrimPlan,
   trimPlanKeys,
+  trimPreviewFrames,
   trimSnapAnchor,
   type TimelineTrimEdge,
   type TimelineTrimMode,
@@ -266,6 +269,7 @@ export function applyTimelineTrimPreview(
   session: TimelineTrimSession,
   rawDeltaSeconds: number,
   pps: number,
+  publishPreview?: (preview: TimelineTrimPreview) => void,
 ): TimelineGroupResizeChange | undefined {
   const { plan, laneFloor } = session.trim;
   const delta = clampTrimDelta(
@@ -274,6 +278,11 @@ export function applyTimelineTrimPreview(
     resolveTimelineMinDuration(),
     laneFloor,
   );
+  publishPreview?.({
+    mode: session.trim.mode,
+    delta,
+    ...trimPreviewFrames(plan, delta, frameToSeconds(1)),
+  });
   const byKey = new Map(session.members.map((member) => [member.key, member]));
   session.changes = applyTrimDelta(plan, delta).flatMap((change) => {
     const member = byKey.get(change.key);

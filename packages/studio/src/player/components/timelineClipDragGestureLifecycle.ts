@@ -14,7 +14,8 @@ import {
 } from "./timelineOptimisticRevision";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { StackingPatch } from "./timelineStackingSync";
-import type { TimelineElement, usePlayerStore } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
+import type { TimelineElement } from "../store/playerStore";
 
 export type TimelineGestureKind = "drag" | "resize";
 type TimelineGesturePhase = "active" | "committing" | "cancelled" | "complete";
