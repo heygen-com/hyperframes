@@ -46,6 +46,7 @@ command starts a managed preview that survives after the command returns. Use
 previews with `--status`, `--stop`, `--list`, and `--kill-all`. Add `--json` to
 managed lifecycle commands for machine-readable output. `--foreground --json`
 prints the ready-session envelope once, then remains attached until stopped.
+
 ### `normalize-audio`
 
 Measure two local authored audio clips with integrated LUFS and match the target
