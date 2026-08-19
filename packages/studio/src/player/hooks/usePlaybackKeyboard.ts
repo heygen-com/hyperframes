@@ -9,6 +9,7 @@
 import { useRef, useCallback } from "react";
 import { useCaptionStore } from "../../captions/store";
 import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
+import { describeTarget, traceShortcut } from "../lib/shortcutDebug";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
 import { stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
@@ -81,7 +82,14 @@ export function usePlaybackKeyboard({
 
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented) {
+        traceShortcut("key already claimed (defaultPrevented)", {
+          code: e.code,
+          target: describeTarget(e.target),
+        });
+        return;
+      }
+      traceShortcut("key seen", { code: e.code, target: describeTarget(e.target) });
       const captionState = useCaptionStore.getState();
       if (
         shouldIgnorePlaybackShortcutEvent(e, {
@@ -89,12 +97,19 @@ export function usePlaybackKeyboard({
           selectedCaptionSegmentCount: captionState.selectedSegmentIds.size,
         })
       ) {
+        traceShortcut("key ignored by guard", {
+          code: e.code,
+          target: describeTarget(e.target),
+          modifiers: { meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey },
+          captionEditMode: captionState.isEditMode,
+        });
         return;
       }
       const key = e.key.toLowerCase();
       pressedKeysRef.current.add(key);
       if (e.code === "Space") {
         e.preventDefault();
+        traceShortcut("space -> togglePlay");
         togglePlay();
         return;
       }
@@ -194,10 +209,17 @@ export function usePlaybackKeyboard({
     try {
       iframeWin = iframeRef.current?.contentWindow ?? null;
       iframeDoc = iframeRef.current?.contentDocument ?? null;
-    } catch {
+    } catch (error) {
+      // Reading across the boundary threw: the preview is on another origin.
+      traceShortcut("attach ABORTED: preview unreachable", { error: String(error) });
       return;
     }
-    if (!iframeWin && !iframeDoc) return;
+    if (!iframeWin && !iframeDoc) {
+      // Called before the iframe has a document — shortcuts stay unbound until
+      // the next load fires this again.
+      traceShortcut("attach ABORTED: no preview window or document");
+      return;
+    }
 
     const handleIframeKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
     const handleIframeKeyUp = (e: KeyboardEvent) => playbackKeyUpRef.current(e);
@@ -209,6 +231,10 @@ export function usePlaybackKeyboard({
     }
     iframeDoc?.addEventListener("keydown", handleIframeKeyDown, true);
     iframeDoc?.addEventListener("keyup", handleIframeKeyUp, true);
+    traceShortcut("attached to preview", {
+      window: Boolean(iframeWin),
+      document: Boolean(iframeDoc),
+    });
     iframeShortcutCleanupRef.current = () => {
       try {
         iframeWin?.removeEventListener("keydown", handleIframeKeyDown, true);

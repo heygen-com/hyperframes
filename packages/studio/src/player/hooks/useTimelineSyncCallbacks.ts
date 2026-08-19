@@ -28,6 +28,7 @@ import {
   buildMissingCompositionElements,
 } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps, inspectStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { traceShortcut } from "../lib/shortcutDebug";
 
 interface UseTimelineSyncCallbacksParams {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -88,7 +89,9 @@ export function runPreviewSetupSteps(steps: {
   for (const [name, run] of ordered) {
     try {
       run();
+      traceShortcut(`preview setup: ${name} ok`);
     } catch (error) {
+      traceShortcut(`preview setup: ${name} THREW`, { error: String(error) });
       steps.onError?.(name, error);
     }
   }
