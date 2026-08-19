@@ -137,6 +137,11 @@ export function useElementLifecycleOps({
 
         domEditSaveTimestampRef.current = Date.now();
         let patchedContent = originalContent;
+        // A member the file no longer holds answers `changed: false`, which is
+        // normal for one nested inside another member already removed. All of
+        // them answering that is not: the preview is describing a document the
+        // file does not have, so every target misses and the delete is a no-op.
+        let removedAny = false;
         for (const target of patchTargets) {
           const removeResponse = await fetch(
             `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
@@ -156,7 +161,14 @@ export function useElementLifecycleOps({
             changed?: boolean;
             content?: string;
           };
+          if (removeData.changed) removedAny = true;
           if (typeof removeData.content === "string") patchedContent = removeData.content;
+        }
+        if (!removedAny) {
+          // Reporting "Deleted 503 elements" here is how this looked like the
+          // Delete key doing nothing at all, with nothing on screen to explain it.
+          reloadPreview();
+          throw new Error("Nothing to delete — the preview was out of date. Try again.");
         }
         // ponytail: the server remove-element route (removeElementFromHtml) strips
         // only the element node — it does NOT cascade-remove GSAP tweens targeting

@@ -15,9 +15,11 @@ function selectionFor(id: string) {
 
 describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
   const removed: string[] = [];
+  let changes = true;
 
   beforeEach(() => {
     removed.length = 0;
+    changes = true;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string, init?: RequestInit) => {
@@ -28,7 +30,7 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
         if (key) removed.push(key);
         return {
           ok: true,
-          json: async () => ({ changed: true, content: "<html></html>" }),
+          json: async () => ({ changed: changes, content: "<html></html>" }),
         } as unknown as Response;
       }),
     );
@@ -60,5 +62,31 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
 
     // The defect: only the first was ever removed.
     expect(removed).toEqual(["a", "b", "c"]);
+  });
+
+  it("says so when the preview is stale instead of claiming a delete", async () => {
+    // Every target missing means the preview is describing a document the file
+    // does not have. Reporting success there is what read as Delete doing
+    // nothing at all, with nothing on screen to explain it.
+    changes = false;
+    const showToast = vi.fn();
+    let ops: ReturnType<typeof useElementLifecycleOps> | null = null;
+    function Probe() {
+      ops = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          commitDomEditPatchBatches: vi.fn(async () => ({ ok: true }) as never),
+          projectIdRef: { current: "p1" },
+          showToast,
+        }),
+      );
+      return null;
+    }
+    mountReactHarness(<Probe />);
+
+    await act(async () => {
+      await ops!.handleDomEditElementsDelete([selectionFor("a")]);
+    });
+
+    expect(showToast.mock.calls.flat().join(" ")).toContain("out of date");
   });
 });
