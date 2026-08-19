@@ -16,6 +16,7 @@
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { groupInfoFor } from "./timelineGroupInfo";
 
 /** The preview node an element stands for, by dom id and then by `data-hf-id`. */
 function previewNodeFor(doc: Document, element: TimelineElement): Element | null {
@@ -38,6 +39,27 @@ function previewNodeFor(doc: Document, element: TimelineElement): Element | null
  * Reads rather than being told: an undo restores whole files, so the attribute it
  * reverted is only known by looking.
  */
+/**
+ * What an element's four synced fields SHOULD read, given the preview.
+ *
+ * Its own two come off its node; the other two are its copy of what its group
+ * carries. The timeline derives a group's lanes and chain from these mirrors,
+ * never from the group element — and the FX rack is not group-aware: selecting
+ * a group and automating one of its parameters writes `data-automation` on the
+ * group node through the ordinary element path, which used to refresh an
+ * element's own two fields and nothing else. So the group's row went on reading
+ * the value it was born with, and its `∿` never appeared.
+ */
+function syncedFields(doc: Document, element: TimelineElement, node: Element) {
+  const group = element.audioGroup ? groupInfoFor(doc, element.audioGroup) : null;
+  return {
+    automation: node.getAttribute(HF_AUDIO_AUTOMATION_ATTR) ?? undefined,
+    fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
+    audioGroupAutomation: group?.automation,
+    audioGroupFxChain: group?.fxChain,
+  };
+}
+
 export function syncStoredAutomationFromPreview(doc: Document | null | undefined): void {
   if (!doc) return;
   usePlayerStore.setState((state) => {
@@ -45,11 +67,13 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
     const elements = state.elements.map((element) => {
       const node = previewNodeFor(doc, element);
       if (!node) return element;
-      const automation = node.getAttribute(HF_AUDIO_AUTOMATION_ATTR) ?? undefined;
-      const fxChain = node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined;
-      if (automation === element.automation && fxChain === element.fxChain) return element;
+      const fields = syncedFields(doc, element, node);
+      // Same array back when nothing moved: `elements` keys memos all over the
+      // timeline, and a fresh object per sync would re-render every one.
+      const keys = Object.keys(fields) as (keyof typeof fields)[];
+      if (keys.every((key) => fields[key] === element[key])) return element;
       changed = true;
-      return { ...element, automation, fxChain };
+      return { ...element, ...fields };
     });
     return changed ? { elements } : {};
   });
