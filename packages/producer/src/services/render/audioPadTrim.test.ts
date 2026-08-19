@@ -30,7 +30,7 @@ describe("buildPadTrimAudioArgs", () => {
     expect(plan.steps).toHaveLength(1);
     const args = plan.steps[0]!.args;
     expect(args[args.indexOf("-i") + 1]).toBe("/tmp/in.aac");
-    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
+    expect(args[args.indexOf("-af") + 1]).toBe("apad,asetpts=N/SR/TB,atrim=0:5.000000");
     expect(args.join(" ")).not.toContain("whole_dur");
     expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
     expect(args[args.indexOf("-c:a") + 1]).toBe("aac");
@@ -105,7 +105,7 @@ describe("buildPadTrimAudioArgs", () => {
     expect(winPlan.operation).toBe("pad");
     const args = winPlan.steps[0]!.args;
     expect(args).toContain("-af");
-    expect(args[args.indexOf("-af") + 1]).toBe("apad,atrim=0:5.000000");
+    expect(args[args.indexOf("-af") + 1]).toBe("apad,asetpts=N/SR/TB,atrim=0:5.000000");
     expect(args.join(" ")).not.toContain("whole_dur");
   });
 });

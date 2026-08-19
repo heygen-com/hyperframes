@@ -218,6 +218,7 @@ export {
   parseAudioElements,
   processCompositionAudio,
 } from "./services/audioMixer.js";
+export { buildPadToDurationFilter } from "./services/audioPadFilter.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";
 export type {
   AudioElement,

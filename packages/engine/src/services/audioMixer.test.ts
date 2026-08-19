@@ -296,7 +296,7 @@ describe("processCompositionAudio", () => {
 
     expect(filter).toContain("volume=0");
     expect(filter).toContain("[mixed]volume=1[out]");
-    expect(filter).toContain("apad,atrim=0:2");
+    expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:2");
     expect(filter).not.toContain("whole_dur");
     expect(filter).not.toContain("normalize=");
     expect(filter).not.toContain("weights=");
@@ -464,7 +464,7 @@ describe("processCompositionAudio", () => {
     // 2 s clip + the 1.9 s tail 0.6 + size * 2.6 generates.
     expect(filter).toContain("atrim=0:3.9,");
     // And still cut at the composition's end, so a tail cannot extend the video.
-    expect(filter).toContain("apad,atrim=0:8");
+    expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:8");
   });
 
   it("hands the volume envelope to the FX pass instead of ducking the file after it", async () => {
@@ -1076,6 +1076,9 @@ describe("processCompositionAudio", () => {
     // indefinite `apad` to cap the padded stream at composition duration.
     expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount * 2);
     expect((filter?.match(/apad,/g) ?? []).length).toBe(trackCount);
+    // The timestamp rebuild between the two is what keeps that cap correct on
+    // FFmpeg 7+; without it the last-delayed track is dropped from the mix.
+    expect((filter?.match(/apad,asetpts=N\/SR\/TB,atrim=/g) ?? []).length).toBe(trackCount);
   });
 
   it("retries with the current file-valued filter option when a nightly removes the legacy alias", async () => {

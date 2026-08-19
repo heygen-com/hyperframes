@@ -31,6 +31,7 @@ import type {
   MixResult,
 } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+import { buildPadToDurationFilter } from "./audioPadFilter.js";
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
@@ -710,7 +711,7 @@ async function mixAudioTracks(
       const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
       filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},${buildPadToDurationFilter(formatFilterNumber(totalDuration))}[a${i}]`,
       );
     });
 

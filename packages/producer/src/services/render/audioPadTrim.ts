@@ -22,6 +22,7 @@
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import {
+  buildPadToDurationFilter,
   extractAudioMetadata,
   formatFfmpegError,
   getFfprobeBinary,
@@ -109,10 +110,11 @@ export interface PadTrimAudioPlan {
  * sequence that materializes it. Exported separately so unit tests can pin
  * every branch without spawning ffmpeg.
  *
- *   - `sourceDuration < targetDuration` → pad with `apad` to the exact target
- *     and re-encode AAC. This decodes and re-encodes the already mixed audio;
- *     an earlier concat-copy shape avoided that but could not produce a
- *     portable result on the bundled Windows FFmpeg builds.
+ *   - `sourceDuration < targetDuration` → pad to the exact target with the
+ *     shared `buildPadToDurationFilter` chain and re-encode AAC. This decodes
+ *     and re-encodes the already mixed audio; an earlier concat-copy shape
+ *     avoided that but could not produce a portable result on the bundled
+ *     Windows FFmpeg builds.
  *   - `sourceDuration > targetDuration` → filter to the exact target and
  *     re-encode AAC so packet padding cannot outlast the video.
  *   - `|Δ| < AUDIO_DURATION_TOLERANCE_SECONDS` → no-op `copy`, but we still
@@ -143,7 +145,7 @@ export function buildPadTrimAudioPlan(
             "-i",
             audioPath,
             "-af",
-            `apad,atrim=0:${targetSec}`,
+            buildPadToDurationFilter(targetSec),
             "-t",
             targetSec,
             "-c:a",
@@ -170,6 +172,10 @@ export function buildPadTrimAudioPlan(
           "-i",
           audioPath,
           "-af",
+          // `PTS-STARTPTS` here, not the pad branch's `N/SR/TB`: this branch
+          // only has to rebase an already-bounded stream to zero, while the
+          // pad branch has to rebuild a timeline an indefinite `apad` made
+          // untrustworthy for the `atrim` that follows it.
           `atrim=duration=${targetSec},asetpts=PTS-STARTPTS`,
           // `atrim` limits decoded samples but does not cap muxer timestamps
           // introduced by encoder delay/flush.  The output duration contract

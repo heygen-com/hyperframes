@@ -271,10 +271,10 @@ jobs:
 
   test:
     name: Test
-    needs: [changes, producer-source-tests]
-    # Keep the existing required `Test` context authoritative for producer
-    # failures too. The dedicated producer matrix remains parallel and legible,
-    # while this job fails closed if either lane fails or is cancelled.
+    needs: [changes, producer-source-tests, audio-pad-ffmpeg7]
+    # Keep the existing required `Test` context authoritative for the producer
+    # and pinned-FFmpeg lanes too. Those stay parallel and legible on their
+    # own, while this job fails closed if any of them fails or is cancelled.
     if: always() && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -283,6 +283,11 @@ jobs:
         if: needs.producer-source-tests.result != 'success'
         run: |
           echo "::error::Producer unit/integration tests did not succeed."
+          exit 1
+      - name: Require the pinned-FFmpeg audio lane
+        if: needs.audio-pad-ffmpeg7.result != 'success'
+        run: |
+          echo "::error::Audio pad chain tests on pinned FFmpeg 7.x did not succeed."
           exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -331,6 +336,75 @@ jobs:
       - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/engine build
       - run: bun run producer:test:${{ matrix.lane }}
+
+  # The audio pad/trim chain regressed on the FFmpeg 7.x line only: `atrim`
+  # reading an indefinite `apad`'s timestamps drops the last-delayed branch
+  # from a mix of four or more. No other lane can catch it. `Test` has no
+  # FFmpeg at all (its gated audio tests report as skipped), and every FFmpeg
+  # the other lanes do get is unaffected: `apt-get install ffmpeg` on the
+  # runner image is the 6.x line, and the Windows lane pins an 8.x master
+  # build. Both produce correct output from the broken chain, so the
+  # regression test passes on them whether or not the fix is present.
+  #
+  # So this lane exists to pin one build that actually fails without the fix.
+  # Verified on linux/amd64 against the pinned 7.1.3 below: with the fix the
+  # test passes, and with `buildPadToDurationFilter` reverted to the bare
+  # `apad,atrim=0:<total>` it fails on the `t=0` silence assertion.
+  #
+  # Same pinning rule as .github/actions/install-ffmpeg-windows: the asset
+  # filename embeds the git hash, so the tag and the filename must be bumped
+  # together. Do not float this to `latest` — `latest` carries only 8.x and
+  # 9.x, neither of which reproduces the bug.
+  audio-pad-ffmpeg7:
+    name: "Audio: pad chain on FFmpeg 7.x"
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FFMPEG_7_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-03-31-13-11/ffmpeg-n7.1.3-43-g5a1f107b4c-linux64-gpl-7.1.tar.xz
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install pinned FFmpeg 7.x
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/ffmpeg7"
+          mkdir -p "$dir"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg7.tar.xz" "$FFMPEG_7_URL"; then
+              break
+            fi
+            echo "download attempt $attempt failed"
+            if [ "$attempt" = 5 ]; then exit 1; fi
+            sleep $((15 * attempt))
+          done
+          tar -xf "$RUNNER_TEMP/ffmpeg7.tar.xz" -C "$dir" --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'
+          chmod +x "$dir/ffmpeg" "$dir/ffprobe"
+          "$dir/ffmpeg" -version | head -n 1
+          # The engine resolves both binaries through these two variables, so
+          # the skip gate and the code under test agree on which build ran.
+          echo "HYPERFRAMES_FFMPEG_PATH=$dir/ffmpeg" >> "$GITHUB_ENV"
+          echo "HYPERFRAMES_FFPROBE_PATH=$dir/ffprobe" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      # Fail loudly rather than skipping: a silent skip here is the exact
+      # failure this lane was added to remove.
+      - name: Assert the pinned FFmpeg is the one under test
+        run: |
+          set -euo pipefail
+          test -x "$HYPERFRAMES_FFMPEG_PATH"
+          "$HYPERFRAMES_FFMPEG_PATH" -version | head -n 1 | grep -q 'version n7\.'
+      - run: >-
+          npx vitest run --root packages/engine
+          src/services/audioMixer.padTimestamps.integration.test.ts
 
   # Tests under skills/**/*.test.mjs are bare `node --test` files with only
   # `node:` built-in imports. They aren't part of any workspace package, and

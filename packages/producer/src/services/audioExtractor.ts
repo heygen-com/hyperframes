@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { getFfmpegBinary, trackChildProcess } from "@hyperframes/engine";
+import { buildPadToDurationFilter, getFfmpegBinary, trackChildProcess } from "@hyperframes/engine";
 
 export interface AudioElement {
   id: string;
@@ -212,7 +212,7 @@ async function mixTracks(
     const trimDuration = track.duration > 0 ? track.duration : totalDuration;
 
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,atrim=0:${totalDuration}[a${i}]`,
+      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},${buildPadToDurationFilter(String(totalDuration))}[a${i}]`,
     );
   });
 
