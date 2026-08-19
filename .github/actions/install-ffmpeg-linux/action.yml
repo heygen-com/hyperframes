@@ -1,32 +1,34 @@
 name: Install ffmpeg (Linux)
 description: >-
-  Install ffmpeg from apt with a bounded, retried fetch.
+  Install ffmpeg from apt, resilient to a slow or stalling mirror.
 
-  Hosted runners intermittently stall on an apt mirror, and an unbounded
-  `apt-get` inherits the whole job budget: the producer integration lane
-  normally finishes in ~11 minutes against a 20 minute cap, so one stalled
-  fetch took the job to the cap and failed it. Three jobs then went red off
-  that single step, because the gates downstream fail closed on a skip.
+  Hosted runners hit `azure.archive.ubuntu.com` at wildly varying speeds: the
+  same install has taken 40 seconds and 15 minutes on consecutive runs, and a
+  stalled connection used to hang until the job's own timeout killed it. That
+  cost more than one red check, because the gates downstream fail closed when a
+  dependency does not succeed — a single slow fetch showed up as a producer
+  defect and a preview defect at once.
 
-  Bounding each attempt turns a stalled mirror into a retry that costs
-  seconds rather than the job. This deliberately keeps apt as the source, so
-  the ffmpeg build under the producer's output comparisons does not change.
+  The bound belongs on the connection, not on the command. `Acquire::Retries`
+  re-fetches the individual package that stalled while keeping everything
+  already downloaded, and `Acquire::http::Timeout` caps how long any one
+  connection may sit idle. Wrapping the whole command in a wall-clock kill
+  looks similar but behaves worse: it discards a download that was making
+  progress and starts it over, which turns a slow mirror into a slower one.
 
 runs:
   using: composite
   steps:
     - name: Install ffmpeg
       shell: bash
+      env:
+        # Idle-connection cap, and per-package retries that keep prior progress.
+        APT_RESILIENCE: >-
+          -o Acquire::Retries=3
+          -o Acquire::http::Timeout=30
+          -o Acquire::https::Timeout=30
       run: |
         set -euo pipefail
-        for attempt in 1 2 3; do
-          if sudo timeout 120 apt-get update -qq \
-            && sudo timeout 300 apt-get install -y --no-install-recommends ffmpeg; then
-            ffmpeg -version | head -1
-            exit 0
-          fi
-          echo "::warning::apt attempt ${attempt} did not complete; retrying"
-          sleep $((attempt * 10))
-        done
-        echo "::error::ffmpeg install did not complete after 3 bounded attempts"
-        exit 1
+        sudo apt-get $APT_RESILIENCE update -qq
+        sudo apt-get $APT_RESILIENCE install -y --no-install-recommends ffmpeg
+        ffmpeg -version | head -1
