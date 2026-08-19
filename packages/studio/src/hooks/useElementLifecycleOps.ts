@@ -120,11 +120,15 @@ export function useElementLifecycleOps({
         // The SDK path can take the whole selection only when every member is
         // addressable in the SDK doc; otherwise fall through to REST for all of
         // them rather than deleting a subset through each route.
-        if (onTrySdkDelete && sameFile.every((member) => member.hfId)) {
-          let sdkContent = originalContent;
+        const hfIds = sameFile
+          .map((member) => member.hfId)
+          .filter((hfId): hfId is string => Boolean(hfId));
+        if (onTrySdkDelete && hfIds.length === sameFile.length) {
           let allHandled = true;
-          for (const member of sameFile) {
-            const handled = await onTrySdkDelete(member.hfId!, sdkContent, targetPath);
+          for (const hfId of hfIds) {
+            // The SDK owns the document it edits, so every member is removed
+            // against the same starting content rather than a threaded copy.
+            const handled = await onTrySdkDelete(hfId, originalContent, targetPath);
             if (!cutoverCommittedOrThrow(handled)) {
               allHandled = false;
               break;

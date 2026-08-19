@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 
 import React, { act, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
+import { mountReactHarness } from "./domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -72,10 +73,7 @@ describe("preview iframe hotkey forwarding", () => {
     // WindowProxy (an identity check sees no change) but replaces the window
     // holding the listeners. Attaching once left Delete dead inside the canvas
     // after the first reload — and clicking the canvas is what puts focus there.
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-    act(() => root?.render(<Harness />));
+    root = mountReactHarness(<Harness />);
 
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
