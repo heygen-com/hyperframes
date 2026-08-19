@@ -7,7 +7,7 @@ import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
@@ -278,6 +278,9 @@ export function PropertyPanelFlat({
     return resolveAudioGroups(doc).find((g) => g.memberIds.includes(id))?.label;
   })();
 
+  const selectedTag = element.tagName?.toLowerCase();
+  const audioSelection = selectedTag === "audio" || selectedTag === HF_AUDIO_GROUP_TAG;
+
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
     groups.push({
@@ -509,8 +512,16 @@ export function PropertyPanelFlat({
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
             hidden={selectedElementHidden}
+            // Audio gets no hide control here. On an audio track "hidden" and
+            // "muted" are not similar operations, they are the SAME operation
+            // with two names (groups doc §2.1) — which is why the timeline's eye
+            // BECAME the mute rather than growing a sibling. A second copy in
+            // the panel, still called "Hide element", is exactly what that step
+            // set out to remove: "Two controls that silence a track, sitting
+            // next to each other, differing only in a distinction the author
+            // cannot see." An `<hf-audio-group>` has no visual to hide at all.
             onToggleHidden={
-              selectedElementId && onToggleElementHidden
+              selectedElementId && onToggleElementHidden && !audioSelection
                 ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
                 : undefined
             }
