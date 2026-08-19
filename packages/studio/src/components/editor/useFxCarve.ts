@@ -26,11 +26,12 @@ import {
   DEFAULT_CARVE,
   mixCarveSources,
   HF_AUDIO_CARVE_ATTR,
-  normalizeCarveSettings,
   type HfCarveSettings,
 } from "@hyperframes/core/audio-carve";
 import { resolveAudioGroups, resolveCarveSourceIds } from "@hyperframes/core/audio-groups";
 import {
+  carveBedRoles,
+  carverAgainst,
   collectCarveCandidates,
   CARVE_ABORTED,
   isPromiseLike,
@@ -53,17 +54,6 @@ import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
  * reads the decoded buffer's own rate, so this only has to be a sane audio rate.
  */
 const DECODE_SAMPLE_RATE = 48000;
-
-/** Whether some element's own carve attribute names `targetId` as a source. */
-function carvesAgainst(other: HTMLElement, targetId: string): boolean {
-  try {
-    const raw = other.getAttribute(HF_AUDIO_CARVE_ATTR);
-    return Boolean(raw && normalizeCarveSettings(JSON.parse(raw)).sources.includes(targetId));
-  } catch {
-    // An unreadable carve on some other element says nothing about this one.
-    return false;
-  }
-}
 
 /**
  * Which carve setting actually moved, by comparing the two snapshots.
@@ -304,24 +294,10 @@ export function useFxCarve(
    */
   onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>,
 ) {
-  /**
-   * Is some other track carving against this one?
-   *
-   * A carve is a relationship — a bed is carved against a voice — and the voice is
-   * the far end of it. Offering the same control there offers to carve a track
-   * against itself by proxy, and switching it on left a setting with no source it
-   * could legally name. Read off the other elements' own carve attributes, because
-   * that is where the relationship is recorded.
-   */
-  const carvedAgainstBy = ((): string | null => {
-    const doc = element.element?.ownerDocument;
-    if (!doc || !element.id) return null;
-    const others = Array.from(doc.querySelectorAll<HTMLElement>(`[${HF_AUDIO_CARVE_ATTR}]`));
-    const carver = others.find(
-      (other) => other.id !== element.id && carvesAgainst(other, element.id ?? ""),
-    );
-    return carver ? carver.id || "another track" : null;
-  })();
+  const carvedAgainstBy = carverAgainst(element.element?.ownerDocument, element.id);
+
+  // Can this be a bed at all, and may one be applied unasked. See carveBedRoles.
+  const { couldBeBed, autoBed } = carveBedRoles(element.id, element.element);
 
   /**
    * The tracks worth offering as the voice.
@@ -336,13 +312,17 @@ export function useFxCarve(
    * safe direction: a name that says nothing stays in, voice-shaped names sort
    * first, and if filtering would leave nothing at all every track comes back. A
    * picker that hides the track somebody needs is worse than a long one.
+   *
+   * Empty on a track that cannot be a bed at all, which is what withholds the
+   * whole module: `showCarve` already asks "is there anything to carve against",
+   * so the near-end rule rides that rather than a second flag to thread.
    */
   const { sourceOptions, autoSourceIds } = ((): {
     sourceOptions: AudioTrackOption[];
     autoSourceIds: string[];
   } => {
     const doc = element.element?.ownerDocument;
-    if (!doc) return { sourceOptions: [], autoSourceIds: [] };
+    if (!doc || !couldBeBed) return { sourceOptions: [], autoSourceIds: [] };
     const others = Array.from(doc.querySelectorAll<HTMLAudioElement>("audio[id]")).filter(
       (a) => a.id !== element.id,
     );
@@ -353,7 +333,7 @@ export function useFxCarve(
     const overlapsBed = (a: Element): boolean =>
       clipsOverlap(bedSpan, spanOf(a.getAttribute("data-start"), a.getAttribute("data-duration")));
 
-    const described = collectCarveCandidates(doc, others, overlapsBed);
+    const described = collectCarveCandidates(doc, others, overlapsBed, element.id ?? undefined);
     const plausible = described.filter((t) => t.kind === "voice" || t.kind === "unknown");
     const offered = plausible.length > 0 ? plausible : described;
     const byVoiceFirst = (list: typeof described) =>
@@ -543,7 +523,7 @@ export function useFxCarve(
     // both guards passing for a single candidate fired two setCarve calls with
     // the same result — two decodes, two FFT runs, two concurrent attribute
     // writes.
-    if (carvedAgainstBy || autoSourceIds.length <= 1) return;
+    if (carvedAgainstBy || !autoBed || autoSourceIds.length <= 1) return;
     const all = autoSourceIds;
     // Nothing configured: the default carve, pointed at everything it could hear.
     if (carve === null) {
@@ -557,7 +537,7 @@ export function useFxCarve(
     // Keyed on the identity of the decision, not on setCarve — which is rebuilt
     // every render and would re-fire this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carve, carvedAgainstBy, candidateIds]);
+  }, [carve, carvedAgainstBy, autoBed, candidateIds]);
 
   /**
    * A bed with one obvious voice above it carves itself.
@@ -578,7 +558,7 @@ export function useFxCarve(
    * reason the flag exists rather than "off" being an absent attribute.
    */
   useEffect(() => {
-    if (carvedAgainstBy || autoSourceIds.length !== 1) return;
+    if (carvedAgainstBy || !autoBed || autoSourceIds.length !== 1) return;
     const only = autoSourceIds[0];
     if (!only) return;
     // Nothing configured: the default carve, pointed at the one candidate.
@@ -594,7 +574,7 @@ export function useFxCarve(
     // Deliberately keyed on the identity of the decision, not on setCarve — which
     // is rebuilt every render and would re-fire this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carve, carvedAgainstBy, autoSourceIds.length, autoSourceIds[0]]);
+  }, [carve, carvedAgainstBy, autoBed, autoSourceIds.length, autoSourceIds[0]]);
 
   return { carvedAgainstBy, sourceOptions, setCarve };
 }

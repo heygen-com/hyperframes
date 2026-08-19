@@ -7,7 +7,14 @@
  * `propertyPanelAudioFxGroup.tsx`.
  */
 
-import { classifyAudioName, type HfCarveSettings } from "@hyperframes/core/audio-carve";
+import {
+  classifyAudioName,
+  HF_AUDIO_CARVE_ATTR,
+  normalizeCarveSettings,
+  couldBeCarveBed,
+  isNamedCarveBed,
+  type HfCarveSettings,
+} from "@hyperframes/core/audio-carve";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 
 /**
@@ -101,18 +108,38 @@ export interface CarveCandidate {
  * the whole timeline is relevant even if each of its segments only overlaps
  * part of the bed). Grouped members never appear individually.
  */
+/**
+ * The ids a carve may never name, for a bed of this id.
+ *
+ * A carve names what the bed ducks UNDER, so the bed can never be on that
+ * list — directly or through the bus it plays into. The caller filters the bed
+ * element out of `others`, but that only removes the bed itself: its siblings
+ * survive and roll up into the very group the bed is a member of, which came
+ * back as a candidate and, being the only one, was applied unprompted. And a
+ * group bed's own id never matches any <audio> id at all, so nothing stopped a
+ * group carving against itself.
+ */
+function excludedFor(groupByMember: Map<string, { id: string }>, bedId?: string): Set<string> {
+  const selfGroupId = bedId ? groupByMember.get(bedId)?.id : undefined;
+  return new Set([bedId, selfGroupId].filter((id): id is string => !!id));
+}
+
 export function collectCarveCandidates(
   doc: Document,
   others: readonly HTMLAudioElement[],
   overlapsBed: (a: Element) => boolean,
+  /** The bed's own id, so neither it nor the group it belongs to is offered. */
+  bedId?: string,
 ): CarveCandidate[] {
   const groupByMember = new Map(
     resolveAudioGroups(doc).flatMap((group) => group.memberIds.map((id) => [id, group] as const)),
   );
+  const excluded = excludedFor(groupByMember, bedId);
   const offeredGroupIds = new Set<string>();
   const described: CarveCandidate[] = [];
   for (const a of others) {
     const group = groupByMember.get(a.id);
+    if (excluded.has(a.id) || (group && excluded.has(group.id))) continue;
     if (!group) {
       if (overlapsBed(a)) {
         described.push({
@@ -143,4 +170,62 @@ export function collectCarveCandidates(
     });
   }
   return described;
+}
+
+/**
+ * The two near-end questions about a track, asked of its name.
+ *
+ * `couldBeBed` — may a carve be written onto this at all? A carve makes room in
+ * a bed for a voice, so a voice track is the one thing that can never be the
+ * bed. The far-end rule (`couldBeCarveSource` — music and sfx are out) has
+ * existed since it was written and had no caller; this is the half nothing
+ * asked, and without it a narration clip was offered the control and, finding
+ * exactly one candidate, had a carve applied against the group it belonged to.
+ *
+ * `autoBed` — may one be applied WITHOUT the author asking? Stricter. Showing
+ * the module on a track named `a1` is a suggestion; writing `data-fx-carve`
+ * onto it is a decision, and a decision taken off a name that said nothing is
+ * how a carve turns up that nobody remembers configuring. The same split the
+ * source side already makes between what the picker may show (`sourceOptions`)
+ * and what it may choose unprompted (`autoSourceIds`).
+ *
+ * Reads the element's `data-label` as well as its id and `src`: a group carries
+ * its name there rather than in a filename, and a group can be a bed.
+ */
+export function carveBedRoles(
+  id: string | null | undefined,
+  node: Element | null | undefined,
+): { couldBeBed: boolean; autoBed: boolean } {
+  const parts = [id, node?.getAttribute("src"), node?.getAttribute("data-label")];
+  return { couldBeBed: couldBeCarveBed(...parts), autoBed: isNamedCarveBed(...parts) };
+}
+
+/** Whether some element's own carve attribute names `targetId` as a source. */
+function carvesAgainst(other: HTMLElement, targetId: string): boolean {
+  try {
+    const raw = other.getAttribute(HF_AUDIO_CARVE_ATTR);
+    return Boolean(raw && normalizeCarveSettings(JSON.parse(raw)).sources.includes(targetId));
+  } catch {
+    // An unreadable carve on some other element says nothing about this one.
+    return false;
+  }
+}
+
+/**
+ * Is some other track carving against this one, and which?
+ *
+ * A carve is a relationship — a bed is carved against a voice — and the voice is
+ * the far end of it. Offering the same control there offers to carve a track
+ * against itself by proxy, and switching it on left a setting with no source it
+ * could legally name. Read off the other elements' own carve attributes, because
+ * that is where the relationship is recorded.
+ */
+export function carverAgainst(
+  doc: Document | undefined,
+  id: string | null | undefined,
+): string | null {
+  if (!doc || !id) return null;
+  const others = Array.from(doc.querySelectorAll<HTMLElement>(`[${HF_AUDIO_CARVE_ATTR}]`));
+  const carver = others.find((other) => other.id !== id && carvesAgainst(other, id));
+  return carver ? carver.id || "another track" : null;
 }
