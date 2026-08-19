@@ -146,6 +146,12 @@ export {
 
 export { MEDIA_RENDER_ID_ATTR, assignMediaRenderIds } from "./compiler/mediaRenderIds";
 
+export {
+  RENDER_FRAME_ID_PREFIX,
+  RENDER_FRAME_ID_SUFFIX,
+  renderFrameIdForRenderId,
+} from "./runtime/renderFrameSibling";
+
 // Lint moved to @hyperframes/lint. Import lint APIs from @hyperframes/lint
 // directly, or via the back-compat stub at @hyperframes/core/lint. Not
 // re-exported here — doing so would cycle core's main entry through the lint

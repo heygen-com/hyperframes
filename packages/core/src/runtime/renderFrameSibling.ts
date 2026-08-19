@@ -27,10 +27,24 @@ export function readMediaRenderId(media: Element): string | null {
   return media.getAttribute(MEDIA_RENDER_ID_ATTR) || media.id || null;
 }
 
+/**
+ * Affixes of the sibling id. Exported so the engine can build the same id
+ * inside `page.evaluate`, where it cannot import: it passes these through as
+ * evaluate arguments rather than repeating the literals. Keeping them here is
+ * what makes this module the one definition of the format.
+ */
+export const RENDER_FRAME_ID_PREFIX = "__render_frame_";
+export const RENDER_FRAME_ID_SUFFIX = "__";
+
+/** The id of the render-frame `<img>` paired with a given render id. */
+export function renderFrameIdForRenderId(renderId: string): string {
+  return `${RENDER_FRAME_ID_PREFIX}${renderId}${RENDER_FRAME_ID_SUFFIX}`;
+}
+
 /** The id of the render-frame `<img>` paired with a media element. */
 export function renderFrameElementId(media: Element): string | null {
   const renderId = readMediaRenderId(media);
-  return renderId ? `__render_frame_${renderId}__` : null;
+  return renderId ? renderFrameIdForRenderId(renderId) : null;
 }
 
 /**
