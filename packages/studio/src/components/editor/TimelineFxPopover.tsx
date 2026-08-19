@@ -110,7 +110,12 @@ export function TimelineFxPopover({
       ref={rootRef}
       role="dialog"
       aria-label="Effects"
-      className="z-50 flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
+      // z-[200], not z-50: this is portaled to `document.body`, but the
+      // timeline ruler's sticky header sits at z-70 in the SAME root stacking
+      // context, so the ruler and the playhead painted straight through the
+      // popover. 200 is the tier the tooltip portal already uses to clear app
+      // chrome.
+      className="z-[200] flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
       style={clampedStyle(anchorRect)}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}

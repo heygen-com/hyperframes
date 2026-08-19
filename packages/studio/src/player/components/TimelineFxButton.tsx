@@ -58,7 +58,7 @@ function GroupNameDialog({
       <div
         role="dialog"
         aria-label="This track cannot be grouped"
-        className="z-50 w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] leading-snug text-white/75 shadow-xl"
+        className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] leading-snug text-white/75 shadow-xl"
         style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
@@ -76,7 +76,7 @@ function GroupNameDialog({
     <div
       role="dialog"
       aria-label="Name this group"
-      className="z-50 w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] text-white/75 shadow-xl"
+      className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] text-white/75 shadow-xl"
       style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
