@@ -11,55 +11,6 @@ it("schedules WebAudio element gain from author volume without bridge volume", (
   expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
 });
 
-/**
- * `data-volume` is an authoring GAIN up to `MAX_AUDIO_GAIN` (12 dB ~ 3.98) —
- * `HTMLMediaElement.volume` accepts only 0..1. The bridge clamps its own
- * argument, but the PRODUCT `clipVolume * volume` was assigned unclamped, so a
- * clip authored above unity threw
- * `IndexSizeError: The volume provided (2.42103) is outside the range [0, 1]`
- * (2.42103 is the +7.68 dB fader stop) — and the throw aborted the loop, so
- * every media element after it kept its old volume too.
- */
-it("clamps the native volume of an over-unity clip instead of throwing", () => {
-  const root = document.createElement("div");
-  root.setAttribute("data-composition-id", "main");
-  root.setAttribute("data-root", "true");
-  root.setAttribute("data-start", "0");
-  root.setAttribute("data-duration", "10");
-  root.setAttribute("data-width", "1920");
-  root.setAttribute("data-height", "1080");
-  document.body.appendChild(root);
-
-  const loud = document.createElement("audio");
-  loud.setAttribute("data-start", "0");
-  loud.setAttribute("data-duration", "10");
-  loud.setAttribute("data-volume", "2.42103");
-  loud.load = () => {};
-  root.appendChild(loud);
-  // Second element proves the throw took the whole sweep down with it, not just
-  // the offending clip.
-  const quiet = document.createElement("audio");
-  quiet.setAttribute("data-start", "0");
-  quiet.setAttribute("data-duration", "10");
-  quiet.setAttribute("data-volume", "0.5");
-  quiet.load = () => {};
-  root.appendChild(quiet);
-
-  window.__timelines = { main: createMockTimeline(10) };
-  initSandboxRuntimeModular();
-
-  const errors: string[] = [];
-  const onError = (e: ErrorEvent) => errors.push(String(e.message ?? e.error));
-  window.addEventListener("error", onError);
-  window.dispatchEvent(
-    new MessageEvent("message", {
-      data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
-    }),
-  );
-  window.removeEventListener("error", onError);
-  expect(errors).toEqual([]);
-});
-
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
   return {
@@ -237,6 +188,99 @@ describe("initSandboxRuntimeModular", () => {
     vi.useRealTimers();
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
+  });
+
+  /**
+   * `data-volume` is an authoring GAIN up to `MAX_AUDIO_GAIN` (12 dB ~ 3.98) —
+   * `HTMLMediaElement.volume` accepts only 0..1. The bridge clamps its own
+   * argument, but the PRODUCT `clipVolume * volume` was assigned unclamped, so a
+   * clip authored above unity threw
+   * `IndexSizeError: The volume provided (2.42103) is outside the range [0, 1]`
+   * (2.42103 is the +7.68 dB fader stop) — and the throw aborted the loop, so
+   * every media element after it kept its old volume too.
+   */
+  it("clamps the native volume of an over-unity clip instead of throwing", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const loud = document.createElement("audio");
+    loud.setAttribute("data-start", "0");
+    loud.setAttribute("data-duration", "10");
+    loud.setAttribute("data-volume", "2.42103");
+    loud.load = () => {};
+    root.appendChild(loud);
+    // Second element proves the throw took the whole sweep down with it, not just
+    // the offending clip.
+    const quiet = document.createElement("audio");
+    quiet.setAttribute("data-start", "0");
+    quiet.setAttribute("data-duration", "10");
+    quiet.setAttribute("data-volume", "0.5");
+    quiet.load = () => {};
+    root.appendChild(quiet);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const errors: string[] = [];
+    const onError = (e: ErrorEvent) => errors.push(String(e.message ?? e.error));
+    window.addEventListener("error", onError);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
+      }),
+    );
+    window.removeEventListener("error", onError);
+    expect(errors).toEqual([]);
+  });
+
+  /**
+   * The runtime stamps `data-start`/`data-duration` on every id'd child of the
+   * composition root so a blank canvas still shows selectable rows. An
+   * `<hf-audio-group>` is a mixer BUS, not a clip: stamping it put it in
+   * `__clipManifest` as a full-duration element, which the studio drew as an
+   * ordinary clip row above the real group header — draggable, trimmable, and
+   * deletable, and deleting it takes the bus (so the group's FX rack) with it.
+   */
+  it("does not stamp timing onto an <hf-audio-group> bus", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const bus = document.createElement("hf-audio-group");
+    bus.id = "voiceover";
+    bus.setAttribute("data-label", "Voiceover");
+    root.appendChild(bus);
+
+    // A plain id'd sibling proves the stamp still happens for everything else.
+    const caption = document.createElement("div");
+    caption.id = "cap-1";
+    root.appendChild(caption);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    // The stamp only runs inside the studio preview (`window.parent !== window`),
+    // which jsdom is not — so the condition has to be staged for the test.
+    const realParent = window.parent;
+    Object.defineProperty(window, "parent", { value: {}, configurable: true });
+    try {
+      initSandboxRuntimeModular();
+    } finally {
+      Object.defineProperty(window, "parent", { value: realParent, configurable: true });
+    }
+
+    expect(bus.hasAttribute("data-start")).toBe(false);
+    expect(bus.hasAttribute("data-duration")).toBe(false);
+    expect(caption.getAttribute("data-start")).toBe("0");
   });
 
   it("resolves Studio hold as a deterministic step at the segment end", () => {

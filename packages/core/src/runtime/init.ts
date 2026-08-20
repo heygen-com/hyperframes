@@ -1461,6 +1461,14 @@ export function initSandboxRuntimeModular(): void {
       // scene container we auto-stamp below (e.g. an opacity-crossfaded scene)
       // must NOT suppress its own animated children — otherwise those children
       // never become timeline clips and that scene can't inline-expand.
+      // A bus is not a clip. `<hf-audio-group>` carries a group's label, fader,
+      // mute and FX chain and has no timing of its own, so stamping it put it in
+      // `__clipManifest` as a full-duration element — which the studio drew as an
+      // ordinary clip row above the real group header. That row was draggable,
+      // trimmable and deletable, and deleting it removed the bus, taking the
+      // group's automation lanes and FX rack with it.
+      const isAudioGroupBus = (el: Element): boolean =>
+        el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG;
       const authoredTimed = new Set<Element>(document.querySelectorAll("[data-start]"));
       const hasAuthoredTimedAncestor = (element: HTMLElement): boolean => {
         let node = element.parentElement;
@@ -1479,6 +1487,7 @@ export function initSandboxRuntimeModular(): void {
             for (const target of child.targets()) {
               if (!(target instanceof HTMLElement)) continue;
               if (target === rootComp) continue;
+              if (isAudioGroupBus(target)) continue;
               if (target.hasAttribute("data-start")) continue;
               if (hasAuthoredTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
@@ -1506,6 +1515,7 @@ export function initSandboxRuntimeModular(): void {
           if (hasAuthoredTimedAncestor(el)) continue;
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
+          if (isAudioGroupBus(el)) continue;
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
