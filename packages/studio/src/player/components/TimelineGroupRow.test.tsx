@@ -55,9 +55,7 @@ function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
           contentOrigin={232}
           theme={defaultTimelineTheme}
           collapsedGroupIds={new Set()}
-          expandedLaneOwnerIds={new Set()}
           toggleGroupExpanded={vi.fn()}
-          toggleLaneOwnerExpanded={vi.fn()}
           lanes={{ bind: () => ({ lanes: [] }) } as never}
           pps={10}
           currentTime={0}
@@ -94,18 +92,12 @@ describe("TimelineGroupRow", () => {
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
   });
 
-  // A disclosure over nothing tells the author their group has no automation
-  // only AFTER they open an empty row. Track headers already gate their own
-  // toggle on having something to disclose; the group's did not.
-  it("hides the lane toggle until the group actually automates something", () => {
-    const laneToggle = (host: HTMLElement) =>
-      Array.from(host.querySelectorAll("button")).find((b) =>
-        /lanes$/.test(b.getAttribute("aria-label") ?? ""),
-      );
-
-    expect(laneToggle(renderRow().host)).toBeUndefined();
-
-    const automated = renderRow({
+  // Automation lanes are always drawn, so there is no toggle to offer: the
+  // group's row shows its envelopes the way it shows its name. (This replaced a
+  // rule that hid the toggle when the count was zero — the toggle itself is
+  // gone now.)
+  it("renders no lane disclosure on the group header", () => {
+    const { host } = renderRow({
       fxChain: JSON.stringify({
         version: 1,
         nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
@@ -115,6 +107,9 @@ describe("TimelineGroupRow", () => {
         lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
       }),
     });
-    expect(laneToggle(automated.host)).toBeDefined();
+    const laneToggle = Array.from(host.querySelectorAll("button")).find((b) =>
+      /lanes$/.test(b.getAttribute("aria-label") ?? ""),
+    );
+    expect(laneToggle).toBeUndefined();
   });
 });

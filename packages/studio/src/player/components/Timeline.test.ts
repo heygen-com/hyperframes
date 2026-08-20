@@ -653,8 +653,14 @@ describe("Timeline provider boundary", () => {
     const caret = () => host.querySelector<HTMLButtonElement>('button[aria-label$=" lanes"]');
     expect(caret()?.getAttribute("aria-label")).toBe("Show Track 1 lanes");
 
+    // The shared volume row is drawn whether or not the caret is open —
+    // automation is the track's own content, not something the caret discloses —
+    // so the row already reserves its height here.
+    expect(row?.style.height).toBe(`${TRACK_H + AUTOMATION_LANE_H}px`);
+
     act(() => caret()?.click());
-    // One shared volume row, and BOTH clips hold it open.
+    // BOTH clips hold the caret open; height is unchanged, since the clips carry
+    // automation and no keyframe lanes.
     expectTrackExpansion(row, ["narration-1", "narration-2"], TRACK_H + AUTOMATION_LANE_H);
 
     // Every clip bar on the row is capped to one track height. Only the clip
@@ -667,7 +673,9 @@ describe("Timeline provider boundary", () => {
     ).toEqual([`${TRACK_H - 2 * CLIP_Y}px`, `${TRACK_H - 2 * CLIP_Y}px`]);
 
     act(() => caret()?.click());
-    expectTrackExpansion(row, [], TRACK_H);
+    // Collapsed again — and the automation row stays, with its height still
+    // reserved. Only keyframe lanes come and go with the caret.
+    expectTrackExpansion(row, [], TRACK_H + AUTOMATION_LANE_H);
     act(() => root.unmount());
   });
 
@@ -677,6 +685,47 @@ describe("Timeline provider boundary", () => {
   // which threw away each one's hover state and any gesture in flight. Pressing
   // a lane to select its clip therefore made the handles vanish under the
   // pointer, which is the one gesture the read-only lane exists to support.
+  // The rule this replaced: automation lanes only drew while the keyframe caret
+  // was open, so an audio track's envelopes hid behind a control that is about
+  // tweens — and a clip with automation but no tweens had lanes reachable only
+  // by opening a disclosure that showed nothing else.
+  it("draws automation lanes with the caret closed, and caps the clip bars over them", () => {
+    const host = createSizedTimelineHost(720);
+    usePlayerStore.setState({
+      duration: 8,
+      timelineReady: true,
+      elements: [
+        {
+          id: "narration-1",
+          tag: "audio",
+          start: 0,
+          duration: 4,
+          track: 0,
+          automation: JSON.stringify({
+            version: 1,
+            lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+          }),
+        },
+      ],
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    // Nothing expanded — the caret has not been touched.
+    expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set());
+    expect(host.querySelectorAll(".hf-automation-lane")).toHaveLength(1);
+
+    // The row reserves the lane's height, and the clip bar is capped to one
+    // track height so its waveform cannot paint over the envelope below.
+    const row = host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.parentElement
+      ?.parentElement;
+    expect(row?.style.height).toBe(`${TRACK_H + AUTOMATION_LANE_H}px`);
+    expect(host.querySelector<HTMLElement>('[data-el-id="narration-1"]')?.style.height).toBe(
+      `${TRACK_H - 2 * CLIP_Y}px`,
+    );
+    act(() => root.unmount());
+  });
+
   it("keeps the automation lanes mounted when the selection moves along the row", () => {
     const host = createSizedTimelineHost(720);
     const automation = JSON.stringify({

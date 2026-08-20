@@ -119,7 +119,6 @@ function renderLanes(options: RenderLanesOptions = {}): {
             selectedElementIds: next.selectedElementIds ?? new Set(),
             expandedClipIds: new Set(next.expandedClipIds ?? []),
             collapsedGroupIds: new Set(),
-            expandedLaneOwnerIds: new Set(),
             groups: [],
             trackGroupOf: new Map(),
             gsapAnimations,

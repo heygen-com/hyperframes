@@ -105,9 +105,13 @@ export function trackHeights(
     let laneCount = 0;
     let automationLanes = 0;
     for (const clip of clips) {
+      // Automation rows are ALWAYS drawn — an envelope is the track's own
+      // content, not a detail the keyframe caret discloses — so their height is
+      // reserved whether or not the row is expanded. Reserving it only when
+      // expanded clipped every lane on a collapsed row.
+      automationLanes = Math.max(automationLanes, clip.automationLaneCount ?? 0);
       if (!expandedClipIds?.has(clip.clipId)) continue;
       laneCount = Math.max(laneCount, clip.laneCount);
-      automationLanes = Math.max(automationLanes, clip.automationLaneCount ?? 0);
     }
     return (
       TRACK_H + Math.max(0, Math.trunc(laneCount)) * LANE_H + automationLanes * AUTOMATION_LANE_H
