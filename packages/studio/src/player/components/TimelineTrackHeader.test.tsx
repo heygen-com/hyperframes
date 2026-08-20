@@ -891,7 +891,11 @@ describe("TimelineTrackHeader", () => {
       act(() => view.root.unmount());
     });
 
-    it("keeps the group pointer on the control line, not a third row", () => {
+    // The header is ONE line: name, clip count, then every control anchored to
+    // the right edge. It was two — a name line and a control line — which is
+    // what let a stray third child overflow the 48px box; now there is a single
+    // row and the controls share one right-aligned group.
+    it("keeps the name and every control on one line, controls to the right", () => {
       enabledCanaries.add("audio-fx-rack");
       enabledCanaries.add("audio-groups");
       const view = renderHeader({
@@ -903,14 +907,20 @@ describe("TimelineTrackHeader", () => {
         isAudioTrack: true,
       });
       const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
-      // One TRACK_H-tall wrapper holding exactly the two lines.
+      // One TRACK_H-tall wrapper holding one line.
       const lines = header?.children[0];
-      expect(lines?.children).toHaveLength(2);
-      // And it is on the second line, beside the visibility control.
-      const controlLine = lines?.children[1];
+      expect(lines?.children).toHaveLength(1);
+      // The controls live in a right-anchored group at the end of that line,
+      // after the name and the clip count — `ml-auto` is what holds the edge.
+      const line = lines?.children[0];
+      const controls = line?.lastElementChild as HTMLElement | null;
+      expect(controls?.className).toContain("ml-auto");
       expect(
-        controlLine?.querySelector('button[aria-label="Effects — group these clips first"]'),
+        controls?.querySelector('button[aria-label="Effects — group these clips first"]'),
       ).not.toBeNull();
+      // And the clip count is beside the name, not out with the controls.
+      expect(controls?.querySelector('[aria-label="2 clips"]')).toBeNull();
+      expect(line?.querySelector('[aria-label="2 clips"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
   });

@@ -80,43 +80,52 @@ export function PlainTrackHeader({
 }) {
   return (
     <>
-      {/* Line one: what the row IS. Line two (below) is what you can do to it —
-          the same split the group header uses, for the same reason: a name and
-          four controls sharing 232px truncated the name to a few characters. */}
+      {/* One line: the name, then every control pushed to the right edge. The
+          two-line split this replaced existed to stop four controls truncating
+          the name — but the name already truncates on its own (`min-w-0` plus
+          `truncate`), and the controls are `shrink-0`, so they hold the edge
+          and the name gives way instead. */}
       <div className="flex min-w-0 items-center gap-1">
         {isAudioTrack && (
           <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
         )}
+        {/* No `flex-1`: the name takes only the width it needs (still
+            truncating at `min-w-0` when the row is narrow) so the clip count
+            sits against it rather than being pushed out to meet the controls.
+            The slack goes to the `ml-auto` group below instead. */}
         {showTrackLabel && (
-          <span className="min-w-0 flex-1 truncate text-[11px]" title={trackLabel}>
+          <span className="min-w-0 truncate text-[11px]" title={trackLabel}>
             {trackLabel}
           </span>
         )}
         {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
-      </div>
-      <div className="flex items-center gap-1">
-        {/* Not on an audio track. The control is the old visibility eye, and on
-          audio it silences rather than hides — but a row that already says what
-          it is with a speaker does not also need the hide affordance sitting in
-          the eye's slot. `visible={false}` rather than omitting the element, so
-          the spacer keeps every row's control columns aligned.
+        {/* `ml-auto` is what anchors the group right: it absorbs the slack the
+            truncating name leaves, so the controls sit on the edge whatever the
+            name's length. */}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {/* Not on an audio track. The control is the old visibility eye, and
+            on audio it silences rather than hides — but a row that already says
+            what it is with a speaker does not also need the hide affordance
+            sitting in the eye's slot. `visible={false}` rather than omitting the
+            element, so the spacer keeps every row's control columns aligned.
 
-          EXCEPT when the audio track is ALREADY hidden. Withholding the control
-          unconditionally withheld the only way back: `data-hidden` silences the
-          clip in preview and drops it from the render, the panel's "Muted" is
-          the unrelated HTML `muted` attribute, and nothing else writes it — so a
-          track hidden before this rule (or by "Hide all", or by hand) was
-          silent with no control anywhere to restore it. Offering the eye only
-          in that state keeps the affordance off a normal audio row while
-          leaving the door open from the inside. */}
-        <VisibilityButton
-          hidden={isTrackHidden}
-          trackNumber={trackNumber}
-          trackDisplayNumber={trackDisplayNumber}
-          visible={!isAudioTrack || isTrackHidden}
-          onToggle={onToggleTrackHidden}
-        />
-        {trailing}
+            EXCEPT when the audio track is ALREADY hidden. Withholding the
+            control unconditionally withheld the only way back: `data-hidden`
+            silences the clip in preview and drops it from the render, the
+            panel's "Muted" is the unrelated HTML `muted` attribute, and nothing
+            else writes it — so a track hidden before this rule (or by "Hide
+            all", or by hand) was silent with no control anywhere to restore it.
+            Offering the eye only in that state keeps the affordance off a normal
+            audio row while leaving the door open from the inside. */}
+          <VisibilityButton
+            hidden={isTrackHidden}
+            trackNumber={trackNumber}
+            trackDisplayNumber={trackDisplayNumber}
+            visible={!isAudioTrack || isTrackHidden}
+            onToggle={onToggleTrackHidden}
+          />
+          {trailing}
+        </div>
       </div>
     </>
   );
