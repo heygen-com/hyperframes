@@ -172,6 +172,12 @@
       "import": "./src/audioAutomation.ts",
       "types": "./src/audioAutomation.ts"
     },
+    "./clip-fade": {
+      "bun": "./src/clipFade.ts",
+      "node": "./dist/clipFade.js",
+      "import": "./src/clipFade.ts",
+      "types": "./src/clipFade.ts"
+    },
     "./audio-gain": {
       "bun": "./src/audioGain.ts",
       "node": "./dist/audioGain.js",
@@ -483,6 +489,10 @@
       "./audio-automation": {
         "import": "./dist/audioAutomation.js",
         "types": "./dist/audioAutomation.d.ts"
+      },
+      "./clip-fade": {
+        "import": "./dist/clipFade.js",
+        "types": "./dist/clipFade.d.ts"
       },
       "./audio-gain": {
         "import": "./dist/audioGain.js",
