@@ -10,7 +10,7 @@ import { audioFxSummary } from "./audioFxSummary";
 import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
-import { closedGroupHeader } from "./propertyPanelFlatClosedGroup";
+import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
@@ -19,16 +19,14 @@ import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
 import { isCanaryEnabled } from "../../telemetry/canary";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import { useVolumeAutomation } from "./useVolumeAutomation";
+import { useAudioFxRevealSection } from "./useAudioFxRevealSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
-import {
-  isFocusedEaseRequestCurrent,
-  isRevealedAudioFxRequestCurrent,
-} from "../../player/store/keyframeSlice";
+import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -166,15 +164,13 @@ export function PropertyPanelFlat({
   // When the inline timeline ease button focuses a segment on this element,
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
-  const { focusedEaseSegment, revealedAudioFxTarget, timelineProjectId, timelineSessionEpoch } =
-    usePlayerStore(
-      useShallow((state) => ({
-        focusedEaseSegment: state.focusedEaseSegment,
-        revealedAudioFxTarget: state.revealedAudioFxTarget,
-        timelineProjectId: state.timelineProjectId,
-        timelineSessionEpoch: state.timelineSessionEpoch,
-      })),
-    );
+  const { focusedEaseSegment, timelineProjectId, timelineSessionEpoch } = usePlayerStore(
+    useShallow((state) => ({
+      focusedEaseSegment: state.focusedEaseSegment,
+      timelineProjectId: state.timelineProjectId,
+      timelineSessionEpoch: state.timelineSessionEpoch,
+    })),
+  );
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -209,23 +205,14 @@ export function PropertyPanelFlat({
    * module the request names — is not mounted while it is closed, so the click
    * selected the clip and then appeared to do nothing.
    */
-  const revealNonceForThisPanel =
-    revealedAudioFxTarget !== null &&
-    revealedAudioFxTarget.elementKey === element?.id &&
-    isRevealedAudioFxRequestCurrent(revealedAudioFxTarget, {
-      timelineProjectId,
-      timelineSessionEpoch,
-    }) &&
-    sections.audioFx
-      ? revealedAudioFxTarget.nonce
-      : null;
-  // Keyed on the request's NONCE, not the request object: clicking a lane
-  // selects the clip first, which REMOUNTS this panel — so a `!==` against the
-  // previous value would initialise to the already-set request and never fire.
-  // The nonce also makes a second click on the same lane a new request.
-  const [consumedRevealNonce, setConsumedRevealNonce] = useState<number | null>(null);
-  if (revealNonceForThisPanel !== null && revealNonceForThisPanel !== consumedRevealNonce) {
-    setConsumedRevealNonce(revealNonceForThisPanel);
+  const hiddenNow = isSelectionHidden(selectedElementHidden, element);
+
+  const reveal = useAudioFxRevealSection({
+    elementId: element?.id,
+    hasAudioFxSection: Boolean(sections.audioFx),
+  });
+  if (reveal.revealNonce !== null) {
+    reveal.consume(reveal.revealNonce);
     setOpenGroupId("audio-fx");
   }
 
@@ -536,7 +523,7 @@ export function PropertyPanelFlat({
             name={element.label}
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
-            hidden={selectedElementHidden}
+            hidden={hiddenNow}
             // Audio gets no hide control here. On an audio track "hidden" and
             // "muted" are not similar operations, they are the SAME operation
             // with two names (groups doc §2.1) — which is why the timeline's eye
@@ -545,9 +532,18 @@ export function PropertyPanelFlat({
             // set out to remove: "Two controls that silence a track, sitting
             // next to each other, differing only in a distinction the author
             // cannot see." An `<hf-audio-group>` has no visual to hide at all.
+            //
+            // EXCEPT while it is already hidden — the same door-from-the-inside
+            // the timeline's eye keeps for an audio track
+            // (`TimelineTrackPlainHeader`). Withholding it unconditionally
+            // withheld the only way back: a `data-hidden` group is silent in
+            // preview (the bus's mute gain) and absent from the render (every
+            // member dropped), and the group header carries no visibility
+            // control of its own now that mute and solo are gone. Only
+            // hand-editing the HTML brought the audio back.
             onToggleHidden={
-              selectedElementId && onToggleElementHidden && !audioSelection
-                ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
+              selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
+                ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
                 : undefined
             }
             copied={clipboardCopied}

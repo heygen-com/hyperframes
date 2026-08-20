@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
+import { nextSelectionSet } from "./playerStoreSelection";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
@@ -530,18 +531,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // echoes that must preserve a group go through setSelectionAnchor instead.
   setSelectedElementId: (id, options) =>
     set((s) => {
-      const preserveSet = Boolean(options?.preserveSet && id && s.selectedElementIds.has(id));
-      const selectedElementIds = preserveSet
-        ? new Set(s.selectedElementIds)
-        : options?.preserveSet
-          ? new Set<string>()
-          : id
-            ? new Set([id])
-            : new Set<string>();
+      const selectedElementIds = nextSelectionSet(s.selectedElementIds, id, options?.preserveSet);
       // Selecting a different element drops any active keyframe selection — otherwise
       // a stale activeKeyframePct from a prior diamond click would force the next drag
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
       // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
+      // A reveal request survives the selection it is FOR. `openClipFxRack`
+      // raises the request and then selects the clip asynchronously, so the
+      // selection lands afterwards and used to clear the very request that
+      // caused it — the panel then read null and the section never opened.
+      // Any OTHER selection still drops it: a request aimed elsewhere is stale.
+      const revealSurvives = s.revealedAudioFxTarget?.elementKey === id;
       return id !== s.selectedElementId
         ? {
             selectedElementId: id,
@@ -549,7 +549,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             activeKeyframePct: null,
             motionPathArmed: false,
             focusedEaseSegment: null,
-            revealedAudioFxTarget: null,
+            ...(revealSurvives ? {} : { revealedAudioFxTarget: null }),
           }
         : { selectedElementId: id, selectedElementIds };
     }),

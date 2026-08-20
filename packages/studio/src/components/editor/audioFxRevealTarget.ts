@@ -11,6 +11,7 @@
  */
 
 import { parseAutomationTarget } from "@hyperframes/core/audio-automation";
+import { escapeCssString } from "./domEditingDom";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 
 export type AudioFxRevealTarget =
@@ -67,13 +68,13 @@ function revealRowSelector(where: AudioFxRevealTarget | null): string | null {
   if (!where) return null;
   switch (where.kind) {
     case "node":
-      return where.nodeId ? `[data-fx-node-id="${where.nodeId}"]` : null;
+      return where.nodeId ? `[data-fx-node-id="${escapeCssString(where.nodeId)}"]` : null;
     case "eq":
-      return `[data-fx-eq="${where.eqId}"]`;
+      return `[data-fx-eq="${escapeCssString(where.eqId)}"]`;
     case "carve":
       return ".hf-fx-carve-module";
     case "preset":
-      return `[data-fx-preset="${where.runKey.replace(/-\d+$/, "")}"]`;
+      return `[data-fx-preset="${escapeCssString(where.runKey.replace(/-\d+$/, ""))}"]`;
     default:
       return null;
   }
@@ -94,7 +95,18 @@ export function scrollRevealedRowIntoView(
   chain: HfAudioFxChain,
 ): boolean {
   const selector = revealRowSelector(audioFxRevealTarget(target, chain));
-  const row = selector ? root?.querySelector<HTMLElement>(selector) : null;
+  // `querySelector` throws SyntaxError on a malformed selector, and this runs
+  // inside a render-phase effect — an unescapable id would take the whole
+  // property panel down instead of leaving the request pending, which is what
+  // returning false means. `parseAudioFxNode` accepts any non-empty string as
+  // an id and `parseAutomationTarget` only splits on `.`, so a hand- or
+  // LLM-authored chain can carry one.
+  let row: HTMLElement | null = null;
+  try {
+    row = selector ? (root?.querySelector<HTMLElement>(selector) ?? null) : null;
+  } catch {
+    return false;
+  }
   if (!row) return false;
   row.scrollIntoView({ block: "nearest", behavior: "smooth" });
   return true;

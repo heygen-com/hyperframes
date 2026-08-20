@@ -107,6 +107,7 @@ export function FxSection({
   onAuditionTransport,
   signalPath,
   revealTarget,
+  revealNonce,
 }: FxSectionProps) {
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
@@ -330,11 +331,11 @@ export function FxSection({
    * the request lands on, or the scroll below runs against a row that has not
    * mounted yet.
    */
-  const [consumedReveal, setConsumedReveal] = useState(revealTarget ?? null);
+  const [consumedRevealNonce, setConsumedRevealNonce] = useState<number | null>(null);
   const pendingRevealRef = useRef<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  if ((revealTarget ?? null) !== consumedReveal) {
-    setConsumedReveal(revealTarget ?? null);
+  if (revealNonce != null && revealNonce !== consumedRevealNonce) {
+    setConsumedRevealNonce(revealNonce);
     const where = revealTarget ? audioFxRevealTarget(revealTarget, chain) : null;
     if (where) {
       // Each surface has its own open-state; the resolver says which one owns

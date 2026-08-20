@@ -15,6 +15,15 @@ export interface FxSectionProps {
    * row, an EQ module, a preset run, or the carve — and scrolls to it.
    */
   revealTarget?: string | null;
+  /**
+   * The reveal request's nonce. Consumption keys on THIS, not on
+   * `revealTarget`: clicking a lane selects the clip first, which remounts this
+   * section, so a `!==` against the previous VALUE initialises to the
+   * already-set request and never fires — and a second click on the same lane
+   * would be byte-identical and inert. Same reason `PropertyPanelFlat` keys its
+   * own consumption on the nonce.
+   */
+  revealNonce?: number | null;
   /** What the rack's `In`/`Out` lines name — see `audioFxSignalPath`. Absent
    *  means an ungrouped clip, which is what those lines said before groups. */
   signalPath?: AudioFxSignalPath;

@@ -296,6 +296,18 @@ export function AudioFxGroup({
           ? revealRequest.automationTarget
           : null
       }
+      // Forwarded, not dropped: the section consumes by nonce, so without it a
+      // request never fires and a second click on the same lane is inert.
+      revealNonce={
+        revealRequest &&
+        revealRequest.elementKey === element.id &&
+        isRevealedAudioFxRequestCurrent(revealRequest, {
+          timelineProjectId,
+          timelineSessionEpoch,
+        })
+          ? revealRequest.nonce
+          : null
+      }
       // Locked while the carve is measuring. `analyse` captures the chain and
       // the automation BEFORE its fetch and decode, then rewrites the whole
       // attribute from that snapshot — so an effect added, or a knob committed,
