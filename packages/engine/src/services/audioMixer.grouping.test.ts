@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
-import { MIXED_AUDIO_FILENAME, processCompositionAudio } from "./audioMixer.js";
+import { MIXED_AUDIO_FILENAME, parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 /**
  * Level arithmetic across the mix graph.
@@ -462,5 +462,51 @@ describe.skipIf(!HAS_FFMPEG)("group sub-mix failure contract", () => {
     // workDir is cleaned up on success, so what matters is what is left BESIDE
     // it: an escaped  would survive there. Only the project remains.
     expect(readdirSync(parent).sort()).toEqual(["project"]);
+  });
+});
+
+describe("duplicate bus instances", () => {
+  /**
+   * The reviewer's own repro. Two inlined instances of one sub-composition, each
+   * with its own bus and member, only the SECOND muted. Keyed by author id the
+   * two collapsed into one bus (last wins), so instance B's `data-hidden` took
+   * instance A's audio out of the export with it.
+   */
+  it("drops only the muted instance's member", () => {
+    const html = `<div id="root" data-composition-id="main" data-start="0" data-duration="4">
+      <div data-composition-id="bedcomp">
+        <hf-audio-group id="bed" data-hf-render-id="bed" data-volume="0.5"></hf-audio-group>
+        <audio id="m1" src="a.wav" data-start="0" data-duration="2"
+          data-audio-group="bed" data-hf-group-render-id="bed"></audio>
+      </div>
+      <div data-composition-id="bedcomp">
+        <hf-audio-group id="bed" data-hf-render-id="bed__hf2" data-volume="0.5" data-hidden></hf-audio-group>
+        <audio id="m1" src="a.wav" data-start="2" data-duration="2"
+          data-audio-group="bed" data-hf-group-render-id="bed__hf2"></audio>
+      </div>
+    </div>`;
+
+    const tracks = parseAudioElements(html);
+    expect(tracks.map((t) => t.groupId)).toEqual(["bed"]);
+    expect(tracks).toHaveLength(1);
+  });
+
+  it("keeps two instances as two separate buses when neither is muted", () => {
+    const html = `<div id="root" data-composition-id="main" data-start="0" data-duration="4">
+      <hf-audio-group id="bed" data-hf-render-id="bed" data-volume="0.25"></hf-audio-group>
+      <audio id="m1" src="a.wav" data-start="0" data-duration="2"
+        data-audio-group="bed" data-hf-group-render-id="bed"></audio>
+      <hf-audio-group id="bed" data-hf-render-id="bed__hf2" data-volume="0.75"></hf-audio-group>
+      <audio id="m2" src="b.wav" data-start="2" data-duration="2"
+        data-audio-group="bed" data-hf-group-render-id="bed__hf2"></audio>
+    </div>`;
+
+    const tracks = parseAudioElements(html);
+    // Each member keeps its OWN instance's fader — the collapse used to apply
+    // whichever bus came last to both.
+    expect(tracks.map((t) => [t.groupId, t.groupVolume])).toEqual([
+      ["bed", 0.25],
+      ["bed__hf2", 0.75],
+    ]);
   });
 });

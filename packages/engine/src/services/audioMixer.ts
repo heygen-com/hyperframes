@@ -48,6 +48,7 @@ import {
   readMediaStart,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -67,6 +68,21 @@ export type { AudioElement, MixResult } from "./audioMixer.types.js";
  * the PNG-sequence sidecar, and all three have to agree.
  */
 export const MIXED_AUDIO_FILENAME = "audio.m4a";
+
+/**
+ * The bus key a member belongs to, as `resolveAudioGroups` keys them.
+ *
+ * The compiler's `data-hf-group-render-id` names one INSTANCE of a bus; the
+ * author's `data-audio-group` names it only within its own composition file. A
+ * sub-composition declaring a bus and its members, used twice, therefore had
+ * both instances' members under one key: one sub-mix for two independent buses,
+ * one instance's fader and chain over the other's audio, and — with only the
+ * second muted — BOTH instances dropped from the export. Uncompiled documents
+ * (the live preview) carry no stamp and read exactly as before.
+ */
+function memberGroupKey(el: RefResolverEl): string | null {
+  return el.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? el.getAttribute(HF_AUDIO_GROUP_ATTR);
+}
 
 function clampVolume(volume: number): number {
   return clampAudioGain(volume);
@@ -486,7 +502,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     resolveAudioGroups(document).map((group) => [group.id, group] as const),
   );
   const memberGroupHidden = (el: AudioMediaElement): boolean => {
-    const groupId = el.getAttribute(HF_AUDIO_GROUP_ATTR);
+    const groupId = memberGroupKey(el);
     return groupId ? (groupsById.get(groupId)?.hidden ?? false) : false;
   };
 
@@ -501,7 +517,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     // Audio only in v1 (matches resolveAudioGroups, which only scans
     // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
-    const groupId = type === "audio" ? el.getAttribute(HF_AUDIO_GROUP_ATTR) : null;
+    const groupId = type === "audio" ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
     return {
       id,

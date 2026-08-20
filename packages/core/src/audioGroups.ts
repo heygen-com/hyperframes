@@ -10,6 +10,7 @@
  */
 
 import { HF_AUDIO_FX_ATTR } from "./audioFx.js";
+import { AUDIO_GROUP_RENDER_ID_ATTR, MEDIA_RENDER_ID_ATTR } from "./compiler/mediaRenderIds.js";
 import { HF_AUDIO_AUTOMATION_ATTR } from "./audioAutomation.js";
 
 export const HF_AUDIO_GROUP_TAG = "hf-audio-group";
@@ -84,9 +85,18 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
  * degrades to a flat sum rather than borrowing a stranger's settings.
  */
 export function resolveGroupElement(
-  doc: Pick<Document, "getElementById"> | null | undefined,
+  doc:
+    | (Pick<Document, "getElementById"> & Partial<Pick<Document, "querySelector">>)
+    | null
+    | undefined,
   groupId: string,
 ): Element | null {
+  // A render-stamped key names an INSTANCE, and `getElementById` cannot find it
+  // — the author id is what is on the element's `id`. Tried first so a compiled
+  // document resolves the right one of two identically-named buses.
+  const stamped =
+    doc?.querySelector?.(`${HF_AUDIO_GROUP_TAG}[${MEDIA_RENDER_ID_ATTR}="${groupId}"]`) ?? null;
+  if (stamped) return stamped;
   const el = doc?.getElementById(groupId) ?? null;
   if (!el) return null;
   return el.tagName?.toLowerCase() === HF_AUDIO_GROUP_TAG ? el : null;
@@ -112,7 +122,15 @@ export function isMemberGroupHidden(
 export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
   const membersByGroup = new Map<string, string[]>();
   for (const member of root.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)) {
-    const groupId = member.getAttribute(HF_AUDIO_GROUP_ATTR);
+    // The render-stamped instance key when the compiler has been through
+    // (`assignMediaRenderIds`), else the author id. An author id is unique only
+    // per composition FILE, so a sub-composition declaring a bus AND its members
+    // and used twice put both instances' members under one key — one sub-mix for
+    // two independent buses, instance B's fader and chain over instance A's
+    // audio, and with only B muted BOTH instances dropped from the export. The
+    // live preview has no stamps, so it reads exactly as before.
+    const groupId =
+      member.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? member.getAttribute(HF_AUDIO_GROUP_ATTR);
     if (!groupId || !member.id) continue;
     const members = membersByGroup.get(groupId);
     if (members) members.push(member.id);
@@ -121,7 +139,10 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
 
   const groupElements = new Map<string, Element>();
   for (const el of root.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
-    if (el.id) groupElements.set(el.id, el);
+    // Keyed the same way, so a stamped document pairs instance for instance and
+    // an unstamped one keeps id-for-id.
+    const key = el.getAttribute(MEDIA_RENDER_ID_ATTR) ?? el.id;
+    if (key) groupElements.set(key, el);
   }
 
   const groups: HfAudioGroup[] = [];
