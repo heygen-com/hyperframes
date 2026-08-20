@@ -138,6 +138,35 @@ describe("group attribute writes reach the store", () => {
  * index.html", because the runtime inlines a sub-comp as its own root element
  * that carries only the composition ID — the FILE is on the host above it.
  */
+describe("the mirror reaches sub-composition members", () => {
+  /**
+   * A group declared inside a sub-composition has no FLAT member to mirror onto
+   * — `childGroupState` keeps those members out of `elements` — so mirroring
+   * only `elements` made this whole function a no-op for it: the header kept the
+   * pre-write chain and `laneCount` stayed 0, so the lane disclosure never
+   * appeared for automation that now existed.
+   */
+  it("mirrors a group write onto DomClipChild members as well as flat ones", async () => {
+    const react = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const harness = makeSetter();
+    renderToStaticMarkup(react.createElement(harness.Probe));
+    const setter = harness.get();
+    usePlayerStore.getState().setElements([member("flat-1", 0)]);
+    usePlayerStore.getState().setDomClipChildren([
+      { id: "sub-1", parentId: "host", hostId: "host", label: "Sub 1", audioGroup: "voiceover" },
+      { id: "other", parentId: "host", hostId: "host", label: "Other", audioGroup: "sfx" },
+    ]);
+
+    setter?.setLive("voiceover", "data-label", "Voices");
+
+    const children = usePlayerStore.getState().domClipChildren;
+    expect(children.find((c) => c.id === "sub-1")?.audioGroupLabel).toBe("Voices");
+    // A member of another group is untouched.
+    expect(children.find((c) => c.id === "other")?.audioGroupLabel).toBeUndefined();
+  });
+});
+
 describe("resolveGroupSourceFile", () => {
   function livePreviewShape(): Document {
     const doc = document.implementation.createHTMLDocument("preview");

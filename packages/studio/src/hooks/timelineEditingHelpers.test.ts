@@ -455,12 +455,57 @@ describe("persistElementAttribute", () => {
         domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
         patchLive,
-        readLive: () => null,
       }),
     ).rejects.toThrow("Unable to patch element in index.html");
 
     expect(patchLive).not.toHaveBeenCalled();
     expect(writeProjectFile).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+});
+
+describe("persistElementAttribute — unwind value", () => {
+  /**
+   * The unwind has to restore the value on DISK, not the one in the preview.
+   *
+   * Every live-write caller patches the DOM before committing (a fader drag is
+   * `setLive` per frame; hovering a preset auditions the whole chain), so by
+   * commit time the live DOM already holds the in-progress value. Reading it as
+   * `previousValue` made the unwind a no-op, and the group writer's catch —
+   * which deliberately re-mirrors the store off the live DOM — then mirrored the
+   * never-saved value: the panel agreed with the preview, and a reload dropped it.
+   */
+  it("restores the file's value, not the audition already in the live DOM", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ content: `<body><audio id="bgm" data-volume="0.25"></audio></body>` }),
+        ),
+      );
+    const patched: Array<string | null> = [];
+    const writeProjectFile = vi.fn(() => Promise.reject(new Error("save failed")));
+
+    await expect(
+      persistElementAttribute({
+        projectId: "p",
+        targetPath: "index.html",
+        patchTarget: { id: "bgm" },
+        attr: "data-volume",
+        value: "0.9",
+        label: "Set volume",
+        writeProjectFile,
+        recordEdit: vi.fn(),
+        domEditSaveTimestampRef: { current: 0 },
+        pendingTimelineEditPathRef: { current: new Set() },
+        // The live DOM is ALREADY at the new value when the commit runs — that
+        // is what `setLive` does on every drag frame.
+        patchLive: (v) => patched.push(v),
+      }),
+    ).rejects.toThrow("save failed");
+
+    // First the optimistic write, then the unwind — back to what the FILE said.
+    expect(patched).toEqual(["0.9", "0.25"]);
     fetchSpy.mockRestore();
   });
 });

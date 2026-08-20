@@ -79,9 +79,28 @@ function syncStoredGroupAttribute(groupId: string, attr: string, value: string |
   // a 500-clip composition was 1500 object spreads and 3 store notifications per
   // drag frame — at ~60/s, with every `elements`-keyed memo downstream
   // recomputing each time.
-  usePlayerStore.setState((state) => ({
-    elements: state.elements.map((el) => (el.audioGroup === groupId ? { ...el, ...patch } : el)),
-  }));
+  // BOTH stores, because a group declared inside a sub-composition has no flat
+  // member to mirror onto: `childGroupState` keeps those members out of
+  // `elements` entirely, so their `audioGroup*` fields come from the
+  // `DomClipChild` record instead. Mirroring only `elements` made this whole
+  // function a no-op for such a group — the header kept the pre-write chain, its
+  // FX button showed the old count, and `laneCount` stayed 0 so the lane
+  // disclosure never appeared for automation that now existed. Verbatim the
+  // symptom this docblock claims to have fixed, fixed only for flat members.
+  //
+  // `setDomClipChildren` has one other writer, inside `processTimelineMessage`,
+  // which a live attribute patch does not trigger.
+  usePlayerStore.setState((state) => {
+    const next: Partial<typeof state> = {
+      elements: state.elements.map((el) => (el.audioGroup === groupId ? { ...el, ...patch } : el)),
+    };
+    if (state.domClipChildren.some((child) => child.audioGroup === groupId)) {
+      next.domClipChildren = state.domClipChildren.map((child) =>
+        child.audioGroup === groupId ? { ...child, ...patch } : child,
+      );
+    }
+    return next;
+  });
 }
 
 /**
@@ -172,8 +191,6 @@ async function setAudioGroupAttribute({
     domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
     patchLive: (v) => patchLiveGroupAttribute(previewIframe, groupId, attr, v),
-    readLive: () =>
-      previewIframe?.contentDocument?.getElementById(groupId)?.getAttribute(attr) ?? null,
   });
 }
 
