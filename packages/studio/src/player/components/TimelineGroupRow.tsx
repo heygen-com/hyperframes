@@ -10,7 +10,7 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { TimelineGroupHeader } from "./TimelineGroupHeader";
 import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
-import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
+import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
 import { TRACK_H } from "./timelineLayout";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
