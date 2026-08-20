@@ -191,7 +191,7 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 After checks pass, pause for user review — the review loop's final look (`../hyperframes-core/references/review-loop.md` § 4): one question, on the Studio that has been open since Step 3 — render now, or what changes? (Autonomous: the one kept question, preview first or render.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
-Preview: `npx hyperframes preview`
+Preview: `npx hyperframes preview --background`
 
 Render only after user approval (autonomous mode: after the preview-or-render question):
 

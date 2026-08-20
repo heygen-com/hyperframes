@@ -18,6 +18,7 @@ import {
   type HfAutomationLane,
 } from "./audioAutomation.js";
 import { mintAudioFxNodeId, parseAudioFxChain, type HfAudioFxChain } from "./audioFx.js";
+import { MAX_AUDIO_GAIN } from "./audioGain.js";
 
 const chain: HfAudioFxChain = {
   version: 1,
@@ -116,7 +117,7 @@ describe("normalisation", () => {
     ]);
   });
 
-  it("clamps volume into 0..1 at parse time", () => {
+  it("clamps volume into the authoring gain range at parse time", () => {
     const parsed = parseAutomation(
       JSON.stringify({
         version: 1,
@@ -131,7 +132,9 @@ describe("normalisation", () => {
         ],
       }),
     );
-    expect(parsed.lanes[0]!.points.map((p) => p.v)).toEqual([1, 0]);
+    // The lane shares the fader's ceiling. Clamping it at unity discarded the
+    // boost of any clip authored above 0 dB the moment it was automated.
+    expect(parsed.lanes[0]!.points.map((p) => p.v)).toEqual([MAX_AUDIO_GAIN, 0]);
   });
 
   it("refuses malformed input instead of silently losing an envelope", () => {

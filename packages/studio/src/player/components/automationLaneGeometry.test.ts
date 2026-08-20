@@ -52,9 +52,15 @@ describe("automationTargets", () => {
 
 describe("value ↔ lane position", () => {
   it("maps a linear range straight onto the lane", () => {
-    expect(toUnit(VOLUME_RANGE, 0)).toBe(0);
-    expect(toUnit(VOLUME_RANGE, 1)).toBe(1);
-    expect(toUnit(VOLUME_RANGE, 0.25)).toBeCloseTo(0.25, 10);
+    const unit = { ...VOLUME_RANGE, max: 1 };
+    expect(toUnit(unit, 0)).toBe(0);
+    expect(toUnit(unit, 1)).toBe(1);
+    expect(toUnit(unit, 0.25)).toBeCloseTo(0.25, 10);
+  });
+
+  it("puts unity a quarter up the volume lane, which reaches +12 dB", () => {
+    expect(toUnit(VOLUME_RANGE, VOLUME_RANGE.max)).toBe(1);
+    expect(toUnit(VOLUME_RANGE, 1)).toBeCloseTo(1 / VOLUME_RANGE.max, 10);
   });
 
   it("maps a log-read knob on its own scale, so its middle is geometric", () => {
@@ -67,7 +73,7 @@ describe("value ↔ lane position", () => {
 
   it("clamps a pointer that has left the lane", () => {
     expect(fromUnit(VOLUME_RANGE, -3)).toBe(0);
-    expect(fromUnit(VOLUME_RANGE, 4)).toBe(1);
+    expect(fromUnit(VOLUME_RANGE, 4)).toBe(VOLUME_RANGE.max);
   });
 
   it("reads a zero-width range as the bottom rather than dividing by zero", () => {

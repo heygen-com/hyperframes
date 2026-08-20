@@ -33,7 +33,10 @@ The domain skills (`/hyperframes-core`, `/hyperframes-animation`, `/hyperframes-
 ## Commands
 
 ```bash
-npm run dev          # start the preview server (long-running — keep it alive in background)
+npm run dev          # human-operated foreground preview (blocks until stopped)
+npx hyperframes preview --background  # agent-safe persistent Studio preview
+npx hyperframes preview --status      # verify the persistent preview is listening
+npx hyperframes preview --stop        # stop it when review is finished
 npm run check        # lint + runtime + layout + motion + contrast (one command)
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
@@ -42,9 +45,11 @@ npx hyperframes lint --json     # machine-readable output for CI
 npx hyperframes docs <topic> # reference docs in terminal
 ```
 
-> **`npm run dev` is a long-running server, not a one-shot command.** It blocks until stopped.
-> In Claude Code, always run it with `run_in_background: true`. Never run it as a foreground
-> command — it will time out and the server will die, breaking the browser preview.
+> **Agents must use `npx hyperframes preview --background` for Studio handoff.** Do not rely
+> on a shell/tool `run_in_background` wrapper around `npm run dev`: that foreground process
+> remains owned by the invoking session and can disappear while the browser stays open,
+> leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`, keep it
+> alive through review, and stop it explicitly with `preview --stop` afterward.
 
 > **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. To move up: `npx hyperframes@latest upgrade --project . --check` (shows the delta), then `npx hyperframes@latest upgrade --project .` to rewrite the pins. Always unpinned — the pinned script re-runs the old version against itself.
 

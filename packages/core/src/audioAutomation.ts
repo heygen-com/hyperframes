@@ -12,6 +12,7 @@
  */
 
 import { getAudioFxDef, type HfAudioFxChain } from "./audioFx.js";
+import { MAX_AUDIO_GAIN } from "./audioGain.js";
 
 export const HF_AUDIO_AUTOMATION_ATTR = "data-automation";
 
@@ -135,8 +136,9 @@ export const PRESET_RANGE: AutomationRange = {
 /**
  * The value range a lane is drawn and clamped against.
  *
- * Volume is linear 0..1, matching `data-volume` and the existing volume
- * envelope machinery — no dB conversion enters the volume path. Everything
+ * Volume is linear over the full authoring gain range, matching `data-volume`
+ * and the existing volume envelope machinery — no dB conversion enters the
+ * volume path. Everything
  * else is read from the effect registry, so a lane can never offer a value the
  * renderer would reject, and the log-scaled knobs sweep the way a DAW's do.
  */
@@ -151,9 +153,15 @@ export interface AutomationRange {
   default: number;
 }
 
+/**
+ * One ceiling for the fader, the lane, the preview transport and the render
+ * mixer. Capping the lane at unity while the fader reached +12 dB made
+ * automating a boosted clip silently discard the boost — and the panel
+ * disables the fader while a lane owns it, so there was no way back.
+ */
 export const VOLUME_RANGE: AutomationRange = {
   min: 0,
-  max: 1,
+  max: MAX_AUDIO_GAIN,
   step: 0.01,
   unit: "",
   label: "Volume",

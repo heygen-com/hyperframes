@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createViteAdapter } from "./vite.adapter";
+import { previewConfigPayload } from "./vite.preview-config";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -83,6 +84,14 @@ function devProjectApi(): Plugin {
         }
         return _api;
       };
+
+      server.middlewares.use((req, res, next) => {
+        if (req.url !== "/__hyperframes_config") return next();
+        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
+        if (!payload) return next();
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(payload));
+      });
 
       // Runtime endpoint — prefer source build over dist artifact
       server.middlewares.use((req, res, next) => {

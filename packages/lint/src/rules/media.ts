@@ -629,7 +629,54 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_volume_double_automation
   findVolumeDoubleAutomationFindings,
+
+  // audio_volume_tween_overrides_gain
+  findVolumeTweenOverridesGainFindings,
 ];
+
+/**
+ * Tween values on `volume` are ABSOLUTE gains, not multipliers of the authored
+ * `data-volume`: the probed keyframes replace that baseline outright, in
+ * preview and in the render alike. So a clip carrying both plays at whatever
+ * the tween names — `{ volume: 1 }` is 0 dB even on a clip the fader says is
+ * at +5.8 dB, and Studio's fader gives no sign of it.
+ *
+ * Silent before this rule, and easier to hit since the fader gained +12 dB of
+ * boost and `normalize-audio` writes into the very same attribute.
+ */
+function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const boosted = ctx.tags
+    .filter((tag) => isMediaTag(tag.name))
+    // Absent means unity, as it does everywhere else. Reading it raw gave
+    // `Number(null)` — 0, finite and not 1, so a clip with NO `data-volume`
+    // cleared both filters and was reported as authored at silence. That is the
+    // shape the docs recommend for a tweened clip, so the rule fired on exactly
+    // the case it exists to bless.
+    .map((tag) => ({ tag, volume: Number(readAttr(tag.raw, "data-volume") ?? "1") }))
+    .filter((entry) => Number.isFinite(entry.volume) && entry.volume !== 1)
+    // A lane already has its own rule, and it wins over both of these.
+    .filter((entry) => !readDecodedAttr(entry.tag.raw, "data-automation"))
+    .map((entry) => ({ ...entry, id: readAttr(entry.tag.raw, "id") }))
+    .filter((entry): entry is typeof entry & { id: string } => Boolean(entry.id));
+  if (boosted.length === 0) return [];
+
+  const script = ctx.scripts.map((block) => stripJsComments(block.content)).join("\n");
+  const findings: HyperframeLintFinding[] = [];
+  for (const { tag, id, volume } of boosted) {
+    if (!tweensVolumeInSameCall(script, id)) continue;
+    const db = volume > 0 ? `${(20 * Math.log10(volume)).toFixed(1)} dB` : "silence";
+    findings.push({
+      code: "audio_volume_tween_overrides_gain",
+      severity: "warning",
+      message: `#${id} has data-volume="${volume}" (${db}) and a GSAP tween on \`volume\`. Tween values are absolute — they REPLACE this gain rather than scale it — so wherever the tween names a value the clip plays at that value, not at ${db}.`,
+      elementId: id,
+      fixHint:
+        "Write the tween's targets in the same absolute gain (e.g. `volume: 1.95`, not `volume: 1`), or reset data-volume to 1 and let the tween carry the level on its own.",
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
 
 /**
  * A track can have its volume shaped by an automation lane or by a GSAP tween,

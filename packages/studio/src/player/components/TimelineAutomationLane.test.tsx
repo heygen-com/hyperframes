@@ -6,6 +6,7 @@ import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { PAD_X } from "./automationLaneGeometry";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import {
   normalizeAutomation,
   resolveAutomationRange,
@@ -126,6 +127,14 @@ const ramp: HfAutomation = {
   ],
 };
 
+/**
+ * These are geometry and gesture tests, not ceiling tests: a plain 0..1 axis
+ * keeps every pointer coordinate below readable. `VOLUME_RANGE` itself reaches
+ * the +12 dB authoring ceiling — covered by its own case at the end of this
+ * file, and by audioAutomation.test.ts.
+ */
+const UNIT_RANGE = { ...VOLUME_RANGE, max: 1 };
+
 function laneProps(over: Partial<Parameters<typeof TimelineAutomationLane>[0]> = {}) {
   const target = over.target ?? "volume";
   return {
@@ -140,7 +149,9 @@ function laneProps(over: Partial<Parameters<typeof TimelineAutomationLane>[0]> =
     onCommit: vi.fn(),
     ...over,
     target,
-    range: over.range ?? resolveAutomationRange(target, chain) ?? VOLUME_RANGE,
+    range:
+      over.range ??
+      (target === "volume" ? UNIT_RANGE : (resolveAutomationRange(target, chain) ?? VOLUME_RANGE)),
   };
 }
 
@@ -934,7 +945,25 @@ describe("TimelineAutomationLane modifiers", () => {
       input?.dispatchEvent(new Event("focusout", { bubbles: true }));
     });
     const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
-    expect(committed?.lanes[0]?.points[0]?.v).toBe(VOLUME_RANGE.max);
+    expect(committed?.lanes[0]?.points[0]?.v).toBe(UNIT_RANGE.max);
+  });
+
+  it("reaches the authoring ceiling on the real volume range", () => {
+    const { container, svg, props } = mount(ramp, { range: VOLUME_RANGE });
+    // On the real range unity sits a quarter of the way up, not at the top.
+    fire(svg, "dblclick", at(0, 1 / MAX_AUDIO_GAIN));
+    const input = container.querySelector<HTMLInputElement>(".hf-automation-value");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "99");
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => {
+      input?.dispatchEvent(new Event("focusout", { bubbles: true }));
+    });
+    const committed = props.onCommit.mock.calls.at(-1)?.[0] as HfAutomation | undefined;
+    // A boosted clip seeds its lane above unity; clamping the lane at 1 while
+    // the fader reached +12 dB silently threw the boost away.
+    expect(committed?.lanes[0]?.points[0]?.v).toBeCloseTo(MAX_AUDIO_GAIN, 6);
   });
 });
 

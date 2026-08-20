@@ -136,7 +136,7 @@ Choose proof times that show the opening state, signature move, and final hold. 
 Ask one question: “preview first, or render?” If the user chooses preview, open Studio and return to the same approval gate after revisions:
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes preview)
+(cd "$PROJECT_DIR" && npx hyperframes preview --background)
 ```
 
 Render only after an explicit render answer:
