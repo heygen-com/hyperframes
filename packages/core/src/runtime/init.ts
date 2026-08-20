@@ -42,7 +42,7 @@ import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
-import { HF_AUDIO_GROUP_TAG } from "../audioGroups";
+import { HF_AUDIO_GROUP_TAG, isMemberGroupHidden } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
@@ -192,6 +192,11 @@ export function initSandboxRuntimeModular(): void {
   // render already does. Off until enrolled, so a composition carrying
   // `data-hidden` on an audio element keeps playing in preview meanwhile.
   const silenceHiddenAudioEnabled = (): boolean => canaries["audio-track-mute"] === true;
+  /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
+   *  never an ancestor — membership is on the member's `data-audio-group` — so
+   *  `closest()` alone could not see a muted group, which the render drops. */
+  const isSilencedByHidden = (el: Element): boolean =>
+    el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
   window.__hf.setCanaries = (states) => {
     const wasSilencing = silenceHiddenAudioEnabled();
     for (const [name, enabled] of Object.entries(states)) canaries[name] = enabled === true;
@@ -2048,7 +2053,12 @@ export function initSandboxRuntimeModular(): void {
         rawNode.style.display = "none";
       }
     }
-    if (hiddenAudioDirty && clock.isPlaying()) {
+    // Gated like every other consumer of this canary. The skips this reschedule
+    // exists to re-run (`silenceHiddenAudioEnabled() && …data-hidden`, below)
+    // are inert while the flag is off, so un-enrolled the whole stop/reschedule
+    // rebuilt an IDENTICAL active set — an audible stop-and-restart across the
+    // entire mix on every visibility toggle, at 100%, for a feature at 0%.
+    if (hiddenAudioDirty && silenceHiddenAudioEnabled() && clock.isPlaying()) {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
@@ -2995,7 +3005,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            if (silenceHiddenAudioEnabled() && rawEl.closest("[data-hidden]")) continue;
+            if (silenceHiddenAudioEnabled() && isSilencedByHidden(rawEl)) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3103,7 +3113,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      if (silenceHiddenAudioEnabled() && rawEl.closest("[data-hidden]")) continue;
+      if (silenceHiddenAudioEnabled() && isSilencedByHidden(rawEl)) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);

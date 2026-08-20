@@ -1487,13 +1487,36 @@ describe("initSandboxRuntimeModular", () => {
     const scheduleSpy = vi
       .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);
+    const stopSpy = vi.spyOn(WebAudioTransport.prototype, "stopAll");
 
     const player = window.__player;
     player?.play();
-    player?.seek(0);
 
-    expect(scheduleSpy).toHaveBeenCalledTimes(1);
-    expect(scheduleSpy.mock.calls[0]?.[0]).toBe(hiddenAudio);
+    // A seek stops the transport itself, so the count is the measure: the
+    // visibility pass over a data-hidden element must add NO second stop while
+    // un-enrolled. The skips the reschedule exists to re-run are inert with the
+    // flag off, so the set it rebuilds is identical and the only observable
+    // effect is an audible stop-and-restart across the whole mix.
+    // The dirty flag is set by a data-hidden MUTATION, so the toggle is the
+    // gesture — a plain seek never reaches the reschedule at all.
+    hiddenAudio.removeAttribute("data-hidden");
+    player?.seek(1, { keepPlaying: true });
+    const unenrolled = stopSpy.mock.calls.length;
+
+    window.__hf?.setCanaries?.({ "audio-track-mute": true });
+    stopSpy.mockClear();
+    hiddenAudio.setAttribute("data-hidden", "");
+    player?.seek(2, { keepPlaying: true });
+    const enrolled = stopSpy.mock.calls.length;
+
+    expect(unenrolled).toBe(1);
+    expect(enrolled).toBe(unenrolled + 1);
+
+    // And the hidden clip is still audible to the transport un-enrolled: the
+    // canary flip handler reschedules, and with the flag off the hidden skip
+    // does not fire, so the element IS scheduled.
+    window.__hf?.setCanaries?.({ "audio-track-mute": false });
+    expect(scheduleSpy.mock.calls.map((call) => call[0])).toContain(hiddenAudio);
   });
 
   it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {
@@ -1527,6 +1550,10 @@ describe("initSandboxRuntimeModular", () => {
 
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
+    // The reschedule IS the audio-track-mute feature — un-enrolled, hidden-ness
+    // does not change the active set, so nothing should stop or restart (see
+    // the un-enrolled test below). Enrol before asserting on it.
+    window.__hf?.setCanaries?.({ "audio-track-mute": true });
 
     const player = window.__player;
     // play() alone (no seek) already runs one visibility pass while the clock
@@ -1575,6 +1602,9 @@ describe("initSandboxRuntimeModular", () => {
 
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
+    // Enrolled: the stop-before-reschedule pairing this test pins only runs for
+    // the audio-track-mute feature.
+    window.__hf?.setCanaries?.({ "audio-track-mute": true });
     const player = window.__player;
     player?.play();
 
