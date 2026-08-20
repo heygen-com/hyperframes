@@ -1354,16 +1354,20 @@ describe("initSandboxRuntimeModular", () => {
     // playing in preview for anyone not enrolled.
     window.__hf?.setCanaries?.({ "audio-track-mute": true });
 
-    const decodeSpy = vi
-      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+    // `scheduleMediaElementPlayback`, not `decodeAudioElement`: the media-element
+    // transport is the path the runtime tries FIRST for audio, and the decoded
+    // buffer is only its fallback. What is under test either way is which
+    // ELEMENTS get scheduled at all.
+    const scheduleSpy = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);
 
     const player = window.__player;
     player?.play();
     player?.seek(0);
 
-    expect(decodeSpy).toHaveBeenCalledTimes(1);
-    expect(decodeSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
   });
 
   it("still schedules a data-hidden audio clip when the host has not opted in", () => {
@@ -1387,16 +1391,16 @@ describe("initSandboxRuntimeModular", () => {
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
 
-    const decodeSpy = vi
-      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+    const scheduleSpy = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);
 
     const player = window.__player;
     player?.play();
     player?.seek(0);
 
-    expect(decodeSpy).toHaveBeenCalledTimes(1);
-    expect(decodeSpy.mock.calls[0]?.[0]).toBe(hiddenAudio);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy.mock.calls[0]?.[0]).toBe(hiddenAudio);
   });
 
   it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {
@@ -1437,8 +1441,8 @@ describe("initSandboxRuntimeModular", () => {
     // toggles away from.
     player?.play();
 
-    const decodeSpy = vi
-      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+    const scheduleSpy = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);
     const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
 
@@ -1450,7 +1454,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(1, { keepPlaying: true });
 
     expect(generationSpy).toHaveBeenCalledTimes(1);
-    expect(decodeSpy).toHaveBeenCalledTimes(2);
+    expect(scheduleSpy).toHaveBeenCalledTimes(2);
   });
 
   // Scheduling does NOT replace the active set: it bumps a generation, which

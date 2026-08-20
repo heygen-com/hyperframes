@@ -272,7 +272,14 @@ export class WebAudioTransport {
       const elapsed = compositionTime - compositionStart;
       const timing: AutomationTiming = { scheduledAt, elapsed, rate: safeRate };
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      gainNode.connect(this._masterGain);
+      // The group bus, not master, for a member — same as the decoded-buffer
+      // path. This transport is the PRIMARY one for audio (the decode path is
+      // its fallback), so routing it at master would have left every grouped
+      // track bypassing the bus whose whole premise is that a group is one
+      // signal.
+      gainNode.connect(
+        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
+      );
       scheduleVolumeLane(el, gainNode, timing);
 
       this._rate = safeRate;
