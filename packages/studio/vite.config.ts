@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
-import { createViteAdapter } from "./vite.adapter";
+import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 
 async function loadRuntimeSourceForDev(
@@ -64,6 +64,44 @@ function devProjectApi(): Plugin {
   return {
     name: "studio-dev-api",
     configureServer(server): void {
+      // Watch project directories on a watcher of our own. Vite's is told to
+      // ignore them (see `server.watch.ignored`), because it answers an html
+      // change with a full page reload; this one only announces the change and
+      // lets Studio decide what to do with it.
+      const realProjectPaths: string[] = [];
+      try {
+        for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
+          const full = join(dataDir, entry.name);
+          try {
+            realProjectPaths.push(lstatSync(full).isSymbolicLink() ? realpathSync(full) : full);
+          } catch {
+            /* skip broken symlinks */
+          }
+        }
+      } catch {
+        /* dataDir doesn't exist yet */
+      }
+
+      const projectWatcher = watch(realProjectPaths, {
+        ignoreInitial: true,
+        // A project write is a whole-file replace; wait for it to settle so a
+        // half-written composition is never announced.
+        awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
+      });
+
+      // This watcher, and not Vite's, is what clears the preview signature.
+      // Vite's ignores `data/projects/**`, so subscribing the cache to it left
+      // the ETag frozen for the life of the dev server: the preview answered
+      // every revalidation with 304 and thumbnails regenerated after an edit
+      // still rendered the pre-edit composition. Every event type counts, since
+      // an added or deleted asset changes the signature as surely as an edit.
+      const signatureCache = createProjectSignatureCache({
+        watch: (projectDir) => void projectWatcher.add(projectDir),
+      });
+      for (const event of ["add", "change", "unlink", "addDir", "unlinkDir"] as const) {
+        projectWatcher.on(event, (filePath: string) => signatureCache.invalidate(filePath));
+      }
+
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
       let _studioServerModule: {
         createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
@@ -79,7 +117,7 @@ function devProjectApi(): Plugin {
         if (!_api) {
           const mod = await server.ssrLoadModule("@hyperframes/studio-server");
           _studioServerModule = mod as typeof _studioServerModule;
-          const adapter = createViteAdapter(dataDir, server);
+          const adapter = createViteAdapter(dataDir, server, signatureCache);
           _api = mod.createStudioApi(adapter);
         }
         return _api;
@@ -153,30 +191,6 @@ function devProjectApi(): Plugin {
         }
       });
 
-      // Watch project directories on a watcher of our own. Vite's is told to
-      // ignore them (see `server.watch.ignored`), because it answers an html
-      // change with a full page reload; this one only announces the change and
-      // lets Studio decide what to do with it.
-      const realProjectPaths: string[] = [];
-      try {
-        for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
-          const full = join(dataDir, entry.name);
-          try {
-            realProjectPaths.push(lstatSync(full).isSymbolicLink() ? realpathSync(full) : full);
-          } catch {
-            /* skip broken symlinks */
-          }
-        }
-      } catch {
-        /* dataDir doesn't exist yet */
-      }
-
-      const projectWatcher = watch(realProjectPaths, {
-        ignoreInitial: true,
-        // A project write is a whole-file replace; wait for it to settle so a
-        // half-written composition is never announced.
-        awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
-      });
       projectWatcher.on("change", (filePath: string) => {
         if (
           !filePath.endsWith(".html") &&
