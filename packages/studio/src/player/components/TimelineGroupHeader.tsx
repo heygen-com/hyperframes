@@ -10,6 +10,10 @@ interface TimelineGroupHeaderProps {
   /** Caret: shows/hides the member rows beneath this group (structural). */
   isExpanded: boolean;
   onToggleExpanded: () => void;
+  /** `∿`: shows/hides the group's own automation-lane rows. */
+  laneCount: number;
+  isLaneOpen: boolean;
+  onToggleLanes: () => void;
   /** `add: true` (⌘/Ctrl-click) toggles membership; a plain click is exclusive. */
   /** C1: the group's serialized `data-fx-chain`, when set. */
   fxChain?: string;
@@ -24,8 +28,7 @@ interface TimelineGroupHeaderProps {
 
 /**
  * A group's own row header: caret (member disclosure) + `▤` + label + count +
- * FX. Its automation lanes are always drawn, so there is no disclosure for
- * them.
+ * FX + `∿ n` (lane disclosure).
  */
 
 /**
@@ -80,6 +83,9 @@ export function TimelineGroupHeader({
   memberCount,
   isExpanded,
   onToggleExpanded,
+  laneCount,
+  isLaneOpen,
+  onToggleLanes,
   fxChain,
   onFxChainChange,
   onFxChainPreview,
@@ -135,6 +141,33 @@ export function TimelineGroupHeader({
           auditionSpans={auditionSpans}
           onOpenRack={onOpenFxRack}
         />
+        {/* No lanes, no control: an author who opens it meets an empty row and
+            learns nothing. A track header already gates its own `∿` this way
+            (`disclosable`); the group's was the one that still offered a
+            disclosure over nothing. Automation appears by being written — from
+            the rack or a keyframe — not by opening this, so nothing is
+            unreachable while it is hidden. */}
+        {laneCount > 0 && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-expanded={isLaneOpen}
+            aria-label={`${isLaneOpen ? "Hide" : "Show"} ${label} lanes`}
+            title={`${isLaneOpen ? "Hide" : "Show"} lanes`}
+            // Anchored right, matching every other header's lane toggle.
+            className={`ml-auto flex h-6 items-center justify-center gap-0.5 rounded border-0 bg-transparent px-1 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+              isLaneOpen ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
+            }`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleLanes();
+            }}
+          >
+            <span aria-hidden="true">∿</span>
+            <span className="text-[9px] tabular-nums text-white/55">{laneCount}</span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -3,12 +3,13 @@ import { usePlayerStore } from "../store/playerStore";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
-/** The group-disclosure state a group row's header reads and writes. Member
- *  rows only: automation lanes are always drawn, so they have no disclosure. */
+/** The four pieces of group-disclosure state a group row's header reads and writes. */
 export function useTimelineGroupDisclosure() {
   return {
     collapsedGroupIds: usePlayerStore((s) => s.collapsedGroupIds),
+    expandedLaneOwnerIds: usePlayerStore((s) => s.expandedLaneOwnerIds),
     toggleGroupExpanded: usePlayerStore((s) => s.toggleGroupExpanded),
+    toggleLaneOwnerExpanded: usePlayerStore((s) => s.toggleLaneOwnerExpanded),
   };
 }
 

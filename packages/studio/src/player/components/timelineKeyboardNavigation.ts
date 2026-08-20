@@ -80,6 +80,7 @@ export interface BuildTimelineLogicalRowsInput {
   /** Groups the caret has COLLAPSED — absent means expanded, the default. */
   collapsedGroupIds: ReadonlySet<string>;
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
+  expandedLaneOwnerIds: ReadonlySet<string>;
   groups: readonly TimelineTrackGroupInfo[];
   trackGroupOf: ReadonlyMap<number, TimelineTrackGroupInfo>;
   gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
@@ -206,6 +207,16 @@ function propertyItems(
   return items;
 }
 
+/** A clip's lanes are visible when either the caret or the `∿` button opened it. */
+function isRowOpen(
+  activeId: string | null,
+  expandedClipIds: ReadonlySet<string>,
+  expandedLaneOwnerIds: ReadonlySet<string>,
+): boolean {
+  if (activeId === null) return false;
+  return expandedClipIds.has(activeId) || expandedLaneOwnerIds.has(activeId);
+}
+
 /** A single automation-lane row, one level deeper than the track/group row that owns it. */
 function buildLaneRow(
   track: number,
@@ -241,6 +252,7 @@ export function buildTimelineLogicalRows({
   selectedElementIds,
   expandedClipIds,
   collapsedGroupIds,
+  expandedLaneOwnerIds,
   groups,
   trackGroupOf,
   gsapAnimations,
@@ -261,7 +273,7 @@ export function buildTimelineLogicalRows({
       selectedElementIds,
       gsapAnimations,
     );
-    const expanded = activeId !== null && expandedClipIds.has(activeId) && lanes.length > 0;
+    const expanded = isRowOpen(activeId, expandedClipIds, expandedLaneOwnerIds) && lanes.length > 0;
     rows.push({
       id: trackId,
       kind: "row",
@@ -302,10 +314,10 @@ export function buildTimelineLogicalRows({
       expanded: groupExpanded,
       items: [],
     });
-    {
-      // The group's own member list, not `trackMap`: a COLLAPSED group still
-      // draws its lanes, and its members are absent from the display list — so
-      // looking them up there emitted zero lane rows for exactly that case.
+    if (expandedLaneOwnerIds.has(group.id)) {
+      // The group's own member list, not `trackMap`: a COLLAPSED group can have
+      // its lane shelf open, and its members are absent from the display list —
+      // so looking them up there emitted zero lane rows for exactly that case.
       for (const laneGroup of groupAutomationLanes(group.memberElements)) {
         rows.push({
           id: `${groupRowId}::${laneGroup.key}`,

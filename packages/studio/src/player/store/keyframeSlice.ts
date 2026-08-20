@@ -75,6 +75,10 @@ export interface KeyframeSlice {
   collapsedGroupIds: Set<string>;
   toggleGroupExpanded: (id: string) => void;
 
+  /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
+  expandedLaneOwnerIds: Set<string>;
+  toggleLaneOwnerExpanded: (id: string) => void;
+
   /**
    * Project/session/element-scoped request. Its nonce is monotonic across store
    * resets so a stale consumer can never collide with a later request.
@@ -138,6 +142,15 @@ export function createKeyframeSlice(
         if (next.has(id)) next.delete(id);
         else next.add(id);
         return { collapsedGroupIds: next };
+      }),
+
+    expandedLaneOwnerIds: new Set(),
+    toggleLaneOwnerExpanded: (id) =>
+      set((state) => {
+        const next = new Set(state.expandedLaneOwnerIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { expandedLaneOwnerIds: next };
       }),
 
     focusedEaseSegment: null,

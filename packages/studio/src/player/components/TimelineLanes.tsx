@@ -11,7 +11,6 @@ import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
 import {
   isTrackRowExpanded,
-  trackAutomationLaneCount,
   resolveTrackKeyframeClip,
   trackShowsBeatStrip,
 } from "./useTimelineTrackLayout";
@@ -101,7 +100,8 @@ export function TimelineLanes({
   // from resolving into a second timeline that renders the same logical rows.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
-  const { collapsedGroupIds, toggleGroupExpanded } = useTimelineGroupDisclosure();
+  const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
+    useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
   // synthetic lane element spans the whole composition rather than a clip.
@@ -179,7 +179,9 @@ export function TimelineLanes({
                 theme={theme}
                 rovingTargetId={keyboard.rovingTargetId}
                 collapsedGroupIds={collapsedGroupIds}
+                expandedLaneOwnerIds={expandedLaneOwnerIds}
                 toggleGroupExpanded={toggleGroupExpanded}
+                toggleLaneOwnerExpanded={toggleLaneOwnerExpanded}
                 lanes={automationLanes}
                 pps={pps}
                 currentTime={currentTime}
@@ -228,13 +230,12 @@ export function TimelineLanes({
           );
           const keyframeClipKey = keyframeClip?.key ?? keyframeClip?.id;
           const rowExpanded = isTrackRowExpanded(els, expandedClipIds);
-          // How tall a clip BAR is drawn. A row with lanes under it is mostly
-          // lanes, and a clip left to fill it painted its waveform over them —
-          // so the bar is capped for every clip on the row. Undefined means
-          // "fill the row", right only when the row is nothing BUT bar, which a
-          // collapsed row no longer is: automation lanes are always drawn.
-          const hasAutomationRows = trackAutomationLaneCount(els) > 0;
-          const clipBarHeight = rowExpanded || hasAutomationRows ? TRACK_H - 2 * CLIP_Y : undefined;
+          // How tall a clip BAR is drawn. An expanded row is mostly lanes, and a
+          // clip left to fill it painted its waveform straight over them — so the
+          // bar is capped for every clip on the row, not just the one whose
+          // property lanes are showing. Undefined means "fill the row", which is
+          // right only while it is collapsed and the row is nothing but bar.
+          const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
           // The clips whose envelopes this row draws, at their dragged positions.
           // Once per row, not once per clip in the map below.
           const automationElements = els.map(getPreviewElement);
@@ -577,32 +578,27 @@ export function TimelineLanes({
                     any gesture mid-flight), so pressing a lane to select its
                     clip made the handles you were reaching for disappear.
 
-                    Always drawn, in both caret states: an envelope is the
-                    track's own content, and gating it on the keyframe caret hid
-                    audio automation behind a control about tweens. The row
-                    reserves height to match (see `trackHeights`). Absolute
-                    positions resolve against this same relative row, so the
-                    geometry is unchanged by the move. */}
+                    Mounted in BOTH disclosure states, empty while collapsed, so
+                    the caret's aria-controls resolves either way — same reason
+                    the keyframe lanes are. Absolute positions inside resolve
+                    against this same relative row, so the geometry is unchanged
+                    by the move. */}
                 <div id={automationLanesId}>
-                  <TimelineAutomationLaneSlot
-                    elements={automationElements}
-                    isSelected={(element) => {
-                      const key = getTimelineElementIdentity(element);
-                      return selectedElementId === key || selectedElementIds.has(key);
-                    }}
-                    lanes={automationLanes}
-                    pps={pps}
-                    // Automation stacks UNDER the keyframe lanes, so the offset
-                    // is how many of those are drawn — none while collapsed.
-                    // Passing the count regardless left the lanes below an
-                    // empty gap, past the row's bottom.
-                    laneCount={
-                      rowExpanded && keyframeClipKey ? (laneCounts.get(keyframeClipKey) ?? 0) : 0
-                    }
-                    accentColor={getTrackStyle(keyframeClip?.tag ?? "").accent}
-                    currentTime={currentTime}
-                    beatTimes={beatAnalysis?.beatTimes}
-                  />
+                  {rowExpanded ? (
+                    <TimelineAutomationLaneSlot
+                      elements={automationElements}
+                      isSelected={(element) => {
+                        const key = getTimelineElementIdentity(element);
+                        return selectedElementId === key || selectedElementIds.has(key);
+                      }}
+                      lanes={automationLanes}
+                      pps={pps}
+                      laneCount={keyframeClipKey ? (laneCounts.get(keyframeClipKey) ?? 0) : 0}
+                      accentColor={getTrackStyle(keyframeClip?.tag ?? "").accent}
+                      currentTime={currentTime}
+                      beatTimes={beatAnalysis?.beatTimes}
+                    />
+                  ) : null}
                 </div>
               </div>
             </TimelineTrackRow>

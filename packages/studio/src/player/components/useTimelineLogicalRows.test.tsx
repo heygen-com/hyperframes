@@ -23,6 +23,7 @@ const laneCounts = new Map<string, number>();
 const selectedElementIds = new Set<string>();
 const expandedClipIds = new Set<string>();
 const collapsedGroupIds = new Set<string>();
+const expandedLaneOwnerIds = new Set<string>();
 const groups: never[] = [];
 const trackGroupOf = new Map();
 const gsapAnimations = new Map();
@@ -37,6 +38,7 @@ function Harness({ snapshots }: { snapshots: Array<readonly TimelineLogicalRow[]
     selectedElementIds,
     expandedClipIds,
     collapsedGroupIds,
+    expandedLaneOwnerIds,
     groups,
     trackGroupOf,
     gsapAnimations,
