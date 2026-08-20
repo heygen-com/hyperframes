@@ -15,17 +15,6 @@ import {
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function selectorTargetsCompositionId(selector: string, compositionId: string): boolean {
-  const escaped = escapeRegExp(compositionId);
-  return new RegExp(
-    String.raw`\[\s*data-composition-id\s*=\s*(?:"${escaped}"|'${escaped}')\s*\]`,
-  ).test(selector);
-}
-
 function repeatedDescendantId(selector: string): string | null {
   let repeated: string | null = null;
 
@@ -512,40 +501,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // composition_self_attribute_selector
-  ({ styles, rootCompositionId, rootTag }) => {
-    const findings: HyperframeLintFinding[] = [];
-    if (!rootCompositionId) return findings;
-    const seenSelectors = new Set<string>();
-    const rootId = readAttr(rootTag?.raw || "", "id");
-    for (const style of styles) {
-      let root: postcss.Root;
-      try {
-        root = postcss.parse(style.content);
-      } catch {
-        continue;
-      }
-      root.walkRules((rule) => {
-        for (const selector of rule.selectors) {
-          if (!selectorTargetsCompositionId(selector, rootCompositionId)) continue;
-          if (seenSelectors.has(selector)) continue;
-          seenSelectors.add(selector);
-          findings.push({
-            code: "composition_self_attribute_selector",
-            severity: "warning",
-            message:
-              "Selector matches the block's own id; will leak to sibling instances when the block is embedded twice.",
-            selector,
-            fixHint: rootId
-              ? `Use #${rootId} for clearer authoring intent and instance-isolated styling.`
-              : "Add a stable id to the composition root and use that id selector for clearer authoring intent and instance-isolated styling.",
-          });
-        }
-      });
-    }
-    return findings;
-  },
-
   // studio_missing_editable_id
   ({ tags, rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -626,59 +581,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         }
       }
     }
-    return findings;
-  },
-
-  // pointer_events_none
-  // fallow-ignore-next-line complexity
-  ({ tags, styles }) => {
-    const findings: HyperframeLintFinding[] = [];
-    const reported = new Set<string>();
-
-    for (const tag of tags) {
-      if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) continue;
-      const inlineStyle = readAttr(tag.raw, "style") ?? "";
-      if (!/pointer-events\s*:\s*none/i.test(inlineStyle)) continue;
-      const id = readAttr(tag.raw, "id");
-      const key = id ?? tag.raw;
-      if (reported.has(key)) continue;
-      reported.add(key);
-      findings.push({
-        code: "pointer_events_none",
-        severity: "info",
-        message: `<${tag.name}${id ? ` id="${id}"` : ""}> has \`pointer-events: none\` in its inline style. Elements with this property are harder to select in the Studio preview.`,
-        elementId: id || undefined,
-        fixHint:
-          "If this element should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
-        snippet: truncateSnippet(tag.raw),
-      });
-    }
-
-    for (const style of styles) {
-      let root: postcss.Root;
-      try {
-        root = postcss.parse(style.content);
-      } catch {
-        continue;
-      }
-      root.walkDecls("pointer-events", (decl) => {
-        if (decl.value.trim().toLowerCase() !== "none") return;
-        const rule = decl.parent;
-        if (!rule || rule.type !== "rule") return;
-        const selector = (rule as postcss.Rule).selector;
-        if (reported.has(selector)) return;
-        reported.add(selector);
-        findings.push({
-          code: "pointer_events_none",
-          severity: "info",
-          message: `\`${selector}\` sets \`pointer-events: none\`. Elements matching this selector are harder to select in the Studio preview.`,
-          selector,
-          fixHint:
-            "If these elements should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
-        });
-      });
-    }
-
     return findings;
   },
 ];

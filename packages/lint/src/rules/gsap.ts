@@ -88,18 +88,6 @@ function targetHasNoStableIdentity(selector: string, identity?: string): boolean
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
-function countClassUsage(tags: OpenTag[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const tag of tags) {
-    const classAttr = readAttr(tag.raw, "class");
-    if (!classAttr) continue;
-    for (const className of classAttr.split(/\s+/).filter(Boolean)) {
-      counts.set(className, (counts.get(className) || 0) + 1);
-    }
-  }
-  return counts;
-}
-
 function readRegisteredTimelineCompositionId(script: string): string | null {
   const match = script.match(WINDOW_TIMELINE_ASSIGN_PATTERN);
   return match?.[1] || match?.[2] || null;
@@ -381,18 +369,6 @@ function findMatchingSceneBoundary(time: number, boundaries: number[]): number |
     if (Math.abs(time - boundary) <= SCENE_BOUNDARY_EPSILON_SECONDS) return boundary;
   }
   return null;
-}
-
-function isSuspiciousGlobalSelector(selector: string): boolean {
-  if (!selector) return false;
-  if (selector.includes("[data-composition-id=")) return false;
-  if (selector.startsWith("#")) return false;
-  return selector.startsWith(".") || /^[a-z]/i.test(selector);
-}
-
-function getSingleClassSelector(selector: string): string | null {
-  const match = selector.trim().match(/^\.(?<name>[A-Za-z0-9_-]+)$/);
-  return match?.groups?.name || null;
 }
 
 function readStyleProperty(style: string, property: string): string | null {
@@ -1064,7 +1040,7 @@ function collectCssOpacityZeroSelectors(
 
 // fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
-  // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
+  // overlapping_gsap_tweens + gsap_animates_clip_element
   // fallow-ignore-next-line complexity
   async ({ source, tags, scripts, styles, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -1088,7 +1064,6 @@ export const gsapRules: LintRule<LintContext>[] = [
       }
     }
 
-    const classUsage = countClassUsage(tags);
     const clipStartBoundariesByComposition = collectClipStartBoundariesByComposition(source, tags);
     const styleRules = collectSimpleStyleRules(styles);
     const reportedVisibleOverlayKeys = new Set<string>();
@@ -1249,22 +1224,6 @@ export const gsapRules: LintRule<LintContext>[] = [
           elementId: clipInfo.id || undefined,
           fixHint:
             "Remove the visibility/display tween, or move the content into a child <div> and target that instead.",
-          snippet: truncateSnippet(win.raw),
-        });
-      }
-
-      // unscoped_gsap_selector
-      if (!localTimelineCompId || localTimelineCompId === rootCompositionId) continue;
-      for (const win of gsapWindows) {
-        if (!isSuspiciousGlobalSelector(win.targetSelector)) continue;
-        const className = getSingleClassSelector(win.targetSelector);
-        if (className && (classUsage.get(className) || 0) < 2) continue;
-        findings.push({
-          code: "unscoped_gsap_selector",
-          severity: "error",
-          message: `Timeline "${localTimelineCompId}" uses unscoped selector "${win.targetSelector}" that will target elements in ALL compositions when bundled, causing data loss (opacity, transforms, etc.).`,
-          selector: win.targetSelector,
-          fixHint: `Scope the selector: \`[data-composition-id="${localTimelineCompId}"] ${win.targetSelector}\` or use a unique id.`,
           snippet: truncateSnippet(win.raw),
         });
       }
@@ -1631,58 +1590,6 @@ export const gsapRules: LintRule<LintContext>[] = [
           "`repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`.",
         snippet: truncateSnippet(snippet),
       });
-    }
-    return findings;
-  },
-
-  // scene_layer_missing_visibility_kill
-  ({ scripts, tags }) => {
-    const findings: HyperframeLintFinding[] = [];
-
-    // Detect multi-scene compositions: multiple elements with "scene" in their id
-    const sceneElements = tags.filter((t) => {
-      const id = readAttr(t.raw, "id") || "";
-      return /^scene\d+$/i.test(id);
-    });
-    if (sceneElements.length < 2) return findings;
-
-    for (const script of scripts) {
-      const content = stripJsComments(script.content);
-      // For each scene, check if there's a visibility:hidden set after exit tweens
-      for (const tag of sceneElements) {
-        const id = readAttr(tag.raw, "id") || "";
-        // Check if this scene has exit tweens (opacity: 0)
-        const exitPattern = new RegExp(`["']#${id}["'][^)]*opacity\\s*:\\s*0`);
-        const hasExit = exitPattern.test(content);
-        if (!hasExit) continue;
-
-        // Check if there's a hard visibility kill
-        const killPattern = new RegExp(`["']#${id}["'][^)]*visibility\\s*:\\s*["']hidden["']`);
-        const hasKill = killPattern.test(content);
-        if (!hasKill) {
-          // A tl.set on "#id" is only safe advice when the scene element isn't
-          // itself a clip — otherwise gsap_animates_clip_element errors on that
-          // exact tl.set, since the framework already owns visibility/display on
-          // clip elements. Point at the inner-wrapper pattern instead.
-          const classes = (readAttr(tag.raw, "class") || "").split(/\s+/).filter(Boolean);
-          const isClip = classes.includes("clip");
-          const fixHint = isClip
-            ? `"#${id}" is a clip element — the framework already manages its visibility. ` +
-              "Wrap the scene's content in an inner non-clip <div>, move the exit tween and the hard kill " +
-              '(`tl.set("<inner-selector>", { visibility: "hidden" }, <exit-end-time>)`) onto that wrapper instead.'
-            : `Add \`tl.set("#${id}", { visibility: "hidden" }, <exit-end-time>)\` after the scene's exit tweens.`;
-
-          findings.push({
-            code: "scene_layer_missing_visibility_kill",
-            severity: "error",
-            elementId: id,
-            message:
-              `Scene layer "#${id}" exits via opacity tween but has no visibility: hidden hard kill. ` +
-              "When scrubbing or when tweens conflict, the scene may remain partially visible and overlap the next scene.",
-            fixHint,
-          });
-        }
-      }
     }
     return findings;
   },

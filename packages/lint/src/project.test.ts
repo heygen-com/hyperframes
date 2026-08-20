@@ -245,22 +245,31 @@ describe("template shell style sources", () => {
       <div id="scene" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
       <template data-composition-id="shell">
         <link rel="stylesheet" href="shell.css">
-        <style>[data-composition-id="main"] .title { opacity: 0; }</style>
+        <style>[data-composition-id="from-style-block"] .title { opacity: 0; }</style>
         <div style="mask-image: url(missing-inline-mask.png)"></div>
-        <template><style>[data-composition-id="main"] .nested { opacity: 0; }</style></template>
+        <template><style>[data-composition-id="from-nested-template"] .nested { opacity: 0; }</style></template>
       </template>
       <script>window.__timelines = {};</script>
     </body></html>`);
     writeFileSync(
       join(project, "shell.css"),
-      '[data-composition-id="main"] .from-link { opacity: 0; }',
+      '[data-composition-id="from-link"] .from-link { opacity: 0; }',
     );
 
     const { results } = await lintProject(project);
     const findings = results.flatMap((entry) => entry.result.findings);
+    // Each style source scopes CSS to a composition id that has no wrapper, so
+    // one scoped_css_missing_wrapper per source proves all three were collected.
     expect(
-      findings.filter((finding) => finding.code === "composition_self_attribute_selector"),
-    ).toHaveLength(3);
+      findings
+        .filter((finding) => finding.code === "scoped_css_missing_wrapper")
+        .map((finding) => finding.selector)
+        .sort(),
+    ).toEqual([
+      '[data-composition-id="from-link"]',
+      '[data-composition-id="from-nested-template"]',
+      '[data-composition-id="from-style-block"]',
+    ]);
     expect(findings.some((finding) => finding.code === "texture_mask_asset_not_found")).toBe(true);
   });
 });

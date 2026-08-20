@@ -416,36 +416,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
-  // timed_element_missing_visibility_hidden
-  // fallow-ignore-next-line complexity
-  ({ tags }) => {
-    const findings: HyperframeLintFinding[] = [];
-    for (const tag of tags) {
-      if (tag.name === "audio" || tag.name === "script" || tag.name === "style") continue;
-      if (!readAttr(tag.raw, "data-start")) continue;
-      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
-      if (readAttr(tag.raw, "data-composition-src")) continue;
-      const classAttr = readAttr(tag.raw, "class") || "";
-      const styleAttr = readAttr(tag.raw, "style") || "";
-      const hasClip = classAttr.split(/\s+/).includes("clip");
-      const hasHiddenStyle =
-        /visibility\s*:\s*hidden/i.test(styleAttr) || /opacity\s*:\s*0/i.test(styleAttr);
-      if (!hasClip && !hasHiddenStyle) {
-        const elementId = readAttr(tag.raw, "id") || undefined;
-        findings.push({
-          code: "timed_element_missing_visibility_hidden",
-          severity: "info",
-          message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has data-start but no class="clip", visibility:hidden, or opacity:0. Consider adding initial hidden state if the element should not be visible before its start time.`,
-          elementId,
-          fixHint:
-            'Add class="clip" (with CSS: .clip { visibility: hidden; }) or style="opacity:0" if the element should start hidden.',
-          snippet: truncateSnippet(tag.raw),
-        });
-      }
-    }
-    return findings;
-  },
-
   // deprecated_data_layer + deprecated_data_end
   // fallow-ignore-next-line complexity
   ({ tags }) => {
