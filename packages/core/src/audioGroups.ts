@@ -68,6 +68,47 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
  * (label = id) so a hand-authored composition degrades gracefully. Audio
  * only in v1 — a `data-audio-group` on a `<video>` is ignored.
  */
+/**
+ * The `<hf-audio-group>` element for a group id, or null.
+ *
+ * Tag-checked, which a bare `getElementById` is not. Every group attribute —
+ * the fader, the mute, the FX chain, the automation lane — is read off whatever
+ * this returns, so an unrelated element sharing the id used to be read as a bus:
+ * an `<audio id="vo" data-audio-group="vo" data-volume="0.5" data-fx-chain=…>`
+ * had its own fader and chain applied a SECOND time on the bus, and a
+ * `<div id="bg" data-hidden>` silenced group "bg" in preview only. The render
+ * never had this problem — `resolveAudioGroups` only ever accepted the tag —
+ * so the two disagreed on exactly the attributes the bus exists to carry.
+ *
+ * Returning null is the documented "group with no element" case, which
+ * degrades to a flat sum rather than borrowing a stranger's settings.
+ */
+export function resolveGroupElement(
+  doc: Pick<Document, "getElementById"> | null | undefined,
+  groupId: string,
+): Element | null {
+  const el = doc?.getElementById(groupId) ?? null;
+  if (!el) return null;
+  return el.tagName?.toLowerCase() === HF_AUDIO_GROUP_TAG ? el : null;
+}
+
+/**
+ * Whether the bus a member belongs to is muted.
+ *
+ * Membership is held by the MEMBER's `data-audio-group`; a group never nests
+ * its members. So `el.closest("[data-hidden]")` cannot see a muted bus, which
+ * is how the render came to drop a hidden group's members while the preview
+ * fallback played them at full level.
+ */
+export function isMemberGroupHidden(
+  doc: Pick<Document, "getElementById"> | null | undefined,
+  el: Element | null | undefined,
+): boolean {
+  const groupId = el?.getAttribute?.(HF_AUDIO_GROUP_ATTR);
+  if (!groupId) return false;
+  return resolveGroupElement(doc, groupId)?.hasAttribute("data-hidden") ?? false;
+}
+
 export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
   const membersByGroup = new Map<string, string[]>();
   for (const member of root.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)) {
@@ -114,7 +155,11 @@ export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): st
     const group = groupsById.get(id);
     if (group) {
       group.memberIds.forEach(add);
-    } else if (doc.getElementById(id)) {
+    } else if (doc.getElementById(id) && !resolveGroupElement(doc, id)) {
+      // A group with no members resolves to no entry above, and its own bus
+      // element would then pass this existence check and be returned as if it
+      // were a clip — a source the analysis can only fail to find, which the
+      // docblock above promises is dropped.
       add(id);
     }
   }

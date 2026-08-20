@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   audioGroupOf,
   HF_AUDIO_GROUP_ATTR,
+  isMemberGroupHidden,
   resolveAudioGroups,
   resolveCarveSourceIds,
+  resolveGroupElement,
 } from "./audioGroups.js";
 
 beforeEach(() => {
@@ -156,5 +158,70 @@ describe("resolveCarveSourceIds", () => {
 describe(HF_AUDIO_GROUP_ATTR, () => {
   it("is the attribute name membership is keyed on", () => {
     expect(HF_AUDIO_GROUP_ATTR).toBe("data-audio-group");
+  });
+});
+
+describe("resolveGroupElement", () => {
+  const doc = (html: string): Document => {
+    const d = document.implementation.createHTMLDocument("t");
+    d.body.innerHTML = html;
+    return d;
+  };
+
+  it("returns the bus for a real <hf-audio-group>", () => {
+    const d = doc(`<hf-audio-group id="vo" data-volume="0.5"></hf-audio-group>`);
+    expect(resolveGroupElement(d, "vo")?.tagName.toLowerCase()).toBe("hf-audio-group");
+  });
+
+  // The trap: a bare getElementById read a member's OWN fader and chain as the
+  // bus's, applying both a second time on the sub-mix.
+  it("refuses an <audio> sharing the group id", () => {
+    const d = doc(`<audio id="vo" data-audio-group="vo" data-volume="0.5"></audio>`);
+    expect(resolveGroupElement(d, "vo")).toBeNull();
+  });
+
+  it("refuses an unrelated element sharing the group id", () => {
+    const d = doc(`<div id="bg" data-hidden></div>`);
+    expect(resolveGroupElement(d, "bg")).toBeNull();
+  });
+});
+
+describe("isMemberGroupHidden", () => {
+  const doc = (html: string): Document => {
+    const d = document.implementation.createHTMLDocument("t");
+    d.body.innerHTML = html;
+    return d;
+  };
+
+  // Membership is on the MEMBER, so the bus is never an ancestor and
+  // `closest("[data-hidden]")` cannot see it.
+  it("sees a muted bus that does not nest its member", () => {
+    const d = doc(
+      `<hf-audio-group id="vo" data-hidden></hf-audio-group>
+       <div><audio id="vo-1" data-audio-group="vo"></audio></div>`,
+    );
+    const member = d.getElementById("vo-1");
+    expect(member?.closest("[data-hidden]")).toBeNull();
+    expect(isMemberGroupHidden(d, member)).toBe(true);
+  });
+
+  it("is false for an unmuted bus and for a member with no group", () => {
+    const d = doc(
+      `<hf-audio-group id="vo"></hf-audio-group>
+       <audio id="vo-1" data-audio-group="vo"></audio>
+       <audio id="lone"></audio>`,
+    );
+    expect(isMemberGroupHidden(d, d.getElementById("vo-1"))).toBe(false);
+    expect(isMemberGroupHidden(d, d.getElementById("lone"))).toBe(false);
+  });
+});
+
+describe("resolveCarveSourceIds — empty group", () => {
+  it("drops an empty group's own bus id instead of returning it as a clip", () => {
+    const d = document.implementation.createHTMLDocument("t");
+    d.body.innerHTML = `<hf-audio-group id="voiceover"></hf-audio-group>`;
+    // No members, so the group resolves to nothing; its element must not pass
+    // the existence check as if it were a clip the analysis could read.
+    expect(resolveCarveSourceIds(d, ["voiceover"])).toEqual([]);
   });
 });

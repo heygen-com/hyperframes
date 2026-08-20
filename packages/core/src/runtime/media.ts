@@ -3,6 +3,7 @@ import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelop
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
 import { clampAudioGain } from "../audioGain.js";
+import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
@@ -325,8 +326,13 @@ export function syncRuntimeMedia(params: {
       // `audio-track-mute` canary — see init.ts). Folded into the per-tick
       // volume, not el.muted (RULES trap: el.muted is the transport's ownership
       // flag).
+      // Two independent ways to be silent, and the second is not an ancestor
+      // question: membership lives on the MEMBER's `data-audio-group`, so a
+      // muted BUS is invisible to `closest()`. The render drops such members
+      // (`memberGroupHidden`), so without this the export was silent where the
+      // fallback played at full level.
       const silencedByHidden = params.silenceHiddenAudio
-        ? el.closest("[data-hidden]") !== null
+        ? el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el)
         : false;
       const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;

@@ -751,6 +751,38 @@ describe("WebAudioTransport", () => {
     // The media-element transport is the PRIMARY path for audio — the runtime
     // tries it first and only falls back to a decoded buffer. It has to reach
     // the same bus, or grouping silently applies to nothing that actually plays.
+    // The render clamps a track volume with `clampAudioGain` (ceiling ~3.98),
+    // so an over-unity bus previewed at 1.0 exported up to 12 dB louder than
+    // it auditioned.
+    it("previews an over-unity bus fader at the render's ceiling, not unity", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      document.body.innerHTML = `<hf-audio-group id="vo" data-volume="2"></hf-audio-group>`;
+      await scheduleGrouped(transport, gen, "a", "vo");
+
+      // Creation order: a-gain(0), groupInput(1), groupOutput(2), muteGain(3), fader(4).
+      expect(mock.gainNodes[4]!.gain.value).toBeCloseTo(2, 6);
+    });
+
+    it("still floors a negative bus fader at zero", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      document.body.innerHTML = `<hf-audio-group id="vo" data-volume="-1"></hf-audio-group>`;
+      await scheduleGrouped(transport, gen, "a", "vo");
+
+      expect(mock.gainNodes[4]!.gain.value).toBe(0);
+    });
+
+    // A bare getElementById read a member's own fader and chain as the bus's.
+    it("ignores a non-<hf-audio-group> element sharing the group id", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      document.body.innerHTML = `<div id="vo" data-volume="0.25" data-hidden></div>`;
+      await scheduleGrouped(transport, gen, "a", "vo");
+
+      // Flat bus: unity fader, unmuted — the documented "group with no element"
+      // degradation, not the stranger's settings.
+      expect(mock.gainNodes[4]!.gain.value).toBe(1);
+      expect(mock.gainNodes[3]!.gain.value).toBe(1);
+    });
+
     it("routes a grouped clip's MEDIA-ELEMENT playback to the group bus, not master", async () => {
       const { transport, mock, gen } = setupGroupTransport();
       const el = groupedAudioEl("vo-1", "vo");

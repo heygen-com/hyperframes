@@ -6,7 +6,7 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf, readAudioGroupVolume } from "../audioGroups.js";
+import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -18,15 +18,20 @@ function normalizeRate(rate: number): number {
 }
 
 /**
- * The render puts every track volume through its own `clampVolume` before
- * building the filter, so an authored `<hf-audio-group data-volume="2">`
- * renders at unity. Preview has to agree or the two diverge on exactly the
- * attribute this bus exists to honour — and a negative value would invert
- * polarity in preview while rendering silent. Compositions are hand-authorable,
- * so out-of-range values do not need the studio slider to be reachable.
+ * The render puts every track volume through `clampVolume`, which is
+ * `clampAudioGain` — ceiling MAX_AUDIO_GAIN (+12 dB, ~3.98), not unity. Preview
+ * has to agree or the two diverge on exactly the attribute this bus exists to
+ * honour: an authored `<hf-audio-group data-volume="2">` previewed at 1.0 and
+ * exported at 2.0, up to 6 dB quieter in the audition than in the file, and
+ * 12 dB at the ceiling. Preview was also self-inconsistent — the same
+ * parameter's automation lane is bounded by `VOLUME_RANGE.max`, which IS
+ * MAX_AUDIO_GAIN, so an envelope could reach 3.98 where the static fader could
+ * not pass 1.0. `clampAudioGain` still floors at 0, so a negative value cannot
+ * invert polarity in preview while rendering silent. Compositions are
+ * hand-authorable, so out-of-range values do not need a slider to be reachable.
  */
 function clampGroupVolume(volume: number): number {
-  return Math.max(0, Math.min(1, volume));
+  return clampAudioGain(volume);
 }
 
 /**
@@ -357,7 +362,13 @@ export class WebAudioTransport {
     const output = this._ctx.createGain();
     output.connect(this._masterGain);
 
-    const groupEl = doc.getElementById(groupId);
+    // Tag-checked, and re-resolved on every reanchor below rather than frozen:
+    // a bus whose element does not exist yet (studio group creation, or a
+    // sub-composition that loads later) kept the `getAttribute: () => null`
+    // stub for the whole session, so its fader, chain and mute never reached
+    // preview while the export honoured all three.
+    const resolveEl = (): Element | null => resolveGroupElement(doc, groupId);
+    const groupEl = resolveEl();
     const muteGain = this._ctx.createGain();
     muteGain.gain.value = groupEl?.hasAttribute("data-hidden") ? 0 : 1;
     muteGain.connect(output);
@@ -393,9 +404,12 @@ export class WebAudioTransport {
         // the previous pass's ramps still owning the param (for a fade-out,
         // silence) for the rest of the session.
         clearParamLane([{ param: fader.gain }]);
-        fader.gain.value = clampGroupVolume(readAudioGroupVolume(groupEl));
+        // Re-resolved, not the element captured at build time — see `resolveEl`.
+        const live = resolveEl();
+        fader.gain.value = clampGroupVolume(readAudioGroupVolume(live));
+        muteGain.gain.value = live?.hasAttribute("data-hidden") ? 0 : 1;
         fx?.reanchor(at);
-        if (groupEl) scheduleVolumeLane(groupEl, fader, at);
+        if (live) scheduleVolumeLane(live, fader, at);
       },
       dispose: () => {
         try {
