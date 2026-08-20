@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { collectCarveCandidates } from "./useFxCarveGrouping";
+import { carverAgainst, collectCarveCandidates } from "./useFxCarveGrouping";
 
 function previewDoc(html: string): Document {
   const doc = document.implementation.createHTMLDocument("preview");
@@ -51,5 +51,34 @@ describe("collectCarveCandidates", () => {
   it("leaves an ungrouped bed's candidates alone", () => {
     const doc = previewDoc(`<audio id="music-bed"></audio><audio id="vo-1"></audio>`);
     expect(candidatesFor(doc, "music-bed")).toEqual(["vo-1"]);
+  });
+});
+
+describe("carverAgainst", () => {
+  // The far-end guard has to see through a GROUP source. A plural carve names a
+  // group — that is what the lint rule pushes authors toward — so matching raw
+  // ids never found the member, the carve module was offered on a voice already
+  // being ducked against, and switching it on wrote a reciprocal carve.
+  it("finds the bed carving a voice through its group", () => {
+    const doc = previewDoc(`
+      ${GROUPED_VOICES}
+      <audio id="bed" data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.3}'></audio>
+    `);
+    expect(carverAgainst(doc, "vo-1")).toBe("bed");
+    expect(carverAgainst(doc, "vo-2")).toBe("bed");
+  });
+
+  it("still finds a carve that names the clip directly", () => {
+    const doc = previewDoc(`
+      ${GROUPED_VOICES}
+      <audio id="bed" data-fx-carve='{"enabled":true,"sources":["vo-1"],"strength":0.3}'></audio>
+    `);
+    expect(carverAgainst(doc, "vo-1")).toBe("bed");
+    expect(carverAgainst(doc, "vo-2")).toBeNull();
+  });
+
+  it("is null for a track nobody carves against", () => {
+    const doc = previewDoc(GROUPED_VOICES);
+    expect(carverAgainst(doc, "vo-1")).toBeNull();
   });
 });

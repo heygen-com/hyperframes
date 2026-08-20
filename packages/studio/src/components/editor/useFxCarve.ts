@@ -7,24 +7,15 @@
  * the file grew past a size where "the carve" was still one thing to read.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
-  defaultAudioFxParams,
   HF_AUDIO_FX_ATTR,
-  mintAudioFxNodeId,
   serializeAudioFxChain,
   type HfAudioFxChain,
-  type HfAudioFxNode,
 } from "@hyperframes/core/audio-fx";
 import {
-  analyseCarveBands,
-  analyseCarveDuck,
-  analyseCarveDynamics,
-  carveBandsToChain,
-  carveProfile,
   clipsOverlap,
   DEFAULT_CARVE,
-  mixCarveSources,
   HF_AUDIO_CARVE_ATTR,
   type HfCarveSettings,
 } from "@hyperframes/core/audio-carve";
@@ -37,23 +28,19 @@ import {
   isPromiseLike,
   resolveNextCarveSettings,
 } from "./useFxCarveGrouping.js";
-import {
-  fxAutomationTarget,
-  type HfAutomation,
-  type HfAutomationLane,
-} from "@hyperframes/core/audio-automation";
+import { type HfAutomation } from "@hyperframes/core/audio-automation";
 import { automationAttrValue, HF_AUDIO_AUTOMATION_ATTR } from "./propertyPanelAutomation";
 import { trackCarveChanged } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
 import { usePlayerStore } from "../../player";
-import { clipStart, spanOf } from "./propertyPanelAudioFxGroupUtils.js";
+import { carveLanes, measureCarve, mintCarveNodes } from "./useFxCarveNodes.js";
+import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 
 /**
  * Rate the carve source is decoded at. Analysis is self-consistent because it
  * reads the decoded buffer's own rate, so this only has to be a sane audio rate.
  */
-const DECODE_SAMPLE_RATE = 48000;
 
 /**
  * Which carve setting actually moved, by comparing the two snapshots.
@@ -127,131 +114,6 @@ function resolveCarveVoices(
     voices.push({ src, start: el.getAttribute("data-start") });
   }
   return voices;
-}
-
-/**
- * Turns the analysed bands (and, if the carve is asked to match levels, a
- * ducking envelope) into chain nodes — tagged so a re-run replaces them
- * instead of stacking, and minted against the nodes already claiming an id
- * because a dynamic carve automates these filters and a lane addresses its
- * node by id.
- */
-function mintCarveNodes(
-  chain: HfAudioFxChain,
-  carved: HfAudioFxChain,
-  duck: { t: number; v: number }[],
-): { next: HfAudioFxChain; carvedNodes: HfAudioFxNode[]; duckNode: HfAudioFxNode | null } {
-  const kept = chain.nodes.filter((n) => !n.fromCarve);
-  let claimed: HfAudioFxChain = { version: 1, nodes: kept };
-  const mint = (node: HfAudioFxNode): HfAudioFxNode => {
-    const withId = { ...node, id: mintAudioFxNodeId(claimed), fromCarve: true };
-    claimed = { version: 1, nodes: [...claimed.nodes, withId] };
-    return withId;
-  };
-  const carvedNodes: HfAudioFxNode[] = carved.nodes.map(mint);
-  // The gain stage sits after the filters, and only exists when the carve was
-  // asked to make level room. It sits at 0 and is driven by the envelope below.
-  const duckNode =
-    duck.length > 0
-      ? mint({ type: "gain", enabled: true, params: { ...defaultAudioFxParams("gain"), gain: 0 } })
-      : null;
-  return {
-    next: { version: 1, nodes: [...carvedNodes, ...(duckNode ? [duckNode] : []), ...kept] },
-    carvedNodes,
-    duckNode,
-  };
-}
-
-/**
- * Decode every voice, mix them onto the bed's own clock, and measure the
- * bands (and, if the profile calls for it, the ducking envelope) from that
- * mix. Null on anything that leaves nothing to build a carve from — the
- * platform lacking an offline context, or a mix that decoded to silence.
- */
-async function measureCarve(
-  doc: Document,
-  voices: { src: string; start: string | null }[],
-  strength: number,
-  bedStartAttr: string | null | undefined,
-  bedSrc: string | null | undefined,
-): Promise<{
-  bands: ReturnType<typeof analyseCarveBands>;
-  carved: HfAudioFxChain;
-  duck: { t: number; v: number }[];
-  voiceMix: Float32Array;
-} | null> {
-  // Decoded in an OfflineAudioContext, not a live one. Opening a second output
-  // device mid-playback makes the running track glitch while the hardware is
-  // reconfigured; an offline context touches no device.
-  const Ctor =
-    window.OfflineAudioContext ??
-    (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
-      .webkitOfflineAudioContext;
-  if (!Ctor) return null;
-  const decode = async (relative: string): Promise<AudioBuffer> => {
-    const res = await fetch(new URL(relative, doc.baseURI).href);
-    return new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(await res.arrayBuffer());
-  };
-  const bedStart = clipStart(bedStartAttr);
-  // Every voice, summed onto the bed's own clock. One question — where and
-  // when is speech masking this bed — with one answer, even when the answer
-  // comes from three people talking at different times. Doing this before the
-  // analysis is also what lets the bands and the envelopes stay a single set:
-  // the chain is fixed, so there is no per-voice filter to switch between.
-  const decoded = await Promise.all(
-    voices.map(async (voice) => ({
-      samples: (await decode(voice.src)).getChannelData(0),
-      offsetSeconds: clipStart(voice.start) - bedStart,
-    })),
-  );
-  const voiceMix = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
-  if (voiceMix.length === 0) return null;
-  // Strength is what the author set; these are the numbers it means.
-  const profile = carveProfile(strength);
-  // The bed as well as the voice, when the carve is asked to match levels:
-  // "how far over the voice is this bed" cannot be answered by listening to
-  // one of them.
-  const bedBuffer = profile.duckDb > 0 && bedSrc ? await decode(bedSrc).catch(() => null) : null;
-  const bands = analyseCarveBands(voiceMix, DECODE_SAMPLE_RATE, profile);
-  // The level half of the carve, measured against the speech it has to sit
-  // under. No offset to apply: the mix is already on the bed's clock.
-  const duck = bedBuffer
-    ? analyseCarveDuck(voiceMix, bedBuffer.getChannelData(0), DECODE_SAMPLE_RATE, profile, 0)
-    : [];
-  return { bands, carved: carveBandsToChain(bands), duck, voiceMix };
-}
-
-/** Each filter's depth as an envelope, plus the level envelope if there is one. */
-function carveLanes(
-  carvedNodes: HfAudioFxNode[],
-  duckNode: HfAudioFxNode | null,
-  duck: { t: number; v: number }[],
-  voiceMix: Float32Array,
-  bands: ReturnType<typeof analyseCarveBands>,
-): HfAutomationLane[] {
-  // Each filter's depth becomes an envelope of the speech's level in that
-  // band, so pauses leave the bed alone and whoever is talking sets the depth.
-  const lanes = analyseCarveDynamics(voiceMix, DECODE_SAMPLE_RATE, bands).flatMap((dyn, i) => {
-    const id = carvedNodes[i]?.id;
-    return id ? carveLaneFor(id, dyn.points) : [];
-  });
-  // The level envelope rides the gain stage, on the same clock as the bands.
-  if (duckNode?.id && duck.length > 0) lanes.push(...carveLaneFor(duckNode.id, duck));
-  return lanes;
-}
-
-/**
- * One carve envelope as a lane on this bed's clock.
- *
- * No shifting: the voices were summed onto the bed's clock before the analysis
- * ran, so what comes back is already in the bed's own time. A lane does hold
- * its first value backwards to the start of its clip, so an envelope that
- * begins later needs an explicit "no cut" at zero or the bed starts out ducked.
- */
-function carveLaneFor(id: string, points: { t: number; v: number }[]): HfAutomationLane[] {
-  const timed = points.map((p) => ({ t: Number(p.t.toFixed(3)), v: p.v })).filter((p) => p.t >= 0);
-  if ((timed[0]?.t ?? 0) > 0) timed.unshift({ t: 0, v: 0 });
-  return timed.length > 1 ? [{ target: fxAutomationTarget(id, "gain"), points: timed }] : [];
 }
 
 /**
@@ -374,13 +236,18 @@ export function useFxCarve(
     // player — reads as "every voice was deleted" and throws away a carve that
     // is perfectly fine. Unchanged sources are what the prune treats as nothing
     // to do.
-    if (!element.id || !present.has(element.id)) return carve.sources;
-    // A group id is never in `present` — it's not a timeline element — so it
-    // needs its own existence check: a group survives as long as it still has
-    // at least one member, checked against the live document the same way the
-    // picker resolves groups above.
     const doc = element.element?.ownerDocument;
     const groupIds = doc ? new Set(resolveAudioGroups(doc).map((g) => g.id)) : new Set<string>();
+    // The BED can be a group too — a bus carrying its own carve — and a group id
+    // is never in `present`, so the sentinel rejected every group bed and the
+    // prune simply never ran for one. Accept either proof that the timeline
+    // describes this composition.
+    if (!element.id || !(present.has(element.id) || groupIds.has(element.id))) {
+      return carve.sources;
+    }
+    // Same reason a group source needs its own check: it is not a timeline
+    // element. A group survives as long as it still has at least one member,
+    // read off the live document the way the picker resolves groups above.
     return carve.sources.filter((id) => present.has(id) || groupIds.has(id));
   })();
 
@@ -427,6 +294,59 @@ export function useFxCarve(
   // carveLanes); what is left is the orchestration between them, including the
   // two-attribute write order the comments below explain the reason for.
   // fallow-ignore-next-line complexity
+  /**
+   * One auto-carve decision at a time.
+   *
+   * `setCarve` awaits `resolveNextCarveSettings`, which awaits group creation —
+   * and that live-patches `data-audio-group` onto each member and calls
+   * `updateElement` per member, a store notification. So React re-renders while
+   * the first `setCarve` is still in flight and BEFORE the carve attribute has
+   * been written: the candidate count legitimately collapses 2 → 1 (two clips
+   * became one group) while `carve` is still null, and the sibling
+   * single-candidate effect fires a second concurrent `setCarve`. That is two
+   * read-modify-write saves of `data-fx-carve` against the same file (a lost
+   * update) and two `analyse()` runs — two decodes, two FFT passes, two
+   * competing `data-fx-chain` / `data-automation` writes.
+   *
+   * The `<= 1` / `!== 1` split between the two effects prevents the same
+   * double-fire within one render pass; it cannot see across an await.
+   */
+  const autoCarveInFlight = useRef(false);
+
+  /** `setCarve` from an auto-decision: latched, so the sibling effect cannot
+   *  start a second one across the await inside it. A manual change from the
+   *  panel is deliberately NOT latched — the author is allowed to interrupt. */
+  const setCarveAuto = (next: HfCarveSettings): void => {
+    autoCarveInFlight.current = true;
+    void setCarve(next).finally(() => {
+      autoCarveInFlight.current = false;
+    });
+  };
+
+  /**
+   * Write what a measurement compiled to: the chain first, then the lanes.
+   *
+   * The chain write is live, like every other one — the runtime swaps the graph
+   * in place, so a reload would only interrupt the audio to reach the same
+   * filters. It is AWAITED because the automation write is a second
+   * read-modify-write against the same file (fired together the later one drops
+   * the earlier), and because a lane naming a node the chain does not carry yet
+   * is pruned when it is read back.
+   */
+  const persistMeasuredCarve = async (
+    measured: NonNullable<Awaited<ReturnType<typeof measureCarve>>>,
+  ): Promise<void> => {
+    const { bands, carved, duck, voiceMix } = measured;
+    const { next, carvedNodes, duckNode } = mintCarveNodes(chain, carved, duck);
+    await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
+
+    const lanes = carveLanes(carvedNodes, duckNode, duck, voiceMix, bands);
+    const carriedOver = withoutCarveLanes(automation, chain);
+    if (lanes.length > 0 || carriedOver.lanes.length !== automation.lanes.length) {
+      writeAutomation({ version: 1, lanes: [...carriedOver.lanes, ...lanes] });
+    }
+  };
+
   const analyse = async (active: HfCarveSettings | null = carve): Promise<void> => {
     if (!active?.sources.length) return;
     const doc = element.element?.ownerDocument;
@@ -435,7 +355,16 @@ export function useFxCarve(
     // a group named here expands to whoever is in it right now, so a fourth
     // voice added to an already-carved group is heard on the next analysis
     // without anyone editing the carve itself.
-    const voices = resolveCarveVoices(doc, resolveCarveSourceIds(doc, active.sources));
+    // The bed is excluded from its own voice list. A group expands to its
+    // CURRENT members, so once the bed joins the group its own carve names —
+    // one timeline drag — it was measured as one of its own voices: peaking
+    // notches at the bed's own spectral peaks and a duck envelope that dips
+    // whenever the bed is loud, written into `data-fx-chain` and
+    // `data-automation` and baked into the export. The candidate-list guard
+    // (`excludedFor`) only runs while the picker is offering options, never
+    // against sources already persisted.
+    const expanded = resolveCarveSourceIds(doc, active.sources).filter((id) => id !== element.id);
+    const voices = resolveCarveVoices(doc, expanded);
     if (voices.length === 0) return;
     setAnalysing(true);
     try {
@@ -448,24 +377,7 @@ export function useFxCarve(
         bedSrc,
       );
       if (!measured) return;
-      const { bands, carved, duck, voiceMix } = measured;
-
-      const { next, carvedNodes, duckNode } = mintCarveNodes(chain, carved, duck);
-      // Live, like every other chain write: the runtime swaps the graph in
-      // place, so a reload would only interrupt the audio to reach the same
-      // filters.
-      //
-      // Awaited, because the automation write below is a second read-modify-write
-      // against the same file — fired together the later one would drop the
-      // earlier — and because a lane naming a node the chain does not have yet is
-      // pruned when it is read back.
-      await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
-
-      const lanes = carveLanes(carvedNodes, duckNode, duck, voiceMix, bands);
-      const carriedOver = withoutCarveLanes(automation, chain);
-      if (lanes.length > 0 || carriedOver.lanes.length !== automation.lanes.length) {
-        writeAutomation({ version: 1, lanes: [...carriedOver.lanes, ...lanes] });
-      }
+      await persistMeasuredCarve(measured);
     } catch {
       // Leave the chain as it was; the button simply re-enables.
     } finally {
@@ -524,16 +436,17 @@ export function useFxCarve(
     // the same result — two decodes, two FFT runs, two concurrent attribute
     // writes.
     if (carvedAgainstBy || !autoBed || autoSourceIds.length <= 1) return;
+    if (autoCarveInFlight.current) return;
     const all = autoSourceIds;
     // Nothing configured: the default carve, pointed at everything it could hear.
     if (carve === null) {
-      void setCarve({ ...DEFAULT_CARVE, sources: all });
+      setCarveAuto({ ...DEFAULT_CARVE, sources: all });
       return;
     }
     // Configured but naming no voice — switched on before there was anything to
     // listen to, or a source list emptied. The card reads the candidates out, so
     // they have to be the stored ones too.
-    if (carve.enabled && carve.sources.length === 0) void setCarve({ ...carve, sources: all });
+    if (carve.enabled && carve.sources.length === 0) setCarveAuto({ ...carve, sources: all });
     // Keyed on the identity of the decision, not on setCarve — which is rebuilt
     // every render and would re-fire this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -559,18 +472,19 @@ export function useFxCarve(
    */
   useEffect(() => {
     if (carvedAgainstBy || !autoBed || autoSourceIds.length !== 1) return;
+    if (autoCarveInFlight.current) return;
     const only = autoSourceIds[0];
     if (!only) return;
     // Nothing configured: the default carve, pointed at the one candidate.
     if (carve === null) {
-      void setCarve({ ...DEFAULT_CARVE, sources: [only] });
+      setCarveAuto({ ...DEFAULT_CARVE, sources: [only] });
       return;
     }
     // Configured but with no voice yet — a carve switched on before there was
     // anything to listen to, or one whose source was cleared. The panel reads the
     // sole candidate out as the source, so it has to be the stored one too;
     // otherwise the card claims a relationship the attribute does not record.
-    if (carve.enabled && carve.sources.length === 0) void setCarve({ ...carve, sources: [only] });
+    if (carve.enabled && carve.sources.length === 0) setCarveAuto({ ...carve, sources: [only] });
     // Deliberately keyed on the identity of the decision, not on setCarve — which
     // is rebuilt every render and would re-fire this.
     // eslint-disable-next-line react-hooks/exhaustive-deps

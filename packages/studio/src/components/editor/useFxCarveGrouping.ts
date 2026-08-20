@@ -15,7 +15,7 @@ import {
   isNamedCarveBed,
   type HfCarveSettings,
 } from "@hyperframes/core/audio-carve";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { resolveAudioGroups, resolveCarveSourceIds } from "@hyperframes/core/audio-groups";
 
 /**
  * An id for a new voiceover group, de-duped against every id already in the
@@ -200,11 +200,23 @@ export function carveBedRoles(
   return { couldBeBed: couldBeCarveBed(...parts), autoBed: isNamedCarveBed(...parts) };
 }
 
-/** Whether some element's own carve attribute names `targetId` as a source. */
-function carvesAgainst(other: HTMLElement, targetId: string): boolean {
+/**
+ * Whether some element's own carve attribute names `targetId` as a source.
+ *
+ * Sources are EXPANDED first. A plural carve now names a group rather than a
+ * clip list — that is what `audio_carve_ungrouped_sources` exists to push
+ * authors toward — so a raw `.includes(targetId)` never matched a member again,
+ * and the far-end guard this feeds was silently defeated by the very shape the
+ * lint rule asks for. The result: the carve module was offered on a voice clip
+ * a bed is already ducking against, and switching it on wrote a reciprocal
+ * carve — each side measuring audio the other is already attenuating.
+ */
+function carvesAgainst(doc: Document, other: HTMLElement, targetId: string): boolean {
   try {
     const raw = other.getAttribute(HF_AUDIO_CARVE_ATTR);
-    return Boolean(raw && normalizeCarveSettings(JSON.parse(raw)).sources.includes(targetId));
+    if (!raw) return false;
+    const sources = normalizeCarveSettings(JSON.parse(raw)).sources;
+    return resolveCarveSourceIds(doc, sources).includes(targetId);
   } catch {
     // An unreadable carve on some other element says nothing about this one.
     return false;
@@ -226,6 +238,6 @@ export function carverAgainst(
 ): string | null {
   if (!doc || !id) return null;
   const others = Array.from(doc.querySelectorAll<HTMLElement>(`[${HF_AUDIO_CARVE_ATTR}]`));
-  const carver = others.find((other) => other.id !== id && carvesAgainst(other, id));
+  const carver = others.find((other) => other.id !== id && carvesAgainst(doc, other, id));
   return carver ? carver.id || "another track" : null;
 }
