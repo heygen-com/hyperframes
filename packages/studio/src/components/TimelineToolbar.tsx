@@ -206,7 +206,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               </svg>
             </button>
           </Tooltip>
-          <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
+          <Tooltip label="Razor tool (B): Shift+click splits all tracks">
             <button
               type="button"
               onClick={() => setActiveTool("razor")}
@@ -223,7 +223,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             const Icon = TRIM_TOOL_ICONS[tool.mode];
             const active = activeTool === tool.mode;
             return (
-              <Tooltip key={tool.mode} label={`${tool.label} (${tool.shortcut}) — ${tool.hint}`}>
+              <Tooltip key={tool.mode} label={`${tool.label} (${tool.shortcut}): ${tool.hint}`}>
                 <button
                   type="button"
                   onClick={() => setActiveTool(active ? "select" : tool.mode)}
@@ -447,16 +447,16 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
           <Tooltip
             label={
               thumbnailsVisible
-                ? "Hide thumbnails — labels only"
-                : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+                ? "Hide thumbnails, labels only"
+                : "Show thumbnails: posters stay visible, richer previews appear on interaction"
             }
           >
             <button
               type="button"
               aria-label={
                 thumbnailsVisible
-                  ? "Hide thumbnails — labels only"
-                  : "Show thumbnails — posters stay visible; richer previews appear on interaction"
+                  ? "Hide thumbnails, labels only"
+                  : "Show thumbnails: posters stay visible, richer previews appear on interaction"
               }
               aria-pressed={thumbnailsVisible}
               onClick={() => setThumbnailMode(thumbnailsVisible ? "hidden" : "adaptive")}

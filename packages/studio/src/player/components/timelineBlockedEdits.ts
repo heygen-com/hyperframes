@@ -15,13 +15,13 @@ export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end" |
 export function blockedTimelineEditMessage(intent: BlockedTimelineEditIntent): string {
   switch (intent) {
     case "ripple":
-      return "This clip can't be ripple-trimmed — it or a clip after it is locked.";
+      return "This clip can't be ripple-trimmed: it or a clip after it is locked.";
     case "roll":
       return "Rolling needs a clip butted against this edit point.";
     case "slip":
       return "Only clips with source media can be slipped.";
     case "slide":
-      return "This clip can't be slid — it or a neighbour is locked.";
+      return "This clip can't be slid: it or a neighbour is locked.";
     default:
       return "This clip can't be moved or resized from the timeline yet.";
   }

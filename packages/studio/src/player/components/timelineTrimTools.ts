@@ -31,25 +31,25 @@ export const TIMELINE_TRIM_TOOLS: readonly TimelineTrimToolSpec[] = [
     mode: "ripple",
     label: "Ripple trim",
     shortcut: "T",
-    hint: "Drag a clip edge — every later clip on the track follows, so no gap opens.",
+    hint: "Drag a clip edge. Every later clip on the track follows, so no gap opens.",
   },
   {
     mode: "roll",
     label: "Roll edit",
     shortcut: "⇧T",
-    hint: "Drag the cut between two clips — one grows by exactly what the other gives up.",
+    hint: "Drag the cut between two clips. One grows by exactly what the other gives up.",
   },
   {
     mode: "slip",
     label: "Slip",
     shortcut: "Y",
-    hint: "Drag inside a clip to change which part of the source plays. Nothing moves.",
+    hint: "Drag inside a clip to slide the media behind it. The clip stays put, a different part of the source plays.",
   },
   {
     mode: "slide",
     label: "Slide",
     shortcut: "⇧Y",
-    hint: "Drag a clip along the track — its neighbours absorb the move.",
+    hint: "Drag a clip along the track. Its neighbours absorb the move.",
   },
 ];
 
