@@ -237,6 +237,13 @@ export function AudioFxGroup({
   // The rack's In/Out lines. Resolved from the live document because a group's
   // membership lives on the members, so neither end of the routing can be read
   // off the selected element alone.
+  // Keyed on the store's element array as well as the selection: membership is
+  // held by the MEMBERS, so a clip joining or leaving this group changes neither
+  // `element` nor its attributes, and the path went stale — "OUT to mix" on a
+  // clip that had just been grouped. `syncStoredGroupAttribute` and
+  // `updateElement` both replace the array, so its identity is the cheap signal
+  // that membership may have moved.
+  const storeElements = usePlayerStore((s) => s.elements);
   const signalPath = useMemo(() => {
     const doc = element.element?.ownerDocument;
     return audioFxSignalPath(
@@ -244,7 +251,8 @@ export function AudioFxGroup({
       element.id ?? undefined,
       doc ? resolveAudioGroups(doc) : [],
     );
-  }, [element]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element, storeElements]);
 
   /**
    * The clip this rack belongs to, so hovering a preset auditions where it

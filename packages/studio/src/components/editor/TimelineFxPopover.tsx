@@ -12,7 +12,9 @@ import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from "react
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
+import { applyAudioFxPreset, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 import { applyPresetToChain } from "./useApplyAudioFxPreset.js";
+import { trackPresetAuditioned } from "./audioFxTelemetry.js";
 import { useFxAudition } from "./useFxAudition.js";
 
 const POPOVER_WIDTH = 260;
@@ -58,6 +60,13 @@ export interface TimelineFxPopoverProps {
   /** Select the target the way clicking it in the timeline does, and ensure
    *  the property panel's Audio FX group is expanded. */
   onOpenRack: () => void;
+}
+
+/** A preset applied for AUDITION only: no telemetry, since nothing was chosen.
+ *  `applyPresetToChain` is the tracked path and belongs to `onPick`. */
+function auditionPresetChain(base: HfAudioFxChain, presetId: string): HfAudioFxChain {
+  const preset = getAudioFxPreset(presetId);
+  return preset ? applyAudioFxPreset(base, preset) : base;
 }
 
 export function TimelineFxPopover({
@@ -127,12 +136,18 @@ export function TimelineFxPopover({
         <FxPresetMenu
           trackKind={trackKind}
           onPick={applyPreset}
+          // The RAW apply, not `applyPresetToChain` — that helper fires
+          // `trackPresetApplied` on every call, so auditioning a 12-preset shelf
+          // by hover or arrow key emitted 12 `preset_applied` events and the
+          // numbers could not tell an audition from a decision. `FxSection`
+          // makes exactly this split, with `onAuditionTracked` carrying the
+          // honest event.
           onAudition={
             onChainPreview
-              ? (id) =>
-                  audition(id ? (base) => applyPresetToChain(base, id, trackKind) ?? base : null)
+              ? (id) => audition(id ? (base) => auditionPresetChain(base, id) : null)
               : undefined
           }
+          onAuditionTracked={(id) => trackPresetAuditioned(id, { trackKind })}
         />
       </div>
       <div className="mt-2 flex shrink-0 items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/55">

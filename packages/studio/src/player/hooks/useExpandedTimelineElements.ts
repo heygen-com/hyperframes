@@ -249,7 +249,13 @@ function buildChildElements(
       // clips. Fractions strictly between the host's lane and the next integer
       // can never equal a normalized (integer) lane, while still rendering the
       // children as their own ordered rows directly under the host.
-      track: display.track + (result.length + 1) / (siblings.length + 2),
+      //
+      // Confined to the LOWER half of that gap, because a GROUP row anchors at
+      // exactly `firstMemberTrack - 0.5` (`useTimelineTrackDerivations`) — and
+      // the old `k / (n + 2)` hit 0.5 dead on for a host with two children
+      // (2/4), producing a duplicate row key and a duplicated group header. This
+      // scheme's maximum is `0.5 * n / (n + 1)`, strictly under 0.5 for every n.
+      track: display.track + (0.5 * (result.length + 1)) / (siblings.length + 1),
       authoredTrack: base.authoredTrack,
       stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,

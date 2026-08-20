@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { isCanaryEnabled } from "../../telemetry/canary";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { ResizingClipState } from "./timelineClipDragTypes";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -33,7 +34,11 @@ export function timelineNeedsLabelColumn(
 ): boolean {
   return (
     hasKeyframedTimelineClips(animationsByElement) ||
-    elements.some((element) => Boolean(element.audioGroup))
+    // Gated exactly as the group ROWS are (`useTimelineTrackDerivations`):
+    // un-enrolled there are no group rows, so widening the column bought a
+    // permanent 232px shift of every clip with nothing on screen to explain it.
+    // The two must agree — the column exists FOR those rows.
+    (isCanaryEnabled("audio-groups") && elements.some((element) => Boolean(element.audioGroup)))
   );
 }
 

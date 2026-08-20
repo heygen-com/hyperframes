@@ -98,6 +98,9 @@ function buildGroupInfo(
   return {
     id: groupId,
     label: membership.labelByGroup.get(groupId) ?? groupId,
+    // Exactly x.5, which sub-composition child rows are now kept strictly below
+    // (`useExpandedTimelineElements`) — they used to be able to land here and
+    // collide, duplicating the group header.
     anchorKey: (memberTracks[0] ?? fallbackTrackNum) - 0.5,
     memberTracks,
     memberElements: memberTracks.flatMap((track) => rawByTrack.get(track) ?? []),

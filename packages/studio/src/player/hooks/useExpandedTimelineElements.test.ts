@@ -662,3 +662,23 @@ describe("buildExpandedElements — collision-free synthetic rows (cross-file la
     }
   });
 });
+
+describe("sub-comp child rows never collide with a group anchor", () => {
+  /**
+   * A group row anchors at exactly `firstMemberTrack - 0.5`. The old child
+   * scheme `k / (n + 2)` hit 0.5 dead on for a host with TWO children (2/4),
+   * producing a duplicate row key and a duplicated group header.
+   */
+  it("keeps every child strictly below the host's half-lane", () => {
+    for (const childCount of [1, 2, 3, 4, 7]) {
+      const fractions = Array.from(
+        { length: childCount },
+        (_unused, i) => (0.5 * (i + 1)) / (childCount + 1),
+      );
+      expect(fractions.every((f) => f > 0 && f < 0.5)).toBe(true);
+      // Still distinct and ordered, which is what makes them usable as rows.
+      expect(new Set(fractions).size).toBe(childCount);
+      expect([...fractions].sort((a, b) => a - b)).toEqual(fractions);
+    }
+  });
+});
