@@ -5,6 +5,7 @@ import {
   fadeSampler,
   fadeWedgePath,
   MIN_FADE_SECONDS,
+  type ClipFadeCurves,
   type ClipFades,
   type FadeSampler,
 } from "./clipFades";
@@ -29,10 +30,10 @@ export interface TimelineClipFadesProps {
   duration: number;
   pixelsPerSecond: number;
   width: number;
-  /** How far the fade is bent; 0 is a straight ramp. */
-  curve: number;
-  /** How the level rises across the fade, read back from where it is kept. */
-  sample: FadeSampler;
+  /** How far each ramp is bent; 0 is a straight one. */
+  curves: ClipFadeCurves;
+  /** How a ramp's level rises, read back from where it is kept. */
+  sample(edge: "in" | "out"): FadeSampler;
   /**
    * The clip's accent. The same colour, weight and opacity the automation lane
    * strokes an envelope with — a fade IS an envelope, and drawing the two alike
@@ -44,8 +45,8 @@ export interface TimelineClipFadesProps {
   showGrips: boolean;
   /** True when this is not the selected clip, which is what makes it editable. */
   readOnly: boolean;
-  /** Dragging the fade line bends it. Live while dragging, once on release. */
-  onBend(curve: number, persist: boolean): void;
+  /** Dragging a fade line bends that one. Live while dragging, once on release. */
+  onBend(edge: "in" | "out", curve: number, persist: boolean): void;
   /** Live during the drag: preview only, never persisted. */
   onPreview(next: ClipFades): void;
   /** Once, on release. */
@@ -112,7 +113,7 @@ export function TimelineClipFades({
   duration,
   pixelsPerSecond,
   width,
-  curve,
+  curves,
   sample,
   accent,
   showGrips,
@@ -124,16 +125,20 @@ export function TimelineClipFades({
   // While dragging, the drawn fades come from here: the committed value only
   // catches up once the write lands, and the wedge has to track the pointer.
   const [draft, setDraft] = useState<ClipFades | null>(null);
-  const [bendDraft, setBendDraft] = useState<number | null>(null);
+  // Keyed by edge, because only the ramp being dragged is in draft: the other
+  // one has to keep drawing its own committed shape underneath.
+  const [bendDraft, setBendDraft] = useState<{ edge: "in" | "out"; curve: number } | null>(null);
   const dragRef = useRef<{ edge: "in" | "out"; originX: number; from: ClipFades } | null>(null);
-  const bendRef = useRef<{ top: number; height: number } | null>(null);
+  const bendRef = useRef<{ edge: "in" | "out"; top: number; height: number } | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shown = draft ?? fades;
   // The bend is previewed the same way the lengths are: the committed value
   // only catches up once the write lands, and the line has to stay under the
   // pointer until then.
-  const shownCurve = bendDraft ?? curve;
-  const shownSample = bendDraft === null ? sample : fadeSampler(bendDraft);
+  const shownCurve = (edge: "in" | "out") =>
+    bendDraft?.edge === edge ? bendDraft.curve : edge === "in" ? curves.in : curves.out;
+  const shownSample = (edge: "in" | "out") =>
+    bendDraft?.edge === edge ? fadeSampler(bendDraft.curve) : sample(edge);
 
   const onGripDown = useCallback(
     (edge: "in" | "out", event: ReactPointerEvent) => {
@@ -194,7 +199,7 @@ export function TimelineClipFades({
    * than taking a height prop, because a clip row is sometimes sized by
    * `bottom` and so has no number to pass down.
    */
-  const onBendDown = useCallback((event: ReactPointerEvent) => {
+  const onBendDown = useCallback((edge: "in" | "out", event: ReactPointerEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
     const host = hostRef.current;
@@ -202,20 +207,21 @@ export function TimelineClipFades({
     const box = host.getBoundingClientRect();
     if (!(box.height > 0)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    bendRef.current = { top: box.top, height: box.height };
+    bendRef.current = { edge, top: box.top, height: box.height };
   }, []);
 
-  const resolveBend = useCallback((clientY: number): number | null => {
+  const resolveBend = useCallback((clientY: number) => {
     const drag = bendRef.current;
-    return drag ? bendFromPointer(clientY - drag.top, drag.height) : null;
+    if (!drag) return null;
+    return { edge: drag.edge, curve: bendFromPointer(clientY - drag.top, drag.height) };
   }, []);
 
   const onBendMove = useCallback(
     (event: ReactPointerEvent) => {
       const next = resolveBend(event.clientY);
-      if (next === null) return;
+      if (!next) return;
       setBendDraft(next);
-      onBend(next, false);
+      onBend(next.edge, next.curve, false);
     },
     [onBend, resolveBend],
   );
@@ -225,9 +231,11 @@ export function TimelineClipFades({
       const next = resolveBend(event.clientY);
       bendRef.current = null;
       setBendDraft(null);
-      if (next !== null && next !== curve) onBend(next, true);
+      if (!next) return;
+      const was = next.edge === "in" ? curves.in : curves.out;
+      if (next.curve !== was) onBend(next.edge, next.curve, true);
     },
-    [curve, onBend, resolveBend],
+    [curves, onBend, resolveBend],
   );
 
   /**
@@ -245,10 +253,11 @@ export function TimelineClipFades({
       pixelsPerSecond,
       width,
       height: hostRef.current?.getBoundingClientRect().height ?? 0,
-      level: shownSample(0.5),
+      level: shownSample(edge)(0.5),
     });
     if (!at) return null;
-    const label = bendLabel(shownCurve);
+    const curve = shownCurve(edge);
+    const label = bendLabel(curve);
     return (
       <div
         key={`bend-${edge}`}
@@ -257,10 +266,10 @@ export function TimelineClipFades({
         aria-label={edge === "in" ? "Fade in curve" : "Fade out curve"}
         aria-valuemin={-FADE_CURVE_LIMIT}
         aria-valuemax={FADE_CURVE_LIMIT}
-        aria-valuenow={shownCurve}
+        aria-valuenow={curve}
         aria-valuetext={label}
         data-clip-fade-bend={edge}
-        onPointerDown={onBendDown}
+        onPointerDown={(event) => onBendDown(edge, event)}
         onPointerMove={onBendMove}
         onPointerUp={onBendUp}
         onPointerCancel={onBendUp}
@@ -350,7 +359,7 @@ export function TimelineClipFades({
           const { line, fill } = fadeWedgePath({
             edge,
             seconds,
-            sample: shownSample,
+            sample: shownSample(edge),
             pixelsPerSecond,
             width,
             height: VIEW_HEIGHT,

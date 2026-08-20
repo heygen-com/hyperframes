@@ -36,8 +36,10 @@ export interface HfClipFade {
   fadeIn: number;
   /** Seconds of fade at the clip's tail. */
   fadeOut: number;
-  /** How the fade bends. See {@link fadeEase}. */
-  curve: number;
+  /** How the head ramp bends. See {@link fadeEase}. */
+  curveIn: number;
+  /** How the tail ramp bends, which is nobody's business but the tail's. */
+  curveOut: number;
 }
 
 /**
@@ -79,9 +81,41 @@ function parseSeconds(raw: string | null | undefined): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function parseCurve(raw: string | null | undefined): number {
-  if (raw == null) return 0;
-  return clampFadeCurve(Number.parseFloat(raw));
+/**
+ * The bends, from one attribute that takes one value or two.
+ *
+ * `data-fade-curve="-0.5"` bends both ramps the same way; `"-0.5 0.3"` bends
+ * the head then the tail. The one-or-many shorthand is the same bargain CSS
+ * strikes with `border-radius`, and it is worth striking here because the two
+ * ramps are usually alike and occasionally must not be: a fade in that creeps
+ * out of black and a fade out that drops away is a normal thing to ask for, and
+ * a single shared number cannot say it.
+ */
+function parseCurves(raw: string | null | undefined): { in: number; out: number } {
+  if (raw == null) return { in: 0, out: 0 };
+  const parts = raw
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map((part) => clampFadeCurve(Number.parseFloat(part)));
+  const head = parts[0] ?? 0;
+  return { in: head, out: parts.length > 1 ? (parts[1] ?? head) : head };
+}
+
+/** Two decimals is finer than a pointer can place a curve, and it keeps the
+ *  attribute short enough to read. */
+const roundCurve = (value: number): number => Math.round(value * 100) / 100;
+
+/**
+ * The attribute two bends should be written as, or null when both are straight
+ * and the attribute is better left off entirely. Collapses to one value when
+ * the ramps agree, which is the common case and the shorter markup.
+ */
+export function formatFadeCurve(curveIn: number, curveOut: number): string | null {
+  const head = roundCurve(clampFadeCurve(curveIn));
+  const tail = roundCurve(clampFadeCurve(curveOut));
+  if (head === 0 && tail === 0) return null;
+  return head === tail ? String(head) : `${head} ${tail}`;
 }
 
 /**
@@ -105,7 +139,8 @@ export function parseClipFade(getAttribute: (name: string) => string | null): Hf
   const fadeIn = parseSeconds(getAttribute(HF_FADE_IN_ATTR));
   const fadeOut = parseSeconds(getAttribute(HF_FADE_OUT_ATTR));
   if (fadeIn <= 0 && fadeOut <= 0) return null;
-  return { fadeIn, fadeOut, curve: parseCurve(getAttribute(HF_FADE_CURVE_ATTR)) };
+  const curves = parseCurves(getAttribute(HF_FADE_CURVE_ATTR));
+  return { fadeIn, fadeOut, curveIn: curves.in, curveOut: curves.out };
 }
 
 /**
@@ -130,12 +165,12 @@ export function clipFadeLevelAt(fade: HfClipFade, elapsed: number, duration: num
 
   let level = 1;
   if (fadeIn > 0 && elapsed < fadeIn) {
-    level = Math.min(level, fadeEase(elapsed / fadeIn, fade.curve));
+    level = Math.min(level, fadeEase(elapsed / fadeIn, fade.curveIn));
   }
   if (fadeOut > 0) {
     const remaining = duration - elapsed;
     if (remaining < fadeOut) {
-      level = Math.min(level, fadeEase(Math.max(0, remaining) / fadeOut, fade.curve));
+      level = Math.min(level, fadeEase(Math.max(0, remaining) / fadeOut, fade.curveOut));
     }
   }
   return level <= 0 ? 0 : level >= 1 ? 1 : level;

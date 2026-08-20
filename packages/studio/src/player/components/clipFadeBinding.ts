@@ -1,5 +1,6 @@
 import {
   clampFadeCurve,
+  formatFadeCurve,
   HF_FADE_CURVE_ATTR,
   HF_FADE_IN_ATTR,
   HF_FADE_OUT_ATTR,
@@ -10,8 +11,10 @@ import {
   clampClipFades,
   envelopeFadeSampler,
   fadeSampler,
+  NO_FADE_CURVES,
   readClipFades,
   writeClipFades,
+  type ClipFadeCurves,
   type ClipFades,
   type FadeSampler,
 } from "./clipFades";
@@ -39,21 +42,25 @@ const FADE_COALESCE_MS = 1200;
 
 export interface ClipFadeBinding {
   fades: ClipFades;
-  /** How far the fade is bent; 0 is a straight ramp. */
-  curve: number;
-  /** How the fade's level is drawn, read back from where it is stored. */
-  sample: FadeSampler;
+  /** How far each ramp is bent; 0 is a straight one. */
+  curves: ClipFadeCurves;
+  /** How a ramp's level is drawn, read back from where it is stored. */
+  sample(edge: "in" | "out"): FadeSampler;
   readOnly: boolean;
   onPreview(next: ClipFades): void;
   onCommit(next: ClipFades): void;
-  /** Live while the fade line is dragged, then once more on release. */
-  onBend(curve: number, persist: boolean): void;
+  /** Live while a fade line is dragged, then once more on release. */
+  onBend(edge: "in" | "out", curve: number, persist: boolean): void;
 }
 
 /** The bend an audio fade's envelope curvature stands for; see clipFades.ts. */
 export function readFadeCurve(curvature: number | undefined): number {
   return curvature ? clampFadeCurve(-curvature) : 0;
 }
+
+/** Replace one edge's bend, leaving the other exactly as it was. */
+const withBend = (curves: ClipFadeCurves, edge: "in" | "out", curve: number): ClipFadeCurves =>
+  edge === "in" ? { ...curves, in: curve } : { ...curves, out: curve };
 
 /** Writes one of the clip's own attributes; only valid for the selected clip. */
 export type FadeAttributeWriter = (
@@ -91,9 +98,14 @@ function audioFadeBinding(
 ): ClipFadeBinding {
   const lane = laneFor(binding.automation, VOLUME);
   const fades = readClipFades(lane.points, element.duration);
-  const curve = readFadeCurve(lane.points[0]?.curve);
+  // Each ramp's curvature already lives on the point it leaves, so the envelope
+  // has carried two bends all along; only the reader was collapsing them.
+  const curves: ClipFadeCurves = {
+    in: readFadeCurve(lane.points[0]?.curve),
+    out: readFadeCurve(lane.points.at(-2)?.curve),
+  };
 
-  const apply = (next: ClipFades, shape: number, persist: boolean) => {
+  const apply = (next: ClipFades, shape: ClipFadeCurves, persist: boolean) => {
     if (binding.readOnly) return;
     const points = writeClipFades(lane.points, element.duration, next, shape);
     const automation = withLane(binding.automation, { target: VOLUME, points });
@@ -107,18 +119,18 @@ function audioFadeBinding(
 
   return {
     fades,
-    curve,
-    sample: envelopeFadeSampler(curve),
+    curves,
+    sample: (edge) => envelopeFadeSampler(edge === "in" ? curves.in : curves.out),
     readOnly: binding.readOnly,
-    onPreview: (next) => apply(next, curve, false),
-    onCommit: (next) => apply(next, curve, true),
-    onBend: (bend, persist) => apply(fades, bend, persist),
+    onPreview: (next) => apply(next, curves, false),
+    onCommit: (next) => apply(next, curves, true),
+    onBend: (edge, bend, persist) => apply(fades, withBend(curves, edge, bend), persist),
   };
 }
 
 interface FadeState {
   fades: ClipFades;
-  curve: number;
+  curves: ClipFadeCurves;
 }
 
 /**
@@ -126,9 +138,15 @@ interface FadeState {
  * while there is a fade to shape, and a straight ramp is the default, so
  * leaving it off keeps the markup quiet.
  */
-const curveAttribute = ({ fades, curve }: FadeState): string | null => {
-  const bend = roundToCenti(clampFadeCurve(curve));
-  return (fades.fadeIn > 0 || fades.fadeOut > 0) && bend !== 0 ? String(bend) : null;
+const curveAttribute = ({ fades, curves }: FadeState): string | null => {
+  const head = fades.fadeIn > 0 ? curves.in : null;
+  const tail = fades.fadeOut > 0 ? curves.out : null;
+  if (head === null && tail === null) return null;
+  // A ramp that does not exist takes the other one's shape rather than a zero,
+  // so the attribute collapses to a single value instead of describing a tail
+  // that is not there. It is also the right value to inherit if that tail is
+  // drawn later: one number has always meant "both ramps, like this".
+  return formatFadeCurve(head ?? tail ?? 0, tail ?? head ?? 0);
 };
 
 /** The attribute writes moving from one fade state to another implies. */
@@ -161,14 +179,16 @@ function visualFadeBinding(
     { fadeIn: declared?.fadeIn ?? 0, fadeOut: declared?.fadeOut ?? 0 },
     element.duration,
   );
-  const curve = declared?.curve ?? 0;
+  const curves: ClipFadeCurves = declared
+    ? { in: declared.curveIn, out: declared.curveOut }
+    : NO_FADE_CURVES;
   const readOnly = !writeAttribute || !isSelected;
 
-  const apply = (next: ClipFades, shape: number, persist: boolean) => {
+  const apply = (next: ClipFades, shape: ClipFadeCurves, persist: boolean) => {
     if (!writeAttribute || readOnly) return;
-    const to = { fades: clampClipFades(next, element.duration), curve: shape };
+    const to = { fades: clampClipFades(next, element.duration), curves: shape };
     const coalesce = { key: `clip-fade:${keyOf(element)}`, ms: FADE_COALESCE_MS };
-    for (const [attr, value] of fadeAttributeWrites({ fades, curve }, to)) {
+    for (const [attr, value] of fadeAttributeWrites({ fades, curves }, to)) {
       writeAttribute(attr, value, persist, coalesce);
     }
     // On COMMIT only. Applying it during the drag would move the value each
@@ -185,12 +205,12 @@ function visualFadeBinding(
 
   return {
     fades,
-    curve,
-    sample: fadeSampler(curve),
+    curves,
+    sample: (edge) => fadeSampler(edge === "in" ? curves.in : curves.out),
     readOnly,
-    onPreview: (next) => apply(next, curve, false),
-    onCommit: (next) => apply(next, curve, true),
-    onBend: (bend, persist) => apply(fades, bend, persist),
+    onPreview: (next) => apply(next, curves, false),
+    onCommit: (next) => apply(next, curves, true),
+    onBend: (edge, bend, persist) => apply(fades, withBend(curves, edge, bend), persist),
   };
 }
 

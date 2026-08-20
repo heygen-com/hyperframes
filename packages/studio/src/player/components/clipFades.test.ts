@@ -268,12 +268,26 @@ describe("writeClipFades", () => {
   });
 
   it("bends the segment leaving the fade's silent end", () => {
-    const bent = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, -0.5);
+    const bent = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: -0.5, out: -0.5 });
     // The envelope stores the same bend with the opposite sign; see
     // envelopeCurveForFade. Both ends carry it, each on the point it leaves.
     expect(bent[0]?.curve).toBeCloseTo(0.5, 6);
     expect(bent[2]?.curve).toBeCloseTo(0.5, 6);
     // A straight fade writes no curvature at all rather than an explicit zero.
-    expect(writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, 0)[0]?.curve).toBeUndefined();
+    expect(
+      writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, { in: 0, out: 0 })[0]?.curve,
+    ).toBeUndefined();
+  });
+
+  it("gives each ramp its own curvature, on the point it leaves", () => {
+    const apart = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: -0.5, out: 0.25 });
+    expect(apart[0]?.curve).toBeCloseTo(0.5, 6);
+    expect(apart[2]?.curve).toBeCloseTo(-0.25, 6);
+  });
+
+  it("leaves a straight ramp bare even when the other one is bent", () => {
+    const half = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: 0, out: -0.5 });
+    expect(half[0]?.curve).toBeUndefined();
+    expect(half[2]?.curve).toBeCloseTo(0.5, 6);
   });
 });

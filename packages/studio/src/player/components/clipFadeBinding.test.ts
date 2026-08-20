@@ -80,7 +80,7 @@ describe("visual fades", () => {
       bag,
     )!;
     expect(fade.fades).toEqual({ fadeIn: 1.5, fadeOut: 2 });
-    expect(fade.curve).toBe(-0.5);
+    expect(fade.curves).toEqual({ in: -0.5, out: -0.5 });
   });
 
   it("previews without persisting, and only writes the end that moved", () => {
@@ -110,7 +110,7 @@ describe("visual fades", () => {
 
   it("writes the bend the drag lands on, and drops the attribute at straight", () => {
     const bent = deps();
-    resolveClipFadeBinding(el({ fadeIn: "1" }), bent.bag)!.onBend(-0.5, true);
+    resolveClipFadeBinding(el({ fadeIn: "1" }), bent.bag)!.onBend("in", -0.5, true);
     expect(bent.writeAttribute).toHaveBeenCalledWith(
       "data-fade-curve",
       "-0.5",
@@ -122,6 +122,7 @@ describe("visual fades", () => {
     // written as a zero nobody needs to read.
     const straightened = deps();
     resolveClipFadeBinding(el({ fadeIn: "1", fadeCurve: "-0.5" }), straightened.bag)!.onBend(
+      "in",
       0,
       true,
     );
@@ -136,8 +137,8 @@ describe("visual fades", () => {
   it("previews a bend without persisting it, then persists once on release", () => {
     const dragging = deps();
     const binding = resolveClipFadeBinding(el({ fadeIn: "1" }), dragging.bag)!;
-    binding.onBend(-0.3, false);
-    binding.onBend(-0.6, false);
+    binding.onBend("in", -0.3, false);
+    binding.onBend("in", -0.6, false);
     expect(dragging.writeAttribute).toHaveBeenCalledTimes(2);
     expect(dragging.writeAttribute).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -231,8 +232,8 @@ describe("audio fades", () => {
   it("keeps the fade lengths when only the bend changes", () => {
     const { bag, onCommit } = deps({ automation: withFade });
     const fade = resolveClipFadeBinding(audio(), bag)!;
-    expect(fade.curve).toBe(0);
-    fade.onBend(-0.5, true);
+    expect(fade.curves).toEqual({ in: 0, out: 0 });
+    fade.onBend("in", -0.5, true);
     const points = (onCommit.mock.calls[0]![0] as HfAutomation).lanes[0]!.points;
     expect(points.map((p) => [p.t, p.v])).toEqual([
       [0, 0],

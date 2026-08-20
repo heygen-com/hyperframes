@@ -50,6 +50,21 @@ export interface ClipFades {
   fadeOut: number;
 }
 
+/**
+ * The two bends, which are two values and not one.
+ *
+ * A fade in that creeps out of black and a fade out that drops away is an
+ * ordinary thing to ask for, so the ramps are shaped separately. Keyed by the
+ * edge they belong to, so a caller with an edge in hand cannot read the wrong
+ * one.
+ */
+export interface ClipFadeCurves {
+  in: number;
+  out: number;
+}
+
+export const NO_FADE_CURVES: ClipFadeCurves = { in: 0, out: 0 };
+
 export const NO_FADES: ClipFades = { fadeIn: 0, fadeOut: 0 };
 
 const atFloor = (v: number, min: number) => Math.abs(v - min) <= LEVEL_EPSILON;
@@ -201,13 +216,14 @@ export function writeClipFades(
   points: readonly HfAutomationPoint[],
   duration: number,
   fades: ClipFades,
-  curve = 0,
+  curves: ClipFadeCurves = NO_FADE_CURVES,
   min = 0,
   max = 1,
 ): HfAutomationPoint[] {
   const { fadeIn, fadeOut } = clampClipFades(fades, duration);
   const existing = readClipFades(points, duration, min, max);
-  const curvature = envelopeCurveForFade(curve);
+  const headCurvature = envelopeCurveForFade(curves.in);
+  const tailCurvature = envelopeCurveForFade(curves.out);
 
   // Everything strictly between the two fades is the author's; the old fade
   // points are not, so they are dropped by the same window.
@@ -219,12 +235,12 @@ export function writeClipFades(
 
   const next: HfAutomationPoint[] = [];
   if (fadeIn > 0) {
-    next.push({ t: 0, v: min, curve: curvature || undefined });
+    next.push({ t: 0, v: min, curve: headCurvature || undefined });
     next.push({ t: roundToCenti(fadeIn), v: max });
   }
   next.push(...interior);
   if (fadeOut > 0) {
-    next.push({ t: roundToCenti(duration - fadeOut), v: max, curve: curvature || undefined });
+    next.push({ t: roundToCenti(duration - fadeOut), v: max, curve: tailCurvature || undefined });
     next.push({ t: roundToCenti(duration), v: min });
   }
   return next;

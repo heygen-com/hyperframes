@@ -4,13 +4,14 @@ import {
   clipFadeFilter,
   clipFadeLevelAt,
   fadeCurveThroughMidpoint,
+  formatFadeCurve,
   fadeEase,
   parseClipFade,
   type HfClipFade,
 } from "./clipFade";
 
 const attrs = (record: Record<string, string>) => (name: string) => record[name] ?? null;
-const FADE: HfClipFade = { fadeIn: 1, fadeOut: 2, curve: 0 };
+const FADE: HfClipFade = { fadeIn: 1, fadeOut: 2, curveIn: 0, curveOut: 0 };
 
 describe("parseClipFade", () => {
   it("returns null for a clip that declares no fade", () => {
@@ -22,18 +23,20 @@ describe("parseClipFade", () => {
     expect(parseClipFade(attrs({ "data-fade-in": "0.5" }))).toEqual({
       fadeIn: 0.5,
       fadeOut: 0,
-      curve: 0,
+      curveIn: 0,
+      curveOut: 0,
     });
     expect(parseClipFade(attrs({ "data-fade-out": "1.25" }))).toEqual({
       fadeIn: 0,
       fadeOut: 1.25,
-      curve: 0,
+      curveIn: 0,
+      curveOut: 0,
     });
   });
 
   it("reads the bend as a number, and anything else as straight", () => {
     const read = (curve: string) =>
-      parseClipFade(attrs({ "data-fade-in": "1", "data-fade-curve": curve }))?.curve;
+      parseClipFade(attrs({ "data-fade-in": "1", "data-fade-curve": curve }))?.curveIn;
     expect(read("-0.5")).toBe(-0.5);
     expect(read("0.75")).toBe(0.75);
     // Past the limit is clamped, not rejected: an over-bent fade still fades.
@@ -41,6 +44,17 @@ describe("parseClipFade", () => {
     expect(read("4")).toBe(1);
     expect(read("smooth")).toBe(0);
     expect(read("")).toBe(0);
+  });
+
+  it("bends both ramps alike from one value, and apart from two", () => {
+    const read = (curve: string) =>
+      parseClipFade(attrs({ "data-fade-in": "1", "data-fade-out": "1", "data-fade-curve": curve }));
+    expect(read("-0.5")).toMatchObject({ curveIn: -0.5, curveOut: -0.5 });
+    expect(read("-0.5 0.3")).toMatchObject({ curveIn: -0.5, curveOut: 0.3 });
+    // A comma reads the same as a space; both are how a person writes a pair.
+    expect(read("-0.5, 0.3")).toMatchObject({ curveIn: -0.5, curveOut: 0.3 });
+    // A third value is somebody's typo, not a third ramp.
+    expect(read("-0.5 0.3 0.9")).toMatchObject({ curveIn: -0.5, curveOut: 0.3 });
   });
 
   it("ignores lengths that are not a positive number of seconds", () => {
@@ -123,6 +137,69 @@ describe("fadeCurveThroughMidpoint", () => {
   });
 });
 
+describe("a fade in and a fade out bend independently", () => {
+  const at = (fade: HfClipFade, t: number) => clipFadeLevelAt(fade, t, 10);
+
+  it("bends the head without touching the tail", () => {
+    const straight: HfClipFade = { fadeIn: 2, fadeOut: 2, curveIn: 0, curveOut: 0 };
+    const headBent: HfClipFade = { ...straight, curveIn: -0.5 };
+    // Halfway into the fade IN the two disagree...
+    expect(at(headBent, 1)).toBeLessThan(at(straight, 1));
+    // ...and halfway into the fade OUT they do not.
+    expect(at(headBent, 9)).toBeCloseTo(at(straight, 9), 9);
+  });
+
+  it("bends the tail without touching the head", () => {
+    const straight: HfClipFade = { fadeIn: 2, fadeOut: 2, curveIn: 0, curveOut: 0 };
+    const tailBent: HfClipFade = { ...straight, curveOut: -0.5 };
+    expect(at(tailBent, 9)).toBeLessThan(at(straight, 9));
+    expect(at(tailBent, 1)).toBeCloseTo(at(straight, 1), 9);
+  });
+
+  it("carries opposite bends at once, which one number could never say", () => {
+    const fade: HfClipFade = { fadeIn: 2, fadeOut: 2, curveIn: -0.5, curveOut: 0.5 };
+    // Creeps out of black: below the straight ramp a quarter in.
+    expect(at(fade, 0.5)).toBeLessThan(0.25);
+    // Drops away at the end: still above the straight ramp a quarter from done.
+    expect(at(fade, 9.5)).toBeGreaterThan(0.25);
+  });
+});
+
+describe("formatFadeCurve", () => {
+  it("writes nothing when both ramps are straight", () => {
+    expect(formatFadeCurve(0, 0)).toBeNull();
+  });
+
+  it("collapses to one value when the ramps agree", () => {
+    expect(formatFadeCurve(-0.5, -0.5)).toBe("-0.5");
+  });
+
+  it("writes the pair when they do not", () => {
+    expect(formatFadeCurve(-0.5, 0.3)).toBe("-0.5 0.3");
+    expect(formatFadeCurve(0, 0.3)).toBe("0 0.3");
+  });
+
+  it("round-trips through the parser", () => {
+    for (const [head, tail] of [
+      [-0.5, 0.3],
+      [0.25, 0.25],
+      [0, -1],
+      [1, 0],
+    ]) {
+      const written = formatFadeCurve(head!, tail!);
+      const read = parseClipFade(
+        attrs({
+          "data-fade-in": "1",
+          "data-fade-out": "1",
+          ...(written ? { "data-fade-curve": written } : {}),
+        }),
+      );
+      expect(read?.curveIn).toBeCloseTo(head!, 6);
+      expect(read?.curveOut).toBeCloseTo(tail!, 6);
+    }
+  });
+});
+
 describe("clipFadeLevelAt", () => {
   it("is silent at the very first instant and full once the fade is done", () => {
     expect(clipFadeLevelAt(FADE, 0, 10)).toBe(0);
@@ -159,7 +236,7 @@ describe("clipFadeLevelAt", () => {
   });
 
   it("holds a fade-out-only clip at full level until its tail", () => {
-    const out: HfClipFade = { fadeIn: 0, fadeOut: 2, curve: 0 };
+    const out: HfClipFade = { fadeIn: 0, fadeOut: 2, curveIn: 0, curveOut: 0 };
     expect(clipFadeLevelAt(out, 0, 10)).toBe(1);
     expect(clipFadeLevelAt(out, 9, 10)).toBeCloseTo(0.5, 6);
   });
