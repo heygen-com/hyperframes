@@ -6,6 +6,7 @@ import {
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
   patchIframeDomTiming,
+  persistElementAttribute,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
@@ -421,5 +422,45 @@ describe("deleteSelectedKeyframes", () => {
 
     expect(handleGsapRemoveKeyframe).toHaveBeenCalledTimes(1);
     expect(handleGsapRemoveKeyframe.mock.calls[0]?.[1]).toBe(20);
+  });
+});
+
+describe("persistElementAttribute", () => {
+  /**
+   * The optimistic live patch used to run BEFORE the target was resolved, and
+   * only the save was wrapped in the unwind. So an unresolvable target threw
+   * with the preview holding a value that never reached disk — and the group
+   * writer's catch mirrors the live DOM into the store, so the UI reported the
+   * write as applied until a reload dropped it.
+   */
+  it("does not patch the live DOM when the target resolves to nothing", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ content: '<body><audio id="other"></audio></body>' })),
+      );
+    const patchLive = vi.fn();
+    const writeProjectFile = vi.fn();
+
+    await expect(
+      persistElementAttribute({
+        projectId: "p",
+        targetPath: "index.html",
+        patchTarget: { id: "missing" },
+        attr: "data-volume",
+        value: "0.4",
+        label: "Set volume",
+        writeProjectFile,
+        recordEdit: vi.fn(),
+        domEditSaveTimestampRef: { current: 0 },
+        pendingTimelineEditPathRef: { current: new Set() },
+        patchLive,
+        readLive: () => null,
+      }),
+    ).rejects.toThrow("Unable to patch element in index.html");
+
+    expect(patchLive).not.toHaveBeenCalled();
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

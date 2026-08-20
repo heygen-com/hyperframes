@@ -437,12 +437,18 @@ export async function persistElementAttribute({
   readLive,
 }: PersistElementAttributeInput): Promise<string[]> {
   const previousValue = readLive();
-  patchLive(value);
 
+  // Resolve the target BEFORE patching the live DOM. The optimistic patch used
+  // to run first, and only the save was wrapped in the unwind — so an
+  // unresolvable target threw with the live preview (and, through the callers'
+  // catch, the store mirrored off it) holding a value that never reached disk.
+  // The write then read as successful until a reload dropped it.
   const before = await readFileContent(projectId, targetPath);
   if (readTagSnippetByTarget(before, patchTarget) === undefined) {
     throw new Error(`Unable to patch element in ${targetPath}`);
   }
+  patchLive(value);
+
   const operation: PatchOperation = { type: "attribute", property: attr, value };
   const patched = applyPatchByTarget(before, patchTarget, operation);
 

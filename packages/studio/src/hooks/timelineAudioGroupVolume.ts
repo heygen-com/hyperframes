@@ -232,9 +232,11 @@ export function useSetAudioGroupAttribute({
         });
         syncStoredGroupAttribute(groupId, attr, value);
       } catch (error) {
-        // `persistElementAttribute` has already unwound the live DOM to the
-        // previous value, but `setLive` mirrored the in-progress value into the
-        // store on every drag frame — so without this the fader reads 0.4 while
+        // `persistElementAttribute` leaves the live DOM at the previous value
+        // however it failed — it unwinds a failed save, and an unresolvable
+        // target now throws before patching at all. But `setLive` mirrored the
+        // in-progress value into the store on every drag frame — so without
+        // this the fader reads 0.4 while
         // the preview and the file are both back at 1.0, and nothing re-parses
         // to correct it (a live patch causing no parse is this mirror's whole
         // premise). Re-mirror from the DOM, which is now authoritative again.
