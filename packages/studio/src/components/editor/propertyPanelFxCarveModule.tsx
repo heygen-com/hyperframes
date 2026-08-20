@@ -336,10 +336,9 @@ function CarveSourceRow({
 }) {
   return (
     <div className="hf-fx-row flex min-h-6 items-center gap-2">
-      <span
-        className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2"
-        title="Listen to"
-      >
+      {/* Wraps like every other name in this column (see FxParamRow) — one
+          truncating row beside wrapping ones reads as a rendering bug. */}
+      <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
         Listen to
       </span>
       {soleVoice ? (
