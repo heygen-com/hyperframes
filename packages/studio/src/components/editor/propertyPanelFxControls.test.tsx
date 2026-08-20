@@ -113,3 +113,48 @@ describe("FxParamRow commit", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 });
+
+describe("FxParamRow label tooltip", () => {
+  // The label column is a fixed 86px and truncates: "Gap between repeats" reads
+  // as "Gap between re…", "How many repeats" as "How many repe…". The row
+  // already carried a `title`, but that is the HINT — what the knob does — so a
+  // truncated name had no way to be read in full.
+  const LONG: HfAudioFxNumberParam = {
+    kind: "number",
+    key: "time",
+    label: "Gap between repeats",
+    min: 0,
+    max: 1000,
+    step: 1,
+    default: 250,
+    unit: "ms",
+    hint: "How long before the echo comes back.",
+  };
+
+  it("titles the label with the full name, and leaves the hint on the row", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => {
+      createRoot(host).render(<FxParamRow param={LONG} value={250} onChange={vi.fn()} />);
+    });
+    const label = host.querySelector<HTMLElement>(".hf-fx-label");
+    expect(label?.getAttribute("title")).toBe("Gap between repeats");
+    // The hint stays where it was: the two are different questions, and the
+    // name is not a substitute for the explanation either.
+    expect(host.querySelector<HTMLElement>(".hf-fx-row")?.getAttribute("title")).toBe(
+      "How long before the echo comes back.",
+    );
+  });
+
+  it("titles it even with no hint to fall back on", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const { hint: _hint, ...noHint } = LONG;
+    act(() => {
+      createRoot(host).render(<FxParamRow param={noHint} value={250} onChange={vi.fn()} />);
+    });
+    expect(host.querySelector<HTMLElement>(".hf-fx-label")?.getAttribute("title")).toBe(
+      "Gap between repeats",
+    );
+  });
+});

@@ -230,6 +230,8 @@ export function FxCarveModule({
           // sets `tracking-normal`, and two Tailwind tracking utilities on one
           // element resolve by stylesheet order, not by the order written.
           style={{ color: tint, letterSpacing: "0.16em" }}
+          // Truncates in a narrow panel like every other name in the rack.
+          title="Voiceover carve"
           aria-expanded={open}
           onClick={onToggleOpen}
         >
@@ -256,7 +258,10 @@ export function FxCarveModule({
         <div className="hf-fx-carve-body border-t border-panel-border-input">
           <div className="hf-fx-carve-controls space-y-0.5 px-1.5 py-1.5">
             <div className="hf-fx-row flex min-h-6 items-center gap-2">
-              <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2">
+              <span
+                className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2"
+                title="Listen to"
+              >
                 Listen to
               </span>
               {soleVoice ? (

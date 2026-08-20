@@ -188,7 +188,15 @@ export function FxParamRow({
   if (param.kind === "enum") {
     return (
       <label className="hf-fx-row flex min-h-6 items-center gap-2" title={param.hint}>
-        <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2">
+        {/* `title` on the LABEL, not just the row: the row's is the hint, which
+            explains what the knob does — useful, and no substitute for the name
+            when 86px truncates it to "Gap between re…". Titled unconditionally
+            rather than only when it overflows, since whether it does depends on
+            the rendered font and the panel's width. */}
+        <span
+          className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2"
+          title={param.label}
+        >
           {param.label}
         </span>
         <select
@@ -227,10 +235,13 @@ export function FxParamRow({
       title={param.hint}
       data-automated={automated ? "" : undefined}
     >
+      {/* See the enum row above for why the name is titled here as well as the
+          hint being titled on the row. */}
       <span
         className={`hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] ${
           automated ? "text-panel-accent" : "text-panel-text-2"
         }`}
+        title={param.label}
       >
         {param.label}
       </span>
