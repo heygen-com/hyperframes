@@ -37,24 +37,20 @@ function renderPoster(surface?: "tile" | "hero"): HTMLImageElement {
 }
 
 describe("FramePoster", () => {
-  // Regression: the hero and the tile shared one bounded poster, so the frame
-  // detail view — the sketch pass's only picture — showed a 240x135 capture
-  // upscaled past 7x on a retina display, and body copy was unreadable.
-  it("captures the focus hero at the composition's own dimensions", () => {
-    const url = new URL(renderPoster("hero").src);
+  // Regression: the contact sheet stretched a 240x135 capture across a wide,
+  // high-density card, making body copy, thin lines, and sprite details blurry.
+  it.each([undefined, "tile", "hero"] as const)(
+    "captures the %s surface at the composition's own dimensions",
+    (surface) => {
+      const url = new URL(renderPoster(surface).src);
 
-    expect(url.searchParams.get("output")).toBe("source");
-    expect(url.pathname).toBe("/api/projects/demo/thumbnail/frames/01-hero.html");
-  });
-
-  it("leaves the contact-sheet tile on the route's bounded preview capture", () => {
-    const url = new URL(renderPoster("tile").src);
-
-    expect(url.searchParams.has("output")).toBe(false);
-  });
+      expect(url.searchParams.get("output")).toBe("source");
+      expect(url.pathname).toBe("/api/projects/demo/thumbnail/frames/01-hero.html");
+    },
+  );
 
   it("defaults to the tile surface", () => {
-    expect(new URL(renderPoster().src).search).toBe(new URL(renderPoster("tile").src).search);
+    expect(renderPoster().className).toBe(renderPoster("tile").className);
   });
 
   it("letterboxes only the hero, so a tile still fills its cell", () => {

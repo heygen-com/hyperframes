@@ -68,6 +68,25 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
+  it("captures source-sized jpeg output when requested", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const response = await app.request(
+      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=source",
+    );
+
+    expect(response.status).toBe(200);
+    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: "jpeg",
+        outputWidth: 1920,
+        outputHeight: 1080,
+      }),
+    );
+  });
+
   it("deduplicates concurrent generation and writes one complete cache entry", async () => {
     const adapter = createAdapter();
     const project = await adapter.resolveProject("demo");

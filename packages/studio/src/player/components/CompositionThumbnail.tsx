@@ -43,7 +43,7 @@ export function buildCompositionThumbnailUrl({
    * Capture density. Omitted, the route bounds the image to its preview cap —
    * right for the timeline, where thumbnails are small and numerous and their
    * decoded bytes are budgeted. `"source"` captures at the composition's own
-   * dimensions, for the rare surface that shows one poster large enough to read.
+   * dimensions for review surfaces where authored detail must stay readable.
    */
   output?: "source";
 }): string {
