@@ -82,6 +82,11 @@ describe("trackLintRun end to end", () => {
     // Version and ruleset fingerprint ride along.
     expect(props["cli_version"]).toBeTruthy();
     expect(props["rule_count"]).toBeGreaterThan(0);
+    // Per-group sizes make the positional `slowest_rule` index comparable
+    // across builds: a group that changed size renumbered its rules.
+    const groupCounts = props["rule_group_counts"] as Record<string, number>;
+    expect(groupCounts["gsap"]).toBeGreaterThan(0);
+    expect(Object.values(groupCounts).reduce((a, b) => a + b, 0)).toBe(props["rule_count"]);
     // code_counts sums to the number of findings.
     const counts = Object.values(props["code_counts"] as Record<string, number>);
     expect(counts.reduce((a, b) => a + b, 0)).toBe(

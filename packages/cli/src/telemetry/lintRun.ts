@@ -1,7 +1,7 @@
 // One place that turns a ProjectLintResult into telemetry, so `lint` and
 // `check` report identically instead of drifting apart.
 
-import { LINT_RULE_COUNT, type ProjectLintResult } from "@hyperframes/lint";
+import { LINT_RULE_COUNT, LINT_RULE_GROUP_COUNTS, type ProjectLintResult } from "@hyperframes/lint";
 import { trackLintReport, trackLintRuleStreak } from "./events.js";
 import { recordLintRun } from "./lintStreaks.js";
 
@@ -27,6 +27,7 @@ export function trackLintRun(
       warningCount: lintResult.totalWarnings,
       infoCount: lintResult.totalInfos,
       ruleCount: LINT_RULE_COUNT,
+      ruleGroupCounts: LINT_RULE_GROUP_COUNTS,
       ...summarize(lintResult),
       ...runIdField,
     });

@@ -843,6 +843,11 @@ export function trackLintReport(props: {
   slowestRuleMs: number;
   /** How many rules this build ran, so a ruleset change is visible in the data. */
   ruleCount: number;
+  /**
+   * Rule count per group. `slowest_rule` is positional, so a group that changed
+   * size between two builds has indices that no longer mean the same thing.
+   */
+  ruleGroupCounts: Record<string, number>;
   runId?: string;
 }): void {
   trackEvent("lint_report", {
@@ -858,6 +863,7 @@ export function trackLintReport(props: {
     slowest_rule: props.slowestRule,
     slowest_rule_ms: Math.round(props.slowestRuleMs),
     rule_count: props.ruleCount,
+    rule_group_counts: props.ruleGroupCounts,
     ...runIdField(props.runId),
   });
 }

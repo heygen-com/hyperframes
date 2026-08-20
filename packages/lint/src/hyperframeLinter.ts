@@ -21,8 +21,15 @@ import { slideshowRules } from "./rules/slideshow";
 // Rules are grouped by source module so a timing can be attributed to
 // something a human can act on. Individual rules stay anonymous: an
 // index within its group ("gsap#7") is enough to locate a pathological
-// rule, and naming all ~60 of them is a refactor this measurement does
+// rule, and naming all 86 of them is a refactor this measurement does
 // not need in order to point at the right file.
+//
+// The cost of that choice is that the index is POSITIONAL: adding or
+// removing a rule renumbers every later slot in its group, so "gsap#8"
+// can mean different rules in two builds. LINT_RULE_GROUP_COUNTS below
+// is what makes that detectable — a consumer comparing two builds can
+// see which groups changed size and therefore which numbering is no
+// longer comparable, without anyone having to remember what shipped when.
 const RULE_GROUPS: ReadonlyArray<{
   group: string;
   rules: ReadonlyArray<LintRule<LintContext>>;
@@ -45,6 +52,16 @@ const RULE_GROUPS: ReadonlyArray<{
  * measuring them.
  */
 export const LINT_RULE_COUNT = RULE_GROUPS.reduce((n, g) => n + g.rules.length, 0);
+
+/**
+ * How many rules each group runs. `slowest_rule` is reported as
+ * `<group>#<index>`, and that index shifts whenever a rule is added to or
+ * removed from its group. Comparing these counts between two builds tells a
+ * consumer exactly which groups' indices still mean the same thing.
+ */
+export const LINT_RULE_GROUP_COUNTS: Readonly<Record<string, number>> = Object.fromEntries(
+  RULE_GROUPS.map(({ group, rules }) => [group, rules.length]),
+);
 
 /** Two rules reporting the same problem on the same element report it once. */
 function dedupeKeyFor(finding: HyperframeLintFinding): string {
