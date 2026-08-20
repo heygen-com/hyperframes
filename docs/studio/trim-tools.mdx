@@ -1,0 +1,153 @@
+---
+title: "Trim with ripple, roll, slip, and slide"
+description: "Use the four NLE trim tools on the HyperFrames Studio timeline, and know which one to reach for."
+---
+
+Dragging a clip edge with the selection tool changes that clip and leaves a gap
+or an overlap behind. The four trim tools each decide what happens to the
+neighbours, so you can fix timing without repairing the track afterwards.
+
+<Frame caption="The timeline toolbar: selection, razor, then ripple, roll, slip, and slide.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-tools-toolbar-v1.png"
+    alt="The Studio timeline toolbar with the four trim tools"
+  />
+</Frame>
+
+One tool is active at a time. Press its key again, or press **V**, to go back to
+the selection tool.
+
+| Tool | Key | Where you grab | What moves |
+| --- | --- | --- | --- |
+| Ripple | T | A clip edge | The clip's length, and every later clip on the track |
+| Roll | Shift + T | The cut between two clips | Only those two. Nothing downstream moves |
+| Slip | Y | Inside the clip | Which part of the source plays. Nothing on the track moves |
+| Slide | Shift + Y | Inside the clip | The clip's position. Its two neighbours absorb it |
+
+<Note>
+  All four work on the grabbed clip's own track. Rippling a video clip does not
+  ripple the audio underneath it; move the audio yourself, or select both.
+</Note>
+
+## Ripple
+
+Drag a clip edge. The clip gets longer or shorter, and everything after it on the
+track shifts by the same amount, so no gap opens and nothing overlaps. The video
+gets longer or shorter by exactly what you trimmed.
+
+<Frame caption="Ripple trimming a clip's out point earlier. The two clips after it follow.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-ripple-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-ripple-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+Reach for ripple when the clip is too long or too short and everything after it
+should simply move up. It is the tool that changes the total running time.
+
+## Roll
+
+Drag the cut between two clips. One grows by exactly what the other gives up, so
+the cut moves and nothing else does. The video stays the same length.
+
+<Frame caption="Rolling a cut to the right. The clip before it grows, the clip after it shrinks, and the third clip never moves.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-roll-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-roll-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+Reach for roll when the cut is in the wrong place but the section is the right
+length. If a clip further down the track moves, you used ripple by mistake.
+
+Roll needs a clip on both sides of the cut. Grab an edge with nothing across it
+and Studio says so rather than starting a gesture that would do nothing.
+
+## Slip
+
+Slip is sliding a photo behind a picture frame. The frame is the clip: where it
+sits on the timeline and how long it lasts. The photo is the media. Slipping
+never moves the frame, it moves the photo behind it, so you see a different part
+of the same source in the same hole.
+
+<Frame caption="Slipping a video clip. The picture changes while the clip stays exactly where it was.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-slip-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-slip-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+Reach for slip when the timing is right but you are showing the wrong moment: the
+shot starts a beat too early, or the take you want is a second later in the file.
+
+Slip writes `data-playback-start`, the clip's in point. Only clips with a source
+to re-point can be slipped: video, audio, images, and nested compositions. Text
+and shapes are generated at render time and have no in point, so Studio refuses
+and tells you why.
+
+## Slide
+
+Drag the clip along its track. It keeps its own length and its own media, and the
+clips either side give up and take on exactly the time it travelled.
+
+<Frame caption="Sliding a clip to the right. The clip before it stretches, the clip after it shrinks, and the clip itself is untouched.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-slide-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/trim-slide-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+Reach for slide when a moment lands at the wrong time but the shot itself is
+right and the section must stay the same length. The clip you grabbed never
+changes duration, which is how you tell slide from roll at a glance.
+
+## Which one do I want
+
+Ask what must stay fixed:
+
+- **The total running time can change** and everything after should follow: ripple.
+- **The running time must not change** and the cut is in the wrong place: roll.
+- **Nothing on the track should move** and the picture is wrong: slip.
+- **Nothing downstream should move** and the clip is at the wrong moment: slide.
+
+## Snapping and undo
+
+Trims respect timeline snapping, so an edge lands on the playhead, a neighbouring
+boundary, or a beat rather than a hundredth of a second either side. Press **N**
+to toggle it.
+
+Every clip a trim touches is written in one step, so a single undo puts all of
+them back together rather than one at a time.
+
+## When a tool refuses
+
+A tool tells you why instead of running a gesture with no effect:
+
+- a roll with no clip across the cut;
+- a slip on generated pixels, which have no in point to move;
+- a ripple or a slide blocked by a locked clip on the track.
+
+## Related topics
+
+- [Edit timing on the timeline](/studio/timeline)
+- [Use Studio keyboard shortcuts](/studio/shortcuts)

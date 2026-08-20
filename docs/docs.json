@@ -211,6 +211,7 @@
             "pages": [
               "studio/canvas",
               "studio/timeline",
+              "studio/trim-tools",
               "studio/animation",
               "studio/captions"
             ]
