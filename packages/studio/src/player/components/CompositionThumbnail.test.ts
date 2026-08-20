@@ -87,6 +87,9 @@ describe("buildCompositionThumbnailUrl", () => {
 
     expect(buildCompositionThumbnailUrl(base)).not.toContain("output=");
     expect(buildCompositionThumbnailUrl({ ...base, output: "source" })).toContain("output=source");
+    expect(buildCompositionThumbnailUrl({ ...base, output: "storyboard" })).toContain(
+      "output=storyboard",
+    );
   });
 });
 

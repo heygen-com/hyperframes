@@ -42,10 +42,10 @@ export function buildCompositionThumbnailUrl({
   /**
    * Capture density. Omitted, the route bounds the image to its preview cap —
    * right for the timeline, where thumbnails are small and numerous and their
-   * decoded bytes are budgeted. `"source"` captures at the composition's own
-   * dimensions for review surfaces where authored detail must stay readable.
+   * decoded bytes are budgeted. `"storyboard"` caps the longest side at a
+   * high-density review size; `"source"` uses the composition's own dimensions.
    */
-  output?: "source";
+  output?: "source" | "storyboard";
 }): string {
   const thumbnailBase = previewUrl
     .replace("/preview/comp/", "/thumbnail/")

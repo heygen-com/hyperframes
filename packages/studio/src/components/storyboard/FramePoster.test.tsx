@@ -39,15 +39,16 @@ function renderPoster(surface?: "tile" | "hero"): HTMLImageElement {
 describe("FramePoster", () => {
   // Regression: the contact sheet stretched a 240x135 capture across a wide,
   // high-density card, making body copy, thin lines, and sprite details blurry.
-  it.each([undefined, "tile", "hero"] as const)(
-    "captures the %s surface at the composition's own dimensions",
-    (surface) => {
-      const url = new URL(renderPoster(surface).src);
+  it.each([
+    [undefined, "storyboard"],
+    ["tile", "storyboard"],
+    ["hero", "source"],
+  ] as const)("captures the %s surface at %s density", (surface, output) => {
+    const url = new URL(renderPoster(surface).src);
 
-      expect(url.searchParams.get("output")).toBe("source");
-      expect(url.pathname).toBe("/api/projects/demo/thumbnail/frames/01-hero.html");
-    },
-  );
+    expect(url.searchParams.get("output")).toBe(output);
+    expect(url.pathname).toBe("/api/projects/demo/thumbnail/frames/01-hero.html");
+  });
 
   it("defaults to the tile surface", () => {
     expect(renderPoster().className).toBe(renderPoster("tile").className);

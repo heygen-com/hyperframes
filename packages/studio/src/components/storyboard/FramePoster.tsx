@@ -11,8 +11,8 @@ export interface FramePosterProps {
   /**
    * Where this poster is rendered. A contact-sheet tile is ~300px wide and there
    * are many of them; the focus hero is up to 900px wide and there is exactly
-   * one. Both use a source-resolution capture so storyboard copy stays readable;
-   * the surface only decides whether the result fills or letterboxes its cell.
+   * one. Tiles use a bounded high-density capture; the hero uses source density.
+   * The surface also decides whether the result fills or letterboxes its cell.
    */
   surface?: "tile" | "hero";
   /**
@@ -55,10 +55,10 @@ export function FramePoster({
     seekTime: seconds,
     duration: 0,
     origin: window.location.origin,
-    // Storyboards exist to review composition detail. The bounded preview arrives
-    // at 240x135 and is visibly upscaled even in the contact sheet, making type,
-    // thin lines, and sprite details unreadable on high-density displays.
-    output: "source",
+    // The normal 240x135 preview is unreadable in the contact sheet, while source
+    // density is unbounded across all tiles. Give tiles a capped review density
+    // and reserve true source output for the single focus hero.
+    output: surface === "hero" ? "source" : "storyboard",
   });
   if (posterVersion) {
     const withVersion = new URL(url, window.location.origin);
