@@ -116,7 +116,10 @@ export function TimelineGroupHeader({
           aria-expanded={isExpanded}
           aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
           title={`${isExpanded ? "Hide" : "Show"} tracks`}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+          // 13px mono, matching the property panel's preset-run caret
+          // (`hf-fx-preset-run-caret`) — the same disclosure, so the same glyph
+          // at the same size rather than a smaller one unique to this row.
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
             isExpanded ? "text-white" : "text-white/55 hover:text-white"
           }`}
           onPointerDown={(event) => event.stopPropagation()}
@@ -125,9 +128,9 @@ export function TimelineGroupHeader({
             onToggleExpanded();
           }}
         >
-          <span aria-hidden="true" style={{ transform: isExpanded ? "rotate(90deg)" : undefined }}>
-            ▸
-          </span>
+          {/* Swapped, not rotated: the panel's caret swaps too, and a rotated
+              ▸ sits off-centre in its box because the glyph is not square. */}
+          <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
         </button>
         <GroupNameButton label={label} memberCount={memberCount} onOpenFxRack={onOpenFxRack} />
       </div>
