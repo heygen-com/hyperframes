@@ -12,6 +12,8 @@ export const examples: Example[] = [
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { lintProject } from "../utils/lintProject.js";
 import { resolveProject } from "../utils/project.js";
+import { trackLintRun } from "../telemetry/lintRun.js";
+import { getRunId } from "../telemetry/runId.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export default defineCommand({
@@ -45,7 +47,13 @@ export default defineCommand({
     // (publish/transcribe/upgrade/play/present) already use.
     try {
       const project = resolveProject(args.dir);
+      const startedAt = Date.now();
       const lintResult = await lintProject(project.dir);
+      trackLintRun(project.dir, lintResult, {
+        command: "lint",
+        durationMs: Date.now() - startedAt,
+        ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
+      });
 
       if (args.json) {
         const allFindings = lintResult.results.flatMap((r) => r.result.findings);

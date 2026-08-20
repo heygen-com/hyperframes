@@ -1,4 +1,5 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
@@ -47,10 +48,21 @@ function querySelectorAllIncludingTemplates(root: ParentNode, selector: string):
 }
 
 export interface ProjectLintResult {
-  results: Array<{ file: string; result: HyperframeLintResult }>;
+  results: Array<{ file: string; result: HyperframeLintResult; contentHash: string }>;
   totalErrors: number;
   totalWarnings: number;
   totalInfos: number;
+}
+
+/**
+ * Short content digest of a linted file. Callers use it to tell "the author
+ * edited this file and the finding survived" (an iteration that did not
+ * converge) from "the same file was linted twice" (no attempt was made).
+ * Truncated because it is only ever compared against the previous run's digest
+ * for the same file, never used as a security boundary.
+ */
+function contentDigest(html: string): string {
+  return createHash("sha256").update(html).digest("hex").slice(0, 16);
 }
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".opus"]);
@@ -151,7 +163,7 @@ export async function lintProject(
   }
   const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
   const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
-  const results: Array<{ file: string; result: HyperframeLintResult }> = [];
+  const results: ProjectLintResult["results"] = [];
   let totalErrors = 0;
   let totalWarnings = 0;
   let totalInfos = 0;
@@ -161,7 +173,7 @@ export async function lintProject(
     filePath: indexPath,
     externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
-  results.push({ file: rootFile, result: rootResult });
+  results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
   totalErrors += rootResult.errorCount;
   totalWarnings += rootResult.warningCount;
   totalInfos += rootResult.infoCount;
@@ -201,7 +213,11 @@ export async function lintProject(
         isSubComposition: true,
         externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
       });
-      results.push({ file: `compositions/${file}`, result });
+      results.push({
+        file: `compositions/${file}`,
+        result,
+        contentHash: contentDigest(html),
+      });
       totalErrors += result.errorCount;
       totalWarnings += result.warningCount;
       totalInfos += result.infoCount;

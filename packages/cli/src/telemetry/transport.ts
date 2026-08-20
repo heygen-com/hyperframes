@@ -22,8 +22,22 @@ const FLUSH_TIMEOUT_MS = 5_000;
 // (opt-out, system-metadata enrichment, first-run notice) lives in client.ts.
 // ---------------------------------------------------------------------------
 
+// Scalars cover almost every event. String arrays and numeric maps are allowed
+// too because some facts are inherently a set (which lint rule codes fired) or
+// a histogram (how many findings per code), and flattening those into dynamic
+// top-level keys would make them unqueryable. PostHog stores both natively:
+// `arrayJoin(properties.codes)` for the array, `JSONExtractInt` for the map.
+export type EventPropertyValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly string[]
+  | Readonly<Record<string, number>>;
+
 export interface EventProperties {
-  [key: string]: string | number | boolean | null | undefined;
+  [key: string]: EventPropertyValue;
 }
 
 interface QueuedEvent {

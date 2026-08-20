@@ -58,6 +58,7 @@ function cleanLint(): ProjectLintResult {
     results: [
       {
         file: "index.html",
+        contentHash: "test",
         result: {
           ok: true,
           errorCount: 0,
@@ -82,6 +83,7 @@ function lintWith(
     results: [
       {
         file: "index.html",
+        contentHash: "test",
         result: {
           ok: severity !== "error",
           errorCount: severity === "error" ? 1 : 0,
