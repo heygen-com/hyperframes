@@ -13,11 +13,7 @@
  */
 
 import { sampleAutomationLane } from "@hyperframes/core/audio-automation";
-import {
-  automationLaneLabelParts,
-  elementAutomationLanes,
-  elementFxChain,
-} from "./automationLaneData";
+import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { TimelineElement } from "../store/playerStore";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
@@ -43,13 +39,18 @@ export function TimelineGroupLaneLabels({
   // on seek, so the readout sat frozen while the curve was audibly working,
   // which is precisely the failure this number exists to prevent.
   const currentTime = useLivePlayheadTime();
-  const chain = elementFxChain(groupElement);
-  const lanes = elementAutomationLanes(groupElement);
+  // The SAME source the curves and the reserved height use
+  // (`TimelineGroupRow`), not raw `elementAutomationLanes`. Raw lanes are
+  // neither deduped by property nor filtered for resolvability, and the old
+  // `if (!parts) return null` consumed an index without drawing — so one
+  // unresolvable target slid every later label one row off the curve it names.
+  const laneGroups = groupAutomationLanes([groupElement]);
   return (
     <>
-      {lanes.map((lane, index) => {
-        const parts = automationLaneLabelParts(lane.target, chain);
-        if (!parts) return null;
+      {laneGroups.map((laneGroup, index) => {
+        const lane = laneGroup.entries[0]?.lane;
+        if (!lane) return null;
+        const parts = { name: laneGroup.name, param: laneGroup.param };
         // A group's clock is composition time (§1.3), so the playhead needs no
         // clip-local rebase here — unlike a clip's lane.
         const value = sampleAutomationLane(lane, currentTime);

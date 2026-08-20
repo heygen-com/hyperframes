@@ -889,6 +889,14 @@ async function mixAudioTracks(
   };
 }
 
+/**
+ * Verified against the real binary, because the wording is the whole contract:
+ * ffmpeg 8.1.1 emits `Error applying option 'X' to filter 'amix': Option not
+ * found`, which "option not found" matches. Only pre-4.4 libavfilter's
+ * `Option 'normalize' not found` phrasing sits outside the first test — and
+ * that build predates `normalize` existing at all, so it would fail for the
+ * right reason anyway. A review pass read this as dead and it is not.
+ */
 function groupNormalizeOptionUnsupported(stderr: string): boolean {
   return (
     /normalize/i.test(stderr) &&

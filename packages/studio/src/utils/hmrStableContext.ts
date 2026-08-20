@@ -24,6 +24,10 @@ const REGISTRY = "__hfStudioContexts";
 
 type Registry = Map<string, Context<unknown>>;
 
+/** Default registered per name, so a genuine collision can be told from an HMR
+ *  re-evaluation (which re-registers the same default). */
+const seenNames = new Map<string, unknown>();
+
 function registry(): Registry {
   const host = globalThis as unknown as Record<string, Registry | undefined>;
   const existing = host[REGISTRY];
@@ -39,6 +43,19 @@ function registry(): Registry {
  */
 export function createStableContext<T>(name: string, defaultValue: T): Context<T> {
   const store = registry();
+  // A collision is silent and its symptom is remote: two modules asking for the
+  // same name share ONE context, so one provider's value is read by the other's
+  // consumers and the bug surfaces as a wrong value far from either file. The
+  // convention is module path + export name; this makes breaking it loud.
+  if (store.has(name) && seenNames.get(name) !== defaultValue) {
+    // Not on the HMR path: a re-evaluated module hands back the SAME default it
+    // registered, which is how a hot reload keeps its context alive.
+    console.warn(
+      `[hmrStableContext] "${name}" was registered twice with different defaults — ` +
+        "two contexts are sharing one identity. Use module path + export name.",
+    );
+  }
+  seenNames.set(name, defaultValue);
   const existing = store.get(name);
   if (existing) return existing as Context<T>;
   const created = createContext<T>(defaultValue);
