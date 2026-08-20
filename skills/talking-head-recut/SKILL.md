@@ -950,10 +950,11 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
       <!-- Layer 2: each card-host sits at the bounds dictated by its layout. -->
       <!-- IMPORTANT: every card-host MUST carry BOTH "card-host" and "clip" classes. -->
       <!--   - "card-host"  → our positioning + pointer-events styles                 -->
-      <!--   - "clip"       → HyperFrames runtime uses this to enforce visibility     -->
-      <!--                    only during data-start … data-start+data-duration.      -->
-      <!--                    Without "clip" the host stays visible the whole video   -->
-      <!--                    (lint: timed_element_missing_clip_class).               -->
+      <!--   - "clip"       → the marker Studio and the linter use to recognise a     -->
+      <!--                    clip. Visibility itself comes from data-start /         -->
+      <!--                    data-duration, which the runtime honours with or        -->
+      <!--                    without this class                                      -->
+      <!--                    (lint: timed_element_missing_clip_class, a warning).    -->
       <!-- Example: card-01 with zone="fullscreen" → card-host covers (0,0,1920,1080) -->
       <div
         class="card-host clip"
@@ -1158,7 +1159,7 @@ decides where the actual visible card sits.
 - Animate wrappers such as `#video-wrap`, not the video element dimensions directly.
 - Avoid animating the same property on the same element from multiple timelines at the same time.
 - Use `data-track-index`, not `data-layer`; use `data-duration`, not `data-end`.
-- Every timed element (`card-host`, sub-composition, etc.) MUST include `class="clip"` alongside its own classes — e.g. `class="card-host clip"`. The HyperFrames runtime uses `.clip` to gate visibility to the `data-start … data-start+data-duration` window. Without it the element is visible for the whole video (lint: `timed_element_missing_clip_class`).
+- Every timed element (`card-host`, sub-composition, etc.) should include `class="clip"` alongside its own classes — e.g. `class="card-host clip"`. Visibility itself is driven by `data-start` / `data-duration`: the runtime gates every `[data-start]` element to its window whether or not this class is present. `.clip` is the marker Studio and the GSAP clip-ownership rules read to recognise a clip, so leaving it off makes the element harder to edit and to lint (lint: `timed_element_missing_clip_class`, a warning).
 - For body / global `font-family`, list **concrete font names** (`'Inter', 'Caveat', …`) — not a CSS variable like `var(--font-family)`. The HyperFrames font resolver doesn't expand CSS vars during static analysis (lint: `font_family_without_font_face`). Cards may still use `var(--font-family)` internally since their `@font-face` declarations are loaded.
 
 ### 10. Render to MP4

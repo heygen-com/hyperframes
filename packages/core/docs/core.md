@@ -117,7 +117,7 @@ Use the `data-composition-src` attribute to load a composition from an external 
   <video id="el-1" data-start="0" data-duration="10" data-track-index="0" src="..."></video>
   <video id="el-2" data-start="el-1" data-duration="8" data-track-index="0" src="..."></video>
   <img id="el-3" data-start="5" data-duration="4" data-track-index="1" src="..." />
-  <audio id="el-4" data-start="0" data-duration="30" data-track-index="2" src="..." />
+  <audio id="el-4" data-start="0" data-duration="30" data-track-index="2" src="..."></audio>
 
   <!-- Load composition from external file -->
   <div
@@ -343,7 +343,7 @@ The top-level composition is the `index.html` entry point. It acts as the conduc
   <video id="el-1" data-start="0" data-duration="10" data-track-index="0" src="..."></video>
   <video id="el-2" data-start="el-1" data-duration="8" data-track-index="0" src="..."></video>
   <img id="el-3" data-start="5" data-duration="4" data-track-index="1" src="..." />
-  <audio id="el-4" data-start="0" data-duration="30" data-track-index="2" src="..." />
+  <audio id="el-4" data-start="0" data-duration="30" data-track-index="2" src="..."></audio>
 
   <!-- Load sub-compositions from external files -->
   <div
