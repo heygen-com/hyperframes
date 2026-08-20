@@ -800,6 +800,15 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
       .filter((id): id is string => Boolean(id)),
   );
 
+  // Only a file that declares SOME membership can be judged. `lintHyperframeHtml`
+  // sees one file, and the studio's own group creation writes the bus into the
+  // active composition while patching `data-audio-group` into each member's own
+  // file (`timelineAudioGroupCreate`) — so a file carrying a bus and no members
+  // at all is the ordinary cross-file shape. Firing there reported the studio's
+  // own output as an error, and said "No clip carries `data-audio-group` at all"
+  // about clips it simply could not see.
+  if (memberGroupIds.size === 0) return [];
+
   const findings: HyperframeLintFinding[] = [];
   for (const tag of ctx.tags) {
     if (tag.name !== "hf-audio-group") continue;
@@ -814,8 +823,8 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
     const nearby = [...memberGroupIds].filter((id) => id !== elementId);
     const suffix =
       nearby.length > 0
-        ? ` Clips name ${nearby.map((id) => `"${id}"`).join(", ")} instead.`
-        : " No clip carries `data-audio-group` at all.";
+        ? ` Clips in this file name ${nearby.map((id) => `"${id}"`).join(", ")} instead.`
+        : "";
     findings.push({
       code: "audio_group_no_members",
       severity: "error",

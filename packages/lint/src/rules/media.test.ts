@@ -566,8 +566,12 @@ describe("audio_group_no_members", () => {
   const BUS = `<hf-audio-group id="voiceover" data-label="Voiceover" data-volume="0.4"
     data-fx-chain='{"version":1,"nodes":[{"type":"peaking","id":"n1","params":{"frequency":250,"gain":-3,"q":1.2}}]}'></hf-audio-group>`;
 
-  it("errors on a bus no clip belongs to", async () => {
-    const res = await lintHyperframeHtml(doc(BUS));
+  it("errors on a bus no clip in the file belongs to", async () => {
+    const res = await lintHyperframeHtml(
+      doc(
+        `${BUS}<audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`,
+      ),
+    );
     const finding = res.findings.find((f) => f.code === "audio_group_no_members");
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("voiceover");
@@ -597,6 +601,20 @@ describe("audio_group_no_members", () => {
 
   // A bus with no id cannot be joined at all, and `resolveAudioGroups` skips it
   // when building its element map — a different mistake, not this rule's.
+  // The rule can only speak about a file it can see all of. `lintHyperframeHtml`
+  // takes ONE file, and the studio's own group creation writes the bus into the
+  // active composition while patching `data-audio-group` into each member's own
+  // file (timelineAudioGroupCreate) — so a file holding a bus and no members at
+  // all is the normal cross-file shape, not a mistake.
+  it("stays quiet in a file that declares no members at all", async () => {
+    const res = await lintHyperframeHtml(
+      doc(
+        `${BUS}<div id="host" data-composition-src="compositions/voices.html" data-start="0" data-duration="10"></div>`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
+  });
+
   it("stays quiet for a bus with no id", async () => {
     const res = await lintHyperframeHtml(
       doc(`<hf-audio-group data-label="Nameless"></hf-audio-group>`),
