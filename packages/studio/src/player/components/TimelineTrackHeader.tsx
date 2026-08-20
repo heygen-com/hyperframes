@@ -18,7 +18,7 @@ import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
-import { LayerDisclosureRow } from "./LayerDisclosureRow";
+import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
 import { LABEL_COL_W, LANE_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import {
@@ -444,7 +444,20 @@ export function TimelineTrackHeader({
   // Automation counts as something to disclose: gating the caret on tweens alone
   // left an audio clip's envelopes unreachable, since the track could not expand.
   const disclosable = lanes.length > 0 || automationRows.length > 0;
-  const isKeyframeLayer = !!keyframeClip && disclosable;
+  // Which HEADER LAYOUT the row wears — not the same question as `disclosable`.
+  // An audio track that automates something is still an audio track: it keeps
+  // the music glyph and the group indent and gains the `∿`. Tying layout to
+  // disclosability swapped it for the keyframe-layer row (a `◇`, no indent) the
+  // moment an envelope appeared.
+  const isKeyframeLayer = !!keyframeClip && disclosable && !isAudioTrack;
+  // What the lane disclosure calls this row. A row of several clips is named
+  // for the TRACK, not for whichever is selected — the lanes are the track's,
+  // shared per property, so "Narration 2 lanes" read as if they were that one
+  // slice's. Shared by both layouts so the name cannot change with the layout.
+  const laneOwnerName =
+    clipCount > 1
+      ? `Track${trackDisplaySuffix(trackDisplayNumber)}`
+      : (keyframeClip?.label ?? keyframeClip?.domId ?? keyframeClip?.id ?? trackLabel);
 
   // C1: the FX entry point. A single audio clip has one chain to point at; a
   // track holding several ungrouped ones has no single chain — the design
@@ -516,7 +529,7 @@ export function TimelineTrackHeader({
           : {}),
       }}
     >
-      {!keyframeClip || !disclosable ? (
+      {!isKeyframeLayer ? (
         <>
           <PlainTrackHeader
             trackNumber={trackNumber}
@@ -546,6 +559,16 @@ export function TimelineTrackHeader({
                       onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
                     }
                     onOpenRack={() => openClipFxRack(singleAudioClip)}
+                  />
+                )}
+                {/* The lane disclosure, on the row's own layout rather than by
+                    swapping it for a keyframe-layer row. */}
+                {disclosable && (
+                  <LaneToggleButton
+                    name={laneOwnerName}
+                    isExpanded={isExpanded}
+                    lanesId={lanesId}
+                    onToggle={onToggleClipExpanded}
                   />
                 )}
               </>
@@ -578,15 +601,7 @@ export function TimelineTrackHeader({
       ) : (
         <>
           <LayerDisclosureRow
-            name={
-              // A row holding several clips is named for the track, not for
-              // whichever of them is selected — the lanes below it are the
-              // track's, shared per property, and naming it "Narration 2" read
-              // as if they all belonged to that one slice.
-              clipCount > 1
-                ? `Track${trackDisplaySuffix(trackDisplayNumber)}`
-                : (keyframeClip.label ?? keyframeClip.domId ?? keyframeClip.id)
-            }
+            name={laneOwnerName}
             clipCount={clipCount}
             isExpanded={isExpanded}
             gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
@@ -608,55 +623,56 @@ export function TimelineTrackHeader({
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>
-          {/* The caret expands TWO disjoint subtrees: these label-column rows,
-              which carry the per-lane keyframe controls, and the diamond lanes
-              on the canvas. `lanesId` names the canvas lanes (rendered by
-              TimelineLanes), because that is what a sighted user watches appear
-              and what following the reference has to land on. These rows are not
-              empty and are not the target; they are absolutely positioned inside
-              the sticky column, which is what made a wrapper HERE compute to
-              0x0 and hold no diamonds. */}
-          {isExpanded &&
-            lanes.map((lane, laneIndex) => (
-              <PropertyGroupHeaderRow
-                key={lane.group}
-                lanesId={lanesId}
-                lane={lane}
-                laneIndex={laneIndex}
-                isLastLane={laneIndex === lanes.length - 1 && automationRows.length === 0}
-                expandedElement={keyframeClip}
-                currentTime={currentTime}
-                clipPercentage={clipPercentage}
-                gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
-                columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
-                onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
-                onSeek={onSeek}
-                rovingTargetId={rovingTargetId}
-              />
-            ))}
-          {/* Below the keyframe rows and stepping by its own height, which is how
-              TimelineAutomationLaneSlot lays the envelopes out on the canvas. The
-              two have to agree or a name labels the wrong curve. */}
-          {isExpanded &&
-            automationRows.map((row, index) => (
-              <AutomationLaneHeaderRow
-                key={row.key}
-                target={row.target}
-                label={row.label}
-                name={row.name}
-                param={row.param}
-                alsoAutomatedBy={
-                  groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
-                }
-                top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
-                isLastLane={index === automationRows.length - 1}
-                gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
-                columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
-                onRemove={onRemoveAutomationLane}
-              />
-            ))}
         </>
       )}
+      {/* The caret expands TWO disjoint subtrees: these label-column rows,
+            which carry the per-lane keyframe controls, and the diamond lanes
+            on the canvas. `lanesId` names the canvas lanes (rendered by
+            TimelineLanes), because that is what a sighted user watches appear
+            and what following the reference has to land on. These rows are not
+            empty and are not the target; they are absolutely positioned inside
+            the sticky column, which is what made a wrapper HERE compute to
+            0x0 and hold no diamonds. */}
+      {isExpanded &&
+        keyframeClip &&
+        lanes.map((lane, laneIndex) => (
+          <PropertyGroupHeaderRow
+            key={lane.group}
+            lanesId={lanesId}
+            lane={lane}
+            laneIndex={laneIndex}
+            isLastLane={laneIndex === lanes.length - 1 && automationRows.length === 0}
+            expandedElement={keyframeClip}
+            currentTime={currentTime}
+            clipPercentage={clipPercentage}
+            gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
+            columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
+            onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
+            onSeek={onSeek}
+            rovingTargetId={rovingTargetId}
+          />
+        ))}
+      {/* Below the keyframe rows and stepping by its own height, which is how
+            TimelineAutomationLaneSlot lays the envelopes out on the canvas. The
+            two have to agree or a name labels the wrong curve. */}
+      {isExpanded &&
+        automationRows.map((row, index) => (
+          <AutomationLaneHeaderRow
+            key={row.key}
+            target={row.target}
+            label={row.label}
+            name={row.name}
+            param={row.param}
+            alsoAutomatedBy={
+              groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
+            }
+            top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
+            isLastLane={index === automationRows.length - 1}
+            gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
+            columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
+            onRemove={onRemoveAutomationLane}
+          />
+        ))}
     </div>
   );
 }
