@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { HfAutomationPoint } from "@hyperframes/core/audio-automation";
 import {
-  audioFadeSampler,
+  envelopeFadeSampler,
   clampClipFades,
   fadeWedgePath,
-  visualFadeSampler,
+  fadeSampler,
   MIN_FADE_SECONDS,
   NO_FADES,
   readClipFades,
@@ -115,11 +115,11 @@ describe("clampClipFades", () => {
 describe("fadeWedgePath", () => {
   const WIDTH = 200;
   const HEIGHT = 100;
-  const wedge = (edge: "in" | "out", curve: "linear" | "smooth" = "linear") =>
+  const wedge = (edge: "in" | "out", curve = 0) =>
     fadeWedgePath({
       edge,
       seconds: 2,
-      sample: visualFadeSampler(curve),
+      sample: fadeSampler(curve),
       pixelsPerSecond: 25,
       width: WIDTH,
       height: HEIGHT,
@@ -140,42 +140,42 @@ describe("fadeWedgePath", () => {
     expect(path.at(-1)).toEqual([WIDTH, HEIGHT]); // silent, exactly on the end
   });
 
-  it("draws an audio fade with the envelope's own curvature, not the runtime easing", () => {
-    // Both are "smooth", but each medium plays a different shape, so each is
-    // drawn with the sampler of the thing that will actually play it.
-    const visual = points(
-      fadeWedgePath({
-        edge: "in",
-        seconds: 2,
-        sample: visualFadeSampler("smooth"),
-        pixelsPerSecond: 25,
-        width: WIDTH,
-        height: HEIGHT,
-      }).line,
-    );
-    const audio = points(
-      fadeWedgePath({
-        edge: "in",
-        seconds: 2,
-        sample: audioFadeSampler("smooth"),
-        pixelsPerSecond: 25,
-        width: WIDTH,
-        height: HEIGHT,
-      }).line,
-    );
-    expect(visual.length).toBeGreaterThan(5);
-    expect(audio.length).toBeGreaterThan(5);
-    expect(audio).not.toEqual(visual);
+  it("draws an audio fade on exactly the line the picture fades along", () => {
+    // The two are stored in different places and sampled through different
+    // code, so this is the check that they still describe one shape: a bend of
+    // -0.5 has to look the same on a music clip as on a video clip.
+    for (const curve of [-1, -0.5, 0, 0.5, 1]) {
+      const wedgeFor = (sample: (p: number) => number) =>
+        points(
+          fadeWedgePath({
+            edge: "in",
+            seconds: 2,
+            sample,
+            pixelsPerSecond: 25,
+            width: WIDTH,
+            height: HEIGHT,
+          }).line,
+        );
+      const visual = wedgeFor(fadeSampler(curve));
+      const audio = wedgeFor(envelopeFadeSampler(curve));
+      expect(visual.length).toBeGreaterThan(5);
+      expect(audio).toHaveLength(visual.length);
+      for (const [index, [x, y]] of visual.entries()) {
+        expect(audio[index]![0]).toBeCloseTo(x, 1);
+        expect(audio[index]![1]).toBeCloseTo(y, 0);
+      }
+    }
   });
 
-  it("samples a curved fade instead of drawing a straight line", () => {
-    // Sampled at a point away from the midpoint: every symmetric easing passes
-    // through the middle of a straight line, so the middle proves nothing.
-    // The curve leaves silence slowly, so it sits BELOW the line at a quarter in
-    // (larger y is quieter).
-    const quarter = points(wedge("in", "smooth")).find(([x]) => Math.abs(x - 12.5) < 1.1);
-    // smoothstep(0.25) = 0.15625, so it is still mostly transparent here.
-    expect(quarter?.[1]).toBeCloseTo((1 - 0.15625) * HEIGHT, 1);
+  it("samples a bent fade instead of drawing a straight line", () => {
+    // A bend of -0.5 is p², so a quarter of the way in the level is 0.0625 and
+    // the line sits well below the straight one (larger y is quieter).
+    const quarter = points(wedge("in", -0.5)).find(([x]) => Math.abs(x - 12.5) < 1.1);
+    expect(quarter?.[1]).toBeCloseTo((1 - 0.0625) * HEIGHT, 1);
+
+    // Bent the other way it sits above the line by the same reasoning.
+    const bulged = points(wedge("in", 0.5)).find(([x]) => Math.abs(x - 12.5) < 1.1);
+    expect(bulged?.[1]).toBeCloseTo((1 - 0.5) * HEIGHT, 1);
   });
 
   it("draws nothing for a fade of no length", () => {
@@ -183,7 +183,7 @@ describe("fadeWedgePath", () => {
       fadeWedgePath({
         edge: "in",
         seconds: 0,
-        sample: visualFadeSampler("linear"),
+        sample: fadeSampler(0),
         pixelsPerSecond: 25,
         width: WIDTH,
         height: HEIGHT,
@@ -195,7 +195,7 @@ describe("fadeWedgePath", () => {
     const { line, fill } = fadeWedgePath({
       edge: "in",
       seconds: 2,
-      sample: visualFadeSampler("linear"),
+      sample: fadeSampler(0),
       pixelsPerSecond: 25,
       width: WIDTH,
       height: HEIGHT,
@@ -267,13 +267,13 @@ describe("writeClipFades", () => {
     expect(at(writeClipFades(faded, DURATION, NO_FADES))).toEqual([[4, 0.5]]);
   });
 
-  it("curves the segment leaving the fade's silent end", () => {
-    const smooth = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, "smooth");
-    expect(smooth[0]?.curve).toBeCloseTo(0.35, 6);
-    // The fade-out curves out of its full-level point, into silence.
-    expect(smooth[2]?.curve).toBeCloseTo(0.35, 6);
-    expect(
-      writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, "linear")[0]?.curve,
-    ).toBeUndefined();
+  it("bends the segment leaving the fade's silent end", () => {
+    const bent = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, -0.5);
+    // The envelope stores the same bend with the opposite sign; see
+    // envelopeCurveForFade. Both ends carry it, each on the point it leaves.
+    expect(bent[0]?.curve).toBeCloseTo(0.5, 6);
+    expect(bent[2]?.curve).toBeCloseTo(0.5, 6);
+    // A straight fade writes no curvature at all rather than an explicit zero.
+    expect(writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, 0)[0]?.curve).toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
 import {
+  clampFadeCurve,
   HF_FADE_CURVE_ATTR,
   HF_FADE_IN_ATTR,
   HF_FADE_OUT_ATTR,
@@ -6,15 +7,12 @@ import {
 } from "@hyperframes/core/clip-fade";
 import { laneFor, withLane } from "./automationLaneGeometry";
 import {
-  audioFadeSampler,
   clampClipFades,
-  FADE_CURVES,
-  FADE_CURVE_ORDER,
+  envelopeFadeSampler,
+  fadeSampler,
   readClipFades,
-  visualFadeSampler,
   writeClipFades,
   type ClipFades,
-  type FadeCurve,
   type FadeSampler,
 } from "./clipFades";
 import type { AutomationLaneBinding } from "./useAutomationLanes";
@@ -41,24 +39,20 @@ const FADE_COALESCE_MS = 1200;
 
 export interface ClipFadeBinding {
   fades: ClipFades;
-  curve: FadeCurve;
-  /** How the fade's level is drawn, which differs by medium. */
+  /** How far the fade is bent; 0 is a straight ramp. */
+  curve: number;
+  /** How the fade's level is drawn, read back from where it is stored. */
   sample: FadeSampler;
   readOnly: boolean;
   onPreview(next: ClipFades): void;
   onCommit(next: ClipFades): void;
-  onCycleCurve(): void;
+  /** Live while the fade line is dragged, then once more on release. */
+  onBend(curve: number, persist: boolean): void;
 }
 
-/** Which named curve an audio fade's envelope curvature corresponds to. */
-export function readFadeCurve(curvature: number | undefined): FadeCurve {
-  if (!curvature) return "linear";
-  return FADE_CURVE_ORDER.find((key) => Math.abs(FADE_CURVES[key] - curvature) < 0.05) ?? "linear";
-}
-
-/** The next shape a double-click on the grip moves to. */
-export function nextFadeCurve(curve: FadeCurve): FadeCurve {
-  return FADE_CURVE_ORDER[(FADE_CURVE_ORDER.indexOf(curve) + 1) % FADE_CURVE_ORDER.length]!;
+/** The bend an audio fade's envelope curvature stands for; see clipFades.ts. */
+export function readFadeCurve(curvature: number | undefined): number {
+  return curvature ? clampFadeCurve(-curvature) : 0;
 }
 
 /** Writes one of the clip's own attributes; only valid for the selected clip. */
@@ -99,7 +93,7 @@ function audioFadeBinding(
   const fades = readClipFades(lane.points, element.duration);
   const curve = readFadeCurve(lane.points[0]?.curve);
 
-  const apply = (next: ClipFades, shape: FadeCurve, persist: boolean) => {
+  const apply = (next: ClipFades, shape: number, persist: boolean) => {
     if (binding.readOnly) return;
     const points = writeClipFades(lane.points, element.duration, next, shape);
     const automation = withLane(binding.automation, { target: VOLUME, points });
@@ -114,26 +108,28 @@ function audioFadeBinding(
   return {
     fades,
     curve,
-    sample: audioFadeSampler(curve),
+    sample: envelopeFadeSampler(curve),
     readOnly: binding.readOnly,
     onPreview: (next) => apply(next, curve, false),
     onCommit: (next) => apply(next, curve, true),
-    onCycleCurve: () => apply(fades, nextFadeCurve(curve), true),
+    onBend: (bend, persist) => apply(fades, bend, persist),
   };
 }
 
 interface FadeState {
   fades: ClipFades;
-  curve: FadeCurve;
+  curve: number;
 }
 
 /**
  * The curve attribute a fade should carry, or null for none: only worth writing
- * while there is a fade to shape, and "linear" is the default — leaving it off
- * keeps the markup quiet.
+ * while there is a fade to shape, and a straight ramp is the default, so
+ * leaving it off keeps the markup quiet.
  */
-const curveAttribute = ({ fades, curve }: FadeState): FadeCurve | null =>
-  (fades.fadeIn > 0 || fades.fadeOut > 0) && curve !== "linear" ? curve : null;
+const curveAttribute = ({ fades, curve }: FadeState): string | null => {
+  const bend = roundToCenti(clampFadeCurve(curve));
+  return (fades.fadeIn > 0 || fades.fadeOut > 0) && bend !== 0 ? String(bend) : null;
+};
 
 /** The attribute writes moving from one fade state to another implies. */
 function fadeAttributeWrites(from: FadeState, to: FadeState): Array<[string, string | null]> {
@@ -165,10 +161,10 @@ function visualFadeBinding(
     { fadeIn: declared?.fadeIn ?? 0, fadeOut: declared?.fadeOut ?? 0 },
     element.duration,
   );
-  const curve = declared?.curve ?? "linear";
+  const curve = declared?.curve ?? 0;
   const readOnly = !writeAttribute || !isSelected;
 
-  const apply = (next: ClipFades, shape: FadeCurve, persist: boolean) => {
+  const apply = (next: ClipFades, shape: number, persist: boolean) => {
     if (!writeAttribute || readOnly) return;
     const to = { fades: clampClipFades(next, element.duration), curve: shape };
     const coalesce = { key: `clip-fade:${keyOf(element)}`, ms: FADE_COALESCE_MS };
@@ -190,11 +186,11 @@ function visualFadeBinding(
   return {
     fades,
     curve,
-    sample: visualFadeSampler(curve),
+    sample: fadeSampler(curve),
     readOnly,
     onPreview: (next) => apply(next, curve, false),
     onCommit: (next) => apply(next, curve, true),
-    onCycleCurve: () => apply(fades, nextFadeCurve(curve), true),
+    onBend: (bend, persist) => apply(fades, bend, persist),
   };
 }
 

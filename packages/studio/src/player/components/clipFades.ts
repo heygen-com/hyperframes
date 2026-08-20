@@ -3,7 +3,7 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
-import { fadeEase, type HfFadeCurve } from "@hyperframes/core/clip-fade";
+import { clampFadeCurve, fadeEase } from "@hyperframes/core/clip-fade";
 import { roundToCenti } from "../../utils/rounding";
 
 /**
@@ -22,19 +22,18 @@ import { roundToCenti } from "../../utils/rounding";
  * only the sampler used to DRAW the fade differs, and that is passed in.
  */
 
-export type FadeCurve = HfFadeCurve;
-
-/** Envelope curvature that best matches each named curve, for audio fades. */
-export const FADE_CURVES: Record<FadeCurve, number> = {
-  /** Straight line. */
-  linear: 0,
-  /** Eases out of silence and into it — the usual choice for music. */
-  smooth: 0.35,
-  /** Holds the level then drops late; useful under a voice. */
-  sharp: -0.45,
-};
-
-export const FADE_CURVE_ORDER: readonly FadeCurve[] = ["linear", "smooth", "sharp"];
+/**
+ * The envelope curvature that reproduces a fade bend exactly.
+ *
+ * The two systems already parameterise a curve the same way, as an exponent:
+ * a fade is `p^(2^(-2·bend))` and an envelope segment is `x^(2^(2·curve))`.
+ * They differ only in which direction counts as positive, so the conversion is
+ * a sign flip and an audio fade is the same shape as the visual one, not an
+ * approximation of it. One function owns that flip.
+ */
+function envelopeCurveForFade(curve: number): number {
+  return -clampFadeCurve(curve);
+}
 
 /** Shortest fade the handle will write; below this it reads as "no fade". */
 export const MIN_FADE_SECONDS = 0.05;
@@ -125,18 +124,22 @@ export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
 /** How a fade's level rises across its length, for whichever medium draws it. */
 export type FadeSampler = (progress: number) => number;
 
-/** The sampler a VISUAL fade is drawn with: the runtime's own easing. */
-export function visualFadeSampler(curve: FadeCurve): FadeSampler {
+/**
+ * How a fade of this bend rises, for drawing it. One sampler for both media:
+ * `envelopeCurveForFade` makes the audio envelope trace the same curve the
+ * runtime fades a picture along, so the wedge on a music clip and the wedge on
+ * a video clip are the same line and not two lookalikes.
+ */
+export function fadeSampler(curve: number): FadeSampler {
   return (progress) => fadeEase(progress, curve);
 }
 
-/** The sampler an AUDIO fade is drawn with: the envelope's segment curvature. */
-export function audioFadeSampler(curve: FadeCurve): FadeSampler {
-  const curvature = FADE_CURVES[curve];
+/** The same rise, read back out of the envelope an audio fade is stored in. */
+export function envelopeFadeSampler(curve: number): FadeSampler {
   const lane: HfAutomationLane = {
     target: "volume",
     points: [
-      { t: 0, v: 0, curve: curvature || undefined },
+      { t: 0, v: 0, curve: envelopeCurveForFade(curve) || undefined },
       { t: 1, v: 1 },
     ],
   };
@@ -198,13 +201,13 @@ export function writeClipFades(
   points: readonly HfAutomationPoint[],
   duration: number,
   fades: ClipFades,
-  curve: FadeCurve = "linear",
+  curve = 0,
   min = 0,
   max = 1,
 ): HfAutomationPoint[] {
   const { fadeIn, fadeOut } = clampClipFades(fades, duration);
   const existing = readClipFades(points, duration, min, max);
-  const curvature = FADE_CURVES[curve];
+  const curvature = envelopeCurveForFade(curve);
 
   // Everything strictly between the two fades is the author's; the old fade
   // points are not, so they are dropped by the same window.

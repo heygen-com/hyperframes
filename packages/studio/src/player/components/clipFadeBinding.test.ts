@@ -2,12 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HfAutomation } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../store/playerStore";
 import type { AutomationLaneBinding } from "./useAutomationLanes";
-import {
-  nextFadeCurve,
-  readFadeCurve,
-  resolveClipFadeBinding,
-  type ClipFadeDeps,
-} from "./clipFadeBinding";
+import { readFadeCurve, resolveClipFadeBinding, type ClipFadeDeps } from "./clipFadeBinding";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
 
@@ -81,11 +76,11 @@ describe("visual fades", () => {
   it("reads the clip's declared attributes", () => {
     const { bag } = deps();
     const fade = resolveClipFadeBinding(
-      el({ fadeIn: "1.5", fadeOut: "2", fadeCurve: "smooth" }),
+      el({ fadeIn: "1.5", fadeOut: "2", fadeCurve: "-0.5" }),
       bag,
     )!;
     expect(fade.fades).toEqual({ fadeIn: 1.5, fadeOut: 2 });
-    expect(fade.curve).toBe("smooth");
+    expect(fade.curve).toBe(-0.5);
   });
 
   it("previews without persisting, and only writes the end that moved", () => {
@@ -113,24 +108,46 @@ describe("visual fades", () => {
     );
   });
 
-  it("writes the curve once it is stepped, and drops it back at linear", () => {
-    const stepped = deps();
-    resolveClipFadeBinding(el({ fadeIn: "1" }), stepped.bag)!.onCycleCurve();
-    expect(stepped.writeAttribute).toHaveBeenCalledWith(
+  it("writes the bend the drag lands on, and drops the attribute at straight", () => {
+    const bent = deps();
+    resolveClipFadeBinding(el({ fadeIn: "1" }), bent.bag)!.onBend(-0.5, true);
+    expect(bent.writeAttribute).toHaveBeenCalledWith(
       "data-fade-curve",
-      "smooth",
+      "-0.5",
       true,
       expect.anything(),
     );
 
-    const back = deps();
-    resolveClipFadeBinding(el({ fadeIn: "1", fadeCurve: "sharp" }), back.bag)!.onCycleCurve();
-    expect(back.writeAttribute).toHaveBeenCalledWith(
+    // Dragged back onto the line: the attribute goes away rather than being
+    // written as a zero nobody needs to read.
+    const straightened = deps();
+    resolveClipFadeBinding(el({ fadeIn: "1", fadeCurve: "-0.5" }), straightened.bag)!.onBend(
+      0,
+      true,
+    );
+    expect(straightened.writeAttribute).toHaveBeenCalledWith(
       "data-fade-curve",
       null,
       true,
       expect.anything(),
     );
+  });
+
+  it("previews a bend without persisting it, then persists once on release", () => {
+    const dragging = deps();
+    const binding = resolveClipFadeBinding(el({ fadeIn: "1" }), dragging.bag)!;
+    binding.onBend(-0.3, false);
+    binding.onBend(-0.6, false);
+    expect(dragging.writeAttribute).toHaveBeenCalledTimes(2);
+    expect(dragging.writeAttribute).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      true,
+      expect.anything(),
+    );
+    // The store is only caught up on the persisted write; doing it per move
+    // would move the value each write compares against.
+    expect(dragging.updateElement).not.toHaveBeenCalled();
   });
 
   it("shares a clip too short for both fades rather than overlapping them", () => {
@@ -211,32 +228,26 @@ describe("audio fades", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it("keeps the fade lengths when only the curve is stepped", () => {
+  it("keeps the fade lengths when only the bend changes", () => {
     const { bag, onCommit } = deps({ automation: withFade });
     const fade = resolveClipFadeBinding(audio(), bag)!;
-    expect(fade.curve).toBe("linear");
-    fade.onCycleCurve();
+    expect(fade.curve).toBe(0);
+    fade.onBend(-0.5, true);
     const points = (onCommit.mock.calls[0]![0] as HfAutomation).lanes[0]!.points;
     expect(points.map((p) => [p.t, p.v])).toEqual([
       [0, 0],
       [2, 1],
     ]);
-    expect(points[0]!.curve).toBeCloseTo(0.35, 6);
+    expect(points[0]!.curve).toBeCloseTo(0.5, 6);
   });
 });
 
 describe("fade curves", () => {
   it("names the curvature an audio fade was written with", () => {
-    expect(readFadeCurve(undefined)).toBe("linear");
-    expect(readFadeCurve(0.35)).toBe("smooth");
-    expect(readFadeCurve(-0.45)).toBe("sharp");
+    expect(readFadeCurve(undefined)).toBe(0);
+    expect(readFadeCurve(0.5)).toBe(-0.5);
+    expect(readFadeCurve(-0.5)).toBe(0.5);
     // Something hand-authored that matches no shape reads as the plain one.
-    expect(readFadeCurve(0.9)).toBe("linear");
-  });
-
-  it("cycles through every shape and back", () => {
-    expect(nextFadeCurve("linear")).toBe("smooth");
-    expect(nextFadeCurve("smooth")).toBe("sharp");
-    expect(nextFadeCurve("sharp")).toBe("linear");
+    expect(readFadeCurve(0.9)).toBeCloseTo(-0.9, 6);
   });
 });
