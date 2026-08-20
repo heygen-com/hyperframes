@@ -9,6 +9,12 @@ import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 import type { AudioFxSignalPath } from "./audioFxSignalPath.js";
 
 export interface FxSectionProps {
+  /**
+   * An automation lane asked to be shown: its `fx.<node>.<param>` / `volume`
+   * target. The section opens whichever surface owns that parameter — a node
+   * row, an EQ module, a preset run, or the carve — and scrolls to it.
+   */
+  revealTarget?: string | null;
   /** What the rack's `In`/`Out` lines name — see `audioFxSignalPath`. Absent
    *  means an ungrouped clip, which is what those lines said before groups. */
   signalPath?: AudioFxSignalPath;

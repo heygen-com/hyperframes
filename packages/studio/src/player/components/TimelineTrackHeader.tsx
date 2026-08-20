@@ -5,7 +5,7 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import { classifyAudioName } from "@hyperframes/core/audio-carve";
-import { type TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { VisibilityButton, PlainTrackHeader } from "./TimelineTrackPlainHeader";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -266,6 +266,7 @@ function AutomationLaneHeaderRow({
   columnWidth,
   onRemove,
   isCarve,
+  onReveal,
 }: {
   /** The lane the ACTIVE clip draws in this row, or null when it draws none —
    *  the row belongs to the property, and a clip may be absent from it. */
@@ -291,6 +292,9 @@ function AutomationLaneHeaderRow({
   /** The carve owns this envelope and rewrites it on every re-run, so it is
    *  shown but not the author's to edit or delete. */
   isCarve?: boolean;
+  /** Reveal this parameter in the rack. Absent, the name is inert rather than a
+   *  button that looks live and does nothing. */
+  onReveal?: () => void;
 }) {
   return (
     <div
@@ -317,7 +321,25 @@ function AutomationLaneHeaderRow({
           one line a band's own name was the first thing truncated in a column this
           narrow — "Peaking EQ 1.6 k…" — losing exactly the part that tells two
           bands apart. */}
-      <span className="flex min-w-0 flex-1 flex-col justify-center leading-tight" title={label}>
+      {/* A button, because the name IS the way to the knob: clicking it opens
+          the rack on the effect this envelope drives and scrolls to it. Nothing
+          else in the timeline can get there — a lane names a parameter, and the
+          rack is where a parameter is set. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={onReveal ? `Show ${label} in the effect rack` : undefined}
+        title={onReveal ? `Show ${label} in the effect rack` : label}
+        disabled={!onReveal}
+        className="flex min-w-0 flex-1 flex-col justify-center rounded border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          // The label column owns its click; it does not also fall through to
+          // the track row behind it and move the selection.
+          event.stopPropagation();
+          onReveal?.();
+        }}
+      >
         <span data-automation-lane-name="" className="truncate font-mono text-[9px] text-white/70">
           {name}
         </span>
@@ -338,7 +360,7 @@ function AutomationLaneHeaderRow({
             {alsoAutomatedBy} is also fading this.
           </span>
         ) : null}
-      </span>
+      </button>
       {/* Beside the name it labels, because that is the only place an envelope is
           named at all: a carve writes its own lanes, and the FX panel's automate
           toggle can only reach a parameter it still lists — so without this an
@@ -440,6 +462,15 @@ export function TimelineTrackHeader({
         : [],
     ).map((lane) => lane.key),
   );
+  const revealAudioFx = usePlayerStore((s) => s.setRevealedAudioFxTarget);
+  /**
+   * Which element's rack a lane's reveal opens, in the PANEL's id space.
+   *
+   * The bare dom id, not the timeline's `sourceFile#domId` composite: the
+   * property panel identifies its element by `element.id`, so a composite would
+   * never match — the same boundary `runtimeAudioId` exists for.
+   */
+  const revealElementId = keyframeClip ? runtimeAudioId(keyframeClip) : null;
   const automationRows = groupAutomationLanes(trackElements).map((group) => {
     const active = group.entries.find(
       (entry) => (entry.element.key ?? entry.element.id) === activeKey,
@@ -685,24 +716,48 @@ export function TimelineTrackHeader({
             TimelineAutomationLaneSlot lays the envelopes out on the canvas. The
             two have to agree or a name labels the wrong curve. */}
       {isExpanded &&
-        automationRows.map((row, index) => (
-          <AutomationLaneHeaderRow
-            key={row.key}
-            target={row.target}
-            label={row.label}
-            name={row.name}
-            param={row.param}
-            alsoAutomatedBy={
-              groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
-            }
-            top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
-            isLastLane={index === automationRows.length - 1}
-            gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
-            columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
-            onRemove={onRemoveAutomationLane}
-            isCarve={row.isCarve}
-          />
-        ))}
+        automationRows.map((row, index) => {
+          // Bound outside the closure so it narrows: `row.target` is null on a
+          // row the active clip is absent from.
+          const revealTarget = row.target;
+          return (
+            <AutomationLaneHeaderRow
+              key={row.key}
+              target={row.target}
+              label={row.label}
+              name={row.name}
+              param={row.param}
+              alsoAutomatedBy={
+                groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
+              }
+              top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
+              isLastLane={index === automationRows.length - 1}
+              gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
+              columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
+              onRemove={onRemoveAutomationLane}
+              isCarve={row.isCarve}
+              // Only for a lane the ACTIVE clip actually draws: the rack shows one
+              // element, so a shared row's other envelopes belong to clips it is
+              // not showing and there would be nothing to reveal.
+              onReveal={
+                revealTarget && revealElementId && keyframeClip
+                  ? () => {
+                      // Select FIRST: the rack is the property panel's view of
+                      // the selected element, so a reveal aimed at an unselected
+                      // clip lands on a panel that says "Nothing selected". The
+                      // request survives the selection — it is stored, not an
+                      // event — so the rack consumes it as it mounts.
+                      openClipFxRack(keyframeClip);
+                      revealAudioFx({
+                        elementKey: revealElementId,
+                        automationTarget: revealTarget,
+                      });
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
     </div>
   );
 }

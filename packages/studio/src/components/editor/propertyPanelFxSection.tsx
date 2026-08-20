@@ -5,7 +5,8 @@
  * is not an entry in the chain.
  */
 
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { audioFxRevealTarget } from "./audioFxRevealTarget.js";
 import {
   defaultAudioFxParams,
   mintAudioFxNodeId,
@@ -105,6 +106,7 @@ export function FxSection({
   automatedPresets,
   onAuditionTransport,
   signalPath,
+  revealTarget,
 }: FxSectionProps) {
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
@@ -320,6 +322,74 @@ export function FxSection({
   }, [handBuilt, eqIds.length, showCarve]);
   const [openEq, setOpenEq] = useState<string | null>(null);
 
+  /**
+   * The parameter a reveal request asked for, held until its row is on screen.
+   *
+   * Set during render rather than in an effect, the way the Motion panel
+   * consumes its own focus request: the surface must open on the SAME commit
+   * the request lands on, or the scroll below runs against a row that has not
+   * mounted yet.
+   */
+  const [consumedReveal, setConsumedReveal] = useState(revealTarget ?? null);
+  const pendingRevealRef = useRef<string | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  if ((revealTarget ?? null) !== consumedReveal) {
+    setConsumedReveal(revealTarget ?? null);
+    const where = revealTarget ? audioFxRevealTarget(revealTarget, chain) : null;
+    if (where) {
+      // Each surface has its own open-state; the resolver says which one owns
+      // this parameter. Opening the wrong one leaves the click looking dead.
+      if (where.kind === "node") setOpenNode(where.index);
+      if (where.kind === "eq") setOpenEq(where.eqId);
+      if (where.kind === "carve") setCarveOpen(true);
+      if (where.kind === "preset") {
+        setCollapsedRuns((was) => {
+          if (!was.has(where.runKey)) return was;
+          const next = new Set(was);
+          next.delete(where.runKey);
+          return next;
+        });
+      }
+      pendingRevealRef.current = revealTarget ?? null;
+    }
+  }
+
+  /**
+   * Scroll the revealed parameter into view once its row has actually mounted.
+   *
+   * Keyed on the surfaces the block above opens, not on the request: the row
+   * appears on the commit AFTER they change, so scrolling in the same pass would
+   * miss it. Cleared once used, so a later re-render does not yank the panel
+   * back to a parameter the author has since scrolled away from.
+   */
+  useEffect(() => {
+    const target = pendingRevealRef.current;
+    if (!target) return;
+    // Resolved again rather than remembered: the surface that owns a parameter
+    // is a fact about the chain, and the chain may have been edited between the
+    // request and this pass.
+    const where = audioFxRevealTarget(target, chain);
+    const selector =
+      where?.kind === "node" && where.nodeId
+        ? `[data-fx-node-id="${where.nodeId}"]`
+        : where?.kind === "eq"
+          ? `[data-fx-eq="${where.eqId}"]`
+          : where?.kind === "carve"
+            ? ".hf-fx-carve-module"
+            : // Keyed by the preset id the run carries, which is what the run
+              // element actually exposes; `runKey` is the collapse map's key.
+              where?.kind === "preset"
+              ? `[data-fx-preset="${where.runKey.replace(/-\d+$/, "")}"]`
+              : null;
+    const row = selector ? rootRef.current?.querySelector<HTMLElement>(selector) : null;
+    if (!row) return;
+    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    pendingRevealRef.current = null;
+    // `chain` is deliberately not a dependency: it changes on every knob edit,
+    // and re-running then would scroll the panel while the author is dragging.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNode, openEq, carveOpen, collapsedRuns]);
+
   const addEq = useCallback(() => {
     clearAudition();
     const { chain: next, eqId } = addAudioEq(chain);
@@ -413,6 +483,7 @@ export function FxSection({
 
   return (
     <div
+      ref={rootRef}
       className="hf-fx-section space-y-2"
       // Focus lives on the buttons and menu items inside, so the keystroke
       // bubbles to here without the section needing focus of its own.

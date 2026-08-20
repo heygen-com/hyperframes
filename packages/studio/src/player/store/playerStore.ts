@@ -279,6 +279,7 @@ export function createTimelineResetState() {
     collapsedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),
     focusedEaseSegment: null,
+    revealedAudioFxTarget: null,
     selectedElementIds: new Set<string>(),
     requestedSeekTime: null,
     lintFindingsByElement: new Map<string, { count: number; messages: string[] }>(),
@@ -547,6 +548,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             activeKeyframePct: null,
             motionPathArmed: false,
             focusedEaseSegment: null,
+    revealedAudioFxTarget: null,
           }
         : { selectedElementId: id, selectedElementIds };
     }),

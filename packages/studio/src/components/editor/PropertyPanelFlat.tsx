@@ -24,7 +24,10 @@ import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
-import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
+import {
+  isFocusedEaseRequestCurrent,
+  isRevealedAudioFxRequestCurrent,
+} from "../../player/store/keyframeSlice";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -162,13 +165,15 @@ export function PropertyPanelFlat({
   // When the inline timeline ease button focuses a segment on this element,
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
-  const { focusedEaseSegment, timelineProjectId, timelineSessionEpoch } = usePlayerStore(
-    useShallow((state) => ({
-      focusedEaseSegment: state.focusedEaseSegment,
-      timelineProjectId: state.timelineProjectId,
-      timelineSessionEpoch: state.timelineSessionEpoch,
-    })),
-  );
+  const { focusedEaseSegment, revealedAudioFxTarget, timelineProjectId, timelineSessionEpoch } =
+    usePlayerStore(
+      useShallow((state) => ({
+        focusedEaseSegment: state.focusedEaseSegment,
+        revealedAudioFxTarget: state.revealedAudioFxTarget,
+        timelineProjectId: state.timelineProjectId,
+        timelineSessionEpoch: state.timelineSessionEpoch,
+      })),
+    );
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -193,6 +198,34 @@ export function PropertyPanelFlat({
       focusedEaseSegment.elementId === renderedElementId &&
       gsapAnimations.some((animation) => animation.id === focusedEaseSegment.animationId);
     if (focusesThisPanel) setOpenGroupId("motion");
+  }
+
+  /**
+   * A lane's reveal request opens the Audio FX section, the same way a focused
+   * ease segment opens Motion.
+   *
+   * Without this the request reached a collapsed section: the rack — and the
+   * module the request names — is not mounted while it is closed, so the click
+   * selected the clip and then appeared to do nothing.
+   */
+  const revealNonceForThisPanel =
+    revealedAudioFxTarget !== null &&
+    revealedAudioFxTarget.elementKey === element?.id &&
+    isRevealedAudioFxRequestCurrent(revealedAudioFxTarget, {
+      timelineProjectId,
+      timelineSessionEpoch,
+    }) &&
+    sections.audioFx
+      ? revealedAudioFxTarget.nonce
+      : null;
+  // Keyed on the request's NONCE, not the request object: clicking a lane
+  // selects the clip first, which REMOUNTS this panel — so a `!==` against the
+  // previous value would initialise to the already-set request and never fire.
+  // The nonce also makes a second click on the same lane a new request.
+  const [consumedRevealNonce, setConsumedRevealNonce] = useState<number | null>(null);
+  if (revealNonceForThisPanel !== null && revealNonceForThisPanel !== consumedRevealNonce) {
+    setConsumedRevealNonce(revealNonceForThisPanel);
+    setOpenGroupId("audio-fx");
   }
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);

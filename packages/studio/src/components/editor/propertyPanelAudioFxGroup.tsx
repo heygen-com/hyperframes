@@ -40,6 +40,8 @@ import {
 } from "./propertyPanelAutomation";
 import type { DomEditSelection } from "./domEditingTypes";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { isRevealedAudioFxRequestCurrent } from "../../player/store/keyframeSlice";
 import { FxSection } from "./propertyPanelFxSection.js";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { useFxChainObserved } from "./useFxChainObserved.js";
@@ -115,6 +117,9 @@ export function AudioFxGroup({
    * came under the playhead.
    */
   const playhead = useLivePlayheadTime();
+  const revealRequest = usePlayerStore((s) => s.revealedAudioFxTarget);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const localTime = playhead - clipStart(element.dataAttributes?.["start"]);
   const liveAutomationValues = ((): Map<string, number> => {
     const values = new Map<string, number>();
@@ -277,6 +282,20 @@ export function AudioFxGroup({
 
   return (
     <FxSection
+      // A lane's reveal request, but only when it names THIS element: the rack
+      // shows one element, and a request aimed at another must not reopen
+      // whatever happens to be mounted. Stale requests (other project, pre-
+      // reload session) are refused by the same check.
+      revealTarget={
+        revealRequest &&
+        revealRequest.elementKey === element.id &&
+        isRevealedAudioFxRequestCurrent(revealRequest, {
+          timelineProjectId,
+          timelineSessionEpoch,
+        })
+          ? revealRequest.automationTarget
+          : null
+      }
       // Locked while the carve is measuring. `analyse` captures the chain and
       // the automation BEFORE its fetch and decode, then rewrites the whole
       // attribute from that snapshot — so an effect added, or a knob committed,

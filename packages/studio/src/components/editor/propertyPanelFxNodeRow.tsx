@@ -280,6 +280,10 @@ export function FxNodeRow({
       className={`hf-fx-node rounded-[4px] border border-l-2 border-panel-border-input${bypassed ? " opacity-50" : ""}`}
       data-fx-node={node.type}
       data-fx-family={fxFamilyOf(node)}
+      // The scroll anchor a revealed automation lane lands on. Keyed by node id
+      // rather than by parameter: every param of one effect lives in this row,
+      // so the row is the smallest thing worth scrolling to.
+      data-fx-node-id={node.id}
       // The tint is on the edge rather than the text: the name already carries
       // the family in its lettering, and colouring it too would fight the
       // panel's own tokens for automated and bypassed.
