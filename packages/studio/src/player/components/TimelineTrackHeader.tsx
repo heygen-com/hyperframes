@@ -561,6 +561,29 @@ export function TimelineTrackHeader({
                     onOpenRack={() => openClipFxRack(singleAudioClip)}
                   />
                 )}
+                {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
+                  a group, so it needs `audio-groups` too — without it a user outside
+                  that canary could create a group and then have no UI to manage it. */}
+                {clipCount > 1 &&
+                  !isTrackGrouped &&
+                  (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
+                  isCanaryEnabled("audio-fx-rack") &&
+                  isCanaryEnabled("audio-groups") && (
+                    <TimelineFxButton
+                      variant="group-pointer"
+                      clipCount={trackElements.length}
+                      defaultLabel={trackLabel}
+                      // Groups are audio-only in v1 (§1.4). A video track showing no
+                      // button at all is the silent limit §5 forbids, so it gets the
+                      // button and a reason instead.
+                      refusal={
+                        isAudioTrack
+                          ? undefined
+                          : "Video audio can't be grouped yet — only audio clips can join a group."
+                      }
+                      onGroupClips={groupUngroupedClips}
+                    />
+                  )}
                 {/* The lane disclosure, on the row's own layout rather than by
                     swapping it for a keyframe-layer row. */}
                 {disclosable && (
@@ -574,29 +597,6 @@ export function TimelineTrackHeader({
               </>
             }
           />
-          {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
-              a group, so it needs `audio-groups` too — without it a user outside
-              that canary could create a group and then have no UI to manage it. */}
-          {clipCount > 1 &&
-            !isTrackGrouped &&
-            (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
-            isCanaryEnabled("audio-fx-rack") &&
-            isCanaryEnabled("audio-groups") && (
-              <TimelineFxButton
-                variant="group-pointer"
-                clipCount={trackElements.length}
-                defaultLabel={trackLabel}
-                // Groups are audio-only in v1 (§1.4). A video track showing no
-                // button at all is the silent limit §5 forbids, so it gets the
-                // button and a reason instead.
-                refusal={
-                  isAudioTrack
-                    ? undefined
-                    : "Video audio can't be grouped yet — only audio clips can join a group."
-                }
-                onGroupClips={groupUngroupedClips}
-              />
-            )}
         </>
       ) : (
         <>

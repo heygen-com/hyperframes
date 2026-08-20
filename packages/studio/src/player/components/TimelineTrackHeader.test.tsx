@@ -855,5 +855,31 @@ describe("TimelineTrackHeader", () => {
       expect(pointer(view.host)).not.toBeNull();
       act(() => view.root.unmount());
     });
+
+    // The header is a 48px column of exactly TWO lines — what the row is, then
+    // what you can do to it. The group pointer used to render as a sibling of
+    // both, making a third: 17 + 24 + 24 + gaps in a 48px box, which
+    // `justify-center` then spilled evenly out of the top and bottom. The name
+    // rode 10px above its own row and the pointer collided with the row below.
+    it("keeps the group pointer on the control line, not a third row", () => {
+      enabledCanaries.add("audio-fx-rack");
+      enabledCanaries.add("audio-groups");
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        trackElements: [VOICE, VOICE_2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+      expect(header?.children).toHaveLength(2);
+      // And it is on the second line, beside the visibility control.
+      const controlLine = header?.children[1];
+      expect(
+        controlLine?.querySelector('button[aria-label="Effects — group these clips first"]'),
+      ).not.toBeNull();
+      act(() => view.root.unmount());
+    });
   });
 });
