@@ -43,6 +43,7 @@ import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorG
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import { HF_AUDIO_GROUP_TAG } from "../audioGroups";
+import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
@@ -3235,7 +3236,11 @@ export function initSandboxRuntimeModular(): void {
         // assigning the product raw THROWS IndexSizeError and takes the rest of
         // the loop with it. The element carries the legal part; the boost above
         // unity belongs to Web Audio, which already has it from `setVolume`.
-        el.volume = Math.max(0, Math.min(1, clipVolume * volume));
+        //
+        // Through `clampNativeMediaVolume` rather than an inline clamp: that
+        // helper exists in `audioGain.ts` for exactly this bound and is what
+        // `withUnclampedVolume` uses, so the two cannot drift.
+        el.volume = clampNativeMediaVolume(clipVolume * volume);
       }
     },
     onSetMediaOutputMuted: (muted) => {

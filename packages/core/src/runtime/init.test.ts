@@ -11,6 +11,55 @@ it("schedules WebAudio element gain from author volume without bridge volume", (
   expect(source).not.toMatch(/vol\s*\*\s*state\.bridgeVolume/);
 });
 
+/**
+ * `data-volume` is an authoring GAIN up to `MAX_AUDIO_GAIN` (12 dB ~ 3.98) —
+ * `HTMLMediaElement.volume` accepts only 0..1. The bridge clamps its own
+ * argument, but the PRODUCT `clipVolume * volume` was assigned unclamped, so a
+ * clip authored above unity threw
+ * `IndexSizeError: The volume provided (2.42103) is outside the range [0, 1]`
+ * (2.42103 is the +7.68 dB fader stop) — and the throw aborted the loop, so
+ * every media element after it kept its old volume too.
+ */
+it("clamps the native volume of an over-unity clip instead of throwing", () => {
+  const root = document.createElement("div");
+  root.setAttribute("data-composition-id", "main");
+  root.setAttribute("data-root", "true");
+  root.setAttribute("data-start", "0");
+  root.setAttribute("data-duration", "10");
+  root.setAttribute("data-width", "1920");
+  root.setAttribute("data-height", "1080");
+  document.body.appendChild(root);
+
+  const loud = document.createElement("audio");
+  loud.setAttribute("data-start", "0");
+  loud.setAttribute("data-duration", "10");
+  loud.setAttribute("data-volume", "2.42103");
+  loud.load = () => {};
+  root.appendChild(loud);
+  // Second element proves the throw took the whole sweep down with it, not just
+  // the offending clip.
+  const quiet = document.createElement("audio");
+  quiet.setAttribute("data-start", "0");
+  quiet.setAttribute("data-duration", "10");
+  quiet.setAttribute("data-volume", "0.5");
+  quiet.load = () => {};
+  root.appendChild(quiet);
+
+  window.__timelines = { main: createMockTimeline(10) };
+  initSandboxRuntimeModular();
+
+  const errors: string[] = [];
+  const onError = (e: ErrorEvent) => errors.push(String(e.message ?? e.error));
+  window.addEventListener("error", onError);
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
+    }),
+  );
+  window.removeEventListener("error", onError);
+  expect(errors).toEqual([]);
+});
+
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
   return {
