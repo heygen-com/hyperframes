@@ -65,6 +65,9 @@ line to bend it, and the curve follows your pointer.
   way there immediately, then eases in. The least noticeable fade.
 - **Drag back through the middle** and it is exactly straight again.
 
+Each fade has its own dot and its own shape. Bending the one at the start leaves
+the one at the end exactly as it was.
+
 The dot only appears once there is a fade to bend. On a clip with none there is
 no line to pull, so start with the corner grips.
 
@@ -89,12 +92,23 @@ they work with no Studio involved:
 | --- | --- | --- |
 | `data-fade-in` | Seconds of fade at the clip's head | 0 |
 | `data-fade-out` | Seconds of fade at the clip's tail | 0 |
-| `data-fade-curve` | How far the fade bends, from -1 to 1 | 0 |
+| `data-fade-curve` | How far each ramp bends, from -1 to 1 | 0 |
 
 `data-fade-curve` is a number rather than a named shape because the shape is
 something you drag, and a drag has to be able to land anywhere in between. Zero
 is a straight ramp. Negative sags the line, so the fade starts slow and finishes
 fast. Positive bulges it the other way.
+
+It takes one value or two, the way `border-radius` does. One value bends both
+ramps alike; two bend the head and then the tail, so a fade in that creeps out
+of black can sit on the same clip as a fade out that drops away:
+
+```html
+<div id="title" class="clip" data-start="0" data-duration="8"
+     data-fade-in="1.5" data-fade-out="1.2" data-fade-curve="-0.87 1">
+  Hello
+</div>
+```
 
 <Frame caption="The same composition seeked across a hand-written 1.5 second fade in.">
   <img
