@@ -9,6 +9,7 @@ import { useAutomationSelectionKeyboard } from "../../hooks/useAutomationSelecti
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
+import { useTimelineClipDisclosure } from "./useTimelineClipDisclosure";
 import {
   isTrackRowExpanded,
   resolveTrackKeyframeClip,
@@ -22,7 +23,6 @@ import { usePlayerStore } from "../store/playerStore";
 import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMultiDragPreview";
 import { useTimelineMultiDragActorWindows } from "./useTimelineMultiDragActorWindows";
 import type { TimelineLanesProps } from "./timelineLaneProps";
-import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
 import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
@@ -107,9 +107,6 @@ export function TimelineLanes({
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
-  const expandClips = usePlayerStore((s) => s.expandClips);
-  const setClipExpanded = usePlayerStore((s) => s.setClipExpanded);
-  const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
   const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
   // Which tracks are group MEMBERS, so their headers can render the level-2
   // nesting their `aria-level` already reports.
@@ -117,21 +114,10 @@ export function TimelineLanes({
     () => new Set(groups.flatMap((group) => group.memberTracks)),
     [groups],
   );
-  // The caret belongs to the ROW, so it opens and closes every clip on it at
-  // once. Toggling only the active clip left the row's state depending on which
-  // sibling happened to be selected: expand one, click another, and the row
-  // collapsed under a caret that still pointed down.
-  const toggleRowExpandedTracked = (keys: readonly string[]) => {
-    const willExpand = !keys.some((key) => expandedClipIds.has(key));
-    trackStudioKeyframeLaneExpand({ expanded: willExpand });
-    if (willExpand) expandClips(keys);
-    else for (const key of keys) setClipExpanded(key, false);
-  };
-  const toggleClipExpandedTracked = (key: string) => {
-    const willExpand = !expandedClipIds.has(key);
-    trackStudioKeyframeLaneExpand({ expanded: willExpand });
-    toggleClipExpanded(key);
-  };
+  const {
+    toggleRowExpanded: toggleRowExpandedTracked,
+    toggleClipExpanded: toggleClipExpandedTracked,
+  } = useTimelineClipDisclosure();
   const actorWindows = useTimelineMultiDragActorWindows(
     multiDragPreview,
     rowsVirtualized,

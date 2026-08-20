@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
@@ -548,7 +549,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             activeKeyframePct: null,
             motionPathArmed: false,
             focusedEaseSegment: null,
-    revealedAudioFxTarget: null,
+            revealedAudioFxTarget: null,
           }
         : { selectedElementId: id, selectedElementIds };
     }),
@@ -590,15 +591,4 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   reset: () => set(createTimelineResetState()),
 }));
 
-function isDevBuild(): boolean {
-  try {
-    return import.meta.env.DEV === true;
-  } catch {
-    // Turbopack and other non-Vite bundlers may not provide import.meta.env.
-    return false;
-  }
-}
-if (isDevBuild() && typeof window !== "undefined") {
-  // Console handle for dumping live Studio state during bug-bash reproduction.
-  (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
-}
+attachPlayerStoreDevHandle(usePlayerStore);

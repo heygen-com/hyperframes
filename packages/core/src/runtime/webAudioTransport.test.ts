@@ -642,6 +642,7 @@ describe("WebAudioTransport", () => {
         getFloatTimeDomainData: ReturnType<typeof vi.fn>;
       }[] = [];
       const masterGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      const mediaElementSource = { connect: vi.fn(), disconnect: vi.fn() };
       const ctx = {
         currentTime,
         state: "running",
@@ -687,10 +688,14 @@ describe("WebAudioTransport", () => {
           analysers.push(node);
           return node;
         }),
+        // The media-element route needs this as much as the decoded one: without
+        // it `scheduleMediaElementPlayback` throws and its catch returns null,
+        // which reads as "the member did not play" rather than a missing stub.
+        createMediaElementSource: vi.fn(() => mediaElementSource),
         destination: {},
         close: vi.fn(),
       };
-      return { ctx, gainNodes, analysers, masterGain };
+      return { ctx, gainNodes, analysers, masterGain, mediaElementSource };
     }
 
     function setupGroupTransport(currentTime = 100) {
@@ -741,6 +746,30 @@ describe("WebAudioTransport", () => {
       expect(mock.gainNodes).toHaveLength(1);
       const [clipGain] = mock.gainNodes;
       expect(clipGain!.connect).toHaveBeenCalledWith(mock.masterGain);
+    });
+
+    // The media-element transport is the PRIMARY path for audio — the runtime
+    // tries it first and only falls back to a decoded buffer. It has to reach
+    // the same bus, or grouping silently applies to nothing that actually plays.
+    it("routes a grouped clip's MEDIA-ELEMENT playback to the group bus, not master", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      const el = groupedAudioEl("vo-1", "vo");
+
+      await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      const clipGain = mock.gainNodes[0]!;
+      expect(clipGain.connect).toHaveBeenCalledWith(firstGroupInput(mock));
+      expect(clipGain.connect).not.toHaveBeenCalledWith(mock.masterGain);
+    });
+
+    it("routes an UNGROUPED clip's media-element playback straight to master", async () => {
+      const { transport, mock, gen } = setupGroupTransport();
+      const el = groupedAudioEl("lone");
+
+      await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(mock.gainNodes).toHaveLength(1);
+      expect(mock.gainNodes[0]!.connect).toHaveBeenCalledWith(mock.masterGain);
     });
 
     it("two members of the same group land on ONE shared group gain, not master directly", async () => {

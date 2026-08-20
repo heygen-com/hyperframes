@@ -26,7 +26,6 @@ import {
   syncPreviewContentDuration,
 } from "./timelineTimingSync";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
-import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import { useAudioGroupCarveAssignment } from "./timelineAudioGroupCreate";
@@ -35,15 +34,12 @@ import {
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
+import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
-import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
+import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
-
-type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
-  stackingReorder?: TimelineStackingReorderIntent | null;
-};
 
 export function useTimelineEditing({
   projectId,
@@ -67,9 +63,7 @@ export function useTimelineEditing({
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-
   const editQueueRef = useRef(Promise.resolve());
-  const lastBlockedTimelineToastAtRef = useRef(0);
 
   const enqueueEdit = useCallback(
     (
@@ -569,15 +563,7 @@ export function useTimelineEditing({
       observeProjectFileVersion,
     });
 
-  const handleBlockedTimelineEdit = useCallback(
-    (_element: TimelineElement) => {
-      const now = Date.now();
-      if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
-      lastBlockedTimelineToastAtRef.current = now;
-      showToast("This clip can't be moved or resized from the timeline yet.", "info");
-    },
-    [showToast],
-  );
+  const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);
 
   const { handleRazorSplit, handleRazorSplitAll } = useRazorSplit({
     projectId,

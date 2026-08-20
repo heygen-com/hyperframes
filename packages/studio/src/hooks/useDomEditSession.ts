@@ -3,7 +3,6 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { isAudioDomElement } from "../utils/timelineInspector";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
@@ -22,13 +21,11 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
+import { membersForDelete } from "./domEditDeleteMembers";
+import type { RecordEditInput } from "./domEditDeleteMembers";
+// Re-exported: the delete rule lives in its own module now, and callers (and its
+// own test) have always imported it from here.
+export { membersForDelete };
 
 export interface UseDomEditSessionParams {
   projectId: string | null;
@@ -72,22 +69,6 @@ export interface UseDomEditSessionParams {
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
-}
-
-/**
- * Which elements a delete acts on. `expandGroup` widens the primary to the
- * whole marquee group, which is what the Delete key means.
- *
- * The caller chooses rather than the delete deciding for everyone: Cut copies
- * the primary alone, so expanding for it put one element on the clipboard and
- * removed every other member of the group with it.
- */
-export function membersForDelete(
-  selection: DomEditSelection,
-  group: DomEditSelection[],
-  options?: { expandGroup?: boolean },
-): DomEditSelection[] {
-  return options?.expandGroup && group.length > 0 ? group : [selection];
 }
 
 export function useDomEditSession({

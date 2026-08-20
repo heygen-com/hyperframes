@@ -10,6 +10,7 @@ import { audioFxSummary } from "./audioFxSummary";
 import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
+import { closedGroupHeader } from "./propertyPanelFlatClosedGroup";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
@@ -524,17 +525,8 @@ export function PropertyPanelFlat({
   const beforeOpen = openIndex === -1 ? groups : groups.slice(0, openIndex);
   const openGroup = openIndex === -1 ? null : groups[openIndex];
   const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
-  const renderClosedGroup = (group: FlatGroupDescriptor) => (
-    <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
-      <FlatGroupHeader
-        title={group.title}
-        isOpen={false}
-        onToggleOpen={() => toggleOpen(group.id)}
-        summary={group.summary}
-        animateEntrance={justToggledIds.includes(group.id)}
-      />
-    </DesignPanelInputProvider>
-  );
+  const renderClosedGroup = (group: FlatGroupDescriptor) =>
+    closedGroupHeader(group, toggleOpen, justToggledIds);
 
   return (
     <DesignPanelInputProvider ui="flat">
