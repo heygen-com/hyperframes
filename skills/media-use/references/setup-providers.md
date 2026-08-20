@@ -17,13 +17,20 @@ node <SKILL_DIR>/scripts/resolve.mjs --doctor
 
 ## Providers
 
-media-use holds no keys; every external tool owns its auth. Generation is
+media-use never stores credentials. External CLIs own their auth. Tweet
+resolution reads `XQUIK_API_KEY` from the current process. Generation is
 centered on the HeyGen CLI free-usage path. Install and authenticate `heygen`
 before resolving bgm/sfx/image/icon/voice/avatar-video. Local tools are opt-in
 alternatives where they exist: mflux for image, Kokoro for voice, Parakeet for
 transcription, and LTX for local video generation. `resolve` spec-checks
 AVAILABLE RAM for those local ladders (`describeModelLadder`); the agent can
 see the ladder and override.
+
+Tweet resolution sends `XQUIK_API_KEY` only to the fixed `https://xquik.com/api/v1` origin. Get a key from the Xquik dashboard, then set it in your shell:
+
+```bash
+export XQUIK_API_KEY="xq_your_api_key_here"
+```
 
 | Type      | Provider / path                                                                                                                                                               |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,6 +39,7 @@ see the ladder and override.
 | voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
 | icon      | heygen asset search free-usage path                                                                                                                                           |
 | logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                                                                                               |
+| tweet     | Xquik post search and lookup; network request that can consume Xquik API credits                                                                                              |
 | grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                              |
 | video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 

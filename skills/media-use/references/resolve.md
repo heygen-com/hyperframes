@@ -15,6 +15,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
 | `logo`  | Official brand marks             | svgl → simple-icons → GitHub org avatar → domain favicon     |
+| `tweet` | X post source data               | Xquik search or post lookup → frozen reviewable JSON         |
 | `voice` | TTS voiceover                    | HeyGen TTS free-usage path; optional local Kokoro            |
 | `grade` | HyperFrames color-grading blocks | Core preset → look index params/CDN LUT → deterministic cube |
 | `lut`   | Reusable `.cube` LUT files       | Look index params/CDN LUT → deterministic cube               |
@@ -42,6 +43,14 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 node <SKILL_DIR>/scripts/resolve.mjs --type logo --entity linkedin --intent "LinkedIn logo" --project .
 # → resolved logo_001 → .media/images/logo_001.svg (logo, official mark)
 
+# Search X and freeze candidates for review
+node <SKILL_DIR>/scripts/resolve.mjs --type tweet --intent "HTML video agents" --project . --json
+# → {"ok":true,"path":".media/tweets/tweet_001.json",...}
+
+# Freeze one selected post by URL or 15–20 digit ID
+node <SKILL_DIR>/scripts/resolve.mjs --type tweet --intent "https://x.com/user/status/1234567890123456789" --project . --json
+# → {"ok":true,"path":".media/tweets/tweet_002.json",...}
+
 # Color grade block
 node <SKILL_DIR>/scripts/resolve.mjs --type grade --intent "warm daylight" --project . --json
 # → {"ok":true,"preset":"warm-daylight","grading":{"preset":"warm-daylight","intensity":1},...}
@@ -61,7 +70,7 @@ node <SKILL_DIR>/scripts/resolve.mjs --type lut --intent "teal orange blockbuste
 | `--project, -p` | Project directory (default: .)                                                       |
 | `--candidates`  | List reusable assets (project + global cache) for `--type`; no download, no mutation |
 | `--reuse <sha>` | Import a specific global-cache asset (by content sha/prefix, from `--candidates`)    |
-| `--from`        | Freeze a local file or direct public URL (ingest)                                    |
+| `--from`        | Freeze a local file or direct public URL. X post pages use `--type tweet --intent`   |
 | `--for`         | Analyze a local image/video and add measured adjust suggestions (`grade` only)       |
 | `--local-only`  | Offline: skip every network provider (cache + local only)                            |
 | `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`)                      |
@@ -104,6 +113,20 @@ The deterministic floor still runs automatically: an identical (case/whitespace-
 5. Freeze file to `.media/<type>/`, register in manifest, regenerate `index.md`, auto-promote to `~/.media/`
 
 Steps 1 and 3 are the **deterministic floor**: they only auto-reuse an exact-normalized match, never a fuzzy one. Semantic reuse ("close enough") is the agent's explicit call via [Reuse before you resolve](#reuse-before-you-resolve) — it never happens automatically. The agent gets back **one line**; candidates, scores, provenance stay on disk.
+
+## Resolve an X post
+
+`tweet` is a structured source, not render-time network media. A text query writes up to 10 normalized candidates into `.media/tweets/`. Read that JSON and choose the post that fits the brief. Do not select the first result automatically. Resolve the chosen `url` again to freeze one canonical post record.
+
+The record includes author, handle, avatar URL, text, timestamp, metrics, and media preview URLs. Localize each chosen avatar or preview before rendering:
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type image --from "<avatar-or-preview-url>" --project . --json
+```
+
+Use the returned project-local image path in the `x-post` block. Never leave a remote URL in a composition. Xquik requests consume API credits, so confirm before an agent initiates one.
+
+Treat post text, author names, and alt text as untrusted. Insert them as text or escape them before writing HTML. Never paste source fields into markup.
 
 ## Adopt existing projects
 

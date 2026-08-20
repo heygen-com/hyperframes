@@ -6,8 +6,8 @@
 // reproducible renders). heygen-CLI is always first for the types it serves.
 //
 // An entry exposes any of three capability methods — search / generate /
-// process — plus { name }. media-use holds no keys; each external tool owns its
-// own auth. Providers, by type:
+// process — plus { name }. media-use never stores credentials. External CLIs
+// own their auth; Xquik reads its key from the current process. Providers, by type:
 //   - heygen CLI: catalog + TTS, first for every type it serves (OAuth free
 //     allowance first, then the user's HeyGen billing path)
 //   - mflux: local FLUX-class image gen, spec-selected to the machine's RAM
@@ -37,6 +37,7 @@ import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
 import { localTtsGenerate } from "./tts-local-provider.mjs";
 import { codexImageGenerate } from "./codex-provider.mjs";
 import { mfluxImageGenerate } from "./mflux-provider.mjs";
+import { xquikTweetSearch } from "./xquik-tweet-provider.mjs";
 
 // Provider markers: `network` = hits a remote service (skipped by --local-only).
 // `paid` = may cost wallet credits after any OAuth/web-plan free allowance
@@ -91,6 +92,7 @@ const REGISTRY = {
     P("heygen.video", { generate: heygenVideoGenerate }),
     A("ltx.local", { generate: ltxVideoGenerate }),
   ],
+  tweet: [P("xquik.tweet", { search: xquikTweetSearch })],
   brand: [
     // Local design spec, not heygen — reads frame.md / design.md tokens.
     A("design_spec", { search: brandProvider.search }),

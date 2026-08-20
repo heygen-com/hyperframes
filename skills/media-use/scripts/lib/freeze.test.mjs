@@ -1,6 +1,9 @@
 import { strict as assert } from "node:assert";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { test } from "node:test";
-import { isDirectMediaUrl } from "./freeze.mjs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { freezeContent, isDirectMediaUrl } from "./freeze.mjs";
 
 test("accepts direct public media URLs", () => {
   assert.equal(isDirectMediaUrl("https://cdn.example.com/clip.mp4"), true);
@@ -13,6 +16,11 @@ test("rejects platform pages (no yt-dlp)", () => {
   assert.equal(isDirectMediaUrl("https://youtu.be/abc"), false);
   assert.equal(isDirectMediaUrl("https://vimeo.com/12345"), false);
   assert.equal(isDirectMediaUrl("https://x.com/u/status/1"), false);
+});
+
+test("accepts direct X image URLs with query-string formats", () => {
+  assert.equal(isDirectMediaUrl("https://pbs.twimg.com/media/example?format=jpg&name=large"), true);
+  assert.equal(isDirectMediaUrl("https://pbs.twimg.com/media/example?format=html"), false);
 });
 
 test("rejects non-direct / non-media URLs", () => {
@@ -43,4 +51,20 @@ test("rejects local / private hosts (SSRF guard, m11)", () => {
   // A public host that merely starts with similar digits is still allowed.
   assert.equal(isDirectMediaUrl("https://172.40.0.1/a.mp4"), true, "172.40 is public");
   assert.equal(isDirectMediaUrl("https://11.example.com/a.mp4"), true);
+});
+
+test("freezeContent writes bounded structured provider output", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-freeze-test-"));
+  try {
+    const out = join(dir, "tweet.json");
+    assert.equal(freezeContent('{"kind":"x_post"}\n', out), 18);
+    assert.equal(readFileSync(out, "utf8"), '{"kind":"x_post"}\n');
+    assert.throws(() => freezeContent("", out), /empty inline content/);
+    assert.throws(
+      () => freezeContent(Buffer.alloc(4 * 1024 * 1024 + 1), out),
+      /inline content exceeds 4194304 bytes/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

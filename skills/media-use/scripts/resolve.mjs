@@ -21,7 +21,7 @@ import {
   providerNamesFor,
   providerTierFor,
 } from "./lib/registry.mjs";
-import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
+import { freezeContent, freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
@@ -60,6 +60,7 @@ const DEFAULT_EXT = {
   logo: ".svg",
   brand: ".png",
   video: ".mp4",
+  tweet: ".json",
   grade: ".cube",
   lut: ".cube",
 };
@@ -468,9 +469,15 @@ async function run() {
         ? providerFailure.message
         : type === "brand"
           ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
-          : args.provider
-            ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
-            : `no provider could resolve ${type}: "${intent}"`;
+          : type === "tweet" && localOnly
+            ? "X post resolution uses a network provider. Remove --local-only, then retry."
+            : type === "tweet" && !process.env.XQUIK_API_KEY
+              ? "no X post provider available. Set XQUIK_API_KEY, then retry."
+              : type === "tweet" && providerFailure instanceof Error
+                ? providerFailure.message
+                : args.provider
+                  ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
+                  : `no provider could resolve ${type}: "${intent}"`;
     if (args.json) {
       console.log(
         JSON.stringify({
@@ -499,8 +506,10 @@ async function run() {
         freezeLocalFile(searchResult.localPath, reservation.fullPath);
       } else if (searchResult.url) {
         await freezeUrl(searchResult.url, reservation.fullPath);
+      } else if (searchResult.content != null) {
+        freezeContent(searchResult.content, reservation.fullPath);
       } else {
-        throw new Error("provider returned no url or localPath");
+        throw new Error("provider returned no url, localPath, or content");
       }
       return reservation;
     },

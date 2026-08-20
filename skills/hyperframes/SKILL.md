@@ -91,7 +91,7 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Motion rules, scene blueprints, transitions, runtime adapters                                                       | `/hyperframes-animation` |
 | Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
 | Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
-| Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
+| Images, icons, logos, X post sources, audio, captions, grades, LUTs, reusable media                                 | `/media-use`             |
 | Voiceover carve, audio effect chains, or automation envelopes on a track                                            | `/hyperframes-audio`     |
 | Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |

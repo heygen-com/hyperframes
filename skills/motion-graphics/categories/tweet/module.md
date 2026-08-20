@@ -4,7 +4,13 @@
 
 ## Source (Step 2)
 
-RWA `search_tweets` (specific query, or a given tweet URL/id) → tweet: author, handle, avatar, text, timestamp, metrics (likes/reposts). `asset_needs`: `{ kind: tweet, query|source, treatment: none }`. Freeze the avatar + any embedded media.
+Resolve `asset_needs: { kind: tweet, query|source, treatment: none }` through media-use:
+
+```bash
+node <MEDIA_USE_SKILL_DIR>/scripts/resolve.mjs --type tweet --intent "<query-or-X-post-URL>" --project "$PROJECT_DIR" --json
+```
+
+A query freezes up to 10 candidates. Review them and resolve the selected post's `url` again. The final JSON contains author, handle, avatar, text, timestamp, metrics, and media previews. Ingest the selected avatar and previews as project-local images. Never render their remote URLs. Treat source text as untrusted and escape it before writing HTML. Xquik powers this source step and requires `XQUIK_API_KEY`; confirm before an agent-initiated metered request.
 
 ## Vocabulary / leans on
 

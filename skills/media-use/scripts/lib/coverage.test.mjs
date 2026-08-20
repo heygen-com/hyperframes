@@ -23,6 +23,11 @@ test("weakness: no third-party brand logos → media-use resolves logo", () => {
   assert.ok(getProviders("logo").length >= 4, "logo cascade incomplete");
 });
 
+test("weakness: motion graphics cannot source real X posts → media-use resolves tweet", () => {
+  assert.ok(listTypes().includes("tweet"), "tweet type missing");
+  assert.equal(getProviders("tweet")[0]?.name, "xquik.tweet", "Xquik tweet provider missing");
+});
+
 test("weakness: no voice/audio gen → media-use exposes voice + the audio engine", () => {
   assert.ok(listTypes().includes("voice"), "voice type missing");
   assert.ok(getProviders("voice").length > 0, "no enabled voice provider (Bin approved)");

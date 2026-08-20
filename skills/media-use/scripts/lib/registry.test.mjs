@@ -24,6 +24,7 @@ test("listTypes exposes the v2 media types", () => {
     "logo",
     "voice",
     "video",
+    "tweet",
     "brand",
     "grade",
     "lut",
@@ -40,9 +41,9 @@ test("heygen provider is first for every type it serves", () => {
   }
 });
 
-test("sanctioned providers only: heygen, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
+test("sanctioned providers only: heygen, Xquik, local tools, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
+    /^heygen|^xquik\.tweet$|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -82,6 +83,15 @@ test("video cascade: HeyGen first, LTX local fallback, generate-only", async () 
   assert.ok(ps[0].paid, "HeyGen video may bill after the OAuth free allowance");
   assert.ok(!ps[1].network, "local LTX is kept under --local-only");
   assert.equal(await runCapability("video", "search", "x", {}), null);
+});
+
+test("tweet resolution uses the metered Xquik search provider", () => {
+  const providers = getProviders("tweet");
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].name, "xquik.tweet");
+  assert.equal(typeof providers[0].search, "function");
+  assert.equal(providers[0].network, true);
+  assert.equal(providers[0].paid, true);
 });
 
 test("sfx cascade: HeyGen catalog first, bundled library remains the local fallback", () => {
@@ -195,6 +205,7 @@ test("providerTierFor reports the registry's own A/N/P declaration", () => {
   assert.equal(providerTierFor("heygen.audio.sounds"), "network_free");
   assert.equal(providerTierFor("heygen.asset.search"), "network_free");
   assert.equal(providerTierFor("codex.image_gen"), "network_free");
+  assert.equal(providerTierFor("xquik.tweet"), "network_paid");
   assert.equal(providerTierFor("bundled.sfx"), "local");
   assert.equal(providerTierFor("kokoro.local"), "local");
 });

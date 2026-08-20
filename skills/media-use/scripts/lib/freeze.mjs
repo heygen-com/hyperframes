@@ -4,6 +4,18 @@ import { dirname } from "node:path";
 // ponytail: bound the download so a hostile/runaway URL can't fill the disk.
 // 256MB covers any real media asset; raise if 4K video sources ever exceed it.
 const MAX_FREEZE_BYTES = 256 * 1024 * 1024;
+const MAX_INLINE_BYTES = 4 * 1024 * 1024;
+
+export function freezeContent(content, destPath) {
+  const bytes = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
+  if (bytes.byteLength === 0) throw new Error("freeze failed: empty inline content");
+  if (bytes.byteLength > MAX_INLINE_BYTES) {
+    throw new Error(`freeze failed: inline content exceeds ${MAX_INLINE_BYTES} bytes`);
+  }
+  mkdirSync(dirname(destPath), { recursive: true });
+  writeFileSync(destPath, bytes);
+  return bytes.byteLength;
+}
 
 export async function freezeUrl(url, destPath) {
   const where = String(url).slice(0, 80);
@@ -46,6 +58,8 @@ export function freezeLocalFile(srcPath, destPath) {
 const PLATFORM_HOSTS =
   /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com)$/i;
 const MEDIA_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|png|jpe?g|webp|gif|svg|avif)$/i;
+const X_IMAGE_HOST = /^pbs\.twimg\.com$/i;
+const X_IMAGE_FORMAT = /^(jpe?g|png|webp|gif)$/i;
 
 // SSRF guard (m11): a user-supplied --from URL must not point at the local host
 // or a private network. Blocks loopback/localhost, RFC1918, link-local, and the
@@ -66,5 +80,11 @@ export function isDirectMediaUrl(u) {
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
   if (PLATFORM_HOSTS.test(url.hostname)) return false;
   if (PRIVATE_HOST.test(url.hostname)) return false;
+  if (
+    X_IMAGE_HOST.test(url.hostname) &&
+    X_IMAGE_FORMAT.test(url.searchParams.get("format") || "")
+  ) {
+    return true;
+  }
   return MEDIA_EXT.test(url.pathname);
 }

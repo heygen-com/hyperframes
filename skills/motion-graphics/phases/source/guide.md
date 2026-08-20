@@ -5,7 +5,8 @@ Runs **only when `shot-plan.json.asset_needs` is non-empty** (the form categorie
 ## Per asset_need
 
 - `image / icon / logo / svg` → media-use `resolve`: **search** (asset_scout: Google Images / SerpAPI + Noun Project), **generate** (image model), or **user-supplied** (logo). Optional `treatment`: cutout (remove-bg) / recolor / vectorize.
-- `news / web / tweet` → **RWA-style search** (media-use's documented lineage — `media-use/references/search-strategy.md` traces `resolve` to the RWA subagent). Two-pole queries: **atomic** (1–3 words, composable) or **specific** (5–15 words: a news event / tweet); never the middle. A failed specific query is dropped, not broadened.
+- `news / web` → use the available external search capability. Use two-pole queries: **atomic** (1–3 words, composable) or **specific** (5–15 words for one event). Never use the middle. Drop a failed specific query instead of broadening it.
+- `tweet` → run media-use `resolve --type tweet --intent "<query-or-X-post-URL>"`. Review query candidates, resolve the selected URL, then ingest its avatar and previews. See `categories/tweet/module.md` and `media-use/references/resolve.md`.
 
 ## Steps
 

@@ -1,13 +1,13 @@
 ---
 name: media-use
-description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, voice, color grade, or LUT into a frozen local file or paste-ready block + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Also use for vague feedback that real footage looks dark, flat, boring, should feel retro/camcorder/print/ASCII, needs privacy, or needs a media reveal.
+description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, X post source data, voice, color grade, or LUT into a frozen local file or paste-ready block + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Also use for vague feedback that real footage looks dark, flat, boring, should feel retro/camcorder/print/ASCII, needs privacy, or needs a media reveal.
 ---
 
 # media-use
 
 The media OS for HyperFrames: resolve · generate · operate · remember — every media type, one skill, zero context noise.
 
-First run: install and sign in to the `heygen` CLI (the free-usage path), then verify with `node <SKILL_DIR>/scripts/resolve.mjs --doctor`. Setup and providers: `references/setup-providers.md`.
+First run: install and sign in to the `heygen` CLI for media catalogs. Set `XQUIK_API_KEY` only when resolving X posts. Then verify local dependencies with `node <SKILL_DIR>/scripts/resolve.mjs --doctor`. Setup and providers: `references/setup-providers.md`.
 
 ## Resolve — the one verb
 
@@ -24,6 +24,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`. All search no
 | `image` | photos, backgrounds (HeyGen asset search, 75k+ vectors)                             |
 | `icon`  | icons, symbols (transparent)                                                        |
 | `logo`  | official brand marks (svgl → simple-icons → GitHub avatar → favicon; never redrawn) |
+| `tweet` | X post candidate sets or one post, frozen as JSON through Xquik                     |
 | `voice` | TTS voiceover (HeyGen free-usage path; optional local Kokoro)                       |
 | `grade` | measured correction candidate; broad polish/stylization follows Media Treatments    |
 | `lut`   | user-provided or explicitly chosen reusable validated `.cube` file                  |

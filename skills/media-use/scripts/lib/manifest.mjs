@@ -24,6 +24,7 @@ const TYPE_DIRS = {
   logo: "images",
   brand: "images",
   video: "video",
+  tweet: "tweets",
   grade: "luts",
   lut: "luts",
   recipe: "recipes",

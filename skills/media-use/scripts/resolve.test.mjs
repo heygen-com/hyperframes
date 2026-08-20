@@ -199,6 +199,109 @@ function writeFakeHeygen(body, exitCode = 0) {
   return binDir;
 }
 
+function writeXquikFetchPreload(body) {
+  const preload = join(tmp, "mock-xquik-fetch.mjs");
+  writeFileSync(
+    preload,
+    `globalThis.fetch = async (url, options = {}) => {
+      if (!String(url).startsWith("https://xquik.com/api/v1/x/tweets/search?")) {
+        throw new Error("unexpected Xquik URL: " + url);
+      }
+      if (options.headers?.["x-api-key"] !== "xq_test_key") {
+        throw new Error("missing Xquik API key header");
+      }
+      if (options.redirect !== "manual") throw new Error("redirects must be disabled");
+      return new Response(${JSON.stringify(JSON.stringify(body))}, {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };\n`,
+  );
+  return preload;
+}
+
+test("tweet resolve freezes normalized Xquik JSON without persisting the API key", () => {
+  setup();
+  const postId = "2074176916819685648";
+  const preload = writeXquikFetchPreload({
+    tweets: [
+      {
+        id: postId,
+        text: "Write HTML. Render video.",
+        url: `https://x.com/HyperFrames_/status/${postId}`,
+        author: { name: "HyperFrames", username: "HyperFrames_" },
+        replyCount: 1,
+        retweetCount: 2,
+        likeCount: 3,
+        quoteCount: 4,
+        viewCount: 5,
+        bookmarkCount: 6,
+      },
+    ],
+    has_next_page: false,
+  });
+  const response = spawnResolve(
+    ["--type", "tweet", "--intent", "HTML video agents", "--project", tmp, "--json"],
+    {
+      env: {
+        HOME: tmp,
+        XQUIK_API_KEY: "xq_test_key",
+        NODE_OPTIONS: `--import=${preload}`,
+      },
+    },
+  );
+
+  assert.equal(response.status, 0, response.stderr);
+  const result = JSON.parse(response.stdout);
+  assert.equal(result.path, ".media/tweets/tweet_001.json");
+  assert.equal(result.provenance.provider, "xquik.tweet");
+  const frozen = JSON.parse(readFileSync(join(tmp, result.path), "utf8"));
+  assert.equal(frozen.kind, "x_post_candidates");
+  assert.equal(frozen.posts[0].id, postId);
+  assert.equal(frozen.posts[0].author.handle, "@HyperFrames_");
+  assert.doesNotMatch(readFileSync(join(tmp, ".media", "manifest.jsonl"), "utf8"), /xq_test_key/);
+  cleanup();
+});
+
+test("tweet resolve explains how to configure missing Xquik credentials", () => {
+  setup();
+  const response = spawnResolve(
+    ["--type", "tweet", "--intent", "HTML video agents", "--project", tmp, "--json"],
+    { env: { HOME: tmp, XQUIK_API_KEY: "" } },
+  );
+
+  assert.equal(response.status, 1, response.stderr);
+  assert.deepEqual(JSON.parse(response.stdout), {
+    ok: false,
+    error: "no X post provider available. Set XQUIK_API_KEY, then retry.",
+  });
+  cleanup();
+});
+
+test("tweet resolve explains that local-only skips the Xquik provider", () => {
+  setup();
+  const response = spawnResolve(
+    [
+      "--type",
+      "tweet",
+      "--intent",
+      "HTML video agents",
+      "--project",
+      tmp,
+      "--local-only",
+      "--json",
+    ],
+    { env: { HOME: tmp, XQUIK_API_KEY: "xq_test_key" } },
+  );
+
+  assert.equal(response.status, 1, response.stderr);
+  assert.deepEqual(JSON.parse(response.stdout), {
+    ok: false,
+    error: "X post resolution uses a network provider. Remove --local-only, then retry.",
+  });
+  cleanup();
+});
+
 test("bundled SFX advises update when the HeyGen CLI is outdated", () => {
   setup();
   const binDir = writeFakeHeygen('echo "heygen v0.1.5 does not support --headers" >&2', 1);

@@ -102,6 +102,16 @@ function runTests() {
     cleanup();
   });
 
+  test("tweet source artifacts use the .media/tweets subdir", () => {
+    assert.equal(typeSubdir("tweet"), "tweets");
+
+    setup();
+    const allocated = allocateId(tmp, "tweet", ".json");
+    assert.equal(allocated.localPath, ".media/tweets/tweet_001.json");
+    assert.ok(existsSync(join(tmp, allocated.localPath)));
+    cleanup();
+  });
+
   test("appendRecord appends multiple records", () => {
     setup();
     appendRecord(tmp, makeRecord({ id: "bgm_001" }));
