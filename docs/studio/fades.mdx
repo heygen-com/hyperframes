@@ -1,0 +1,142 @@
+---
+title: "Fade a clip in and out"
+description: "Draw fades on any clip in HyperFrames Studio, bend the curve by dragging it, and author the same fade by hand."
+---
+
+Select a clip and two small square grips appear on its top corners. Drag one
+inward and it draws a fade: the clip comes up from nothing at the start, or goes
+away to nothing at the end.
+
+<Frame caption="A fade in and a fade out on the same clip. Each grip rides the top of the wedge it drew.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-wedges-v1.png"
+    alt="A Studio timeline clip with a fade in and a fade out drawn on it"
+  />
+</Frame>
+
+Every clip can fade, not only audio. What "fade" means depends on the clip:
+picture fades to nothing, sound fades to silence.
+
+## Draw a fade
+
+Grab the small square on a top corner and drag it towards the middle of the
+clip. The wedge follows as you drag, and the length is written when you let go.
+
+<Frame caption="Dragging the fade-in grip, then the fade-out grip.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-draw-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-draw-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+Drag a grip back to its corner to remove the fade. The whole gesture is one
+history entry, so a single undo takes the fade away.
+
+Two fades on one clip cannot overlap. Drag both past the middle and they share
+the clip in proportion rather than fighting over it, which is also how the
+runtime plays a clip trimmed shorter than its own fades.
+
+## Bend the curve
+
+A straight fade is not always the one you want. Drag the dot sitting on the fade
+line to bend it, and the curve follows your pointer.
+
+<Frame caption="The same fade, dragged down and then up. The dot stays under the pointer because the curve is drawn through it.">
+  <video
+    className="aspect-video w-full object-cover"
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-bend-v1.mp4#t=0.1"
+    poster="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-bend-v1.jpg"
+    controls
+    muted
+    playsInline
+    loop
+  />
+</Frame>
+
+- **Drag down** and the fade starts slowly and finishes fast. It holds near
+  nothing, then arrives late. Useful under a voice, where you want the music out
+  of the way early.
+- **Drag up** and the fade starts fast and finishes slowly. It gets most of the
+  way there immediately, then eases in. The least noticeable fade.
+- **Drag back through the middle** and it is exactly straight again.
+
+The dot only appears once there is a fade to bend. On a clip with none there is
+no line to pull, so start with the corner grips.
+
+## What it writes
+
+A fade is stored where that kind of clip already keeps that kind of information,
+so it stays editable afterwards by whatever already edits it.
+
+### Picture
+
+Visual clips carry three attributes the runtime reads. Write them by hand and
+they work with no Studio involved:
+
+```html
+<div id="title" class="clip" data-start="0" data-duration="8"
+     data-fade-in="1.5" data-fade-out="1.2" data-fade-curve="-0.5">
+  Hello
+</div>
+```
+
+| Attribute | Value | Default |
+| --- | --- | --- |
+| `data-fade-in` | Seconds of fade at the clip's head | 0 |
+| `data-fade-out` | Seconds of fade at the clip's tail | 0 |
+| `data-fade-curve` | How far the fade bends, from -1 to 1 | 0 |
+
+`data-fade-curve` is a number rather than a named shape because the shape is
+something you drag, and a drag has to be able to land anywhere in between. Zero
+is a straight ramp. Negative sags the line, so the fade starts slow and finishes
+fast. Positive bulges it the other way.
+
+<Frame caption="The same composition seeked across a hand-written 1.5 second fade in.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/fade-runtime-v1.png"
+    alt="Four frames showing a clip rising from black to full brightness"
+  />
+</Frame>
+
+<Note>
+  The fade is applied as a CSS `filter`, not as `opacity`. Opacity is the
+  property animation engines drive, so a runtime writing it every frame would
+  fight your tweens for it. A filter multiplies with whatever they set, and it
+  composes onto whatever filter you wrote yourself.
+</Note>
+
+### Sound
+
+Audio clips store a fade as the first and last segment of their volume envelope,
+not as an attribute. That keeps it editable as breakpoints: expand the clip's
+automation lane afterwards and the fade is there as points you can drag, add to,
+or reshape.
+
+```html
+<audio id="bed" class="clip" src="assets/bed.m4a" data-start="0" data-duration="16"
+       data-automation='{"version":1,"lanes":[{"target":"volume",
+                         "points":[{"t":0,"v":0},{"t":2,"v":1}]}]}'></audio>
+```
+
+Two breakpoints: silent at 0s, full at 2s. The grip and the lane are two views of
+the same thing, so a fade drawn with one shows up in the other.
+
+Both media draw and play the same curve, so a bend of -0.5 looks the same on a
+music clip as on a video clip.
+
+## Fades survive editing
+
+A fade is declared, not animated: it says how long it lasts, not which frames it
+covers. Trim the clip, move it, or slip it and the fade stays attached to the
+clip's own start and end rather than to a moment on the timeline. There is no
+tween to keep in sync.
+
+## Related topics
+
+- [Edit timing on the timeline](/studio/timeline)
+- [Trim with ripple, roll, slip, and slide](/studio/trim-tools)
