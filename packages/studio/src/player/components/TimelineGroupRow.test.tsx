@@ -117,4 +117,30 @@ describe("TimelineGroupRow", () => {
     });
     expect(laneToggle(automated.host)).toBeDefined();
   });
+
+  // Same shape as a track header: caret and name on the left, every control in
+  // one right-anchored group. It was two lines — name, then controls — which is
+  // what let a stray child overflow the 48px box on the track side.
+  it("keeps the caret, the name and every control on one line", () => {
+    const { host } = renderRow({
+      fxChain: JSON.stringify({
+        version: 1,
+        nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
+      }),
+      automation: JSON.stringify({
+        version: 1,
+        lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
+      }),
+    });
+    const header = host.querySelector<HTMLElement>('[role="rowheader"]');
+    // Caret, name, control group — no second line.
+    expect(header?.children).toHaveLength(3);
+    const controls = header?.lastElementChild as HTMLElement | null;
+    expect(controls?.className).toContain("ml-auto");
+    // Both controls live in that group, so they share the right edge.
+    expect(controls?.querySelectorAll("button")).toHaveLength(2);
+    // The member count rides with the name, not out with the controls.
+    expect(controls?.querySelector('[title="2 tracks"]')).toBeNull();
+    act(() => undefined);
+  });
 });

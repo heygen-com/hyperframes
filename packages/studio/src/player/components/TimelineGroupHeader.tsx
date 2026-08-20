@@ -52,7 +52,10 @@ function GroupNameButton({
       tabIndex={-1}
       aria-label={`Open ${label} effects`}
       title="Open effects"
-      className="flex min-w-0 flex-1 items-center gap-1.5 rounded border-0 bg-transparent p-0 text-left text-[11px] text-white hover:text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+      // No `flex-1`: the row's control group owns the slack now (`ml-auto`), so
+      // claiming it here would push the controls off the right edge — and the
+      // count with them, since it rides inside this button.
+      className="flex h-6 min-w-0 items-center gap-1.5 rounded border-0 bg-transparent p-0 text-left text-[11px] text-white hover:text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
@@ -70,10 +73,6 @@ function GroupNameButton({
       >
         {memberCount}
       </span>
-      {/* Eats the slack so the count sits beside the name rather than drifting
-          to the far edge, while the button itself stays full width — the whole
-          name line is the target that opens the rack. */}
-      <span aria-hidden="true" className="min-w-0 flex-1" />
     </button>
   );
 }
@@ -98,7 +97,7 @@ export function TimelineGroupHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className="sticky left-0 z-[12] flex shrink-0 flex-col justify-center gap-0.5 overflow-hidden px-1.5 text-[11px]"
+      className="sticky left-0 z-[12] flex shrink-0 items-center gap-1.5 overflow-hidden px-1.5 text-[11px]"
       style={{
         width: columnWidth,
         height: TRACK_H,
@@ -107,36 +106,36 @@ export function TimelineGroupHeader({
         borderRight: `1px solid ${theme.gutterBorder}`,
       }}
     >
-      {/* Line one: what the row IS. The caret rides with the name because it
-          discloses the name's contents. */}
-      <div className="flex min-w-0 items-center gap-1.5">
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
-          title={`${isExpanded ? "Hide" : "Show"} tracks`}
-          // 13px mono, matching the property panel's preset-run caret
-          // (`hf-fx-preset-run-caret`) — the same disclosure, so the same glyph
-          // at the same size rather than a smaller one unique to this row.
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
-            isExpanded ? "text-white" : "text-white/55 hover:text-white"
-          }`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleExpanded();
-          }}
-        >
-          {/* Swapped, not rotated: the panel's caret swaps too, and a rotated
+      {/* One line, like a track header's: caret and name, then every control
+          anchored to the right edge. The name truncates and the controls are
+          `shrink-0`, so they hold the edge and the name gives way — no second
+          line needed to keep five controls off the label. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-expanded={isExpanded}
+        aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
+        title={`${isExpanded ? "Hide" : "Show"} tracks`}
+        // 13px mono, matching the property panel's preset-run caret
+        // (`hf-fx-preset-run-caret`) — the same disclosure, so the same glyph
+        // at the same size rather than a smaller one unique to this row.
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+          isExpanded ? "text-white" : "text-white/55 hover:text-white"
+        }`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleExpanded();
+        }}
+      >
+        {/* Swapped, not rotated: the panel's caret swaps too, and a rotated
               ▸ sits off-centre in its box because the glyph is not square. */}
-          <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
-        </button>
-        <GroupNameButton label={label} memberCount={memberCount} onOpenFxRack={onOpenFxRack} />
-      </div>
-      {/* Line two: what you can DO to it. Its own row so the name is not
-          squeezed to a few characters by five controls sharing 232px. */}
-      <div className="flex w-full items-center gap-1.5">
+        <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
+      </button>
+      <GroupNameButton label={label} memberCount={memberCount} onOpenFxRack={onOpenFxRack} />
+      {/* `ml-auto` absorbs the slack the truncating name leaves, so the controls
+          sit on the edge whatever the name's length. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <TimelineFxButton
           fxChainRaw={fxChain}
           onChainChange={onFxChainChange}
