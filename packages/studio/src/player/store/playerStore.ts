@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
-import { nextSelectionSet } from "./playerStoreSelection";
+import { nextSelectionSet, revealTargetsSelection } from "./playerStoreSelection";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
@@ -541,7 +541,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // selection lands afterwards and used to clear the very request that
       // caused it — the panel then read null and the section never opened.
       // Any OTHER selection still drops it: a request aimed elsewhere is stale.
-      const revealSurvives = s.revealedAudioFxTarget?.elementKey === id;
+      //
+      // Compared across the ID-SPACE BOUNDARY, which is why this needs saying:
+      // a request carries the BARE dom id (`runtimeAudioId`, because the panel
+      // and the runtime speak that), while this store's ids are
+      // `sourceFile#domId`. A direct `===` was silently never true — the exact
+      // shape of failure the id-space split produces.
+      const revealSurvives = revealTargetsSelection(s.revealedAudioFxTarget, id);
       return id !== s.selectedElementId
         ? {
             selectedElementId: id,
