@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -401,3 +401,66 @@ describe.skipIf(!HAS_FFMPEG)(
   },
   60_000,
 );
+
+describe.skipIf(!HAS_FFMPEG)("group sub-mix failure contract", () => {
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // A malformed chain on a BUS threw straight out of processCompositionAudio,
+  // bypassing the MixResult/failures[] shape the caller handles and skipping
+  // bail()'s workDir cleanup. The per-element loop has always wrapped the
+  // identical calls.
+  it("reports an unparseable group fx-chain as a failure instead of throwing", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-bad-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-bad-work-"));
+    tempDirs.push(projectDir, workDir);
+    writeTone(join(projectDir, "a.wav"), 440, 1, 0.4);
+
+    const result = await processCompositionAudio(
+      [
+        {
+          ...track("a", 1),
+          groupId: "vo",
+          groupFxChain: '{"version":1,"nodes":[{"type":"tapestop"}]}',
+        },
+      ],
+      projectDir,
+      workDir,
+      join(projectDir, `bad-${MIXED_AUDIO_FILENAME}`),
+      1,
+    );
+
+    expect(result.success).toBe(false);
+    const failure = result.failures?.find((f) => f.elementId === "vo");
+    expect(failure?.stage).toBe("mix");
+    expect(failure?.detail).toContain("tapestop");
+  });
+
+  // `data-audio-group` arrives unvalidated from the document. `group-${id}.wav`
+  // defuses a bare `../` (the segment is `group-..`, not `..`), but an id
+  // holding a slash BEFORE the dots does escape: `a/../../x` normalizes to
+  // `<workDir>/../x.wav`, outside the tree `bail()`'s rmSync can reach.
+  it("keeps a traversal-shaped group id inside the work directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "hf-grp-parent-"));
+    tempDirs.push(parent);
+    const projectDir = join(parent, "project");
+    const workDir = join(parent, "work");
+    mkdirSync(projectDir);
+    mkdirSync(workDir);
+    writeTone(join(projectDir, "a.wav"), 440, 1, 0.4);
+
+    const result = await processCompositionAudio(
+      [{ ...track("a", 1), groupId: "a/../../escaped" }],
+      projectDir,
+      workDir,
+      join(projectDir, `esc-${MIXED_AUDIO_FILENAME}`),
+      1,
+    );
+
+    expect(result.success).toBe(true);
+    // workDir is cleaned up on success, so what matters is what is left BESIDE
+    // it: an escaped  would survive there. Only the project remains.
+    expect(readdirSync(parent).sort()).toEqual(["project"]);
+  });
+});

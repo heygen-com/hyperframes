@@ -72,6 +72,23 @@ function clampVolume(volume: number): number {
   return clampAudioGain(volume);
 }
 
+/**
+ * An author-controlled id, made safe to put in a filename.
+ *
+ * `data-audio-group` reaches this file straight from the document — the
+ * studio's `GROUP_ID_PATTERN` guards only ids the studio itself mints, and a
+ * hand-authored or agent-written one is unvalidated. Interpolated raw it could
+ * carry `/` or `..`, and `mkdirSync(recursive)` inside ffmpeg's own path
+ * handling would then write outside `workDir`, where `bail()`'s `rmSync` never
+ * cleans it up. Everything outside [A-Za-z0-9_-] collapses to `_`, and an id
+ * that sanitizes to nothing gets a stable positional fallback rather than an
+ * empty segment that two groups would share.
+ */
+function safePathSegment(id: string, fallbackIndex: number): string {
+  const cleaned = id.replace(/[^A-Za-z0-9_-]/g, "_");
+  return cleaned.length > 0 ? cleaned : `group-${fallbackIndex}`;
+}
+
 function formatFilterNumber(value: number): string {
   return Number(value.toFixed(6)).toString();
 }
@@ -1336,92 +1353,117 @@ export async function processCompositionAudio(
   // own, and members are already delayed to their composition positions
   // inside the sub-mix, so the group WAV's t=0 IS composition time.
   const groupsDegradedAutomation: string[] = [];
+  let groupIndex = -1;
   for (const [groupId, memberTracks] of groupTracks) {
+    groupIndex += 1;
     const meta = groupMeta.get(groupId);
     if (!meta) continue;
-    const groupWavPath = join(workDir, `group-${groupId}.wav`);
-    const subMix = await mixGroupMembers(
-      memberTracks,
-      groupWavPath,
-      totalDuration,
-      effectiveSignal,
-      config,
-    );
-    if (!subMix.success) {
+    const pathId = safePathSegment(groupId, groupIndex);
+    const groupWavPath = join(workDir, `group-${pathId}.wav`);
+    // Same contract the per-element loop above gives: a malformed `data-fx-chain`
+    // or `data-automation` on a BUS threw straight out of processCompositionAudio,
+    // bypassing the MixResult/failures[] shape the caller handles and skipping
+    // `bail()`, so the temp dir leaked too. An AudioFxRenderError stays fatal
+    // for the same reason it is fatal per element: shipping the dry signal in
+    // place of a processed one sounds plausible and is not what was authored.
+    try {
+      const subMix = await mixGroupMembers(
+        memberTracks,
+        groupWavPath,
+        totalDuration,
+        effectiveSignal,
+        config,
+      );
+      if (!subMix.success) {
+        failures.push({
+          stage: "mix",
+          reason: "ffmpeg_failed",
+          owner: "system",
+          retryable: false,
+          elementId: groupId,
+          detail: boundedDetail(
+            `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
+          ),
+        });
+        continue;
+      }
+      if (subMix.degradedAutomation) groupsDegradedAutomation.push(groupId);
+
+      // Composition-time automation (offset 0, duration totalDuration) — same
+      // resolve/lane/bake path a member uses, just anchored at the group clock
+      // instead of a clip's own start.
+      const automation = meta.automation
+        ? resolveAutomation(
+            parseAutomation(meta.automation),
+            meta.fxChain ? parseAudioFxChain(meta.fxChain) : undefined,
+          )
+        : null;
+      const laneKeyframes = automation ? volumeLaneKeyframes(automation, 0, totalDuration) : null;
+      const envelope =
+        laneKeyframes && laneKeyframes.length > 0
+          ? { keyframes: laneKeyframes, trackStart: 0, baseVolume: meta.volume }
+          : null;
+
+      let groupSrcPath = groupWavPath;
+      let bakedEnvelope = false;
+      if (meta.fxChain) {
+        const chain = parseAudioFxChain(meta.fxChain);
+        const fxResult = await applyAudioFxChain(
+          groupSrcPath,
+          chain,
+          join(workDir, `group-${pathId}-fx.wav`),
+          {
+            trackId: groupId,
+            signal: effectiveSignal,
+            ...(automation ? { automation } : {}),
+            ...(envelope ? { envelope } : {}),
+          },
+        );
+        groupSrcPath = fxResult.path;
+        bakedEnvelope = fxResult.envelopeBaked;
+      }
+      if (envelope && !bakedEnvelope) {
+        bakedEnvelope = applyVolumeEnvelopeToWav(
+          groupSrcPath,
+          envelope.keyframes,
+          envelope.trackStart,
+          envelope.baseVolume,
+        );
+      }
+
+      // `end` is already the render's totalDuration, so the outer mix's own
+      // atrim-to-totalDuration clips this track exactly the same way it would
+      // an ungrouped one whose clip ran to the end of the render — a group's FX
+      // tail gets the same "never past the end of the video" treatment member
+      // tails get, for free, with no separate tailSeconds bookkeeping needed.
+      tracks.push({
+        id: groupId,
+        srcPath: groupSrcPath,
+        start: 0,
+        end: totalDuration,
+        mediaStart: 0,
+        duration: totalDuration,
+        volume: bakedEnvelope ? 1.0 : meta.volume,
+        // Same fallback an ungrouped track gets: when the envelope could not be
+        // baked into the samples, hand the keyframes to the outer mix's volume
+        // expression instead of dropping the group's automation on the floor.
+        ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
+      });
+    } catch (err: unknown) {
+      if (err instanceof AudioFxRenderError) throw err;
       failures.push({
         stage: "mix",
-        reason: "ffmpeg_failed",
+        reason: "internal",
         owner: "system",
         retryable: false,
         elementId: groupId,
         detail: boundedDetail(
-          `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
+          `Audio processing failed for group ${groupId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         ),
       });
-      continue;
     }
-    if (subMix.degradedAutomation) groupsDegradedAutomation.push(groupId);
-
-    // Composition-time automation (offset 0, duration totalDuration) — same
-    // resolve/lane/bake path a member uses, just anchored at the group clock
-    // instead of a clip's own start.
-    const automation = meta.automation
-      ? resolveAutomation(
-          parseAutomation(meta.automation),
-          meta.fxChain ? parseAudioFxChain(meta.fxChain) : undefined,
-        )
-      : null;
-    const laneKeyframes = automation ? volumeLaneKeyframes(automation, 0, totalDuration) : null;
-    const envelope =
-      laneKeyframes && laneKeyframes.length > 0
-        ? { keyframes: laneKeyframes, trackStart: 0, baseVolume: meta.volume }
-        : null;
-
-    let groupSrcPath = groupWavPath;
-    let bakedEnvelope = false;
-    if (meta.fxChain) {
-      const chain = parseAudioFxChain(meta.fxChain);
-      const fxResult = await applyAudioFxChain(
-        groupSrcPath,
-        chain,
-        join(workDir, `group-${groupId}-fx.wav`),
-        {
-          trackId: groupId,
-          signal: effectiveSignal,
-          ...(automation ? { automation } : {}),
-          ...(envelope ? { envelope } : {}),
-        },
-      );
-      groupSrcPath = fxResult.path;
-      bakedEnvelope = fxResult.envelopeBaked;
-    }
-    if (envelope && !bakedEnvelope) {
-      bakedEnvelope = applyVolumeEnvelopeToWav(
-        groupSrcPath,
-        envelope.keyframes,
-        envelope.trackStart,
-        envelope.baseVolume,
-      );
-    }
-
-    // `end` is already the render's totalDuration, so the outer mix's own
-    // atrim-to-totalDuration clips this track exactly the same way it would
-    // an ungrouped one whose clip ran to the end of the render — a group's FX
-    // tail gets the same "never past the end of the video" treatment member
-    // tails get, for free, with no separate tailSeconds bookkeeping needed.
-    tracks.push({
-      id: groupId,
-      srcPath: groupSrcPath,
-      start: 0,
-      end: totalDuration,
-      mediaStart: 0,
-      duration: totalDuration,
-      volume: bakedEnvelope ? 1.0 : meta.volume,
-      // Same fallback an ungrouped track gets: when the envelope could not be
-      // baked into the samples, hand the keyframes to the outer mix's volume
-      // expression instead of dropping the group's automation on the floor.
-      ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
-    });
   }
   if (failures.length > 0) return bail();
 
