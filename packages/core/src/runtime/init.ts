@@ -1984,7 +1984,13 @@ export function initSandboxRuntimeModular(): void {
   // export time, per B4); this just keeps the live WebAudio group bus in
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
+  /** Set when a `data-hidden` mutation could have touched a BUS, so the sweep
+   *  below is not a whole-document query on every visibility pass. Same
+   *  dirty-flag shape as `hiddenAudioDirty` right above it. */
+  let groupMuteDirty = true;
   const syncAudioGroupMute = () => {
+    if (!groupMuteDirty) return;
+    groupMuteDirty = false;
     for (const groupEl of document.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
       const hidden = groupEl.hasAttribute("data-hidden");
       if (groupHiddenLast.get(groupEl) === hidden) continue;
@@ -2006,6 +2012,7 @@ export function initSandboxRuntimeModular(): void {
           dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
           dataHiddenDisplayNodes.add(rawNode);
           if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
+          groupMuteDirty = true;
         }
         rawNode.style.display = "none";
         if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
@@ -2024,6 +2031,7 @@ export function initSandboxRuntimeModular(): void {
         dataHiddenDisplayRestores.delete(rawNode);
         dataHiddenDisplayNodes.delete(rawNode);
         if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
+        groupMuteDirty = true;
       }
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
