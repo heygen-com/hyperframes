@@ -17,35 +17,60 @@ export const HF_FADE_OUT_ATTR = "data-fade-out";
 export const HF_FADE_CURVE_ATTR = "data-fade-curve";
 
 /**
- * The shape a fade takes across its length.
+ * How far a fade may bend away from a straight ramp, either way.
  *
- * - `linear` — a straight ramp. Predictable, and what a cut-to-black wants.
- * - `smooth` — eases out of and into the extreme; the least noticeable fade.
- * - `sharp` — holds near the extreme, then moves late. Reads as a "snap" fade.
+ * The limit is what keeps the shape a fade rather than a hold: at 1 the curve
+ * already spends most of its length near one extreme, and going further buys
+ * nothing an editor can see.
  */
-export type HfFadeCurve = "linear" | "smooth" | "sharp";
+export const FADE_CURVE_LIMIT = 1;
 
-const FADE_CURVES: readonly HfFadeCurve[] = ["linear", "smooth", "sharp"];
+/** A bend outside the range, or not a number at all, resolves to straight. */
+export function clampFadeCurve(curve: number): number {
+  if (!Number.isFinite(curve)) return 0;
+  return Math.max(-FADE_CURVE_LIMIT, Math.min(FADE_CURVE_LIMIT, curve));
+}
 
 export interface HfClipFade {
   /** Seconds of fade at the clip's head. */
   fadeIn: number;
   /** Seconds of fade at the clip's tail. */
   fadeOut: number;
-  curve: HfFadeCurve;
+  /** How the fade bends. See {@link fadeEase}. */
+  curve: number;
 }
 
-/** Ease a 0..1 progress through the named curve. */
-export function fadeEase(progress: number, curve: HfFadeCurve): number {
+/**
+ * Ease a 0..1 progress through a bend.
+ *
+ * `curve` is one number rather than a set of named shapes, because the shape is
+ * something you drag: Studio lets you pull the fade line itself and the curve
+ * has to follow the pointer to anywhere in between, not snap to the nearest of
+ * three presets.
+ *
+ * 0 is a straight ramp. A negative bend sags the line, so the fade starts
+ * slowly and finishes fast. A positive bend bulges it, so the fade starts fast
+ * and finishes slowly. Under it all is an exponent, `k = 2^(-2 · curve)`, which
+ * makes -0.5 exactly `p²` and +0.5 exactly `√p` and the two directions mirror
+ * images of each other.
+ */
+export function fadeEase(progress: number, curve: number): number {
   const p = progress <= 0 ? 0 : progress >= 1 ? 1 : progress;
-  switch (curve) {
-    case "smooth":
-      return p * p * (3 - 2 * p);
-    case "sharp":
-      return p * p;
-    case "linear":
-      return p;
-  }
+  const bend = clampFadeCurve(curve);
+  if (bend === 0) return p;
+  return Math.pow(p, Math.pow(2, -2 * bend));
+}
+
+/**
+ * The bend whose curve passes through `level` at the halfway point, which is
+ * how a drag on the fade line resolves to a number: the curve follows the
+ * pointer instead of the pointer nudging an abstract parameter.
+ */
+export function fadeCurveThroughMidpoint(level: number): number {
+  const clamped = Math.max(1e-4, Math.min(1 - 1e-4, level));
+  // level = 0.5^k  ⇒  k = ln(level) / ln(0.5),  and  k = 2^(-2·bend).
+  const k = Math.log(clamped) / Math.log(0.5);
+  return clampFadeCurve(-Math.log2(k) / 2);
 }
 
 function parseSeconds(raw: string | null | undefined): number {
@@ -54,9 +79,9 @@ function parseSeconds(raw: string | null | undefined): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function parseCurve(raw: string | null | undefined): HfFadeCurve {
-  const value = raw?.trim().toLowerCase();
-  return FADE_CURVES.find((curve) => curve === value) ?? "linear";
+function parseCurve(raw: string | null | undefined): number {
+  if (raw == null) return 0;
+  return clampFadeCurve(Number.parseFloat(raw));
 }
 
 /**
