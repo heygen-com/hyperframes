@@ -747,7 +747,9 @@ describe("TimelineTrackHeader", () => {
     it("names the header for the track, not for one of the clips on it", () => {
       const view = renderHeader({ ...ROW, keyframeClip: NARRATION_2 });
       expect(view.host.textContent).not.toContain("narration-2");
-      expect(view.host.querySelector('[title="Track 1"]')?.textContent).toBe("Track 1");
+      // Asserted on the rendered text, not a `title`: the name wraps now rather
+      // than truncating, so it no longer carries a tooltip to be found by.
+      expect(view.host.textContent).toContain("Track 1");
       // Alone on the track it is still named for itself.
       view.rerender({
         ...ROW,
@@ -755,7 +757,7 @@ describe("TimelineTrackHeader", () => {
         trackElements: [NARRATION_2],
         clipCount: 1,
       });
-      expect(view.host.querySelector('[title="narration-2"]')?.textContent).toBe("narration-2");
+      expect(view.host.textContent).toContain("narration-2");
       act(() => view.root.unmount());
     });
   });

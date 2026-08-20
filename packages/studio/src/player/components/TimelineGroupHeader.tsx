@@ -65,7 +65,9 @@ function GroupNameButton({
       <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
         ▤
       </span>
-      <span className="min-w-0 truncate font-medium">{label}</span>
+      {/* Wraps rather than truncating — a name that needs a hover to be read
+          is no use in a column you scan. */}
+      <span className="min-w-0 break-words text-left font-medium leading-tight">{label}</span>
       <span
         className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
         aria-hidden="true"
@@ -107,7 +109,7 @@ export function TimelineGroupHeader({
       }}
     >
       {/* One line, like a track header's: caret and name, then every control
-          anchored to the right edge. The name truncates and the controls are
+          anchored to the right edge. The name wraps and the controls are
           `shrink-0`, so they hold the edge and the name gives way — no second
           line needed to keep five controls off the label. */}
       <button

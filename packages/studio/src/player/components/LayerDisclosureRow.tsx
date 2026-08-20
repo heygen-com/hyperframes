@@ -95,9 +95,9 @@ export function LayerDisclosureRow({
       <span aria-hidden="true" className="shrink-0 text-[13px] leading-none text-white/40">
         ◇
       </span>
-      <span className="min-w-0 flex-1 truncate font-medium" title={name}>
-        {name}
-      </span>
+      {/* Wraps rather than truncating: a truncated name needs a hover to be
+          read, which a scanned column cannot rely on. */}
+      <span className="min-w-0 flex-1 break-words font-medium leading-tight">{name}</span>
       <TrackClipCount clipCount={clipCount} />
       {children}
       {/* Anchored right, on every header that has one: the lane toggle is the

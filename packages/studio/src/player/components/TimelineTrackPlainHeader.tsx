@@ -89,14 +89,16 @@ export function PlainTrackHeader({
         {isAudioTrack && (
           <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
         )}
-        {/* No `flex-1`: the name takes only the width it needs (still
-            truncating at `min-w-0` when the row is narrow) so the clip count
-            sits against it rather than being pushed out to meet the controls.
-            The slack goes to the `ml-auto` group below instead. */}
+        {/* No `flex-1`: the name takes only the width it needs, so the clip
+            count sits against it rather than being pushed out to meet the
+            controls. The slack goes to the `ml-auto` group below instead.
+
+            Wraps rather than truncating: a truncated name needs a hover to be
+            read at all, and a tooltip is no use to a name you are scanning a
+            column of. `break-words` so a long single token breaks instead of
+            forcing the column wider. */}
         {showTrackLabel && (
-          <span className="min-w-0 truncate text-[11px]" title={trackLabel}>
-            {trackLabel}
-          </span>
+          <span className="min-w-0 break-words text-[11px] leading-tight">{trackLabel}</span>
         )}
         {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
         {/* `ml-auto` is what anchors the group right: it absorbs the slack the
