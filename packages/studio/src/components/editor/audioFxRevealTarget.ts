@@ -55,3 +55,47 @@ export function audioFxRevealTarget(
   }
   return { kind: "node", index, nodeId: parsed.nodeId };
 }
+
+/**
+ * The DOM selector for the row a reveal target lives in, or null when the target
+ * names no surface this panel renders.
+ *
+ * A preset run is keyed by the preset id the run element actually exposes, not by
+ * `runKey`, which is the collapse map's key and carries an index suffix.
+ */
+function revealRowSelector(where: AudioFxRevealTarget | null): string | null {
+  if (!where) return null;
+  switch (where.kind) {
+    case "node":
+      return where.nodeId ? `[data-fx-node-id="${where.nodeId}"]` : null;
+    case "eq":
+      return `[data-fx-eq="${where.eqId}"]`;
+    case "carve":
+      return ".hf-fx-carve-module";
+    case "preset":
+      return `[data-fx-preset="${where.runKey.replace(/-\d+$/, "")}"]`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Scroll the row that owns `target` into view, and report whether it was found.
+ *
+ * The target is resolved against the chain again rather than remembered: which
+ * surface owns a parameter is a fact about the chain, and the chain may have
+ * been edited between the reveal request and the pass that can act on it. A
+ * false return means the row has not mounted yet, so the caller keeps the
+ * request pending.
+ */
+export function scrollRevealedRowIntoView(
+  root: HTMLElement | null,
+  target: string,
+  chain: HfAudioFxChain,
+): boolean {
+  const selector = revealRowSelector(audioFxRevealTarget(target, chain));
+  const row = selector ? root?.querySelector<HTMLElement>(selector) : null;
+  if (!row) return false;
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  return true;
+}

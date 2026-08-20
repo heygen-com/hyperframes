@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { audioFxRevealTarget } from "./audioFxRevealTarget.js";
+import { audioFxRevealTarget, scrollRevealedRowIntoView } from "./audioFxRevealTarget.js";
 import {
   defaultAudioFxParams,
   mintAudioFxNodeId,
@@ -364,27 +364,9 @@ export function FxSection({
    */
   useEffect(() => {
     const target = pendingRevealRef.current;
-    if (!target) return;
-    // Resolved again rather than remembered: the surface that owns a parameter
-    // is a fact about the chain, and the chain may have been edited between the
-    // request and this pass.
-    const where = audioFxRevealTarget(target, chain);
-    const selector =
-      where?.kind === "node" && where.nodeId
-        ? `[data-fx-node-id="${where.nodeId}"]`
-        : where?.kind === "eq"
-          ? `[data-fx-eq="${where.eqId}"]`
-          : where?.kind === "carve"
-            ? ".hf-fx-carve-module"
-            : // Keyed by the preset id the run carries, which is what the run
-              // element actually exposes; `runKey` is the collapse map's key.
-              where?.kind === "preset"
-              ? `[data-fx-preset="${where.runKey.replace(/-\d+$/, "")}"]`
-              : null;
-    const row = selector ? rootRef.current?.querySelector<HTMLElement>(selector) : null;
-    if (!row) return;
-    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    pendingRevealRef.current = null;
+    if (target && scrollRevealedRowIntoView(rootRef.current, target, chain)) {
+      pendingRevealRef.current = null;
+    }
     // `chain` is deliberately not a dependency: it changes on every knob edit,
     // and re-running then would scroll the panel while the author is dragging.
     // eslint-disable-next-line react-hooks/exhaustive-deps
