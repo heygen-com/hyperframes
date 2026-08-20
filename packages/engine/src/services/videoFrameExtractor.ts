@@ -527,16 +527,39 @@ export interface ExtractionResult {
   phaseBreakdown: ExtractionPhaseBreakdown;
 }
 
+/** Minimal structural shape for resolving parent/`<source>` media `src`. */
+interface MediaSrcEl {
+  getAttribute(name: string): string | null;
+  querySelectorAll(selectors: string): Iterable<{ getAttribute(name: string): string | null }>;
+}
+
+/**
+ * Parent `src`, else a `<source src>`. Prefer local paths over http(s) so a
+ * localized sibling wins when another `<source>` failed to download.
+ */
+export function resolveMediaElementSrc(el: MediaSrcEl): string | null {
+  const direct = el.getAttribute("src");
+  if (direct) return direct;
+  let remote: string | null = null;
+  for (const source of el.querySelectorAll("source")) {
+    const src = source.getAttribute("src");
+    if (!src) continue;
+    if (!/^https?:\/\//i.test(src)) return src;
+    remote ??= src;
+  }
+  return remote;
+}
+
 export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
   const startCache = new Map<RefResolverEl, number>();
   const visiting = new Set<RefResolverEl>();
 
-  const videoEls = document.querySelectorAll("video[src]");
+  const videoEls = document.querySelectorAll("video");
   let autoIdCounter = 0;
   for (const el of videoEls) {
-    const src = el.getAttribute("src");
+    const src = resolveMediaElementSrc(el);
     if (!src) continue;
     // Generate a stable ID for videos without one — the producer needs IDs
     // to track extracted frames and composite them during encoding.

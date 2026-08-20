@@ -80,6 +80,28 @@ describe("parseAudioElements strict literal timing", () => {
   );
 });
 
+describe("parseAudioElements — <source> children", () => {
+  it("discovers audio and audible-video tracks that use <source> children", () => {
+    const tracks = parseAudioElements(`
+      <audio id="bgm" data-start="2" data-end="7">
+        <source src="https://cdn.example.com/bgm.mp3" type="audio/mpeg">
+        <source src="_remote_media/bgm.ogg" type="audio/ogg">
+      </audio>
+      <video id="rec" data-has-audio="true" data-start="4" data-end="10">
+        <source src="https://cdn.example.com/rec.mp4" type="video/mp4">
+        <source src="_remote_media/rec.webm" type="video/webm">
+      </video>
+    `);
+    expect(tracks).toEqual([
+      expect.objectContaining({ id: "bgm", src: "_remote_media/bgm.ogg", type: "audio" }),
+      expect.objectContaining({
+        id: "rec-audio",
+        src: "_remote_media/rec.webm",
+        type: "video",
+      }),
+    ]);
+  });
+});
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
 
