@@ -15,7 +15,7 @@ import { runtimeAudioId } from "../lib/timelineElementHelpers";
 import { isCanaryEnabled } from "../../telemetry/canary";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { groupAutomationLanes } from "./automationLaneData";
+import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
@@ -265,6 +265,7 @@ function AutomationLaneHeaderRow({
   gutterBackground,
   columnWidth,
   onRemove,
+  isCarve,
 }: {
   /** The lane the ACTIVE clip draws in this row, or null when it draws none —
    *  the row belongs to the property, and a clip may be absent from it. */
@@ -287,6 +288,9 @@ function AutomationLaneHeaderRow({
   gutterBackground: string;
   columnWidth: number;
   onRemove?: (target: string) => void;
+  /** The carve owns this envelope and rewrites it on every re-run, so it is
+   *  shown but not the author's to edit or delete. */
+  isCarve?: boolean;
 }) {
   return (
     <div
@@ -344,7 +348,11 @@ function AutomationLaneHeaderRow({
           write can reach: a shared row's other envelopes belong to clips that
           are not selected, and a button that silently removed one of them (or
           none) would be worse than no button. */}
-      {onRemove && target !== null && (
+      {/* Not on a carve's own lane: the carve regenerates it on the next
+          analysis, so removing one band would come back and reads as the
+          button not working. Switching the carve off in the rack is what
+          removes them, all together, which is how they were made. */}
+      {onRemove && target !== null && !isCarve && (
         <button
           type="button"
           aria-label={`Remove ${label} automation`}
@@ -432,15 +440,24 @@ export function TimelineTrackHeader({
         : [],
     ).map((lane) => lane.key),
   );
-  const automationRows = groupAutomationLanes(trackElements).map((group) => ({
-    key: group.key,
-    label: group.key,
-    name: group.name,
-    param: group.param,
-    target:
-      group.entries.find((entry) => (entry.element.key ?? entry.element.id) === activeKey)?.lane
-        .target ?? null,
-  }));
+  const automationRows = groupAutomationLanes(trackElements).map((group) => {
+    const active = group.entries.find(
+      (entry) => (entry.element.key ?? entry.element.id) === activeKey,
+    );
+    return {
+      key: group.key,
+      label: group.key,
+      name: group.name,
+      param: group.param,
+      target: active?.lane.target ?? null,
+      // Every entry in a row is the same parameter, so the first answers for the
+      // row when the active clip is absent from it.
+      isCarve: (() => {
+        const entry = active ?? group.entries[0];
+        return entry ? isCarveLane(entry.lane.target, elementFxChain(entry.element)) : false;
+      })(),
+    };
+  });
   // Automation counts as something to disclose: gating the caret on tweens alone
   // left an audio clip's envelopes unreachable, since the track could not expand.
   const disclosable = lanes.length > 0 || automationRows.length > 0;
@@ -683,6 +700,7 @@ export function TimelineTrackHeader({
             gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
             columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}
             onRemove={onRemoveAutomationLane}
+            isCarve={row.isCarve}
           />
         ))}
     </div>

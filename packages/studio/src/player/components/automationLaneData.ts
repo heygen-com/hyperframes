@@ -91,26 +91,32 @@ export function elementAutomation(element: TimelineElement): HfAutomation {
   });
 }
 
+/**
+ * Is this lane one the CARVE wrote, rather than the author?
+ *
+ * The carve compiles to tagged nodes and rewrites their envelopes on every
+ * re-run (`withoutCarveLanes` replaces each one), so a drag on such a lane is
+ * silently discarded the next time it analyses. Read-only rather than hidden:
+ * the ducking curve is what a carve IS, and the whole reason to look at a
+ * carved bed in the timeline is to see where it makes room. Hiding them left a
+ * bed whose every lane was the carve's showing no automation at all and no
+ * control to reveal any — which reads as the carve having done nothing.
+ */
+export function isCarveLane(target: string, chain: HfAudioFxChain | null): boolean {
+  return (chain?.nodes ?? []).some(
+    (node) => node.fromCarve && node.id && target.startsWith(`fx.${node.id}.`),
+  );
+}
+
 /** Lanes in the order they are drawn, one row each. */
 /**
- * The lanes a TIMELINE row should draw — the author's own curves.
+ * The lanes a TIMELINE row should draw.
  *
- * Lanes belonging to carve-generated nodes are excluded. The carve writes those
- * itself and `withoutCarveLanes` replaces every one of them on each re-run, so
- * they are not the author's to edit: a drag on one is silently discarded the
- * next time the carve analyses. They are also invisible as effects — the rack
- * deliberately counts the carve as ONE module rather than the filters it
- * compiles to — so drawing a lane per band contradicts the surface that owns
- * them, and reads as "automation on effects I removed".
+ * Every lane the element carries, the carve's included — see `isCarveLane` for
+ * why those are shown read-only instead of withheld.
  */
 export function elementAutomationLanes(element: TimelineElement): HfAutomationLane[] {
-  const chain = elementFxChain(element);
-  const carvePrefixes = (chain?.nodes ?? [])
-    .filter((node) => node.fromCarve && node.id)
-    .map((node) => `fx.${node.id}.`);
-  const lanes = elementAutomation(element).lanes;
-  if (carvePrefixes.length === 0) return lanes;
-  return lanes.filter((lane) => !carvePrefixes.some((prefix) => lane.target.startsWith(prefix)));
+  return elementAutomation(element).lanes;
 }
 
 /** The frequency the lane's effect sits at, when it has one. */

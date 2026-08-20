@@ -8,6 +8,7 @@ import {
   groupAutomationLanes,
   laneGroupKey,
   elementFxChain,
+  isCarveLane,
 } from "./automationLaneData";
 import type { TimelineElement } from "../store/timelineElement";
 
@@ -323,20 +324,33 @@ describe("carve-generated lanes", () => {
     }),
   });
 
-  it("keeps the author's lanes and drops the carve's", () => {
+  // These lanes used to be withheld. A bed whose EVERY lane is the carve's —
+  // which is what a plain voiceover carve produces — then showed no automation
+  // at all and no control to reveal any, so the carve looked like it had done
+  // nothing. The ducking curve is what a carve IS; it is shown, and marked
+  // read-only because the carve rewrites it on each analysis.
+  it("draws the carve's lanes alongside the author's", () => {
     const targets = elementAutomationLanes(carved()).map((lane) => lane.target);
-    expect(targets).toEqual(["fx.n2.gain", "volume"]);
+    expect(targets).toContain("fx.n1.gain");
+    expect(targets).toContain("fx.n2.gain");
+    expect(targets).toContain("volume");
   });
 
-  it("does not count a carve band as a timeline row", () => {
+  it("counts a carve band as a timeline row, so the row reserves its height", () => {
     const rows = groupAutomationLanes([carved()]);
-    expect(rows).toHaveLength(2);
-    expect(rows.every((row) => !row.entries.some((e) => e.lane.target === "fx.n1.gain"))).toBe(
-      true,
-    );
+    expect(rows).toHaveLength(3);
   });
 
-  it("leaves an element with no carve untouched", () => {
+  it("tells a carve's lane from the author's on the same element", () => {
+    const chain = elementFxChain(carved());
+    expect(isCarveLane("fx.n1.gain", chain)).toBe(true);
+    // n2 is a hand-built peaking band with the same parameter — only the
+    // `fromCarve` tag separates them.
+    expect(isCarveLane("fx.n2.gain", chain)).toBe(false);
+    expect(isCarveLane("volume", chain)).toBe(false);
+  });
+
+  it("treats every lane as the author's when nothing is carve-tagged", () => {
     const plain = {
       ...carved(),
       fxChain: JSON.stringify({
@@ -345,5 +359,6 @@ describe("carve-generated lanes", () => {
       }),
     };
     expect(elementAutomationLanes(plain).map((l) => l.target)).toContain("fx.n1.gain");
+    expect(isCarveLane("fx.n1.gain", elementFxChain(plain))).toBe(false);
   });
 });

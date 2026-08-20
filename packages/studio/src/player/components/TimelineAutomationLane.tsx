@@ -43,6 +43,11 @@ import { generateShape, type AutomationShapeId } from "./automationShapes";
 import { simplifyPoints } from "./automationSimplify";
 import { pointInSelection, pointsIn, replaceRange } from "./automationLaneSelection";
 import { defaultTimelineTheme } from "./timelineTheme";
+import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import type { TimelineElement } from "../store/playerStore";
+import type { UseAutomationLanesResult } from "./useAutomationLanes";
 
 /**
  * Drawn radius of a breakpoint.
@@ -63,11 +68,6 @@ const LANE_BORDER = defaultTimelineTheme.rowBorder;
  *  but the wrong value is not in it. */
 type SelectionBox = { t0: number; t1: number; v0: number; v1: number };
 import { getTimelineLaneTop } from "./timelineLayout";
-import { groupAutomationLanes } from "./automationLaneData";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
-import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
-import type { TimelineElement } from "../store/playerStore";
-import type { UseAutomationLanesResult } from "./useAutomationLanes";
 
 /** Is this breakpoint inside the selection box? The rule itself is shared with
  *  Delete and with the group drag, so what is drawn as caught is exactly what
@@ -587,7 +587,11 @@ function ClipAutomationLanes({
             onCommit={bound.onCommit}
             onSelect={bound.onSelect}
             snapTimes={snapTimes}
-            readOnly={bound.readOnly}
+            // The carve owns its own envelopes and rewrites them on every
+            // re-run, so a drag would be silently discarded — shown, but not
+            // editable. Per LANE, not per binding: a carved bed can carry the
+            // author's own volume curve beside the carve's bands.
+            readOnly={bound.readOnly || isCarveLane(lane.target, bound.chain)}
             rangeSelection={
               bound.selection?.target === lane.target
                 ? {
