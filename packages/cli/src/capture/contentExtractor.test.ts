@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   captionImagesWithGemini,
+  resolveVertexCaptionConfig,
   resolveVisionPhaseCompletion,
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
@@ -412,5 +413,74 @@ describe("captionImagesWithGemini — Gemini provider", () => {
       status: "degraded",
       reason: "provider-error",
     });
+  });
+});
+
+describe("resolveVertexCaptionConfig", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is null unless GOOGLE_GENAI_USE_VERTEXAI is true", () => {
+    vi.stubEnv("GOOGLE_GENAI_USE_VERTEXAI", "");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_INFO", JSON.stringify({ project_id: "p1" }));
+    expect(resolveVertexCaptionConfig()).toBeNull();
+  });
+
+  it("takes credentials and project from inline service-account JSON", () => {
+    vi.stubEnv("GOOGLE_GENAI_USE_VERTEXAI", "true");
+    vi.stubEnv("GOOGLE_CLOUD_PROJECT", "");
+    vi.stubEnv("GOOGLE_PROJECT_ID", "");
+    vi.stubEnv("GOOGLE_CLOUD_LOCATION", "");
+    vi.stubEnv("GOOGLE_LOCATION", "");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_INFO", JSON.stringify({ project_id: "sa-project" }));
+    const config = resolveVertexCaptionConfig();
+    expect(config?.project).toBe("sa-project");
+    expect(config?.location).toBe("global");
+    expect(config?.googleAuthOptions?.credentials).toEqual({ project_id: "sa-project" });
+  });
+
+  it("explicit project/location env beat the service-account fallback", () => {
+    vi.stubEnv("GOOGLE_GENAI_USE_VERTEXAI", "true");
+    vi.stubEnv("GOOGLE_CLOUD_PROJECT", "explicit-project");
+    vi.stubEnv("GOOGLE_CLOUD_LOCATION", "us-central1");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_INFO", JSON.stringify({ project_id: "sa-project" }));
+    const config = resolveVertexCaptionConfig();
+    expect(config?.project).toBe("explicit-project");
+    expect(config?.location).toBe("us-central1");
+  });
+
+  it("treats unparseable service-account JSON as not configured", () => {
+    vi.stubEnv("GOOGLE_GENAI_USE_VERTEXAI", "true");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_INFO", "{not json");
+    expect(resolveVertexCaptionConfig()).toBeNull();
+  });
+});
+
+describe("captionImagesWithGemini — Vertex provider", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    generateContentMock.mockReset();
+    vi.unstubAllEnvs();
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  it("captions through the SDK when only Vertex is configured (no API keys)", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+    vi.stubEnv("GOOGLE_GENAI_USE_VERTEXAI", "true");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_INFO", JSON.stringify({ project_id: "sa-project" }));
+    generateContentMock.mockResolvedValue({ text: "a red product shot" });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(Object.values(captions)).toEqual(["a red product shot"]);
+    const request = generateContentMock.mock.calls[0]?.[0];
+    expect(request?.model).toBe("gemini-2.5-flash-lite");
   });
 });
