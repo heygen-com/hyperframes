@@ -481,6 +481,6 @@ describe("captionImagesWithGemini — Vertex provider", () => {
 
     expect(Object.values(captions)).toEqual(["a red product shot"]);
     const request = generateContentMock.mock.calls[0]?.[0];
-    expect(request?.model).toBe("gemini-2.5-flash-lite");
+    expect(request?.model).toBe("gemini-3.1-flash-lite");
   });
 });

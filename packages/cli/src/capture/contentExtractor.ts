@@ -320,14 +320,15 @@ export async function captionImagesWithGemini(
   const useOpenRouter = Boolean(openRouterKey);
   const useVertex = !useOpenRouter && Boolean(vertexConfig);
   const providerName = useOpenRouter ? "OpenRouter" : useVertex ? "Vertex Gemini" : "Gemini";
-  // Defaults mirror the cheapest vision tier each surface actually serves —
-  // Vertex does not publish the 3.x flash-lite preview name, so it gets the 2.5
-  // lite tier. Override per provider via HYPERFRAMES_OPENROUTER_MODEL /
+  // Defaults are the same 3.1 flash-lite tier on every surface; the two Google
+  // surfaces publish it under different names (Vertex serves the GA
+  // "gemini-3.1-flash-lite", the Gemini API only its "-preview" alias).
+  // Override per provider via HYPERFRAMES_OPENROUTER_MODEL /
   // HYPERFRAMES_GEMINI_MODEL.
   const model = useOpenRouter
     ? process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite"
     : process.env.HYPERFRAMES_GEMINI_MODEL ||
-      (useVertex ? "gemini-2.5-flash-lite" : "gemini-3.1-flash-lite-preview");
+      (useVertex ? "gemini-3.1-flash-lite" : "gemini-3.1-flash-lite-preview");
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
 
   progress("design", `Captioning images with ${providerName} vision...`);
