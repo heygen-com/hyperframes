@@ -19,7 +19,7 @@ import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
-import { LABEL_COL_W, LANE_H, getTimelineLaneTop } from "./timelineLayout";
+import { LABEL_COL_W, LANE_H, TRACK_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import {
   resolveLaneHeaderState,
@@ -504,13 +504,7 @@ export function TimelineTrackHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className={`sticky left-0 z-[12] shrink-0 ${
-        !isKeyframeLayer
-          ? showTrackLabel
-            ? "flex flex-col justify-center gap-0.5 px-1.5 text-white/55"
-            : "flex flex-col items-center justify-center gap-0.5"
-          : ""
-      }`}
+      className="sticky left-0 z-[12] shrink-0"
       style={{
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
         background: gutterFill(theme.gutterBackground, isGroupMember),
@@ -531,72 +525,90 @@ export function TimelineTrackHeader({
     >
       {!isKeyframeLayer ? (
         <>
-          <PlainTrackHeader
-            trackNumber={trackNumber}
-            trackDisplayNumber={trackDisplayNumber}
-            trackLabel={trackLabel}
-            clipCount={clipCount}
-            showTrackLabel={showTrackLabel}
-            isTrackHidden={isTrackHidden}
-            isAudioTrack={isAudioTrack}
-            onToggleTrackHidden={onToggleTrackHidden}
-            // On the control line rather than a third row of its own.
-            trailing={
-              <>
-                {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
-                  <TimelineFxButton
-                    variant="chain"
-                    fxChainRaw={singleAudioClip.fxChain}
-                    trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
-                    onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
-                    onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
-                    // Muted, an audition is silent — so the hover lifts the mute on
-                    // the running graph and puts it back on the way out, the same
-                    // borrow-and-return it already does with the playhead.
-                    auditionSpans={[singleAudioClip]}
-                    isMuted={isTrackHidden}
-                    onSetMutedLive={(muted) =>
-                      onSetElementAttributeLive?.(singleAudioClip, "data-hidden", muted ? "" : null)
-                    }
-                    onOpenRack={() => openClipFxRack(singleAudioClip)}
-                  />
-                )}
-                {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
-                  a group, so it needs `audio-groups` too — without it a user outside
-                  that canary could create a group and then have no UI to manage it. */}
-                {clipCount > 1 &&
-                  !isTrackGrouped &&
-                  (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
-                  isCanaryEnabled("audio-fx-rack") &&
-                  isCanaryEnabled("audio-groups") && (
+          {/* The two lines own exactly TRACK_H, not the whole header.
+              `justify-center` on the header itself centred them in its FULL
+              height — which grows by AUTOMATION_LANE_H per open lane — so
+              opening one pushed the name and its controls down THROUGH the lane
+              rows below, which are absolutely positioned from the top. */}
+          <div
+            className={
+              showTrackLabel
+                ? "flex flex-col justify-center gap-0.5 px-1.5 text-white/55"
+                : "flex flex-col items-center justify-center gap-0.5"
+            }
+            style={{ height: TRACK_H }}
+          >
+            <PlainTrackHeader
+              trackNumber={trackNumber}
+              trackDisplayNumber={trackDisplayNumber}
+              trackLabel={trackLabel}
+              clipCount={clipCount}
+              showTrackLabel={showTrackLabel}
+              isTrackHidden={isTrackHidden}
+              isAudioTrack={isAudioTrack}
+              onToggleTrackHidden={onToggleTrackHidden}
+              // On the control line rather than a third row of its own.
+              trailing={
+                <>
+                  {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
                     <TimelineFxButton
-                      variant="group-pointer"
-                      clipCount={trackElements.length}
-                      defaultLabel={trackLabel}
-                      // Groups are audio-only in v1 (§1.4). A video track showing no
-                      // button at all is the silent limit §5 forbids, so it gets the
-                      // button and a reason instead.
-                      refusal={
-                        isAudioTrack
-                          ? undefined
-                          : "Video audio can't be grouped yet — only audio clips can join a group."
+                      variant="chain"
+                      fxChainRaw={singleAudioClip.fxChain}
+                      trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
+                      onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
+                      onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+                      // Muted, an audition is silent — so the hover lifts the mute on
+                      // the running graph and puts it back on the way out, the same
+                      // borrow-and-return it already does with the playhead.
+                      auditionSpans={[singleAudioClip]}
+                      isMuted={isTrackHidden}
+                      onSetMutedLive={(muted) =>
+                        onSetElementAttributeLive?.(
+                          singleAudioClip,
+                          "data-hidden",
+                          muted ? "" : null,
+                        )
                       }
-                      onGroupClips={groupUngroupedClips}
+                      onOpenRack={() => openClipFxRack(singleAudioClip)}
                     />
                   )}
-                {/* The lane disclosure, on the row's own layout rather than by
+                  {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
+                  a group, so it needs `audio-groups` too — without it a user outside
+                  that canary could create a group and then have no UI to manage it. */}
+                  {clipCount > 1 &&
+                    !isTrackGrouped &&
+                    (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
+                    isCanaryEnabled("audio-fx-rack") &&
+                    isCanaryEnabled("audio-groups") && (
+                      <TimelineFxButton
+                        variant="group-pointer"
+                        clipCount={trackElements.length}
+                        defaultLabel={trackLabel}
+                        // Groups are audio-only in v1 (§1.4). A video track showing no
+                        // button at all is the silent limit §5 forbids, so it gets the
+                        // button and a reason instead.
+                        refusal={
+                          isAudioTrack
+                            ? undefined
+                            : "Video audio can't be grouped yet — only audio clips can join a group."
+                        }
+                        onGroupClips={groupUngroupedClips}
+                      />
+                    )}
+                  {/* The lane disclosure, on the row's own layout rather than by
                     swapping it for a keyframe-layer row. */}
-                {disclosable && (
-                  <LaneToggleButton
-                    name={laneOwnerName}
-                    isExpanded={isExpanded}
-                    lanesId={lanesId}
-                    onToggle={onToggleClipExpanded}
-                  />
-                )}
-              </>
-            }
-          />
+                  {disclosable && (
+                    <LaneToggleButton
+                      name={laneOwnerName}
+                      isExpanded={isExpanded}
+                      lanesId={lanesId}
+                      onToggle={onToggleClipExpanded}
+                    />
+                  )}
+                </>
+              }
+            />
+          </div>
         </>
       ) : (
         <>

@@ -9,7 +9,7 @@ import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
-import { getTimelineLaneTop, LABEL_COL_W } from "./timelineLayout";
+import { getTimelineLaneTop, LABEL_COL_W, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -861,6 +861,36 @@ describe("TimelineTrackHeader", () => {
     // both, making a third: 17 + 24 + 24 + gaps in a 48px box, which
     // `justify-center` then spilled evenly out of the top and bottom. The name
     // rode 10px above its own row and the pointer collided with the row below.
+    // The header GROWS by AUTOMATION_LANE_H for every open lane, and the lanes
+    // are absolutely positioned from its top. `justify-center` on the header
+    // itself therefore centred the two lines in the FULL height, so opening a
+    // lane pushed the name and its controls down on top of the lane rows.
+    it("pins the two lines to the top TRACK_H, whatever the header grows to", () => {
+      enabledCanaries.add("audio-fx-rack");
+      const automated: TimelineElement = {
+        ...VOICE,
+        automation: JSON.stringify({
+          version: 1,
+          lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+        }),
+      };
+      const view = renderHeader({
+        keyframeClip: automated,
+        trackElements: [automated],
+        clipCount: 1,
+        animations: [],
+        expanded: true,
+        isAudioTrack: true,
+      });
+      const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+      const lines = header?.children[0] as HTMLElement | undefined;
+      expect(lines?.style.height).toBe(`${TRACK_H}px`);
+      // The lane row is a sibling of the wrapper, not inside it — it stacks
+      // BELOW the two lines rather than sharing their box.
+      expect((header?.children.length ?? 0) > 1).toBe(true);
+      act(() => view.root.unmount());
+    });
+
     it("keeps the group pointer on the control line, not a third row", () => {
       enabledCanaries.add("audio-fx-rack");
       enabledCanaries.add("audio-groups");
@@ -873,9 +903,11 @@ describe("TimelineTrackHeader", () => {
         isAudioTrack: true,
       });
       const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
-      expect(header?.children).toHaveLength(2);
+      // One TRACK_H-tall wrapper holding exactly the two lines.
+      const lines = header?.children[0];
+      expect(lines?.children).toHaveLength(2);
       // And it is on the second line, beside the visibility control.
-      const controlLine = header?.children[1];
+      const controlLine = lines?.children[1];
       expect(
         controlLine?.querySelector('button[aria-label="Effects — group these clips first"]'),
       ).not.toBeNull();
