@@ -2,6 +2,7 @@ import { useState, useCallback, useId, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { TIMELINE_TRIM_TOOLS } from "./timelineTrimTools";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -40,6 +41,14 @@ const SHORTCUT_SECTIONS = [
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element" },
+    ],
+  },
+  {
+    title: "Timeline tools",
+    hints: [
+      { key: "V", label: "Selection tool" },
+      { key: "B", label: "Razor tool" },
+      ...TIMELINE_TRIM_TOOLS.map((tool) => ({ key: tool.shortcut, label: tool.label })),
     ],
   },
   {
@@ -87,6 +96,11 @@ const SHORTCUT_SECTIONS = [
     ],
   },
 ] as const;
+
+/** Where the panel's docs link goes. The Studio tab index, not a deep link:
+ *  individual pages move and a dead link in the editor is worse than a general
+ *  one. */
+const STUDIO_DOCS_URL = "https://hyperframes.heygen.com/studio";
 
 interface ShortcutsPanelProps {
   disabled: boolean;
@@ -180,6 +194,31 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
             maxHeight: "min(280px, calc(100vh - 80px))",
           }}
         >
+          {/* First thing in the panel, so it is reachable without scrolling a
+              list that is taller than the panel is. This is the only route from
+              the editor to the docs, and someone hunting for a shortcut is
+              exactly the person who wants them. */}
+          <a
+            href={STUDIO_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-neutral-400 hover:text-neutral-100 hover:bg-white/5 transition-colors border-b border-white/5"
+          >
+            <span>Studio docs</span>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M7 17 17 7M9 7h8v8" />
+            </svg>
+          </a>
           <div className="px-3 pt-3 pb-2.5">
             <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
               Jump to frame

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { TimelineElement } from "../store/playerStore";
 
 export interface TimelineTrackStyle {
@@ -116,5 +117,17 @@ export function getRenderedTimelineElement({
     ...element,
     start: previewStart,
     track: previewTrack,
+  };
+}
+
+/**
+ * Chrome for the timeline shell: the theme owns how the surface is painted, so
+ * the component only has to say which theme it is in.
+ */
+export function timelineShellStyle(theme: TimelineTheme): CSSProperties {
+  return {
+    touchAction: "pan-x pan-y",
+    background: theme.shellBackground,
+    borderColor: theme.shellBorder,
   };
 }

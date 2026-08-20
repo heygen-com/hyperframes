@@ -5,6 +5,7 @@ import { resolveTimelineLayerStackingMove } from "./timelineLayerDrag";
 import { shouldShowTimelineLayerGroupHeader } from "./TimelineLayerGroupHeader";
 import type { TimelineStackingElement, TimelineStackingReorderIntent } from "./timelineStacking";
 import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
+import type { BlockedTimelineEditIntent } from "./timelineBlockedEdits";
 
 export {
   getTimelineEditCapabilities,
@@ -254,7 +255,7 @@ export interface TimelinePromptElement {
   track: number;
 }
 
-export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
+export type { BlockedTimelineEditIntent } from "./timelineBlockedEdits";
 
 export interface TimelineRangeSelection {
   start: number;

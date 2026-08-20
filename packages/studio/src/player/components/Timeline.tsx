@@ -3,7 +3,8 @@ import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
-import { defaultTimelineTheme } from "./timelineTheme";
+import { defaultTimelineTheme, timelineShellStyle } from "./timelineTheme";
+import { activeTrimMode } from "./timelineTrimTools";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
@@ -445,14 +446,10 @@ export const Timeline = memo(function Timeline({
       ref={setContainerRef}
       aria-label="Timeline"
       data-timeline-element-count={expandedElements.length}
-      className={`relative border-t select-none h-full overflow-hidden ${assetDrop.isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${assetDrop.isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : activeTrimMode(activeTool) ? "cursor-ew-resize" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={updateRazorGuide}
       onMouseLeave={clearRazorGuide}
-      style={{
-        touchAction: "pan-x pan-y",
-        background: theme.shellBackground,
-        borderColor: theme.shellBorder,
-      }}
+      style={timelineShellStyle(theme)}
     >
       <div
         ref={setScrollRef}

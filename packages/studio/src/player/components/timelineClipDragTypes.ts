@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineSnapType } from "./timelineSnapping";
 import type { BlockedTimelineEditIntent } from "./timelineEditing";
+import type { TimelineTrimMode } from "./timelineTrimOps";
 
 /* ── Shared clip-drag state types ───────────────────────────────── */
 export interface DraggedClipState {
@@ -45,6 +46,12 @@ export interface ResizingClipState {
   pointerId: number;
   element: TimelineElement;
   edge: "start" | "end";
+  /**
+   * Active trim tool. Absent ⇒ the plain single-clip (or multi-select group)
+   * resize this gesture has always been. `edge` is the grabbed edit point for
+   * ripple and roll; slip and slide are whole-clip gestures that ignore it.
+   */
+  trimMode?: TimelineTrimMode;
   originClientX: number;
   /**
    * scrollLeft at gesture start. Edge auto-scroll moves the content under a

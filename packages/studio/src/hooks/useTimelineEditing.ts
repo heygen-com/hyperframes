@@ -28,6 +28,10 @@ import {
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import {
+  blockedTimelineEditMessage,
+  type BlockedTimelineEditIntent,
+} from "../player/components/timelineBlockedEdits";
+import {
   useTimelineElementVisibilityEditing,
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
@@ -531,11 +535,11 @@ export function useTimelineEditing({
     });
 
   const handleBlockedTimelineEdit = useCallback(
-    (_element: TimelineElement) => {
+    (_element: TimelineElement, intent: BlockedTimelineEditIntent) => {
       const now = Date.now();
       if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
       lastBlockedTimelineToastAtRef.current = now;
-      showToast("This clip can't be moved or resized from the timeline yet.", "info");
+      showToast(blockedTimelineEditMessage(intent), "info");
     },
     [showToast],
   );
