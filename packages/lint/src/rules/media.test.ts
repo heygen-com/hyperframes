@@ -556,6 +556,83 @@ describe("audio_volume_double_automation", () => {
   });
 });
 
+describe("audio_group_no_members", () => {
+  const doc = (body: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      ${body}
+    </div>
+  </body></html>`;
+
+  const BUS = `<hf-audio-group id="voiceover" data-label="Voiceover" data-volume="0.4"
+    data-fx-chain='{"version":1,"nodes":[{"type":"peaking","id":"n1","params":{"frequency":250,"gain":-3,"q":1.2}}]}'></hf-audio-group>`;
+
+  it("errors on a bus no clip belongs to", async () => {
+    const res = await lintHyperframeHtml(doc(BUS));
+    const finding = res.findings.find((f) => f.code === "audio_group_no_members");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("voiceover");
+  });
+
+  // The whole point: one typo drops the authored bus (fader AND chain) and
+  // invents a phantom group at unity, with nothing said about either.
+  it("catches the misspelled member — the case that motivated the rule", async () => {
+    const res = await lintHyperframeHtml(
+      doc(
+        `${BUS}<audio id="vo-1" src="vo.wav" data-start="0" data-duration="5" data-audio-group="voiceovr"></audio>`,
+      ),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_group_no_members");
+    expect(finding?.elementId).toBe("voiceover");
+    expect(finding?.message).toContain("voiceovr");
+  });
+
+  it("stays quiet when a clip belongs to it", async () => {
+    const res = await lintHyperframeHtml(
+      doc(
+        `${BUS}<audio id="vo-1" src="vo.wav" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
+  });
+
+  // A bus with no id cannot be joined at all, and `resolveAudioGroups` skips it
+  // when building its element map — a different mistake, not this rule's.
+  it("stays quiet for a bus with no id", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`<hf-audio-group data-label="Nameless"></hf-audio-group>`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
+  });
+});
+
+describe("audio_group_timing_attrs", () => {
+  const doc = (busAttrs: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <hf-audio-group id="voiceover" data-label="Voiceover" ${busAttrs}></hf-audio-group>
+      <audio id="vo-1" src="vo.wav" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+    </div>
+  </body></html>`;
+
+  it("warns on data-start", async () => {
+    const res = await lintHyperframeHtml(doc(`data-start="0" data-duration="40"`));
+    const finding = res.findings.find((f) => f.code === "audio_group_timing_attrs");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("voiceover");
+    expect(finding?.message).toContain("data-start");
+    expect(finding?.message).toContain("data-duration");
+  });
+
+  it("warns on data-track-index", async () => {
+    const res = await lintHyperframeHtml(doc(`data-track-index="7"`));
+    expect(res.findings.some((f) => f.code === "audio_group_timing_attrs")).toBe(true);
+  });
+
+  it("stays quiet on a bus carrying only its own attributes", async () => {
+    const res = await lintHyperframeHtml(doc(`data-volume="0.4" data-hidden`));
+    expect(res.findings.some((f) => f.code === "audio_group_timing_attrs")).toBe(false);
+  });
+});
+
 describe("audio_carve_ungrouped_sources", () => {
   const withCarve = (carveJson: string, extra = "") => `<!DOCTYPE html><html><body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
