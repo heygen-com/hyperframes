@@ -9,6 +9,7 @@ import {
   type FadeSampler,
 } from "./clipFades";
 import { bendFromPointer, bendHandlePosition } from "./clipFadeBendDrag";
+import { CLIP_HANDLE_W } from "./timelineLayout";
 import { FADE_CURVE_LIMIT } from "@hyperframes/core/clip-fade";
 
 /**
@@ -51,12 +52,46 @@ export interface TimelineClipFadesProps {
   onCommit(next: ClipFades): void;
 }
 
-/** Side of the grip square, in px. Matches the trim handle's visual weight. */
-const GRIP = 9;
+/**
+ * The two handles, and why they look different.
+ *
+ * A fade has two things you can change and they move along different axes, so
+ * each gets the shape of its own axis: the length grip is a SQUARE that slides
+ * horizontally, the bend handle is a DOT that slides vertically. Telling them
+ * apart at a glance matters more than either being pretty, because they sit a
+ * few pixels from each other on a short fade.
+ */
+const GRIP = 10;
+const BEND = 8;
 
-/** Diameter of the bend handle. Smaller than a grip: it is a finer adjustment,
- *  and it sits on the line rather than on a corner you throw the pointer at. */
-const BEND = 7;
+/**
+ * How far a handle is held off the clip's edge.
+ *
+ * The clip is `overflow: hidden` with a rounded corner, so a handle centred on
+ * the corner loses its outer half to the clip and another bite to the radius.
+ * Parking it fully inside is the difference between a handle and a smear.
+ */
+const HANDLE_INSET = 2;
+
+/** Keep a handle's box inside the clip it belongs to. */
+function insetWithin(position: number, size: number, extent: number): number {
+  const limit = Math.max(HANDLE_INSET, extent - size - HANDLE_INSET);
+  return Math.max(HANDLE_INSET, Math.min(position, limit));
+}
+
+/**
+ * Where a fade grip parks when the clip has no fade yet.
+ *
+ * Not the very corner: the trim handle already owns that strip, and two
+ * controls sharing ten pixels means every grab is a coin toss over which one
+ * you got. Just inboard of it reads as the same corner without being the same
+ * pixels. Once a fade exists the grip leaves this spot anyway, because it rides
+ * the top of the wedge it drew.
+ */
+function parkedGripOffset(edge: "in" | "out", width: number): number {
+  const inboard = CLIP_HANDLE_W / 2;
+  return edge === "in" ? inboard : width - inboard - GRIP;
+}
 
 /** What the bend reads as, for a title and for a screen reader. */
 function bendLabel(curve: number): string {
@@ -230,15 +265,16 @@ export function TimelineClipFades({
         onPointerUp={onBendUp}
         onPointerCancel={onBendUp}
         title={`Drag up or down to bend this fade. ${label}`}
+        className="opacity-80 hover:opacity-100 transition-opacity"
         style={{
           position: "absolute",
-          left: at.x - BEND / 2,
+          left: insetWithin(at.x - BEND / 2, BEND, width),
           top: at.y - BEND / 2,
           width: BEND,
           height: BEND,
           borderRadius: "50%",
           background: accent,
-          boxShadow: "0 0 0 1.5px rgba(0,0,0,0.55)",
+          boxShadow: "0 0 0 1.5px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.45)",
           cursor: "ns-resize",
           pointerEvents: "auto",
           zIndex: 6,
@@ -253,6 +289,8 @@ export function TimelineClipFades({
     // Parked on the corner when there is no fade, which is where you grab to
     // start one; otherwise it rides the top of the wedge it drew.
     const x = edge === "in" ? span : width - span;
+    const drawn = seconds >= MIN_FADE_SECONDS;
+    const left = drawn ? x - GRIP / 2 : parkedGripOffset(edge, width);
     return (
       <div
         key={edge}
@@ -262,22 +300,30 @@ export function TimelineClipFades({
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={seconds}
-        aria-valuetext={seconds >= MIN_FADE_SECONDS ? `${seconds.toFixed(2)} seconds` : "No fade"}
+        aria-valuetext={drawn ? `${seconds.toFixed(2)} seconds` : "No fade"}
         data-clip-fade-grip={edge}
         onPointerDown={(event) => onGripDown(edge, event)}
         onPointerMove={onGripMove}
         onPointerUp={onGripUp}
         onPointerCancel={onGripUp}
-        title={`Fade ${edge}: drag to set its length. Drag the dot on the line to bend it.`}
+        title={
+          drawn
+            ? `Fade ${edge}, ${seconds.toFixed(2)}s. Drag to change its length.`
+            : `Drag in to fade ${edge}.`
+        }
+        // Quiet until it is carrying a value, and quiet until you go for it:
+        // parked in the corner it shares space with the clip's own label, and a
+        // solid white block there reads as damage rather than as a handle.
+        className="opacity-60 hover:opacity-100 transition-opacity"
         style={{
           position: "absolute",
-          left: x - GRIP / 2,
-          top: 1,
+          left: insetWithin(left, GRIP, width),
+          top: HANDLE_INSET,
           width: GRIP,
           height: GRIP,
-          borderRadius: 2,
-          background: "rgba(255,255,255,0.9)",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
+          borderRadius: 3,
+          background: drawn ? "#fff" : "rgba(255,255,255,0.75)",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.45)",
           cursor: "ew-resize",
           pointerEvents: "auto",
           zIndex: 6,
