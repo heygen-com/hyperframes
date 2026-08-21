@@ -3772,32 +3772,50 @@ async function executeRenderPipeline(input: {
         try {
           captureRes = await invokeDiskCapture(capturePlan);
         } catch (err) {
-          // Disk-path drawElement self-verification tripped (a parallel disk
-          // worker's sampled frame diverged from its pre-injection ground
-          // truth — reachable only under the explicit fast-capture opt-in).
-          // Same recovery contract as the streaming drain: re-render on the
-          // screenshot baseline. Anything else keeps its existing semantics.
+          // Two disk-path failures re-render on the screenshot baseline, and
+          // they are NOT the same failure:
+          //  - self-verification tripped (a parallel disk worker's sampled frame
+          //    diverged from its pre-injection ground truth — reachable only
+          //    under the explicit fast-capture opt-in);
+          //  - the renderer wedged and blew the per-frame deadline
+          //    (PRINFRA-488). The streaming drain already routed this; without
+          //    it here, the same stall on the disk path threw straight out and
+          //    failed the whole render, which is the behaviour the deadline was
+          //    added to remove.
+          // Anything else keeps its existing semantics.
+          const isDiskDeStall = isDeRendererStallError(err);
           if (
-            !isDrawElementVerificationError(err) ||
+            (!isDrawElementVerificationError(err) && !isDiskDeStall) ||
             err instanceof RenderCancelledError ||
             executionSignal?.aborted === true
           ) {
             throw err;
           }
-          deSelfVerifyFallback = true;
-          const t = deVerifyFallbackTelemetry(err);
-          deFallbackReason = t.reason;
-          deFallbackFailedDb = t.failedDb;
-          deFallbackFrameIndex = t.frameIndex;
-          deFallbackThresholdDb = t.thresholdDb;
+          deSelfVerifyFallback = !isDiskDeStall;
+          if (isDiskDeStall) {
+            // No score exists for a stall, so only the reason is set — same
+            // shape the streaming catch uses for this reason.
+            deFallbackReason = "de_renderer_stall";
+          } else {
+            const t = deVerifyFallbackTelemetry(err);
+            deFallbackReason = t.reason;
+            deFallbackFailedDb = t.failedDb;
+            deFallbackFrameIndex = t.frameIndex;
+            deFallbackThresholdDb = t.thresholdDb;
+          }
           log.warn(
-            "[Render] drawElement self-verification failed on the parallel disk path; " +
-              "re-rendering via screenshot",
+            isDiskDeStall
+              ? "[Render] drawElement wedged the renderer on the parallel disk path; " +
+                  "re-rendering via screenshot"
+              : "[Render] drawElement self-verification failed on the parallel disk path; " +
+                  "re-rendering via screenshot",
             { error: err instanceof Error ? err.message : String(err) },
           );
           observability.checkpoint(
             "capture_disk",
-            "drawElement self-verify failed; retrying with forceScreenshot",
+            isDiskDeStall
+              ? "drawElement renderer stall; retrying with forceScreenshot"
+              : "drawElement self-verify failed; retrying with forceScreenshot",
           );
           // The failed attempt's frames are untrusted BUT satisfy the
           // completeness check — wipe them so the retry re-captures everything
@@ -3818,7 +3836,10 @@ async function executeRenderPipeline(input: {
             probeSession = null;
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "disk verify");
           }
-          capturePlan = replanAfterFailure(capturePlan, { kind: "draw_element_verification" });
+          capturePlan = replanAfterFailure(
+            capturePlan,
+            isDiskDeStall ? { kind: "renderer_stall" } : { kind: "draw_element_verification" },
+          );
           syncCapturePlan();
           updateCaptureObservability({
             forceScreenshot: capturePlan.forceScreenshot,
