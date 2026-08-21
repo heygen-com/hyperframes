@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
+import { redactTelemetryString } from "@hyperframes/core";
 import { defaultLogger } from "../logger.js";
 import { NotMediaPayloadError } from "@hyperframes/engine";
 import {
@@ -2809,9 +2810,24 @@ describe("STUDIO-5433 — ffprobe failure includes src URL for attribution", () 
 
     expect(thrown).toBeInstanceOf(Error);
     const message = (thrown as Error).message;
-    expect(message).toContain("[src=assets/clip.mp4]");
+    // A bare relative path IS the redactor's `BARE_RELATIVE_PATH` shape (one
+    // separator + a media extension), so it lands as `[path]`. The attribution
+    // that matters is the remote-URL case below; a local relative src carries
+    // no host to attribute and the redactor is right to drop it.
+    expect(message).toContain("[src=[path]]");
     // Original ffprobe diagnostic must still be present so failure classifiers
     // downstream (e.g. hyperframes_render_metrics.py) continue to match.
     expect(message).toMatch(/ffprobe|Invalid data|No video stream/i);
+  });
+
+  // The STUDIO-5433 case is a remote src, and that is the shape whose
+  // attribution has to survive redaction: host + path kept, query dropped so a
+  // pre-signed signature never reaches telemetry. Pinned on the redactor
+  // directly — driving a remote src through `compileForRender` would need a
+  // download stub, and the wrapper's only transform IS this call.
+  it("keeps host and path but drops the query when redacting a remote src", () => {
+    expect(redactTelemetryString("https://cdn.example.com/renders/clip.mp4?sig=abc123&exp=1")).toBe(
+      "https://cdn.example.com/renders/clip.mp4?\u2026",
+    );
   });
 });

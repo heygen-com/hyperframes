@@ -456,6 +456,13 @@ async function resolveMediaDuration(
   // directly from the render error. Fail-fast semantics for the video branch
   // are preserved — only the message is enriched.
   const withSrcContext = (error: unknown): Error => {
+    // A NotMediaPayloadError already carries its own attribution AND the
+    // routing metadata downstream keys on — `.code = "NOT_MEDIA_PAYLOAD"`,
+    // `.owner = "user"`, `.retryable = false`, `.elementFingerprints`. Wrapping
+    // it in a bare Error drops all four, flipping a user-input bug to
+    // generic/system/retryable: it pages ops and re-runs the render. Pass it
+    // through untouched.
+    if (error instanceof NotMediaPayloadError) return error;
     const originalMessage = error instanceof Error ? error.message : String(error);
     const safeSrc = redactTelemetryString(src);
     const wrapped = new Error(`${originalMessage} [src=${safeSrc}]`);
