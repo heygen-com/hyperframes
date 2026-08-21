@@ -708,4 +708,64 @@ describe("core rules", () => {
       expect(finding).toBeUndefined();
     });
   });
+
+  describe("non_deterministic_code — determinism is about execution, not text", () => {
+    const comp = (script: string) => `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"></div>
+  <script src="gsap.min.js"></script>
+  <script>const tl = gsap.timeline({ paused: true }); ${script} window.__timelines = { main: tl };</script>
+</body></html>`;
+
+    it("does not flag new Date() with a fixed timestamp", async () => {
+      // Deterministic, and the fixHint ("remove time-dependent code") cannot be
+      // applied without deleting the label the composition renders.
+      const result = await lintHyperframeHtml(
+        comp(`const label = new Date("2026-01-01T00:00:00Z").toISOString();`),
+      );
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeUndefined();
+    });
+
+    it("does not flag non-deterministic APIs quoted inside a string literal", async () => {
+      // Code-display compositions render source they never execute.
+      const result = await lintHyperframeHtml(comp(`const SNIPPET = "const x = Math.random();";`));
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeUndefined();
+    });
+
+    it("still flags a bare new Date()", async () => {
+      const result = await lintHyperframeHtml(comp(`const now = new Date();`));
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+    });
+
+    it("still flags Math.random() in executed code", async () => {
+      const result = await lintHyperframeHtml(comp(`const r = Math.random();`));
+      expect(result.findings.find((f) => f.code === "non_deterministic_code")).toBeDefined();
+    });
+  });
+
+  describe("timeline_id_mismatch — only top-level registry keys are composition ids", () => {
+    const comp = (script: string) => `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"></div>
+  <script src="gsap.min.js"></script>
+  <script>${script}</script>
+</body></html>`;
+
+    it("does not flag the one-liner registration form", async () => {
+      // The inlined options object is not a registration. Reading `paused` as a
+      // composition id produced an error whose fixHint named a registration that
+      // did not exist, so it could never be applied.
+      const result = await lintHyperframeHtml(
+        comp(`window.__timelines = { main: gsap.timeline({ paused: true }) };`),
+      );
+      expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeUndefined();
+    });
+
+    it("still flags a genuinely mismatched id", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`window.__timelines = { wrongid: gsap.timeline({ paused: true }) };`),
+      );
+      expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeDefined();
+    });
+  });
 });

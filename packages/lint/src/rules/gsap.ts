@@ -1181,10 +1181,30 @@ export const gsapRules: LintRule<LintContext>[] = [
           ) ||
           selectors[0] ||
           tag.name;
+        // A window only re-hides the overlay if it is a DIFFERENT tween that ends
+        // hidden. Two exclusions matter:
+        //   - `win !== firstVisible`: the reveal counted itself.
+        //   - `method !== "from"`: a from-tween's recorded propertyValues are its
+        //     START state. `from({opacity: 0})` ENDS visible, so reading those values
+        //     as an end state made every from-reveal look like its own later hide.
+        // Together these are what made the `from` shape report at all.
         const laterHidden = visibilityWindows.some(
-          (win) => win.position >= firstVisible.position && isHiddenGsapState(win.propertyValues),
+          (win) =>
+            win !== firstVisible &&
+            win.method !== "from" &&
+            win.position >= firstVisible.position &&
+            isHiddenGsapState(win.propertyValues),
         );
-        if (firstVisible.method !== "from" && !laterHidden) continue;
+        // Only the later-hidden shape is a real defect. The `from` shape is not:
+        // gsap.from() seats its start values immediately, so on a paused timeline the
+        // overlay already measures opacity 0 at t=0 and never covers an early frame.
+        //
+        // Worse, it had no exit. Both fixHints below (authored CSS `opacity: 0`, or an
+        // immediate `gsap.set`) turn a working composition into a real defect that
+        // `gsap_from_opacity_noop` correctly errors on — and that rule's fixHint says to
+        // remove the very thing we just asked for, closing the loop. An agent applying
+        // either hint bounces between the two errors forever.
+        if (!laterHidden) continue;
 
         reportedVisibleOverlayKeys.add(overlayKey);
         findings.push({

@@ -163,4 +163,33 @@ describe("caption rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
   });
+
+  describe("caption_text_overflow_risk — its fix must not create an error", () => {
+    const cap = (css: string) => `
+<html><body>
+  <div data-composition-id="captions" data-width="1920" data-height="1080">
+    <style>.caption-group{${css}}</style><div class="caption-group"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    words.forEach((w) => tl.to(w, { scale: 1.3 }));
+    window.__timelines = { captions: tl };
+  </script>
+</body></html>`;
+
+    it("clears when the fixHint is applied as written", async () => {
+      // The hint used to say "and overflow: hidden", which is exactly what
+      // caption_overflow_clips_scaled_words errors on. Following the warning
+      // produced an error.
+      const before = await lintHyperframeHtml(cap("position:absolute;white-space:nowrap"));
+      expect(before.findings.find((f) => f.code === "caption_text_overflow_risk")).toBeDefined();
+
+      const after = await lintHyperframeHtml(
+        cap("position:absolute;white-space:nowrap;max-width:1600px;overflow:visible"),
+      );
+      const blocking = after.findings.filter((f) => f.severity !== "info");
+      expect(blocking.map((f) => f.code)).not.toContain("caption_text_overflow_risk");
+      expect(blocking.map((f) => f.code)).not.toContain("caption_overflow_clips_scaled_words");
+    });
+  });
 });

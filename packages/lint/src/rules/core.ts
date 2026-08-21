@@ -6,6 +6,7 @@ import {
   readDecodedAttr,
   truncateSnippet,
   stripJsComments,
+  stripStringLiterals,
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
@@ -204,6 +205,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // root_missing_composition_id + root_missing_dimensions
+  // fallow-ignore-next-line complexity
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
     if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
@@ -247,6 +249,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
+  // fallow-ignore-next-line complexity
   ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
@@ -439,7 +442,13 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // non_deterministic_code
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
-    const patterns: Array<{ pattern: RegExp; label: string; hint: string }> = [
+    const patterns: Array<{
+      pattern: RegExp;
+      label: string;
+      hint: string;
+      /** Match against raw source, because the value being matched is a string GSAP parses. */
+      scansStrings?: boolean;
+    }> = [
       {
         pattern: /Math\.random\s*\(/,
         label: "Math.random()",
@@ -451,7 +460,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
       },
       {
-        pattern: /new\s+Date\s*\(/,
+        // Zero-arg only. `new Date(<fixed timestamp>)` is fully deterministic and is how
+        // a composition labels a fixed date on an axis or card; the hint ("remove
+        // time-dependent code") cannot be applied to it without deleting the label.
+        pattern: /new\s+Date\s*\(\s*\)/,
         label: "new Date()",
         hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
       },
@@ -472,16 +484,25 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       },
       {
         // GSAP string form: "random(...)" / "+=random(...)" — re-rolls at tween init.
+        // `scansStrings` because here the string IS the executed value: GSAP parses it.
+        // Every other pattern above matches executable code, so a match inside a string
+        // literal is inert text and must not be reported.
         pattern: /["'`](?:[+-]=)?random\(\s*[-\d[]/,
+        scansStrings: true,
         label: '"random(...)" tween value',
         hint: "GSAP random string values re-roll at tween init and each render worker initializes independently. Use fixed values or precompute with a seeded PRNG.",
       },
     ];
 
     for (const script of scripts) {
-      const stripped = stripJsComments(script.content);
-      for (const { pattern, label, hint } of patterns) {
-        if (pattern.test(stripped)) {
+      const withoutComments = stripJsComments(script.content);
+      // Strings are content, not code. A composition that DISPLAYS source (the
+      // code-snippet blocks, /pr-to-video) carries `Math.random()` inside a string
+      // literal it never executes, and reported itself non-deterministic with no
+      // way to clear the error while still rendering the snippet.
+      const executable = stripStringLiterals(withoutComments);
+      for (const { pattern, label, hint, scansStrings } of patterns) {
+        if (pattern.test(scansStrings ? withoutComments : executable)) {
           findings.push({
             code: "non_deterministic_code",
             severity: "error",

@@ -59,14 +59,6 @@ const HEAVY_OVERLAY_CSS_PATTERN =
   /(?:filter\s*:[^;}]*\bblur\s*\()|(?:clip-path\s*:(?!\s*(?:none|inherit|initial|unset)\b)\s*[^;}]+)|(?:radial-gradient\s*\()/i;
 const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
 
-// `parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004`. Sub-second
-// authored adjacencies survive parse + add as a value a few ulps above the
-// next clip's start; a strict `>` fires the overlap rule on adjacencies that
-// are exact in the source HTML. 1μs sits ~11 orders of magnitude above the
-// observed drift (worst ~2e-16s across every realistic decimal pair) and 4
-// below one 60fps frame (~16.67ms), so this only ever swallows float slop.
-const OVERLAP_EPSILON_SECONDS = 1e-6;
-
 function readTagTiming(rawTag: string) {
   return readClipTiming({ getAttribute: (name) => readAttr(rawTag, name) });
 }
@@ -164,6 +156,7 @@ function leftmostCompoundId(selector: string): string | null {
 // are scanned — the flat `[^{}]*` body class naturally skips @keyframes
 // bodies (which contain nested `{...}` stops) and other @-rules, so keyframe
 // selectors like `0%`/`100%` don't leak in.
+// fallow-ignore-next-line complexity
 function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   classes: Set<string>;
   ids: Set<string>;
@@ -552,75 +545,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint:
           'Add class="clip" to the element so Studio and the linter can recognise it as a clip.',
         snippet: truncateSnippet(tag.raw),
-      });
-    }
-    return findings;
-  },
-
-  // overlapping_clips_same_track
-  // fallow-ignore-next-line complexity
-  ({ tags }) => {
-    const findings: HyperframeLintFinding[] = [];
-
-    type ClipInfo = { start: number; end: number; elementId?: string; snippet: string };
-    const trackMap = new Map<string, ClipInfo[]>();
-
-    for (const tag of tags) {
-      const trackStr = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
-      if (!trackStr) continue;
-      const timing = readTagTiming(tag.raw);
-      const { start, duration } = timing;
-      const track = trackStr;
-
-      // Skip non-numeric (relative timing references like "intro-comp")
-      if (start == null || duration == null) continue;
-
-      const clips = trackMap.get(track) || [];
-      clips.push({
-        start,
-        end: start + duration,
-        elementId: readAttr(tag.raw, "id") || undefined,
-        snippet: truncateSnippet(tag.raw) || "",
-      });
-      trackMap.set(track, clips);
-    }
-
-    for (const [track, clips] of trackMap) {
-      clips.sort((a, b) => a.start - b.start);
-      for (let i = 0; i < clips.length - 1; i++) {
-        const current = clips[i];
-        const next = clips[i + 1];
-        if (!current || !next) continue;
-        if (current.end - next.start > OVERLAP_EPSILON_SECONDS) {
-          findings.push({
-            code: "overlapping_clips_same_track",
-            severity: "error",
-            message: `Track ${track}: clip ending at ${current.end}s overlaps with clip starting at ${next.start}s. Overlapping clips on the same track cause rendering conflicts.`,
-            fixHint:
-              "Adjust data-start or data-duration so clips on the same track do not overlap, or move one clip to a different data-track-index.",
-          });
-        }
-      }
-    }
-
-    return findings;
-  },
-
-  // root_composition_missing_data_start
-  ({ rootTag, options }) => {
-    const findings: HyperframeLintFinding[] = [];
-    if (options.isSubComposition) return findings;
-    if (!rootTag) return findings;
-    const compId = readDecodedAttr(rootTag.raw, "data-composition-id");
-    if (!compId) return findings;
-    const hasStart = readAttr(rootTag.raw, "data-start") !== null;
-    if (!hasStart) {
-      findings.push({
-        code: "root_composition_missing_data_start",
-        severity: "error",
-        message: `Root composition "${compId}" is missing data-start. The runtime needs data-start="0" on the root element to begin playback.`,
-        fixHint: 'Add data-start="0" to the root composition element.',
-        snippet: truncateSnippet(rootTag.raw),
       });
     }
     return findings;
