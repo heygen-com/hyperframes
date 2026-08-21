@@ -64,4 +64,23 @@ describe("windowsChromeCrashRemediation", () => {
       ),
     ).toBeUndefined();
   });
+
+  // The hint only ever renders on win32, so on CI (Linux) the string itself is
+  // otherwise unasserted. Both shell forms have to be there: `set` is cmd.exe,
+  // and in PowerShell it resolves to the Set-Variable alias — a shell variable
+  // that never reaches the child process, so a PowerShell user would follow the
+  // hint exactly and see no change.
+  it("names both the cmd.exe and the PowerShell way to set the env var", () => {
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      const hint = windowsChromeCrashRemediation(
+        "Failed to launch the browser process! Code: 3221225595",
+      );
+      expect(hint).toContain('set HYPERFRAMES_BROWSER_PATH="C:\\Program Files');
+      expect(hint).toContain('$env:HYPERFRAMES_BROWSER_PATH = "C:\\Program Files');
+    } finally {
+      Object.defineProperty(process, "platform", { value: original, configurable: true });
+    }
+  });
 });
