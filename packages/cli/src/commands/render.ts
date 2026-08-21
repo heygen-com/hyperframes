@@ -1558,6 +1558,10 @@ function trackRenderMetrics(
     extractPhase3Ms: extract?.extractMs,
     extractCacheHits: extract?.cacheHits,
     extractCacheMisses: extract?.cacheMisses,
+    extractCachePublishFailures: extract?.cachePublishFailures,
+    extractCacheGcEvictions: extract?.cacheGcEvictions,
+    extractCacheGcBytesFreed: extract?.cacheGcBytesFreed,
+    extractCacheAgedPartialsCleared: extract?.cacheAgedPartialsCleared,
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });

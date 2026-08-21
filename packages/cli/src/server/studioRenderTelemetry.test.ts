@@ -109,10 +109,12 @@ const fullPerf: RenderPerfSummary = {
     extractMs: 60,
     cacheHits: 3,
     cacheMisses: 4,
-    cachePublishFailures: 0,
-    cacheGcEvictions: 0,
-    cacheGcBytesFreed: 0,
-    cacheAgedPartialsCleared: 0,
+    // Distinct non-zero values: all-zeros cannot tell a correct mapping from
+    // one that crossed two fields.
+    cachePublishFailures: 5,
+    cacheGcEvictions: 6,
+    cacheGcBytesFreed: 7,
+    cacheAgedPartialsCleared: 8,
   },
   tmpPeakBytes: 1024,
   captureAvgMs: 13,
@@ -184,6 +186,10 @@ describe("studioRenderTelemetry", () => {
       expect(p.extractPhase3Ms).toBe(60);
       expect(p.extractCacheHits).toBe(3);
       expect(p.extractCacheMisses).toBe(4);
+      expect(p.extractCachePublishFailures).toBe(5);
+      expect(p.extractCacheGcEvictions).toBe(6);
+      expect(p.extractCacheGcBytesFreed).toBe(7);
+      expect(p.extractCacheAgedPartialsCleared).toBe(8);
       // observability aggregate
       expect(p.observabilityRenderJobId).toBe("render-123");
       expect(p.observabilityCompositionHash).toBe("abc123");
