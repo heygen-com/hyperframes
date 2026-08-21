@@ -419,7 +419,18 @@ export function findTimelineDomNodeForClip(
   const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));
   if (exact) return exact;
 
-  return candidates[fallbackIndex] ?? null;
+  // Positional fallback, but never across tags. A clip whose element carries no
+  // [data-start] of its own (an expanded child row, say) is not a candidate here,
+  // so without this guard it takes candidates[fallbackIndex] — an unrelated node —
+  // and corrupts TWO clips at once: the thief gets a host that is not its element,
+  // and the rightful owner is starved to null, losing hfId/domId/selector and with
+  // them canMove. That is what produced "This clip can't be moved or resized from
+  // the timeline yet" on clips that were perfectly well-formed.
+  const positional = candidates[fallbackIndex];
+  if (!positional) return null;
+  const clipTag = clip.tagName?.toLowerCase();
+  if (clipTag && positional.tagName.toLowerCase() !== clipTag) return null;
+  return positional;
 }
 
 // ---------------------------------------------------------------------------

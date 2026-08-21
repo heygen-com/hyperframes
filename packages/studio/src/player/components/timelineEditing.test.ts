@@ -377,12 +377,58 @@ describe("hasPatchableTimelineTarget", () => {
     expect(hasPatchableTimelineTarget({ selector: ".hero-card" })).toBe(true);
   });
 
+  it("returns true when the clip only has an hfId", () => {
+    // Studio stamps data-hf-id into the source and resolves it ahead of id/selector,
+    // so an hfId-only clip is patchable. Regression: it used to report false, which
+    // blocked dragging any authored clip the user had not given an id.
+    expect(hasPatchableTimelineTarget({ hfId: "hf-6wbt" })).toBe(true);
+  });
+
   it("returns false when the clip has no stable patch target", () => {
     expect(hasPatchableTimelineTarget({})).toBe(false);
   });
 });
 
 describe("getTimelineEditCapabilities", () => {
+  it("lets an hfId-only authored clip move and trim", () => {
+    // A plain <div class="clip" data-start data-duration> with no author id: the
+    // exact shape that produced "This clip can't be moved or resized from the
+    // timeline yet" while the DOM-edit path considered the same element editable.
+    expect(
+      getTimelineEditCapabilities({
+        tag: "div",
+        kind: "element",
+        duration: 2.6,
+        hfId: "hf-opwy",
+        timingSource: "authored",
+      }),
+    ).toEqual({ canMove: true, canTrimStart: true, canTrimEnd: true });
+  });
+
+  it("still refuses an hfId-only clip whose timing is implicit", () => {
+    expect(
+      getTimelineEditCapabilities({
+        tag: "div",
+        kind: "element",
+        duration: 2.6,
+        hfId: "hf-opwy",
+        timingSource: "implicit",
+      }).canMove,
+    ).toBe(false);
+  });
+
+  it("still refuses an hfId-only clip on a locked row", () => {
+    expect(
+      getTimelineEditCapabilities({
+        tag: "div",
+        kind: "element",
+        duration: 2.6,
+        hfId: "hf-opwy",
+        timelineLocked: true,
+      }).canMove,
+    ).toBe(false);
+  });
+
   it("does not disable editable audio just because it spans multiple scenes", () => {
     expect(
       getTimelineEditCapabilities({

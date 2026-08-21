@@ -11,6 +11,7 @@ export function canMoveTimelineElement(element: TimelineElement): boolean {
     duration: element.duration,
     domId: element.domId,
     selector: element.selector,
+    hfId: element.hfId,
     compositionSrc: element.compositionSrc,
     playbackStart: element.playbackStart,
     playbackStartAttr: element.playbackStartAttr,
