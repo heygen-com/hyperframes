@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const publishState = vi.hoisted(() => ({ publish: vi.fn() }));
@@ -37,17 +37,16 @@ describe("parseUpdateTarget", () => {
 });
 
 describe("publish default-entry preflight", () => {
-  it("rejects the real fixture before creating or uploading an archive", async () => {
+  async function runEntryMismatch(candidate: string): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-entry-mismatch-"));
-    const compositions = join(project, "compositions");
-    const authoredProject = join(compositions, "brand");
-    mkdirSync(authoredProject, { recursive: true });
+    const candidatePath = join(project, candidate);
+    mkdirSync(dirname(candidatePath), { recursive: true });
     writeFileSync(
       join(project, "index.html"),
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
     );
     writeFileSync(
-      join(authoredProject, "index.html"),
+      candidatePath,
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
     publishState.publish.mockReset();
@@ -69,10 +68,25 @@ describe("publish default-entry preflight", () => {
         publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
       ).rejects.toMatchObject({ name: "CliRuntimeError" });
       expect(publishState.publish).not.toHaveBeenCalled();
-      expect(lines.join("\n")).toContain("hyperframes publish <project>/compositions/brand");
+      return lines.join("\n");
     } finally {
       log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
+  }
+
+  it("suggests a nested index.html directory with the re-rooting caveat", async () => {
+    const output = await runEntryMismatch("compositions/brand/index.html");
+
+    expect(output).toContain("hyperframes publish <project>/compositions/brand");
+    expect(output).toContain("assets are self-contained under that directory");
+  });
+
+  it("does not suggest a directory for a standalone file that is not index.html", async () => {
+    const output = await runEntryMismatch("compositions/card.html");
+
+    expect(output).toContain("compositions/card.html");
+    expect(output).not.toContain("hyperframes publish <project>/compositions");
+    expect(output).toContain("publish accepts project directories, not individual HTML files");
   });
 });

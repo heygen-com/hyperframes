@@ -101,10 +101,10 @@ export default defineCommand({
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
           const candidateDir = posix.dirname(candidate);
-          const target = candidateDir === "." ? "<project>" : `<project>/${candidateDir}`;
+          const target = `<project>/${candidateDir}`;
           console.log(
             c.dim(
-              `  Move or mount the authored file, or publish its directory directly: hyperframes publish ${target}`,
+              `  Move or mount the authored file, or publish its directory directly: hyperframes publish ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
             ),
           );
         } else if (candidate) {

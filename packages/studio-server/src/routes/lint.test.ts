@@ -72,6 +72,7 @@ describe("registerLintRoutes — dot-directory exclusion (#1384)", () => {
                 code: "blank_root_with_standalone_composition",
                 severity: "error",
                 message: "The default entry is blank.",
+                file: join(projectDir, "index.html"),
               },
             ],
           },
@@ -99,6 +100,50 @@ describe("registerLintRoutes — dot-directory exclusion (#1384)", () => {
         code: "blank_root_with_standalone_composition",
         file: "index.html",
       }),
+    );
+  });
+
+  it("unions project lint with HTML files outside the canonical project graph", async () => {
+    const projectDir = createProjectDir();
+    const scenesDir = join(projectDir, "scenes");
+    mkdirSync(scenesDir);
+    writeFileSync(join(scenesDir, "intro.html"), "<html><body>intro</body></html>");
+    const singleFileLint = vi.fn(async () => ({
+      findings: [
+        {
+          code: "scene_finding",
+          severity: "warning",
+          message: "Scene finding.",
+          file: join(projectDir, "scenes", "intro.html"),
+        },
+      ],
+    }));
+    const projectLint = vi.fn(async () => ({
+      results: [
+        {
+          file: "index.html",
+          result: { findings: [] },
+        },
+      ],
+    }));
+    const app = new Hono();
+    registerLintRoutes(app, {
+      ...createAdapter(projectDir),
+      lint: singleFileLint,
+      lintProject: projectLint,
+    });
+
+    const response = await app.request("http://localhost/projects/demo/lint");
+    const payload = (await response.json()) as {
+      findings?: Array<{ code?: string; file?: string }>;
+    };
+
+    expect(singleFileLint).toHaveBeenCalledTimes(1);
+    expect(singleFileLint).toHaveBeenCalledWith("<html><body>intro</body></html>", {
+      filePath: "scenes/intro.html",
+    });
+    expect(payload.findings).toContainEqual(
+      expect.objectContaining({ code: "scene_finding", file: "scenes/intro.html" }),
     );
   });
 });

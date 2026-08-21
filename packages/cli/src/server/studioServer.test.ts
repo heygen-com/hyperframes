@@ -88,6 +88,7 @@ describe("Studio project lint endpoint", () => {
   it("surfaces findings that require the complete project graph", async () => {
     const projectDir = tmpProject();
     mkdirSync(join(projectDir, "compositions"));
+    mkdirSync(join(projectDir, "scenes"));
     writeFileSync(
       join(projectDir, "index.html"),
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
@@ -96,15 +97,20 @@ describe("Studio project lint endpoint", () => {
       join(projectDir, "compositions", "index.html"),
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
+    writeFileSync(join(projectDir, "scenes", "intro.html"), "<html><body>Intro</body></html>");
     server = createStudioServer({ projectDir, projectName: "demo" });
 
     const response = await server.app.request("http://localhost/api/projects/demo/lint");
-    const payload = (await response.json()) as { findings?: Array<{ code?: string }> };
+    const payload = (await response.json()) as {
+      findings?: Array<{ code?: string; file?: string }>;
+    };
 
     expect(response.status).toBe(200);
     expect(payload.findings).toContainEqual(
       expect.objectContaining({ code: "blank_root_with_standalone_composition" }),
     );
+    expect(payload.findings).toContainEqual(expect.objectContaining({ file: "scenes/intro.html" }));
+    expect(payload.findings?.every((finding) => !finding.file?.startsWith(projectDir))).toBe(true);
   });
 });
 

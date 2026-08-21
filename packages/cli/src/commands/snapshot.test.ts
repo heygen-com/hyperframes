@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const snapshotState = vi.hoisted(() => ({
@@ -85,16 +85,16 @@ describe("transparent snapshot capture", () => {
 });
 
 describe("snapshot lint preflight", () => {
-  it("rejects the real fixture before invoking browser capture", async () => {
+  async function runEntryMismatch(candidate: string): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-snapshot-entry-mismatch-"));
-    const compositions = join(project, "compositions");
-    mkdirSync(compositions);
+    const candidatePath = join(project, candidate);
+    mkdirSync(dirname(candidatePath), { recursive: true });
     writeFileSync(
       join(project, "index.html"),
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
     );
     writeFileSync(
-      join(compositions, "card.html"),
+      candidatePath,
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
     snapshotState.openSettledPage.mockClear();
@@ -110,15 +110,26 @@ describe("snapshot lint preflight", () => {
         name: "CliRuntimeError",
       });
       expect(snapshotState.openSettledPage).not.toHaveBeenCalled();
-      expect(lines.join("\n")).toContain("compositions/card.html");
-      expect(lines.join("\n")).not.toContain("hyperframes snapshot <project>/compositions");
-      expect(lines.join("\n")).toContain(
-        "snapshot accepts project directories, not individual HTML files",
-      );
+      return lines.join("\n");
     } finally {
       log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
+  }
+
+  it("does not suggest a directory for a standalone file that is not index.html", async () => {
+    const output = await runEntryMismatch("compositions/card.html");
+
+    expect(output).toContain("compositions/card.html");
+    expect(output).not.toContain("hyperframes snapshot <project>/compositions");
+    expect(output).toContain("snapshot accepts project directories, not individual HTML files");
+  });
+
+  it("suggests the reported index.html directory with the re-rooting caveat", async () => {
+    const output = await runEntryMismatch("compositions/index.html");
+
+    expect(output).toContain("hyperframes snapshot <project>/compositions");
+    expect(output).toContain("assets are self-contained under that directory");
   });
 });
 
