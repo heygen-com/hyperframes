@@ -84,9 +84,8 @@ function isRelativeUrl(url: string): boolean {
   return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
-function safeReadFile(filePath: string, projectDir?: string): string | null {
+function safeReadFile(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
-  if (projectDir != null && !isSymlinkWithinProject(filePath, projectDir)) return null;
   try {
     return readFileSync(filePath, "utf-8");
   } catch {
@@ -236,7 +235,7 @@ function inlineCssFile(
       // project root; isSafePath also blocks symlink escapes (content is inlined).
       if (!isSafePath(projectDir, resolved)) return full;
       if (visited.has(resolved)) return "";
-      const content = safeReadFile(resolved, projectDir);
+      const content = safeReadFile(resolved);
       if (content == null) return full;
       visited.add(resolved);
       const inlined = inlineCssFile(content, dirname(resolved), projectDir, visited);
