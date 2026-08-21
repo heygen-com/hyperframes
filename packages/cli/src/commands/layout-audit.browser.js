@@ -1517,7 +1517,18 @@
     const parts = elements.map((element) => {
       const rect = toRect(element.getBoundingClientRect());
       const opacity = round(opacityChain(element));
-      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
+      // Variable-font axis animation (font-variation-settings) is a real,
+      // visible motion channel that moves no geometry and no opacity, so a
+      // box+opacity fingerprint reads it as a frozen timeline. Worse in a
+      // DUPLEXED face (Recursive holds an identical advance width at every
+      // weight by design), where not even the line width shifts — the whole
+      // run then false-positives sweep_static. Fold the computed axis string
+      // in; it is "normal" for every element that does not use it, so this
+      // adds nothing to the fingerprint of an ordinary composition.
+      const axes = getComputedStyle(element).fontVariationSettings;
+      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity},${
+        axes && axes !== "normal" ? axes : ""
+      }`;
     });
     for (const media of root.querySelectorAll("canvas, video")) {
       if (!isVisibleElement(media)) continue;
