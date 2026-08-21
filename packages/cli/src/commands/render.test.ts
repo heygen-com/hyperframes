@@ -222,6 +222,7 @@ describe("renderLocal browser GPU config", () => {
     renderLocal,
     resolveBrowserGpuForCli,
     renderLintContinuationHint,
+    renderLintShouldAbort,
     __resetDeParallelRouterTrialStateForTests: resetTrialState,
   } = renderModule;
 
@@ -232,6 +233,35 @@ describe("renderLocal browser GPU config", () => {
 
   it("points non-strict renders to --strict for lint errors", () => {
     expect(renderLintContinuationHint(false)).toContain("Use --strict to block errors");
+  });
+
+  it("always blocks a definitive default-entry mismatch even without --strict", () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: false,
+            errorCount: 1,
+            warningCount: 0,
+            infoCount: 0,
+            findings: [
+              {
+                code: "blank_root_with_standalone_composition",
+                severity: "error" as const,
+                message: "wrong entry",
+              },
+            ],
+          },
+        },
+      ],
+      totalErrors: 1,
+      totalWarnings: 0,
+      totalInfos: 0,
+    };
+
+    expect(renderLintShouldAbort(false, false, lintResult)).toBe(true);
   });
 
   function setEnv(key: string, value: string) {

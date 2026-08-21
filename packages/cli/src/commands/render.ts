@@ -5,9 +5,13 @@ import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync
 import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
 import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { presentRenderPlan } from "./render/present.js";
-import { executeRenderPlan, renderLintContinuationHint } from "./render/execute.js";
+import {
+  executeRenderPlan,
+  renderLintContinuationHint,
+  renderLintShouldAbort,
+} from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
-export { resolveBrowserGpuForCli, renderLintContinuationHint };
+export { resolveBrowserGpuForCli, renderLintContinuationHint, renderLintShouldAbort };
 
 export const examples: Example[] = [
   ["Render to MP4", "hyperframes render --output output.mp4"],

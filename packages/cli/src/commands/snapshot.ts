@@ -15,6 +15,12 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  hasDefinitiveEntryMismatch,
+  lintProject,
+  type ProjectLintResult,
+} from "../utils/lintProject.js";
+import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -108,6 +114,10 @@ export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   throw new Error(
     `FFmpeg is required to extract video frames for snapshots. ${getFFmpegInstallHint()}`,
   );
+}
+
+export function snapshotLintShouldAbort(lintResult: ProjectLintResult): boolean {
+  return hasDefinitiveEntryMismatch(lintResult);
 }
 
 /**
@@ -650,6 +660,17 @@ export default defineCommand({
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
+    const lintResult = await lintProject(project.dir);
+    if (snapshotLintShouldAbort(lintResult)) {
+      console.log("");
+      for (const line of formatLintFindings(lintResult, { errorsFirst: true })) {
+        console.log(line);
+      }
+      console.log("");
+      console.log(c.error("  Aborting snapshot because the default index.html entry is blank."));
+      console.log("");
+      failCommand();
+    }
     const frames = parseInt(args.frames as string, 10) || 5;
     const timeout = parseInt(args.timeout as string, 10) || 5000;
     const atTimestamps = args.at

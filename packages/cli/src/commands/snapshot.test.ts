@@ -7,6 +7,7 @@ import {
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
+  snapshotLintShouldAbort,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -59,6 +60,37 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain("resolveLocalBrowserGpuMode");
     expect(source).toContain("browserGpuMode: opts.browserGpuMode");
     expect(source).toContain('"browser-gpu": {');
+  });
+});
+
+describe("snapshot lint preflight", () => {
+  it("blocks a blank default entry that would otherwise capture the wrong composition", () => {
+    const lintResult = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: false,
+            errorCount: 1,
+            warningCount: 0,
+            infoCount: 0,
+            findings: [
+              {
+                code: "blank_root_with_standalone_composition",
+                severity: "error" as const,
+                message: "wrong entry",
+              },
+            ],
+          },
+        },
+      ],
+      totalErrors: 1,
+      totalWarnings: 0,
+      totalInfos: 0,
+    };
+
+    expect(snapshotLintShouldAbort(lintResult)).toBe(true);
   });
 });
 

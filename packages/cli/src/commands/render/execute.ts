@@ -3,7 +3,12 @@ import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/c
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes } from "../../ui/format.js";
 import { formatLintFindings } from "../../utils/lintFormat.js";
-import { lintProject, shouldBlockRender } from "../../utils/lintProject.js";
+import {
+  hasDefinitiveEntryMismatch,
+  lintProject,
+  shouldBlockRender,
+  type ProjectLintResult,
+} from "../../utils/lintProject.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 import {
@@ -38,6 +43,17 @@ export function renderLintContinuationHint(strictErrors: boolean): string {
   return strictErrors
     ? "  Continuing render despite lint warnings. Use --strict-all to block warnings."
     : "  Continuing render despite lint issues. Use --strict to block errors.";
+}
+
+export function renderLintShouldAbort(
+  strictErrors: boolean,
+  strictAll: boolean,
+  lintResult: ProjectLintResult,
+): boolean {
+  return (
+    hasDefinitiveEntryMismatch(lintResult) ||
+    shouldBlockRender(strictErrors, strictAll, lintResult.totalErrors, lintResult.totalWarnings)
+  );
 }
 
 /** Execute a validated plan. Output and process lifecycle stay outside parsing. */
@@ -165,15 +181,9 @@ async function runRenderLint(plan: RenderPlan): Promise<void> {
   const lintResult = await lintProject(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
   presentRenderLintFindings(lintResult, plan.effectiveQuiet);
-  if (
-    shouldBlockRender(
-      plan.strictErrors,
-      plan.strictAll,
-      lintResult.totalErrors,
-      lintResult.totalWarnings,
-    )
-  ) {
-    presentRenderLintAbort(plan);
+  const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
+  if (renderLintShouldAbort(plan.strictErrors, plan.strictAll, lintResult)) {
+    presentRenderLintAbort(plan, definitiveEntryMismatch);
     failCommand();
   }
   presentRenderLintContinuation(plan);
@@ -188,11 +198,16 @@ function presentRenderLintFindings(
   for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
 }
 
-function presentRenderLintAbort(plan: RenderPlan): void {
+function presentRenderLintAbort(plan: RenderPlan, definitiveEntryMismatch: boolean): void {
   if (plan.effectiveQuiet) return;
-  const mode = plan.strictAll ? "--strict-all" : "--strict";
   console.log("");
-  console.log(c.error(`  Aborting render due to lint issues (${mode} mode).`));
+  console.log(
+    c.error(
+      definitiveEntryMismatch
+        ? "  Aborting render because the default index.html entry is blank."
+        : `  Aborting render due to lint issues (${plan.strictAll ? "--strict-all" : "--strict"} mode).`,
+    ),
+  );
   console.log("");
 }
 
