@@ -84,12 +84,13 @@ describe("serialize() render-faithfulness (WS-F)", () => {
     const comp = await openComposition(BASE_HTML);
     comp.setTiming("hf-body", { start: 2, duration: 3 });
     const html = comp.serialize();
-    // data-start and data-end are the serialized form of timing
+    // `writeClipTiming` canonicalizes timing onto data-start + data-duration and
+    // drops the legacy data-end, so that pair IS the serialized form.
     expect(html).toContain('data-start="2"');
-    expect(html).toContain('data-end="5"');
-    // hf-title already carries data-end="5", so the assertion above passes even
-    // if the write became a no-op. hf-body's own pre-mutation end is the half
-    // that has to disappear.
+    expect(html).toContain('data-duration="3"');
+    // hf-body's own pre-mutation end has to be gone. Asserting the presence of
+    // `data-end="5"` instead would pass on a no-op write — hf-title carries
+    // that exact value in the fixture.
     expect(html).not.toContain('data-end="6"');
   });
 
@@ -140,9 +141,11 @@ describe("serialize() render-faithfulness (WS-F)", () => {
     // setText
     expect(html).toContain("Render Ready");
 
-    // setTiming → data-start / data-end
+    // setTiming → data-start / data-duration, with hf-title's legacy data-end
+    // dropped by the canonicalization.
     expect(html).toContain('data-start="0.5"');
-    expect(html).toContain('data-end="4.5"');
+    expect(html).toContain('data-duration="4"');
+    expect(html).not.toContain('data-end="5"');
 
     // moveElement. data-x="900" is unique to this edit; data-y="50" is not —
     // hf-box carries it in the fixture — so pin the disappearance of hf-logo's
