@@ -1059,6 +1059,38 @@ describe("composition rules", () => {
     });
   });
 
+  describe("unloadable_media_variable_default", () => {
+    const CODE = "unloadable_media_variable_default";
+    const find = (r: { findings: { code: string }[] }) => r.findings.find((f) => f.code === CODE);
+
+    it("errors on an image variable defaulting to a file:// URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"bg","type":"image","label":"BG","default":"file:///abs/assets/blue.png"}]'><body><img data-composition-id="x" src="assets/red.png" data-var-src="bg"></body></html>`;
+      const finding = find(await lintHyperframeHtml(html));
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toMatch(/authored fallback/);
+    });
+
+    it("errors on a non-image variable that a data-var-src binding consumes as a URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"clip","type":"string","label":"Clip","default":"file:///abs/a.mp4"}]'><body><video data-composition-id="x" src="a.mp4" data-var-src="clip"></video></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeDefined();
+    });
+
+    it("stays quiet for relative, http(s) and data:image defaults", async () => {
+      const html = `<html data-composition-variables='[
+        {"id":"a","type":"image","label":"A","default":"assets/blue.png"},
+        {"id":"b","type":"image","label":"B","default":"https://example.com/b.png"},
+        {"id":"c","type":"image","label":"C","default":"data:image/png;base64,iVBORw0KGgo="}
+      ]'><body><img data-composition-id="x" src="r.png" data-var-src="a"></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeUndefined();
+    });
+
+    it("does not treat an unbound scalar variable as a URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"note","type":"string","label":"Note","default":"mailto:hi@example.com"}]'><body><div data-composition-id="x"></div></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeUndefined();
+    });
+  });
+
   describe("invalid_parent_traversal_in_asset_path", () => {
     const RULE_CODE = "invalid_parent_traversal_in_asset_path";
 

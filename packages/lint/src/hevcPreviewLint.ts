@@ -11,6 +11,7 @@ import {
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
 import type { HyperframeLintFinding } from "./types.js";
+import { mediaSrcTagRe } from "./utils";
 
 /** Structurally compatible with `project.ts`'s (unexported) `HtmlSource` —
  * duplicated as a shape, not imported, to avoid a circular import between
@@ -82,14 +83,14 @@ export function collectLocalVideoCandidates(
   htmlSources: HtmlSourceLike[],
 ): Map<string, string> {
   const candidates = new Map<string, string>();
-  const videoSrcRe = /<video\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  const videoSrcRe = mediaSrcTagRe("video");
 
   for (const { html, compSrcPath } of htmlSources) {
     const scannable = maskNonScannableRanges(html);
     const re = new RegExp(videoSrcRe.source, videoSrcRe.flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
-      const rawSrc = match[1] ?? "";
+      const rawSrc = match[2] ?? "";
       // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
       if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);

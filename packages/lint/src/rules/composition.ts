@@ -8,7 +8,7 @@ import {
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
-import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
+import { COMPOSITION_VARIABLE_TYPES, isSafeMediaUrl } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
@@ -782,6 +782,14 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     const findings: HyperframeLintFinding[] = [];
     const knownTypes = new Set<string>(COMPOSITION_VARIABLE_TYPES);
+    // Ids whose value the runtime pushes through isSafeMediaUrl: every
+    // data-var-src binding, plus image-typed variables (always consumed as a
+    // URL even when the binding lives in a sub-composition this file can't see).
+    const varSrcIds = new Set<string>();
+    for (const tag of tags) {
+      const bound = readAttr(tag.raw, "data-var-src");
+      if (bound) varSrcIds.add(bound);
+    }
     for (let i = 0; i < parsed.length; i += 1) {
       const entry = parsed[i];
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -804,6 +812,22 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           code: "invalid_composition_variables_declaration",
           severity: "error",
           message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
+          snippet: truncateSnippet(htmlTag.raw),
+        });
+        continue;
+      }
+      const id = String(e.id);
+      if (
+        (e.type === "image" || varSrcIds.has(id)) &&
+        typeof e.default === "string" &&
+        e.default.length > 0 &&
+        !isSafeMediaUrl(e.default)
+      ) {
+        findings.push({
+          code: "unloadable_media_variable_default",
+          severity: "error",
+          message: `Variable "${id}" defaults to a URL the runtime will refuse to load, so any element bound to it renders its authored fallback src instead and the render still exits 0.`,
+          fixHint: `Media URLs must be relative, http(s), blob:, or a data:image/* URI. Copy the file into the project and reference it relatively (e.g. "assets/bg.png") rather than by absolute path.`,
           snippet: truncateSnippet(htmlTag.raw),
         });
       }

@@ -77,3 +77,30 @@ export function parseCompositionVariables(htmlEl: Element): CompositionVariable[
     return [];
   }
 }
+
+/**
+ * Protocol allowlist for a resolved media URL. Relative URLs (no scheme) resolve
+ * against the page origin and are always safe. Absolute URLs are restricted to
+ * http(s)/blob and image data: URIs -- defense-in-depth alongside the runtime's
+ * VAR_SRC_TAGS element guard, blocking `javascript:`, `data:text/html`, `file:`,
+ * etc. even if a future tag slips past it. Control chars are stripped before the
+ * scheme test because browsers ignore them when parsing the URL.
+ *
+ * Lives here rather than in the runtime because the linter has to reach the same
+ * verdict on a declared default statically: a value this rejects is dropped at
+ * bind time and the element's authored fallback renders instead, so a second copy
+ * of the scheme list would let lint and the runtime disagree silently.
+ */
+export function isSafeMediaUrl(url: string): boolean {
+  // Browsers ignore ASCII control chars/whitespace when parsing a URL, so strip
+  // them before reading the scheme (defeats `java\tscript:` style bypasses).
+  // oxlint-disable-next-line no-control-regex -- control chars are the target here
+  const normalized = url.replace(/[\u0000-\u0020]/g, "");
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
+  if (!scheme) return true;
+  const proto = scheme[1]?.toLowerCase();
+  if (!proto) return false;
+  if (proto === "https" || proto === "http" || proto === "blob") return true;
+  if (proto === "data") return /^data:image\//i.test(normalized);
+  return false;
+}

@@ -634,6 +634,25 @@ describe("templating tokens are checked on the raw src, before cleanAssetUrl", (
     }
   });
 
+  // `\bsrc\s*=` also matched the tail of `data-var-src="bg"`, and `[^>]*` is greedy,
+  // so a real src earlier in the same tag lost to the variable id: bindings were
+  // reported as a missing file named after the variable.
+  it("reports the real src, not the data-var-src variable id", async () => {
+    const { results } = await lintProject(
+      projectWith(`<img src="assets/logo.png" data-var-src="bg" />`),
+    );
+    const finding = results
+      .flatMap((entry) => entry.result.findings)
+      .find((f) => f.code === "missing_local_asset");
+    expect(finding?.message).toContain("assets/logo.png");
+    expect(finding?.message).not.toContain("bg");
+  });
+
+  it("does not invent a missing asset for a binding on an element whose src resolves", async () => {
+    const c = await codes(projectWith(`<img src="${"${imgUrl}"}" data-var-src="bg" />`));
+    expect(c.has("missing_local_asset")).toBe(false);
+  });
+
   it("still flags a genuinely missing local video file", async () => {
     const c = await codes(
       projectWith(

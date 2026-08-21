@@ -18,6 +18,7 @@ import { collectLocalVideoCandidates, lintHevcPreviewCodec } from "./hevcPreview
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
+import { mediaSrcTagRe } from "./utils";
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
@@ -336,13 +337,13 @@ function lintAudioSrcNotFound(
 ): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
 
-  const audioSrcRe = /<audio\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  const audioSrcRe = mediaSrcTagRe("audio");
 
   const missingSrcs: string[] = [];
   for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
     while ((match = audioSrcRe.exec(html)) !== null) {
-      const src = match[1]!;
+      const src = match[2]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (isUnresolvedAssetPlaceholder(src)) continue;
       const rootRelative = compSrcPath
@@ -377,7 +378,7 @@ function lintMissingLocalAsset(
 ): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
 
-  const localAssetSrcRe = /<(video|img|source)\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  const localAssetSrcRe = mediaSrcTagRe("video|img|source");
 
   const missingByTag = new Map<string, Map<string, string>>();
 
