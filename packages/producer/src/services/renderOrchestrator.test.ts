@@ -34,6 +34,7 @@ import {
   resolveParallelRouterRetryPlan,
   resetCaptureAttemptProgress,
   shouldRetryViaPinnedFallback,
+  isDeRendererStallError,
   countElementTags,
   envInt,
   isDeParallelRouterEnabled,
@@ -2464,6 +2465,60 @@ describe("resolveParallelRouterRetryPlan (self-verify retry rollback)", () => {
 });
 
 describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic capture failures, including OOM)", () => {
+  // PRINFRA-488: a wedged renderer must be retryable on ANY routing. Before this,
+  // a comp that engaged drawElement on the ordinary single-worker path had no
+  // whole-render fallback, so one stalled frame failed the entire render.
+  it("retries a drawElement renderer stall even with no pinned routing", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isDeRendererStall: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("still does NOT retry a generic capture failure with no pinned routing", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isDeRendererStall: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("never retries a cancellation, even for a renderer stall", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isDeRendererStall: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("recognizes the engine's stall error across the package boundary", () => {
+    const byName = new Error("whatever");
+    byName.name = "DeFrameTimeoutError";
+    expect(isDeRendererStallError(byName)).toBe(true);
+    expect(
+      isDeRendererStallError(
+        new Error(
+          "drawElement frame 50 exceeded 15000ms (renderer stopped scheduling; see PRINFRA-488)",
+        ),
+      ),
+    ).toBe(true);
+    expect(isDeRendererStallError(new Error("some other capture failure"))).toBe(false);
+    expect(isDeRendererStallError("not an error")).toBe(false);
+  });
+
   it("always retries a drawElement self-verify failure, pinned or not", () => {
     expect(
       shouldRetryViaPinnedFallback({
