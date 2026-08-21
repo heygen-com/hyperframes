@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
@@ -81,6 +81,30 @@ describe("createStudioServer autoProxy plumbing", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ browserGpuMode: "software" });
+  });
+});
+
+describe("Studio project lint endpoint", () => {
+  it("surfaces findings that require the complete project graph", async () => {
+    const projectDir = tmpProject();
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions", "index.html"),
+      `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
+    );
+    server = createStudioServer({ projectDir, projectName: "demo" });
+
+    const response = await server.app.request("http://localhost/api/projects/demo/lint");
+    const payload = (await response.json()) as { findings?: Array<{ code?: string }> };
+
+    expect(response.status).toBe(200);
+    expect(payload.findings).toContainEqual(
+      expect.objectContaining({ code: "blank_root_with_standalone_composition" }),
+    );
   });
 });
 

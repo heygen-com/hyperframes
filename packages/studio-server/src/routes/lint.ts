@@ -9,6 +9,18 @@ export function registerLintRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     try {
+      if (adapter.lintProject) {
+        const result = await adapter.lintProject(project.dir);
+        return c.json({
+          findings: result.results.flatMap((entry) =>
+            entry.result.findings.map((finding) => ({
+              ...finding,
+              file: finding.file ?? entry.file,
+            })),
+          ),
+        });
+      }
+
       const htmlFiles = walkDir(project.dir).filter(
         (f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f),
       );

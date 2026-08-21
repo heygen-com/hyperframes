@@ -287,10 +287,11 @@ function lintBlankRootWithStandaloneComposition(
     {
       code: "blank_root_with_standalone_composition",
       severity: "error",
-      message: `The default index.html composition has no renderable content, but ${standaloneCandidates.join(", ")} contains a standalone timed composition. Default check, snapshot, preview, and render commands open index.html, so they will capture only its background.`,
+      message: `The default index.html composition has no renderable content, but ${standaloneCandidates.join(", ")} contains a standalone timed composition. Default check, snapshot, preview, render, and publish commands open index.html, so they will capture or publish only its background.`,
       fixHint:
         `Move the authored composition into index.html, or mount it from index.html with data-composition-src and the sub-composition <template> contract. ` +
         `If the separate file is intentional, render it explicitly with --composition ${standaloneCandidates[0]}.`,
+      suggestedComposition: standaloneCandidates[0],
     },
   ];
 }

@@ -9,6 +9,8 @@ export type HyperframeLintFinding = {
   elementId?: string;
   fixHint?: string;
   snippet?: string;
+  /** Optional standalone entry that command-specific guidance can act on. */
+  suggestedComposition?: string;
 };
 
 /**

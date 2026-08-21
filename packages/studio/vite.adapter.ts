@@ -210,6 +210,11 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return await mod.lintHyperframeHtml(html, opts);
     },
 
+    async lintProject(projectDir: string) {
+      const mod = await server.ssrLoadModule("@hyperframes/core/lint");
+      return await mod.lintProject(projectDir);
+    },
+
     runtimeUrl: "/api/runtime.js",
 
     rendersDir: () => resolve(dataDir, "../renders"),

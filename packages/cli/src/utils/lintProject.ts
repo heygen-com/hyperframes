@@ -11,3 +11,13 @@ export function hasDefinitiveEntryMismatch(result: ProjectLintResult): boolean {
     ),
   );
 }
+
+export function definitiveEntryMismatchComposition(result: ProjectLintResult): string | undefined {
+  for (const entry of result.results) {
+    const finding = entry.result.findings.find(
+      (candidate) => candidate.code === "blank_root_with_standalone_composition",
+    );
+    if (finding) return finding.suggestedComposition;
+  }
+  return undefined;
+}

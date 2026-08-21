@@ -94,7 +94,7 @@ describe("snapshot lint preflight", () => {
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
     );
     writeFileSync(
-      join(compositions, "index.html"),
+      join(compositions, "card.html"),
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
     snapshotState.openSettledPage.mockClear();
@@ -110,8 +110,11 @@ describe("snapshot lint preflight", () => {
         name: "CliRuntimeError",
       });
       expect(snapshotState.openSettledPage).not.toHaveBeenCalled();
-      expect(lines.join("\n")).toContain("hyperframes snapshot");
-      expect(lines.join("\n")).toContain("compositions");
+      expect(lines.join("\n")).toContain("compositions/card.html");
+      expect(lines.join("\n")).not.toContain("hyperframes snapshot <project>/compositions");
+      expect(lines.join("\n")).toContain(
+        "snapshot accepts project directories, not individual HTML files",
+      );
     } finally {
       log.mockRestore();
       rmSync(project, { recursive: true, force: true });

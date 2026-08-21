@@ -1,4 +1,4 @@
-import { join, relative, resolve } from "node:path";
+import { join, posix, relative, resolve } from "node:path";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
 import { defineCommand } from "citty";
@@ -6,7 +6,11 @@ import * as clack from "@clack/prompts";
 
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { hasDefinitiveEntryMismatch, lintProject } from "../utils/lintProject.js";
+import {
+  definitiveEntryMismatchComposition,
+  hasDefinitiveEntryMismatch,
+  lintProject,
+} from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
@@ -93,7 +97,23 @@ export default defineCommand({
         console.log();
       }
       if (hasDefinitiveEntryMismatch(lintResult)) {
+        const candidate = definitiveEntryMismatchComposition(lintResult);
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
+        if (candidate && posix.basename(candidate) === "index.html") {
+          const candidateDir = posix.dirname(candidate);
+          const target = candidateDir === "." ? "<project>" : `<project>/${candidateDir}`;
+          console.log(
+            c.dim(
+              `  Move or mount the authored file, or publish its directory directly: hyperframes publish ${target}`,
+            ),
+          );
+        } else if (candidate) {
+          console.log(
+            c.dim(
+              `  Move or mount ${candidate} as a project index.html before publishing; publish accepts project directories, not individual HTML files.`,
+            ),
+          );
+        }
         console.log();
         failCommand();
       }

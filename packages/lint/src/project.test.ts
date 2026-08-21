@@ -89,7 +89,9 @@ describe("blank_root_with_standalone_composition", () => {
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("compositions/index.html");
     expect(finding?.message).toContain("index.html");
+    expect(finding?.message).toContain("publish");
     expect(finding?.fixHint).toContain("data-composition-src");
+    expect(finding?.suggestedComposition).toBe("compositions/index.html");
   });
 
   it("treats non-rendering script, style, link, meta, and template children as blank", async () => {
@@ -172,6 +174,24 @@ describe("blank_root_with_standalone_composition", () => {
       .find((item) => item.code === "blank_root_with_standalone_composition");
 
     expect(finding).toBeDefined();
+  });
+
+  it("does not treat a composition that only mounts another composition as standalone", async () => {
+    const project = makeProject(validHtml(), {
+      "wrapper.html": `<!doctype html><html><body>
+  <div data-composition-id="wrapper" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div data-composition-src="compositions/scene.html" data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "scene.html": `<template><div data-composition-id="scene"><p>Scene</p></div></template>`,
+    });
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "blank_root_with_standalone_composition");
+
+    expect(finding).toBeUndefined();
   });
 });
 

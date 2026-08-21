@@ -40,13 +40,14 @@ describe("publish default-entry preflight", () => {
   it("rejects the real fixture before creating or uploading an archive", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-entry-mismatch-"));
     const compositions = join(project, "compositions");
-    mkdirSync(compositions);
+    const authoredProject = join(compositions, "brand");
+    mkdirSync(authoredProject, { recursive: true });
     writeFileSync(
       join(project, "index.html"),
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
     );
     writeFileSync(
-      join(compositions, "index.html"),
+      join(authoredProject, "index.html"),
       `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
     publishState.publish.mockReset();
@@ -58,13 +59,19 @@ describe("publish default-entry preflight", () => {
       url: "https://hyperframes.dev/p/project-id",
       claimToken: "",
     });
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
 
     try {
       await expect(
         publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
       ).rejects.toMatchObject({ name: "CliRuntimeError" });
       expect(publishState.publish).not.toHaveBeenCalled();
+      expect(lines.join("\n")).toContain("hyperframes publish <project>/compositions/brand");
     } finally {
+      log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   });
