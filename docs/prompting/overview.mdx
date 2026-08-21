@@ -37,7 +37,7 @@ The guide is one arc, novice to advanced. Each level is what you can do once you
 Install the skills in your project (or globally for your agent):
 
 ```bash
-npx skills add heygen-com/hyperframes --full-depth
+npx skills add heygen-com/hyperframes
 ```
 
 The installer shows a picker. Select the **core skills** below — every project needs them. In Claude Code, restart the session after installing; the skills register as **slash commands**. Start at `/hyperframes`: it orients you to the whole surface and routes "make me a video" requests to the right workflow.
@@ -72,7 +72,7 @@ The installer shows a picker. Select the **core skills** below — every project
 | `/figma`                 | A Figma file / frame / URL → imported assets, brand tokens, and reconstructed motion |
 
 <Tip>
-  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all --full-depth`. And start HyperFrames prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents) — it loads the routing + composition context explicitly so the agent picks the right workflow and gets the rules right the first time.
+  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all`. And start HyperFrames prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents) — it loads the routing + composition context explicitly so the agent picks the right workflow and gets the rules right the first time.
 </Tip>
 
 
