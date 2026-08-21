@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fadeEase } from "@hyperframes/core/clip-fade";
 import { bendFromPointer, bendHandlePosition } from "./clipFadeBendDrag";
-import { fadeSampler } from "./clipFades";
+import { envelopeFadeSampler } from "./clipFades";
 
 const HEIGHT = 40;
 
@@ -13,7 +12,7 @@ describe("bendFromPointer", () => {
   it("puts the curve under the pointer, which is the whole gesture", () => {
     for (const offsetY of [6, 12, 20, 28, 34]) {
       const bend = bendFromPointer(offsetY, HEIGHT);
-      const level = fadeEase(0.5, bend);
+      const level = envelopeFadeSampler(bend)(0.5);
       expect((1 - level) * HEIGHT).toBeCloseTo(offsetY, 0);
     }
   });
@@ -45,7 +44,7 @@ describe("bendHandlePosition", () => {
 
   it("rides the curve, so the handle stays under the pointer while bending", () => {
     for (const bend of [-1, -0.5, 0, 0.5, 1]) {
-      const level = fadeSampler(bend)(0.5);
+      const level = envelopeFadeSampler(bend)(0.5);
       const at = bendHandlePosition({ ...base, edge: "in", level });
       expect(at?.y).toBeCloseTo((1 - level) * HEIGHT, 6);
     }
@@ -74,7 +73,7 @@ describe("the drag round-trips", () => {
         pixelsPerSecond: 25,
         width: 200,
         height: HEIGHT,
-        level: fadeSampler(bend)(0.5),
+        level: envelopeFadeSampler(bend)(0.5),
       });
       expect(at?.y).toBeCloseTo(offsetY, 0);
     }
@@ -88,7 +87,7 @@ describe("the drag round-trips", () => {
         pixelsPerSecond: 25,
         width: 200,
         height: HEIGHT,
-        level: fadeSampler(bendFromPointer(offsetY, HEIGHT))(0.5),
+        level: envelopeFadeSampler(bendFromPointer(offsetY, HEIGHT))(0.5),
       })?.y;
     // Dragged off the top of the clip and well past it: both stop in the same
     // place rather than the curve flipping over.

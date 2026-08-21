@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { lanesOf, NARRATION_1_CHAIN, NARRATION_2_CHAIN } from "./automationLaneFixtures";
 import { createRoot } from "react-dom/client";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -57,24 +58,13 @@ function mountSlot(binding: Partial<AutomationLaneBinding>) {
   return { onRangeClear };
 }
 
-/** Two narration slices sharing a row, each with its own chain. */
-const chainOf = (nodes: unknown[]) => JSON.stringify({ version: 1, nodes });
-const lanesOf = (...targets: string[]) =>
-  JSON.stringify({
-    version: 1,
-    lanes: targets.map((target) => ({ target, points: [{ t: 0, v: 1 }] })),
-  });
-
 const narration1: TimelineElement = {
   ...element,
   id: "narration-1",
   key: "narration-1",
   start: 0,
   duration: 4,
-  fxChain: chainOf([
-    { type: "lowpass", id: "n1", params: { frequency: 8000, q: 0.7, poles: "2" } },
-    { type: "peaking", id: "n2", params: { frequency: 1000, gain: -3, q: 1.4 } },
-  ]),
+  fxChain: NARRATION_1_CHAIN,
   automation: lanesOf("fx.n2.q"),
 };
 const narration2: TimelineElement = {
@@ -83,7 +73,7 @@ const narration2: TimelineElement = {
   key: "narration-2",
   start: 4,
   duration: 4,
-  fxChain: chainOf([{ type: "peaking", id: "n1", params: { frequency: 1000, gain: -6, q: 1.4 } }]),
+  fxChain: NARRATION_2_CHAIN,
   automation: lanesOf("fx.n1.q", "volume"),
 };
 

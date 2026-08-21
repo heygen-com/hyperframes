@@ -3,7 +3,6 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
-import { clampFadeCurve, fadeEase } from "@hyperframes/core/clip-fade";
 import { roundToCenti } from "../../utils/rounding";
 
 /**
@@ -23,16 +22,42 @@ import { roundToCenti } from "../../utils/rounding";
  */
 
 /**
- * The envelope curvature that reproduces a fade bend exactly.
+ * How far a fade may bend away from a straight ramp, either way. Matches the
+ * envelope's own limit, since the bend IS an envelope curvature.
+ */
+export const FADE_CURVE_LIMIT = 1;
+
+/** A bend outside the range, or not a number at all, resolves to straight. */
+function clampFadeCurve(curve: number): number {
+  if (!Number.isFinite(curve)) return 0;
+  return Math.max(-FADE_CURVE_LIMIT, Math.min(FADE_CURVE_LIMIT, curve));
+}
+
+/**
+ * The curvature to store for a bend.
  *
- * The two systems already parameterise a curve the same way, as an exponent:
- * a fade is `p^(2^(-2·bend))` and an envelope segment is `x^(2^(2·curve))`.
- * They differ only in which direction counts as positive, so the conversion is
- * a sign flip and an audio fade is the same shape as the visual one, not an
- * approximation of it. One function owns that flip.
+ * A bend and an envelope curvature are the same exponent read from opposite
+ * ends: the envelope applies `x^(2^(2·curve))`, and a fade that sags is spelled
+ * negative because down is down. One function owns the flip so the grips and
+ * the lane can never disagree about which way that is.
  */
 function envelopeCurveForFade(curve: number): number {
-  return -clampFadeCurve(curve);
+  // Rounded on the way in. A bend comes off a pointer, so it arrives with every
+  // digit a float can hold, and sixteen of them in the markup say nothing a
+  // reader or a diff can use.
+  return roundToCenti(-clampFadeCurve(curve));
+}
+
+/**
+ * The bend whose curve passes through `level` at the halfway point, which is
+ * how a drag on a fade line resolves to a number: the curve follows the pointer
+ * instead of the pointer nudging an abstract parameter.
+ */
+export function fadeCurveThroughMidpoint(level: number): number {
+  const clamped = Math.max(1e-4, Math.min(1 - 1e-4, level));
+  // level = 0.5^k  ⇒  k = ln(level) / ln(0.5),  and  k = 2^(-2·bend).
+  const k = Math.log(clamped) / Math.log(0.5);
+  return clampFadeCurve(-Math.log2(k) / 2);
 }
 
 /** Shortest fade the handle will write; below this it reads as "no fade". */
@@ -63,7 +88,7 @@ export interface ClipFadeCurves {
   out: number;
 }
 
-export const NO_FADE_CURVES: ClipFadeCurves = { in: 0, out: 0 };
+const NO_FADE_CURVES: ClipFadeCurves = { in: 0, out: 0 };
 
 export const NO_FADES: ClipFades = { fadeIn: 0, fadeOut: 0 };
 
@@ -140,16 +165,12 @@ export function clampClipFades(fades: ClipFades, duration: number): ClipFades {
 export type FadeSampler = (progress: number) => number;
 
 /**
- * How a fade of this bend rises, for drawing it. One sampler for both media:
- * `envelopeCurveForFade` makes the audio envelope trace the same curve the
- * runtime fades a picture along, so the wedge on a music clip and the wedge on
- * a video clip are the same line and not two lookalikes.
+ * How a fade of this bend rises, read out of the envelope it is stored in.
+ *
+ * One sampler, because there is now one storage: the wedge on a music clip and
+ * the wedge on a video clip are the same line drawn from the same data, not two
+ * lookalikes kept in step by hand.
  */
-export function fadeSampler(curve: number): FadeSampler {
-  return (progress) => fadeEase(progress, curve);
-}
-
-/** The same rise, read back out of the envelope an audio fade is stored in. */
 export function envelopeFadeSampler(curve: number): FadeSampler {
   const lane: HfAutomationLane = {
     target: "volume",

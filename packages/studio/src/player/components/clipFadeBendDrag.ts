@@ -1,4 +1,4 @@
-import { fadeCurveThroughMidpoint } from "@hyperframes/core/clip-fade";
+import { fadeCurveThroughMidpoint } from "./clipFades";
 
 /**
  * Turning a pointer position into a fade's bend.

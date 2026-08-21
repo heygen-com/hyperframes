@@ -2,8 +2,9 @@ import { useCallback, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   clampClipFades,
-  fadeSampler,
+  envelopeFadeSampler,
   fadeWedgePath,
+  FADE_CURVE_LIMIT,
   MIN_FADE_SECONDS,
   type ClipFadeCurves,
   type ClipFades,
@@ -11,7 +12,6 @@ import {
 } from "./clipFades";
 import { bendFromPointer, bendHandlePosition } from "./clipFadeBendDrag";
 import { CLIP_HANDLE_W } from "./timelineLayout";
-import { FADE_CURVE_LIMIT } from "@hyperframes/core/clip-fade";
 
 /**
  * The fade grips on a clip's top corners, and the wedges they draw.
@@ -138,7 +138,7 @@ export function TimelineClipFades({
   const shownCurve = (edge: "in" | "out") =>
     bendDraft?.edge === edge ? bendDraft.curve : edge === "in" ? curves.in : curves.out;
   const shownSample = (edge: "in" | "out") =>
-    bendDraft?.edge === edge ? fadeSampler(bendDraft.curve) : sample(edge);
+    bendDraft?.edge === edge ? envelopeFadeSampler(bendDraft.curve) : sample(edge);
 
   const onGripDown = useCallback(
     (edge: "in" | "out", event: ReactPointerEvent) => {

@@ -1,7 +1,6 @@
 import { useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { animationLaneGroups } from "./TimelinePropertyLanes";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { elementAutomationLanes, groupAutomationLanes } from "./automationLaneData";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
@@ -38,12 +37,14 @@ export function trackShowsBeatStrip(
 /**
  * Automation lanes on one clip, or 0 for anything that is not audio.
  *
- * An audio clip can be worth expanding without carrying a single tween, so this
- * counts toward whether a track has anything to disclose. A function rather than
- * a map so every caller reads the same cached parse and none can drift.
+ * A clip can be worth expanding without carrying a single tween, so this counts
+ * toward whether a track has anything to disclose. Not gated on audio: a fade on
+ * a picture is an opacity envelope, and it earns a lane exactly as a volume one
+ * does. A function rather than a map so every caller reads the same cached parse
+ * and none can drift.
  */
 function automationLaneCountOf(element: TimelineElement): number {
-  return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
+  return elementAutomationLanes(element).length;
 }
 
 /**

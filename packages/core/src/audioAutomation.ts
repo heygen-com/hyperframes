@@ -80,14 +80,30 @@ export class AudioAutomationError extends Error {
 
 export const VOLUME_TARGET = "volume";
 
+/**
+ * The picture's level, on the same footing as the sound's.
+ *
+ * A fade is a value that moves across a clip's life, which is what this whole
+ * module is for, so a fade on a picture belongs here rather than in attributes
+ * of its own. It also means one editor: a fade drawn on a video clip is the
+ * same two breakpoints, in the same lane UI, as a fade drawn on music.
+ *
+ * NOTE: this module is still called audioAutomation and still throws
+ * AudioAutomationError. The name is now too narrow. Renaming it touches 58
+ * files, so it is left for a change that does only that.
+ */
+export const OPACITY_TARGET = "opacity";
+
 export type HfAutomationTarget =
   | { kind: "volume" }
+  | { kind: "opacity" }
   | { kind: "fx"; nodeId: string; param: string }
   | { kind: "preset"; presetId: string };
 
 /** Split a target string. Returns null for anything unrecognised. */
 export function parseAutomationTarget(target: string): HfAutomationTarget | null {
   if (target === VOLUME_TARGET) return { kind: "volume" };
+  if (target === OPACITY_TARGET) return { kind: "opacity" };
   const parts = target.split(".");
   // `fx.preset.<id>` before the 3-part fx form, because it IS a 3-part fx form
   // with a reserved node id — an effect can never be called "preset", since ids
@@ -159,6 +175,21 @@ export interface AutomationRange {
  * automating a boosted clip silently discard the boost — and the panel
  * disables the fader while a lane owns it, so there was no way back.
  */
+/**
+ * Opacity runs 0 to 1 and stops there. Unlike volume, which is allowed above
+ * unity because a quiet source sometimes needs lifting, there is nothing past
+ * fully opaque.
+ */
+export const OPACITY_RANGE: AutomationRange = {
+  min: 0,
+  max: 1,
+  default: 1,
+  step: 0.01,
+  unit: "",
+  label: "Opacity",
+  scale: "linear",
+};
+
 export const VOLUME_RANGE: AutomationRange = {
   min: 0,
   max: MAX_AUDIO_GAIN,
@@ -181,6 +212,8 @@ export function resolveAutomationRange(
   const parsed = parseAutomationTarget(target);
   if (!parsed) return null;
   if (parsed.kind === "volume") return VOLUME_RANGE;
+  // Not chain-dependent: the picture has a level whether or not there is audio.
+  if (parsed.kind === "opacity") return OPACITY_RANGE;
   if (parsed.kind === "preset") {
     // Only for a preset the chain actually carries, so a lane left behind by a
     // removed preset resolves to nothing and is dropped at read time — the same
@@ -331,11 +364,18 @@ function normalizePoints(
  * points of every lane and drop lanes that carry none. Range clamping and
  * orphan removal need the chain and happen in `resolveAutomation`.
  */
+/** The range a target has on its own, before any chain is consulted. */
+function laneRangeWithoutChain(target: string): AutomationRange | null {
+  if (target === VOLUME_TARGET) return VOLUME_RANGE;
+  if (target === OPACITY_TARGET) return OPACITY_RANGE;
+  return null;
+}
+
 export function normalizeAutomation(automation: HfAutomation): HfAutomation {
   const lanes: HfAutomationLane[] = [];
   for (const lane of automation.lanes) {
     if (!parseAutomationTarget(lane.target)) continue;
-    const range = lane.target === VOLUME_TARGET ? VOLUME_RANGE : null;
+    const range = laneRangeWithoutChain(lane.target);
     const points = normalizePoints(lane.points ?? [], range);
     if (points.length > 0) lanes.push({ target: lane.target, points });
   }

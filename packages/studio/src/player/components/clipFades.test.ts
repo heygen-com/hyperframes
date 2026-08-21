@@ -4,7 +4,6 @@ import {
   envelopeFadeSampler,
   clampClipFades,
   fadeWedgePath,
-  fadeSampler,
   MIN_FADE_SECONDS,
   NO_FADES,
   readClipFades,
@@ -119,7 +118,7 @@ describe("fadeWedgePath", () => {
     fadeWedgePath({
       edge,
       seconds: 2,
-      sample: fadeSampler(curve),
+      sample: envelopeFadeSampler(curve),
       pixelsPerSecond: 25,
       width: WIDTH,
       height: HEIGHT,
@@ -156,7 +155,7 @@ describe("fadeWedgePath", () => {
             height: HEIGHT,
           }).line,
         );
-      const visual = wedgeFor(fadeSampler(curve));
+      const visual = wedgeFor(envelopeFadeSampler(curve));
       const audio = wedgeFor(envelopeFadeSampler(curve));
       expect(visual.length).toBeGreaterThan(5);
       expect(audio).toHaveLength(visual.length);
@@ -183,7 +182,7 @@ describe("fadeWedgePath", () => {
       fadeWedgePath({
         edge: "in",
         seconds: 0,
-        sample: fadeSampler(0),
+        sample: envelopeFadeSampler(0),
         pixelsPerSecond: 25,
         width: WIDTH,
         height: HEIGHT,
@@ -195,7 +194,7 @@ describe("fadeWedgePath", () => {
     const { line, fill } = fadeWedgePath({
       edge: "in",
       seconds: 2,
-      sample: fadeSampler(0),
+      sample: envelopeFadeSampler(0),
       pixelsPerSecond: 25,
       width: WIDTH,
       height: HEIGHT,

@@ -1978,7 +1978,7 @@ export function initSandboxRuntimeModular(): void {
       authoredClipFilters.set(rawNode, rawNode.style.getPropertyValue("filter"));
     }
     const authored = authoredClipFilters.get(rawNode) ?? "";
-    const level = clipFadeLevelAt(fade, currentTime - span.start, span.end - span.start);
+    const level = clipFadeLevelAt(fade, currentTime - span.start);
     const next = clipFadeFilter(authored, level);
     if (next) {
       rawNode.style.filter = next;

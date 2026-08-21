@@ -22,7 +22,6 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { parseAudioFxChain, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import type { TimelineElement } from "../store/playerStore";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
@@ -222,13 +221,16 @@ export interface AutomationLaneGroup {
  * spectrum, top down), so the first clip to carry a property fixes its row and
  * later clips only append properties nobody has shown yet.
  *
- * Non-audio elements contribute nothing, matching `automationLaneCountOf` — the
- * row's reserved height and its drawn lanes have to count the same clips.
+ * Any clip carrying automation contributes, not only audio ones: a picture's
+ * opacity is an envelope like any other, so a fade on a video draws and edits
+ * in the same lane a fade on music does. A clip with no automation contributes
+ * nothing on its own, so no gate is needed for that. Matches
+ * `automationLaneCountOf`: the row's reserved height and its drawn lanes have
+ * to count the same clips.
  */
 export function groupAutomationLanes(elements: readonly TimelineElement[]): AutomationLaneGroup[] {
   const groups = new Map<string, AutomationLaneGroup>();
   for (const element of elements) {
-    if (!isAudioTimelineElement(element)) continue;
     const chain = elementFxChain(element);
     for (const lane of elementAutomationLanes(element)) {
       const key = laneGroupKey(lane.target, chain);
