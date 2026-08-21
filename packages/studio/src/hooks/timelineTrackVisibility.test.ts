@@ -223,6 +223,37 @@ describe("toggleTimelineTrackHidden", () => {
     expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Mute track 1");
   });
 
+  // The header derives its row from the GROUP-AWARE order (a synthetic anchor
+  // row, members pulled contiguous); this function's own fallback derives it
+  // from ascending element-bearing keys. Once a group exists those disagree, so
+  // the same click announced "Mute track 2" and recorded "Mute track 1". The
+  // clicked control passes the row it showed, and that is what gets recorded.
+  it("records the display row the clicked control announced, not its own derivation", async () => {
+    const files = new Map([
+      ["index.html", `<div id="voiceover" data-start="0" data-duration="2"></div>`],
+    ]);
+    stubProjectFiles(files);
+
+    const recordEdit = vi.fn();
+
+    await toggleTimelineTrackHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [element({ id: "voiceover", domId: "voiceover", track: 0, tag: "audio" })],
+      track: 0,
+      hidden: true,
+      // Row 2 in the header: the group's anchor row sits above this member.
+      displayNumber: 2,
+      previewIframe: null,
+      writeProjectFile: async () => {},
+      recordEdit,
+      domEditSaveTimestampRef: { current: 0 },
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Mute track 2");
+  });
+
   it("labels unmuting an audio-only track back on", async () => {
     const files = new Map([
       ["index.html", `<div id="voiceover" data-start="0" data-duration="2" data-hidden=""></div>`],

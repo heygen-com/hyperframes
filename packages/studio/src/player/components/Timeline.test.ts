@@ -392,7 +392,7 @@ describe("Timeline provider boundary", () => {
     const row = button.parentElement?.parentElement;
     // Row children: [TimelineTrackHeader (sticky column), time-mapped content].
     const trackContent = row?.children.item(1);
-    expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);
+    expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false, 1);
     expect(trackContent).toBeInstanceOf(HTMLElement);
     if (!(trackContent instanceof HTMLElement)) {
       throw new Error("Expected track content element");

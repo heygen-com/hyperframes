@@ -59,7 +59,7 @@ export function VisibilityButton({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
-        void onToggle?.(trackNumber, !hidden);
+        void onToggle?.(trackNumber, !hidden, trackDisplayNumber);
       }}
     >
       {visibilityButtonIcon(showAsMute, hidden)}

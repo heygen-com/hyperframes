@@ -67,7 +67,20 @@ export interface TimelineEditCallbacks {
     }>,
     options?: { coalesceKey?: string },
   ) => Promise<void> | void;
-  onToggleTrackHidden?: (track: number, hidden: boolean) => Promise<void> | void;
+  /**
+   * `displayNumber` is the row the CLICKED control announced. It travels with
+   * the click because the header and the undo-history label derive the row from
+   * two different orderings: the header's comes from the group-aware row list
+   * (synthetic anchor rows, members pulled contiguous), the history's from a
+   * plain ascending sort of element-bearing keys. Once a group exists those
+   * disagree, so the same click said "Mute track 2" and recorded "Mute track 1".
+   * Passing the rendered number keeps one answer instead of two derivations.
+   */
+  onToggleTrackHidden?: (
+    track: number,
+    hidden: boolean,
+    displayNumber?: number | null,
+  ) => Promise<void> | void;
   /** B7's bus strip: live-write the group's own attribute while dragging. */
   onSetAudioGroupAttributeLive?: (groupId: string, attr: string, value: string | null) => void;
   /** ...and persist one undo entry on release. */

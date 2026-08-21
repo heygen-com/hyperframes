@@ -204,7 +204,8 @@ describe("TimelineTrackHeader", () => {
     expect(view.host.innerHTML).not.toContain("0.16666666666666666");
 
     act(() => eye?.click());
-    expect(onToggleTrackHidden).toHaveBeenCalledWith(1 / 6, true);
+    // The real fractional key acts; the display row rides along for the label.
+    expect(onToggleTrackHidden).toHaveBeenCalledWith(1 / 6, true, 1);
     act(() => view.root.unmount());
   });
 

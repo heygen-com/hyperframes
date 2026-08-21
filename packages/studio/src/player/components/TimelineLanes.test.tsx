@@ -203,7 +203,9 @@ describe("TimelineLanes track numbering", () => {
     const second = view.host.querySelector<HTMLButtonElement>('button[aria-label="Hide track 2"]');
     act(() => second?.click());
 
-    expect(onToggleTrackHidden).toHaveBeenCalledWith(TRACK_B, true);
+    // Third argument is the display row the button announced, so the undo entry
+    // records the same row the user just read off it.
+    expect(onToggleTrackHidden).toHaveBeenCalledWith(TRACK_B, true, 2);
     act(() => view.root.unmount());
   });
 
