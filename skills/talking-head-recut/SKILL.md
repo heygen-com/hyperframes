@@ -913,6 +913,17 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
         border-radius: 16px;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
       }
+
+      /* Pip chrome: `.framed` plus a white ring, so a pip reads as a distinct
+         inset against a busy background. The ring is a box-shadow spread rather
+         than a border, so it adds no layout box and the pixel-exact pip targets
+         in the GSAP lookup table stay correct. */
+      .video-wrapper.pip-pill {
+        border-radius: 16px;
+        box-shadow:
+          0 0 0 3px rgba(255, 255, 255, 0.9),
+          0 12px 40px rgba(0, 0, 0, 0.35);
+      }
     </style>
   </head>
   <body>
