@@ -261,6 +261,9 @@ function lintBlankRootWithStandaloneComposition(
 ): HyperframeLintFinding[] {
   const { document: rootDocument } = parseHTML(rootHtml);
   const root = rootDocument.querySelector("body [data-composition-id]");
+  // A no-media scaffold has no rendered descendants and can silently mask an authored file below.
+  // A scaffold that retained its A-roll <video>/<audio> is visibly non-blank, so this rule leaves it
+  // alone even when another composition is unmounted.
   if (!root || root.querySelector("*:not(script):not(style):not(link):not(meta):not(template)")) {
     return [];
   }
@@ -269,7 +272,6 @@ function lintBlankRootWithStandaloneComposition(
   for (const source of htmlSources) {
     if (!source.compSrcPath) continue;
     const { document } = parseHTML(source.html);
-    if (document.querySelector("template")) continue;
     const composition = document.querySelector("body [data-composition-id]");
     if (!composition) continue;
     const authoredTimedContent = Array.from(

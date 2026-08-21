@@ -1,13 +1,34 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import {
+import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const snapshotState = vi.hoisted(() => ({
+  openSettledPage: vi.fn(async () => {
+    throw new Error("browser capture reached");
+  }),
+  closeServer: vi.fn(async () => undefined),
+}));
+
+vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../capture/captureCompositionFrame.js")>()),
+  openSettledCompositionPage: snapshotState.openSettledPage,
+}));
+
+vi.mock("../utils/staticProjectServer.js", () => ({
+  serveStaticProjectHtml: vi.fn(async () => ({
+    url: "http://127.0.0.1:1",
+    close: snapshotState.closeServer,
+  })),
+}));
+
+import snapshotCommand, {
   computeSnapshotTimes,
   formatSnapshotTimestamp,
   parseZoomScale,
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
-  snapshotLintShouldAbort,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -64,33 +85,37 @@ describe("transparent snapshot capture", () => {
 });
 
 describe("snapshot lint preflight", () => {
-  it("blocks a blank default entry that would otherwise capture the wrong composition", () => {
-    const lintResult = {
-      results: [
-        {
-          file: "index.html",
-          contentHash: "abc",
-          result: {
-            ok: false,
-            errorCount: 1,
-            warningCount: 0,
-            infoCount: 0,
-            findings: [
-              {
-                code: "blank_root_with_standalone_composition",
-                severity: "error" as const,
-                message: "wrong entry",
-              },
-            ],
-          },
-        },
-      ],
-      totalErrors: 1,
-      totalWarnings: 0,
-      totalInfos: 0,
-    };
+  it("rejects the real fixture before invoking browser capture", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-entry-mismatch-"));
+    const compositions = join(project, "compositions");
+    mkdirSync(compositions);
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div></body></html>`,
+    );
+    writeFileSync(
+      join(compositions, "index.html"),
+      `<html><body><div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
+    );
+    snapshotState.openSettledPage.mockClear();
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
 
-    expect(snapshotLintShouldAbort(lintResult)).toBe(true);
+    try {
+      await expect(
+        snapshotCommand.run?.({ args: { dir: project } } as never),
+      ).rejects.toMatchObject({
+        name: "CliRuntimeError",
+      });
+      expect(snapshotState.openSettledPage).not.toHaveBeenCalled();
+      expect(lines.join("\n")).toContain("hyperframes snapshot");
+      expect(lines.join("\n")).toContain("compositions");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 });
 

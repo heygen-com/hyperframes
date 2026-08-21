@@ -222,7 +222,7 @@ describe("renderLocal browser GPU config", () => {
     renderLocal,
     resolveBrowserGpuForCli,
     renderLintContinuationHint,
-    renderLintShouldAbort,
+    runRenderLint,
     __resetDeParallelRouterTrialStateForTests: resetTrialState,
   } = renderModule;
 
@@ -235,7 +235,7 @@ describe("renderLocal browser GPU config", () => {
     expect(renderLintContinuationHint(false)).toContain("Use --strict to block errors");
   });
 
-  it("always blocks a definitive default-entry mismatch even without --strict", () => {
+  it("aborts the real render lint preflight on a default-entry mismatch without --strict", async () => {
     const lintResult = {
       results: [
         {
@@ -261,7 +261,19 @@ describe("renderLocal browser GPU config", () => {
       totalInfos: 0,
     };
 
-    expect(renderLintShouldAbort(false, false, lintResult)).toBe(true);
+    await expect(
+      runRenderLint(
+        {
+          project: { dir: "/tmp/project" },
+          entryFile: undefined,
+          renderTarget: "/tmp/project/index.html",
+          strictErrors: false,
+          strictAll: false,
+          effectiveQuiet: true,
+        } as never,
+        async () => lintResult,
+      ),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
   });
 
   function setEnv(key: string, value: string) {

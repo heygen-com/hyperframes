@@ -45,7 +45,7 @@ export function renderLintContinuationHint(strictErrors: boolean): string {
     : "  Continuing render despite lint issues. Use --strict to block errors.";
 }
 
-export function renderLintShouldAbort(
+function renderLintShouldAbort(
   strictErrors: boolean,
   strictAll: boolean,
   lintResult: ProjectLintResult,
@@ -174,11 +174,14 @@ async function ensureRenderBrowser(plan: RenderPlan): Promise<string> {
 }
 
 // fallow-ignore-next-line complexity
-async function runRenderLint(plan: RenderPlan): Promise<void> {
+export async function runRenderLint(
+  plan: RenderPlan,
+  runLint: (projectDir: string, entryFile?: string) => Promise<ProjectLintResult> = lintProject,
+): Promise<void> {
   // lintProject's explicit-entry contract is an absolute source path;
   // entryFile remains project-relative for the producer.
   const explicitEntry = plan.entryFile ? plan.renderTarget : undefined;
-  const lintResult = await lintProject(plan.project.dir, explicitEntry);
+  const lintResult = await runLint(plan.project.dir, explicitEntry);
   if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
   presentRenderLintFindings(lintResult, plan.effectiveQuiet);
   const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);

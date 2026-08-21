@@ -92,6 +92,32 @@ describe("blank_root_with_standalone_composition", () => {
     expect(finding?.fixHint).toContain("data-composition-src");
   });
 
+  it("treats non-rendering script, style, link, meta, and template children as blank", async () => {
+    const shellOnlyRoot = validHtml().replace(
+      "</div>",
+      `<script type="application/json">{}</script>
+       <style>.unused { color: white; }</style>
+       <link rel="stylesheet" href="data:text/css,.unused%7Bcolor:white%7D">
+       <meta name="description" content="shell">
+       <template id="row-template"><div>row</div></template>
+       </div>`,
+    );
+    const project = makeProject(shellOnlyRoot, {
+      "authored.html": `<!doctype html><html><body>
+  <div data-composition-id="authored" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div class="clip" data-start="0" data-duration="5">Visible</div>
+  </div>
+</body></html>`,
+    });
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "blank_root_with_standalone_composition");
+
+    expect(finding).toBeDefined();
+  });
+
   it("does not fire when index.html already contains authored clip content", async () => {
     const authoredRoot = validHtml().replace(
       "</div>",
@@ -128,6 +154,24 @@ describe("blank_root_with_standalone_composition", () => {
       .find((item) => item.code === "blank_root_with_standalone_composition");
 
     expect(finding).toBeUndefined();
+  });
+
+  it("still catches a standalone composition that contains an unrelated nested template", async () => {
+    const project = makeProject(validHtml(), {
+      "card.html": `<!doctype html><html><body>
+  <div data-composition-id="card" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div class="clip" data-start="0" data-duration="5">Card</div>
+    <template id="repeated-row"><div class="row">Row</div></template>
+  </div>
+</body></html>`,
+    });
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((result) => result.result.findings)
+      .find((item) => item.code === "blank_root_with_standalone_composition");
+
+    expect(finding).toBeDefined();
   });
 });
 

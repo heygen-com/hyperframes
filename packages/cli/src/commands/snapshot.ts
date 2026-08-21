@@ -15,11 +15,7 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
-import {
-  hasDefinitiveEntryMismatch,
-  lintProject,
-  type ProjectLintResult,
-} from "../utils/lintProject.js";
+import { hasDefinitiveEntryMismatch, lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -114,10 +110,6 @@ export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   throw new Error(
     `FFmpeg is required to extract video frames for snapshots. ${getFFmpegInstallHint()}`,
   );
-}
-
-export function snapshotLintShouldAbort(lintResult: ProjectLintResult): boolean {
-  return hasDefinitiveEntryMismatch(lintResult);
 }
 
 /**
@@ -661,13 +653,18 @@ export default defineCommand({
   async run({ args }) {
     const project = resolveProject(args.dir);
     const lintResult = await lintProject(project.dir);
-    if (snapshotLintShouldAbort(lintResult)) {
+    if (hasDefinitiveEntryMismatch(lintResult)) {
       console.log("");
       for (const line of formatLintFindings(lintResult, { errorsFirst: true })) {
         console.log(line);
       }
       console.log("");
       console.log(c.error("  Aborting snapshot because the default index.html entry is blank."));
+      console.log(
+        c.dim(
+          "  Move or mount the authored file, or snapshot its directory directly: hyperframes snapshot <project>/compositions",
+        ),
+      );
       console.log("");
       failCommand();
     }
