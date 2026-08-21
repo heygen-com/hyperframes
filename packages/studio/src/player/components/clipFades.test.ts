@@ -6,7 +6,9 @@ import {
   fadeWedgePath,
   MIN_FADE_SECONDS,
   NO_FADES,
+  readClipFadeCurves,
   readClipFades,
+  readFadeCurve,
   writeClipFades,
 } from "./clipFades";
 
@@ -288,5 +290,71 @@ describe("writeClipFades", () => {
     const half = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: 0, out: -0.5 });
     expect(half[0]?.curve).toBeUndefined();
     expect(half[2]?.curve).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("readFadeCurve", () => {
+  it("is straight when the point carries no curvature", () => {
+    expect(readFadeCurve(undefined)).toBe(0);
+    expect(readFadeCurve(0)).toBe(0);
+  });
+
+  it("reads the stored curvature from the other end", () => {
+    expect(readFadeCurve(0.5)).toBe(-0.5);
+    expect(readFadeCurve(-0.5)).toBe(0.5);
+  });
+});
+
+describe("readClipFadeCurves", () => {
+  const curves = (points: HfAutomationPoint[]) =>
+    readClipFadeCurves(points, readClipFades(points, DURATION));
+
+  it("reads each ramp's bend off the point that ramp leaves", () => {
+    const points: HfAutomationPoint[] = [
+      { t: 0, v: 0, curve: 0.5 },
+      { t: 2, v: 1 },
+      { t: 6, v: 1, curve: -0.25 },
+      { t: DURATION, v: 0 },
+    ];
+    expect(curves(points)).toEqual({ in: -0.5, out: 0.25 });
+  });
+
+  it("does not hand a fade-out the fade-in's bend when there is no fade-out", () => {
+    // The regression: with only a fade-in the envelope has two points, so the
+    // one before last IS the fade-in's own start. Read positionally, the bend
+    // leaks across, and the next write stamps it onto a fade-out nobody bent.
+    const points: HfAutomationPoint[] = [
+      { t: 0, v: 0, curve: 1 },
+      { t: 3, v: 1 },
+    ];
+    expect(curves(points)).toEqual({ in: -1, out: 0 });
+  });
+
+  it("does not hand a fade-in the fade-out's bend when there is no fade-in", () => {
+    const points: HfAutomationPoint[] = [
+      { t: 5, v: 1, curve: 1 },
+      { t: DURATION, v: 0 },
+    ];
+    expect(curves(points)).toEqual({ in: 0, out: -1 });
+  });
+
+  it("reads straight off an envelope that is nobody's fade", () => {
+    expect(
+      curves([
+        { t: 2, v: 0.4, curve: 0.8 },
+        { t: 5, v: 0.9 },
+      ]),
+    ).toEqual({ in: 0, out: 0 });
+    expect(curves([])).toEqual({ in: 0, out: 0 });
+  });
+
+  it("reads points that arrive out of order", () => {
+    const points: HfAutomationPoint[] = [
+      { t: DURATION, v: 0 },
+      { t: 6, v: 1, curve: -0.25 },
+      { t: 2, v: 1 },
+      { t: 0, v: 0, curve: 0.5 },
+    ];
+    expect(curves(points)).toEqual({ in: -0.5, out: 0.25 });
   });
 });

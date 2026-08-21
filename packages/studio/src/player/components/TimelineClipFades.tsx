@@ -4,23 +4,29 @@ import {
   clampClipFades,
   envelopeFadeSampler,
   fadeWedgePath,
-  FADE_CURVE_LIMIT,
   MIN_FADE_SECONDS,
   type ClipFadeCurves,
   type ClipFades,
   type FadeSampler,
 } from "./clipFades";
-import { bendFromPointer, bendHandlePosition } from "./clipFadeBendDrag";
+import {
+  bendFromPointer,
+  fadeHandlePosition,
+  lengthFromPointer,
+  resolveDragAxis,
+  type FadeDragAxis,
+} from "./clipFadeBendDrag";
+import { FadeDiamond } from "./FadeDiamond";
 import { CLIP_HANDLE_W } from "./timelineLayout";
 
 /**
- * The fade grips on a clip's top corners, and the wedges they draw.
+ * The fade handles on a clip's top corners, and the wedges they draw.
  *
  * The gesture is deliberately local rather than folded into the timeline's drag
  * coordinator: a fade has no lane to change, nothing to snap to and nothing to
  * collide with, so all the machinery that gesture owns would sit unused. What
- * it does need — a live preview on every move and one persisted write on
- * release — the automation binding already provides.
+ * it does need, a live preview on every move and one persisted write on
+ * release, the automation binding already provides.
  */
 
 export interface TimelineClipFadesProps {
@@ -36,16 +42,16 @@ export interface TimelineClipFadesProps {
   sample(edge: "in" | "out"): FadeSampler;
   /**
    * The clip's accent. The same colour, weight and opacity the automation lane
-   * strokes an envelope with — a fade IS an envelope, and drawing the two alike
+   * strokes an envelope with: a fade IS an envelope, and drawing the two alike
    * is what makes the wedge on the clip and the curve in the expanded lane read
    * as one line rather than two unrelated marks.
    */
   accent: string;
-  /** Grips are hidden until the clip is worth aiming at. */
+  /** Handles are hidden until the clip is worth aiming at. */
   showGrips: boolean;
   /** True when this is not the selected clip, which is what makes it editable. */
   readOnly: boolean;
-  /** Dragging a fade line bends that one. Live while dragging, once on release. */
+  /** Dragging a handle up or down bends that fade. Live, then once on release. */
   onBend(edge: "in" | "out", curve: number, persist: boolean): void;
   /** Live during the drag: preview only, never persisted. */
   onPreview(next: ClipFades): void;
@@ -54,16 +60,18 @@ export interface TimelineClipFadesProps {
 }
 
 /**
- * The two handles, and why they look different.
+ * One handle per fade, not two.
  *
- * A fade has two things you can change and they move along different axes, so
- * each gets the shape of its own axis: the length grip is a SQUARE that slides
- * horizontally, the bend handle is a DOT that slides vertically. Telling them
- * apart at a glance matters more than either being pretty, because they sit a
- * few pixels from each other on a short fade.
+ * A fade has two properties and they used to have a control each, which put
+ * four handles on a clip that is often eighty pixels wide, sitting on top of
+ * the thumbnails and the label and the trim handles. The diamond collapses each
+ * pair: it lives on the curve's midpoint, so sideways is the length and up and
+ * down is the bend, and both stay under the pointer because the midpoint is
+ * exactly the point those two gestures move. What you gain over two controls is
+ * not just space, it is that the handle draws the fade's own curve inside
+ * itself, so it says what shape it is rather than only where it is.
  */
-const GRIP = 10;
-const BEND = 8;
+const DIAMOND = 13;
 
 /**
  * How far a handle is held off the clip's edge.
@@ -81,17 +89,21 @@ function insetWithin(position: number, size: number, extent: number): number {
 }
 
 /**
- * Where a fade grip parks when the clip has no fade yet.
+ * Where a handle's centre parks when the clip has no fade yet.
  *
  * Not the very corner: the trim handle already owns that strip, and two
  * controls sharing ten pixels means every grab is a coin toss over which one
  * you got. Just inboard of it reads as the same corner without being the same
- * pixels. Once a fade exists the grip leaves this spot anyway, because it rides
- * the top of the wedge it drew.
+ * pixels.
+ *
+ * It is also the spot that makes the first drag continuous. The handle is a
+ * midpoint, so parking its centre here is the same as claiming a fade twice
+ * this wide, and the moment the pointer moves the maths already agrees with
+ * where your finger is. Park it anywhere else and the fade jumps on contact.
  */
-function parkedGripOffset(edge: "in" | "out", width: number): number {
+function parkedCentre(edge: "in" | "out", width: number): number {
   const inboard = CLIP_HANDLE_W / 2;
-  return edge === "in" ? inboard : width - inboard - GRIP;
+  return edge === "in" ? inboard : width - inboard;
 }
 
 /** What the bend reads as, for a title and for a screen reader. */
@@ -100,13 +112,44 @@ function bendLabel(curve: number): string {
   return curve < 0 ? "Starts slow, finishes fast" : "Starts fast, finishes slow";
 }
 
+/** What the handle says it is, to a pointer and to a screen reader. */
+function handleWording(edge: "in" | "out", seconds: number, drawn: boolean, shape: string) {
+  if (!drawn) {
+    return {
+      label: edge === "in" ? "Fade in" : "Fade out",
+      valueText: "No fade",
+      title: `Drag in to fade ${edge}.`,
+    };
+  }
+  const length = seconds.toFixed(2);
+  return {
+    label: edge === "in" ? "Fade in" : "Fade out",
+    valueText: `${length} seconds, ${shape.toLowerCase()}`,
+    title: `Fade ${edge}, ${length}s. Drag sideways for length, up or down to bend. ${shape}.`,
+  };
+}
+
 /**
  * Vertical units the wedge is drawn in. A clip's height is set by the row, and
  * sometimes by `bottom` rather than a number, so the overlay draws in its own
- * space and lets the SVG stretch it — the horizontal axis stays in real pixels,
+ * space and lets the SVG stretch it. The horizontal axis stays in real pixels,
  * which is the axis a fade's length is read off.
  */
 const VIEW_HEIGHT = 100;
+
+/** What a drag needs to know about the clip it started on. */
+interface FadeDrag {
+  edge: "in" | "out";
+  originX: number;
+  originY: number;
+  /** The clip's own box, measured once on the way down. */
+  left: number;
+  top: number;
+  height: number;
+  /** Forced when there is no fade yet: nothing to bend until one exists. */
+  axis: FadeDragAxis | null;
+  from: ClipFades;
+}
 
 export function TimelineClipFades({
   fades,
@@ -128,8 +171,7 @@ export function TimelineClipFades({
   // Keyed by edge, because only the ramp being dragged is in draft: the other
   // one has to keep drawing its own committed shape underneath.
   const [bendDraft, setBendDraft] = useState<{ edge: "in" | "out"; curve: number } | null>(null);
-  const dragRef = useRef<{ edge: "in" | "out"; originX: number; from: ClipFades } | null>(null);
-  const bendRef = useRef<{ edge: "in" | "out"; top: number; height: number } | null>(null);
+  const dragRef = useRef<FadeDrag | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shown = draft ?? fades;
   // The bend is previewed the same way the lengths are: the committed value
@@ -140,210 +182,170 @@ export function TimelineClipFades({
   const shownSample = (edge: "in" | "out") =>
     bendDraft?.edge === edge ? envelopeFadeSampler(bendDraft.curve) : sample(edge);
 
-  const onGripDown = useCallback(
+  const onHandleDown = useCallback(
     (edge: "in" | "out", event: ReactPointerEvent) => {
       if (event.button !== 0) return;
-      // The grip sits on top of the trim handle and inside the clip body; both
-      // would otherwise start their own gesture from this same press.
+      // The handle sits on top of the trim handle and inside the clip body;
+      // both would otherwise start their own gesture from this same press.
       event.stopPropagation();
+      const box = hostRef.current?.getBoundingClientRect();
+      if (!box || !(box.height > 0)) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      dragRef.current = { edge, originX: event.clientX, from: fades };
+      const seconds = edge === "in" ? fades.fadeIn : fades.fadeOut;
+      dragRef.current = {
+        edge,
+        originX: event.clientX,
+        originY: event.clientY,
+        left: box.left,
+        top: box.top,
+        height: box.height,
+        // A clip with no fade has no curve to pull on, so every direction draws
+        // one instead of half of them doing nothing.
+        axis: seconds >= MIN_FADE_SECONDS ? null : "length",
+        from: fades,
+      };
     },
     [fades],
   );
 
-  const resolveDrag = useCallback(
-    (clientX: number): ClipFades | null => {
+  /**
+   * What the pointer is currently asking for, on whichever axis this drag
+   * locked to. Returns null until it has moved far enough to have one, which is
+   * what keeps a mis-aimed click from editing anything.
+   */
+  const resolve = useCallback(
+    (event: { clientX: number; clientY: number }) => {
       const drag = dragRef.current;
-      if (!drag || pixelsPerSecond <= 0) return null;
-      // Both grips are dragged INTO the clip, so the out grip reads the
-      // opposite sign — its fade grows as the pointer travels left.
-      const travel = (clientX - drag.originX) / pixelsPerSecond;
-      const delta = drag.edge === "in" ? travel : -travel;
+      if (!drag) return null;
+      drag.axis ??= resolveDragAxis(event.clientX - drag.originX, event.clientY - drag.originY);
+      if (!drag.axis) return null;
+      if (drag.axis === "bend") {
+        return {
+          axis: "bend" as const,
+          edge: drag.edge,
+          curve: bendFromPointer(event.clientY - drag.top, drag.height),
+        };
+      }
+      const seconds = lengthFromPointer({
+        edge: drag.edge,
+        offsetX: event.clientX - drag.left,
+        pixelsPerSecond,
+        width,
+      });
       const next =
-        drag.edge === "in"
-          ? { ...drag.from, fadeIn: Math.max(0, drag.from.fadeIn + delta) }
-          : { ...drag.from, fadeOut: Math.max(0, drag.from.fadeOut + delta) };
-      return clampClipFades(next, duration);
+        drag.edge === "in" ? { ...drag.from, fadeIn: seconds } : { ...drag.from, fadeOut: seconds };
+      return { axis: "length" as const, fades: clampClipFades(next, duration) };
     },
-    [duration, pixelsPerSecond],
+    [duration, pixelsPerSecond, width],
   );
 
-  const onGripMove = useCallback(
+  const onHandleMove = useCallback(
     (event: ReactPointerEvent) => {
-      const next = resolveDrag(event.clientX);
+      const next = resolve(event);
       if (!next) return;
-      setDraft(next);
-      onPreview(next);
+      if (next.axis === "bend") {
+        setBendDraft({ edge: next.edge, curve: next.curve });
+        onBend(next.edge, next.curve, false);
+        return;
+      }
+      setDraft(next.fades);
+      onPreview(next.fades);
     },
-    [onPreview, resolveDrag],
+    [onBend, onPreview, resolve],
   );
 
-  const onGripUp = useCallback(
+  const onHandleUp = useCallback(
     (event: ReactPointerEvent) => {
-      const next = resolveDrag(event.clientX);
-      const from = dragRef.current?.from;
+      const next = resolve(event);
+      const drag = dragRef.current;
       dragRef.current = null;
       setDraft(null);
-      // A press that moved nothing must not write the same fade back to the
-      // file: a mis-aimed click is not an edit.
-      if (next && from && (next.fadeIn !== from.fadeIn || next.fadeOut !== from.fadeOut)) {
-        onCommit(next);
-      }
-    },
-    [onCommit, resolveDrag],
-  );
-
-  /**
-   * The bend drag. It measures the clip's own pixel box on the way down rather
-   * than taking a height prop, because a clip row is sometimes sized by
-   * `bottom` and so has no number to pass down.
-   */
-  const onBendDown = useCallback((edge: "in" | "out", event: ReactPointerEvent) => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    const host = hostRef.current;
-    if (!host) return;
-    const box = host.getBoundingClientRect();
-    if (!(box.height > 0)) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    bendRef.current = { edge, top: box.top, height: box.height };
-  }, []);
-
-  const resolveBend = useCallback((clientY: number) => {
-    const drag = bendRef.current;
-    if (!drag) return null;
-    return { edge: drag.edge, curve: bendFromPointer(clientY - drag.top, drag.height) };
-  }, []);
-
-  const onBendMove = useCallback(
-    (event: ReactPointerEvent) => {
-      const next = resolveBend(event.clientY);
-      if (!next) return;
-      setBendDraft(next);
-      onBend(next.edge, next.curve, false);
-    },
-    [onBend, resolveBend],
-  );
-
-  const onBendUp = useCallback(
-    (event: ReactPointerEvent) => {
-      const next = resolveBend(event.clientY);
-      bendRef.current = null;
       setBendDraft(null);
-      if (!next) return;
-      const was = next.edge === "in" ? curves.in : curves.out;
-      if (next.curve !== was) onBend(next.edge, next.curve, true);
+      if (!next || !drag) return;
+      // A press that changed nothing must not write the same value back to the
+      // file: a mis-aimed click is not an edit.
+      if (next.axis === "bend") {
+        const was = next.edge === "in" ? curves.in : curves.out;
+        if (next.curve !== was) onBend(next.edge, next.curve, true);
+        return;
+      }
+      const changed =
+        next.fades.fadeIn !== drag.from.fadeIn || next.fades.fadeOut !== drag.from.fadeOut;
+      if (changed) onCommit(next.fades);
     },
-    [curves, onBend, resolveBend],
+    [curves, onBend, onCommit, resolve],
   );
 
-  /**
-   * The handle that bends a fade, sitting on the curve's own midpoint so it
-   * stays under the pointer as the shape changes. Only present once there is a
-   * fade to bend: with none there is no line to pull, and the corner grips are
-   * what start one.
-   */
-  const bendFor = (edge: "in" | "out") => {
+  const handleFor = (edge: "in" | "out") => {
     const seconds = edge === "in" ? shown.fadeIn : shown.fadeOut;
-    if (seconds < MIN_FADE_SECONDS) return null;
-    const at = bendHandlePosition({
+    const drawn = seconds >= MIN_FADE_SECONDS;
+    const sampler = shownSample(edge);
+    const height = hostRef.current?.getBoundingClientRect().height ?? 0;
+    const at = fadeHandlePosition({
       edge,
       seconds,
       pixelsPerSecond,
       width,
-      height: hostRef.current?.getBoundingClientRect().height ?? 0,
-      level: shownSample(edge)(0.5),
+      height,
+      level: sampler(0.5),
     });
-    if (!at) return null;
+    // With no fade the handle waits on the corner, held fully inside the clip:
+    // there is no curve under it yet to ride.
+    const centreX = at?.x ?? parkedCentre(edge, width);
+    const centreY = at?.y ?? HANDLE_INSET + DIAMOND / 2;
     const curve = shownCurve(edge);
-    const label = bendLabel(curve);
-    return (
-      <div
-        key={`bend-${edge}`}
-        role="slider"
-        tabIndex={-1}
-        aria-label={edge === "in" ? "Fade in curve" : "Fade out curve"}
-        aria-valuemin={-FADE_CURVE_LIMIT}
-        aria-valuemax={FADE_CURVE_LIMIT}
-        aria-valuenow={curve}
-        aria-valuetext={label}
-        data-clip-fade-bend={edge}
-        onPointerDown={(event) => onBendDown(edge, event)}
-        onPointerMove={onBendMove}
-        onPointerUp={onBendUp}
-        onPointerCancel={onBendUp}
-        title={`Drag up or down to bend this fade. ${label}`}
-        className="opacity-80 hover:opacity-100 transition-opacity"
-        style={{
-          position: "absolute",
-          left: insetWithin(at.x - BEND / 2, BEND, width),
-          top: at.y - BEND / 2,
-          width: BEND,
-          height: BEND,
-          borderRadius: "50%",
-          background: accent,
-          boxShadow: "0 0 0 1.5px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.45)",
-          cursor: "ns-resize",
-          pointerEvents: "auto",
-          zIndex: 6,
-        }}
-      />
-    );
-  };
-
-  const gripFor = (edge: "in" | "out") => {
-    const seconds = edge === "in" ? shown.fadeIn : shown.fadeOut;
-    const span = Math.min(seconds * pixelsPerSecond, width);
-    // Parked on the corner when there is no fade, which is where you grab to
-    // start one; otherwise it rides the top of the wedge it drew.
-    const x = edge === "in" ? span : width - span;
-    const drawn = seconds >= MIN_FADE_SECONDS;
-    const left = drawn ? x - GRIP / 2 : parkedGripOffset(edge, width);
+    const wording = handleWording(edge, seconds, drawn, bendLabel(curve));
     return (
       <div
         key={edge}
         role="slider"
         tabIndex={-1}
-        aria-label={edge === "in" ? "Fade in" : "Fade out"}
+        aria-label={wording.label}
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={seconds}
-        aria-valuetext={drawn ? `${seconds.toFixed(2)} seconds` : "No fade"}
+        aria-valuetext={wording.valueText}
+        // Kept as two hooks on one element: the handle does both jobs now, and
+        // anything that reached for either of them still finds it.
         data-clip-fade-grip={edge}
-        onPointerDown={(event) => onGripDown(edge, event)}
-        onPointerMove={onGripMove}
-        onPointerUp={onGripUp}
-        onPointerCancel={onGripUp}
-        title={
-          drawn
-            ? `Fade ${edge}, ${seconds.toFixed(2)}s. Drag to change its length.`
-            : `Drag in to fade ${edge}.`
-        }
-        // Quiet until it is carrying a value, and quiet until you go for it:
-        // parked in the corner it shares space with the clip's own label, and a
-        // solid white block there reads as damage rather than as a handle.
-        className="opacity-60 hover:opacity-100 transition-opacity"
+        data-clip-fade-bend={edge}
+        data-clip-fade-curve={curve}
+        onPointerDown={(event) => onHandleDown(edge, event)}
+        onPointerMove={onHandleMove}
+        onPointerUp={onHandleUp}
+        onPointerCancel={onHandleUp}
+        title={wording.title}
+        // Quiet until you go for it: parked in the corner it shares space with
+        // the clip's own label, and a solid mark there reads as damage rather
+        // than as a handle.
+        className={`${drawn ? "opacity-90" : "opacity-60"} hover:opacity-100 transition-opacity`}
         style={{
           position: "absolute",
-          left: insetWithin(left, GRIP, width),
-          top: HANDLE_INSET,
-          width: GRIP,
-          height: GRIP,
-          borderRadius: 3,
-          background: drawn ? "#fff" : "rgba(255,255,255,0.75)",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.45)",
-          cursor: "ew-resize",
+          left: insetWithin(centreX - DIAMOND / 2, DIAMOND, width),
+          // Clamped across, free up and down. A clip row is 42px and a bend at
+          // the limit puts the curve within 3px of the edge, so a handle held
+          // inside could not ride the curve past about half the bend range. The
+          // clip does crop it at the extremes; drifting out from under the
+          // pointer would be the worse of the two, because the whole gesture is
+          // that the curve goes where you put it.
+          top: centreY - DIAMOND / 2,
+          width: DIAMOND,
+          height: DIAMOND,
+          // Both axes do something, so neither arrow tells the truth on its own.
+          cursor: "move",
           pointerEvents: "auto",
+          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.55))",
           zIndex: 6,
         }}
-      />
+      >
+        <FadeDiamond size={DIAMOND} sample={sampler} edge={edge} accent={accent} active={drawn} />
+      </div>
     );
   };
 
   return (
-    // One positioned box owns the overlay so the bend handle has a parent whose
-    // height it can measure, and so both handles share the clip's coordinates.
+    // One positioned box owns the overlay so the handles have a parent whose
+    // box they can measure, and so they share the clip's coordinates.
     <div ref={hostRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       <svg
         aria-hidden="true"
@@ -383,8 +385,7 @@ export function TimelineClipFades({
           );
         })}
       </svg>
-      {showGrips && !readOnly && (["in", "out"] as const).map(gripFor)}
-      {showGrips && !readOnly && (["in", "out"] as const).map(bendFor)}
+      {showGrips && !readOnly && (["in", "out"] as const).map(handleFor)}
     </div>
   );
 }

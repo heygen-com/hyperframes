@@ -25,7 +25,7 @@ import { roundToCenti } from "../../utils/rounding";
  * How far a fade may bend away from a straight ramp, either way. Matches the
  * envelope's own limit, since the bend IS an envelope curvature.
  */
-export const FADE_CURVE_LIMIT = 1;
+const FADE_CURVE_LIMIT = 1;
 
 /** A bend outside the range, or not a number at all, resolves to straight. */
 function clampFadeCurve(curve: number): number {
@@ -136,6 +136,40 @@ export function readClipFades(
   return {
     fadeIn: fadeIn >= MIN_FADE_SECONDS ? roundToCenti(fadeIn) : 0,
     fadeOut: fadeOut >= MIN_FADE_SECONDS ? roundToCenti(fadeOut) : 0,
+  };
+}
+
+/**
+ * The bend a stored curvature stands for.
+ *
+ * A fade and an envelope segment are the same exponent read from opposite ends:
+ * a bend of -0.5 sags the line, and the envelope spells that +0.5. This is the
+ * inverse of `envelopeCurveForFade`, and they sit together so the two
+ * directions of the flip can never drift apart.
+ */
+export function readFadeCurve(curvature: number | undefined): number {
+  return curvature ? -curvature : 0;
+}
+
+/**
+ * How far each of a clip's ramps is bent.
+ *
+ * A ramp's curvature lives on the point it leaves, so the numbers are just
+ * `points[0]` and the one before last. What matters is the guard: those
+ * positions only name a ramp's start when that ramp actually exists. A clip
+ * with a fade-in and no fade-out has two points, and the one before last IS the
+ * fade-in's own start, so reading it unguarded hands the fade-out a bend it
+ * never had. `fades` is the single owner of which ramps exist, so it is what
+ * decides whether there is a bend to read at all.
+ */
+export function readClipFadeCurves(
+  points: readonly HfAutomationPoint[],
+  fades: ClipFades,
+): ClipFadeCurves {
+  const sorted = [...points].sort((a, b) => a.t - b.t);
+  return {
+    in: fades.fadeIn > 0 ? readFadeCurve(sorted[0]?.curve) : 0,
+    out: fades.fadeOut > 0 ? readFadeCurve(sorted.at(-2)?.curve) : 0,
   };
 }
 

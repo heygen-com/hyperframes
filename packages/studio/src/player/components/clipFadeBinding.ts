@@ -2,6 +2,7 @@ import { OPACITY_TARGET, VOLUME_TARGET } from "@hyperframes/core/audio-automatio
 import { laneFor, withLane } from "./automationLaneGeometry";
 import {
   envelopeFadeSampler,
+  readClipFadeCurves,
   readClipFades,
   writeClipFades,
   type ClipFadeCurves,
@@ -47,18 +48,6 @@ export interface ClipFadeDeps {
   bindAutomation(element: TimelineElement): AutomationLaneBinding;
 }
 
-/**
- * The bend a stored curvature stands for.
- *
- * A fade and an envelope segment are the same exponent read from opposite ends:
- * a bend of -0.5 sags the line, and the envelope spells that +0.5. One function
- * owns the flip so the grips and the lane can never disagree about which way is
- * down.
- */
-export function readFadeCurve(curvature: number | undefined): number {
-  return curvature ? -curvature : 0;
-}
-
 /** Replace one edge's bend, leaving the other exactly as it was. */
 const withBend = (curves: ClipFadeCurves, edge: "in" | "out", curve: number): ClipFadeCurves =>
   edge === "in" ? { ...curves, in: curve } : { ...curves, out: curve };
@@ -82,10 +71,7 @@ export function resolveClipFadeBinding(
   const fades = readClipFades(lane.points, element.duration);
   // Each ramp's curvature already lives on the point it leaves, so the envelope
   // has carried two bends all along.
-  const curves: ClipFadeCurves = {
-    in: readFadeCurve(lane.points[0]?.curve),
-    out: readFadeCurve(lane.points.at(-2)?.curve),
-  };
+  const curves: ClipFadeCurves = readClipFadeCurves(lane.points, fades);
 
   const apply = (next: ClipFades, shape: ClipFadeCurves, persist: boolean) => {
     if (binding.readOnly) return;

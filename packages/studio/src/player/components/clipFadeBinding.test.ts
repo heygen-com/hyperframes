@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HfAutomation } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../store/playerStore";
 import type { AutomationLaneBinding } from "./useAutomationLanes";
-import { readFadeCurve, resolveClipFadeBinding, type ClipFadeDeps } from "./clipFadeBinding";
+import { resolveClipFadeBinding, type ClipFadeDeps } from "./clipFadeBinding";
 
 const EMPTY: HfAutomation = { version: 1, lanes: [] };
 
@@ -200,18 +200,6 @@ describe("the two ramps bend apart", () => {
     resolveClipFadeBinding(el(), bag)!.onBend("in", -0.3, false);
     expect(onPreview).toHaveBeenCalledTimes(1);
     expect(onCommit).not.toHaveBeenCalled();
-  });
-});
-
-describe("readFadeCurve", () => {
-  it("is straight when the point carries no curvature", () => {
-    expect(readFadeCurve(undefined)).toBe(0);
-    expect(readFadeCurve(0)).toBe(0);
-  });
-
-  it("reads the stored curvature from the other end", () => {
-    expect(readFadeCurve(0.5)).toBe(-0.5);
-    expect(readFadeCurve(-0.5)).toBe(0.5);
   });
 });
 
