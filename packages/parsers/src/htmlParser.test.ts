@@ -37,6 +37,29 @@ describe("parseHtml", () => {
     expect(result.elements[1].duration).toBe(5);
   });
 
+  it("prefers canonical duration/track attributes over conflicting legacy values", () => {
+    const result = parseHtml(`
+      <html><body><div id="stage">
+        <div id="clip" data-start="1" data-duration="2.5" data-end="99" data-track-index="3" data-layer="8"><div>Clip</div></div>
+      </div></body></html>
+    `);
+
+    expect(result.elements[0]).toMatchObject({ startTime: 1, duration: 2.5, zIndex: 3 });
+  });
+
+  it("resolves chained start references with the shared grammar", () => {
+    const result = parseHtml(`
+      <html><body><div id="stage">
+        <div id="intro" data-start="0" data-duration="2"><div>Intro</div></div>
+        <div id="body" data-start="intro + .5" data-duration="3"><div>Body</div></div>
+        <div id="outro" data-start="body" data-duration="1"><div>Outro</div></div>
+      </div></body></html>
+    `);
+
+    expect(result.elements.find(({ name }) => name === "Body")?.startTime).toBe(2.5);
+    expect(result.elements.find(({ name }) => name === "Outro")?.startTime).toBe(5.5);
+  });
+
   it("handles nested compositions", () => {
     const html = `
       <html>
@@ -146,6 +169,22 @@ describe("parseHtml", () => {
     expect(result.gsapScript).not.toBeNull();
     expect(result.gsapScript).toContain("gsap.timeline");
     expect(result.gsapScript).toContain('tl.to("#text1"');
+  });
+
+  it("extracts GSAP script from composition templates", () => {
+    const html = `
+      <html>
+      <body>
+        <div id="stage"></div>
+        <template data-composition-id="sub-comp">
+          <script>const tl = gsap.timeline({ paused: true });</script>
+        </template>
+      </body>
+      </html>
+    `;
+    const result = parseHtml(html);
+
+    expect(result.gsapScript).toContain("gsap.timeline");
   });
 
   it("extracts styles from style tags", () => {
@@ -448,7 +487,8 @@ describe("updateElementInHtml", () => {
     const updated = updateElementInHtml(html, "el1", { startTime: 2, duration: 3 });
 
     expect(updated).toContain('data-start="2"');
-    expect(updated).toContain('data-end="5"'); // data-end gets set to start + duration
+    expect(updated).toContain('data-duration="3"');
+    expect(updated).not.toContain('data-end="');
   });
 
   it("updates element name", () => {
@@ -495,7 +535,10 @@ describe("addElementToHtml", () => {
     expect(id).toBeDefined();
     expect(updated).toContain(`id="${id}"`);
     expect(updated).toContain('data-start="1"');
-    expect(updated).toContain('data-end="4"');
+    expect(updated).toContain('data-duration="3"');
+    expect(updated).toContain('data-track-index="1"');
+    expect(updated).not.toContain('data-end="');
+    expect(updated).not.toContain('data-layer="');
     expect(updated).toContain("Hello!");
   });
 
@@ -558,6 +601,26 @@ describe("removeElementFromHtml", () => {
     // Neither tween may survive — the orphaned second tl.to referenced a deleted element.
     expect(updated).not.toContain("x: 100");
     expect(updated).not.toContain("x: 200");
+  });
+
+  it("strips GSAP tweens from composition templates", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div id="stage">
+    <div id="box" data-hf-id="box" data-start="0" data-end="5">box</div>
+  </div>
+  <template data-composition-id="sub-comp">
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.to("[data-hf-id=\\"box\\"]", { x: 100, duration: 1 }, 0);
+    </script>
+  </template>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, "box");
+
+    expect(updated).not.toContain('data-hf-id="box"');
+    expect(updated).not.toContain("x: 100");
   });
 });
 
@@ -625,6 +688,25 @@ describe("validateCompositionHtml", () => {
     const result = validateCompositionHtml(html);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Inline event handlers (onclick, onload, etc.) not allowed");
+  });
+
+  it("validates GSAP scripts inside composition templates", () => {
+    const html = `<!DOCTYPE html>
+<html data-composition-id="comp-1" data-composition-duration="10">
+<body>
+  <div id="stage"></div>
+  <template data-composition-id="sub-comp">
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#text1", { onComplete: () => {}, duration: 1 }, 0);
+    </script>
+  </template>
+</body>
+</html>`;
+
+    const result = validateCompositionHtml(html);
+
+    expect(result.errors).toContain("onComplete callback not allowed");
   });
 });
 

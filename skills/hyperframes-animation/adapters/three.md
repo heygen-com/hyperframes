@@ -120,7 +120,7 @@ After editing a Three.js composition:
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 ```
 
 ## Credits And References

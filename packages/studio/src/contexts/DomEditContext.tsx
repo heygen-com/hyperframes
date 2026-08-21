@@ -15,7 +15,9 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomStyleCommit"
   | "handleDomAttributeCommit"
   | "handleDomAttributeLiveCommit"
+  | "handleDomAttributeQuietCommit"
   | "handleDomHtmlAttributeCommit"
+  | "handleDomAttributesCommit"
   | "handleDomPathOffsetCommit"
   | "handleDomGroupPathOffsetCommit"
   | "handleDomZIndexReorderCommit"
@@ -23,6 +25,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
   | "handleDomTextCommit"
+  | "handleDomRichTextCommit"
   | "handleDomTextFieldStyleCommit"
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
@@ -70,6 +73,7 @@ export interface DomEditActionsValue extends Pick<
   | "commitMutation"
   | "applyMarqueeSelection"
   | "handleUpdateKeyframeEase"
+  | "handleUpdateSegmentEase"
   | "handleSetAllKeyframeEases"
 > {}
 
@@ -98,10 +102,26 @@ export function useDomEditActionsContext(): DomEditActionsValue {
   return ctx;
 }
 
+/**
+ * Optional access — returns null outside a provider. Lets the player-package
+ * <Timeline> (a public standalone export) reach the z-order persist path when
+ * embedded in the NLE without hard-requiring the provider in standalone/test mounts.
+ */
+export function useDomEditActionsContextOptional(): DomEditActionsValue | null {
+  return useContext(DomEditActionsContext);
+}
+
 export function useDomEditSelectionContext(): DomEditSelectionValue {
   const ctx = useContext(DomEditSelectionContext);
   if (!ctx) throw new Error("useDomEditSelectionContext must be used within DomEditProvider");
   return ctx;
+}
+
+/** Optional counterpart to useDomEditActionsContextOptional — same reason: the
+ *  player package's own components mount outside a provider in standalone and
+ *  test trees, where "no dom-edit selection" is the correct answer. */
+export function useDomEditSelectionContextOptional(): DomEditSelectionValue | null {
+  return useContext(DomEditSelectionContext);
 }
 
 /** @deprecated Prefer useDomEditActionsContext or useDomEditSelectionContext. */
@@ -128,7 +148,9 @@ export function DomEditProvider({
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
+    handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
@@ -137,6 +159,7 @@ export function DomEditProvider({
     handleDomManualEditsReset,
 
     handleDomTextCommit,
+    handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
@@ -188,6 +211,7 @@ export function DomEditProvider({
     commitMutation,
     applyMarqueeSelection,
     handleUpdateKeyframeEase,
+    handleUpdateSegmentEase,
     handleSetAllKeyframeEases,
   },
   children,
@@ -214,7 +238,9 @@ export function DomEditProvider({
       handleDomStyleCommit,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
+      handleDomAttributeQuietCommit,
       handleDomHtmlAttributeCommit,
+      handleDomAttributesCommit,
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
@@ -222,6 +248,7 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomRichTextCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,
@@ -269,6 +296,7 @@ export function DomEditProvider({
       commitMutation: stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleUpdateSegmentEase,
       handleSetAllKeyframeEases,
     }),
     [
@@ -281,7 +309,9 @@ export function DomEditProvider({
       handleDomStyleCommit,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
+      handleDomAttributeQuietCommit,
       handleDomHtmlAttributeCommit,
+      handleDomAttributesCommit,
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
@@ -289,6 +319,7 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomRichTextCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,
@@ -336,6 +367,7 @@ export function DomEditProvider({
       stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleUpdateSegmentEase,
       handleSetAllKeyframeEases,
     ],
   );

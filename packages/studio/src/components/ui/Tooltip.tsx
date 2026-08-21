@@ -1,5 +1,14 @@
-import { useState, useRef, useCallback, useEffect, useId, type ReactNode } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useId,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
+import { clampCentredLeft } from "../editor/floatingPanel";
 
 interface TooltipProps {
   label: string;
@@ -19,6 +28,8 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
   const [resolvedSide, setResolvedSide] = useState<"top" | "bottom">(side);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [bubbleWidth, setBubbleWidth] = useState(0);
   // WCAG 4.1.2: programmatically associate the bubble with its trigger.
   const tooltipId = useId();
 
@@ -40,13 +51,11 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
       ) {
         nextSide = "top";
       }
-      const x = Math.min(
-        Math.max(rect.left + rect.width / 2, VIEWPORT_MARGIN),
-        window.innerWidth - VIEWPORT_MARGIN,
-      );
       setResolvedSide(nextSide);
       setPos({
-        x,
+        // Raw trigger centre; clamped to the viewport at render, once the
+        // bubble's own width is known (see clampedX).
+        x: rect.left + rect.width / 2,
         y: nextSide === "top" ? rect.top - 6 : rect.bottom + 6,
       });
       setVisible(true);
@@ -61,6 +70,12 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
     setVisible(false);
   }, []);
 
+  // Measure before paint so a wide bubble near a viewport edge is clamped in
+  // the same commit it appears in (no visible jump).
+  useLayoutEffect(() => {
+    setBubbleWidth(visible ? (bubbleRef.current?.offsetWidth ?? 0) : 0);
+  }, [visible, label]);
+
   // WCAG 1.4.13: tooltip content must be dismissible with Escape.
   useEffect(() => {
     if (!visible) return;
@@ -70,6 +85,8 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [visible, hide]);
+
+  const clampedX = clampCentredLeft(pos.x, bubbleWidth, window.innerWidth, VIEWPORT_MARGIN);
 
   return (
     <>
@@ -89,12 +106,13 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
           <div
             className="fixed z-[200] pointer-events-none"
             style={{
-              left: pos.x,
+              left: clampedX,
               top: pos.y,
               transform: resolvedSide === "top" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
             }}
           >
             <div
+              ref={bubbleRef}
               role="tooltip"
               id={tooltipId}
               className="px-2 py-1 rounded-md bg-neutral-800 border border-neutral-700/50 text-[10px] font-medium text-neutral-200 whitespace-nowrap shadow-lg"

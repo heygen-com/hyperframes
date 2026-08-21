@@ -1,3 +1,4 @@
+import { failUsage } from "../utils/commandResult.js";
 /**
  * Strict numeric parsers for CLI flags.
  *
@@ -28,7 +29,7 @@ export function parseIntFlag(raw: string | undefined, opts: IntFlagOptions): num
   if (raw === undefined) return undefined;
   if (!INTEGER_RE.test(raw)) {
     errorBox(`Invalid ${opts.flag}`, `Got "${raw}". Must be an integer${rangeSuffix(opts)}.`);
-    process.exit(1);
+    failUsage();
   }
   const n = Number.parseInt(raw, 10);
   enforceRange(opts.flag, raw, n, opts);
@@ -52,12 +53,12 @@ export function parseNumericFlag(
   if (raw === undefined) return undefined;
   if (!NUMERIC_RE.test(raw)) {
     errorBox(`Invalid ${opts.flag}`, `Got "${raw}". Must be a number${rangeSuffix(opts)}.`);
-    process.exit(1);
+    failUsage();
   }
   const n = Number.parseFloat(raw);
   if (!Number.isFinite(n)) {
     errorBox(`Invalid ${opts.flag}`, `Got "${raw}". Must be a finite number.`);
-    process.exit(1);
+    failUsage();
   }
   enforceRange(opts.flag, raw, n, opts);
   return n;
@@ -71,11 +72,11 @@ function enforceRange(
 ): void {
   if (bounds.min !== undefined && value < bounds.min) {
     errorBox(`Invalid ${flag}`, `Got "${raw}". Minimum is ${bounds.min}.`);
-    process.exit(1);
+    failUsage();
   }
   if (bounds.max !== undefined && value > bounds.max) {
     errorBox(`Invalid ${flag}`, `Got "${raw}". Maximum is ${bounds.max}.`);
-    process.exit(1);
+    failUsage();
   }
 }
 
@@ -88,7 +89,7 @@ export function parseEnumFlag<T extends string>(
   if (raw === undefined) return undefined;
   if ((allowed as readonly string[]).includes(raw)) return raw as T;
   errorBox(`Invalid ${opts.flag}`, `Got "${raw}". Must be one of: ${allowed.join(", ")}.`);
-  process.exit(1);
+  failUsage();
 }
 
 function rangeSuffix(opts: { min?: number; max?: number }): string {

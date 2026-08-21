@@ -4,6 +4,12 @@
  * Lightweight pluggable logger with zero dependencies.
  * Default implementation writes to console with level filtering.
  *
+ * All levels write to stderr (console.error/console.warn), never stdout —
+ * producer runs inside CLI commands whose stdout is a machine-readable
+ * contract (e.g. `validate --json`, `check --json`); an info/debug line on
+ * stdout would corrupt that output. There is no diagnostic use case that
+ * needs these lines on stdout specifically, so the whole logger is stderr-only.
+ *
  * Users can provide their own logger (e.g. Winston, Pino) by
  * implementing the ProducerLogger interface.
  */
@@ -71,12 +77,12 @@ export function createConsoleLogger(level: LogLevel = "info"): ProducerLogger {
     },
     info(message, meta) {
       if (shouldLog("info")) {
-        console.log(`[INFO] ${message}${formatMeta(meta)}`);
+        console.error(`[INFO] ${message}${formatMeta(meta)}`);
       }
     },
     debug(message, meta) {
       if (shouldLog("debug")) {
-        console.log(`[DEBUG] ${message}${formatMeta(meta)}`);
+        console.error(`[DEBUG] ${message}${formatMeta(meta)}`);
       }
     },
     isLevelEnabled(msgLevel) {

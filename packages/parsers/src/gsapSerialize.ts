@@ -50,6 +50,8 @@ export function editabilityForProvenance(provenance?: GsapProvenance): KeyframeE
 export interface GsapAnimation {
   id: string;
   targetSelector: string;
+  /** Stable parser-only identity for non-DOM targets whose display label is not unique. */
+  targetIdentity?: string;
   method: GsapMethod;
   position: number | string;
   properties: Record<string, number | string>;
@@ -88,11 +90,55 @@ export interface GsapPercentageKeyframe {
   ease?: string;
 }
 
+export interface WritableGsapPercentageKeyframe extends GsapPercentageKeyframe {
+  auto?: boolean;
+}
+
+/**
+ * A keyframe that still knows which tween emitted it, and where inside that
+ * tween it sat. Merging several tweens onto one timeline row drops that
+ * provenance unless it rides along on the keyframe, and an editor needs it to
+ * route an edit back to the animation the user actually clicked. Required, not
+ * optional: a keyframe that reaches a merge without it cannot be attributed at
+ * all, and silently treating that as "no collision" is how an edit lands on the
+ * wrong tween.
+ */
+export interface SourcedGsapPercentageKeyframe extends GsapPercentageKeyframe {
+  animationId: string;
+  tweenPercentage: number;
+}
+
+/**
+ * Collapse duplicate percentage entries before serializing an object literal.
+ * Matches addKeyframeToScript's merge contract: later properties/ease win while
+ * unrelated authored properties and an earlier ease survive. An explicit later
+ * `auto` value wins, and output is always sorted by percentage.
+ */
+export function mergePercentageKeyframes(
+  keyframes: readonly WritableGsapPercentageKeyframe[],
+): WritableGsapPercentageKeyframe[] {
+  const byPercentage = new Map<number, WritableGsapPercentageKeyframe>();
+  for (const keyframe of keyframes) {
+    const existing = byPercentage.get(keyframe.percentage);
+    if (!existing) {
+      byPercentage.set(keyframe.percentage, {
+        ...keyframe,
+        properties: { ...keyframe.properties },
+      });
+      continue;
+    }
+    existing.properties = { ...existing.properties, ...keyframe.properties };
+    if (keyframe.ease !== undefined) existing.ease = keyframe.ease;
+    if (keyframe.auto !== undefined) existing.auto = keyframe.auto;
+  }
+  return [...byPercentage.values()].sort((a, b) => a.percentage - b.percentage);
+}
+
 export type GsapKeyframeFormat = "percentage" | "object-array" | "simple-array";
 
-export interface GsapKeyframesData {
+export interface GsapKeyframesData<K extends GsapPercentageKeyframe = GsapPercentageKeyframe> {
   format: GsapKeyframeFormat;
-  keyframes: GsapPercentageKeyframe[];
+  keyframes: K[];
   ease?: string;
   easeEach?: string;
 }

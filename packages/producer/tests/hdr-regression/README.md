@@ -35,8 +35,8 @@ python3 packages/producer/tests/hdr-regression/scripts/generate-hdr-photo-pq.py
 
 ```bash
 cd packages/producer
-bun run test hdr-regression
-bun run test:update hdr-regression
+bun run test:regression hdr-regression
+bun run test:regression:update hdr-regression
 ```
 
 In CI it runs in the `hdr` shard alongside `hdr-hlg-regression`

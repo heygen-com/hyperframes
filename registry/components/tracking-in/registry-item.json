@@ -1,0 +1,60 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tracking-in",
+  "type": "hyperframes:component",
+  "title": "Tracking In",
+  "description": "A precise letter-spacing reveal for premium headings and interface labels",
+  "tags": ["motion-primitive", "text", "reveal", "typography"],
+  "files": [
+    {
+      "path": "tracking-in.html",
+      "target": "compositions/components/tracking-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tracking",
+      "type": "enum",
+      "role": "style",
+      "label": "Tracking",
+      "description": "Multiplies the letter-spacing the timeline drives, so the reveal starts and settles proportionally wider or tighter.",
+      "default": "standard",
+      "options": [
+        { "value": "tight", "label": "Tight" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    },
+    {
+      "id": "rise",
+      "type": "enum",
+      "role": "motion",
+      "label": "Rise",
+      "description": "Vertical offset the text starts from, which the timeline reads as the start of its travel and eases to zero.",
+      "default": "standard",
+      "options": [
+        { "value": "subtle", "label": "Subtle" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "bold", "label": "Bold" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Text colour: inherit keeps the surrounding page colour, ink suits light frames, paper dark ones, accent rides --brand.",
+      "default": "inherit",
+      "options": [
+        { "value": "inherit", "label": "Inherit" },
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tracking-in.png"
+  }
+}

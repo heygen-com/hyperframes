@@ -1,7 +1,5 @@
 export type StudioFeatureFlagEnv = Record<string, boolean | string | undefined>;
 
-const STUDIO_PREVIEW_MANUAL_DRAGGING_ENV = "VITE_STUDIO_ENABLE_PREVIEW_MANUAL_DRAGGING";
-const STUDIO_INSPECTOR_PANELS_ENV = "VITE_STUDIO_ENABLE_INSPECTOR_PANELS";
 const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "on", "enabled"]);
 const FALSY_ENV_VALUES = new Set(["0", "false", "no", "off", "disabled"]);
 
@@ -40,44 +38,6 @@ const runtimeEnv =
     : {};
 const env = { ...(import.meta.env ?? {}), ...runtimeEnv } as StudioFeatureFlagEnv;
 
-export const STUDIO_PREVIEW_MANUAL_EDITING_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  [STUDIO_PREVIEW_MANUAL_DRAGGING_ENV, "VITE_STUDIO_PREVIEW_MANUAL_EDITING_ENABLED"],
-  true,
-);
-
-export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  [STUDIO_INSPECTOR_PANELS_ENV, "VITE_STUDIO_INSPECTOR_PANELS_ENABLED"],
-  true,
-);
-
-export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_BLOCKS_PANEL", "VITE_STUDIO_BLOCKS_PANEL_ENABLED"],
-  true,
-);
-
-export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_GSAP_PANEL", "VITE_STUDIO_GSAP_PANEL_ENABLED"],
-  true,
-);
-
-export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_KEYFRAMES", "VITE_STUDIO_KEYFRAMES_ENABLED"],
-  true,
-);
-
-export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_RAZOR_TOOL", "VITE_STUDIO_RAZOR_TOOL_ENABLED"],
-  true,
-);
-
-export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
-
 // Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch
 // instead of the server patch-element API. Default false; enable via
 // VITE_STUDIO_SDK_CUTOVER_ENABLED=true. Requires SDK session to be open.
@@ -85,6 +45,12 @@ export const STUDIO_SDK_CUTOVER_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_SDK_CUTOVER_ENABLED"],
   false,
+);
+
+/** Explicit per-operation-family canary selection; the master flag alone enables nothing. */
+export const STUDIO_SDK_CUTOVER_FAMILIES = resolveEnabledSdkFamilies(
+  env,
+  STUDIO_SDK_CUTOVER_ENABLED,
 );
 
 // Resolver-parity tripwire (telemetry-only, decoupled from cutover).
@@ -97,4 +63,15 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";
+// Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
+// flat identity header/footer/groups. Default true as of v0.7.59+ bug-fix pass
+// (right-aligned values, Stroke select-only, promote-badge overlap, Layout/
+// Style section gating); disable via VITE_STUDIO_FLAT_INSPECTOR_ENABLED=false
+// to fall back to the legacy panel.
+export const STUDIO_FLAT_INSPECTOR_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_FLAT_INSPECTOR", "VITE_STUDIO_FLAT_INSPECTOR_ENABLED"],
+  true,
+);
+
+import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";

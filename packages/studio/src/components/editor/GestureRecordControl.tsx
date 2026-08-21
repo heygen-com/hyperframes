@@ -1,3 +1,5 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+
 export type GestureRecordingState = "idle" | "recording" | "preview";
 
 interface GestureRecordIconProps {
@@ -28,13 +30,17 @@ export function GestureRecordPanelButton({
   onToggleRecording,
 }: GestureRecordPanelButtonProps) {
   const recording = recordingState === "recording";
+  const track = useTrackDesignInput();
 
   return (
     <div className="px-4 pb-3">
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={onToggleRecording}
+        onClick={() => {
+          track("button", "Gesture recording");
+          onToggleRecording();
+        }}
         className={`w-full flex items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-medium transition-colors ${
           recording
             ? "bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse"

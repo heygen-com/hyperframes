@@ -37,13 +37,50 @@ smoke flow; the SDK + CDK are the supported public surface for adopters.
                               │ pure functions over local paths
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ S3 bucket — plan tarball + per-chunk outputs + final mp4         │
+│ S3 bucket — v1 plan tar or v2 manifest/blobs + chunks + output  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 The handler downloads inputs from S3 into `/tmp`, calls the OSS primitive,
 uploads outputs back to S3, and returns a small JSON result that fits
 inside Step Functions' history budget (under 200 bytes per chunk).
+
+### Plan transport selection
+
+Plan v2 is the default for new renders. When `planProtocol` is omitted,
+`renderToLambda` sends an explicit `PlanProtocol: "v2"` so the SDK and the
+deployed state machine agree:
+
+```ts
+await renderToLambda({
+  // ...bucket, state machine, project, and config...
+});
+```
+
+V2 never overloads `PlanS3Uri`. The planner returns
+`PlanV2ManifestS3Uri` and `PlanV2ArtifactS3Prefix`; chunk workers fetch
+only manifest-selected chunk artifacts, while the assembler fetches its
+own metadata and audio subset. Blobs are immutable SHA-256-addressed
+objects, verified on upload and download, and the manifest is published
+last. Unknown protocols and digest mismatches are terminal Step Functions
+errors. The monolithic v1 transport remains available as deprecated
+compatibility by passing `planProtocol: "v1"` explicitly.
+
+#### Upgrade order
+
+This default changes application behavior and requires a coordinated
+infrastructure upgrade. Before upgrading an application that calls
+`renderToLambda`:
+
+1. Pause new renders and let existing Step Functions executions drain.
+2. Redeploy the Lambda handler and SAM template or CDK construct from the
+   same new package version.
+3. Resume renders, then upgrade the application/SDK dependency.
+
+Older state machines can default missing protocol fields to v1 or lack v2
+branches, while the new SDK sends explicit v2. If infrastructure cannot be
+redeployed first, keep the application on its previous package version or
+pass `planProtocol: "v1"` explicitly until the redeploy is complete.
 
 ## Chrome runtime
 

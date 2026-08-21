@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layer Reversal Regression</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #0b0e14;
+            --purple: #8b3a7a;
+            --purple-light: #a56698;
+            --white: #ffffff;
+            --text-secondary: #a0a4b0;
+            --grid-color: rgba(139, 58, 122, 0.1);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--white);
+            font-family: 'Outfit', sans-serif;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+        }
+
+        #root {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Background Texture */
+        .bg-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(139, 58, 122, 0.15) 0%, transparent 70%),
+                linear-gradient(var(--grid-color) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+            background-size: 100% 100%, 80px 80px, 80px 80px;
+            opacity: 0.6;
+        }
+
+        /* AI Engine Core */
+        .engine-container {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .engine-core {
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, var(--purple) 0%, transparent 70%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .engine-ring {
+            position: absolute;
+            inset: -20px;
+            border: 2px solid var(--purple);
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
+        .engine-inner {
+            width: 120px;
+            height: 120px;
+            background: var(--white);
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(139, 58, 122, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 11;
+        }
+
+        .engine-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 32px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--white);
+            margin-top: 10px;
+        }
+
+        /* Input Icons (Left) */
+        .inputs-container {
+            position: absolute;
+            left: 150px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+            z-index: 5;
+        }
+
+        .input-item {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 320px;
+        }
+
+        .icon-box {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--purple-light);
+        }
+
+        .input-text {
+            font-size: 24px;
+            font-weight: 400;
+            color: var(--white);
+        }
+
+        /* Output Badges (Right) */
+        .outputs-container {
+            position: absolute;
+            right: 150px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 80px;
+            z-index: 5;
+        }
+
+        .output-badge {
+            background: var(--purple);
+            color: var(--white);
+            padding: 30px 50px;
+            border-radius: 100px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 36px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 350px;
+            text-align: center;
+        }
+
+        /* SVG Connectors Overlay */
+        #connectors-svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .trail-path {
+            fill: none;
+            stroke: var(--purple);
+            stroke-width: 2;
+            stroke-dasharray: 10, 10;
+            opacity: 0.4;
+        }
+
+        /* Header/Footer Info */
+        .header-info {
+            position: absolute;
+            top: 60px;
+            left: 100px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .brand-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 42px;
+            color: var(--white);
+        }
+
+        .tagline {
+            font-size: 20px;
+            color: var(--purple-light);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+
+        /* Caption Safe Zone Marker (Invisible) */
+        .caption-spacer {
+            position: absolute;
+            bottom: 10%;
+            width: 76%;
+            height: 10%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root" data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="10.6">
+        <div class="bg-layer"></div>
+
+        <div class="header-info">
+            <div class="brand-name" id="brand">LAYER TEST</div>
+            <div class="tagline" id="tagline">COMPOSITOR REVERSAL</div>
+        </div>
+
+        <div class="inputs-container">
+            <div class="input-item" id="input-social">
+                <div class="icon-box">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>
+                </div>
+                <div class="input-text">Input Alpha</div>
+            </div>
+            <div class="input-item" id="input-ecommerce">
+                <div class="icon-box">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                </div>
+                <div class="input-text">Input Beta</div>
+            </div>
+            <div class="input-item" id="input-reviews">
+                <div class="icon-box">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div class="input-text">Input Gamma</div>
+            </div>
+        </div>
+
+        <div class="engine-container">
+            <div class="engine-core" id="engine-core">
+                <div class="engine-ring" id="ring-1"></div>
+                <div class="engine-ring" id="ring-2"></div>
+                <div class="engine-inner">
+                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#8b3a7a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                </div>
+            </div>
+            <div class="engine-label" id="engine-label">PROCESSOR</div>
+        </div>
+
+        <div class="outputs-container">
+            <div class="output-badge" id="output-persona">First Output</div>
+            <div class="output-badge" id="output-formats">Second Output</div>
+        </div>
+
+        <svg id="connectors-svg" data-layout-allow-overflow></svg>
+    </div>
+
+    <script>
+        gsap.registerPlugin(MotionPathPlugin);
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["root"] = tl;
+
+        const D = 20;
+
+        // Elements
+        const engine = document.querySelector('#engine-core');
+        const engineLabel = document.querySelector('#engine-label');
+        const inputs = document.querySelectorAll('.input-item');
+        const outputs = document.querySelectorAll('.output-badge');
+        const rings = document.querySelectorAll('.engine-ring');
+        const brand = document.querySelector('#brand');
+        const tagline = document.querySelector('#tagline');
+        const svg = document.querySelector('#connectors-svg');
+
+        // Initial States
+        gsap.set([engine, engineLabel, inputs, outputs, brand, tagline], { opacity: 0 });
+        gsap.set(engine, { scale: 0.5 });
+        gsap.set(inputs, { x: -50 });
+        gsap.set(outputs, { x: 50 });
+
+        // Build Animation
+
+        // 1. Background & Engine Entrance
+        tl.to('.bg-layer', { opacity: 1, duration: 2, ease: "power2.inOut" }, 0);
+        tl.fromTo(engine, { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 1.5, ease: "power3.out" }, 0.5);
+        tl.fromTo(engineLabel, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 1, ease: "power2.out" }, 1.2);
+
+        // 2. Header Info
+        tl.fromTo([brand, tagline], { opacity: 0, y: -20 }, { opacity: 1, y: 0, stagger: 0.2, duration: 1, ease: "power2.out" }, 1);
+
+        // 3. Inputs Entrance (Left)
+        tl.fromTo(inputs, { opacity: 0, x: -50 }, { opacity: 1, x: 0, stagger: 0.3, duration: 1, ease: "power2.out" }, 2);
+
+        // 4. Draw Connectors & Particle Trails
+        const engineRect = engine.getBoundingClientRect();
+        const engineX = engineRect.left + engineRect.width / 2;
+        const engineY = engineRect.top + engineRect.height / 2;
+
+        inputs.forEach((input, i) => {
+            const rect = input.getBoundingClientRect();
+            const startX = rect.right;
+            const startY = rect.top + rect.height / 2;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("class", "trail-path");
+            const cp1x = startX + (engineX - startX) * 0.5;
+            const d = `M ${startX} ${startY} Q ${cp1x} ${startY} ${engineX} ${engineY}`;
+            path.setAttribute("d", d);
+            svg.appendChild(path);
+
+            const length = path.getTotalLength();
+            gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+
+            tl.to(path, { strokeDashoffset: 0, duration: 1.5, ease: "power1.inOut" }, 2.5 + (i * 0.3));
+
+            // Particle trail effect
+            for(let j=0; j<5; j++) {
+                const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                particle.setAttribute("r", "3");
+                particle.setAttribute("fill", "#ffffff");
+                svg.appendChild(particle);
+
+                tl.to(particle, {
+                    duration: 1.5,
+                    repeat: 5,
+                    motionPath: {
+                        path: path,
+                        align: path,
+                        autoRotate: true
+                    },
+                    ease: "none",
+                    opacity: 0
+                }, 2.5 + (i * 0.3) + (j * 0.2));
+            }
+        });
+
+        outputs.forEach((output, i) => {
+            const rect = output.getBoundingClientRect();
+            const endX = rect.left;
+            const endY = rect.top + rect.height / 2;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("class", "trail-path");
+            const cp1x = engineX + (endX - engineX) * 0.5;
+            const d = `M ${engineX} ${engineY} Q ${cp1x} ${endY} ${endX} ${endY}`;
+            path.setAttribute("d", d);
+            svg.appendChild(path);
+
+            const length = path.getTotalLength();
+            gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+
+            tl.to(path, { strokeDashoffset: 0, duration: 1.5, ease: "power1.inOut" }, 5 + (i * 0.5));
+        });
+
+        // 5. Outputs Entrance (Right)
+        tl.fromTo(outputs, { opacity: 0, x: 50 }, { opacity: 1, x: 0, stagger: 0.5, duration: 1.2, ease: "power3.out" }, 5.5);
+
+        // 6. Ambient Motion (Continuous)
+        tl.to('#ring-1', { rotation: 360, duration: 10, repeat: 1, ease: "none" }, 0);
+        tl.to('#ring-2', { rotation: -360, duration: 15, repeat: 1, ease: "none" }, 0);
+
+        tl.to(engine, {
+            scale: 1.05,
+            duration: 2,
+            repeat: 8,
+            yoyo: true,
+            ease: "sine.inOut"
+        }, 2.0);
+
+        // Subtle drift for inputs and outputs
+        tl.to(inputs, { y: "+=10", duration: 3, repeat: 5, yoyo: true, ease: "sine.inOut", stagger: 0.2 }, 3);
+        tl.to(outputs, { y: "-=15", duration: 4, repeat: 4, yoyo: true, ease: "sine.inOut", stagger: 0.4 }, 6);
+
+        // 7. Exit Animations
+        const exitStart = D - 2;
+        tl.to([inputs, outputs, engine, engineLabel, brand, tagline, svg], {
+            opacity: 0,
+            y: -30,
+            stagger: 0.1,
+            duration: 1,
+            ease: "power2.in"
+        }, exitStart);
+
+        // Pin the end
+        tl.set({}, {}, D);
+
+    </script>
+</body>
+</html>

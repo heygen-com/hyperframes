@@ -60,7 +60,8 @@ function isSafeMediaUrl(url: string): boolean {
   const normalized = url.replace(/[\u0000-\u0020]/g, "");
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
   if (!scheme) return true;
-  const proto = scheme[1].toLowerCase();
+  const proto = scheme[1]?.toLowerCase();
+  if (!proto) return false;
   if (proto === "https" || proto === "http" || proto === "blob") return true;
   if (proto === "data") return /^data:image\//i.test(normalized);
   return false;
@@ -74,8 +75,13 @@ function isSafeMediaUrl(url: string): boolean {
  * characters is legal in a scalar variable value (string, number, color, font
  * family), so removing them is lossless for real inputs and neutralizes the
  * declaration/URL-exfiltration channel.
+ *
+ * Exported because the static compiler bakes the same scalars into a stylesheet
+ * at build time and has to reach the same result: a value that the runtime
+ * strips but a compile-time emit passes through would make the rendered MP4
+ * differ from the preview, which is the more dangerous of the two directions.
  */
-function sanitizeCssValue(value: string): string {
+export function sanitizeCssValue(value: string): string {
   return value.replace(/[;{}<>\r\n]/g, "");
 }
 

@@ -119,7 +119,7 @@ export const ArcPathControls = memo(function ArcPathControls({
                 )}
               </div>
               <SliderControl
-                ariaLabel="Curviness"
+                trackName={segmentCount === 1 ? "Curviness" : `Segment ${i + 1} curviness`}
                 value={seg.curviness}
                 min={0}
                 max={3}

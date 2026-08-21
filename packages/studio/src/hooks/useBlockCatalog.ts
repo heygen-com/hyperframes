@@ -6,33 +6,51 @@ import {
   resolveBlockCategory,
 } from "../utils/blockCategories";
 
-export type CatalogItem = RegistryItem & {
+type CatalogItem = RegistryItem & {
   category: BlockCategory;
 };
 
+let catalogCache: CatalogItem[] | null = null;
+let catalogRequest: Promise<CatalogItem[]> | null = null;
+
+function loadCatalog(): Promise<CatalogItem[]> {
+  catalogRequest ??= fetch("/api/registry/blocks")
+    .then((response) => {
+      if (!response.ok) throw new Error("Failed to load catalog");
+      return response.json() as Promise<RegistryItem[]>;
+    })
+    .then((items) => {
+      catalogCache = items
+        .map((item) => ({ ...item, category: resolveBlockCategory(item.tags) }))
+        .sort((a, b) => {
+          const aIndex = BLOCK_CATEGORIES.findIndex((category) => category.id === a.category);
+          const bIndex = BLOCK_CATEGORIES.findIndex((category) => category.id === b.category);
+          return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+        });
+      return catalogCache;
+    })
+    .catch((error: unknown) => {
+      catalogRequest = null;
+      throw error;
+    });
+  return catalogRequest;
+}
+
 export function useBlockCatalog() {
-  const [blocks, setBlocks] = useState<CatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [blocks, setBlocks] = useState<CatalogItem[]>(() => catalogCache ?? []);
+  const [loading, setLoading] = useState(catalogCache === null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<BlockCategory | null>(null);
 
   // fallow-ignore-next-line complexity
   useEffect(() => {
+    if (catalogCache) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/registry/blocks");
-        if (!res.ok) throw new Error("Failed to load catalog");
-        const data = (await res.json()) as RegistryItem[];
+        const items = await loadCatalog();
         if (cancelled) return;
-        const items = data
-          .map((b) => ({ ...b, category: resolveBlockCategory(b.tags) }))
-          .sort((a, b) => {
-            const ia = BLOCK_CATEGORIES.findIndex((c) => c.id === a.category);
-            const ib = BLOCK_CATEGORIES.findIndex((c) => c.id === b.category);
-            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-          });
         setBlocks(items);
       } catch (err) {
         if (cancelled) return;

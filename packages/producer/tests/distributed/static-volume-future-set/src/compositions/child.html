@@ -1,0 +1,56 @@
+<template id="child-template">
+  <div
+    id="child-root"
+    data-composition-id="child"
+    data-start="0"
+    data-duration="10"
+    data-width="640"
+    data-height="360"
+  >
+    <div class="future-state">
+      <strong>MUST BE VISIBLE</strong>
+      <span>static audio cannot seek visual state</span>
+    </div>
+  </div>
+
+  <style>
+    [data-composition-id="child"] {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      width: 640px;
+      height: 360px;
+    }
+
+    [data-composition-id="child"] .future-state {
+      display: grid;
+      gap: 14px;
+      min-width: 420px;
+      padding: 42px;
+      border: 8px solid #d8ffe5;
+      border-radius: 28px;
+      color: #f4fff7;
+      background: #087443;
+      box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
+      font: 22px/1.3 Arial, sans-serif;
+      text-align: center;
+      visibility: visible;
+    }
+
+    [data-composition-id="child"] .future-state strong {
+      font-size: 38px;
+      letter-spacing: 0.04em;
+    }
+  </style>
+
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(".future-state", { opacity: 0.2, duration: 0.25 }, 9.4);
+      timeline.set(".future-state", { visibility: "hidden" }, 9.65);
+      window.__timelines.child = timeline;
+    })();
+  </script>
+</template>

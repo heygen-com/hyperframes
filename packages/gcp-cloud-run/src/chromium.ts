@@ -5,9 +5,10 @@
  * via the engine's `BrowserManager`. Because Cloud Run runs a container
  * image rather than a size-capped ZIP, the Chrome story is far simpler than
  * the Lambda adapter's: the `Dockerfile` installs `chrome-headless-shell`
- * (the same BeginFrame-capable build the K8s deploy uses) into the image at
- * a known path and exports `HYPERFRAMES_CHROME_PATH`. There is no runtime
- * decompression-into-/tmp step and no 250 MB packaging ceiling to fight.
+ * into the image at a known path and exports `HYPERFRAMES_CHROME_PATH`.
+ * The Dockerfile proves that exact executable's full BeginFrame screenshot
+ * contract during the image build. There is no runtime decompression-into-
+ * /tmp step and no 250 MB packaging ceiling to fight.
  *
  * Resolution order:
  *   1. `PRODUCER_HEADLESS_SHELL_PATH` — the engine's own override. If a

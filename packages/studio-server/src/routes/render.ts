@@ -4,7 +4,7 @@ import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync 
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
-import { parseFps } from "@hyperframes/core";
+import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
@@ -66,6 +66,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // Browser telemetry id, so the server-emitted render outcome is
       // attributed to the user who triggered the render (joinable funnel).
       telemetryDistinctId?: string;
+      // Explicit "this browser profile opted out" flag. Distinct from simply
+      // omitting the id: an OLD client omits it too, and that case falls back
+      // to the install anonymousId. Only an explicit `true` suppresses.
+      telemetryOptOut?: boolean;
       // Composition-variable overrides ({variableId: value}), injected as
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
@@ -107,11 +111,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       variables = body.variables;
     }
 
-    // fallow-ignore-next-line code-duplication
     const now = new Date();
-    const datePart = now.toISOString().slice(0, 10);
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
-    const jobId = `${project.id}_${datePart}_${timePart}`;
+    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) mkdirSync(rendersDir, { recursive: true });
     const ext = FORMAT_EXT[format] ?? ".mp4";
@@ -129,6 +130,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       variables,
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
+      telemetryOptOut: body.telemetryOptOut === true,
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
@@ -290,7 +292,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-            if (meta.status === "failed") status = "failed";
+            // A stale failed sidecar can remain after a retry succeeds. An
+            // existing output artifact is authoritative for the list view;
+            // don't present a downloadable render as failed solely because
+            // an earlier attempt left behind failed metadata.
+            if (meta.status === "failed" && !existsSync(fp)) status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
           } catch {
             /* ignore */

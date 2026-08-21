@@ -12,8 +12,11 @@ describe("splitElementInHtml — hfId clone isolation", () => {
     const { html, matched } = splitElementInHtml(source, { id: "clip1" }, 5, "clip2");
 
     expect(matched).toBe(true);
+    const { document } = parseHTML(html);
     const occurrences = (html.match(/data-hf-id="hf-abc123"/g) ?? []).length;
     expect(occurrences).toBe(1);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).toMatch(/^hf-/);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).not.toBe("hf-abc123");
   });
 });
 
@@ -26,6 +29,21 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain('data-duration="2"');
     expect(result.html).toContain('id="box-split"');
     expect(result.html).toContain('data-start="3"');
+    expect(result.html).toContain('data-duration="4"');
+  });
+
+  it("canonicalizes legacy timing attributes on both split halves", () => {
+    const legacy = source.replace(
+      'data-start="1" data-duration="6"',
+      'data-start="1" data-end="7" data-layer="3"',
+    );
+    const result = splitElementInHtml(legacy, { id: "box" }, 3, "box-split");
+
+    expect(result.matched).toBe(true);
+    expect(result.html).not.toContain("data-end=");
+    expect(result.html).not.toContain("data-layer=");
+    expect(result.html.match(/data-track-index="3"/g)).toHaveLength(2);
+    expect(result.html).toContain('data-duration="2"');
     expect(result.html).toContain('data-duration="4"');
   });
 
@@ -50,6 +68,25 @@ describe("splitElementInHtml", () => {
   it("keeps clip class on the cloned element", () => {
     const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
     expect(result.html).toMatch(/id="box-split"[^>]*class="clip"/);
+  });
+
+  it("gives a split composition host a unique composition id", () => {
+    const composition = source.replace(
+      'id="box" class="clip"',
+      'id="box" class="clip" data-composition-id="headline" data-composition-src="headline.html"',
+    );
+
+    const first = splitElementInHtml(composition, { id: "box" }, 3, "box-split");
+    const second = splitElementInHtml(first.html, { id: "box-split" }, 4, "box-split-2");
+
+    const { document } = parseHTML(second.html);
+    const compositionIds = Array.from(
+      document.querySelectorAll("[data-composition-id]"),
+      (element) => element.getAttribute("data-composition-id"),
+    );
+    expect(compositionIds).toHaveLength(4);
+    expect(new Set(compositionIds)).toHaveLength(4);
+    expect(compositionIds).toEqual(expect.arrayContaining(["root", "headline", "headline-split"]));
   });
 
   it("returns matched false for out-of-range split time", () => {
@@ -84,6 +121,50 @@ describe("splitElementInHtml", () => {
     );
     const result = splitElementInHtml(mediaSource, { id: "box" }, 3, "box-split");
     expect(result.html).toMatch(/id="box-split"[^>]*data-playback-start="2"/);
+  });
+
+  it.each(["audio", "video"])(
+    "seeds the second %s half with a media in-point when the source starts at zero",
+    (tag) => {
+      const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><${tag} id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6"></${tag}></div></body></html>`;
+
+      const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+      const { document } = parseHTML(result.html);
+
+      expect(result.matched).toBe(true);
+      expect(document.getElementById("media")?.getAttribute("data-media-start")).toBe("0");
+      expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("2");
+    },
+  );
+
+  it("advances a zero-based media in-point by playback rate", () => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6" data-playback-rate="2"></video></div></body></html>`;
+
+    const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+    const { document } = parseHTML(result.html);
+
+    expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("4");
+  });
+
+  it("does not add a media in-point to non-media elements", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
+
+    expect(result.html).not.toContain("data-media-start");
+    expect(result.html).not.toContain("data-playback-start");
+  });
+
+  it("stamps a legacy composition offset and advances the second half by playback rate", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
+      start: 1,
+      duration: 6,
+      playbackStart: 1.5,
+      playbackRate: 2,
+      stampPlaybackStart: true,
+    });
+
+    const { document } = parseHTML(result.html);
+    expect(document.getElementById("box")?.getAttribute("data-playback-start")).toBe("1.5");
+    expect(document.getElementById("box-split")?.getAttribute("data-playback-start")).toBe("5.5");
   });
 });
 

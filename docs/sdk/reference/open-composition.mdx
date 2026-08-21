@@ -118,6 +118,8 @@ comp.dispose();
 ### Embedded mode with overrides
 
 ```typescript
+import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+
 import { openComposition } from "@hyperframes/sdk";
 
 // Stored override delta for one customer
@@ -172,4 +174,3 @@ const comp = await openComposition(html, {
     Template-driven products with host-owned history.
   </Card>
 </CardGroup>
-

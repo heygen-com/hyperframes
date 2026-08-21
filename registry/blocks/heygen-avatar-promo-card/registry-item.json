@@ -1,0 +1,91 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "heygen-avatar-promo-card",
+  "type": "hyperframes:block",
+  "title": "HeyGen Avatar Promo Card",
+  "description": "A portrait HeyGen offer card pairs a moving avatar mosaic with bold promotional typography and a branded callout",
+  "tags": ["showcase", "avatar", "promotion", "vertical", "ad-template"],
+  "author": "HeyGen",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "heygen-avatar-promo-card.html",
+      "target": "compositions/heygen-avatar-promo-card.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/av_r1k1.mp4",
+      "target": "assets/av_r1k1.mp4",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/av_r1k3.mp4",
+      "target": "assets/av_r1k3.mp4",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/av_r1k4.mp4",
+      "target": "assets/av_r1k4.mp4",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/av_r2k0.mp4",
+      "target": "assets/av_r2k0.mp4",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/av_r2k2.mp4",
+      "target": "assets/av_r2k2.mp4",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/bgm.m4a",
+      "target": "assets/bgm.m4a",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/heygen-logo.svg",
+      "target": "assets/heygen-logo.svg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-400-normal.woff2",
+      "target": "assets/fonts/inter-latin-400-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-500-normal.woff2",
+      "target": "assets/fonts/inter-latin-500-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-600-normal.woff2",
+      "target": "assets/fonts/inter-latin-600-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-LICENSE.txt",
+      "target": "assets/fonts/inter-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/eb-garamond-latin-400-normal.woff2",
+      "target": "assets/fonts/eb-garamond-latin-400-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/eb-garamond-latin-700-normal.woff2",
+      "target": "assets/fonts/eb-garamond-latin-700-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/eb-garamond-LICENSE.txt",
+      "target": "assets/fonts/eb-garamond-LICENSE.txt",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

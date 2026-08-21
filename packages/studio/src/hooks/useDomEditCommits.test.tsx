@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject } from "react";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import { usePlayerStore } from "../player";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDomEditCommits } from "./useDomEditCommits";
@@ -27,12 +28,13 @@ interface RenderedDomEditCommits {
   hook: ReturnType<typeof useDomEditCommits>;
   showToast: ReturnType<typeof makeShowToast>;
   recordEdit: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  reloadPreview: ReturnType<typeof vi.fn>;
   cleanup: () => void;
 }
 
 interface RenderDomEditCommitsOptions {
   importedFontAssets?: ImportedFontAsset[];
-  writeProjectFile?: (path: string, content: string) => Promise<void>;
+  writeProjectFile?: (path: string, content: string, expectedContent?: string) => Promise<void>;
 }
 
 type FetchHandler = (
@@ -111,14 +113,6 @@ function stubPatchFetch(
       throw new Error(`Unexpected fetch: ${url}`);
     },
   );
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-function stubUnexpectedPersistFetch() {
-  const fetchMock = vi.fn(async (): Promise<Response> => {
-    throw new Error("persist should not run");
-  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -209,6 +203,7 @@ function renderDomEditCommits(
   const previewIframeRef: MutableRefObject<HTMLIFrameElement | null> = { current: iframe };
   const projectIdRef: MutableRefObject<string | null> = { current: "p1" };
   const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
+  const reloadPreview = vi.fn();
 
   function Probe() {
     captured.current = useDomEditCommits({
@@ -223,7 +218,7 @@ function renderDomEditCommits(
       importedFontAssetsRef: { current: options.importedFontAssets ?? [] },
       projectId: "p1",
       projectIdRef,
-      reloadPreview: vi.fn(),
+      reloadPreview,
       domEditSelection: selection,
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
@@ -244,6 +239,7 @@ function renderDomEditCommits(
     hook: captured.current,
     showToast,
     recordEdit,
+    reloadPreview,
     cleanup: () => {
       act(() => {
         root.unmount();
@@ -252,6 +248,524 @@ function renderDomEditCommits(
     },
   } satisfies RenderedDomEditCommits;
 }
+
+describe("useDomEditCommits z-index reorder persistence", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("persists an N-element reorder with one batch POST, one undo entry, and NO iframe reload", async () => {
+    const original =
+      '<div id="a" style="z-index: 1"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 3"></div>';
+    const after =
+      '<div id="a" style="z-index: 3"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 1"></div>';
+    const fetchMock = vi.fn(
+      async (
+        input: Parameters<typeof fetch>[0],
+        _init?: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const url = requestUrl(input);
+        if (url.endsWith("/file-mutations/patch-element-batches")) {
+          return jsonResponse({
+            durable: true,
+            files: [
+              {
+                sourceFile: "index.html",
+                changed: true,
+                matched: [true, true, true],
+                before: original,
+                after,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { iframe, element } = createPreviewElement(
+      '<div data-hf-id="hf-card"></div><div id="b"></div><div id="c"></div>',
+    );
+    element.id = "a";
+    const elements = [
+      element,
+      iframe.contentDocument!.getElementById("b")!,
+      iframe.contentDocument!.getElementById("c")!,
+    ];
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomZIndexReorderCommit(
+          elements.map((item, index) => ({
+            element: item,
+            zIndex: 3 - index,
+            id: item.id,
+            sourceFile: "index.html",
+          })),
+          "z-reorder:test",
+        );
+      });
+
+      const batchPosts = fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
+      );
+      const singlePosts = fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input).includes("/file-mutations/patch-elements-batch/"),
+      );
+      expect(batchPosts).toHaveLength(1);
+      expect(singlePosts).toHaveLength(0);
+      expect(JSON.parse(String(batchPosts[0]?.[1]?.body))).toEqual({
+        batches: [
+          {
+            sourceFile: "index.html",
+            patches: expect.arrayContaining([
+              expect.objectContaining({ target: expect.objectContaining({ id: "a" }) }),
+              expect.objectContaining({ target: expect.objectContaining({ id: "b" }) }),
+              expect.objectContaining({ target: expect.objectContaining({ id: "c" }) }),
+            ]),
+          },
+        ],
+      });
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.recordEdit).toHaveBeenCalledWith({
+        label: "Reorder layers",
+        kind: "manual",
+        coalesceKey: "z-reorder:test",
+        // Unbounded per-gesture fold window (keys are unique per gesture):
+        // the z entry and its mirror/lane counterpart fold across the server
+        // round-trip that separates them.
+        coalesceMs: Number.POSITIVE_INFINITY,
+        files: { "index.html": { before: original, after } },
+      });
+      // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
+      // The live DOM + store already hold the final state and the server matched
+      // every style-only patch, so the reload is provably redundant.
+      expect(rendered.reloadPreview).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("falls back to reloading when the server response omits matched[]", async () => {
+    // Without a matched[] confirmation the persist can't be proven in sync with
+    // the live DOM — the skip-reload path must not engage.
+    const original = '<div id="a" style="z-index: 1"></div>';
+    const after = '<div id="a" style="z-index: 2"></div>';
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        return jsonResponse({
+          durable: true,
+          files: [{ sourceFile: "index.html", changed: true, before: original, after }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { iframe, element } = createPreviewElement();
+    element.id = "a";
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomZIndexReorderCommit([
+          { element, zIndex: 2, id: "a", sourceFile: "index.html" },
+        ]);
+      });
+
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("warns and reports telemetry for unmatched batch patches without throwing", async () => {
+    // The server reports per-patch matched[]: #b was not found in the source,
+    // so it atomically refuses the whole multi-file gesture. The reload
+    // reconverges the preview with disk while the lifecycle owner rolls back
+    // both optimistic writes.
+    const original = '<div id="a" style="z-index: 1"></div>';
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        return jsonResponse({
+          durable: false,
+          files: [
+            {
+              sourceFile: "index.html",
+              changed: false,
+              matched: [true, false],
+              before: original,
+              after: original,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { iframe, element } = createPreviewElement(
+      '<div data-hf-id="hf-card"></div><div id="b"></div>',
+    );
+    element.id = "a";
+    const second = iframe.contentDocument!.getElementById("b")!;
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomZIndexReorderCommit([
+          { element, zIndex: 2, id: "a", sourceFile: "index.html" },
+          { element: second, zIndex: 1, id: "b", sourceFile: "index.html" },
+        ]);
+      });
+
+      // No throw: incomplete durability rolls back both optimistic writes.
+      expect(element.style.zIndex).toBe("");
+      expect(second.style.zIndex).toBe("");
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("could not match 1 patch target(s) in index.html"),
+        "b",
+      );
+      expect(trackStudioEvent).toHaveBeenCalledWith(
+        "save_failure",
+        expect.objectContaining({
+          mutation_type: "z-reorder-unmatched",
+          file_path: "index.html",
+          error_message: expect.stringContaining("b"),
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("uses one atomic request and rolls back every file when one target is unmatched", async () => {
+    const indexOriginal = '<div id="a" style="z-index: 4"></div>';
+    const sceneOriginal = '<div id="b" style="z-index: 5"></div>';
+    const fetchMock = vi.fn(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const url = requestUrl(input);
+        if (url.endsWith("/file-mutations/patch-element-batches")) {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            batches: [
+              expect.objectContaining({ sourceFile: "index.html" }),
+              expect.objectContaining({ sourceFile: "scene.html" }),
+            ],
+          });
+          return jsonResponse({
+            durable: false,
+            files: [
+              {
+                sourceFile: "index.html",
+                changed: false,
+                matched: [true],
+                before: indexOriginal,
+                after: indexOriginal,
+              },
+              {
+                sourceFile: "scene.html",
+                changed: false,
+                matched: [false],
+                before: sceneOriginal,
+                after: sceneOriginal,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { iframe, element } = createPreviewElement(
+      '<div data-hf-id="hf-card" style="z-index: 4"></div><div id="b" style="z-index: 5"></div>',
+    );
+    element.id = "a";
+    const second = iframe.contentDocument!.getElementById("b")!;
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let result:
+        | Awaited<ReturnType<typeof rendered.hook.handleDomZIndexReorderCommit>>
+        | undefined;
+      await act(async () => {
+        result = await rendered.hook.handleDomZIndexReorderCommit([
+          { element, zIndex: 8, id: "a", sourceFile: "index.html" },
+          { element: second, zIndex: 9, id: "b", sourceFile: "scene.html" },
+        ]);
+      });
+
+      expect(result).toEqual({ durable: false, allMatched: false, changed: false });
+      expect(element.style.zIndex).toBe("4");
+      expect(second.style.zIndex).toBe("5");
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("reloads and reports non-durable when an unmatched batch changes no bytes", async () => {
+    const original = '<div id="a" style="z-index: 1"></div>';
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        return jsonResponse({
+          durable: false,
+          files: [
+            {
+              sourceFile: "index.html",
+              changed: false,
+              matched: [false],
+              before: original,
+              after: original,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { iframe, element } = createPreviewElement();
+    element.id = "a";
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let result:
+        | Awaited<ReturnType<typeof rendered.hook.handleDomZIndexReorderCommit>>
+        | undefined;
+      await act(async () => {
+        result = await rendered.hook.handleDomZIndexReorderCommit([
+          { element, zIndex: 2, id: "missing", sourceFile: "index.html" },
+        ]);
+      });
+
+      expect(result).toEqual({ durable: false, allMatched: false, changed: false });
+      expect(element.style.zIndex).toBe("");
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("rolls back and reloads after a rejected batch POST", async () => {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        return jsonResponse({ error: "batch rejected" }, 500);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const writeProjectFile = vi.fn(async () => {});
+    const { iframe, element } = createPreviewElement(
+      '<div data-hf-id="hf-card" style="z-index: 7"></div><div id="b"></div>',
+    );
+    element.id = "a";
+    const second = iframe.contentDocument!.getElementById("b")!;
+    usePlayerStore.getState().setElements([
+      { id: "a", tag: "div", start: 0, duration: 1, track: 0, zIndex: 7, hasExplicitZIndex: true },
+      { id: "b", tag: "div", start: 0, duration: 1, track: 1, zIndex: 0, hasExplicitZIndex: false },
+    ]);
+    const rendered = renderDomEditCommits(createSelection(element), iframe, { writeProjectFile });
+
+    try {
+      let rejection: unknown;
+      await act(async () => {
+        try {
+          await rendered.hook.handleDomZIndexReorderCommit([
+            { element, zIndex: 2, id: "a", sourceFile: "index.html", key: "a" },
+            { element: second, zIndex: 1, id: "b", sourceFile: "index.html", key: "b" },
+          ]);
+        } catch (error) {
+          rejection = error;
+        }
+      });
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toContain("batch rejected");
+      expect(element.style.zIndex).toBe("7");
+      expect(second.style.zIndex).toBe("");
+      expect(
+        usePlayerStore
+          .getState()
+          .elements.map(({ zIndex, hasExplicitZIndex }) => ({ zIndex, hasExplicitZIndex })),
+      ).toEqual([
+        { zIndex: 7, hasExplicitZIndex: true },
+        { zIndex: 0, hasExplicitZIndex: false },
+      ]);
+      expect(writeProjectFile).not.toHaveBeenCalled();
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("reloads after the server commits but the aggregate response is lost", async () => {
+    const original = '<div data-hf-id="hf-card" id="a" style="z-index: 7"></div>';
+    const after = '<div data-hf-id="hf-card" id="a" style="z-index: 2"></div>';
+    let diskContent = original;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        diskContent = after;
+        throw new TypeError("connection reset after commit");
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { iframe, element } = createPreviewElement(original);
+    usePlayerStore.getState().setElements([
+      {
+        id: "a",
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: 0,
+        zIndex: 7,
+        hasExplicitZIndex: true,
+      },
+    ]);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let rejection: unknown;
+      await act(async () => {
+        try {
+          await rendered.hook.handleDomZIndexReorderCommit([
+            { element, zIndex: 2, id: "a", sourceFile: "index.html", key: "a" },
+          ]);
+        } catch (error) {
+          rejection = error;
+        }
+      });
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toContain("connection reset after commit");
+      expect(diskContent).toBe(after);
+      expect(element.style.zIndex).toBe("7");
+      expect(usePlayerStore.getState().elements[0]).toMatchObject({
+        zIndex: 7,
+        hasExplicitZIndex: true,
+      });
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it.each([
+    [
+      "changed=false with different snapshots",
+      {
+        durable: true,
+        files: [
+          {
+            sourceFile: "index.html",
+            changed: false,
+            matched: [true],
+            before: '<div id="a" style="z-index: 1"></div>',
+            after: '<div id="a" style="z-index: 2"></div>',
+          },
+        ],
+      },
+    ],
+    [
+      "changed=true with identical snapshots",
+      {
+        durable: true,
+        files: [
+          {
+            sourceFile: "index.html",
+            changed: true,
+            matched: [true],
+            before: '<div id="a" style="z-index: 1"></div>',
+            after: '<div id="a" style="z-index: 1"></div>',
+          },
+        ],
+      },
+    ],
+    [
+      "durable=false with a changed file",
+      {
+        durable: false,
+        files: [
+          {
+            sourceFile: "index.html",
+            changed: true,
+            matched: [true],
+            before: '<div id="a" style="z-index: 1"></div>',
+            after: '<div id="a" style="z-index: 2"></div>',
+          },
+        ],
+      },
+    ],
+  ])("rejects and reloads for malformed 200 response: %s", async (_label, responseBody) => {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.endsWith("/file-mutations/patch-element-batches")) {
+        return jsonResponse(responseBody);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { iframe, element } = createPreviewElement();
+    element.id = "a";
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let rejection: unknown;
+      await act(async () => {
+        try {
+          await rendered.hook.handleDomZIndexReorderCommit([
+            { element, zIndex: 2, id: "a", sourceFile: "index.html", key: "a" },
+          ]);
+        } catch (error) {
+          rejection = error;
+        }
+      });
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toBe("Invalid atomic element patch response");
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});
 
 async function commitStyleAgainst(response: Parameters<typeof stubPatchFetch>[0]) {
   stubPatchFetch(response);
@@ -290,14 +804,26 @@ function renderStyleCommitWithFetch(fetchHandler: FetchHandler) {
   };
 }
 
-async function expectRejectedTextStructureEdit(
+/**
+ * Adding or removing a text layer, which no per-child operation can express.
+ *
+ * Both used to be refused outright — the panel offered the buttons and neither
+ * could ever save — so this asserts the opposite of what it used to: one
+ * `rich-text` operation carrying the element's new markup, and no complaint.
+ */
+async function expectPersistedTextStructureEdit(
   commit: (hook: ReturnType<typeof useDomEditCommits>) => Promise<unknown>,
+  expectedMarkup: (markup: string) => void,
 ): Promise<void> {
-  const fetchMock = stubUnexpectedPersistFetch();
+  const fetchMock = stubPatchFetch({
+    ok: true,
+    changed: true,
+    matched: true,
+    content: '<div data-hf-id="hf-card"><span>First</span></div>',
+  });
   const { iframe, element } = createPreviewElement(
     '<div data-hf-id="hf-card"><span>First</span><span>Second</span></div>',
   );
-  const originalInnerHtml = element.innerHTML;
   const selection = createSelection(element, {
     textFields: [
       textField({ key: "first", value: "First", source: "child" }),
@@ -311,17 +837,81 @@ async function expectRejectedTextStructureEdit(
       await commit(rendered.hook);
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(rendered.showToast).toHaveBeenCalledWith(
-      expect.stringContaining("text structure change"),
-      "error",
+    const patchPost = fetchMock.mock.calls.find((call) =>
+      requestUrl(call[0]).includes("/file-mutations/patch-element/"),
     );
-    expect(element.innerHTML).toBe(originalInnerHtml);
-    expect(rendered.recordEdit).not.toHaveBeenCalled();
+    expect(patchPost).toBeDefined();
+    const body = JSON.parse(String(patchPost?.[1]?.body)) as {
+      operations: Array<{ type: string; value?: string }>;
+    };
+    expect(body.operations).toHaveLength(1);
+    expect(body.operations[0]?.type).toBe("rich-text");
+    expectedMarkup(body.operations[0]?.value ?? "");
+    expect(rendered.showToast).not.toHaveBeenCalled();
   } finally {
     rendered.cleanup();
   }
 }
+
+describe("useDomEditCommits rich-text persist handling", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("restores the session snapshot when rich-text persistence fails", async () => {
+    stubPatchFetch({ ok: true, changed: false, matched: false });
+    const previousHtml = '<span style="color: red">Before</span>';
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({ element, html, previousHtml });
+      });
+
+      expect(element.innerHTML).toBe(previousHtml);
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Couldn't save "Hero title"/),
+        "error",
+      );
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("does not retarget a commit onto a replacement preview node", async () => {
+    const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const html = '<span style="color: blue">After</span>';
+    const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    const replacement = document.createElement("div");
+    replacement.dataset.hfId = "hf-card";
+    replacement.innerHTML = "Reloaded elsewhere";
+    element.replaceWith(replacement);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomRichTextCommit({
+          element,
+          html,
+          previousHtml: "Before",
+        });
+      });
+
+      expect(replacement.innerHTML).toBe("Reloaded elsewhere");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rendered.showToast).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});
 
 describe("useDomEditCommits style persist handling", () => {
   beforeEach(() => {
@@ -528,6 +1118,46 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
+  it("uses the patched server content as the custom-font write precondition", async () => {
+    const patchedContent =
+      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
+    stubPatchFetch(
+      { ok: true, changed: true, matched: true, content: patchedContent },
+      patchedContent,
+    );
+    const { iframe, element } = createPreviewElement();
+    const selection = createSelection(element, {
+      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+    });
+    const writeProjectFile = vi.fn(async () => {});
+    const rendered = renderDomEditCommits(selection, iframe, { writeProjectFile });
+
+    try {
+      await act(async () => {
+        await rendered.hook.commitDomTextFields(
+          selection,
+          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+          {
+            importedFont: {
+              family: "Imported",
+              path: "fonts/Imported.woff2",
+              url: "/api/projects/p1/preview/fonts/Imported.woff2",
+            },
+          },
+        );
+      });
+
+      expect(writeProjectFile).toHaveBeenCalledWith(
+        "index.html",
+        expect.stringContaining("@font-face"),
+        patchedContent,
+      );
+      expect(rendered.showToast).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
   it("keeps a rejected patch request (HTTP error) to one toast", async () => {
     const { rendered, cleanup } = renderStyleCommitWithFetch(async (input) => {
       const url = requestUrl(input);
@@ -584,12 +1214,26 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("refuses added child text fields without persisting serialized markup", async () => {
-    await expectRejectedTextStructureEdit((hook) => hook.handleDomAddTextField("first"));
+  it("persists an added child text field as the element's new markup", async () => {
+    await expectPersistedTextStructureEdit(
+      (hook) => hook.handleDomAddTextField("first"),
+      (markup) => {
+        expect(markup).toContain("First");
+        expect(markup).toContain("Second");
+        // The layer that was added, between the two that were there.
+        expect(markup.match(/<span/g) ?? []).toHaveLength(3);
+      },
+    );
   });
 
-  it("refuses removed child text fields without persisting serialized markup", async () => {
-    await expectRejectedTextStructureEdit((hook) => hook.handleDomRemoveTextField("first"));
+  it("persists a removed child text field as the element's new markup", async () => {
+    await expectPersistedTextStructureEdit(
+      (hook) => hook.handleDomRemoveTextField("first"),
+      (markup) => {
+        expect(markup).not.toContain("First");
+        expect(markup).toContain("Second");
+      },
+    );
   });
 
   it("keeps single self text commits on the text-content path", async () => {
@@ -689,6 +1333,44 @@ describe("useDomEditCommits attribute persist handling", () => {
         "error",
       );
       expect(element.getAttribute("data-volume")).toBe("0.5");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("applies a preview-only write without persisting it", async () => {
+    // What a drag needs from every pointermove: the preview and the audio graph
+    // follow, the file does not. Persisting each move filled the undo stack with
+    // fragments of one gesture — and because those writes race, a follow-up's
+    // "before" often was not the previous entry's "after", so history refused to
+    // coalesce them and undo took back a few milliseconds of the drag.
+    const fetchSpy = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("volume", "0.7", undefined, {
+          previewOnly: true,
+        });
+      });
+      expect(element.getAttribute("data-volume")).toBe("0.7");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("still persists a live write that does not ask to be preview-only", async () => {
+    const fetchSpy = stubPatchFetch({ ok: true, changed: true, matched: true });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("volume", "0.7");
+      });
+      expect(fetchSpy).toHaveBeenCalled();
     } finally {
       rendered.cleanup();
     }

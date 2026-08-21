@@ -41,6 +41,15 @@ const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
 const ROOT = join(import.meta.dirname, "..");
 export const CHANGELOG_REVIEW_TODO = "<!-- TODO: write a 1-2 sentence release summary here. -->";
 
+/**
+ * Emitted directly under CHANGELOG_REVIEW_TODO by the draft generator. The
+ * generator cannot write the summary itself, so this carries the writing bar to
+ * whoever does. It is checked alongside the TODO so a half-finished review that
+ * drops one marker but not the other still fails the release gate.
+ */
+export const CHANGELOG_STYLE_NOTE =
+  "<!-- Style bar: keep sentences under 25 words. Use everyday words. Avoid semicolons. Say what changed for the user, then why it matters. -->";
+
 type ReleaseOptions = {
   version: string;
   skipTag: boolean;
@@ -217,7 +226,9 @@ function assertTagMonotonicity(version: string) {
   process.exit(1);
 }
 
-export function releaseRequiresChangelog(options: ReleaseOptions) {
+export function releaseRequiresChangelog(
+  options: Pick<ReleaseOptions, "version" | "skipTag" | "skipChangelogCheck">,
+) {
   return !options.skipTag && !options.skipChangelogCheck && !isPrerelease(options.version);
 }
 
@@ -258,7 +269,7 @@ export function unreviewedChangelogArtifacts(version: string) {
 }
 
 function artifactExists(artifact: string) {
-  const [path, marker] = artifact.split("#");
+  const [path = artifact, marker] = artifact.split("#");
   const absolutePath = join(ROOT, path);
 
   if (!existsSync(absolutePath)) {
@@ -268,7 +279,7 @@ function artifactExists(artifact: string) {
 }
 
 function artifactHasGeneratedTodo(artifact: string) {
-  const [path, marker] = artifact.split("#");
+  const [path = artifact, marker] = artifact.split("#");
   const content = readFileSync(join(ROOT, path), "utf-8");
   if (!marker) {
     return hasGeneratedChangelogTodo(content);
@@ -278,7 +289,7 @@ function artifactHasGeneratedTodo(artifact: string) {
 }
 
 export function hasGeneratedChangelogTodo(content: string) {
-  return content.includes(CHANGELOG_REVIEW_TODO);
+  return content.includes(CHANGELOG_REVIEW_TODO) || content.includes(CHANGELOG_STYLE_NOTE);
 }
 
 export function docsChangelogEntryHasGeneratedTodo(content: string, marker: string) {
@@ -352,11 +363,19 @@ function printReleaseNextSteps(version: string) {
     console.log(`Consumers install with: npm install @hyperframes/core@${distTag}`);
     console.log(`\nRun 'git push origin v${version}' to trigger the publish workflow.`);
   } else {
-    console.log(`\nRun the following to trigger the publish workflow:`);
-    console.log(`  git push origin main`);
-    console.log(`  git push origin v${version}`);
+    // A stable tag push does NOT publish — publish.yml's push trigger is
+    // `v*-*` (prerelease-only), and stable publishes exclusively from a merged
+    // release/v* PR. Printing the tag-push flow here sent a release straight to
+    // main with an unpublishable tag: the workflow never fired, and the stray
+    // tag then fails the next release's verify_remote_tag check.
+    console.log(`\nStable releases publish from a reviewed release PR, NOT a tag push.`);
+    console.log(`\nDo NOT push the local tag. Run:`);
+    console.log(`  git push origin HEAD:refs/heads/release/v${version}`);
+    console.log(`  gh pr create --base main --head release/v${version} --fill`);
     console.log(
-      `(push the specific tag, NOT 'git push --tags' — that fails on any pre-existing tag).`,
+      `\nMerging that PR publishes: the workflow checks out the merge SHA, creates` +
+        `\nthe v${version} tag there, publishes npm, and cuts the GitHub release.` +
+        `\nSee docs/contributing/release-channels.mdx.`,
     );
   }
 }

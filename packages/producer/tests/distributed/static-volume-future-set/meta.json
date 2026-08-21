@@ -1,0 +1,13 @@
+{
+  "name": "Distributed: static audio must not materialize future nested GSAP state",
+  "description": "Regression for #2809. A static-volume audio element must not trigger live-timeline envelope probing in a non-zero-start chunk and prematurely apply a nested composition's future terminal visibility set.",
+  "tags": ["distributed", "audio", "sub-composition", "regression"],
+  "minPsnr": 40,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24,
+    "chunkSize": 120
+  }
+}

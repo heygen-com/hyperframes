@@ -6,7 +6,7 @@ export function trackChildProcess(proc: ChildProcess): void {
   tracked.add(proc);
   const remove = () => tracked.delete(proc);
   proc.once("exit", remove);
-  proc.once("error", remove);
+  proc.once("close", remove);
 }
 
 /**

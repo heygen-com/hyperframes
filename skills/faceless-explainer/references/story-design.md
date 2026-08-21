@@ -210,6 +210,13 @@ Treat `user_script.txt` as source material. Rewrite, reorder, merge, or omit to 
 
 Do not rewrite the user's words. Segment the script into frame-sized chunks at sentence or paragraph boundaries (you may split a long sentence at a natural clause boundary, but do not change words). Final duration follows the provided script.
 
+## Music & silence
+
+The storyboard's top YAML block carries a `music:` field — the BGM mood the audio step retrieves against (e.g. `music: confident minimal tech underscore`). Omitting it falls back to `message:` → `arc:` → a neutral default, so BGM plays unless turned off explicitly.
+
+- **`music: none`** — BGM off (narration, if any, still runs).
+- **`music: none` + no `SCRIPT.md`** — the canonical **fully-silent marker**: no narration, no BGM, no SFX. `audio.mjs` generates nothing and the audio step is a clean skip. Use exactly this spelling when the user asks for a silent / music-free video.
+
 ## Frame template
 
 Use the exact fields required by the core storyboard format. This is the narrative shape each frame should satisfy:
@@ -226,7 +233,7 @@ Use the exact fields required by the core storyboard format. This is the narrati
 - type: feature_showcase
 - persuasion: Progressive disclosure
 - beat: comprehension
-- blueprint: messaging-multi-phase — candidate shape from the role→blueprint menu; omit when none fits
+- blueprint: dataviz-countup — candidate shape from the role→blueprint menu; omit when none fits
 
 narrativeRole: What this frame does in the viewer's understanding.
 keyMessage: The one idea the viewer should remember.

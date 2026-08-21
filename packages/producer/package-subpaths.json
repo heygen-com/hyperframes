@@ -1,0 +1,23 @@
+{
+  "package": "@hyperframes/producer",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./server": {
+      "source": "./src/server.ts",
+      "runtime": "./dist/public-server.js",
+      "types": null,
+      "environments": ["bun", "node"]
+    },
+    "./distributed": {
+      "source": "./src/distributed.ts",
+      "runtime": "./dist/distributed.js",
+      "types": "./dist/distributed.d.ts",
+      "environments": ["bun", "node"]
+    }
+  }
+}

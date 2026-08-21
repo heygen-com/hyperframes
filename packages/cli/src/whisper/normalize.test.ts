@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -14,8 +14,7 @@ import {
 import { detectSpeechOnset } from "./transcribe.js";
 
 function tmpFile(name: string, content: string): string {
-  const dir = join(tmpdir(), `hf-normalize-test-${Date.now()}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), "hf-normalize-test-"));
   dirs.push(dir);
   const path = join(dir, name);
   writeFileSync(path, content);
@@ -478,8 +477,7 @@ describe("whisper-cpp zero-duration interpolation", () => {
 
 describe("patchCaptionHtml", () => {
   it("replaces const script = [] in HTML files", () => {
-    const dir = join(tmpdir(), `hf-patch-test-${Date.now()}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
 
     const html = `<html><body><script>
@@ -501,8 +499,7 @@ describe("patchCaptionHtml", () => {
   });
 
   it("replaces const TRANSCRIPT = [] variant", () => {
-    const dir = join(tmpdir(), `hf-patch-test-${Date.now()}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
 
     const html = `<script>const TRANSCRIPT = [];</script>`;
@@ -516,8 +513,7 @@ describe("patchCaptionHtml", () => {
   });
 
   it("does not modify HTML files without matching script patterns", () => {
-    const dir = join(tmpdir(), `hf-patch-test-${Date.now()}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
 
     const html = `<html><body><script>console.log("hello");</script></body></html>`;
@@ -530,8 +526,7 @@ describe("patchCaptionHtml", () => {
   });
 
   it("skips empty word arrays", () => {
-    const dir = join(tmpdir(), `hf-patch-test-${Date.now()}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = mkdtempSync(join(tmpdir(), "hf-patch-test-"));
     dirs.push(dir);
 
     const html = `<script>const script = [];</script>`;
@@ -572,9 +567,10 @@ describe("detectSpeechOnset", () => {
       const amplitude = energyFn(t);
       buf.writeInt16LE(Math.round(amplitude * 32767), 44 + i * 2);
     }
-    const path = join(tmpdir(), `hf-wav-test-${Date.now()}-${Math.floor(Math.random() * 1e6)}.wav`);
+    const dir = mkdtempSync(join(tmpdir(), "hf-wav-test-"));
+    dirs.push(dir);
+    const path = join(dir, "tone.wav");
     writeFileSync(path, buf);
-    dirs.push(path);
     return path;
   }
 

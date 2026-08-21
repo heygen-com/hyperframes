@@ -127,15 +127,7 @@ export function brandRolesFromStats(stats, colorsInOrder) {
       .find((s) => Math.abs((lum(s.hex) ?? 0) - cl) > 64)?.hex ??
     (cl > 128 ? "#000000" : "#FFFFFF");
   const accent2 =
-    v
-      .filter(
-        (s) =>
-          ![canvas, ink, accent].includes(s.hex) &&
-          (s.interactiveBg || 0) > 0 &&
-          chroma(s.hex) > 40 &&
-          !UA_DEFAULT_COLORS.has(s.hex.toUpperCase()),
-      )
-      .sort((a, b) => (b.interactiveBg || 0) - (a.interactiveBg || 0))[0]?.hex ?? accent;
+    pickAccent(v, colorsInOrder ?? v.map((s) => s.hex), [canvas, ink, accent]) ?? accent;
   return { ink, canvas, accent, accent2 };
 }
 

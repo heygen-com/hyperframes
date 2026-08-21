@@ -1,0 +1,25 @@
+{
+  "package": "@hyperframes/player",
+  "subpaths": {
+    ".": {
+      "source": "./dist/hyperframes-player.js",
+      "runtime": {
+        "script": "./dist/hyperframes-player.global.js",
+        "import": "./dist/hyperframes-player.js",
+        "require": "./dist/hyperframes-player.cjs"
+      },
+      "types": "./dist/hyperframes-player.d.ts",
+      "environments": ["browser"]
+    },
+    "./slideshow": {
+      "source": "./dist/slideshow/hyperframes-slideshow.js",
+      "runtime": {
+        "script": "./dist/slideshow/hyperframes-slideshow.global.js",
+        "import": "./dist/slideshow/hyperframes-slideshow.js",
+        "require": "./dist/slideshow/hyperframes-slideshow.cjs"
+      },
+      "types": "./dist/slideshow/hyperframes-slideshow.d.ts",
+      "environments": ["browser"]
+    }
+  }
+}

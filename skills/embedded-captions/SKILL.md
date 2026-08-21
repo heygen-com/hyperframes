@@ -1,28 +1,31 @@
 ---
 name: embedded-captions
-description: 'Add captions to a talking-head video. ONE catalog (CATALOG.md) of 36 visual identities behind two engines: column-flow (captions composited INTO the scene — matte occlusion + mix-blend; cream/ink/editorial/keynote/documentary/loud/neon/glitch/chrome/velocity) and themed constitutions (anchor/ordnance/terminal/neonsign/stardust/stomp/scoreboard/transit/vhs/arcade/dossier/laser/thunder/hologram/biolume/aurora/spectrum/papercut/popup/chalkboard/graffiti/brush/inkwater/ransom/lastpage/nightcity — e.g. a glyph-decode climax, a neon sign WRITTEN stroke by stroke, or the quiet `anchor` rail default). Route by identity, never by mode. Trigger on "captions/subtitles", "embed/cinematic captions", "VFX captions", "炸/特效/酷炫字幕", a named identity, or top-tier motion-graphics asks. Embedding every word is wrong for most talking-head content — `anchor` is the verbatim default. Runs locally end-to-end (transcribes and mattes the subject itself, no API key). Requires hyperframes and a single-subject clip (multi-shot clips are split per shot).'
-metadata:
-  tags: captions, embedded-captions, occlusion, matting, talking-head, rembg-matting, whisper, ffmpeg, cinematic
+description: >
+  Add captions or subtitles to an existing single-subject talking-head video without editing the
+  footage. Use for plain verbatim captions, cinematic captions embedded behind the subject, VFX
+  captions, “炸/特效/酷炫字幕,” or a named identity from the 35-style catalog. Route by visual
+  identity, not by backend engine. The quiet `anchor` rail is the default; embed every word only
+  when the user explicitly wants a fully cinematic treatment. The workflow runs locally end to end,
+  including transcription and subject matting; split multi-shot footage before applying it.
 ---
 
-> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Embedded Captions
 
-**One catalog, picked up front** ([CATALOG.md](CATALOG.md) — 36 identities; the engines behind it are backend detail). **Standard** (default) builds a clean verbatim **rail** (lower-third subtitle carrying most text) + an **embed** climax composited _into_ the scene behind the subject at the peak. **Cinematic** is pure embed — no rail, every caption composited behind the subject (hero typography, accumulation, occlusion as the effect). **Theme** is a complete themed constitution — body paradigm × hero setpiece × front fx × plate reaction, composed from registries ([themes/README.md](themes/README.md)): `ordnance` `terminal` `neonsign` `stardust` `stomp`. Most explainer / voiceover is **Standard**; **embed is the scarce, earned peak** — embedding every word is the common mistake; Theme is for VFX-grade asks ("炸", "特效", "像 AE 做的").
+**One catalog, picked up front** ([CATALOG.md](CATALOG.md) — 35 identities; the engines behind it are backend detail). **Standard** (default) builds a clean verbatim **rail** (lower-third subtitle carrying most text) + an **embed** climax composited _into_ the scene behind the subject at the peak. **Cinematic** is pure embed — no rail, every caption composited behind the subject (hero typography, accumulation, occlusion as the effect). **Theme** is a complete themed constitution — body paradigm × hero setpiece × front fx × plate reaction, composed from registries ([themes/README.md](themes/README.md)): `ordnance` `terminal` `neonsign` `stardust` `stomp`. Most explainer / voiceover is **Standard**; **embed is the scarce, earned peak** — embedding every word is the common mistake; Theme is for VFX-grade asks ("炸", "特效", "像 AE 做的").
 
 ---
 
 ## Operational flow (TL;DR)
 
-The craft prose below is long; the **pipeline itself is short** — and everything
-deterministic is computed or compiled, never hand-written:
+Routed through `/hyperframes`, the intent layer confirms only the input (which clip) and **announces** the identity pick as a deferred ask — the shortlist needs the probed clip, so it stays at step 1 below; the layer's run-shape questions don't apply (the footage is untouched, there is no storyboard to review). A `BRIEF.md`, when present, carries the confirmed input and any user notes — read it first.
 
-1. **Decision gate** (refuse bad clips) → **pick ONE identity from [CATALOG.md](CATALOG.md)** (36 identities; engine/compiler derived by lookup — never surface a mode/category question)
+The craft prose below is long; the **pipeline itself is short** — and everything deterministic is computed or compiled, never hand-written:
+
+1. **Decision gate** (refuse bad clips) → **pick ONE identity from [CATALOG.md](CATALOG.md)** (35 identities; engine/compiler derived by lookup — never surface a mode/category question)
 2. `hyperframes init` (skip it if the project dir already exists with the video inside — `matte.cjs`/`transcribe.cjs` adopt any video in the dir as source.mp4) → **`bash scripts/prepare.sh <project>`** (matte ∥ transcribe ∥ audio-envelope in parallel, then safe-zones v2 with scene palette/optics/lighting — one command, nothing forgotten)
-3. **author a small JSON of creative choices** (read `safe-zones.json` first):
-   Cinematic → `plan.json` → `fill-timings.cjs` → `fit-fonts.cjs` → `make-composition.cjs`;
-   Theme → `theme.json` → `make-theme.cjs` (rail/panel/poem/takeover paradigms; `anchor` is the quiet rail default)
+3. **author a small JSON of creative choices** (read `safe-zones.json` first): Cinematic → `plan.json` → `fill-timings.cjs` → `fit-fonts.cjs` → `make-composition.cjs`; Theme → `theme.json` → `make-theme.cjs` (rail/panel/poem/takeover paradigms; `anchor` is the quiet rail default)
 4. **Visual QA**: `node scripts/preview-frames.cjs <project>` → faithful composite previews in ~2s/frame (no render). Check § Visual QA before paying for a render.
 5. `render-and-composite.sh` → gates (timing / occlusion+hero / overflow / hand-off) → `final.mp4`
 
@@ -52,24 +55,11 @@ Rail-surface identities build exactly this (rail = `rail.html`, embed = the clim
 
 ## Step 0 — pick ONE identity from the CATALOG
 
-**One front-end, three engines behind.** The user picks an IDENTITY from
-[CATALOG.md](CATALOG.md) (36 entries: 10 classic + 26 themed); the engine,
-compiler and authoring file are derived by lookup from the catalog row.
-**Never surface "Standard vs Cinematic vs Theme" as a question** — those are
-backend names (a product has one UX even with several engines). The catalog
-encodes everything routing needs: reading surface, voice, recommend-for, scene
-needs, adjacency notes for the genuinely-close pairs (loud↔ordnance,
-neon↔neonsign, cream↔stardust).
+**One front-end, three engines behind.** The user picks an IDENTITY from [CATALOG.md](CATALOG.md) (35 entries: 10 classic + 25 themed); the engine, compiler and authoring file are derived by lookup from the catalog row. **Never surface "Standard vs Cinematic vs Theme" as a question** — those are backend names (a product has one UX even with several engines). The catalog encodes everything routing needs: reading surface, voice, recommend-for, scene needs, adjacency notes for the genuinely-close pairs (loud↔ordnance, neon↔neonsign, cream↔stardust).
 
-The identity pick is a **preference gate** (`../hyperframes-core/references/brief-contract.md` § 1):
-in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist
-yourself and state the one-line why instead of asking.
+The identity pick is a **preference gate** (`../hyperframes-core/references/brief-contract.md` § 1): in autonomous mode ("surprise me" / "decide for me"), pick from your shortlist yourself and state the one-line why instead of asking.
 
-Procedure: probe the clip → shortlist 2–3 identities from the catalog →
-recommend ONE with a one-line why → **the user picks** (autonomous mode: you
-pick, stating the why) → author that identity's
-file. Identities are engine-locked (no cross combos; opening one is a
-validation event — see dna/README.md).
+Procedure: probe the clip → shortlist 2–3 identities from the catalog → recommend ONE with a one-line why → **the user picks** (autonomous mode: you pick, stating the why) → author that identity's file. Identities are engine-locked (no cross combos; opening one is a validation event — see dna/README.md).
 
 **Always present your recommendation and let the user pick before you author.** Don't silently default.
 
@@ -112,7 +102,7 @@ Read the samples. Refuse if:
 ## Pipeline — 5 steps
 
 ```
-1. hyperframes init <project> --non-interactive --video <video.mp4>
+1. hyperframes init <project> --non-interactive --video <video.mp4> --skill=embedded-captions
 2. bash scripts/prepare.sh <project>       # matte ∥ transcribe (parallel) → safe-zones. One command.
                                            #   → frames_fg/ transcript.json safe-zones.json
 3. [AGENT STEP — the only creative step] author a small JSON; see below by mode
@@ -147,13 +137,9 @@ Step 3 differs by mode:
 
 ## Visual QA — preview BEFORE you render
 
-`node scripts/preview-frames.cjs <project> [t…]` composites **faithful preview frames in ~2s each**
-(caption layers screenshotted at seek-time + real video frame + matte occlusion + rail overlay = what
-the final composite will look like at that moment). Default samples = each group/climax window.
-A full render costs minutes — never use it to _discover_ layout problems.
+`node scripts/preview-frames.cjs <project> [t…]` composites **faithful preview frames in ~2s each** (caption layers screenshotted at seek-time + real video frame + matte occlusion + rail overlay = what the final composite will look like at that moment). Default samples = each group/climax window. A full render costs minutes — never use it to _discover_ layout problems.
 
-Check the previews (`<project>/preview/sheet.png`) against this list — these are the failures the
-geometric gates **cannot** catch:
+Check the previews (`<project>/preview/sheet.png`) against this list — these are the failures the geometric gates **cannot** catch:
 
 1. **Washout** — light text over a bright region (window/sign/sky): unreadable → move the plane or change DNA/mode (bright scene → `ink`).
 2. **Text-on-text** — captions over the scene's own text/graphics, or two caption groups colliding.
@@ -161,24 +147,15 @@ geometric gates **cannot** catch:
 4. **Hero presence** — the climax should be BIG and visibly behind the subject (~30–55% occluded), not a floating label in a margin.
 5. **Balance** — one coherent column/band, not scattered fragments; margins breathing; nothing clipped.
 
-Then the **5 positive checks** in [references/reference-bar.md](references/reference-bar.md)
-(poster test · timid test · one-glance hierarchy · scene handshake · dead-air audit) — the
-failure list keeps a render from being broken; the positive list is what makes it _designed_.
-Ship when both pass.
+Then the **5 positive checks** in [references/reference-bar.md](references/reference-bar.md) (poster test · timid test · one-glance hierarchy · scene handshake · dead-air audit) — the failure list keeps a render from being broken; the positive list is what makes it _designed_. Ship when both pass.
 
-**Fresh-eyes review (recommended for anything user-facing):** you have confirmation bias about your
-own layout. If you can spawn a subagent, give it ONLY the preview sheet + this checklist and ask for
-PASS/FIX verdicts per frame ("review these caption previews against the 5-point checklist; answer
-PASS or the specific fix per frame"). Apply fixes in plan.json / theme.json, recompile, re-preview —
-each loop costs seconds. Render once, when the previews pass.
+**Fresh-eyes review (recommended for anything user-facing):** you have confirmation bias about your own layout. If you can spawn a subagent, give it ONLY the preview sheet + this checklist and ask for PASS/FIX verdicts per frame ("review these caption previews against the 5-point checklist; answer PASS or the specific fix per frame"). Apply fixes in plan.json / theme.json, recompile, re-preview — each loop costs seconds. Render once, when the previews pass.
 
 ---
 
 ## The DNA registry — ten visual languages (replaces the template catalog)
 
-Both modes draw from **[dna/](dna/README.md)** — ten art-directed visual languages that
-**parameterize per scene** (accent sampled from the footage, contact shadow along the
-measured light direction, depth-match blur, RMS-coupled hero amplitude):
+Both modes draw from **[dna/](dna/README.md)** — ten art-directed visual languages that **parameterize per scene** (accent sampled from the footage, contact shadow along the measured light direction, depth-match blur, RMS-coupled hero amplitude):
 
 | DNA             | Register       | Scene fit                                       | Voice                                                                                              |
 | --------------- | -------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -188,23 +165,16 @@ measured light direction, depth-match blur, RMS-coupled hero amplitude):
 | **keynote**     | tech-premium   | product / launch                                | opaque white Inter 800, dead-center stillness                                                      |
 | **documentary** | formal         | interview / serious                             | burn-in reveals, no hero — gravitas IS the style                                                   |
 | **loud**        | loud           | hype / sport / social                           | Anton + scene-sampled accent, single-unit slam + ripple; body ANNOUNCES in front (`bodyLayer: fg`) |
-| **neon**        | loud-cyber     | cyberpunk / nightlife / tech-noir (dark scenes) | electric-cyan signage, ignition flicker, the hero powers ON like a sign                            |
-| **glitch**      | loud-cyber     | digital / hacker / AI                           | RGB-split echoes snap together on landing; machine-percussive timing                               |
+| **neon**        | loud-neon      | neon-noir / nightlife / tech-noir (dark scenes) | electric-cyan signage, ignition flicker, the hero powers ON like a sign                            |
+| **glitch**      | loud-neon      | digital / hacker / AI                           | RGB-split echoes snap together on landing; machine-percussive timing                               |
 | **chrome**      | loud-luxe      | Y2K / fashion-tech / music                      | liquid-metal gradient hero + one sheen sweep during the hold                                       |
 | **velocity**    | loud-sport     | sport / auto / fitness                          | every word arrives along its motion vector (streak+skew), hero passes with speed trails            |
 
-Pick by `safe-zones.json` (`heroAnchor.bandLuma`, `palette.temperature`) × content
-register — [dna/README.md](dna/README.md) has the decision rule. Authoring:
-`cinematic.json` takes `"dna": "<name>"`.
+Pick by `safe-zones.json` (`heroAnchor.bandLuma`, `palette.temperature`) × content register — [dna/README.md](dna/README.md) has the decision rule. Authoring: `cinematic.json` takes `"dna": "<name>"`.
 
-The engine generates the **hero three-act** from the DNA (no authoring needed):
-co-visible captions dim (setup) → per-letter entrance with amplitude ∝ spoken loudness
-(impact) → breathe + glow until exit (afterglow).
+The engine generates the **hero three-act** from the DNA (no authoring needed): co-visible captions dim (setup) → per-letter entrance with amplitude ∝ spoken loudness (impact) → breathe + glow until exit (afterglow).
 
-(Legacy: `plan.template:"cinematic-cream"` maps to `dna:"cream"` automatically.
-The retired 54-template library lives outside the skill at
-`~/Downloads/embedded-captions-archive/standard-templates-54/`; `_motion.md` remains
-in-skill as the motion-verb reference catalog.)
+(Legacy: `plan.template:"cinematic-cream"` maps to `dna:"cream"` automatically. The retired 54-template library is archived outside this repo and is not distributed with the skill; `_motion.md` remains in-skill as the motion-verb reference catalog.)
 
 ---
 
@@ -228,12 +198,7 @@ Cross-reference in [references/direction-catalog.md § Classification matrix](re
 
 ## Composition craft (embed track) — read before embedding
 
-The full **embed-track** playbook lives in **[references/composition-craft.md](references/composition-craft.md)**:
-transcript role-annotation, phrase grouping, planes & clean-zone anchoring, zone coherence,
-climax pop & readability, edge-breathing, the occlusion 3-step judgement, and
-accumulation/persistence. It governs how a _promoted_ phrase sits INTO the scene — read it
-before authoring any embed (Cinematic `plan.json` or Standard `index.html`). The default **rail**
-track has its own, much simpler spec → **[references/rail.md](references/rail.md)**.
+The full **embed-track** playbook lives in **[references/composition-craft.md](references/composition-craft.md)**: transcript role-annotation, phrase grouping, planes & clean-zone anchoring, zone coherence, climax pop & readability, edge-breathing, the occlusion 3-step judgement, and accumulation/persistence. It governs how a _promoted_ phrase sits INTO the scene — read it before authoring any embed (Cinematic `plan.json` or Standard `index.html`). The default **rail** track has its own, much simpler spec → **[references/rail.md](references/rail.md)**.
 
 ---
 
@@ -265,7 +230,7 @@ track has its own, much simpler spec → **[references/rail.md](references/rail.
 - **Face must never be 100%-covered continuously** — every 0.3s window, face bbox ≥30% uncovered.
 - **WCAG contrast** — final render lints; fix palette if it fails.
 - **Deterministic** — no `Math.random()`, no `Date.now()`, no `repeat:-1`.
-- **Never grade/recolor the video.** The footage ships untouched — captions are the only addition. No full-frame scanlines / duotone / darken / vignette over the a-roll. Cyberpunk/CRT texture belongs _inside_ a caption element, not over the whole frame.
+- **Never grade/recolor the video.** The footage ships untouched — captions are the only addition. No full-frame scanlines / duotone / darken / vignette over the a-roll. neon-noir/CRT texture belongs _inside_ a caption element, not over the whole frame.
 - **Rail-first for talking-head / explainer.** Don't embed the whole transcript — most text is the rail; embed only peaks. Embedding everything is the default mistake.
 - **Embed is scarce + spaced.** ≤1 embed per sentence/beat, never two adjacent or co-visible, ≥ a beat apart, at most one `apex`. climax = per-beat peak, **not** "the single payoff of the entire clip."
 - **Matte = the PERSON (hyperframes `remove-background`, u2net_human_seg, Apache-2.0).** Human segmentation by intent, but not surgically: thin offset furniture (mic boom arms) is usually excluded — captions render over it, behind the person — while large salient objects NEAR the subject (a telescope, a desk rig) can still leak into the matte and occlude captions. Objects HELD by the subject (products, phones) may drop out intermittently, letting captions pass in front. NEVER assume: sample `frames_fg/` at 2-3 timestamps before placing the hero, and prefer hero positions clear of any leaked furniture (`heroAnchor` can be skewed by leaks — cross-check against frames_bg).

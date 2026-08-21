@@ -93,6 +93,57 @@ function parseFrameClips(html, frameIds) {
   return clips;
 }
 
+// The host wrapper is extended across an outgoing transition, so the mounted
+// frame must remain visually populated for the same local-time window. Extend
+// the frame root and every non-audio timed element that reached the original
+// storyboard boundary. This also repairs worker files whose root was already
+// inflated while their ground/content clips still ended at the synced duration.
+function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, die) {
+  if (!frame?.src || targetDuration <= baseDuration) return;
+  const framePath = join(hyperframesDir, frame.src);
+  let html;
+  try {
+    html = readFileSync(framePath, "utf8");
+  } catch {
+    die(`outgoing frame file not found at ${framePath}`);
+  }
+
+  const compId = frame.src
+    .split("/")
+    .pop()
+    .replace(/\.html?$/i, "");
+  const EPS = 0.011;
+  let foundRoot = false;
+  let extended = 0;
+  const rewritten = html.replace(/<([A-Za-z][\w:-]*)\b([^>]*)>/g, (tag, name, attrs) => {
+    const durationMatch = attrs.match(/\bdata-duration="([\d.]+)"/);
+    if (!durationMatch) return tag;
+    const duration = Number(durationMatch[1]);
+    if (!Number.isFinite(duration)) return tag;
+
+    const compositionMatch = attrs.match(/\bdata-composition-id="([^"]+)"/);
+    if (compositionMatch?.[1] === compId && !foundRoot) {
+      foundRoot = true;
+      return tag.replace(/\bdata-duration="[\d.]+"/, `data-duration="${targetDuration}"`);
+    }
+
+    if (name.toLowerCase() === "audio") return tag;
+    const startMatch = attrs.match(/\bdata-start="([\d.]+)"/);
+    if (!startMatch) return tag;
+    const start = Number(startMatch[1]);
+    const end = start + duration;
+    if (end < baseDuration - EPS || end >= targetDuration - EPS) return tag;
+    extended++;
+    return tag.replace(/\bdata-duration="[\d.]+"/, `data-duration="${r3(targetDuration - start)}"`);
+  });
+
+  if (!foundRoot) die(`${frame.src} has no data-composition-id="${compId}" root`);
+  writeFileSync(framePath, rewritten);
+  console.log(
+    `  ${compId}: extended root + ${extended} tail clip(s) ${baseDuration}s→${targetDuration}s`,
+  );
+}
+
 // Resolve a transition_in spec to a registry record (calm default on unknown).
 function resolveRecord(spec, byName, reg, warn) {
   let rec = byName.get(spec.type);
@@ -183,7 +234,9 @@ function runInject(argv) {
     );
     const dur = resolveDur(spec, rec, reg);
     const T = r3(incoming.start); // cut = incoming start (frames tile)
-    outgoing.duration = r3(outgoing.duration + dur); // extend outgoing only
+    const baseDuration = outgoing.duration;
+    outgoing.duration = r3(baseDuration + dur); // extend outgoing only
+    extendFrameTail(hyperframesDir, order[i - 1].frame, baseDuration, outgoing.duration, die);
     padFrameInternalDuration(
       hyperframesDir,
       order[i - 1].frame.src,

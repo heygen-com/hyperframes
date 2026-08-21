@@ -4,6 +4,13 @@ import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrde
 import { resolveTimelineLayerStackingMove } from "./timelineLayerDrag";
 import { shouldShowTimelineLayerGroupHeader } from "./TimelineLayerGroupHeader";
 import type { TimelineStackingElement, TimelineStackingReorderIntent } from "./timelineStacking";
+import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
+
+export {
+  getTimelineEditCapabilities,
+  hasPatchableTimelineTarget,
+} from "./timelineEditCapabilities";
+export type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 
 import {
   applyClipStartTrimDelta,
@@ -39,13 +46,11 @@ export interface TimelineMoveInput {
   track: number;
   duration: number;
   originClientX: number;
-  originClientY: number;
+  /** Vertical position as a track-row index, not pixels: rows vary in height. */
+  originRow: number;
   originScrollLeft?: number;
-  originScrollTop?: number;
   currentScrollLeft?: number;
-  currentScrollTop?: number;
   pixelsPerSecond: number;
-  trackHeight: number;
   maxStart: number;
   trackOrder: number[];
   layerOrder?: TimelineLayerId[];
@@ -79,21 +84,24 @@ export function resolveTimelineAutoScroll(
   bounds: TimelineAutoScrollBounds,
   clientX: number,
   clientY: number,
+  leftInset = 0,
 ): { x: number; y: number } {
   const getAxisDelta = (start: number, end: number, pointer: number) => {
     if (pointer < start + AUTO_SCROLL_EDGE_ZONE) {
-      const proximity = Math.max(0, 1 - (pointer - start) / AUTO_SCROLL_EDGE_ZONE);
+      const proximity = Math.min(1, Math.max(0, 1 - (pointer - start) / AUTO_SCROLL_EDGE_ZONE));
       return -Math.round(AUTO_SCROLL_MAX_SPEED * proximity);
     }
     if (pointer > end - AUTO_SCROLL_EDGE_ZONE) {
-      const proximity = Math.max(0, 1 - (end - pointer) / AUTO_SCROLL_EDGE_ZONE);
+      const proximity = Math.min(1, Math.max(0, 1 - (end - pointer) / AUTO_SCROLL_EDGE_ZONE));
       return Math.round(AUTO_SCROLL_MAX_SPEED * proximity);
     }
     return 0;
   };
 
+  const horizontalStart = Math.min(bounds.right, bounds.left + Math.max(0, leftInset));
+
   return {
-    x: getAxisDelta(bounds.left, bounds.right, clientX),
+    x: getAxisDelta(horizontalStart, bounds.right, clientX),
     y: getAxisDelta(bounds.top, bounds.bottom, clientY),
   };
 }
@@ -101,7 +109,7 @@ export function resolveTimelineAutoScroll(
 export function resolveTimelineMove(
   input: TimelineMoveInput,
   clientX: number,
-  clientY: number,
+  currentRow: number,
 ): {
   start: number;
   track: number;
@@ -110,11 +118,12 @@ export function resolveTimelineMove(
   stackingReorder?: TimelineStackingReorderIntent | null;
 } {
   const scrollDeltaX = (input.currentScrollLeft ?? 0) - (input.originScrollLeft ?? 0);
-  const scrollDeltaY = (input.currentScrollTop ?? 0) - (input.originScrollTop ?? 0);
   const deltaTime =
     (clientX - input.originClientX + scrollDeltaX) / Math.max(input.pixelsPerSecond, 1);
-  const trackDeltaRaw =
-    (clientY - input.originClientY + scrollDeltaY) / Math.max(input.trackHeight, 1);
+  // Rows, so vertical scroll and per-row heights are the caller's problem: rows
+  // have varied in height since lanes expand, and a single trackHeight can't
+  // describe them.
+  const trackDeltaRaw = currentRow - input.originRow;
   const deltaTrack = Math.round(trackDeltaRaw);
   const nextStart = clamp(
     roundToCentiseconds(input.start + deltaTime),
@@ -245,12 +254,6 @@ export interface TimelinePromptElement {
   track: number;
 }
 
-export interface TimelineEditCapabilities {
-  canMove: boolean;
-  canTrimStart: boolean;
-  canTrimEnd: boolean;
-}
-
 export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
 
 export interface TimelineRangeSelection {
@@ -362,59 +365,6 @@ export function selectTimelineElementsInMarquee({
   return selected;
 }
 
-function isDeterministicTimelineWindow(input: {
-  tag: string;
-  compositionSrc?: string;
-  playbackStartAttr?: "media-start" | "playback-start";
-  sourceDuration?: number;
-}): boolean {
-  if (input.compositionSrc) return true;
-  if (input.playbackStartAttr != null) return true;
-  if (
-    input.sourceDuration != null &&
-    Number.isFinite(input.sourceDuration) &&
-    input.sourceDuration > 0
-  ) {
-    return true;
-  }
-  const normalizedTag = input.tag.toLowerCase();
-  return ["video", "audio", "img"].includes(normalizedTag);
-}
-
-export function hasPatchableTimelineTarget(input: { domId?: string; selector?: string }): boolean {
-  return Boolean(input.domId || input.selector);
-}
-
-export function getTimelineEditCapabilities(input: {
-  tag: string;
-  duration: number;
-  domId?: string;
-  selector?: string;
-  compositionSrc?: string;
-  playbackStart?: number;
-  playbackStartAttr?: "media-start" | "playback-start";
-  sourceDuration?: number;
-  timingSource?: "authored" | "implicit";
-  timelineLocked?: boolean;
-}): TimelineEditCapabilities {
-  if (input.timingSource === "implicit" || input.timelineLocked) {
-    return {
-      canMove: false,
-      canTrimStart: false,
-      canTrimEnd: false,
-    };
-  }
-
-  const canPatch = hasPatchableTimelineTarget(input);
-  const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
-  const hasDeterministicWindow = isDeterministicTimelineWindow(input);
-  return {
-    canMove: canPatch && (hasDeterministicWindow || hasFiniteDuration),
-    canTrimEnd: canPatch && hasFiniteDuration,
-    canTrimStart: canPatch && hasFiniteDuration,
-  };
-}
-
 export function resolveBlockedTimelineEditIntent(input: {
   width: number;
   offsetX: number;
@@ -524,4 +474,112 @@ export function buildTimelineElementAgentPrompt(element: {
 }
 export function formatTimelineAttributeNumber(value: number): string {
   return Number(roundToCentiseconds(value).toFixed(2)).toString();
+}
+
+/**
+ * Apply one edge auto-scroll step: scroll `scroll` toward the edge zone the
+ * pointer is in, clamped to the scrollable range. Returns true when the
+ * container actually moved (the caller keeps its RAF running and re-runs its
+ * live preview), false when the pointer is outside the edge zones or the scroll
+ * is already clamped (the caller stops).
+ */
+export function applyTimelineAutoScrollStep(
+  scroll: HTMLElement,
+  clientX: number,
+  clientY: number,
+): boolean {
+  return applyTimelineAutoScrollDelta(
+    scroll,
+    resolveTimelineAutoScroll(
+      scroll.getBoundingClientRect(),
+      clientX,
+      clientY,
+      getTimelineAutoScrollLeftInset(scroll),
+    ),
+  );
+}
+
+/** Apply one horizontal edge-scroll step while scrubbing the ruler/playhead. */
+export function applyTimelineHorizontalAutoScrollStep(
+  scroll: HTMLElement,
+  clientX: number,
+): boolean {
+  const bounds = scroll.getBoundingClientRect();
+  const delta = resolveTimelineAutoScroll(
+    bounds,
+    clientX,
+    bounds.top + (bounds.bottom - bounds.top) / 2,
+    getTimelineAutoScrollLeftInset(scroll),
+  );
+  return applyTimelineAutoScrollDelta(scroll, { x: delta.x, y: 0 });
+}
+
+function getTimelineAutoScrollLeftInset(scroll: HTMLElement): number {
+  const inset = Number(scroll.dataset.timelineAutoScrollLeftInset);
+  return Number.isFinite(inset) ? Math.max(0, inset) : 0;
+}
+
+function applyTimelineAutoScrollDelta(
+  scroll: HTMLElement,
+  delta: { x: number; y: number },
+): boolean {
+  if (delta.x === 0 && delta.y === 0) return false;
+  const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, scroll.scrollLeft + delta.x));
+  const nextScrollTop = Math.max(0, Math.min(maxScrollTop, scroll.scrollTop + delta.y));
+  if (nextScrollLeft === scroll.scrollLeft && nextScrollTop === scroll.scrollTop) return false;
+  scroll.scrollLeft = nextScrollLeft;
+  scroll.scrollTop = nextScrollTop;
+  return true;
+}
+
+/**
+ * Decide whether an edge auto-scroll RAF loop should start, stop, or stay as-is
+ * for the current pointer: "start" when the pointer is in an edge zone and no
+ * loop is running, "stop" when it left the zones while a loop is running,
+ * "none" otherwise.
+ */
+export function resolveTimelineAutoScrollLoopAction(
+  scroll: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+  rafActive: boolean,
+): "start" | "stop" | "none" {
+  if (!scroll) return "none";
+  const delta = resolveTimelineAutoScroll(
+    scroll.getBoundingClientRect(),
+    clientX,
+    clientY,
+    getTimelineAutoScrollLeftInset(scroll),
+  );
+  if (delta.x === 0 && delta.y === 0) return rafActive ? "stop" : "none";
+  return rafActive ? "none" : "start";
+}
+
+/**
+ * Escape cancels an in-progress clip drag / resize / blocked-drag: no commit,
+ * no undo entry — the previews live only in the gesture state, so clearing it
+ * restores the pre-drag timeline. `suppressClick` arms the click suppressor
+ * only when the gesture actually started, so the click generated by the
+ * eventual pointerup can't reselect or split the clip.
+ */
+export function resolveTimelineDragEscape(input: TimelineDragEscapeInput): {
+  cancel: boolean;
+  suppressClick: boolean;
+} {
+  if (input.key !== "Escape" || (!input.drag && !input.resize && !input.blocked)) {
+    return { cancel: false, suppressClick: false };
+  }
+  return {
+    cancel: true,
+    suppressClick: Boolean(input.drag?.started || input.resize?.started || input.blocked?.started),
+  };
+}
+
+export interface TimelineDragEscapeInput {
+  key: string;
+  drag: { started: boolean } | null;
+  resize: { started: boolean } | null;
+  blocked: { started: boolean } | null;
 }

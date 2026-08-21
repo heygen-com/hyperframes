@@ -57,6 +57,8 @@ interface EditingAffordances {
 interface DomEditCapabilities {
   canSelect: boolean;
   canEditStyles: boolean;
+  /** Apply a non-destructive clip-path crop. */
+  canCrop: boolean;
   /** Directly editable authored left/top style fields. */
   canMove: boolean;
   /** Directly editable authored width/height style fields. */
@@ -83,6 +85,8 @@ interface EditingSectionApplicability {
   colorGrading: boolean; // true for <video> and <img> — element-level only
   timing: boolean;       // true when data-start is present or animationCount > 0
   animation: boolean;    // true when animationCount > 0
+  layout: boolean;       // position, size, rotation, and stacking controls apply
+  style: boolean;        // fill, radius, stroke, shadow, blend, and clip controls apply
 }
 ```
 

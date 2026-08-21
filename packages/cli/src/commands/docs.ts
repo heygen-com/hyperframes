@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { readFileSync, existsSync } from "node:fs";
@@ -127,13 +128,13 @@ export default defineCommand({
       for (const name of Object.keys(TOPICS)) {
         console.error(`  ${c.accent(name)}`);
       }
-      process.exit(1);
+      failCommand();
     }
 
     const filePath = join(docsDir(), entry.file);
     if (!existsSync(filePath)) {
       console.error(c.error(`Doc file not found: ${filePath}`));
-      process.exit(1);
+      failCommand();
     }
 
     const content = readFileSync(filePath, "utf-8");

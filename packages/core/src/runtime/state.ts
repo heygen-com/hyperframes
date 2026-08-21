@@ -77,6 +77,7 @@ export type RuntimeState = {
   beforeUnloadHandler: (() => void) | null;
   injectedCompStyles: HTMLStyleElement[];
   injectedCompScripts: HTMLScriptElement[];
+  injectedCompLinks: HTMLLinkElement[];
   cachedTimedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
   cachedMediaClips: RuntimeMediaClip[];
   cachedVideoClips: RuntimeMediaClip[];
@@ -116,6 +117,7 @@ export function createRuntimeState(): RuntimeState {
     beforeUnloadHandler: null,
     injectedCompStyles: [],
     injectedCompScripts: [],
+    injectedCompLinks: [],
     cachedTimedMediaEls: [],
     cachedMediaClips: [],
     cachedVideoClips: [],

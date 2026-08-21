@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { CrashFeedbackPrompt } from "./feedback/CrashFeedbackPrompt";
 
 interface Props {
   children: ReactNode;
@@ -50,6 +51,12 @@ export class StudioErrorBoundary extends Component<Props, State> {
           >
             Reload Studio
           </button>
+        </div>
+        {/* The crash report tells us what broke; only the user can tell us what
+            they were doing when it did. This is also the one screen where they
+            have nothing else to get on with. */}
+        <div className="mt-6">
+          <CrashFeedbackPrompt />
         </div>
       </div>
     );

@@ -1,0 +1,40 @@
+<template id="level3-template">
+  <div id="level3" data-composition-id="level3" data-width="1920" data-height="1080">
+    <div id="level3-marker" class="level3-marker" data-nested-subcomp-marker="level3-proof">
+      LEVEL3-PROOF-MARKER
+    </div>
+    <style>
+      #level3 {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: transparent;
+        overflow: hidden;
+      }
+      #level3 .level3-marker {
+        position: absolute;
+        top: 140px;
+        left: 260px;
+        width: 1400px;
+        height: 800px;
+        background: #ff00aa;
+        color: #ffffff;
+        font-family: Impact, sans-serif;
+        font-size: 90px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        tl.set({}, {}, 2);
+        window.__timelines["level3"] = tl;
+      })();
+    </script>
+  </div>
+</template>

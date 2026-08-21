@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  pan-stations demo. This standalone 1920x1080 host mounts the primitive via
+  data-composition-src in a wide stage so the lateral camera move is legible.
+  Non-default variables prove per-instance content, layout, and timing flow.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Pan Stations - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 45%, #14213a 0%, #05070d 72%);
+      }
+
+      .pan-stations-mount {
+        --bg: #0b1120;
+        --fg: #f8fafc;
+        --surface: #17233b;
+        --brand: #34d399;
+        --accent: #60a5fa;
+        --muted: #a5b4cc;
+        --border: #34445f;
+        width: 86%;
+        height: 72%;
+        left: 7%;
+        top: 14%;
+        overflow: hidden;
+        border: 1px solid #34445f;
+        border-radius: 32px;
+        box-shadow: 0 48px 110px rgba(0, 0, 0, 0.48);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="pan-stations-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="pan-stations-mount"
+        class="pan-stations-mount clip"
+        data-composition-id="pan-stations"
+        data-composition-src="./pan-stations.html"
+        data-variable-values='{"stationCount":5,"labels":"Discover,Compose,Polish,Publish,Measure","dwell":0.2}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1651"
+        data-height="778"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["pan-stations-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

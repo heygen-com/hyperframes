@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "offset-path-traveler",
+  "type": "hyperframes:component",
+  "title": "Offset Path Traveler",
+  "description": "A slotted traveler follows an authored path with tangent rotation, curved entry, and curved exit.",
+  "tags": ["motion-primitive", "product-demo", "path", "traveler", "auto-rotate"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "path-travel",
+  "evidence": "Wave I I6 approved contract: authored path travel with tangent auto-rotation and arc-law entry and exit",
+  "syncPoints": [{ "id": "path-arrive", "phase": "in", "offset": 1.2 }],
+  "files": [
+    {
+      "path": "offset-path-traveler.html",
+      "target": "compositions/components/offset-path-traveler.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "path",
+      "type": "string",
+      "role": "content",
+      "label": "Path",
+      "description": "SVG path data authored in a 1000 by 500 route viewBox.",
+      "default": "M -90 390 C 150 490 190 70 430 185 C 650 300 720 105 850 145 C 970 180 1030 85 1090 35"
+    },
+    {
+      "id": "traveler_label",
+      "type": "string",
+      "role": "content",
+      "label": "Traveler label",
+      "description": "Text displayed inside the default traveler chip.",
+      "default": "Live preview"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the traveler and route.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

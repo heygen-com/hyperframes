@@ -1,16 +1,18 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.48",
+  "version": "0.8.6",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
     "directory": "packages/cli"
   },
   "bin": {
-    "hyperframes": "./dist/cli.js"
+    "hyperframes": "./bin/hyperframes.mjs"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "type": "module",
@@ -27,9 +29,9 @@
     "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.8.0",
-    "@puppeteer/browsers": "^3.0.6",
-    "adm-zip": "^0.5.16",
+    "@hono/node-server": "^2.0.5",
+    "@puppeteer/browsers": "^3.2.1",
+    "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "debug": "^4.4.0",
@@ -37,12 +39,13 @@
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
-    "onnxruntime-node": "^1.20.0",
+    "ignore": "^5.3.2",
+    "onnxruntime-node": "1.21.1",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
-    "puppeteer-core": "^25.2.1",
-    "sharp": "^0.34.5"
+    "puppeteer-core": "^25.8.0",
+    "sharp": "^0.35.0"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
@@ -51,10 +54,10 @@
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/lint": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
-    "@types/adm-zip": "^0.5.7",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^25.0.10",

@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "./useTimelinePlayer";
 import { liveTime, usePlayerStore } from "../store/playerStore";
+import { setTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,9 +41,29 @@ function renderTimelinePlayerHarness() {
 }
 
 afterEach(() => {
+  setTimelinePerformanceFixtureLease(false);
   document.body.innerHTML = "";
   resetPlayerStore();
 });
+
+function attachIframeWindow(
+  api: ReturnType<typeof useTimelinePlayer>,
+  iframeWindow: Record<string, unknown>,
+): void {
+  const iframe = document.createElement("iframe");
+  Object.defineProperty(iframe, "contentWindow", {
+    value: iframeWindow,
+    configurable: true,
+  });
+  Object.defineProperty(iframe, "contentDocument", {
+    value: document.implementation.createHTMLDocument("preview"),
+    configurable: true,
+  });
+  act(() => {
+    api.iframeRef.current = iframe;
+    api.onIframeLoad();
+  });
+}
 
 function attachIframeAdapter(
   api: ReturnType<typeof useTimelinePlayer>,
@@ -52,7 +73,6 @@ function attachIframeAdapter(
     duration?: number;
   } = {},
 ) {
-  const iframe = document.createElement("iframe");
   let currentTime = 0;
   let playing = false;
   const adapter = {
@@ -69,24 +89,13 @@ function attachIframeAdapter(
     getDuration: () => options.duration ?? 30,
     isPlaying: () => playing,
   };
-  Object.defineProperty(iframe, "contentWindow", {
-    value: {
-      __player: adapter,
-      __timelines: options.timelines,
-      postMessage: options.postMessage ?? (() => {}),
-      scrollTo: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    },
-    configurable: true,
-  });
-  Object.defineProperty(iframe, "contentDocument", {
-    value: document.implementation.createHTMLDocument("preview"),
-    configurable: true,
-  });
-  act(() => {
-    api.iframeRef.current = iframe;
-    api.onIframeLoad();
+  attachIframeWindow(api, {
+    __player: adapter,
+    __timelines: options.timelines,
+    postMessage: options.postMessage ?? (() => {}),
+    scrollTo: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
   return adapter;
 }
@@ -129,6 +138,61 @@ function expectStorePlaybackState(
 }
 
 describe("useTimelinePlayer seek hydration", () => {
+  it("ignores runtime timeline work while the performance fixture lease is active", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    attachIframeAdapter(api);
+    const iframeWindow = api.iframeRef.current?.contentWindow;
+    const iframeDocument = api.iframeRef.current?.contentDocument;
+    if (!iframeWindow || !iframeDocument) throw new Error("iframe did not attach");
+    const querySelector = vi.spyOn(iframeDocument, "querySelector");
+    const clips = [
+      {
+        id: "runtime-clip",
+        label: "Runtime clip",
+        start: 0,
+        duration: 1,
+        track: 0,
+        kind: "element",
+        tagName: "div",
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+    ];
+    const dispatchTimeline = () =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow,
+          data: {
+            source: "hf-preview",
+            type: "timeline",
+            clips,
+            durationInFrames: 30,
+            fps: 30,
+          },
+        }),
+      );
+    try {
+      act(() => {
+        usePlayerStore.setState({ clipManifest: null });
+        setTimelinePerformanceFixtureLease(true);
+        dispatchTimeline();
+      });
+      expect(usePlayerStore.getState().clipManifest).toBeNull();
+      expect(querySelector).not.toHaveBeenCalled();
+
+      act(() => {
+        setTimelinePerformanceFixtureLease(false);
+        dispatchTimeline();
+      });
+      expect(usePlayerStore.getState().clipManifest).toEqual(clips);
+      expect(querySelector).toHaveBeenCalled();
+    } finally {
+      unmountWithAct(root);
+    }
+  });
+
   it("keeps an external seek request until the iframe adapter is ready", () => {
     const observedTimes: number[] = [];
     const unsubscribe = liveTime.subscribe((time) => {
@@ -153,10 +217,52 @@ describe("useTimelinePlayer seek hydration", () => {
     unmountWithAct(root);
     unsubscribe();
   });
+
+  it("does not settle from an unsupported runtime protocol message", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    const iframeWindow = {
+      postMessage: vi.fn(),
+      scrollTo: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as Record<string, unknown>;
+    attachIframeWindow(api, iframeWindow);
+    expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+    iframeWindow.__player = {
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      getTime: () => 0,
+      getDuration: () => 30,
+      isPlaying: () => false,
+    };
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow as unknown as Window,
+          data: { source: "hf-preview", type: "state", protocolVersion: 999 },
+        }),
+      );
+    });
+    expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow as unknown as Window,
+          data: { source: "hf-preview", type: "state" },
+        }),
+      );
+    });
+    expect(usePlayerStore.getState().timelineReady).toBe(true);
+
+    unmountWithAct(root);
+  });
 });
 
 describe("useTimelinePlayer audio controls (#835)", () => {
-  it("applies playback-rate changes immediately and auto-mutes audio above 1x", () => {
+  it("applies playback-rate changes immediately and keeps audio unmuted above 1x", () => {
     const { api, root } = renderTimelinePlayerHarness();
     const postMessage = vi.fn();
     const timeScale = vi.fn();
@@ -189,7 +295,7 @@ describe("useTimelinePlayer audio controls (#835)", () => {
         source: "hf-parent",
         type: "control",
         action: "set-muted",
-        muted: true,
+        muted: false,
       }),
       "*",
     );
@@ -284,7 +390,6 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
   type SeekCall = { time: number; options?: { keepPlaying?: boolean } };
 
   function attachInstrumentedAdapter(api: ReturnType<typeof useTimelinePlayer>, duration = 30) {
-    const iframe = document.createElement("iframe");
     let currentTime = 0;
     let playing = false;
     const seekCalls: SeekCall[] = [];
@@ -306,23 +411,12 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
         currentTime = t;
       },
     };
-    Object.defineProperty(iframe, "contentWindow", {
-      value: {
-        __player: adapter,
-        postMessage: () => {},
-        scrollTo: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      },
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentDocument", {
-      value: document.implementation.createHTMLDocument("preview"),
-      configurable: true,
-    });
-    act(() => {
-      api.iframeRef.current = iframe;
-      api.onIframeLoad();
+    attachIframeWindow(api, {
+      __player: adapter,
+      postMessage: () => {},
+      scrollTo: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
     });
     return { adapter, seekCalls };
   }

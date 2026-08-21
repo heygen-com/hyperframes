@@ -106,9 +106,18 @@ export function resolveStudioDistinctId(): string {
       return existing;
     }
   } else {
-    // No storage at all (SSR / locked-down browser): stable within the session.
+    // No storage at all (SSR / locked-down browser): stable within the
+    // session, but RANDOM per session rather than a shared literal.
+    //
+    // It used to be the constant "anonymous", which made every
+    // storage-restricted profile one bucketing unit: computed against the
+    // shipped hash, `calibration-50:anonymous` lands in bucket 44, so 100% of
+    // that population was enrolled at a nominal 50% and would flip together
+    // on any ramp. It also merged unrelated users into a single PostHog
+    // person. A per-session id spreads them and keeps them distinct, while
+    // persisting nothing.
     // `cachedId` is guaranteed null here (early-returned at the top otherwise).
-    cachedId = "anonymous";
+    cachedId = generateId();
     return cachedId;
   }
 

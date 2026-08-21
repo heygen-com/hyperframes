@@ -1,6 +1,6 @@
 # Contribute Templates
 
-Copy-paste starter templates for each component type. These embed the proven patterns that pass lint and validate.
+Copy-paste starter templates for each component type. These embed the proven patterns that pass `lint` and `check`.
 
 ## Caption Template
 

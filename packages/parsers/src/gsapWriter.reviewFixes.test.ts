@@ -299,6 +299,17 @@ tl.to(".a", { keyframes: { "0%": { x: 0 }, "100%": { x: 100 } }, duration: 1, ea
     // The original top-level `ease: "none"` is untouched (no second top-level ease).
     expect((out.match(/ease: "power2.inOut"/g) ?? []).length).toBe(0);
   });
+
+  it("round-trips an editor-authored CustomEase through write and reparse", () => {
+    const customEase = "custom(M0,0 C0.18,0.9 0.32,1.2 1,1)";
+    const id = parseGsapScriptAcornForWrite(KF)?.located[0]?.id ?? "";
+    const out = updateKeyframeInScript(KF, id, 100, { x: 100 }, customEase);
+    const keyframe = parseGsapScriptAcornForWrite(
+      out,
+    )?.located[0]?.animation.keyframes?.keyframes.find(({ percentage }) => percentage === 100);
+
+    expect(keyframe?.ease).toBe(customEase);
+  });
 });
 
 // ── #8 — convertToKeyframes preserves builtin vars like `delay` ──

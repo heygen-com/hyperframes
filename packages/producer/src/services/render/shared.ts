@@ -53,6 +53,19 @@ export interface CompositionMetadata {
  */
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
+/**
+ * Resolve the browser/runtime end for a media element.
+ *
+ * `data-end` is compiler-generated metadata, while `data-duration` is the
+ * authored/runtime value. A render variable can replace a placeholder source
+ * and update `data-duration` after compilation, leaving the compiler-clamped
+ * `data-end` stale. Prefer the live duration when present so the audio/video
+ * extraction window follows the runtime media slot.
+ */
+export function resolveBrowserMediaEnd(start: number, end: number, duration: number): number {
+  return Number.isFinite(duration) && duration > 0 ? start + duration : end;
+}
+
 export function writeFileExclusiveSync(path: string, data: NodeJS.ArrayBufferView | string): void {
   try {
     writeFileSync(path, data, { flag: "wx", mode: 0o600 });
@@ -233,11 +246,23 @@ export function updateJobStatus(
   progress: number,
   onProgress?: ProgressCallback,
 ): void {
+  job.warnings ??= [];
   job.status = status;
   job.currentStage = stage;
-  job.progress = progress;
-  if (status === "failed" || status === "complete") job.completedAt = new Date();
-  if (onProgress) onProgress(job, stage);
+  const boundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  job.progress = Math.max(job.progress, boundedProgress);
+  if (status === "failed" || status === "complete" || status === "cancelled") {
+    job.completedAt = new Date();
+    job.outcome =
+      status === "failed"
+        ? "failed"
+        : status === "cancelled"
+          ? "cancelled"
+          : job.warnings.length > 0
+            ? "completed_with_warnings"
+            : "completed";
+  }
+  if (onProgress) void onProgress(job, stage);
 }
 
 /**

@@ -22,6 +22,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * Clamp the centre point of a centred bubble so the whole bubble stays in the
+ * viewport: clamping the centre alone lets a wide bubble hang off the edge.
+ */
+export function clampCentredLeft(
+  centreX: number,
+  bubbleWidth: number,
+  viewportWidth: number,
+  margin: number,
+): number {
+  const half = bubbleWidth / 2;
+  const min = half + margin;
+  return clamp(centreX, min, Math.max(min, viewportWidth - half - margin));
+}
+
 export function resolveFloatingPanelPosition(
   anchor: FloatingRect,
   viewport: FloatingSize,

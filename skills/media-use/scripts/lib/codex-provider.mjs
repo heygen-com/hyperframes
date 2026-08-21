@@ -8,9 +8,15 @@ import { join } from "node:path";
 // no key (CLI-only). The image UPSELL behind local mflux; skipped by --local-only.
 //
 // Retrieval mirrors illo-skill rather than trusting the model to save a file:
-// `--enable imagegenext` makes the built-in tool drop the rendered artifact into
-// $CODEX_HOME/generated_images/, and we fetch the freshest file that postdates
-// this run. The save-to-path instruction is only a best-effort verify-first.
+// `--enable image_generation` makes the built-in tool drop the rendered artifact
+// into $CODEX_HOME/generated_images/, and we fetch the freshest file that
+// postdates this run. The save-to-path instruction is only a best-effort
+// verify-first.
+//
+// The flag was called `imagegenext` until Codex CLI ~0.145, which renamed it to
+// `image_generation` and dropped the old row from `codex features list`. Both
+// the gate below and the --enable arg track the new name, with a fallback to
+// the old one so older CLIs keep working.
 
 const TIMEOUT_MS = 600000; // codex exec round-trips the sub; first-run tool spin-up is slow
 const MTIME_SKEW_MS = 2000; // tolerate mtime granularity / clock skew (illo uses 2s)
@@ -53,10 +59,19 @@ function codexRun(args) {
   }
 }
 
+// Name of the feature flag this CLI uses for the extended image tool, or null if
+// it exposes neither. Newer CLIs list only `image_generation`; older ones list
+// `imagegenext` alongside it and reject the new name on --enable.
+export function imageGenFlag(feats) {
+  if (/\bimagegenext\b/.test(feats)) return "imagegenext";
+  if (/\bimage_generation\b/.test(feats)) return "image_generation";
+  return null;
+}
+
 // Fail-fast host check (mirrors illo): don't burn a minutes-long exec when Codex
-// isn't usable. Returns null when ready, else a human reason. imagegenext ships
-// default-disabled ("under development"), so we check the ROW is present (the
-// capability signal) — the exec enables it per-render with --enable.
+// isn't usable. Returns { flag } when ready, else { reason }. The flag ships
+// default-disabled, so we check the ROW is present (the capability signal) — the
+// exec enables it per-render with --enable.
 function codexUnavailableReason() {
   try {
     const which = process.platform === "win32" ? "where" : "which";
@@ -65,7 +80,10 @@ function codexUnavailableReason() {
     // A shell alias (e.g. `codex → /Applications/Codex.app/...`) is NOT enough:
     // aliases live only in the interactive shell, so a spawned subprocess's PATH
     // lookup can't see them. Symlink the real binary onto PATH.
-    return 'codex CLI not reachable on PATH (a shell alias won\'t work — spawned processes can\'t see aliases; symlink the real binary onto PATH, e.g. ln -s "$(readlink -f "$(command -v codex)")" ~/.local/bin/codex)';
+    return {
+      reason:
+        'codex CLI not reachable on PATH (a shell alias won\'t work — spawned processes can\'t see aliases; symlink the real binary onto PATH, e.g. ln -s "$(readlink -f "$(command -v codex)")" ~/.local/bin/codex)',
+    };
   }
   // Auth marker: presence of the credentials file, NOT `codex login status`.
   // That command prints "Logged in using ChatGPT" only to a human stream
@@ -75,18 +93,18 @@ function codexUnavailableReason() {
   // auth.json is the durable, TTY-independent signal; token validity is proven
   // by the exec itself, which fails cleanly if the login is stale.
   const authPath = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "auth.json");
-  if (!existsSync(authPath)) return "codex not logged in (run: codex login)";
+  if (!existsSync(authPath)) return { reason: "codex not logged in (run: codex login)" };
   const feats = codexRun(["features", "list"]);
-  if (feats == null) return "could not read `codex features list`";
-  if (!/\bimage_generation\b/.test(feats)) return "codex image_generation feature unavailable";
-  if (!/\bimagegenext\b/.test(feats)) return "codex imagegenext unavailable (upgrade Codex CLI)";
-  return null;
+  if (feats == null) return { reason: "could not read `codex features list`" };
+  const flag = imageGenFlag(feats);
+  if (!flag) return { reason: "codex image generation feature unavailable (upgrade Codex CLI)" };
+  return { flag };
 }
 
 export async function codexImageGenerate(intent) {
-  const unavailable = codexUnavailableReason();
-  if (unavailable) {
-    console.error(`media-use: codex image upsell unavailable: ${unavailable}`);
+  const { reason, flag } = codexUnavailableReason();
+  if (reason) {
+    console.error(`media-use: codex image upsell unavailable: ${reason}`);
     return null;
   }
   const outPath = join(tmpdir(), `media-use-codex-${process.pid}-${Date.now()}.png`);
@@ -112,7 +130,7 @@ export async function codexImageGenerate(intent) {
         "workspace-write",
         "--skip-git-repo-check",
         "--enable",
-        "imagegenext",
+        flag,
         "-",
       ],
       { input: prompt, encoding: "utf8", timeout: TIMEOUT_MS, stdio: ["pipe", "pipe", "pipe"] },
@@ -123,7 +141,7 @@ export async function codexImageGenerate(intent) {
     );
     return null;
   }
-  // Verify-first (save-to-path may have worked), else fetch the imagegenext artifact.
+  // Verify-first (save-to-path may have worked), else fetch the image-tool artifact.
   const produced =
     existsSync(outPath) && statSync(outPath).size > 0 ? outPath : freshestGeneratedImage(started);
   if (!produced) return null;

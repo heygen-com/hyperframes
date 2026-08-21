@@ -1,0 +1,65 @@
+---
+title: "Review the storyboard"
+description: "Review planned frames, direction, voiceover, status, and feedback before or during the build."
+---
+
+The Storyboard view is for reviewing the story, not fine-tuning pixels.
+
+Each frame represents a planned moment and can include visual direction, voiceover, status, source details, and comments.
+
+<Frame caption="Read the arc, inspect each planned frame, and leave story-level feedback before changing the build.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/storyboard-v1.jpg"
+    alt="Storyboard with the video arc, frame statuses, visual sketches, and comments"
+  />
+</Frame>
+
+## Use the frame statuses
+
+- **Outline** — the frame is still a plan.
+- **Built** — a working scene exists.
+- **Animated** — motion has been added and the scene is ready for closer review.
+
+Treat a status as progress information, not proof that the frame is approved.
+
+## Review one frame
+
+1. Open Storyboard.
+2. Focus the frame you want to inspect.
+3. Read its visual direction and voiceover together.
+4. Check whether the frame supports the main message.
+5. Leave a concrete comment.
+6. Choose **Save & copy message**, then paste the message into your agent chat.
+
+Useful feedback describes the problem and desired outcome:
+
+```text
+This frame repeats the previous claim. Use it to show the product
+workflow instead, and keep the voiceover line unchanged.
+```
+
+## Board view and source view
+
+Use the board when you want to understand the sequence visually.
+
+Use the source view when you need to inspect or edit the storyboard text and structured direction more directly.
+
+The voiceover shown on the board is a guide. When the project has a `SCRIPT.md`, that file is the final source for generated narration.
+
+## When to move to Preview
+
+Built and Animated frames can include **Open in Preview**. Use it when the question becomes:
+
+- Is the timing right?
+- Is the text readable?
+- Does the animation feel correct?
+- Is an element aligned?
+- Does the media crop work?
+
+Those questions need the built composition rather than the plan alone.
+
+## Related topics
+
+- [Work on the built project in Studio](/studio)
+- [Edit the visible frame](/studio/canvas)
+- [Direct an agent more precisely](/prompting/anatomy)

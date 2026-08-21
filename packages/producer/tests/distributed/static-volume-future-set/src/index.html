@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Static volume with future nested set</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        width: 640px;
+        height: 360px;
+        margin: 0;
+        overflow: hidden;
+        background: #07111f;
+      }
+
+      #root,
+      #child-host {
+        position: absolute;
+        inset: 0;
+        width: 640px;
+        height: 360px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="12"
+      data-width="640"
+      data-height="360"
+    >
+      <div
+        id="child-host"
+        data-composition-id="child"
+        data-composition-src="compositions/child.html"
+        data-start="2"
+        data-duration="10"
+        data-track-index="0"
+      ></div>
+      <audio
+        id="bed"
+        src="assets/silence.wav"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+        data-volume="1"
+      ></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to({}, { duration: 12 }, 0);
+      window.__timelines.main = timeline;
+    </script>
+  </body>
+</html>

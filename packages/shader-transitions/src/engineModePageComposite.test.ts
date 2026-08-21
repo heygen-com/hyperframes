@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clonePinStyleFor,
   isPageSideCompositingSupported,
   PAGE_COMPOSITOR_BUILD_CANARY,
   PAGE_COMPOSITOR_CANVAS_ID,
@@ -66,6 +67,26 @@ describe("isPageSideCompositingSupported", () => {
       }),
     });
     expect(isPageSideCompositingSupported()).toBe(false);
+  });
+});
+
+describe("clonePinStyleFor", () => {
+  it("fixes a 0x0 inset:0 scene root to its live-measured box (the collapse this exists to prevent)", () => {
+    // A scene root sized only by `position:absolute; inset:0` measures as
+    // the full composition frame in the live document (its containing block
+    // there is the real ancestor chain) — collapses to 0x0 only once cloned
+    // into the staging canvas's own layout subtree.
+    const pin = clonePinStyleFor({ left: 0, top: 0, width: 1080, height: 1920 });
+    expect(pin).toEqual({ left: "0px", top: "0px", width: "1080px", height: "1920px" });
+  });
+
+  it("preserves an authored explicit width/height and offset instead of overriding it", () => {
+    // A scene root with its own explicit size/position (e.g. a picture-in-
+    // picture panel) measures as that exact box in the live document —
+    // clonePinStyleFor must reproduce it verbatim, not the full composition
+    // frame, or the clone would silently grow to fill the canvas.
+    const pin = clonePinStyleFor({ left: 120, top: 240, width: 400, height: 300 });
+    expect(pin).toEqual({ left: "120px", top: "240px", width: "400px", height: "300px" });
   });
 });
 

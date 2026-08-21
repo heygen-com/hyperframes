@@ -9,7 +9,7 @@
 </style>
 </head>
 <body>
-<div id="root" data-composition-id="typegpu-test" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+<div id="root" data-composition-id="typegpu-test" data-requires-webgpu data-width="1920" data-height="1080" data-start="0" data-duration="6">
 
   <canvas id="gpu-canvas" style="position:absolute;top:0;left:0;width:1920px;height:1080px"></canvas>
   <div id="label">TypeGPU adapter test</div>
@@ -114,7 +114,10 @@ fn hsv(h: f32, s: f32, v: f32) -> vec3f {
       }
 
       render(0);
-      window.addEventListener('hf-seek', function(e) { render(e.detail.time); });
+      window.addEventListener('hf-seek', function(e) {
+        render(e.detail.time);
+        e.detail.waitUntil(device.queue.onSubmittedWorkDone());
+      });
     })();
   </script>
 </div>

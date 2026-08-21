@@ -1,3 +1,4 @@
+import { failCommand } from "../../utils/commandResult.js";
 /**
  * Persists `hyperframes lambda` stack outputs (bucket, state-machine ARN,
  * region) so `render` / `progress` / `destroy` don't need to re-derive
@@ -93,7 +94,7 @@ export function requireStack(stackName: string, cwd: string = process.cwd()): St
     console.error(
       `[hyperframes lambda] no stack state for "${stackName}" at ${stateFilePath(stackName, cwd)}. ${hint}`,
     );
-    process.exit(1);
+    failCommand();
   }
   return stack;
 }

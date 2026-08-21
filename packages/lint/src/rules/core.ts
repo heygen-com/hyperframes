@@ -1,7 +1,9 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 import {
   readAttr,
+  readDecodedAttr,
   truncateSnippet,
   stripJsComments,
   extractCompositionIdsFromCss,
@@ -13,15 +15,85 @@ import {
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function repeatedDescendantId(selector: string): string | null {
+  let repeated: string | null = null;
+
+  const requiredPseudoIds = (pseudo: selectorParser.Pseudo): Set<string> => {
+    if (![":is", ":where"].includes(pseudo.value.toLowerCase()) || pseudo.nodes.length === 0) {
+      return new Set<string>();
+    }
+
+    const optionIdSets: Set<string>[] = [];
+    for (const option of pseudo.nodes) {
+      // Only promote ids from a single compound. For selector-list branches with
+      // combinators, determining which compound is the subject requires fuller
+      // selector semantics; skipping them avoids false positives.
+      if (option.nodes.some((node) => node.type === "combinator")) return new Set<string>();
+      const optionIds = new Set<string>(
+        option.nodes.filter((node) => node.type === "id").map((node) => node.value),
+      );
+      optionIdSets.push(optionIds);
+    }
+    const [firstOptionIds, ...remainingOptionIds] = optionIdSets;
+    return new Set<string>(
+      [...(firstOptionIds ?? [])].filter((id) =>
+        remainingOptionIds.every((optionIds) => optionIds.has(id)),
+      ),
+    );
+  };
+
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const firstCompoundById = new Map<string, number>();
+        let compound = 0;
+        selectorNode.each((node) => {
+          if (repeated) return;
+          if (node.type === "combinator") {
+            compound += 1;
+            return;
+          }
+          const requiredIds =
+            node.type === "id"
+              ? [node.value]
+              : node.type === "pseudo"
+                ? [...requiredPseudoIds(node)]
+                : [];
+          for (const id of requiredIds) {
+            const firstCompound = firstCompoundById.get(id);
+            if (firstCompound !== undefined && firstCompound !== compound) {
+              repeated = id;
+              return;
+            }
+            firstCompoundById.set(id, compound);
+          }
+        });
+      });
+    }).processSync(selector);
+  } catch {
+    return null;
+  }
+  return repeated;
 }
 
-function selectorTargetsCompositionId(selector: string, compositionId: string): boolean {
-  const escaped = escapeRegExp(compositionId);
-  return new RegExp(
-    String.raw`\[\s*data-composition-id\s*=\s*(?:"${escaped}"|'${escaped}')\s*\]`,
-  ).test(selector);
+function resolvedRuleSelectors(rule: postcss.Rule): string[] {
+  let ancestor: postcss.AnyNode | undefined = rule.parent;
+  while (ancestor && ancestor.type !== "rule") ancestor = ancestor.parent;
+  if (!ancestor || ancestor.type !== "rule") return rule.selectors;
+
+  const parentSelectors = resolvedRuleSelectors(ancestor);
+  return parentSelectors.flatMap((parentSelector) =>
+    rule.selectors.map((childSelector) => {
+      const nestingToken = /(^|[\s>+~,(])&/g;
+      if (nestingToken.test(childSelector)) {
+        return childSelector.replace(
+          nestingToken,
+          (_, separator: string) => separator + parentSelector,
+        );
+      }
+      return `${parentSelector} ${childSelector}`;
+    }),
+  );
 }
 
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
@@ -40,7 +112,7 @@ function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
 function describeStudioElement(tag: { raw: string; name: string }): string {
   const parts = [`<${tag.name}`];
   const className = readAttr(tag.raw, "class");
-  const compositionId = readAttr(tag.raw, "data-composition-id");
+  const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
   const dataStart = readAttr(tag.raw, "data-start");
   const dataTrack = readAttr(tag.raw, "data-track-index") ?? readAttr(tag.raw, "data-track");
 
@@ -58,17 +130,6 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
   return parts.join("");
 }
 
-const HEAD_BLOCKS_TO_IGNORE_PATTERN =
-  /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)(?:\s[^>]*)?>/gi;
-const HTML_TAG_PATTERN = /<[^>]+>/g;
-const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
-const AFTER_HEAD_BEFORE_BODY_PATTERN = /<\/head(?:\s[^>]*)?>([\s\S]*?)(?=<body\b|$)/gi;
-const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)(?:\s[^>]*)?>/i;
-const MARKDOWN_CODE_FENCE_PATTERN = /```[^\r\n`]*(?:\r?\n|$)[\s\S]*?```/i;
-const ORPHAN_CSS_AT_RULE_PATTERN =
-  /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
-const ORPHAN_CSS_RULE_PATTERN =
-  /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
 const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
 const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
   /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
@@ -76,64 +137,6 @@ const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
 interface SourceRange {
   start: number;
   end: number;
-}
-
-function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
-  return MARKDOWN_CODE_FENCE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
-}
-
-function findOrphanCssLeak(headContent: string): string | null {
-  const residualText = headContent
-    .replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ")
-    .replace(HTML_TAG_PATTERN, " ");
-  return (
-    ORPHAN_CSS_AT_RULE_PATTERN.exec(residualText)?.[0] ??
-    ORPHAN_CSS_RULE_PATTERN.exec(residualText)?.[0] ??
-    null
-  );
-}
-
-function findStrayCloseLeak(headWithoutValidBlocks: string): string | null {
-  return STRAY_HEAD_CLOSE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
-}
-
-function findLeakedTextInHeadContent(headContent: string): string | null {
-  const withoutValidBlocks = headContent.replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ");
-  return (
-    findCodeFenceLeak(withoutValidBlocks) ??
-    findOrphanCssLeak(headContent) ??
-    findStrayCloseLeak(withoutValidBlocks)
-  );
-}
-
-function findLeakedTextInHead(rawSource: string): string | null {
-  const headMatches = [...rawSource.matchAll(HEAD_CONTENT_PATTERN)];
-  for (const match of headMatches) {
-    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
-    if (leakedText) return leakedText;
-  }
-  return null;
-}
-
-function findLeakedTextBetweenHeadAndBody(rawSource: string): string | null {
-  const boundaryMatches = [...rawSource.matchAll(AFTER_HEAD_BEFORE_BODY_PATTERN)];
-  for (const match of boundaryMatches) {
-    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
-    if (leakedText) return leakedText;
-  }
-  return null;
-}
-
-function findLeakedTextBeforeCompositionRoot(
-  source: string,
-  rootTag: LintContext["rootTag"],
-): string | null {
-  if (!rootTag || rootTag.name === "body") return null;
-  const bodyOpenMatch = /<body\b[^>]*>/i.exec(source);
-  const prefixStart = bodyOpenMatch ? bodyOpenMatch.index + bodyOpenMatch[0].length : 0;
-  const prefixEnd = rootTag.index;
-  if (prefixEnd <= prefixStart) return null;
-  return findLeakedTextInHeadContent(source.slice(prefixStart, prefixEnd));
 }
 
 function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
@@ -181,10 +184,29 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
 }
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // id_requires_css_escape
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const id = readAttr(tag.raw, "id");
+      if (!id || !/^\d/.test(id)) continue;
+      findings.push({
+        code: "id_requires_css_escape",
+        severity: "warning",
+        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
+        elementId: id,
+        fixHint:
+          "Rename the id to start with a letter (recommended), or build selectors with `#${CSS.escape(id)}` at runtime.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
-    if (!rootTag || !readAttr(rootTag.raw, "data-composition-id")) {
+    if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
       findings.push({
         code: "root_missing_composition_id",
         severity: "error",
@@ -207,26 +229,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // head_leaked_text
-  ({ source, rootTag }) => {
-    const snippet =
-      findLeakedTextInHead(source) ??
-      findLeakedTextBetweenHeadAndBody(source) ??
-      findLeakedTextBeforeCompositionRoot(source, rootTag);
-    if (!snippet) return [];
-    return [
-      {
-        code: "head_leaked_text",
-        severity: "error",
-        message:
-          "Detected leaked code or CSS text around the document `<head>` or before the composition root. Browsers render this as visible text in the video.",
-        fixHint:
-          "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`, the `</head>`/`<body>` boundary, or the pre-root body prefix.",
-        snippet: truncateSnippet(snippet),
-      },
-    ];
-  },
-
   // visible_markup_comment
   ({ source }) => {
     const snippet = findVisibleMarkupCommentLeak(source);
@@ -245,11 +247,12 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
-  ({ source, rawSource, options }) => {
+  ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
       return [];
     }
+    if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
     const findings: HyperframeLintFinding[] = [];
     if (
       !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
@@ -280,15 +283,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // timeline_id_mismatch
-  ({ source }) => {
+  ({ source, compositionIds }) => {
     const findings: HyperframeLintFinding[] = [];
-    const htmlCompIds = new Set<string>();
+    const htmlCompIds = new Set(compositionIds);
     const timelineRegKeys = new Set<string>();
-    const compIdRe = /data-composition-id\s*=\s*["']([^"']+)["']/gi;
-    let m: RegExpExecArray | null;
-    while ((m = compIdRe.exec(source)) !== null) {
-      if (m[1]) htmlCompIds.add(m[1]);
-    }
     for (const key of extractTimelineRegistryKeys(source)) {
       timelineRegKeys.add(key);
     }
@@ -301,6 +299,35 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           fixHint: `Change window.__timelines["${key}"] to match the data-composition-id attribute, or vice versa.`,
         });
       }
+    }
+    return findings;
+  },
+
+  // repeated_id_descendant_selector
+  ({ styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const reported = new Set<string>();
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkRules((rule) => {
+        for (const selector of resolvedRuleSelectors(rule)) {
+          const repeatedId = repeatedDescendantId(selector);
+          if (!repeatedId || reported.has(repeatedId)) continue;
+          reported.add(repeatedId);
+          findings.push({
+            code: "repeated_id_descendant_selector",
+            severity: "error",
+            message: `Selector "${selector}" requires #${repeatedId} to be nested inside another #${repeatedId}. IDs must be unique, so this selector cannot match a valid composition.`,
+            selector,
+            fixHint: `Remove the duplicate ancestor: change \`#${repeatedId} #${repeatedId}\` to \`#${repeatedId}\`.`,
+          });
+        }
+      });
     }
     return findings;
   },
@@ -349,7 +376,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     for (const tag of tags) {
       const src = readAttr(tag.raw, "data-composition-src");
       if (!src) continue;
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       findings.push({
         code: "host_missing_composition_id",
         severity: "error",
@@ -385,40 +412,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // composition_self_attribute_selector
-  ({ styles, rootCompositionId, rootTag }) => {
-    const findings: HyperframeLintFinding[] = [];
-    if (!rootCompositionId) return findings;
-    const seenSelectors = new Set<string>();
-    const rootId = readAttr(rootTag?.raw || "", "id");
-    for (const style of styles) {
-      let root: postcss.Root;
-      try {
-        root = postcss.parse(style.content);
-      } catch {
-        continue;
-      }
-      root.walkRules((rule) => {
-        for (const selector of rule.selectors) {
-          if (!selectorTargetsCompositionId(selector, rootCompositionId)) continue;
-          if (seenSelectors.has(selector)) continue;
-          seenSelectors.add(selector);
-          findings.push({
-            code: "composition_self_attribute_selector",
-            severity: "warning",
-            message:
-              "Selector matches the block's own id; will leak to sibling instances when the block is embedded twice.",
-            selector,
-            fixHint: rootId
-              ? `Use #${rootId} for clearer authoring intent and instance-isolated styling.`
-              : "Add a stable id to the composition root and use that id selector for clearer authoring intent and instance-isolated styling.",
-          });
-        }
-      });
-    }
-    return findings;
-  },
-
   // studio_missing_editable_id
   ({ tags, rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -432,8 +425,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         code: "studio_missing_editable_id",
         severity: "warning",
         message: `${descriptor} has no id, so Studio cannot use a stable edit target for its timeline and canvas controls.`,
-        selector: readAttr(tag.raw, "data-composition-id")
-          ? `[data-composition-id="${readAttr(tag.raw, "data-composition-id")}"]`
+        selector: readDecodedAttr(tag.raw, "data-composition-id")
+          ? `[data-composition-id="${readDecodedAttr(tag.raw, "data-composition-id")}"]`
           : undefined,
         fixHint:
           'Add a stable, human-readable id such as id="hero-title" or id="scene-1-card" to every timeline-visible element you want agents or Studio to edit.',
@@ -472,6 +465,17 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         label: "crypto.getRandomValues()",
         hint: "Remove time-dependent code. Use a seeded PRNG for deterministic renders.",
       },
+      {
+        pattern: /gsap\.utils\.random\s*\(/,
+        label: "gsap.utils.random()",
+        hint: "Each render worker initializes independently, so random values diverge across chunks. Use a seeded PRNG or fixed values.",
+      },
+      {
+        // GSAP string form: "random(...)" / "+=random(...)" — re-rolls at tween init.
+        pattern: /["'`](?:[+-]=)?random\(\s*[-\d[]/,
+        label: '"random(...)" tween value',
+        hint: "GSAP random string values re-roll at tween init and each render worker initializes independently. Use fixed values or precompute with a seeded PRNG.",
+      },
     ];
 
     for (const script of scripts) {
@@ -488,59 +492,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         }
       }
     }
-    return findings;
-  },
-
-  // pointer_events_none
-  // fallow-ignore-next-line complexity
-  ({ tags, styles }) => {
-    const findings: HyperframeLintFinding[] = [];
-    const reported = new Set<string>();
-
-    for (const tag of tags) {
-      if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) continue;
-      const inlineStyle = readAttr(tag.raw, "style") ?? "";
-      if (!/pointer-events\s*:\s*none/i.test(inlineStyle)) continue;
-      const id = readAttr(tag.raw, "id");
-      const key = id ?? tag.raw;
-      if (reported.has(key)) continue;
-      reported.add(key);
-      findings.push({
-        code: "pointer_events_none",
-        severity: "info",
-        message: `<${tag.name}${id ? ` id="${id}"` : ""}> has \`pointer-events: none\` in its inline style. Elements with this property are harder to select in the Studio preview.`,
-        elementId: id || undefined,
-        fixHint:
-          "If this element should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
-        snippet: truncateSnippet(tag.raw),
-      });
-    }
-
-    for (const style of styles) {
-      let root: postcss.Root;
-      try {
-        root = postcss.parse(style.content);
-      } catch {
-        continue;
-      }
-      root.walkDecls("pointer-events", (decl) => {
-        if (decl.value.trim().toLowerCase() !== "none") return;
-        const rule = decl.parent;
-        if (!rule || rule.type !== "rule") return;
-        const selector = (rule as postcss.Rule).selector;
-        if (reported.has(selector)) return;
-        reported.add(selector);
-        findings.push({
-          code: "pointer_events_none",
-          severity: "info",
-          message: `\`${selector}\` sets \`pointer-events: none\`. Elements matching this selector are harder to select in the Studio preview.`,
-          selector,
-          fixHint:
-            "If these elements should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
-        });
-      });
-    }
-
     return findings;
   },
 ];

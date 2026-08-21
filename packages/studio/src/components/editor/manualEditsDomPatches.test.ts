@@ -17,6 +17,8 @@ import {
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_WIDTH_ATTR,
   STUDIO_ORIGINAL_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MIN_WIDTH_ATTR,
   STUDIO_ORIGINAL_MIN_HEIGHT_ATTR,
   STUDIO_ORIGINAL_MAX_WIDTH_ATTR,
@@ -49,6 +51,7 @@ import {
   buildMotionPatches,
   buildClearMotionPatches,
 } from "./manualEditsDomPatches";
+import { applyStudioBoxSize, applyStudioPathOffset } from "./manualEditsDom";
 
 /* ── helpers ── */
 
@@ -221,6 +224,9 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
       { type: "attribute", property: STUDIO_ORIGINAL_WIDTH_ATTR, value: null },
       { type: "inline-style", property: "height", value: "150px" },
       { type: "attribute", property: STUDIO_ORIGINAL_HEIGHT_ATTR, value: null },
+      // Measurements, so they are cleared without restoring a style.
+      { type: "attribute", property: STUDIO_ORIGINAL_BOX_WIDTH_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, value: null },
       { type: "inline-style", property: "min-width", value: "0px" },
       { type: "attribute", property: STUDIO_ORIGINAL_MIN_WIDTH_ATTR, value: null },
       { type: "inline-style", property: "min-height", value: "0px" },
@@ -256,14 +262,74 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
 
   it("clear: bare element emits only null ops — no style restores fire when orig attrs are absent", () => {
     const ops = buildClearBoxSizePatches(div());
-    // 3 fixed (studio-width, studio-height, box-size marker) + 14 attr-null pushes (one per BOX_SIZE_ORIG_ATTR)
-    expect(ops).toHaveLength(17);
+    // 3 fixed (studio-width, studio-height, box-size marker) + 16 attr-null pushes (one per BOX_SIZE_ORIG_ATTR)
+    expect(ops).toHaveLength(19);
     expect(ops.every((op) => op.value === null)).toBe(true);
+  });
+
+  it("backfills the measured box on a legacy element that already has the resize marker", () => {
+    const e = div();
+    e.setAttribute(STUDIO_BOX_SIZE_ATTR, "true");
+    Object.defineProperties(e, {
+      offsetWidth: { configurable: true, value: 630 },
+      offsetHeight: { configurable: true, value: 252 },
+    });
+
+    applyStudioBoxSize(e, { width: 320, height: 128 });
+
+    expect(e.getAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR)).toBe("630");
+    expect(e.getAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR)).toBe("252");
   });
 
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedBoxEl();
     assertClearCoversKeys(buildBoxSizePatches(e), buildClearBoxSizePatches(e));
+  });
+});
+
+/* ── Combined box-size + path-offset (anchored-corner resize) ──────────────── */
+
+describe("anchored-corner combined patch: [...buildBoxSizePatches, ...buildPathOffsetPatches]", () => {
+  // NW/NE/SW resize commits size AND anchor offset in ONE persist. The two
+  // builders read the same already-mutated element and are concatenated; this
+  // is only safe if their {type,property} keys are disjoint (no builder
+  // overwrites the other's op when the source patcher applies them in order).
+  it("concatenation of both builders emits disjoint {type,property} keys (no collision)", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const keys = combined.map(opKey);
+    expect(new Set(keys).size, `duplicate {type,property} key in combined patch: ${keys}`).toBe(
+      keys.length,
+    );
+  });
+
+  it("combined patch carries BOTH markers so a soft-reload re-hydrates size and offset together", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const has = (property: string) =>
+      combined.some((op) => op.type === "attribute" && op.property === property);
+    expect(has(STUDIO_BOX_SIZE_ATTR)).toBe(true);
+    expect(has(STUDIO_PATH_OFFSET_ATTR)).toBe(true);
+  });
+
+  it("order is size-first: every box-size op precedes every path-offset op", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const boxKeys = new Set(buildBoxSizePatches(e).map(opKey));
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const lastBoxIdx = combined.reduce((acc, op, i) => (boxKeys.has(opKey(op)) ? i : acc), -1);
+    const firstOffsetIdx = combined.findIndex(
+      (op) => op.type === "attribute" && op.property === STUDIO_PATH_OFFSET_ATTR,
+    );
+    expect(firstOffsetIdx).toBeGreaterThan(lastBoxIdx);
   });
 });
 

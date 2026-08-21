@@ -145,6 +145,13 @@ export interface StudioApiAdapter {
     quality: string;
     jobId: string;
     /**
+     * The triggering browser profile has telemetry disabled (localStorage
+     * opt-out, DNT, dev build...). The CLI cannot observe any of that, so the
+     * browser has to say so — without it the server emitted render outcomes
+     * for a user who had opted out, under the CLI's own policy.
+     */
+    telemetryOptOut?: boolean;
+    /**
      * Optional output resolution preset. See `resolveDeviceScaleFactor` in
      * the producer for the integer-scale + aspect + HDR constraints.
      */
@@ -179,17 +186,20 @@ export interface StudioApiAdapter {
     jobId: string;
   }) => MediaProcessingJobState;
 
-  /** Optional: generate a JPEG thumbnail via Puppeteer or similar. */
+  /** Optional: generate a thumbnail at the route's explicit output dimensions. */
   generateThumbnail?: (opts: {
     project: ResolvedProject;
     compPath: string;
     seekTime: number;
     width: number;
     height: number;
+    outputWidth: number;
+    outputHeight: number;
     previewUrl: string;
     selector?: string;
     format?: "jpeg" | "png";
     selectorIndex?: number;
+    signal: AbortSignal;
   }) => Promise<Buffer | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */

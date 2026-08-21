@@ -38,14 +38,14 @@
 // `lint` failures surface HERE instead of after assembly + a wasted render):
 //   ① AUTO-REPAIR — a sub-comp root missing data-width/data-height: inject the canvas
 //      dims (the renderer needs them on the cloned root; else lint root_missing_dimensions).
-//   ② HARD FAIL  — <video>/<audio> inside a sub-comp: the runtime only drives media that
-//      is a DIRECT child of the host root, so sub-comp media renders blank/black.
-//   ③ HARD FAIL  — a timed element (data-start+duration+track-index) that is not the root
+//   ② HARD FAIL  — a timed element (data-start+duration+track-index) that is not the root
 //      and lacks class="clip" (shows the whole frame), or two same-track clips that overlap.
+//   (Media inside a sub-comp is NOT a violation: the runtime seeks + decodes nested
+//    <video>/<audio> at any depth — see packages/core/src/runtime/{media,startResolver}.ts.)
 //
 // Exit 0 = index.html written + summary. Exit 1 = fatal contract break (no
 // frames, a built/animated frame missing its src/file, a frame with no
-// duration, an inner data-composition-id mismatch, or a guard ②/③ violation).
+// duration, an inner data-composition-id mismatch, or a guard ② violation).
 // No backstop: fix upstream.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -55,6 +55,7 @@ import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
+import { validateFrameHtml } from "./lib/frame-contract.mjs";
 import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
 
 // ---------- argv ----------
@@ -63,6 +64,9 @@ const flag = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
 };
+// Deliberate escape from the bgm_pending refusal below — for previewing while a detached
+// generate is still running. Off by default so a silent film can't ship by accident.
+const allowPendingBgm = argv.includes("--allow-pending-bgm");
 function die(msg) {
   console.error(`✗ assemble-index.mjs: ${msg}`);
   process.exit(1);
@@ -78,7 +82,7 @@ function ensureBgmCovers(relPath, hyperframesDir, total) {
   const abs = join(hyperframesDir, relPath);
   const probe = spawnSync(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", abs],
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", abs],
     { encoding: "utf8" },
   );
   if (probe.status !== 0) return { looped: false, short: false, reason: "ffprobe unavailable" };
@@ -121,7 +125,7 @@ const outPath = resolve(flag("out", join(hyperframesDir, "index.html")));
 
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const anomalies = [];
-const frameErrors = []; // fatal per-frame composition violations (guards ②/③) — reported together
+const frameErrors = []; // fatal per-frame composition violations (guard ②) — reported together
 const repairs = []; // auto-repairs applied to frame files in place (guard ①)
 
 // ---------- parse storyboard ----------
@@ -129,7 +133,7 @@ if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPat
 const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 const { width: WIDTH, height: HEIGHT } = parseFormat(manifest.globals.format);
 
-// ---------- per-frame composition guards (see header ①②③) ----------
+// ---------- per-frame composition guards (see header ①②) ----------
 // String-level checks on each frame's HTML — no DOM parse, deterministic, run in
 // the same pass that already reads the file. OPEN_TAG matches one opening tag while
 // tolerating quoted attribute values that contain ">" (e.g. inline styles).
@@ -166,21 +170,17 @@ function guardFrame(html, label) {
   const errors = [];
   // Scan a copy with comments + <script>/<style> bodies blanked, so a tag-like string
   // in a comment (e.g. "<!-- match the host <video> coords -->") or in GSAP code can't
-  // trip ②/③. ① still splices into the ORIGINAL html, so its offsets stay correct.
+  // trip ②. ① still splices into the ORIGINAL html, so its offsets stay correct.
   const scan = html
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, " ")
     .replace(/<style\b[\s\S]*?<\/style[^>]*>/gi, " ");
 
-  // ② media inside a sub-comp — never driven by the runtime (renders blank/black).
-  const media = scan.match(/<(video|audio)(?=[\s/>])/i);
-  if (media) {
-    errors.push(
-      `${label}: has a <${media[1].toLowerCase()}> inside the sub-composition. The runtime only drives media that is a DIRECT child of the host root (index.html) — sub-comp media renders blank/black. Move the clip to index.html as a root-level <video>/<audio> and drive any per-scene motion on the main timeline (composition-patterns.md archetype B).`,
-    );
-  }
-
-  // ③ timed-element checks: missing class="clip", and same-track window overlap.
+  // ② timed-element checks: missing class="clip", and same-track window overlap.
+  // (Media inside a sub-comp is fine: the runtime's global media sweep seeks + decodes
+  // <video>/<audio> at any nesting depth, re-basing each clip's local data-start by its
+  // host composition's absolute start — no root-child requirement. See
+  // packages/core/src/runtime/{media,startResolver}.ts.)
   const re = new RegExp(OPEN_TAG, "g");
   const clips = [];
   let m;
@@ -285,7 +285,12 @@ for (const f of manifest.frames) {
       `${label}: ${f.src} is empty or has no HTML — the worker wrote a blank/partial file. Re-dispatch that worker before assembling.`,
     );
   }
-  // pre-assembly guards: ① repair missing root dims in place, ②/③ collect fatal violations.
+  try {
+    validateFrameHtml(html, { expectedId: compId, expectedDuration: f.durationSeconds });
+  } catch (error) {
+    die(`${label}: ${error.message}`);
+  }
+  // pre-assembly guards: ① repair missing root dims in place, ② collects fatal violations.
   const guard = guardFrame(html, label);
   if (guard.repairedHtml) {
     writeFileSync(compAbs, guard.repairedHtml);
@@ -318,6 +323,33 @@ for (const m of mounted) {
   acc += m.durationSeconds;
 }
 const TOTAL = r3(acc);
+
+// ---------- duration expectation (advisory) ----------
+// Frontmatter `duration:` carries the brief's rough length expectation
+// (storyboard-format.md § Frontmatter). Never blocks the build: report where
+// the cut lands, and flag a large gap so the agent judges whether the drift
+// serves the piece.
+let durationNote = "";
+const rawTarget = manifest.globals.extra?.duration;
+if (rawTarget != null && String(rawTarget).trim() !== "") {
+  const targetMatch = String(rawTarget).match(/(\d+(?:\.\d+)?)/);
+  const target = targetMatch ? parseFloat(targetMatch[1]) : NaN;
+  if (!Number.isFinite(target) || target <= 0) {
+    anomalies.push(
+      `frontmatter duration "${rawTarget}" is not parseable (e.g. "22s") — skipped the expectation check`,
+    );
+  } else {
+    const diff = r3(TOTAL - target);
+    durationNote = ` (expected ~${target}s, ${diff >= 0 ? "+" : ""}${diff}s)`;
+    const pct = Math.abs((diff / target) * 100);
+    if (pct > 10) {
+      anomalies.push(
+        `total ${TOTAL}s lands ${Math.round(pct)}% ${diff > 0 ? "over" : "under"} the brief's ~${target}s expectation — ` +
+          `judge whether the drift serves the piece (pacing, narration fit); re-pace, or update \`duration:\` if the new length is intended`,
+      );
+    }
+  }
+}
 const startOfFrameNumber = new Map();
 for (const m of mounted) if (m.frame.number != null) startOfFrameNumber.set(m.frame.number, m);
 
@@ -326,7 +358,14 @@ let audio = { bgm: null, voices: [], sfx: [] };
 if (existsSync(audioMetaPath)) {
   try {
     const parsed = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-    audio = { bgm: parsed.bgm ?? null, voices: parsed.voices ?? [], sfx: parsed.sfx ?? [] };
+    // bgm_pending rides along: without it this step cannot tell a detached generate that has
+    // not landed yet from a film that is silent by design, and it would build the silent one.
+    audio = {
+      bgm: parsed.bgm ?? null,
+      bgm_pending: !!parsed.bgm_pending,
+      voices: parsed.voices ?? [],
+      sfx: parsed.sfx ?? [],
+    };
   } catch (e) {
     die(`audio_meta.json parse: ${e.message}`);
   }
@@ -408,6 +447,20 @@ if (audio.bgm?.path) {
   } else {
     anomalies.push(`bgm ${audio.bgm.path} not on disk — skipped`);
   }
+} else if (audio.bgm_pending) {
+  // The distinction the flag exists to make. A warning is not enough: assemble is re-run on
+  // rework long after the audio step's own warning scrolled past, and it would happily build a
+  // silent film from a snapshot whose JSON says the bed is still generating.
+  if (!allowPendingBgm) {
+    die(
+      "audio_meta.json says bgm_pending — the music bed is still generating and is NOT in this " +
+        "assembly. Wait for the track, re-run the audio step, then assemble again. To assemble a " +
+        "deliberately silent preview anyway, pass --allow-pending-bgm.",
+    );
+  }
+  anomalies.push(
+    "bgm still generating (bgm_pending) — assembled without a bed per --allow-pending-bgm",
+  );
 }
 
 // (track 2) captions — captions.mjs writes this or legally skips; key off existence.
@@ -562,7 +615,7 @@ console.log(`  bgm    (track 11): ${bgmEmitted ? "yes" + bgmNote : "no"}`);
 console.log(`  captions (track 2): ${captionsEmitted ? "yes" : "no"}`);
 console.log(`  sfx    (track 20+): ${sfxEmitted}`);
 console.log(`  assets staged:     ${staged}/${wanted.size}`);
-console.log(`  total duration:    ${TOTAL}s`);
+console.log(`  total duration:    ${TOTAL}s${durationNote}`);
 if (repairs.length) {
   console.log(`\nrepaired (frame files updated in place):`);
   for (const rp of repairs) console.log(`  - ${rp}`);

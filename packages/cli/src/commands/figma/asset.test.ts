@@ -9,7 +9,7 @@ import {
   runAssetImportMany,
   type AssetImportDeps,
 } from "./asset.js";
-import type { FigmaClient } from "@hyperframes/core/figma";
+import { FigmaClientError, type FigmaClient } from "@hyperframes/core/figma";
 
 const dirs: string[] = [];
 function scratch(): string {
@@ -177,6 +177,24 @@ describe("runAssetImport", () => {
     expect(batchSize).toBe(3);
     // distinct frozen files, all recorded
     expect(new Set(results.map((r) => r.record.id)).size).toBe(3);
+  });
+
+  it("labels a batch-miss RENDER_FAILED with the images endpoint (telemetry parity with client.ts)", async () => {
+    const dir = scratch();
+    const missClient = fakeClient({
+      renderNodes: (fileKey, nodeIds) =>
+        Promise.resolve(nodeIds.map((nodeId) => ({ nodeId, url: null, ext: "png" }))),
+    });
+    const err = await runAssetImportMany(
+      ["KEY:1-2"],
+      { format: "png" },
+      deps(dir, { client: missClient }),
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FigmaClientError);
+    if (err instanceof FigmaClientError) {
+      expect(err.code).toBe("RENDER_FAILED");
+      expect(err.endpoint).toBe("images");
+    }
   });
 
   it("gatherAssetRefs splits bare comma-joined ids but keeps URLs whole", () => {

@@ -30,8 +30,8 @@ GCS bucket  ←→  Cloud Run service (plan / renderChunk / assemble)
                 Cloud Workflows  (Plan → parallel RenderChunk → Assemble)
 ```
 
-- **Plan** downloads the project tarball, runs `plan()`, uploads the planDir
-  tarball (+ audio) to GCS, and returns the chunk count.
+- **Plan** downloads the project tarball and publishes either a legacy v1
+  planDir tarball or a v2 manifest plus content-addressed artifacts.
 - **RenderChunk** runs in a parallel `for` loop in the workflow, fanned out
   up to the plan's chunk count. Each invocation renders one chunk and uploads
   it.
@@ -43,6 +43,36 @@ The workflow accumulates each step's small result body and returns
 `{ Plan, Chunks, Assemble }` so `getRenderProgress` can read frame totals and
 per-step durations on success.
 
+### Plan transport selection
+
+Plan v2 is the default for new renders. When `planProtocol` is omitted,
+`renderToCloudRun` sends an explicit `PlanProtocol: "v2"` so the SDK and
+the deployed workflow agree:
+
+```ts
+await renderToCloudRun({
+  // ...project, bucket, workflow, service, and config...
+});
+```
+
+V2 uses separate manifest and content-addressed artifact locators throughout
+the workflow. Unknown protocols and integrity failures fail closed; a render
+never mixes v1 and v2 artifacts.
+
+The monolithic v1 transport remains available as deprecated compatibility by
+passing `planProtocol: "v1"` explicitly.
+
+#### Upgrade order
+
+Redeploy the Cloud Run image and Cloud Workflows definition from the same new
+package version before upgrading an application that calls
+`renderToCloudRun`. Pause new renders and drain active workflow executions
+during the infrastructure update. Older workflows can default omission to v1
+or lack the v2 branch, while the new SDK sends explicit v2. If infrastructure
+cannot be redeployed first, keep the previous SDK version or pass
+`planProtocol: "v1"` explicitly until the Terraform/workflow redeploy is
+complete.
+
 ## Chrome runtime
 
 Unlike the Lambda adapter — which fights a 250 MB ZIP ceiling and
@@ -50,7 +80,11 @@ decompresses `@sparticuz/chromium` into `/tmp` at runtime — Cloud Run runs a
 container image. The `Dockerfile` installs the same pinned
 `chrome-headless-shell` build and font set the production renderer uses, at a
 fixed path, and exports `HYPERFRAMES_CHROME_PATH`. CDP-level `BeginFrame`
-works because the command lives in the protocol, not the binary. There is no
+support is a binary/runtime capability, so the image build launches that
+exact executable and requires an enable + warm-up + PNG-returning
+`HeadlessExperimental.beginFrame` probe to pass. The end-to-end smoke also
+requires every chunk to report effective `CaptureMode: "beginframe"`, which
+catches runtime fallback separately from build-time packaging. There is no
 runtime decompression step and no packaging ceiling.
 
 ## Deploying

@@ -11,12 +11,25 @@ export type HyperframeLintFinding = {
   snippet?: string;
 };
 
+/**
+ * Where a single lint pass spent its time. Attributed per rule-source module
+ * ("gsap", "core", ...) rather than per rule, plus the single slowest rule as
+ * `<group>#<index-within-group>` so a pathological rule is locatable.
+ */
+export type LintTimings = {
+  totalMs: number;
+  groupMs: Record<string, number>;
+  slowestRule: string;
+  slowestRuleMs: number;
+};
+
 export type HyperframeLintResult = {
   ok: boolean;
   errorCount: number;
   warningCount: number;
   infoCount: number;
   findings: HyperframeLintFinding[];
+  timings?: LintTimings;
 };
 
 export type HyperframeLinterOptions = {

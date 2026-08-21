@@ -31,6 +31,8 @@ function safeVoid(obj: unknown, method: string): void {
   }
 }
 
+export type RuntimePlayerTransport = Omit<RuntimePlayer, "_timeline">;
+
 type PlayerDeps = {
   getTimeline: () => RuntimeTimelineLike | null;
   setTimeline: (timeline: RuntimeTimelineLike | null) => void;
@@ -56,6 +58,12 @@ type PlayerDeps = {
    * animations would continue to advance visually past the paused time.
    */
   getTimelineRegistry?: () => Record<string, RuntimeTimelineLike | undefined>;
+  /**
+   * Optional transport implementation for runtimes with a dedicated clock.
+   * The public player methods remain factory-owned and stable for the lifetime
+   * of the runtime; callers must never replace them after construction.
+   */
+  transport?: RuntimePlayerTransport;
 };
 
 function forEachSiblingTimeline(
@@ -128,6 +136,22 @@ function activateSiblingTimelines(
 }
 
 export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
+  const transport = deps.transport;
+  if (transport) {
+    return {
+      _timeline: null,
+      play: () => transport.play(),
+      pause: () => transport.pause(),
+      seek: (timeSeconds, options) => transport.seek(timeSeconds, options),
+      renderSeek: (timeSeconds, options) => transport.renderSeek(timeSeconds, options),
+      getTime: () => transport.getTime(),
+      getDuration: () => transport.getDuration(),
+      isPlaying: () => transport.isPlaying(),
+      setPlaybackRate: (rate) => transport.setPlaybackRate(rate),
+      getPlaybackRate: () => transport.getPlaybackRate(),
+    };
+  }
+
   return {
     _timeline: null,
     play: () => {

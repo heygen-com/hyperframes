@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
+  DrawElementVerificationError,
   formatHttpErrorDiagnostic,
   formatConsoleDiagnostic,
   formatNavigationFailureDiagnostic,
   formatNavigationStartDiagnostic,
   formatRequestFailureDiagnostic,
+  getDrawElementVerificationDetails,
   isFontResourceError,
+  isDrawElementVerificationError,
   sanitizeDiagnosticUrl,
+  shouldIgnoreRequestFailureDiagnostic,
 } from "./frameCapture.js";
 
 describe("isFontResourceError", () => {
@@ -220,5 +224,114 @@ describe("navigation diagnostics", () => {
         statusText: "Forbidden",
       }),
     ).toBe("[Browser:HTTP403] GET https://cdn.example.com/frame.png resource=image Forbidden");
+  });
+
+  it("ignores benign media aborts without hiding real request failures", () => {
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "media",
+        url: "http://127.0.0.1:4173/assets/video.mp4",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "other",
+        url: "http://127.0.0.1:4173/assets/audio.oga?cache=1",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "media",
+        url: "http://127.0.0.1:4173/assets/video.mp4",
+        failureText: "net::ERR_FAILED",
+      }),
+    ).toBe(false);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "script",
+        url: "http://127.0.0.1:4173/assets/app.js",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("DrawElementVerificationError details", () => {
+  it("carries frameIndex/failedDb/verifyThresholdDb when provided", () => {
+    const err = new DrawElementVerificationError("drawElement self-verify failed at frame 649", {
+      kind: "psnr",
+      frameIndex: 649,
+      failedDb: 28.4,
+      verifyThresholdDb: 32,
+    });
+    expect(isDrawElementVerificationError(err)).toBe(true);
+    expect(getDrawElementVerificationDetails(err)).toEqual({
+      kind: "psnr",
+      frameIndex: 649,
+      failedDb: 28.4,
+      verifyThresholdDb: 32,
+    });
+  });
+
+  it("omits fields that weren't supplied (blank-frame throws have no dB)", () => {
+    const err = new DrawElementVerificationError("blank drawElement frame 12", {
+      kind: "blank",
+      frameIndex: 12,
+    });
+    expect(getDrawElementVerificationDetails(err)).toEqual({ kind: "blank", frameIndex: 12 });
+  });
+
+  it("returns undefined for a non-verification error", () => {
+    expect(getDrawElementVerificationDetails(new Error("boring"))).toBeUndefined();
+  });
+
+  it("finds details through a wrapping cause chain (producer's CaptureStageError)", () => {
+    const inner = new DrawElementVerificationError("psnr breach", {
+      kind: "psnr",
+      frameIndex: 5,
+      failedDb: 12.1,
+    });
+    const wrapper = new Error("capture stage failed", { cause: inner });
+    expect(isDrawElementVerificationError(wrapper)).toBe(true);
+    expect(getDrawElementVerificationDetails(wrapper)).toEqual({
+      kind: "psnr",
+      frameIndex: 5,
+      failedDb: 12.1,
+    });
+  });
+
+  it("carries kind='blank'/'psnr' as a structural field, not derived from message text", () => {
+    const blankErr = new DrawElementVerificationError("blank drawElement frame 12", {
+      kind: "blank",
+      frameIndex: 12,
+    });
+    const psnrErr = new DrawElementVerificationError(
+      "drawElement self-verify failed at frame 649",
+      { kind: "psnr", frameIndex: 649, failedDb: 28.4, verifyThresholdDb: 32 },
+    );
+    expect(getDrawElementVerificationDetails(blankErr)?.kind).toBe("blank");
+    expect(getDrawElementVerificationDetails(psnrErr)?.kind).toBe("psnr");
+  });
+
+  it("kind survives even when the message text disagrees with (or omits) the word psnr/blank", () => {
+    // A reworded message that says neither "blank" nor "psnr" — a regex over
+    // message text would have no signal here; the structural kind must still
+    // report correctly.
+    const reworded = new DrawElementVerificationError("frame 12 failed verification", {
+      kind: "blank",
+      frameIndex: 12,
+    });
+    expect(getDrawElementVerificationDetails(reworded)?.kind).toBe("blank");
+
+    // Adversarial: a psnr failure whose message happens to mention "blank"
+    // (e.g. quoting a neighboring log line) — the structural kind must not
+    // flip just because the substring "blank" appears in the text.
+    const adversarial = new DrawElementVerificationError(
+      "drawElement self-verify failed at frame 5 (previous frame was blank-guard-accepted)",
+      { kind: "psnr", frameIndex: 5, failedDb: 12.1, verifyThresholdDb: 32 },
+    );
+    expect(getDrawElementVerificationDetails(adversarial)?.kind).toBe("psnr");
   });
 });

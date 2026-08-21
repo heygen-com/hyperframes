@@ -31,6 +31,12 @@ describe("absoluteToPercentage", () => {
     expect(absoluteToPercentage(1.0, 0.5, 1)).toBe(50);
   });
 
+  test("preserves playhead timing beyond tenths of a percent", () => {
+    const percentage = absoluteToPercentage(17, 12.17, 20);
+    expect(percentage).toBe(24.15);
+    expect(percentageToAbsolute(percentage, 12.17, 20)).toBe(17);
+  });
+
   test("clamps below tween start to 0%", () => {
     expect(absoluteToPercentage(-1, 0, 2)).toBe(0);
   });
@@ -105,6 +111,10 @@ describe("resolveTweenDuration", () => {
 
   test("missing duration defaults to GSAP default (0.5)", () => {
     expect(resolveTweenDuration(makeAnim({ duration: undefined }))).toBe(0.5);
+  });
+
+  test("missing duration can use its editor timing basis", () => {
+    expect(resolveTweenDuration(makeAnim({ duration: undefined }), 16.26)).toBe(16.26);
   });
 });
 

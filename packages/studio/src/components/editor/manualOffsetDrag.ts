@@ -213,9 +213,9 @@ export function applyManualOffsetDragMatrix(matrix: ManualOffsetDragMatrix, poin
  * The perspective w-divisor (matrix3d m44) of the element's current transform.
  * For a plain `translateZ(z)` under `perspective(p)`, m44 = (p - z) / p, so the
  * element renders 1/m44× larger and a translate of `d` composition px moves
- * `d / m44` px on screen. Returns 1 for 2D transforms (no foreshortening). Used
- * to keep the drag offset → screen-movement mapping correct for depth elements,
- * which the flat-scale fast path below would otherwise get wrong by 1/m44.
+ * `d / m44` px on screen. Returns 1 for 2D transforms (no foreshortening). Only
+ * the unmeasurable-element fallback needs this — the measured path reads the
+ * foreshortening off the element's real movement along with everything else.
  */
 function readTransformWDivisor(element: HTMLElement): number {
   const t = element.ownerDocument.defaultView?.getComputedStyle(element).transform;
@@ -225,25 +225,25 @@ function readTransformWDivisor(element: HTMLElement): number {
   return Number.isFinite(w) && w > 0 ? w : 1;
 }
 
+/**
+ * How far the element actually moves on screen per unit of drag offset, measured
+ * rather than assumed.
+ *
+ * The offset is written on the element, but what reaches the screen is that offset
+ * put through every transform above it. A parent carrying a rotation, a mirror, a
+ * scale or a perspective changes both the direction and the distance — a card at
+ * `rotationY: 180` sends a rightward drag left. Guessing this from the canvas zoom
+ * alone was wrong for every such element: the overlay tracked the pointer while the
+ * element went somewhere else, and the overlay only jumped to the truth on drop,
+ * when it re-measured. Moving the element and watching where it lands costs three
+ * layout reads once per gesture and is right for any transform, including ones no
+ * closed-form fast path would cover.
+ */
 export function measureManualOffsetDragScreenToOffsetMatrix(
   element: HTMLElement,
   initialOffset: { x: number; y: number },
   options: { probeSize?: number; scaleX?: number; scaleY?: number } = {},
 ): { ok: true; matrix: ManualOffsetDragMatrix } | { ok: false; reason: string } {
-  if (
-    !element.hasAttribute("data-hf-studio-path-offset") &&
-    initialOffset.x === 0 &&
-    initialOffset.y === 0
-  ) {
-    const sx = options.scaleX || 1;
-    const sy = options.scaleY || 1;
-    // Fold in the perspective foreshortening: a depth element (z≠0) moves
-    // 1/m44× faster on screen than its flat scale implies, so the screen→offset
-    // matrix must scale by m44 or the element outruns the pointer/overlay.
-    const w = readTransformWDivisor(element);
-    return { ok: true, matrix: { a: w / sx, b: 0, c: 0, d: w / sy } };
-  }
-
   const probeSize = options.probeSize ?? DEFAULT_OFFSET_PROBE_PX;
   if (!Number.isFinite(probeSize) || probeSize <= 0) {
     return { ok: false, reason: "Invalid movement probe size." };
@@ -325,6 +325,8 @@ export function resolveManualOffsetForPointerDelta(input: {
   };
 }
 
+// Pre-existing complexity — surfaced by this branch touching the file, not by new logic.
+// fallow-ignore-next-line complexity
 export function createManualOffsetDragMember(input: {
   key: string;
   selection: DomEditSelection;
@@ -441,22 +443,26 @@ export function applyManualOffsetDragDraft(
   return offset;
 }
 
-export function applyManualOffsetDragCommit(
-  member: ManualOffsetDragMember,
-  dx: number,
-  dy: number,
-): { x: number; y: number } {
-  // Re-stamp the STABLE gesture-start base/offset before the source commit reads
-  // them. A mid-drag re-render can wipe these attrs; the commit converts the drop
-  // offset → gsap x/y via computeDraggedGsapPosition, which without the base falls
-  // back to the live (already-dragged) transform and re-adds the delta — so the
-  // element flies off-screen the instant you drop it. The member holds the true
-  // gesture-start values in JS, immune to the re-render.
+/**
+ * Re-stamp the STABLE gesture-start base/offset before the source commit reads
+ * them. A mid-gesture re-render can wipe these attrs; the commit converts the
+ * drop offset → gsap x/y via computeDraggedGsapPosition, which without the base
+ * falls back to the live (already-dragged) transform and re-adds the delta — so
+ * the element flies off-screen the instant you drop it. The member holds the
+ * true gesture-start values in JS, immune to the re-render.
+ */
+function restampManualOffsetDragGestureBase(member: ManualOffsetDragMember): void {
   member.element.setAttribute("data-hf-drag-gsap-base-x", String(member.baseGsap.x));
   member.element.setAttribute("data-hf-drag-gsap-base-y", String(member.baseGsap.y));
   member.element.setAttribute("data-hf-drag-initial-offset-x", String(member.initialOffset.x));
   member.element.setAttribute("data-hf-drag-initial-offset-y", String(member.initialOffset.y));
-  const offset = resolveManualOffsetDragMemberOffset(member, dx, dy);
+}
+
+function applyManualOffsetCommitValue(
+  member: ManualOffsetDragMember,
+  offset: { x: number; y: number },
+): { x: number; y: number } {
+  restampManualOffsetDragGestureBase(member);
   // Optimistic visual through the GSAP channel (same as the live draft and the
   // committed `tl.set`), so the element holds its dropped position until the
   // source mutation soft-reloads — no transient CSS `--hf-studio-offset` write.
@@ -467,11 +473,51 @@ export function applyManualOffsetDragCommit(
   return offset;
 }
 
+export function applyManualOffsetDragCommit(
+  member: ManualOffsetDragMember,
+  dx: number,
+  dy: number,
+): { x: number; y: number } {
+  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+}
+
+/**
+ * Arrow-key nudge, in OFFSET units (composition px), not screen px — "nudge
+ * 1px" means one composition pixel regardless of canvas zoom, so the delta
+ * adds to the gesture-start offset directly instead of going through the
+ * screen→offset matrix. Draft/commit land in the same GSAP channel (with the
+ * same CSS fallback) as the drag equivalents above.
+ */
+export function applyManualOffsetNudgeDraft(
+  member: ManualOffsetDragMember,
+  delta: { x: number; y: number },
+): { x: number; y: number } {
+  const offset = {
+    x: member.initialOffset.x + delta.x,
+    y: member.initialOffset.y + delta.y,
+  };
+  if (!applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) {
+    applyStudioPathOffsetDraft(member.element, offset);
+  }
+  return offset;
+}
+
+export function applyManualOffsetNudgeCommit(
+  member: ManualOffsetDragMember,
+  delta: { x: number; y: number },
+): { x: number; y: number } {
+  return applyManualOffsetCommitValue(member, {
+    x: member.initialOffset.x + delta.x,
+    y: member.initialOffset.y + delta.y,
+  });
+}
+
 function restoreManualOffsetDragMember(member: ManualOffsetDragMember): void {
   restoreStudioPathOffset(member.element, member.initialPathOffset);
   endStudioManualEditGesture(member.element, member.gestureToken);
 }
 
+/** Roll back a FAILED drag to the exact gesture-start state. */
 export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     restoreManualOffsetDragMember(member);
@@ -479,6 +525,7 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
+/** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     endStudioManualEditGesture(member.element, member.gestureToken);
@@ -507,17 +554,30 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
   }
 }
 
+/** Shared timeline teardown for either the committed or restored path. */
 export function resumeGsapTimelines(element: HTMLElement): void {
   const ids = element.getAttribute("data-hf-drag-paused-timelines");
   element.removeAttribute("data-hf-drag-paused-timelines");
   if (!ids) return;
   const win = element.ownerDocument.defaultView as
     | (Window & {
-        __timelines?: Record<string, { pause?: () => void }>;
+        __timelines?: Record<string, { paused?: (value?: boolean) => boolean }>;
         __player?: { seek?: (t: number) => void; getTime?: () => number };
       })
     | null;
   if (!win) return;
+  // Unpause exactly the timelines the drag start paused. The player seek below
+  // repositions them, but a seek alone leaves play-state-driven sub-composition
+  // timelines paused forever — the "selecting a piece kills its animation" bug:
+  // main survives (seek-driven every frame) while every scene timeline freezes,
+  // and deselecting can't recover because nothing else ever resumes them.
+  for (const id of ids.split(",")) {
+    try {
+      win.__timelines?.[id]?.paused?.(false);
+    } catch {
+      /* cross-origin guard */
+    }
+  }
   const t = win.__player?.getTime?.() ?? 0;
   win.__player?.seek?.(t);
 }

@@ -144,6 +144,18 @@ describe("resolveEditingAffordances — sections", () => {
     expect(s).toMatchObject({ media: true, colorGrading: false });
   });
 
+  it("audio: no layout or style — an audio element has no rendered box", () => {
+    const s = resolveEditingAffordances(baseFacts({ tag: "audio" })).sections;
+    expect(s).toMatchObject({ layout: false, style: false });
+  });
+
+  it("div/img/video: layout + style apply", () => {
+    for (const tag of ["div", "img", "video"]) {
+      const s = resolveEditingAffordances(baseFacts({ tag })).sections;
+      expect(s).toMatchObject({ layout: true, style: true });
+    }
+  });
+
   it("img: media + colorGrading", () => {
     const s = resolveEditingAffordances(baseFacts({ tag: "img" })).sections;
     expect(s).toMatchObject({ media: true, colorGrading: true });
@@ -184,5 +196,16 @@ describe("resolveEditingSections (sections-only export)", () => {
   it("animationCount > 0 turns on timing + animation even without data-start", () => {
     const s = resolveEditingSections(baseFacts({ hasTimingStart: false, animationCount: 3 }));
     expect(s).toMatchObject({ timing: true, animation: true });
+  });
+});
+
+describe("audioFx section", () => {
+  it("applies to an audio element", () => {
+    expect(resolveEditingSections(baseFacts({ tag: "audio" })).audioFx).toBe(true);
+  });
+
+  it("does not apply to video, whose sound lives on a separate audio element", () => {
+    expect(resolveEditingSections(baseFacts({ tag: "video" })).audioFx).toBe(false);
+    expect(resolveEditingSections(baseFacts({ tag: "div" })).audioFx).toBe(false);
   });
 });

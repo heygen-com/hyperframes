@@ -1,6 +1,6 @@
 {
   "Action": "plan",
-  "ProjectS3Uri": "s3://example-bucket/projects/sample-composition.tar.gz",
+  "ProjectS3Uri": "s3://example-bucket/projects/sample.tar.gz",
   "PlanOutputS3Prefix": "s3://example-bucket/renders/sample/",
   "Config": {
     "fps": 30,

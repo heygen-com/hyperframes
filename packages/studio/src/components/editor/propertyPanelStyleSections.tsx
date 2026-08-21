@@ -47,6 +47,7 @@ export function StyleSections({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
+  hideFlex = false,
 }: {
   projectId: string;
   element: DomEditSelection;
@@ -55,6 +56,10 @@ export function StyleSections({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  // When true, the Flex `Section` is suppressed. The flat inspector renders
+  // its own Flex controls inside the Layout group (LayoutFlexBlock), so the
+  // flat path passes this to avoid a double-render. Non-flat callers omit it.
+  hideFlex?: boolean;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
@@ -164,10 +169,11 @@ export function StyleSections({
 
   return (
     <>
-      {isFlex && (
+      {isFlex && !hideFlex && (
         <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
           <div className="space-y-4">
             <SegmentedControl
+              trackName="Flex direction"
               disabled={styleEditingDisabled}
               value={styles["flex-direction"] || "row"}
               onChange={(next) => onSetStyle("flex-direction", next)}
@@ -312,7 +318,7 @@ export function StyleSections({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Layer blur</span>
               <SliderControl
-                ariaLabel="Layer blur"
+                trackName="Layer blur"
                 value={filterBlurValue}
                 min={0}
                 max={Math.max(40, Math.ceil(filterBlurValue))}
@@ -328,7 +334,7 @@ export function StyleSections({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Backdrop</span>
               <SliderControl
-                ariaLabel="Backdrop"
+                trackName="Backdrop blur"
                 value={backdropBlurValue}
                 min={0}
                 max={Math.max(60, Math.ceil(backdropBlurValue))}
@@ -379,7 +385,7 @@ export function StyleSections({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Mask inset</span>
             <SliderControl
-              ariaLabel="Mask inset"
+              trackName="Mask inset"
               value={clipInsetValue}
               min={0}
               max={Math.max(120, Math.ceil(clipInsetValue))}
@@ -428,7 +434,7 @@ export function StyleSections({
       <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SliderControl
-            ariaLabel="Opacity"
+            trackName="Opacity"
             value={opacityValue}
             min={0}
             max={100}
@@ -451,6 +457,7 @@ export function StyleSections({
       <Section title="Fill" icon={<Palette size={15} />}>
         <div className="space-y-4">
           <SegmentedControl
+            trackName="Fill type"
             disabled={styleEditingDisabled}
             value={preferredFillMode}
             onChange={handleFillModeChange}

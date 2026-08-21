@@ -21,7 +21,7 @@
 # Unlike the AWS Lambda adapter there is no ZIP-size ceiling and no runtime
 # Chrome decompression step — the binary lives in the image at a fixed path.
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS beginframe-contract
 
 # ── System dependencies (identical set to the producer's render image) ───────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,9 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && fc-cache -fv
 
 # ── chrome-headless-shell (deterministic BeginFrame capture) ─────────────────
-# Pinned to the SAME build the producer regression baselines were generated
-# against so distributed renders are pixel-comparable. Bump together with the
-# producer's Dockerfile.test pin and a baseline regen.
+# Pinned deliberately. The build-stage contract probe below launches this
+# exact executable and requires a renderer-ready warm-up plus a PNG-returning
+# HeadlessExperimental.beginFrame before the image can build.
 RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
       --path /opt/puppeteer \
     && CHS="$(find /opt/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | head -n1)" \
@@ -92,17 +92,54 @@ COPY packages/studio/package.json packages/studio/package.json
 COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
 COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
+COPY packages/lint/package.json packages/lint/package.json
+COPY packages/parsers/package.json packages/parsers/package.json
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
+COPY packages/studio-server/package.json packages/studio-server/package.json
+COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
 RUN bun install --frozen-lockfile
+
+# Fail the image build closed if the packaged executable cannot perform the
+# same BeginFrame operation the distributed renderer relies on. Generate the
+# argument list with the production engine helper so a launcher-flag regression
+# invalidates this layer and fails the contract instead of testing a duplicate
+# hard-coded profile.
+COPY packages/engine/ packages/engine/
+COPY packages/aws-lambda/scripts/probe-beginframe.ts packages/aws-lambda/scripts/probe-beginframe.ts
+RUN bun -e 'import { buildChromeArgs } from "./packages/engine/src/services/browserManager.ts"; await Bun.write("/tmp/hf-gcp-chrome-args.json", JSON.stringify(buildChromeArgs({ width: 800, height: 600, captureMode: "beginframe", platform: "linux" }, { browserGpuMode: "software" })))' \
+    && bun packages/aws-lambda/scripts/probe-beginframe.ts \
+      --executable-path /opt/chrome/chrome-headless-shell \
+      --launch-args-json /tmp/hf-gcp-chrome-args.json
+
+# CI targets `beginframe-contract` directly, so pin/probe changes do not need
+# the full monorepo build merely to verify browser capability. The deployable
+# image continues from the already-proven binary and installed workspaces.
+FROM beginframe-contract AS runtime
 
 # Copy source for the packages the render path needs.
 COPY packages/core/ packages/core/
 COPY packages/engine/ packages/engine/
 COPY packages/producer/ packages/producer/
 COPY packages/gcp-cloud-run/ packages/gcp-cloud-run/
+COPY packages/lint/ packages/lint/
+COPY packages/parsers/ packages/parsers/
+COPY packages/sdk/ packages/sdk/
+COPY packages/sdk-playground/ packages/sdk-playground/
+COPY packages/studio-server/ packages/studio-server/
 
-# Build core runtime artifacts (needed by the renderer) + producer, then the
-# adapter. Generate embedded font data so glyph layout matches production.
-RUN bun run --filter @hyperframes/core build:hyperframes-runtime:modular \
+# Build workspace dependencies before the producer bundle. The published
+# workspace packages are not prebuilt in a fresh clone, so producer's esbuild
+# resolution otherwise fails on parsers/core compiler entrypoints. Generate
+# embedded font data so glyph layout matches production.
+RUN bun run --cwd packages/parsers build \
+    && bun run --cwd packages/lint build \
+    && bun run --cwd packages/studio-server build \
+    && bun run --cwd packages/core build \
+    && bun run --cwd packages/core build:hyperframes-runtime:modular \
+    && bun run --cwd packages/sdk build \
+    && bun run --cwd packages/sdk-playground build \
+    && bun run --cwd packages/engine build \
     && (cd packages/producer && bunx tsx scripts/generate-font-data.ts) \
     && bun run --cwd packages/producer build \
     && bun run --cwd packages/gcp-cloud-run build

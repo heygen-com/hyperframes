@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* SF Pro is not redistributable. Inter is the OFL stand-in for this
+         public mock-UI catalog block. */
+      @font-face {
+        font-family: "NotificationUI";
+        font-weight: 400;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "NotificationUI";
+        font-weight: 500;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "NotificationUI";
+        font-weight: 600 900;
+        font-display: block;
+        src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      body {
+        font-family: "NotificationUI", sans-serif;
+      }
+      #sna-root {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+      }
+
+      /* ---- the phone screen: authored in points, scaled to canvas ---- */
+      :root {
+        --scale: 2.1968;
+      } /* 1920 / 874 */
+      .screen {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        width: 491.55px;
+        height: 874px;
+        margin-left: -245.775px;
+        transform-origin: top center;
+        transform: scale(var(--scale));
+        overflow: hidden;
+      }
+
+      /* ---- wallpaper (smooth iOS-like gradient; wrapper carries the slow push) ---- */
+      #sna-wall {
+        position: absolute;
+        inset: 0;
+      }
+      #sna-wall .grad {
+        position: absolute;
+        inset: -6%;
+        background:
+          radial-gradient(90% 62% at 82% 8%, rgba(94, 66, 166, 0.85) 0%, rgba(94, 66, 166, 0) 60%),
+          radial-gradient(110% 70% at 14% 30%, rgba(38, 76, 154, 0.9) 0%, rgba(38, 76, 154, 0) 65%),
+          radial-gradient(
+            120% 85% at 50% 96%,
+            rgba(196, 108, 74, 0.55) 0%,
+            rgba(196, 108, 74, 0) 55%
+          ),
+          radial-gradient(140% 100% at 50% 55%, #17203c 0%, #0d1226 70%, #090d1c 100%);
+      }
+      #sna-wall .grain {
+        position: absolute;
+        inset: -6%;
+        opacity: 0.05;
+        background-image: repeating-radial-gradient(
+          circle at 30% 40%,
+          rgba(255, 255, 255, 0.5) 0 0.5px,
+          transparent 0.5px 2.4px
+        );
+      }
+
+      /* ---- lock-screen chrome ---- */
+      #sna-chrome {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 30%;
+      }
+      #sna-statusbar {
+        position: absolute;
+        top: 24px;
+        right: 26px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      #sna-statusbar svg {
+        display: block;
+      }
+      #sna-lockglyph {
+        position: absolute;
+        top: 56px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      #sna-date {
+        position: absolute;
+        top: 102px;
+        width: 100%;
+        text-align: center;
+        font-family: "NotificationUI";
+        font-weight: 600;
+        font-size: 21px;
+        letter-spacing: 0.1px;
+        color: rgba(235, 240, 255, 0.92);
+      }
+      #sna-clockwrap {
+        position: absolute;
+        top: 118px;
+        width: 100%;
+        height: 116px;
+      }
+      .clock {
+        position: absolute;
+        inset: 0;
+        text-align: center;
+        font-family: "NotificationUI";
+        font-weight: 700;
+        font-size: 97px;
+        line-height: 116px;
+        letter-spacing: -1px;
+        color: rgba(238, 243, 255, 0.95);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* bottom controls */
+      .cornerbtn {
+        position: absolute;
+        bottom: 46px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: rgba(64, 66, 78, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #sna-btn-torch {
+        left: 46px;
+      }
+      #sna-btn-camera {
+        right: 46px;
+      }
+      #sna-homebar {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        margin-left: -67px;
+        width: 134px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      /* ---- notifications ---- */
+      #sna-stack {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 254px;
+        height: 0;
+      }
+      .ncard {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 98px; /* uniform card height — every notification the same slab */
+        border-radius: 22px;
+        padding: 13px 16px 13px 14px;
+        background: rgba(43, 44, 51, 0.96);
+        -webkit-backdrop-filter: blur(24px) saturate(1.6);
+        backdrop-filter: blur(24px) saturate(1.6);
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.16);
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        transform-origin: 50% 0%;
+      }
+      .nicon {
+        flex: 0 0 38px;
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .nicon img {
+        width: 24px;
+        height: 24px;
+        display: block;
+      }
+      .nbody {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-top: 0.5px;
+      }
+      .nrow {
+        display: flex;
+        align-items: baseline;
+      }
+      .ntitle {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-weight: 600;
+        font-size: 16.5px;
+        line-height: 22px;
+        color: rgba(255, 255, 255, 0.98);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ntime {
+        flex: 0 0 auto;
+        margin-left: 8px;
+        font-size: 14.3px;
+        line-height: 19px;
+        color: rgba(235, 235, 245, 0.6);
+      }
+      .ntext {
+        font-size: 16.5px;
+        line-height: 22px;
+        color: rgba(255, 255, 255, 0.96);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-3zu6"
+      id="sna-root"
+      data-composition-id="slack-notification-ad"
+      data-fps="60"
+      data-start="0"
+      data-duration="12"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div
+        data-hf-id="hf-j5ec"
+        id="sna-scene"
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+      >
+        <div data-hf-id="hf-cdmk" class="screen">
+          <div data-hf-id="hf-271o" id="sna-wall" data-layout-allow-overflow="">
+            <div data-hf-id="hf-bhk8" class="grad"></div>
+            <div data-hf-id="hf-h60x" class="grain"></div>
+          </div>
+
+          <div data-hf-id="hf-rwb7" id="sna-chrome">
+            <div data-hf-id="hf-ow1u" id="sna-statusbar">
+              <!-- cellular bars -->
+              <svg data-hf-id="hf-0g06" width="18" height="12" viewBox="0 0 18 12" fill="none">
+                <rect
+                  data-hf-id="hf-8dlt"
+                  x="0"
+                  y="7.5"
+                  width="3"
+                  height="4.5"
+                  rx="1"
+                  fill="#fff"
+                />
+                <rect data-hf-id="hf-neot" x="5" y="5" width="3" height="7" rx="1" fill="#fff" />
+                <rect
+                  data-hf-id="hf-xbtk"
+                  x="10"
+                  y="2.5"
+                  width="3"
+                  height="9.5"
+                  rx="1"
+                  fill="#fff"
+                />
+                <rect data-hf-id="hf-bygt" x="15" y="0" width="3" height="12" rx="1" fill="#fff" />
+              </svg>
+              <!-- wifi -->
+              <svg data-hf-id="hf-8o46" width="17" height="12" viewBox="0 0 17 12" fill="none">
+                <path
+                  data-hf-id="hf-0u94"
+                  d="M8.5 2.4c2.7 0 5.2 1.03 7.06 2.72a.62.62 0 0 0 .87-.02l.93-.95a.65.65 0 0 0-.02-.93A12.47 12.47 0 0 0 8.5 0C5.28 0 2.34 1.22.66 3.22a.65.65 0 0 0-.02.93l.93.95c.24.24.62.25.87.02A10.4 10.4 0 0 1 8.5 2.4Z"
+                  fill="#fff"
+                />
+                <path
+                  data-hf-id="hf-twd0"
+                  d="M8.5 6.6c1.48 0 2.84.55 3.88 1.45.26.22.64.21.88-.03l.93-.95a.65.65 0 0 0-.03-.94A8.3 8.3 0 0 0 8.5 4.2a8.3 8.3 0 0 0-5.66 1.93.65.65 0 0 0-.03.94l.93.95c.24.24.62.25.88.03A6.14 6.14 0 0 1 8.5 6.6Z"
+                  fill="#fff"
+                />
+                <path
+                  data-hf-id="hf-28nw"
+                  d="M10.86 10.11c.3-.3.27-.8-.08-1.05a3.96 3.96 0 0 0-4.56 0c-.35.25-.38.75-.08 1.05l1.9 1.7c.25.25.67.25.92 0l1.9-1.7Z"
+                  fill="#fff"
+                />
+              </svg>
+              <!-- battery -->
+              <svg data-hf-id="hf-890e" width="27" height="13" viewBox="0 0 27 13" fill="none">
+                <rect
+                  data-hf-id="hf-402j"
+                  x="0.5"
+                  y="0.5"
+                  width="23"
+                  height="12"
+                  rx="3.8"
+                  stroke="#fff"
+                  stroke-opacity="0.4"
+                />
+                <rect data-hf-id="hf-kowz" x="2" y="2" width="20" height="9" rx="2.4" fill="#fff" />
+                <path
+                  data-hf-id="hf-civj"
+                  d="M25.2 4.3v4.4c1.05-.32 1.8-1.2 1.8-2.2s-.75-1.88-1.8-2.2Z"
+                  fill="#fff"
+                  fill-opacity="0.4"
+                />
+              </svg>
+            </div>
+
+            <div data-hf-id="hf-zh2y" id="sna-lockglyph">
+              <svg data-hf-id="hf-xyi2" width="21" height="21" viewBox="0 0 21 21" fill="none">
+                <rect
+                  data-hf-id="hf-5ez6"
+                  x="3.5"
+                  y="9"
+                  width="14"
+                  height="10.5"
+                  rx="3.4"
+                  fill="rgba(235,240,255,0.92)"
+                />
+                <path
+                  data-hf-id="hf-56ov"
+                  d="M6.2 9V6.8a4.3 4.3 0 0 1 8.6 0V9"
+                  stroke="rgba(235,240,255,0.92)"
+                  stroke-width="2.1"
+                  fill="none"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </div>
+
+            <div data-hf-id="hf-sscr" id="sna-date" data-layout-allow-overlap="">
+              Thursday, August 14
+            </div>
+            <div data-hf-id="hf-vfft" id="sna-clockwrap">
+              <div data-hf-id="hf-4x4o" class="clock" data-t="0">9:41</div>
+              <div data-hf-id="hf-eb8w" class="clock" data-t="1">9:42</div>
+              <div data-hf-id="hf-hfp6" class="clock" data-t="2">9:45</div>
+              <div data-hf-id="hf-tj9u" class="clock" data-t="3">9:51</div>
+            </div>
+
+            <div data-hf-id="hf-5dr4" class="cornerbtn" id="sna-btn-torch">
+              <svg data-hf-id="hf-9ila" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  data-hf-id="hf-33g6"
+                  d="M6.5 1.5h7v3.2c0 .9-.5 1.6-1.1 2.3-.5.5-.9 1.1-.9 1.9v8.1a1.5 1.5 0 0 1-1.5 1.5h-.9a1.5 1.5 0 0 1-1.5-1.5V8.9c0-.8-.4-1.4-.9-1.9-.7-.7-1.2-1.4-1.2-2.3V1.5Z"
+                  fill="#fff"
+                />
+                <rect
+                  data-hf-id="hf-5kv1"
+                  x="9.2"
+                  y="9.4"
+                  width="1.6"
+                  height="2.6"
+                  rx="0.8"
+                  fill="rgba(64,66,78,0.9)"
+                />
+              </svg>
+            </div>
+            <div data-hf-id="hf-0h7z" class="cornerbtn" id="sna-btn-camera">
+              <svg data-hf-id="hf-w3ny" width="21" height="17" viewBox="0 0 21 17" fill="none">
+                <path
+                  data-hf-id="hf-go8g"
+                  d="M2.8 3.4h2.9l1-1.6c.3-.5.8-.8 1.4-.8h4.8c.6 0 1.1.3 1.4.8l1 1.6h2.9A1.8 1.8 0 0 1 20 5.2v9a1.8 1.8 0 0 1-1.8 1.8H2.8A1.8 1.8 0 0 1 1 14.2v-9a1.8 1.8 0 0 1 1.8-1.8Z"
+                  fill="#fff"
+                />
+                <circle data-hf-id="hf-z4lk" cx="10.5" cy="9.5" r="3.6" fill="rgba(64,66,78,0.9)" />
+                <circle data-hf-id="hf-t33m" cx="10.5" cy="9.5" r="2.5" fill="#fff" />
+              </svg>
+            </div>
+            <div data-hf-id="hf-l2or" id="sna-homebar"></div>
+          </div>
+
+          <div data-hf-id="hf-h4bv" id="sna-stack"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ---------------- CONFIG — every content-facing string ---------------- */
+      var CONFIG = {
+        icon: "assets/img/slack-mark.svg",
+        notifs: [
+          {
+            title: "Sarah Chen",
+            text: "Hey! Any chance you could get the launch video done by Friday?",
+          },
+          { title: "Marcus Webb", text: "also need a 30s demo cut for the keynote" },
+          {
+            title: "#social",
+            text: "Priya: can we get the launch video resized for TikTok + Reels?",
+          },
+          { title: "Dana Okafor", text: "onboarding video needs a v2 with the new UI" },
+          { title: "#sales", text: "Tom: customer wants a 1-min walkthrough by EOD" },
+          { title: "Leila Haddad", text: "CEO is asking for a sizzle reel for the board deck" },
+          { title: "#events", text: "Jordan: offsite recap video??" },
+          { title: "Miguel Reyes", text: "can you do a Spanish version of the demo too?" },
+          { title: "#marketing", text: "Ava: we need 3 ad variants — portrait, square, landscape" },
+          { title: "Raj Patel", text: "investor update needs a quick video walkthrough" },
+          { title: "Ben Liu", text: "one more: Product Hunt launch video" },
+          {
+            title: "HeyGen",
+            text: "Heard you needed some videos?",
+            icon: "assets/img/heygen-mark.svg",
+          },
+        ],
+      };
+
+      /* ---------------- beat clock ---------------- */
+      var T = {
+        wake: 0.1,
+        /* 11 Slack arrivals with shrinking gaps, then the HeyGen payoff 0.5s
+           after the last Slack notif (the dramatic comma IS the widened gap) */
+        arrivals: [1.15, 3.75, 4.6, 5.34, 5.98, 6.54, 7.02, 7.44, 7.8, 8.11, 8.38, 8.88],
+        clockSwaps: [4.6, 6.54, 8.11], // 9:42 / 9:45 / 9:51
+        end: 12.0,
+      };
+
+      var PEEK = 8; // pt each depth level peeks below the front card
+      var DEPTH_SCALE = 0.045;
+      var MAX_PEEKS = 2; // depths 1..2 visible, deeper hidden
+      var STACK_TOP = 254; // .screen y of the stack anchor (below the clock)
+      var ENTER_FROM = 874 - STACK_TOP; // iOS roll-in: from the bottom edge, up to the slot
+      var ENTER_DUR = 0.65;
+      var REDEPTH_DUR = 0.5;
+
+      /* ---------------- build cards ---------------- */
+      var stackEl = document.getElementById("sna-stack");
+      CONFIG.notifs.forEach(function (n, i) {
+        var card = document.createElement("div");
+        card.className = "ncard";
+        card.id = "sna-n" + i;
+        card.setAttribute("data-layout-allow-overlap", ""); // iOS stack: front card occludes the cards tucked behind it
+        card.setAttribute("data-layout-allow-occlusion", "");
+        card.innerHTML =
+          '<div class="nicon"><img src="' +
+          (n.icon || CONFIG.icon) +
+          '" alt=""></div>' +
+          '<div class="nbody"><div class="nrow"><span class="ntitle"></span><span class="ntime">now</span></div>' +
+          '<div class="ntext"></div></div>';
+        card.querySelector(".ntitle").textContent = n.title;
+        card.querySelector(".ntext").textContent = n.text;
+        stackEl.appendChild(card);
+      });
+      var cards = CONFIG.notifs.map(function (_, i) {
+        return document.getElementById("sna-n" + i);
+      });
+
+      /* Heights are measured inside build(): they must be read under the REAL
+         webfont — fallback-face metrics wrap lines differently and poison the
+         stack math (a 1-line card measuring as 2 lines shifts every peek). */
+      var H = [];
+
+      /* state of card i when card k is the front card.
+         Top-anchored stack below the clock: behind cards keep their TOP at the
+         front card's top (never poking above it) and squash on Y so their bottom
+         edge peeks exactly PEEK*d below the front card's bottom — the exposed
+         strip is blank card material, like iOS. */
+      function stateAt(i, k) {
+        var d = k - i;
+        if (d === 0) return { y: 0, sx: 1, sy: 1, alpha: 1 };
+        return {
+          y: 0,
+          sx: Math.max(0.001, 1 - DEPTH_SCALE * d),
+          sy: (H[k] + PEEK * d) / H[i],
+          alpha: d <= MAX_PEEKS ? 1 : 0,
+        };
+      }
+
+      /* ---------------- initial states ---------------- */
+      var wall = document.getElementById("sna-wall");
+      var chrome = document.getElementById("sna-chrome");
+      var clocks = Array.prototype.slice.call(document.querySelectorAll(".clock"));
+      var chromeBits = [
+        document.getElementById("sna-date"),
+        document.getElementById("sna-clockwrap"),
+        document.getElementById("sna-lockglyph"),
+        document.getElementById("sna-statusbar"),
+        document.getElementById("sna-btn-torch"),
+        document.getElementById("sna-btn-camera"),
+        document.getElementById("sna-homebar"),
+      ];
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines["slack-notification-ad"] = tl;
+
+      function build() {
+        tl.clear();
+        /* restore natural layout, then measure with the loaded webfont */
+        gsap.set(cards, { clearProps: "transform,opacity,visibility" });
+        H = cards.map(function (c) {
+          return c.offsetHeight;
+        });
+
+        gsap.set(wall, { autoAlpha: 0, scale: 1, transformOrigin: "50% 42%" });
+        gsap.set(chrome, { scale: 1.045 });
+        gsap.set(chromeBits, { autoAlpha: 0, y: 16 });
+        gsap.set(clocks, { autoAlpha: 0 }); // wake reveals clock 0
+        cards.forEach(function (c, i) {
+          gsap.set(c, { autoAlpha: 0, y: ENTER_FROM, scaleX: 0.97, scaleY: 0.97, zIndex: 10 + i });
+        });
+
+        /* ---------------- timeline ---------------- */
+        /* wake: wallpaper up, chrome cascade (overlapped fades, y-) */
+        tl.to(wall, { autoAlpha: 1, duration: 0.55, ease: "power2.out" }, T.wake);
+        tl.to(chrome, { scale: 1, duration: 0.8, ease: "expo.out" }, T.wake + 0.15);
+        var wakeAt = [0.28, 0.3, 0.4, 0.46, 0.5, 0.5, 0.54];
+        chromeBits.forEach(function (el, i) {
+          tl.to(el, { autoAlpha: 1, y: 0, duration: 0.55, ease: "expo.out" }, T.wake + wakeAt[i]);
+        });
+        tl.set(clocks[0], { autoAlpha: 1 }, T.wake + 0.3);
+
+        /* the film's camera: one slow push on the wallpaper, wake to out point */
+        tl.fromTo(
+          wall,
+          { scale: 1 },
+          { scale: 1.05, duration: T.end - T.wake, ease: "none", immediateRender: false },
+          T.wake,
+        );
+
+        /* clock ticks under the flood (hard swaps, faithful iOS) */
+        T.clockSwaps.forEach(function (t, i) {
+          tl.set(clocks[i], { autoAlpha: 0 }, t);
+          tl.set(clocks[i + 1], { autoAlpha: 1 }, t);
+        });
+
+        /* arrivals: new card springs in at the front; everyone behind re-depths the SAME frame */
+        T.arrivals.forEach(function (t, k) {
+          var card = cards[k];
+          tl.fromTo(
+            card,
+            { y: ENTER_FROM, scaleX: 0.97, scaleY: 0.97, autoAlpha: 0 },
+            {
+              y: 0,
+              scaleX: 1,
+              scaleY: 1,
+              autoAlpha: 1,
+              duration: ENTER_DUR,
+              ease: "expo.out",
+              immediateRender: false,
+            },
+            t,
+          );
+          /* fully lit within the first ~18% of the roll-in */
+          tl.fromTo(
+            card,
+            { autoAlpha: 0 },
+            {
+              autoAlpha: 1,
+              duration: 0.12,
+              ease: "none",
+              immediateRender: false,
+              overwrite: false,
+            },
+            t,
+          );
+
+          for (var i = 0; i < k; i++) {
+            var from = stateAt(i, k - 1);
+            var to = stateAt(i, k);
+            tl.fromTo(
+              cards[i],
+              { y: from.y, scaleX: from.sx, scaleY: from.sy },
+              {
+                y: to.y,
+                scaleX: to.sx,
+                scaleY: to.sy,
+                duration: REDEPTH_DUR,
+                ease: "power3.out",
+                immediateRender: false,
+              },
+              t,
+            );
+            if (from.alpha !== to.alpha) {
+              tl.fromTo(
+                cards[i],
+                { autoAlpha: from.alpha },
+                { autoAlpha: to.alpha, duration: 0.3, ease: "power2.in", immediateRender: false },
+                t,
+              );
+            }
+          }
+        });
+
+        /* pin the out point */
+        tl.set({}, {}, T.end);
+      }
+
+      /* Build once synchronously so the timeline exists at parse time, then
+         rebuild when the fonts report ready — deterministic either way; the
+         renderer only seeks after fonts are loaded. */
+      build();
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          build();
+        });
+      }
+    </script>
+  </body>
+</html>

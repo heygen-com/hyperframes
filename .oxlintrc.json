@@ -3,14 +3,45 @@
   "categories": {
     "correctness": "error"
   },
-  "plugins": ["react", "typescript"],
+  "plugins": ["react", "react-hooks", "typescript"],
   "ignorePatterns": [
+    ".scratch/",
     "dist/",
     "coverage/",
     "node_modules/",
     "playground/",
     "packages/producer/tests/**/src/vendor/**",
+    "docs/public/catalog/",
     "registry/blocks/**/lib/*.iife.js",
     "chrome/"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "packages/cli/src/capture/**/*.ts",
+        "packages/cli/src/registry/**/*.ts",
+        "packages/cli/src/templates/**/*.ts",
+        "packages/cli/src/telemetry/**/*.ts"
+      ],
+      "excludeFiles": ["**/*.test.ts", "**/*.test.tsx", "packages/cli/src/telemetry/feedback.ts"],
+      "rules": {
+        "no-console": [
+          "error",
+          {
+            "allow": ["error", "warn"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["docs/snippets/**/*.jsx", "docs/snippets/**/*.tsx"],
+      "globals": {
+        "CodeBlock": "readonly"
+      },
+      "rules": {
+        "react-hooks/rules-of-hooks": "error",
+        "react-hooks/exhaustive-deps": "warn"
+      }
+    }
   ]
 }

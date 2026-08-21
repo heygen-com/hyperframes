@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { trackChildProcess, killTrackedProcesses } from "./processTracker.js";
 
@@ -18,13 +18,44 @@ describe("trackChildProcess", () => {
     killTrackedProcesses();
   });
 
-  it("removes the process on spawn error", async () => {
-    const proc = spawn("/nonexistent-binary-that-does-not-exist", { stdio: "ignore" });
+  it("removes an exited process before its stdio closes", async () => {
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const closePromise = new Promise<void>((resolve) => proc.on("close", resolve));
+    const kill = vi.spyOn(proc, "kill");
     trackChildProcess(proc);
 
-    await new Promise<void>((resolve) => proc.on("error", () => resolve()));
+    try {
+      proc.emit("exit", 0, null);
+      killTrackedProcesses();
+
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      kill.mockRestore();
+      proc.kill("SIGKILL");
+      await closePromise;
+    }
+  });
+
+  it("removes the process on spawn error", async () => {
+    const proc = spawn("/nonexistent-binary-that-does-not-exist", { stdio: "ignore" });
+    proc.on("error", () => undefined);
+    trackChildProcess(proc);
+
+    await new Promise<void>((resolve) => proc.on("close", () => resolve()));
 
     killTrackedProcesses();
+  });
+
+  it("keeps a process tracked after a post-spawn error", () => {
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const kill = vi.spyOn(proc, "kill");
+    proc.on("error", () => undefined);
+    trackChildProcess(proc);
+
+    proc.emit("error", new Error("kill EPERM"));
+    killTrackedProcesses();
+
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
   });
 });
 

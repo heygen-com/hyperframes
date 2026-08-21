@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import {
   resolveNpxCliFromNpmExecPath,
+  resolveNpxCliPath,
   resolveSpawnCommand,
   spawnP,
   _resetNpxResolutionWarnForTests,
@@ -31,6 +32,15 @@ const pathExists = (path) => path === npxCliPath;
 
 test("resolveNpxCliFromNpmExecPath finds npx-cli next to npm-cli", () => {
   assert.equal(resolveNpxCliFromNpmExecPath(envWithNpxCli.npm_execpath, pathExists), npxCliPath);
+});
+
+test("resolveNpxCliPath finds npx-cli beside node when npm_execpath is unset", () => {
+  const node = "C:/Program Files/nodejs/node.exe";
+  const expected = "C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js";
+  assert.equal(
+    resolveNpxCliPath(undefined, node, (path) => path === expected),
+    expected,
+  );
 });
 
 test("resolveSpawnCommand routes npx through node+npx-cli on win32 without shell:true", () => {
@@ -101,43 +111,48 @@ test("spawnP does not enable shell for non-npx commands even on win32", async ()
   assert.equal(captured[0].opts.shell, undefined);
 });
 
-// Regression: win32 + npx with npm_execpath unset can't locate the npx JS CLI,
-// so resolveSpawnCommand returns null and spawnP short-circuits. Previously it
-// returned {status:-1} silently — every TTS line just dropped as "TTS failed -
-// omitted" with no hint. Now it must surface a clear one-time diagnostic naming
-// npm_execpath, while still returning {status:-1} without spawning anything.
-test("spawnP surfaces a clear diagnostic (once) when npx can't be resolved on win32", async () => {
+test("spawnP resolves npx beside node when npm_execpath is unset on win32", async () => {
+  _resetNpxResolutionWarnForTests();
+  const captured = [];
+  const node = "C:/Program Files/nodejs/node.exe";
+  const npxCli = "C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js";
+  const result = await spawnP(
+    "npx",
+    ["hyperframes", "tts"],
+    {},
+    "win32",
+    fakeSpawn(captured),
+    { npm_node_execpath: node },
+    (path) => path === npxCli,
+  );
+  assert.equal(result.status, 0);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].cmd, node);
+  assert.deepEqual(captured[0].args, [npxCli, "hyperframes", "tts"]);
+});
+
+test("spawnP warns once with an accurate diagnostic when neither npx path exists", async () => {
   _resetNpxResolutionWarnForTests();
   const errors = [];
   const originalError = console.error;
-  console.error = (msg) => errors.push(msg);
-  const captured = [];
-  const emptyEnv = {}; // no npm_execpath
+  console.error = (message) => errors.push(String(message));
   try {
-    const r1 = await spawnP(
-      "npx",
-      ["hyperframes", "tts"],
-      {},
-      "win32",
-      fakeSpawn(captured),
-      emptyEnv,
-      () => false,
+    const env = { npm_execpath: "C:/missing/npm-cli.js", npm_node_execpath: "C:/node/node.exe" };
+    const missing = () => false;
+    assert.equal(
+      (await spawnP("npx", ["hyperframes", "tts"], {}, "win32", fakeSpawn([]), env, missing))
+        .status,
+      -1,
     );
-    const r2 = await spawnP(
-      "npx",
-      ["hyperframes", "tts"],
-      {},
-      "win32",
-      fakeSpawn(captured),
-      emptyEnv,
-      () => false,
+    assert.equal(
+      (await spawnP("npx", ["hyperframes", "tts"], {}, "win32", fakeSpawn([]), env, missing))
+        .status,
+      -1,
     );
-    assert.equal(r1.status, -1);
-    assert.equal(r2.status, -1);
-    assert.equal(captured.length, 0, "must not spawn anything when resolution fails");
-    assert.equal(errors.length, 1, "diagnostic is emitted once for a batch, not per line");
-    assert.match(errors[0], /npm_execpath/);
   } finally {
     console.error = originalError;
   }
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /npm_execpath \(C:\/missing\/npm-cli\.js\)/);
+  assert.doesNotMatch(errors[0], /npm_execpath is not set/);
 });

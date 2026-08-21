@@ -72,22 +72,40 @@ declare global {
      * freshly-injected `__render_frame__` images. See `forceDispatchSeekEvent`.
      */
     __hfReseekGpu?: (time: number) => void;
+    /**
+     * Await GPU work registered synchronously by `hf-seek` listeners through
+     * `event.detail.waitUntil(...)`.
+     */
+    __hfWaitForSeekCompletion?: () => Promise<void>;
+    /**
+     * Canonical root-timeline start for a media element. Snapshot capture uses
+     * this runtime-owned resolver so reference expressions, authored timing
+     * restoration, and arbitrary composition nesting cannot drift.
+     */
+    __hfResolveMediaStartSeconds?: (element: Element) => number;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
+      parseEase?: (
+        ease: string | ((progress: number) => number),
+        ...args: unknown[]
+      ) => ((progress: number) => number) | null;
+      registerPlugin?: (plugin: unknown) => void;
       ticker?: {
         tick: () => void;
       };
     };
     THREE?: ThreeLike;
     /**
-     * Global anime.js instance (set by including the anime.iife.min.js script).
-     * The adapter uses `anime.running` for auto-discovery.
+     * Global Anime.js v4 namespace (set by the UMD or IIFE bundle).
+     * Register returned instances on `window.__hfAnime`; v4 has no
+     * `anime.running` auto-discovery registry.
      */
     anime?: {
-      (params: unknown): unknown;
-      timeline?: (params?: unknown) => unknown;
-      running: unknown[];
+      animate?: (targets: unknown, params?: unknown) => unknown;
+      createTimeline?: (params?: unknown) => unknown;
+      /** Legacy v3 registry retained for backward-compatible discovery. */
+      running?: unknown[];
     };
     /**
      * anime.js instances registered by compositions.

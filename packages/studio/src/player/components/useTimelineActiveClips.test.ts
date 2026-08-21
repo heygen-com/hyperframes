@@ -1,113 +1,116 @@
 // @vitest-environment happy-dom
 
+import React, { act, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { updateTimelineActiveClipClasses } from "./useTimelineActiveClips";
+import { liveTime, type TimelineElement } from "../store/playerStore";
+import {
+  isTimelineClipActive,
+  updateTimelineActiveClipClasses,
+  useTimelineActiveClips,
+} from "./useTimelineActiveClips";
 
-function appendClip(container: HTMLElement, id: string, start: string, end: string): HTMLElement {
-  const clip = document.createElement("div");
-  clip.dataset.clip = "true";
-  clip.dataset.elId = id;
-  clip.dataset.clipStart = start;
-  clip.dataset.clipEnd = end;
-  container.append(clip);
-  return clip;
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+function clip(id: string, start: number, duration: number, hidden = false): TimelineElement {
+  return { id, tag: "div", start, duration, track: 1, hidden };
 }
 
-describe("updateTimelineActiveClipClasses", () => {
-  it("toggles data-active only for clips containing the current time", () => {
+function appendClip(container: HTMLElement, id: string, start: string, end: string): HTMLElement {
+  const element = document.createElement("div");
+  element.dataset.clip = "true";
+  element.dataset.elId = id;
+  element.dataset.clipStart = start;
+  element.dataset.clipEnd = end;
+  container.append(element);
+  return element;
+}
+
+function Harness({ version, heroStart = 2 }: { version: number; heroStart?: number }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useTimelineActiveClips({
+    scrollRef,
+    currentTime: 0,
+    clipStateVersion: 0,
+    elementStateVersion: version,
+  });
+  return React.createElement(
+    "div",
+    { ref: scrollRef },
+    React.createElement("div", {
+      "data-clip": "true",
+      "data-el-id": "intro",
+      "data-clip-start": "0",
+      "data-clip-end": "1",
+    }),
+    React.createElement("div", {
+      "data-clip": "true",
+      "data-el-id": "hero",
+      "data-clip-start": String(heroStart),
+      "data-clip-end": String(heroStart + 1),
+    }),
+  );
+}
+
+describe("timeline active clips", () => {
+  it("uses model timing and keeps the end boundary inclusive", () => {
+    const element = clip("hero", 2, 3);
+    expect(isTimelineClipActive(element, 2)).toBe(true);
+    expect(isTimelineClipActive(element, 5)).toBe(true);
+    expect(isTimelineClipActive(element, 5.001)).toBe(false);
+  });
+
+  it("never activates hidden or invalid clips", () => {
+    expect(isTimelineClipActive(clip("hidden", 0, 5, true), 2)).toBe(false);
+    expect(isTimelineClipActive(clip("invalid", Number.NaN, 5), 2)).toBe(false);
+  });
+
+  it("synchronizes mounted clip attributes", () => {
     const container = document.createElement("div");
     const intro = appendClip(container, "intro", "0", "2");
     const hero = appendClip(container, "hero", "2", "5");
-    const outro = appendClip(container, "outro", "5", "8");
     const previous = new Set<string>();
 
     updateTimelineActiveClipClasses(container, previous, 2.25);
 
     expect(intro.hasAttribute("data-active")).toBe(false);
     expect(hero.hasAttribute("data-active")).toBe(true);
-    expect(outro.hasAttribute("data-active")).toBe(false);
     expect(previous).toEqual(new Set(["hero"]));
   });
 
-  it("never marks hidden clips active inside their time window", () => {
-    const container = document.createElement("div");
-    const hidden = appendClip(container, "hidden", "0", "5");
-    const visible = appendClip(container, "visible", "0", "5");
-    hidden.dataset.clipHidden = "true";
-    const previous = new Set<string>();
-
-    updateTimelineActiveClipClasses(container, previous, 2);
-
-    expect(hidden.hasAttribute("data-active")).toBe(false);
-    expect(visible.hasAttribute("data-active")).toBe(true);
-    expect(previous).toEqual(new Set(["visible"]));
-  });
-
-  it("diffs against the previous active set", () => {
-    const container = document.createElement("div");
-    const intro = appendClip(container, "intro", "0", "2");
-    const hero = appendClip(container, "hero", "2", "5");
-    const previous = new Set(["intro"]);
-    intro.toggleAttribute("data-active", true);
-
-    updateTimelineActiveClipClasses(container, previous, 2);
-
-    expect(intro.hasAttribute("data-active")).toBe(true);
-    expect(hero.hasAttribute("data-active")).toBe(true);
-    expect(previous).toEqual(new Set(["intro", "hero"]));
-  });
-
-  it("keeps a clip active through its inclusive end boundary", () => {
-    const container = document.createElement("div");
-    const intro = appendClip(container, "intro", "0", "2");
-    const previous = new Set<string>();
-
-    updateTimelineActiveClipClasses(container, previous, 0);
-
-    expect(intro.hasAttribute("data-active")).toBe(true);
-    expect(previous).toEqual(new Set(["intro"]));
-
-    updateTimelineActiveClipClasses(container, previous, 2);
-
-    expect(intro.hasAttribute("data-active")).toBe(true);
-    expect(previous).toEqual(new Set(["intro"]));
-
-    updateTimelineActiveClipClasses(container, previous, 2.001);
-
-    expect(intro.hasAttribute("data-active")).toBe(false);
-    expect(previous).toEqual(new Set());
-  });
-
-  it("re-applies data-active to a fresh DOM node that stayed active across a re-render", () => {
-    // A clip that moves lanes on a reorder remounts as a new element. It stays
-    // in the previous active set, so the plain diff would skip it and leave the
-    // new node without data-active. syncAll must force the attribute on.
+  it("re-applies active state when a clip remounts inside the current window", () => {
     const container = document.createElement("div");
     appendClip(container, "hero", "0", "5");
     const previous = new Set<string>();
     updateTimelineActiveClipClasses(container, previous, 2);
-    expect(previous).toEqual(new Set(["hero"]));
 
-    // Simulate a remount: replace the hero clip's DOM node (no data-active).
     container.replaceChildren();
-    const heroReborn = appendClip(container, "hero", "0", "5");
-    expect(heroReborn.hasAttribute("data-active")).toBe(false);
-
-    // Diff-only would skip it (still active → unchanged); syncAll re-applies.
+    const remounted = appendClip(container, "hero", "0", "5");
     updateTimelineActiveClipClasses(container, previous, 2, true);
-    expect(heroReborn.hasAttribute("data-active")).toBe(true);
+
+    expect(remounted.hasAttribute("data-active")).toBe(true);
   });
 
-  it("ignores clips with invalid timing data", () => {
-    const container = document.createElement("div");
-    const missingId = appendClip(container, "", "0", "2");
-    const missingTiming = appendClip(container, "bad", "", "2");
-    const previous = new Set<string>();
+  it("moves active state with live playback without changing store time", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(React.createElement(Harness, { version: 0 })));
 
-    updateTimelineActiveClipClasses(container, previous, 1);
+    const intro = host.querySelector<HTMLElement>('[data-el-id="intro"]');
+    const hero = host.querySelector<HTMLElement>('[data-el-id="hero"]');
+    expect(intro?.hasAttribute("data-active")).toBe(true);
+    expect(hero?.hasAttribute("data-active")).toBe(false);
 
-    expect(missingId.hasAttribute("data-active")).toBe(false);
-    expect(missingTiming.hasAttribute("data-active")).toBe(false);
-    expect(previous).toEqual(new Set());
+    act(() => liveTime.notify(2.5));
+    expect(intro?.hasAttribute("data-active")).toBe(false);
+    expect(hero?.hasAttribute("data-active")).toBe(true);
+
+    await act(async () => root.render(React.createElement(Harness, { version: 1, heroStart: 4 })));
+    act(() => liveTime.notify(2.5));
+    expect(host.querySelector('[data-el-id="hero"]')?.hasAttribute("data-active")).toBe(false);
+
+    await act(async () => root.unmount());
+    host.remove();
   });
 });

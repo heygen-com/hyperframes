@@ -5,7 +5,7 @@ import {
   STUDIO_HEIGHT_PROP,
   STUDIO_MANUAL_EDIT_GESTURE_ATTR,
 } from "./draftMarkers.js";
-import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
+import { readClipTiming } from "@hyperframes/core/composition-contract";
 
 export type DraftPayload =
   | { type: "move"; hfId: string; dx: number; dy: number }
@@ -139,77 +139,38 @@ export function createPreviewAdapter(
     },
 
     getElementTimings() {
-      // data-start can be a relative-reference expression ("intro", "intro + 2" —
-      // parseStartExpression's grammar), not just an absolute number. A raw
-      // parseFloat on it (the old behavior) silently resolves any reference to
-      // undefined. Resolve references recursively against the target's own
-      // resolved end (data-end, or data-start + data-duration when the target
-      // has no data-end) — this function never read data-duration before either,
-      // so a reference to a duration-authored (not end-authored) clip used to be
-      // unresolvable regardless of the parseFloat bug.
-      //
-      // This is the third copy of "resolve relative data-start" (runtime
-      // startResolver.ts; the SDK's own getElementTimings in session.ts; this
-      // one). The runtime version is substantially more complex (host offsets,
-      // media, live timelines) so a shared extraction isn't a straightforward
-      // win — this one and the SDK's stay hand-kept in sync instead.
-      const startCache = new Map<Element, number | undefined>();
+      const timingCache = new Map<Element, { start: number | null; end: number | null }>();
       const visiting = new Set<Element>();
-
-      const resolveEnd = (el: Element): number | undefined => {
-        const endAttr = el.getAttribute("data-end");
-        if (endAttr !== null) {
-          const ev = parseFloat(endAttr);
-          if (Number.isFinite(ev)) return ev;
-        }
-        const durationAttr = el.getAttribute("data-duration");
-        const dv = durationAttr !== null ? parseFloat(durationAttr) : NaN;
-        const sv = resolveStart(el);
-        if (Number.isFinite(dv) && sv !== undefined) return sv + dv;
-        return undefined;
-      };
-
-      // Split out of resolveStart so its own branching stays low — mirrors the
-      // SDK's getElementTimings resolver split (resolveReferenceStart).
-      const resolveReferenceStart = (refId: string, offset: number): number | undefined => {
-        const target = findById(refId);
-        const targetEnd = target ? resolveEnd(target) : undefined;
-        return targetEnd !== undefined ? Math.max(0, targetEnd + offset) : undefined;
-      };
-
-      const resolveStart = (el: Element): number | undefined => {
-        if (startCache.has(el)) return startCache.get(el);
-        if (visiting.has(el)) return undefined; // reference cycle — fail safe, don't loop
+      const resolveTiming = (el: Element): { start: number | null; end: number | null } => {
+        const cached = timingCache.get(el);
+        if (cached) return cached;
+        if (visiting.has(el)) return { start: null, end: null };
         visiting.add(el);
-        let resolved: number | undefined;
         try {
-          const startStr = el.getAttribute("data-start");
-          const expr = parseStartExpression(startStr);
-          if (expr?.kind === "reference") {
-            resolved = resolveReferenceStart(expr.refId, expr.offset);
-          } else if (expr?.kind === "absolute") {
-            resolved = expr.value;
-          } else {
-            // parseStartExpression returns null for empty/absent data-start, and
-            // also for a malformed grammar string (e.g. "3 abc" — a leading
-            // number followed by content the reference regex rejects). The
-            // parseFloat below only ever succeeds on that second, malformed
-            // case (a clean number or a clean reference already matched above).
-            const sv = startStr !== null ? parseFloat(startStr) : NaN;
-            resolved = Number.isFinite(sv) ? sv : undefined;
-          }
+          const timing = readClipTiming(el, {
+            defaultStart: null,
+            resolveReferenceEnd: (refId) => {
+              const target = findById(refId);
+              return target ? resolveTiming(target).end : null;
+            },
+          });
+          const resolved = { start: timing.start, end: timing.end };
+          timingCache.set(el, resolved);
+          return resolved;
         } finally {
           visiting.delete(el);
         }
-        startCache.set(el, resolved);
-        return resolved;
       };
 
       const result: Record<string, { start?: number; end?: number }> = {};
       for (const el of doc.querySelectorAll("[data-hf-id]")) {
         const hfId = el.getAttribute("data-hf-id");
         if (!hfId) continue;
-        result[hfId] = { start: resolveStart(el), end: resolveEnd(el) };
+        const timing = resolveTiming(el);
+        result[hfId] = {
+          start: timing.start ?? undefined,
+          end: timing.end ?? undefined,
+        };
       }
       return result;
     },

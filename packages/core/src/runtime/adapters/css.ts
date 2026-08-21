@@ -37,7 +37,7 @@ export function createCssAdapter(params?: {
     animation: Animation,
     startSeconds: number,
   ): { endSeconds?: number; unbounded?: true } => {
-    let timing: { endTime?: number | string } | null = null;
+    let timing: ComputedEffectTiming | null = null;
     try {
       timing = animation.effect?.getComputedTiming?.() ?? null;
     } catch (err) {

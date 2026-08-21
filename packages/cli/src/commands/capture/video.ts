@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../../utils/commandResult.js";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { c } from "../../ui/colors.js";
@@ -196,7 +197,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       `${c.error("✗")} no video-manifest.json at ${directPath} or ${w2hPath}\n` +
         `  Was this directory produced by \`hyperframes capture\`?`,
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
   let manifest: ManifestEntry[];
@@ -204,7 +205,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
   } catch (e) {
     console.error(`${c.error("✗")} video-manifest.json is malformed: ${(e as Error).message}`);
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -232,7 +233,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       `${c.error("✗")} ${pick.message}` +
         (pick.code === "no-match-url" ? `\n  Run with --list to see what's available.` : ""),
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
   const entry = pick.entry;
@@ -245,7 +246,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
         `${collisions.map((co) => `[${co.index}]`).join(", ")}. ` +
         `Refusing to download — the on-disk file's bytes would not match the requested entry.`,
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -278,6 +279,6 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     console.error(`${c.error("✗")} download failed: ${(e as Error).message}`);
-    process.exitCode = 1;
+    setCommandExitCode(1);
   }
 }

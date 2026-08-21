@@ -1,0 +1,64 @@
+---
+title: "Build a slideshow"
+description: "Shape the main presentation, then add reveals, notes, branches, and hotspots where they help."
+---
+
+A slideshow is a live, navigable presentation—not one linear video. The **Slideshow** tab appears when the active composition contains a HyperFrames slideshow manifest.
+
+<Frame caption="The Slideshow panel builds the main route from real scenes before optional branches are added.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio-slideshow-panel-v1.jpg"
+    alt="HyperFrames Studio showing three main-line slides in the Slideshow panel beside the deck timeline"
+  />
+</Frame>
+
+## Build the main path
+
+Start with the route everyone should see:
+
+1. In **Slides**, check the scenes that belong in the main presentation.
+2. Use the arrows to put them in order.
+3. Select each slide and confirm that it makes one complete point.
+4. In **Slide Inspector**, add speaker notes that help the presenter rather than repeat the slide.
+
+Studio saves slideshow changes into the project’s manifest. Notes save after a short pause; other edits save immediately and participate in project history.
+
+## Add fragment reveals
+
+Move the playhead to the moment when the presentation should pause, then click **Mark** in Slide Inspector. That time becomes a fragment hold-point for the selected slide.
+
+Use fragments when the presenter needs to reveal part of an idea before advancing. A slide does not need a hold-point for every bullet.
+
+## Add an optional path
+
+Branches keep optional detail outside the main story:
+
+1. Open **Branches**, name a branch, and assign its slides.
+2. On the slide where the choice appears, select the visible button or object on the canvas.
+3. Open **Hotspot Tool**, choose the target branch, add a useful label, and click **Make hotspot**.
+4. Keep a clear route back to the main story.
+
+Deleting a branch removes that branch definition and every hotspot that points to it, so Studio asks for confirmation first. The source scenes remain in the project.
+
+## Test it as a presentation
+
+Run the presenter locally:
+
+```bash
+npx hyperframes present <project-directory>
+```
+
+Test next and previous navigation, every fragment, every hotspot, every branch, and the return path. Click **Present** or press **P** to open the synchronized audience view.
+
+<Note>
+  A slideshow stays interactive. If the result should simply play from beginning to end as an MP4,
+  use a [video workflow](/workflows) instead.
+</Note>
+
+To create the deck with an agent before refining it here, follow [Create an interactive presentation](/guides/slideshow).
+
+## Related topics
+
+- [Create an interactive presentation](/guides/slideshow)
+- [Use variables and templates](/studio/variables)
+- [Work with source and an agent](/studio/source)

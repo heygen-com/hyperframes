@@ -39,6 +39,7 @@ The smallest renderable HyperFrames composition — a standalone (top-level) roo
     <div
       id="root"
       data-composition-id="main"
+      data-start="0"
       data-width="1920"
       data-height="1080"
       data-duration="5"
@@ -59,7 +60,7 @@ The smallest renderable HyperFrames composition — a standalone (top-level) roo
 
 Required elements:
 
-- Root `<div>` with `data-composition-id`, `data-width`, `data-height`, `data-duration`
+- Root `<div>` with `data-composition-id`, `data-start="0"`, `data-width`, `data-height`, `data-duration`
 - At least one clip (any element with `data-start`, `data-duration`, `data-track-index`)
 - GSAP timeline created paused, registered on `window.__timelines["<composition-id>"]`
 

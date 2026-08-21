@@ -40,7 +40,6 @@ describe("runDetectedInstall", () => {
     vi.doMock("node:child_process", () => ({ execFileSync: execSpy }));
 
     const { runDetectedInstall } = await import("./upgrade.js");
-    const original = process.exitCode;
     try {
       expect(() =>
         runDetectedInstall(
@@ -49,9 +48,11 @@ describe("runDetectedInstall", () => {
           "1.2.3",
         ),
       ).not.toThrow();
-      expect(process.exitCode).toBe(1);
+      const { consumeCommandResult } = await import("../utils/commandResult.js");
+      expect(consumeCommandResult().exitCode).toBe(1);
     } finally {
-      process.exitCode = original;
+      const { consumeCommandResult } = await import("../utils/commandResult.js");
+      consumeCommandResult();
     }
   });
 });

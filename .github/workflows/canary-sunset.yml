@@ -1,0 +1,32 @@
+# Canary sunset governance.
+#
+# Deliberately NOT a PR gate. The check reads the current date, so as a PR gate
+# it would fail builds for authors who touched nothing related, on a calendar
+# date, with no fix available to them. On a schedule the failure stands on its
+# own instead of blocking an unrelated author.
+#
+# The job names the overdue canary and its owner in the run log; it does not
+# notify anyone. Routing that to the owner automatically (an issue, a ping)
+# is worth doing and is not done here.
+name: Canary sunset
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    # Mondays at 15:10 UTC, shortly after the CodeQL run.
+    - cron: "10 15 * * 1"
+  workflow_dispatch:
+
+jobs:
+  sunset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      # No install/build: the script imports the registry source directly and
+      # bun runs TypeScript natively.
+      - run: bun scripts/check-canary-sunset.ts

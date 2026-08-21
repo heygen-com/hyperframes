@@ -1,9 +1,5 @@
 import { useRef, type MouseEvent } from "react";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_MANUAL_EDITING_DISABLED_TITLE,
-} from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -149,14 +145,13 @@ const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
 ];
 
 /** Segmented control switching the main stage between storyboard and preview. */
-function ViewModeToggle() {
+export function ViewModeToggle() {
   const { viewMode, setViewMode } = useViewMode();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const selectMode = (mode: StudioViewMode) => {
     if (mode === viewMode) return;
-    trackStudioEvent("view_mode_toggle", { mode });
-    setViewMode(mode);
+    if (setViewMode(mode)) trackStudioEvent("view_mode_toggle", { mode });
   };
 
   // Complete APG tabs pattern: roving tabIndex + arrow-key navigation.
@@ -201,6 +196,21 @@ function ViewModeToggle() {
   );
 }
 
+/**
+ * Does the header's Inspector button open the panel, or close it?
+ *
+ * Takes the EFFECTIVE collapse state, so a panel the window has railed away
+ * counts as closed even though the user's stored intent still says open. The
+ * argument name is the guard: passing raw intent here is the bug this exists
+ * to keep out.
+ */
+export function shouldOpenInspector(
+  effectiveRightCollapsed: boolean,
+  inspectorPanelActive: boolean,
+): boolean {
+  return effectiveRightCollapsed || !inspectorPanelActive;
+}
+
 // fallow-ignore-next-line complexity
 export function StudioHeader({
   captureFrameHref,
@@ -213,8 +223,13 @@ export function StudioHeader({
   onExport,
 }: StudioHeaderProps) {
   const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
-  const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
+  // effectiveRightCollapsed, not the raw intent: in the auto-railed state the
+  // intent is still "open" while the panel is hidden, so branching on intent
+  // made this button write rightCollapsed=true — and that value is synced into
+  // the shareable Studio URL, so a dead click would rewrite a link.
+  const { effectiveRightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
+  const ffmpegMissing = renderQueue.ffmpegMissing;
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
@@ -329,17 +344,11 @@ export function StudioHeader({
             <span>{capturing ? "Capturing…" : "Capture"}</span>
           </a>
         </Tooltip>
-        <Tooltip
-          label={
-            STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-          }
-          side="bottom"
-        >
+        <Tooltip label="Inspector" side="bottom">
           <button
             type="button"
             onClick={() => {
-              if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
-              if (rightCollapsed || !inspectorPanelActive) {
+              if (shouldOpenInspector(effectiveRightCollapsed, inspectorPanelActive)) {
                 trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
                 setRightPanelTab("design");
                 setRightCollapsed(false);
@@ -350,18 +359,13 @@ export function StudioHeader({
               // the panel shouldn't deselect the element.
               setRightCollapsed(true);
             }}
-            disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
             aria-pressed={inspectorButtonActive}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors active:scale-[0.98] ${
               inspectorButtonActive
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : STUDIO_INSPECTOR_PANELS_ENABLED
-                  ? "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
-                  : "cursor-not-allowed border-transparent text-neutral-700"
+                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
             }`}
-            aria-label={
-              STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-            }
+            aria-label="Inspector"
           >
             <svg
               width="12"
@@ -379,7 +383,11 @@ export function StudioHeader({
         </Tooltip>
         <Tooltip
           label={
-            isRendering ? "A render is already in progress" : "Render and export this composition"
+            ffmpegMissing
+              ? "FFmpeg is not installed. Opens the Renders panel with the install command."
+              : isRendering
+                ? "A render is already in progress"
+                : "Render and export this composition"
           }
           side="bottom"
         >
@@ -390,6 +398,12 @@ export function StudioHeader({
               if (isRendering) return;
               setRightPanelTab("renders");
               setRightCollapsed(false);
+              // Without an encoder this render cannot finish, so the click
+              // delivers the user to the prompt that fixes it instead of
+              // queueing a job that exists only to fail. Disabling the button
+              // would leave them staring at a dead control with no route to
+              // the explanation.
+              if (ffmpegMissing) return;
               onExport?.();
             }}
             className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"

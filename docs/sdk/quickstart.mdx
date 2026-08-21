@@ -1,9 +1,17 @@
 ---
-title: "SDK Quickstart"
-description: "Open a composition, query and edit elements, serialize, and add autosave in minutes."
+title: "Edit a composition with the SDK"
+sidebarTitle: "SDK quickstart"
+description: "Open composition HTML, query and edit elements, serialize the result, and add persistence."
 ---
 
-This guide walks you through the core SDK loop from scratch. You will open a composition HTML string, find and edit elements by their stable `hf-id`, serialize the result, and then extend the example to save changes to disk automatically.
+Use `@hyperframes/sdk` when an application must inspect or change composition
+HTML without opening Studio. If you only need playback, use the
+[Player](/packages/player). If you only need a rendered file, use the
+[CLI](/developers/cli) or [Producer](/packages/producer).
+
+The core loop is open, query, edit, and serialize. The SDK adds stable
+`data-hf-id` values where they are missing so later edits target the same
+elements.
 
 ## Open, edit, serialize
 
@@ -27,6 +35,7 @@ This guide walks you through the core SDK loop from scratch. You will open a com
     ```
 
     The call is async because it runs the ID-stamping pass over the DOM before returning.
+
   </Step>
 
   <Step title="Find elements">
@@ -45,6 +54,7 @@ This guide walks you through the core SDK loop from scratch. You will open a com
     ```
 
     `find()` returns an array of `scopedId` strings. For top-level elements, `scopedId === id`. For elements inside inlined sub-compositions, it is `"hf-HOST/hf-LEAF"`.
+
   </Step>
 
   <Step title="Edit elements with typed methods">
@@ -61,14 +71,8 @@ This guide walks you through the core SDK loop from scratch. You will open a com
       fontWeight: "700",
     });
 
-    // Set or clear an attribute (null removes it)
-    comp.setAttribute("hf-logo", "src", "/assets/logo-v2.png");
-
     // Adjust clip timing
     comp.setTiming("hf-title", { start: 0.5, duration: 4 });
-
-    // Set a composition variable
-    comp.setVariableValue("brandColor", "#6C5CE7");
     ```
 
     Use `batch()` when several mutations should collapse into one undo entry, one persist write, and one `change` event:
@@ -80,6 +84,7 @@ This guide walks you through the core SDK loop from scratch. You will open a com
       comp.setTiming("hf-title", { start: 0.5, duration: 4 });
     });
     ```
+
   </Step>
 
   <Step title="Serialize and dispose">
@@ -91,12 +96,15 @@ This guide walks you through the core SDK loop from scratch. You will open a com
 
     // updatedHtml is ready to write to disk, send to a renderer, or store in a database.
     ```
+
   </Step>
 </Steps>
 
 ## Add a persistence adapter
 
-The headless pattern above is fine for one-shot transforms. When you want the SDK to autosave after every edit, pass a `PersistAdapter`.
+The headless pattern above is fine for one-shot transforms. When you want the SDK to persist edits,
+pass a `PersistAdapter`. Rapid changes are coalesced and written in order, with the latest state
+winning rather than one disk write per UI event.
 
 The filesystem adapter (`@hyperframes/sdk/adapters/fs`) writes to a local directory and keeps a rolling version history.
 
@@ -129,16 +137,25 @@ comp.dispose();
 The adapter writes `./project/index.html` after every mutation and keeps up to 20 version snapshots under `./project/.hf-versions/`.
 
 <Note>
-  Disabling undo (`history: false`) does **not** disable autosave. The two are independent. Passing `history: false` is only necessary when you are managing the undo stack yourself.
+  Disabling undo (`history: false`) does **not** disable autosave. The two are independent. Passing
+  `history: false` is only necessary when you are managing the undo stack yourself.
 </Note>
 
-## Next steps
+## Related topics
 
 <CardGroup cols={2}>
-  <Card title="Querying & Editing Elements" icon="magnifying-glass" href="/sdk/guides/querying-and-editing">
+  <Card
+    title="Querying & Editing Elements"
+    icon="magnifying-glass"
+    href="/sdk/guides/querying-and-editing"
+  >
     FindQuery fields, scopedId for sub-compositions, batch semantics, and element handles.
   </Card>
-  <Card title="Undo, Redo & Patches" icon="arrow-rotate-left" href="/sdk/guides/undo-redo-and-patches">
+  <Card
+    title="Undo, Redo & Patches"
+    icon="arrow-rotate-left"
+    href="/sdk/guides/undo-redo-and-patches"
+  >
     History module, patch events for host sync, and applyPatches loop prevention.
   </Card>
   <Card title="Persistence" icon="floppy-disk" href="/sdk/guides/persistence">
@@ -148,4 +165,3 @@ The adapter writes `./project/index.html` after every mutation and keeps up to 2
     Full option reference — adapters, overrides, coalesce window, and more.
   </Card>
 </CardGroup>
-

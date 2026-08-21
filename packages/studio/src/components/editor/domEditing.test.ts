@@ -739,6 +739,40 @@ describe("resolveDomEditSelection", () => {
     expect(selection?.selector).toBe("#copy");
   });
 
+  it("keeps a transparent overflow mask structural when directly selecting its headline", async () => {
+    const document = createDocument(`
+      <template id="source-template"></template>
+      <section class="hl-block">
+        <div class="hl-mask" style="overflow: hidden; background: transparent">
+          <h1 class="hl-text">Launch title</h1>
+        </div>
+      </section>
+    `);
+    const headline = document.querySelector<HTMLElement>(".hl-text")!;
+    setElementRect(headline, { left: 44, top: 52, width: 220, height: 48 });
+    const selection = await resolveDomEditSelection(headline, {
+      activeCompositionPath: "index.html",
+      isMasterView: false,
+      preferClipAncestor: false,
+    });
+
+    expect(selection?.element).toBe(headline);
+    expect(selection?.selector).toBe(".hl-text");
+    expect(selection?.textFields).toMatchObject([{ source: "self", tagName: "h1" }]);
+    expect(selection?.boundingBox).toEqual({ x: 44, y: 52, width: 220, height: 48 });
+    // Explicit layer navigation remains free to resolve the structural mask.
+    const mask = document.querySelector<HTMLElement>(".hl-mask")!;
+    expect(
+      (
+        await resolveDomEditSelection(mask, {
+          activeCompositionPath: "index.html",
+          isMasterView: false,
+          preferClipAncestor: false,
+        })
+      )?.element,
+    ).toBe(mask);
+  });
+
   // fallow-ignore-next-line code-duplication
   it("collects simple child text blocks as separate editable fields", async () => {
     const document = createDocument(`

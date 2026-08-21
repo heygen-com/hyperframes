@@ -101,6 +101,75 @@ body {
     0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
+.hf-preview-volume-range {
+  height: 1.5rem;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+}
+
+.hf-preview-volume-range:disabled {
+  opacity: 0.3;
+}
+
+.hf-preview-volume-range::-webkit-slider-runnable-track {
+  height: 2px;
+  background: transparent;
+}
+
+.hf-preview-volume-range::-webkit-slider-thumb {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: -3px;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 2px #0a0a0a,
+    0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+}
+
+.hf-preview-volume-range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.hf-preview-volume-range::-moz-range-track,
+.hf-preview-volume-range::-moz-range-progress {
+  height: 2px;
+  border: 0;
+  background: transparent;
+}
+
+.hf-preview-volume-range::-moz-range-thumb {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 2px #0a0a0a,
+    0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+}
+
+.hf-preview-volume-range::-moz-range-thumb:active {
+  cursor: grabbing;
+}
+
+.hf-preview-volume-range:focus-visible {
+  outline: none;
+}
+
+.hf-preview-volume-range:focus-visible::-webkit-slider-thumb,
+.hf-preview-volume-range:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 2px #0a0a0a,
+    0 0 0 4px rgba(60, 230, 172, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 #root {
   width: 100vw;
   /*
@@ -141,6 +210,22 @@ body {
   opacity: 1;
 }
 
+/* Audio clips read as a distinct kind — a persistent violet tint vs the teal-
+   accented visual clips — so the audio zone at the bottom is visually separate
+   at a glance (the timeline's kinds: visual on top, audio below). */
+.timeline-clip.is-audio {
+  background-color: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.timeline-clip.is-audio.is-hovered {
+  background-color: rgba(167, 139, 250, 0.24);
+}
+
+.timeline-clip.is-audio.is-dragging {
+  background-color: rgba(60, 52, 84, 0.96);
+}
+
 .timeline-clip.is-hovered {
   background-color: rgba(255, 255, 255, 0.09);
 }
@@ -158,7 +243,18 @@ body {
 }
 
 .timeline-clip.is-dragging {
+  /* Solid background so the picked-up clip reads clearly while dragging — audio
+     clips (waveform drawn on a separate layer) would otherwise look transparent. */
+  background-color: rgba(38, 42, 52, 0.96);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Keep the white selection outline while dragging (a plain box-shadow alone gets
+   overridden by .is-dragging's drop shadow, so re-state both together). */
+.timeline-clip.is-selected.is-dragging {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .timeline-clip[data-active].is-selected.is-dragging {
@@ -418,5 +514,116 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .hf-backdrop-in {
     animation: none;
+  }
+}
+
+/* Flat inspector group header/body entrance (FlatGroupHeader) */
+@keyframes hf-flat-group-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hf-flat-group-enter {
+  animation: hf-flat-group-in 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-flat-group-enter {
+    animation: none;
+  }
+}
+
+/* Preset shelf: the hovered row, and the wave that says it is being heard.
+ *
+ * Hovering a preset auditions it on the running audio, which is invisible — the
+ * panel looks identical whether the audition is playing or the pointer just
+ * happens to be resting there. The bars are that feedback: they run only while a
+ * preset is actually sounding, so they are a readout of the audio rather than a
+ * hover decoration. */
+.hf-fx-preset-item {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hf-fx-preset-item {
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+}
+
+.hf-fx-preset-item:hover,
+.hf-fx-preset-item:focus-visible {
+  /* The accent at low alpha rather than a grey: the row is lit by the thing that
+     is playing, and it should read as the same event as the bars. */
+  background-color: rgba(60, 230, 172, 0.12);
+}
+
+.hf-fx-preset-wave {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 0.75rem;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.hf-fx-preset-item:hover .hf-fx-preset-wave,
+.hf-fx-preset-item:focus-visible .hf-fx-preset-wave {
+  opacity: 1;
+}
+
+.hf-fx-preset-wave span {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: #3ce6ac;
+  transform: scaleY(0.25);
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hf-fx-preset-wave span {
+    animation: hf-fx-preset-wave 900ms ease-in-out infinite;
+  }
+  /* Staggered so it reads as a waveform travelling rather than four bars
+     pumping in unison, which reads as a loading spinner. */
+  .hf-fx-preset-wave span:nth-child(2) {
+    animation-delay: 150ms;
+  }
+  .hf-fx-preset-wave span:nth-child(3) {
+    animation-delay: 300ms;
+  }
+  .hf-fx-preset-wave span:nth-child(4) {
+    animation-delay: 450ms;
+  }
+}
+
+/* Still visible without motion — it is telling the author something is
+   playing, and that fact does not go away because the bars hold still. */
+@media (prefers-reduced-motion: reduce) {
+  .hf-fx-preset-wave span {
+    transform: scaleY(0.7);
+  }
+}
+
+@keyframes hf-fx-preset-wave {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
   }
 }

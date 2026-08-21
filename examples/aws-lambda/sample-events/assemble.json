@@ -1,6 +1,8 @@
 {
   "Action": "assemble",
-  "PlanS3Uri": "s3://example-bucket/renders/sample/plan.tar.gz",
+  "PlanV2ManifestS3Uri": "s3://example-bucket/renders/sample/v2/manifest.json",
+  "PlanV2ArtifactS3Prefix": "s3://example-bucket/renders/sample/v2/artifacts/sha256",
+  "PlanHash": "0000000000000000000000000000000000000000000000000000000000000000",
   "ChunkS3Uris": [
     "s3://example-bucket/renders/sample/chunks/0000.mp4",
     "s3://example-bucket/renders/sample/chunks/0001.mp4",

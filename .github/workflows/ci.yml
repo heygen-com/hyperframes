@@ -34,6 +34,10 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
+      catalog_index: ${{ steps.filter.outputs.catalog_index }}
+      codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
+      gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
+      studio: ${{ steps.filter.outputs.studio }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -41,11 +45,18 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Reject accidental file deletions
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-no-main-deletions.mjs --base origin/main
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
         id: filter
         with:
           token: ""
           filters: |
+            catalog_index:
+              - "registry/registry.json"
+              - "registry/catalog-artifact/**"
+              - "scripts/catalog/check-artifact-coverage.ts"
             code:
               - "packages/**"
               - "scripts/**"
@@ -61,9 +72,53 @@ jobs:
               - ".github/workflows/ci.yml"
             skills:
               - "skills/**"
+              - ".claude/skills/**"
+              - ".agents/skills/**"
               - "skills-manifest.json"
+              - "scripts/lint-skills.ts"
+              - "scripts/check-skill-mirror.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
+            codex_plugin:
+              - ".codex-plugin/**"
+              - "assets/**"
+              - "skills/**"
+              - "scripts/package-codex-plugin.mjs"
+              - "package.json"
+              - ".github/workflows/ci.yml"
+            studio:
+              - "packages/studio/**"
+              - "packages/core/**"
+              - "packages/studio-server/**"
+              - "bun.lock"
+              - ".github/workflows/ci.yml"
+            gcp_beginframe:
+              - "packages/gcp-cloud-run/Dockerfile"
+              - "packages/aws-lambda/scripts/probe-beginframe.ts"
+              - "packages/engine/src/services/browserManager.ts"
+              - "package.json"
+              - "bun.lock"
+              - ".github/workflows/ci.yml"
+
+  gcp-beginframe-contract:
+    name: GCP BeginFrame image contract
+    needs: changes
+    if: needs.changes.outputs.gcp_beginframe == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          file: packages/gcp-cloud-run/Dockerfile
+          target: beginframe-contract
+          push: false
+          cache-from: type=gha,scope=gcp-beginframe-contract
+          cache-to: type=gha,mode=max,scope=gcp-beginframe-contract
 
   build:
     name: Build
@@ -82,7 +137,7 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@10.17.1 --activate
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
 
@@ -101,7 +156,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run lint
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
@@ -135,7 +190,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Run fallow audit
         id: audit
         # `bun install` above made `bunx fallow` resolve from node_modules, so
@@ -191,7 +246,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run format:check
 
   typecheck:
@@ -209,17 +264,26 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run --filter '*' typecheck
+      - run: bun run typecheck:scripts
 
   test:
     name: Test
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, producer-source-tests]
+    # Keep the existing required `Test` context authoritative for producer
+    # failures too. The dedicated producer matrix remains parallel and legible,
+    # while this job fails closed if either lane fails or is cancelled.
+    if: always() && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require producer source tests
+        if: needs.producer-source-tests.result != 'success'
+        run: |
+          echo "::error::Producer unit/integration tests did not succeed."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -228,12 +292,43 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
-      - run: bun run test:scripts
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      # After the builds: the preview scripts drive the producer, which imports
+      # @hyperframes/core from dist, so running these first fails on a missing
+      # module rather than on anything the test is actually checking.
+      - run: bun run test:scripts
       - run: bun run --filter '!@hyperframes/producer' test
+
+  producer-source-tests:
+    name: "Producer: ${{ matrix.lane }} tests"
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [unit, integration]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install FFmpeg for integration tests
+        if: matrix.lane == 'integration'
+        uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --filter @hyperframes/engine build
+      - run: bun run producer:test:${{ matrix.lane }}
 
   # Tests under skills/**/*.test.mjs are bare `node --test` files with only
   # `node:` built-in imports. They aren't part of any workspace package, and
@@ -274,6 +369,21 @@ jobs:
   # `gen:skills-manifest --check`, which compares per-skill content hashes; the
   # manifest carries no version/timestamp, so it only fails on real content
   # drift. bun runs the TS script directly, no install needed.
+  catalog-index-coverage:
+    name: "Catalog: search index covers the registry"
+    needs: changes
+    if: needs.changes.outputs.catalog_index == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      # Comparing two name lists needs neither the embedding model nor a
+      # network call, so this stays a seconds-long gate. Regenerating the
+      # vectors does need the model, which is why CI checks rather than fixes.
+      - name: Verify every searchable registry item has a vector
+        run: bun scripts/catalog/check-artifact-coverage.ts
+
   skills-manifest:
     name: "Skills: manifest in sync"
     needs: changes
@@ -285,6 +395,39 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Verify skills-manifest.json matches skills/
         run: bun packages/cli/scripts/gen-skills-manifest.ts --check
+
+  # Repo-native project skills live under .claude/skills/ (Claude Code) and
+  # .agents/skills/ (Codex CLI). Runs the skill validator against all three
+  # locations (skills/, .claude/skills/, .agents/skills/) and verifies the two
+  # project-skill trees stay byte-identical mirrors of each other. Fires on
+  # any change to the skill dirs or the two validating scripts.
+  project-skills-check:
+    name: "Skills: project-native lint + mirror"
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Lint SKILL.md files across skills/, .claude/skills/, .agents/skills/
+        run: bun scripts/lint-skills.ts
+      - name: Verify .claude/skills/ and .agents/skills/ are byte-identical
+        run: node scripts/check-skill-mirror.mjs
+
+  codex-plugin-package:
+    name: "Codex plugin package"
+    needs: changes
+    if: needs.changes.outputs.codex_plugin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Build upload-ready Codex plugin
+        run: node scripts/package-codex-plugin.mjs
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"
@@ -304,7 +447,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         if: runner.os != 'Windows'
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bash scripts/ci/install-workspace-dependencies.sh --ignore-scripts
       - name: Install dependencies
         if: runner.os == 'Windows'
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
@@ -319,7 +462,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
       # imports resolve via the "node" export condition (dist) under vitest.
       - run: bun run --filter '@hyperframes/parsers' build
@@ -341,7 +484,10 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      # Runtime coverage now imports core modules that consume workspace
+      # subpaths. Build their dist exports before Vitest resolves them.
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --filter @hyperframes/core test:hyperframe-runtime-ci
 
   studio-load-smoke:
@@ -359,7 +505,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the studio vite.config.ts (loaded by Node) can
       # resolve @hyperframes/core and @hyperframes/studio-server via the "node"
       # export condition (dist).
@@ -386,84 +532,117 @@ jobs:
 
           # Load the studio in headless Chrome with API mocking to trigger
           # the full splash→main transition (catches hooks-after-early-return bugs)
-          cd packages/producer
-          node --input-type=module <<'SMOKE_EOF'
-          import puppeteer from "puppeteer";
-          const browser = await puppeteer.launch({
-            headless: "new",
-            args: ["--no-sandbox", "--disable-setuid-sandbox"],
-          });
-          const page = await browser.newPage();
-          const errors = [];
-          page.on("pageerror", (err) => errors.push(err.message));
-          page.on("console", (msg) => {
-            if (msg.type() === "error") errors.push(msg.text());
-          });
-
-          // Mock the project API so the studio transitions past the splash screen.
-          // Without this, useServerConnection stays in "waiting" and the full React
-          // tree (with all hooks) never renders — missing hooks-order violations.
-          const COMP_HTML = '<div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1" data-start="0"><div class="clip" data-start="0" data-duration="1">Test</div></div>';
-          await page.setRequestInterception(true);
-          page.on("request", (req) => {
-            const url = req.url();
-            if (url.includes("/api/projects") && !url.includes("/files") && !url.includes("/preview") && !url.includes("/gsap")) {
-              req.respond({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({ projects: [{ id: "smoke-test" }] }),
-              });
-            } else if (url.includes("/api/") && url.includes("/files")) {
-              req.respond({
-                status: 200,
-                contentType: "application/json",
-                body: JSON.stringify({ files: [{ path: "index.html", type: "file" }] }),
-              });
-            } else if (url.includes("/api/") && url.includes("/preview")) {
-              req.respond({ status: 200, contentType: "text/html", body: COMP_HTML });
-            } else if (url.includes("/api/")) {
-              req.respond({ status: 200, contentType: "application/json", body: JSON.stringify({}) });
-            } else {
-              req.continue();
-            }
-          });
-
-          await page.goto("http://localhost:5199/#project=smoke-test", {
-            waitUntil: "networkidle0",
-            timeout: 30000,
-          });
-          // Wait for React to render past splash into the full studio UI
-          await new Promise((r) => setTimeout(r, 3000));
-
-          // Check for React error boundary (catches hooks violations, render crashes)
-          const errorBoundary = await page.evaluate(() => {
-            const text = document.body.innerText;
-            if (text.includes("Something went wrong")) return text;
-            return null;
-          });
-          if (errorBoundary) {
-            errors.push("React error boundary triggered: " + errorBoundary);
-          }
-          await browser.close();
-          // Filter expected noise from mock endpoints
-          const fatal = errors.filter(
-            (e) =>
-              !e.includes("favicon") &&
-              !e.includes("ERR_CONNECTION_REFUSED") &&
-              !e.includes("Failed to fetch") &&
-              !e.includes("is not iterable") &&
-              !e.includes("Cannot read properties of undefined") &&
-              !e.includes("Cannot read properties of null"),
-          );
-          if (fatal.length > 0) {
-            console.error("FAIL: studio had runtime errors:");
-            for (const e of fatal) console.error("  •", e);
-            process.exit(1);
-          }
-          console.log("PASS: studio loaded and transitioned without runtime errors");
-          SMOKE_EOF
+          node scripts/studio-runtime-smoke.mjs http://localhost:5199/#project=smoke-test
 
           kill $SERVER_PID 2>/dev/null || true
+
+  studio-timeline-viewport:
+    name: "Studio: timeline viewport gate"
+    needs: [changes]
+    if: needs.changes.outputs.studio == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
+      # resolves the workspace packages through their "node" export condition.
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Install the fixture as a Studio project
+        # Studio resolves projects from packages/studio/data/projects, which is
+        # gitignored. The fixture composition is tracked under tests/e2e, so
+        # copy it into place rather than committing a project directory.
+        run: |
+          mkdir -p packages/studio/data/projects
+          cp -R packages/studio/tests/e2e/fixtures/timeline-virtualization \
+            packages/studio/data/projects/timeline-virtualization
+      - name: Run both arms of the timeline viewport gate
+        run: |
+          set -euo pipefail
+
+          SERVER_PID=""
+          stop_server() {
+            if [[ -n "$SERVER_PID" ]]; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+              SERVER_PID=""
+            fi
+          }
+          wait_for_server() {
+            local port="$1"
+            for i in $(seq 1 60); do
+              if curl -sf "http://localhost:${port}/" >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            echo "FAIL: studio dev server did not start on port ${port}"
+            return 1
+          }
+          trap stop_server EXIT
+
+          # Run one server at a time so the measured browser never competes with
+          # a second Vite module graph on the shared runner. The development
+          # server supplies the fixture API; production React matches shipped
+          # rendering behavior, and the gate asserts that runtime before timing.
+          NODE_ENV=production \
+            bun run --cwd packages/studio dev -- --port 5313 --strictPort &
+          SERVER_PID=$!
+          DEFAULT_STATUS=0
+          if wait_for_server 5313; then
+            STUDIO_URL="http://localhost:5313/#project/timeline-virtualization" \
+              TIMELINE_ROW_VIRTUALIZATION=on \
+              TIMELINE_ELEMENT_COUNT=50000 \
+              TIMELINE_TIER=ci \
+              node packages/studio/tests/e2e/timeline-virtualization.mjs \
+              | tee /tmp/timeline-gate-default.json \
+              || DEFAULT_STATUS=$?
+          else
+            DEFAULT_STATUS=1
+          fi
+          stop_server
+
+          NODE_ENV=production \
+            VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=0 \
+            bun run --cwd packages/studio dev -- --port 5314 --strictPort &
+          SERVER_PID=$!
+          DISABLED_STATUS=0
+          if wait_for_server 5314; then
+            STUDIO_URL="http://localhost:5314/#project/timeline-virtualization" \
+              TIMELINE_ROW_VIRTUALIZATION=off \
+              TIMELINE_ELEMENT_COUNT=1000 \
+              TIMELINE_TIER=ci \
+              node packages/studio/tests/e2e/timeline-virtualization.mjs \
+              | tee /tmp/timeline-gate-disabled.json \
+              || DISABLED_STATUS=$?
+          else
+            DISABLED_STATUS=1
+          fi
+          stop_server
+
+          {
+            echo "### Timeline viewport gate"
+            echo "- Default arm exit: ${DEFAULT_STATUS}"
+            echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 )); then
+            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
+            exit 1
+          fi
+      - name: Upload gate evidence
+        # The gate's whole output is machine-readable evidence, and a red run is
+        # exactly when someone needs to read it. Keep it on failure too.
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: timeline-viewport-gate-evidence
+          path: /tmp/timeline-gate-*.json
+          if-no-files-found: error
 
   smoke-global-install:
     name: "Smoke: global install"
@@ -480,7 +659,7 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
-      - run: bun install --frozen-lockfile
+      - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
 
       # Pack the CLI as a tarball (simulates what `npm publish` produces)
@@ -552,12 +731,10 @@ jobs:
         with:
           node-version: 22
       - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-workspace-dependencies.sh
       - name: Build monorepo
         run: bun run build
 
@@ -600,6 +777,13 @@ jobs:
             --output /tmp/hf-cli-inside/renders/inside.mp4 2>&1 | tee /tmp/hf-cli-render.log
 
           test -s /tmp/hf-cli-inside/renders/inside.mp4
+
+      # Belongs in this job because it needs the BUILT CLI: `shouldTrack()`
+      # short-circuits whenever `isDevMode()` is true, which it is for any `.ts`
+      # entry, so under vitest a real event and no event look identical. Sends
+      # nothing to PostHog — the script wraps fetch and captures the batch.
+      - name: Smoke-test `add` telemetry end to end
+        run: node scripts/ci/cli-telemetry-e2e.mjs
 
       - name: Assert page.goto completes under 5s budget
         run: |

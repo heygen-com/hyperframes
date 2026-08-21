@@ -3,13 +3,24 @@ import { useMountEffect } from "./useMountEffect";
 import {
   installStudioManualEditSeekReapply,
   reapplyPositionEditsAfterSeek,
-  readStudioFileChangePath,
 } from "../components/editor/manualEdits";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
-import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
+import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
+import {
+  flushStudioPendingEdits,
+  type StudioPendingEditsDrainResult,
+} from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
+import { usePlayerStore } from "../player";
+import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+
+/** The restore payload the undo/redo preview-sync consumes (from the history store). */
+interface HistoryPreviewRestore {
+  paths?: string[];
+  files?: Record<string, UndoRestoreFile>;
+}
 
 // ── Types ──
 
@@ -21,19 +32,12 @@ interface RecordEditInput {
 }
 
 interface UsePreviewPersistenceParams {
-  projectId: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   readOptionalProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
-  /** Shared timestamp ref — written by any studio save (code tab, timeline, DOM edits).
-   *  Used to suppress file-change echoes so we don't reload after our own saves. */
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  /** Tracks in-flight timeline edits that patch the iframe DOM directly. File-change
-   *  events for these paths are always suppressed since the preview is already up-to-date. */
-  pendingTimelineEditPathRef?: React.MutableRefObject<Set<string>>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
 }
@@ -63,19 +67,13 @@ function installManualEditReapply(iframe: HTMLIFrameElement): void {
   }
 }
 
-function shouldReloadForStudioFileChange(
-  payload: unknown,
-  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>> | undefined,
-  domEditSaveTimestampRef: React.MutableRefObject<number>,
-): boolean {
-  const changedPath = readStudioFileChangePath(payload);
-  if (!changedPath) return false;
-  const pendingTimelinePaths = pendingTimelineEditPathRef?.current;
-  if (pendingTimelinePaths?.has(changedPath)) {
-    pendingTimelinePaths.delete(changedPath);
-    return false;
-  }
-  return Date.now() - domEditSaveTimestampRef.current >= 4000;
+export async function drainStudioSaveQueues(
+  flushPendingFields: () => Promise<StudioPendingEditsDrainResult>,
+  waitForDomQueue: () => Promise<DomEditSaveDrainResult>,
+): Promise<StudioPendingEditsDrainResult | DomEditSaveDrainResult> {
+  const pending = await flushPendingFields();
+  if (pending.status !== "clean") return pending;
+  return waitForDomQueue();
 }
 
 // fallow-ignore-next-line complexity
@@ -99,19 +97,15 @@ async function clearLegacyStudioMotionFile(
 // ── Hook ──
 
 export function usePreviewPersistence({
-  projectId,
   showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
   previewIframeRef,
-  activeCompPathRef: _activeCompPathRef,
-  domEditSaveTimestampRef,
+  activeCompPathRef,
   reloadPreview,
-  pendingTimelineEditPathRef,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
-  void _activeCompPathRef;
 
   const [domEditSaveQueuePaused, setDomEditSaveQueuePaused] = useState<string | null>(null);
 
@@ -126,7 +120,10 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message = "Auto-save is paused. Check your connection.";
+        const message =
+          event.statusCode === 409
+            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+            : "Auto-save is paused. Check your connection.";
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
         trackStudioEvent("save_queue_paused", {
@@ -142,21 +139,22 @@ export function usePreviewPersistence({
     });
   }
 
-  // Keep a ref to the latest projectId so async save callbacks always read the
-  // current value, even when the callback was captured in a stale closure.
-  const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
-
   // ── Queue / drain helpers ──
 
-  const queueDomEditSave = useCallback((save: () => Promise<void>) => {
+  const queueDomEditSave = useCallback(<T>(save: () => Promise<T>): Promise<T> => {
     return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 
-  const waitForPendingDomEditSaves = useCallback(async () => {
-    await flushStudioPendingEdits();
-    await domEditSaveQueueRef.current?.waitForIdle();
+  const drainPendingDomEditSaves = useCallback(async () => {
+    return drainStudioSaveQueues(flushStudioPendingEdits, async () => {
+      return (await domEditSaveQueueRef.current?.waitForIdle()) ?? { status: "clean" as const };
+    });
   }, []);
+
+  const waitForPendingDomEditSaves = useCallback(async (): Promise<void> => {
+    const result = await drainPendingDomEditSaves();
+    if (result.status !== "clean") throw result.error;
+  }, [drainPendingDomEditSaves]);
 
   const resetDomEditSaveQueueBreaker = useCallback(() => {
     domEditSaveQueueRef.current?.reset();
@@ -190,12 +188,35 @@ export function usePreviewPersistence({
   // ── Sync preview after undo/redo ──
 
   const syncHistoryPreviewAfterApply = useCallback(
-    async (_paths: string[] | undefined) => {
-      // Motion data is now stored in HTML attributes — any undo/redo that touches HTML
-      // files triggers a full reload which picks up the changes automatically.
-      reloadPreview();
+    async (restore: HistoryPreviewRestore) => {
+      // Prefer an in-place soft reload for a soft-reloadable restore (the change
+      // is confined to the active comp's element attributes / inline-style and/or
+      // its GSAP script) — a full iframe remount blanks the frame black and
+      // re-flashes the WebGL context. applyUndoRestoreToPreview syncs the reverted
+      // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
+      // falling back to reloadPreview for anything structural (split/delete undo),
+      // multi-file, sub-comp, or a permanent soft-reload failure.
+      const strategy = applyUndoRestoreToPreview(
+        previewIframeRef.current,
+        activeCompPathRef.current,
+        restore.files,
+        usePlayerStore.getState().currentTime,
+        reloadPreview,
+      );
+      if (strategy === "full") {
+        const player = usePlayerStore.getState();
+        player.setElements([]);
+        player.setSelectedElementId(null);
+        player.setTimelineReady(false);
+        return;
+      }
+      // A soft restore patched the reverted attributes onto the live preview, but the
+      // player store keeps its own copy and that copy is what the automation lanes
+      // draw — so without this an undone envelope edit stayed invisible until a
+      // reload. The full path above clears the store and waits for discovery instead.
+      syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
     },
-    [reloadPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview],
   );
 
   // ── Migrate legacy studio-motion.json ──
@@ -208,35 +229,12 @@ export function usePreviewPersistence({
     void clearLegacyStudioMotionFile(_readOptionalProjectFile, _writeProjectFile);
   });
 
-  // ── Listen for external file changes (HMR / SSE) ──
-  useMountEffect(() => {
-    const handler = (payload?: unknown) => {
-      if (
-        shouldReloadForStudioFileChange(
-          payload,
-          pendingTimelineEditPathRef,
-          domEditSaveTimestampRef,
-        )
-      ) {
-        // fallow-ignore-next-line code-duplication
-        reloadPreview();
-      }
-    };
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", handler);
-      return () => import.meta.hot?.off?.("hf:file-change", handler);
-    }
-    // SSE fallback for embedded studio server
-    const es = new EventSource("/api/events");
-    es.addEventListener("file-change", handler);
-    return () => es.close();
-  });
-
   return {
     domTextCommitVersionRef,
     domEditSaveQueueRef,
     applyStudioManualEditsToPreviewRef,
     queueDomEditSave,
+    drainPendingDomEditSaves,
     waitForPendingDomEditSaves,
     domEditSaveQueuePaused,
     resetDomEditSaveQueueBreaker,

@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
@@ -56,7 +57,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
       trackCommandFailure("browser", err);
       clack.log.error(err instanceof Error ? err.message : String(err));
       clack.outro(c.warn("Manual setup required (see instructions above)."));
-      process.exit(1);
+      failCommand();
     }
     return;
   }
@@ -134,7 +135,7 @@ async function runPath(): Promise<void> {
     } catch (err: unknown) {
       trackCommandFailure("browser", err);
       console.error(err instanceof Error ? err.message : "Failed to find browser");
-      process.exit(1);
+      failCommand();
     }
     return;
   }
@@ -203,7 +204,7 @@ ${c.bold("EXAMPLES:")}
         console.error(
           `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
         );
-        process.exit(1);
+        failCommand();
     }
   },
 });

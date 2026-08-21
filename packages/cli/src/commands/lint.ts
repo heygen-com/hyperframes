@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -11,6 +12,8 @@ export const examples: Example[] = [
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { lintProject } from "../utils/lintProject.js";
 import { resolveProject } from "../utils/project.js";
+import { trackLintRun } from "../telemetry/lintRun.js";
+import { getRunId } from "../telemetry/runId.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export default defineCommand({
@@ -44,7 +47,13 @@ export default defineCommand({
     // (publish/transcribe/upgrade/play/present) already use.
     try {
       const project = resolveProject(args.dir);
+      const startedAt = Date.now();
       const lintResult = await lintProject(project.dir);
+      trackLintRun(project.dir, lintResult, {
+        command: "lint",
+        durationMs: Date.now() - startedAt,
+        ...(getRunId() !== undefined ? { runId: getRunId() } : {}),
+      });
 
       if (args.json) {
         const allFindings = lintResult.results.flatMap((r) => r.result.findings);
@@ -57,7 +66,7 @@ export default defineCommand({
           filesScanned: lintResult.results.length,
         };
         console.log(JSON.stringify(withMeta(combined), null, 2));
-        process.exitCode = combined.ok ? 0 : 1;
+        setCommandExitCode(combined.ok ? 0 : 1);
         return;
       }
 
@@ -79,7 +88,7 @@ export default defineCommand({
       });
       for (const line of lines) console.log(line);
 
-      process.exitCode = lintResult.totalErrors > 0 ? 1 : 0;
+      setCommandExitCode(lintResult.totalErrors > 0 ? 1 : 0);
       return;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -99,11 +108,11 @@ export default defineCommand({
             2,
           ),
         );
-        process.exitCode = 1;
+        setCommandExitCode(1);
         return;
       }
       console.error(message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
     }
   },
 });

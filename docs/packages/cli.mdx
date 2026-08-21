@@ -1,73 +1,51 @@
 ---
 title: CLI
+sidebarTitle: "CLI reference"
 description: "Create, preview, and render HTML video compositions from the command line."
 ---
 
-The `hyperframes` CLI is the primary way to work with Hyperframes. It handles project creation, live preview, rendering, linting, and diagnostics — all from your terminal.
+This page lists every command and every flag. If you are still deciding which
+command you need, the [CLI guide](/developers/cli) is the shorter route.
+
+The installed version is always the authority. Run
+`npx hyperframes <command> --help` to see exactly what your copy accepts.
 
 ```bash
-npm install -g hyperframes
-# or use directly with npx
+# No install needed
 npx hyperframes <command>
+
+# Or install once
+npm install -g hyperframes
 ```
 
-## When to Use
+## Find your command
 
-**Use the CLI when you want to:**
-- Capture a website for video production (`capture`)
-- Create a new composition project from an example (`init`)
-- Preview compositions with live hot reload (`preview`)
-- Render compositions to MP4 locally or in Docker (`render`)
-- Lint compositions for structural issues (`lint`)
-- Inspect rendered visual layout for text overflow, clipped containers, and overlapping text, plus verify motion intent against the seeked timeline (`inspect`)
-- Capture key frames as PNG screenshots (`snapshot`)
-- Check your environment for missing dependencies (`doctor`)
+| You want to              | Use                                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                          |
+| Bring in source material | [`capture`](#capture), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`normalize-audio`](#normalize-audio) |
+| Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish)                                                                                       |
+| Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                  |
+| Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                  |
+| Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                             |
+| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions)                                  |
+| Connect other tools      | [`auth`](#hyperframes-auth), [`skills`](#skills), [`figma`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                              |
 
-**Use a different package if you want to:**
-- Render programmatically from Node.js code — use the [producer](/packages/producer)
-- Build a custom frame capture pipeline — use the [engine](/packages/engine)
-- Embed a composition editor in your own web app — use the [studio](/packages/studio)
-- Parse or generate composition HTML in code — use [core](/packages/core)
+`validate`, `inspect`, and `layout` still work but are
+[deprecated](#deprecated-validate-inspect-and-layout). Use `check` instead.
 
-<Tip>
-  The CLI is the recommended starting point for all Hyperframes users. It wraps the producer, engine, and studio packages so you do not need to install them separately.
-</Tip>
+## What every command shares
 
-## Agent-Friendly by Default
+Read this once and skip the repetition below.
 
-The CLI is **agent-friendly by default**: commands support explicit flags and parseable output so automation can run reliably.
+**The project directory.** Most commands take it as the first argument and
+default to the current directory: `npx hyperframes check ./my-video`. A few
+take it as a flag instead — `add`, `transcribe`, `feedback`, and `skills` use
+`--dir`.
 
-- Inputs can be passed via flags (for example, `--example`, `--video`, `--output`)
-- Missing required flags fail fast with a clear error and usage example
-- Output is plain text suitable for parsing
-
-Interactivity is command-specific. For example, `init` uses prompts on TTY by default; pass `--non-interactive` to force non-interactive mode.
-
-`--human-friendly` is also command-specific (for example, `catalog`). It is not a global flag on every command.
-
-<Tabs>
-  <Tab title="Agent mode (default)">
-    ```bash
-    # Fully non-interactive — all inputs from flags
-    npx hyperframes init my-video --example blank --video video.mp4
-    npx hyperframes render --output output.mp4 --fps 30 --quality standard
-    npx hyperframes upgrade --check --json
-    ```
-  </Tab>
-  <Tab title="Human mode">
-    ```bash
-    # Command-specific interactive flow
-    npx hyperframes init my-video
-
-    # Interactive picker supported by catalog
-    npx hyperframes catalog --human-friendly
-    ```
-  </Tab>
-</Tabs>
-
-### JSON Output and `_meta` Envelope
-
-All commands that support `--json` wrap their output with a `_meta` field containing version check info:
+**`--json` for agents and scripts.** Almost every command accepts it. The
+payload is wrapped with a `_meta` field so a script can spot an outdated CLI
+from any command's output, without a second call:
 
 ```json
 {
@@ -81,1022 +59,1304 @@ All commands that support `--json` wrap their output with a `_meta` field contai
 }
 ```
 
-This allows agents to detect outdated versions from any command's output without running a separate upgrade check. The version data comes from a 24-hour cache — no network request is made during `--json` output.
+The version numbers come from a cache refreshed at most once a day. `--json`
+never makes a network request of its own. Deprecated commands add
+`_meta.deprecated: true`.
 
-### Passive Update Notices
+**Flags, not prompts.** A missing required flag fails immediately with a usage
+example rather than waiting for input. Two commands are interactive on a TTY:
+`init` prompts for a project name and example unless you pass
+`--non-interactive`, and `catalog --human-friendly` opens a picker. Nothing else
+prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
-The CLI checks npm for newer versions in the background (cached 24 hours). If an update is available, a notice appears on stderr after command completion:
+**Version notices.** An owned install (npm, bun, pnpm, brew) updates itself
+quietly in the background and prints one line on the next run:
+`hyperframes auto-updated to v0.1.5`. It never crosses a major version. Anywhere
+it cannot install — `npx`, an unknown installer — you get a notice instead:
 
 ```
   Update available: 0.1.4 → 0.1.5
   Run: npx hyperframes@latest
 ```
 
-This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_UPDATE_CHECK=1` is set.
-
-## Getting Started
-
-<Steps>
-  <Step title="Create a project">
-    Scaffold a new composition from an example:
-    ```bash
-    npx hyperframes init --example warm-grain
-    ```
-    You will be prompted for a project name, or pass it as an argument:
-    ```bash
-    npx hyperframes init my-video --example warm-grain
-    ```
-    See [Examples](/examples) for all available examples.
-  </Step>
-  <Step title="Preview in browser">
-    Start the development server with live hot reload:
-    ```bash
-    cd my-video
-    npx hyperframes preview
-    ```
-    The Hyperframes Studio opens in your browser. Edit `index.html` and the preview updates instantly.
-  </Step>
-  <Step title="Lint your composition">
-    Check for structural issues before rendering:
-    ```bash
-    npx hyperframes lint
-    ```
-    ```
-    ◆  Linting my-project/index.html
-
-    ◇  0 errors, 0 warnings
-    ```
-  </Step>
-  <Step title="Render to MP4">
-    Produce the final video:
-    ```bash
-    npx hyperframes render --output output.mp4
-    ```
-    Render a specific composition instead of `index.html`:
-    ```bash
-    npx hyperframes render -c compositions/intro.html -o intro.mp4
-    ```
-    For deterministic output, add `--docker`:
-    ```bash
-    npx hyperframes render --docker --output output.mp4
-    ```
-  </Step>
-</Steps>
-
-## Commands
-
-<Tabs>
-  <Tab title="Create">
-    ### `init`
-
-    Create a new composition project from an example:
-
-    ```bash
-    # Agent mode (default) — --example is required
-    npx hyperframes init my-video --example blank --video video.mp4
-
-    # Include Tailwind CSS browser-runtime support
-    npx hyperframes init my-video --example blank --tailwind
-
-    # Human mode — interactive prompts on TTY by default
-    npx hyperframes init my-video
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--example, -e` | Example to scaffold (required in default mode, interactive in `--human-friendly`) |
-    | `--resolution` | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
-    | `--video, -V` | Path to a video file (MP4, WebM, MOV) |
-    | `--audio, -a` | Path to an audio file (MP3, WAV, M4A) |
-    | `--tailwind` | Add Tailwind CSS browser-runtime support to scaffolded HTML |
-    | `--skip-skills` | Skip AI coding skills installation |
-    | `--skip-transcribe` | Skip automatic whisper transcription |
-    | `--model` | Whisper model for transcription (e.g. `small.en`, `medium.en`, `large-v3`) |
-    | `--language` | Language code for transcription (e.g. `en`, `es`, `ja`). Filters non-target speech. |
-
-    | Example | Description |
-    |----------|-------------|
-    | `blank` | Empty composition — just the scaffolding |
-    | `warm-grain` | Cream aesthetic with grain texture |
-    | `play-mode` | Playful elastic animations |
-    | `swiss-grid` | Structured grid layout |
-    | `vignelli` | Bold typography with red accents |
-
-    In non-interactive mode, `--example` is required — the CLI errors with a usage example if missing. In interactive mode (default on TTY), you choose the example interactively. Pass `--non-interactive` to require `--example` via flag. When `--video` or `--audio` is provided, the CLI automatically transcribes the audio with Whisper and patches captions into the composition (use `--skip-transcribe` to disable).
-
-    `--tailwind` injects the pinned Tailwind v4 browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. Use the `/hyperframes-core` skill when editing these projects so agents follow v4 CSS-first patterns instead of v3 `tailwind.config.js` and `@tailwind` directive patterns. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
-
-    After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
-
-    See [Examples](/examples) for full details.
-
-    ### `add`
-
-    Install a **block** or **component** from the registry into an existing project. Examples (full projects) are scaffolded with [`init`](#init); blocks and components are smaller units you add to a composition you already have.
-
-    ```bash
-    # Add a block (sub-composition scene)
-    npx hyperframes add claude-code-window
-
-    # Add a component (effect / snippet)
-    npx hyperframes add shader-wipe
-
-    # Target a different project dir
-    npx hyperframes add shader-wipe --dir ./my-video
-
-    # Headless / CI (skip clipboard; also: --json for a machine-readable result)
-    npx hyperframes add shader-wipe --no-clipboard --json
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `<name>` (positional) | Registry item name (e.g. `claude-code-window`, `shader-wipe`) |
-    | `--dir` | Project directory (defaults to the current working directory) |
-    | `--no-clipboard` | Skip copying the include snippet to the clipboard |
-    | `--json` | Print a machine-readable summary (written files + snippet) to stdout |
-
-    `add` reads [`hyperframes.json`](#hyperframes-json) at the project root to know which registry to pull from and where to drop files. If the file is missing but the directory looks like a Hyperframes project (has `index.html`), a default `hyperframes.json` is written the first time you run `add`.
-
-    Output for a block or component is a set of files plus a **paste snippet** — the `<iframe>` tag (for blocks) or the fragment path (for components) to include in your host composition. The snippet is copied to the clipboard by default; add `--no-clipboard` for CI or headless environments.
-
-    Trying `add` with an example's name (e.g. `hyperframes add warm-grain`) emits a clear error pointing you at `init --example`.
-
-    ### `catalog`
-
-    Browse the registry — list available blocks and components with optional filters:
-
-    ```bash
-    # List everything (default: table output)
-    npx hyperframes catalog
-
-    # Filter by type or tag
-    npx hyperframes catalog --type block
-    npx hyperframes catalog --type block --tag social
-
-    # Machine-readable JSON
-    npx hyperframes catalog --json
-
-    # Interactive picker — select to install
-    npx hyperframes catalog --human-friendly
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--type` | Filter by `block` or `component` |
-    | `--tag` | Filter by tag (e.g. `social`, `transition`, `text`) |
-    | `--json` | Print matching items as JSON (non-interactive) |
-    | `--human-friendly` | Interactive picker — select an item to install it |
-
-    Default output is a table listing name, type, description, and tags — designed for agents to parse. `--json` produces structured output. `--human-friendly` opens an interactive picker that runs `add` on selection.
-
-    ### `compositions`
-
-    List all compositions in the current project:
-
-    ```bash
-    npx hyperframes compositions
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output as JSON |
-
-    Shows each composition's ID, duration, resolution, and element count.
-
-    ### `transcribe`
-
-    Transcribe audio/video to word-level timestamps, or import an existing transcript:
-
-    ```bash
-    # Transcribe audio/video with local whisper.cpp
-    npx hyperframes transcribe audio.mp3
-    npx hyperframes transcribe video.mp4 --model medium.en --language en
-
-    # Import existing transcripts from other tools
-    npx hyperframes transcribe subtitles.srt
-    npx hyperframes transcribe captions.vtt
-    npx hyperframes transcribe openai-response.json
-
-    # Export caption sidecars from transcript.json
-    npx hyperframes transcribe transcript.json --to srt
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--dir, -d` | Project directory (default: current directory) |
-    | `--model, -m` | Whisper model (default: `small.en`). Options: `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3` |
-    | `--language, -l` | Language code (e.g. `en`, `es`, `ja`). Filters out non-target language speech. |
-    | `--to` | Export transcript sidecar format: `srt` or `vtt` |
-    | `--output, -o` | Output path for exported SRT/VTT sidecar |
-    | `--preserve-cues` | Keep each transcript entry as its own caption cue (skip word-level grouping) |
-    | `--json` | Output result as JSON |
-
-    The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported. Pass `--to srt` or `--to vtt` with a transcript input to write a caption sidecar instead.
-
-    **Supported transcript formats:**
-
-    | Format | Source |
-    |--------|--------|
-    | whisper.cpp JSON | `hyperframes init --video`, `hyperframes transcribe` |
-    | OpenAI Whisper API JSON | `openai.audio.transcriptions.create()` with word timestamps |
-    | SRT subtitles | Video editors, YouTube, subtitle tools |
-    | VTT subtitles | Web players, YouTube, transcription services |
-
-    All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data. Sidecar export reads the same normalized transcript and writes `transcript.srt` or `transcript.vtt` by default.
-
-Word-level transcripts (whisper output) are grouped into readable caption cues on sentence boundaries. Exporting directly from an `.srt`/`.vtt` source keeps its cue boundaries unchanged. When exporting from a `transcript.json` whose entries are already finished cues with no internal spaces (single-word or CJK captions), pass `--preserve-cues` to keep them one cue per entry.
-
-    <Tip>
-      For music or noisy audio, use `--model medium.en` for better accuracy. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
-    </Tip>
-
-    ### `tts`
-
-    Generate speech audio from text using a local AI model (Kokoro-82M). No API key required — runs entirely on-device.
-
-    ```bash
-    # Generate speech from text
-    npx hyperframes tts "Welcome to HyperFrames"
-
-    # Choose a voice
-    npx hyperframes tts "Hello world" --voice am_adam
-
-    # Save to a specific file
-    npx hyperframes tts "Intro" --voice bf_emma --output narration.wav
-
-    # Adjust speech speed
-    npx hyperframes tts "Slow and clear" --speed 0.8
-
-    # Generate Spanish speech (lang auto-detected from the `e` voice prefix)
-    npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav
-
-    # Override the phonemizer (read English text with a French voice)
-    npx hyperframes tts "Bonjour le monde" --voice af_heart --lang fr-fr
-
-    # Read text from a file
-    npx hyperframes tts script.txt
-
-    # List available voices
-    npx hyperframes tts --list
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--output, -o` | Output file path (default: `speech.wav` in current directory) |
-    | `--voice, -v` | Voice ID (run `--list` to see options) |
-    | `--speed, -s` | Speech speed multiplier (default: 1.0) |
-    | `--lang, -l` | Phonemizer locale (`en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`). When omitted, inferred from the voice ID prefix. |
-    | `--list` | List available voices and exit |
-    | `--json` | Output result as JSON |
-
-    <Tip>
-      Voice IDs encode the phonemizer language in their first letter (`a`=American, `b`=British, `e`=Spanish, `f`=French, `h`=Hindi, `i`=Italian, `j`=Japanese, `p`=Brazilian Portuguese, `z`=Mandarin). `--lang` is only needed when you want to override that — for example, giving English text a French phonemizer for a stylized accent.
-    </Tip>
-
-    <Tip>
-      Combine `tts` with `transcribe` to generate narration and word-level timestamps for captions in a single workflow: generate the audio with `tts`, then transcribe the output with `transcribe` to get word-level timing.
-    </Tip>
-
-    ### `remove-background`
-
-    Remove the background from a video or image using a local AI model. The output is transparent media you can drop into any composition's `<video>` or `<img>` element — no green screen required.
-
-    ```bash
-    # Default: VP9-with-alpha WebM (HTML5-native, ~1 MB / 4s @ 1080p)
-    npx hyperframes remove-background avatar.mp4 -o transparent.webm
-
-    # ProRes 4444 .mov for editing round-trip
-    npx hyperframes remove-background avatar.mp4 -o transparent.mov
-
-    # Single image → transparent PNG
-    npx hyperframes remove-background portrait.jpg -o cutout.png
-
-    # Layer separation: cutout AND inverse-alpha background plate in one pass
-    npx hyperframes remove-background avatar.mp4 \
-      -o subject.webm --background-output plate.webm
-
-    # Force CPU on a machine that has CoreML or CUDA
-    npx hyperframes remove-background avatar.mp4 -o transparent.webm --device cpu
-
-    # Inspect detected providers without rendering
-    npx hyperframes remove-background --info
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--output, -o` | Output path. Format inferred from extension: `.webm` (default), `.mov`, `.png` |
-    | `--background-output, -b` | Optional second output: inverse-alpha background plate (subject region transparent, surroundings opaque). Same source RGB, complementary mask. Must be `.webm` or `.mov`. Hole-cut, not inpainted — composite something underneath to fill the hole. |
-    | `--device` | Execution provider: `auto` (default), `cpu`, `coreml`, `cuda` |
-    | `--quality` | WebM encoder preset: `fast` (crf 30, smallest), `balanced` (crf 18, default), `best` (crf 12, near-lossless). Higher quality keeps the cutout's RGB closer to the source mp4 — important when overlaying the cutout on its own source for text-behind-subject effects. Applies to both `--output` and `--background-output`. Ignored for `.mov` / `.png`. |
-    | `--info` | Print detected execution providers and exit (no render) |
-    | `--json` | Output result as JSON |
-
-    The model is `u2net_human_seg` (MIT, ~168 MB ONNX). Weights download to `~/.cache/hyperframes/background-removal/models/` on first run and are reused thereafter. Peak inference RAM is ~1.5 GB.
-
-    `--device auto` picks CoreML on Apple Silicon, CUDA when available, and CPU otherwise. The CLI bundles the CPU build of `onnxruntime-node`; for CUDA, set `HYPERFRAMES_CUDA=1` and provide a GPU-enabled `onnxruntime-node` build.
-
-    Output formats:
-
-    | Format | Use case | Size (4s @ 1080p) |
-    |--------|----------|-------------------|
-    | `.webm` (VP9 alpha) | Drop into `<video>` for HTML5-native transparent playback | ~1 MB |
-    | `.mov` (ProRes 4444) | Editing round-trip in Premiere / Resolve / DaVinci | ~50 MB |
-    | `.png` | Single-image cutout | varies |
-
-    <Tip>
-      The `<video>` element in Chrome only respects the alpha plane when the WebM is encoded as `yuva420p` with the `alpha_mode=1` metadata tag. The CLI sets both automatically — if you re-encode the output yourself, preserve those flags.
-    </Tip>
-
-    See the [Remove Background guide](/guides/remove-background) for the full workflow — using transparent videos in compositions, performance per platform, limitations of `u2net_human_seg`, and free alternative tools when this model isn't the right fit.
-
-    ### `capture`
-
-    Capture a website — extract screenshots, design tokens, fonts, assets, and animations for video production:
-
-    ```bash
-    npx hyperframes capture https://stripe.com
-    npx hyperframes capture https://linear.app -o linear-capture
-    npx hyperframes capture https://example.com --json
-    ```
-
-    ```
-    ◇  Captured Stripe | Financial Infrastructure → capture
-
-      Screenshots: 12
-      Assets: 45
-      Sections: 15
-      Fonts: sohne-var
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `-o, --output` | Output directory (default: `./capture`; auto-suffixes to `./capture-2/`, `./capture-3/`, … if `./capture/` is taken) |
-    | `--timeout` | Page load timeout in ms (default: 120000) |
-    | `--skip-assets` | Skip downloading images and fonts |
-    | `--max-screenshots` | Maximum screenshot count (default: 24) |
-    | `--json` | Output structured JSON for programmatic use |
-
-    The capture command extracts everything an AI agent needs to understand a website's visual identity: viewport screenshots at every scroll depth, color palette (pixel-sampled + DOM computed), font files, images with semantic names, SVGs, Lottie animations, video previews, WebGL shaders, visible text, and page structure.
-
-    Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/website-to-video` skill as step 1 of the video production pipeline.
-
-    Set `GEMINI_API_KEY` in a `.env` file for AI-powered image descriptions via Gemini vision (~$0.001/image), or set `OPENROUTER_API_KEY` to use any vision model through [OpenRouter](https://openrouter.ai) instead (takes priority if both are set; override the model with `HYPERFRAMES_OPENROUTER_MODEL`). See the [Website to Video](/guides/website-to-video#enriching-captures-with-gemini-vision) guide for details.
-
-  </Tab>
-  <Tab title="Preview">
-    ### `preview`
-
-    Start a live preview server with hot reload:
-
-    ```bash
-    npx hyperframes preview [dir]
-    npx hyperframes preview --port 4567
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--port` | Port to run the preview server on (default: 3002) |
-
-    Opens your composition in the Hyperframes Studio with live preview. Edits to `index.html` and any referenced sub-compositions are reflected automatically. The preview uses the same Hyperframes runtime as production rendering, so what you see is what you get.
-
-    <Note>
-      Visual output matches render exactly. Playback *performance* does not: preview plays in real time in your browser, so paint-heavy compositions (large images, stacked `backdrop-filter` layers, many shadowed elements) may stutter depending on your hardware. The rendered mp4 is always accurate regardless — render captures frames one at a time, so per-frame cost shows up as longer render duration, not dropped frames. See [Performance](/guides/performance) for details.
-    </Note>
-
-    The preview server runs in three modes, auto-detected:
-
-    1. **Embedded mode** (default for `npx`) — runs a standalone server with the studio bundled in the CLI. Zero extra dependencies.
-    2. **Local studio mode** — if `@hyperframes/studio` is installed in your project's `node_modules`, spawns Vite with full HMR for faster iteration.
-    3. **Monorepo mode** — if running from the Hyperframes source repo, spawns the studio dev server directly.
-
-    ### `publish`
-
-    Upload the project and get back a stable `hyperframes.dev` URL:
-
-    ```bash
-    npx hyperframes publish [dir]
-    npx hyperframes publish --yes
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--yes` | Skip the confirmation prompt |
-
-    `publish` zips the current project, uploads it to the HyperFrames publish backend, and prints a stable `hyperframes.dev` URL for that stored project.
-
-    The printed URL already includes the claim token, so opening it on `hyperframes.dev` lets the intended user claim the uploaded project and continue editing in the web app.
-
-    This flow does not keep a local preview server alive and does not open a tunnel. The published URL resolves to the persisted project stored by HeyGen, so it keeps working after the CLI process exits.
-
-    ### `lint`
-
-    Check a composition for common issues:
-
-    ```bash
-    npx hyperframes lint [dir]
-    npx hyperframes lint [dir] --verbose   # include info-level findings
-    npx hyperframes lint [dir] --json      # machine-readable JSON output
-    ```
-    ```
-    ◆  Linting my-project/index.html
-
-      ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
-      ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
-
-    ◇  1 error(s), 1 warning(s)
-    ```
-
-    By default only **errors** and **warnings** are printed. Info-level findings (e.g., external script dependency notices) are hidden to keep output clean for agents and CI. Use `--verbose` to include them.
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output findings as JSON (includes `errorCount`, `warningCount`, `infoCount`, and `findings` array) |
-    | `--verbose` | Include info-level findings in output (hidden by default) |
-
-    **Severity levels:**
-    - **Error** (`✗`) — must fix before rendering (e.g., missing adapter library, invalid attributes)
-    - **Warning** (`⚠`) — likely issues that may cause unexpected behavior
-    - **Info** (`ℹ`) — informational notices, shown only with `--verbose`
-
-    The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
-
-    ### `beats`
-
-    Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
-
-    ```bash
-    npx hyperframes beats [dir]
-    npx hyperframes beats [dir] --json   # machine-readable JSON output
-    ```
-
-    The command finds the music track (an `<audio>` element with `data-timeline-role="music"`, or an id like `music`/`bgm`/`soundtrack`), runs the **same** detection the Studio uses inside a headless Chrome (identical decode + BPM analysis), and writes `beats/<audio-path>.json`:
-
-    ```json
-    {
-      "version": 1,
-      "audio": "music.wav",
-      "beats": [{ "time": 2.027, "strength": 0.924 }]
-    }
-    ```
-
-    Run it when authoring a composition so the beat file exists **before** the Studio is opened — the Studio loads this file as-is (it only auto-generates one when none exists). `time` is in seconds into the audio file; `strength` (0–1) is the beat's relative loudness. Beats edited in the Studio (add/move/delete) persist back to the same file.
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output `{ ok, file, count, bpm }` as JSON |
-
-    Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
-
-    ### `inspect`
-
-    Inspect rendered visual layout across the composition timeline:
-
-    ```bash
-    npx hyperframes inspect [dir]
-    npx hyperframes inspect [dir] --json
-    npx hyperframes inspect [dir] --samples 15
-    npx hyperframes inspect [dir] --at 1.5,4,7.25
-    ```
-
-    ```
-    ◆  Inspecting layout for my-project (9 timeline samples)
-
-      ✗ text_box_overflow t=3.25s #headline inside .bubble overflowed right 18px — "Quarterly plan"
-        Fix: Text is 418px x 42px inside 400px x 120px and overflows by up to 18px; widen the container to at least ~418px, or allow wrapping with max-width/fitTextFontSize.
-
-    ◇  1 error(s), 0 warning(s), 0 info(s)
-    ```
-
-    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes, plus pairs of text blocks that overlap each other (`content_overlap`) and text that is hidden beneath an opaque element (`text_occluded`). It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output agent-readable findings with `schemaVersion`, `samples`, `issues`, bounding boxes, and summary counts |
-    | `--samples` | Number of midpoint samples across the composition duration (default: 9) |
-    | `--at` | Comma-separated timestamps in seconds for explicit hero-frame checks |
-    | `--tolerance` | Allowed pixel overflow before reporting an issue (default: 2) |
-    | `--timeout` | Ms to wait for runtime initialization (default: 5000) |
-    | `--collapse-static` | Collapse repeated static issues across samples (default: true) |
-    | `--max-issues` | Maximum findings to print or return after static collapse (default: 80) |
-    | `--strict` | Exit non-zero on warnings as well as errors |
-
-    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading). Use `data-layout-allow-occlusion` when text is intentionally layered beneath another element (for example a caption behind a foreground prop).
-
-    `layout` remains available as a compatibility alias for the same visual inspection pass:
-
-    ```bash
-    npx hyperframes layout [dir] --json
-    ```
-
-    #### Motion verification
-
-    `inspect` also checks **motion intent** against the same seeked timeline the renderer uses — catching the render-≠-preview bugs that layout sampling can't, like an entrance reveal the seek skips, a broken stagger order, an element that drifts off-frame mid-tween, or a shot that freezes. Drop a `*.motion.json` sidecar next to the composition and `inspect` evaluates it automatically (no flag, no authoring changes); without a sidecar, `inspect` behaves exactly as before.
-
-    ```json
-    {
-      "duration": 6,
-      "assertions": [
-        { "kind": "appearsBy", "selector": "#headline", "bySec": 0.5 },
-        { "kind": "before", "a": "#headline", "b": "#cta" },
-        { "kind": "staysInFrame", "selector": ".card" },
-        { "kind": "keepsMoving", "withinSelector": ".scene" }
-      ]
-    }
-    ```
-
-    | Assertion | Checks |
-    |-----------|--------|
-    | `appearsBy(selector, bySec)` | the element is visible (opacity ≥ 0.5) no later than `bySec` — catches reveals the seek lands past (`motion_appears_late`) |
-    | `before(a, b)` | `a` first appears strictly before `b` — catches broken stagger order (`motion_out_of_order`) |
-    | `staysInFrame(selector)` | once visible, the element's box never leaves the canvas — catches off-frame drift (`motion_off_frame`) |
-    | `keepsMoving(withinSelector?)` | no fully-static window longer than `maxStaticSec` (default 2s) — catches frozen shots (`motion_frozen`) |
-
-    `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are optional. Findings are reported in the same shape and JSON envelope as layout findings, are **errors by default** (a failed assertion fails the run), and a selector that matches nothing is reported as `motion_selector_missing` rather than silently passing.
-
-    ### `snapshot`
-
-    Capture key frames from a composition as PNG screenshots — verify visual output without a full render:
-
-    ```bash
-    npx hyperframes snapshot my-project --at 2.9,10.4,18.7
-    npx hyperframes snapshot my-project --frames 10
-    ```
-
-    ```
-    ◆  Capturing 3 frames at [2.9s, 10.4s, 18.7s] from my-project
-
-    ◇  3 snapshots saved to snapshots/
-       snapshots/frame-00-at-2.9s.png
-       snapshots/frame-01-at-10.4s.png
-       snapshots/frame-02-at-18.7s.png
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--frames` | Number of evenly-spaced frames to capture (default: 5) |
-    | `--at` | Comma-separated timestamps in seconds (e.g., `3.0,10.5,18.0`) |
-    | `--timeout` | Ms to wait for runtime to initialize (default: 5000) |
-
-    The snapshot command bundles the project, serves it locally, launches headless Chrome, seeks to each timestamp, and captures a 1920×1080 PNG. Useful for visual verification during the build step of the [website-to-video](/guides/website-to-video) workflow.
-  </Tab>
-  <Tab title="Build">
-    ### `render`
-
-    Render a composition to MP4 or WebM:
-
-    ```bash
-    # Local mode (fast iteration)
-    npx hyperframes render --output output.mp4
-
-    # Docker mode (deterministic output)
-    npx hyperframes render --docker --output output.mp4
-
-    # WebM with transparency (for overlays, captions, lower thirds)
-    npx hyperframes render --format webm --output overlay.webm
-
-    # With options
-    npx hyperframes render --output output.mp4 --fps 60 --quality high
-
-    # Opt out of local browser GPU capture
-    npx hyperframes render --no-browser-gpu --output cpu-browser.mp4
-
-    # Add hardware FFmpeg encoding
-    npx hyperframes render --gpu --output gpu.mp4
-    ```
-
-    | Flag | Values | Default | Description |
-    |------|--------|---------|-------------|
-    | `--output` | path | `renders/<name>.mp4` | Output file path |
-    | `--composition, -c` | path | `index.html` | Render a specific composition file instead of `index.html` |
-    | `--format` | mp4, webm, mov, gif, png-sequence | mp4 | Output format (WebM/MOV render with transparency; gif for inline embeds; png-sequence writes a directory of RGBA PNGs) |
-    | `--fps` | 1-240 or rational (e.g. `30000/1001`) | 30 | Frames per second |
-    | `--gif-loop` | 0-65535 | 0 | GIF loop count (`0` = loop forever). Only applies with `--format gif` |
-    | `--quality` | draft, standard, high | standard | Encoding quality preset (drives CRF/bitrate) |
-    | `--crf` | 0-51 | — | Override encoder CRF (lower = higher quality). Mutually exclusive with `--video-bitrate` |
-    | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target video bitrate. Mutually exclusive with `--crf` |
-    | `--video-frame-format` | auto, jpg, png | auto | Source video frame extraction format. Use `png` for UI recordings, screen captures, and color-sensitive source videos |
-    | `--resolution` | landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`) | — | Output resolution preset. Supersamples a smaller composition via Chrome `deviceScaleFactor` so the screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not supported with `--hdr`. See [4K Rendering](/guides/4k-rendering) |
-    | `--hdr` | — | off | Force HDR output even if no HDR sources are detected. MP4 only. See [HDR Rendering](/guides/hdr) |
-    | `--sdr` | — | off | Force SDR output even if HDR sources are detected |
-    | `--workers` | 1-24 or `auto` | auto | Parallel render workers (auto = CPU cores minus 2) |
-    | `--low-memory-mode` / `--no-low-memory-mode` | — | auto (≤ 8 GB RAM) | Force the low-memory safe render profile on or off. Safe mode pins to 1 worker, uses screenshot capture, and skips auto-worker calibration so the pipeline doesn't launch multiple concurrent Chrome instances on constrained machines. Auto-detection reads **host** RAM (`os.totalmem()`), not cgroup/container limits — containerised or serverless callers (incl. `--docker`) should set `PRODUCER_LOW_MEMORY_MODE` explicitly. Env fallback `PRODUCER_LOW_MEMORY_MODE`. |
-    | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV) |
-    | `--browser-gpu` / `--no-browser-gpu` | — | on locally, off in Docker | Use or opt out of host GPU acceleration for local Chrome/WebGL capture |
-    | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |
-    | `--quiet` | — | off | Suppress verbose output |
-    | `--variables` | JSON object | — | Variable overrides merged over `data-composition-variables` defaults. Read via `window.__hyperframes.getVariables()` |
-    | `--variables-file` | path | — | Path to a JSON file with variable overrides (alternative to `--variables`) |
-    | `--strict-variables` | — | off | Fail render if any `--variables` key is undeclared or has a wrong type vs the composition's `data-composition-variables`. Without this flag, mismatches print as warnings and the render continues. |
-    | `--browser-timeout` | seconds (0.001–86400) | 60 | Puppeteer page-navigation timeout for the entry HTML. Increase when heavy compositions (many videos, fonts, or asset requests) cannot reach `domcontentloaded` within the default 60 s. The flag takes **seconds**; the env fallback `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS` takes **milliseconds**. This controls `page.goto` only — very heavy compositions may also need `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` and/or `PRODUCER_PLAYER_READY_TIMEOUT_MS` bumped (post-navigation `window.__hf` readiness has its own 45 s budget). |
-
-    CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically. Use `--video-frame-format png` when source videos are UI recordings, screen captures, or other color-sensitive clips that should avoid JPEG frame extraction.
-
-    #### Parametrized renders
-
-    Render the same composition with different content by declaring variables on the composition root and overriding them at render time:
-
-    ```html index.html
-    <html
-      data-composition-id="root"
-      data-composition-variables='[
-        {"id":"title","label":"Title","type":"string","default":"Hello"},
-        {"id":"theme","label":"Theme","type":"enum","options":[
-          {"value":"light","label":"Light"},
-          {"value":"dark","label":"Dark"}
-        ],"default":"light"}
-      ]'>
-      <body>
-        <h1 id="hero" class="clip" data-start="0" data-duration="3"></h1>
-        <script>
-          const vars = window.__hyperframes.getVariables();
-          document.getElementById("hero").textContent = vars.title;
-          document.body.dataset.theme = vars.theme;
-        </script>
-      </body>
-    </html>
-    ```
-
-    ```bash
-    # Render with declared defaults (preview also uses the defaults)
-    npx hyperframes render --output default.mp4
-
-    # Override at render time — missing keys fall through to declared defaults
-    npx hyperframes render --variables '{"title":"Q4 Report","theme":"dark"}' --output q4.mp4
-
-    # Pass values from a JSON file
-    npx hyperframes render --variables-file ./vars.json --output out.mp4
-    ```
-
-    `getVariables()` returns the merged result of declared defaults and any `--variables` overrides, so the same composition runs unchanged in dev preview and in production renders.
-
-    #### WebM with Transparency
-
-    Use `--format webm` to render compositions with a transparent background. This produces VP9 video with alpha channel in a WebM container — the standard format for overlayable video.
-
-    ```bash
-    # Render a caption overlay with transparent background
-    npx hyperframes render --format webm --output captions.webm
-
-    # Overlay on another video with FFmpeg
-    ffmpeg -c:v libvpx-vp9 -i captions.webm -i background.mp4 \
-      -filter_complex "[1:v][0:v]overlay=0:0" -y composited.mp4
-    ```
-
-    <Tip>
-      For transparency to work, your composition's HTML should use `background: transparent` on the root elements. WebM renders use PNG frame capture (instead of JPEG) to preserve the alpha channel.
-    </Tip>
-
-    See [Rendering](/guides/rendering) for all options and modes.
-
-    ### `benchmark`
-
-    Find optimal render settings for your system:
-
-    ```bash
-    npx hyperframes benchmark [dir]
-    ```
-
-    | Flag | Values | Default | Description |
-    |------|--------|---------|-------------|
-    | `--runs` | 1-20 | 3 | Number of runs per configuration |
-    | `--json` | — | off | Output results as JSON |
-
-    Runs multiple render configurations (varying fps, quality, and worker count) and compares timing and file size for each.
-  </Tab>
-  <Tab title="Utilities">
-    ### `doctor`
-
-    Check your environment for required dependencies:
-
-    ```bash
-    npx hyperframes doctor
-    ```
-    ```
-    hyperframes doctor
-
-      ✓ Version          0.1.4 (latest)
-      ✓ Node.js          v22.x (linux x64)
-      ✓ FFmpeg            7.x
-      ✓ FFprobe           7.x
-      ✓ Chrome            (system or cached)
-      ✓ Docker            24.x
-      ✓ Docker running    Running
-
-      ◇  All checks passed
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output as JSON (includes `_meta` envelope) |
-
-    Verifies CLI version, Node.js, FFmpeg, FFprobe, Chrome, and Docker availability. If a newer CLI version is available, the version row shows an upgrade hint.
-
-    **CI gating.** `hyperframes doctor --json` always exits 0 on successful execution — the command succeeded if it produced valid output. Whether the environment is healthy is carried in the `ok` field of the payload, so a new CLI release (which flips `Version.ok` to `false`) never breaks your pipeline. Pipe through `jq` to gate on the payload instead:
-
-    ```bash
-    hyperframes doctor --json | jq -e '.ok' > /dev/null || handle_failure
-    ```
-
-    Paths in `detail` and `hint` are redacted in JSON mode — the user's home directory is replaced with the literal `$HOME` so output is safe to paste into bug reports and agent contexts.
-
-    ### `info`
-
-    Display project metadata:
-
-    ```bash
-    npx hyperframes info [dir]
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--json` | Output as JSON |
-
-    Shows project name, resolution, duration, element counts by type, track count, and total project size.
-
-    ### `upgrade`
-
-    Check for updates and show upgrade instructions:
-
-    ```bash
-    npx hyperframes upgrade
-    npx hyperframes upgrade --check         # check and exit (no prompt)
-    npx hyperframes upgrade --check --json  # machine-readable for agents
-    npx hyperframes upgrade --yes           # show upgrade commands without prompting
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--check` | Check for updates and exit (no prompt, agent-friendly) |
-    | `--json` | Output as JSON (includes `_meta` envelope) |
-    | `--yes, -y` | Show upgrade commands without prompting |
-
-    Compares your installed version against the latest on npm. With `--check --json`, returns:
-
-    ```json
-    {
-      "current": "0.1.4",
-      "latest": "0.1.5",
-      "updateAvailable": true,
-      "_meta": { "version": "0.1.4", "latestVersion": "0.1.5", "updateAvailable": true }
-    }
-    ```
-
-    ### `browser`
-
-    Manage the Chrome browser used for rendering:
-
-    ```bash
-    # Find or download Chrome for rendering
-    npx hyperframes browser ensure
-
-    # Print the browser executable path (for scripting)
-    npx hyperframes browser path
-
-    # Remove cached Chrome download
-    npx hyperframes browser clear
-    ```
-
-    The `path` subcommand outputs only the path, useful in scripts: `$(npx hyperframes browser path)`.
-
-    ### `docs`
-
-    View inline documentation in the terminal:
-
-    ```bash
-    npx hyperframes docs [topic]
-    ```
-
-    Available topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`, `compositions`. Run without a topic to see the full list.
-
-    ### `feedback`
-
-    Submit anonymous satisfaction feedback about your experience:
-
-    ```bash
-    # Quick rating (1 = poor, 5 = great)
-    npx hyperframes feedback --rating 5
-
-    # Rating with optional details
-    npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
-
-    # Also file a pre-filled GitHub issue with a published minimal repro (opt-in, consented)
-    npx hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--rating` | Satisfaction score, 1–5 (required) |
-    | `--comment` | Optional free-text details |
-    | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
-    | `--dir` | Project directory to publish as the repro (default: current directory) |
-    | `--yes` | Skip the publish + file-issue consent prompt (for scripts) |
-
-    With `--file-issue`, the CLI publishes a minimal repro to a public URL (with consent) and opens a pre-filled `bug` issue draft you review and submit yourself (no token or backend). See [Feedback Collection](/guides/feedback#filing-a-github-issue---file-issue).
-
-    This command is also available to AI agents after a render — see [Feedback Collection](/guides/feedback#agent-runtimes) for how agent detection and the automatic post-render hint work.
-
-    No-op when telemetry is disabled — prints `Telemetry is disabled. Feedback not sent.` and exits cleanly.
-
-    ### `telemetry`
-
-    Manage anonymous usage telemetry:
-
-    ```bash
-    npx hyperframes telemetry enable
-    npx hyperframes telemetry disable
-    npx hyperframes telemetry status
-    ```
-
-    Telemetry collects command names, render performance, render checkpoint/error names, aggregate browser diagnostic counts, browser initialization duration and tween count, aggregate video extraction workload counts (such as extracted frame count and VFR preflight count), example choices, and system info — including a coarse environment fingerprint (OS, kernel string, CPU/memory shape, sandbox runtime such as gVisor or Docker, and the *name* of a coding agent driving the CLI when one is detected, e.g. `claude_code` / `codex` / `cursor`). The agent name is derived from the existence of well-known environment variables; their values are never read. Telemetry redacts local paths and URL query strings from render error/checkpoint messages and does **not** collect project names, video content, or environment variable values. It collects no personally identifiable information until you sign in: when you authenticate with `hyperframes auth login`, your HeyGen account email (or your username, if your account has no email) is linked to your usage so CLI activity can be associated with your account (and your prior anonymous usage is stitched to it). Nothing else personal is collected, and this only happens after you choose to sign in. Disable all telemetry with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
-
-    See [Feedback Collection](/guides/feedback) for how the periodic post-render prompt and Studio feedback bar work, what data they collect, and how to opt out.
-
-    ### `skills`
-
-    Install HyperFrames skills for AI coding tools, including first-party runtime adapter skills:
-
-    ```bash
-    # Install to all default targets (Claude Code, Gemini CLI, Codex CLI)
-    npx hyperframes skills
-
-    # Install to specific tools
-    npx hyperframes skills --claude
-    npx hyperframes skills --cursor
-    npx hyperframes skills --claude --gemini
-    ```
-
-    | Flag | Description |
-    |------|-------------|
-    | `--claude` | Install to Claude Code (`~/.claude/skills/`) |
-    | `--gemini` | Install to Gemini CLI (`~/.gemini/skills/`) |
-    | `--codex` | Install to Codex CLI (`~/.codex/skills/`) |
-    | `--cursor` | Install to Cursor (`.cursor/skills/` in current project) |
-
-    Skills are fetched from GitHub: the `/hyperframes` entry skill (routes "make me a video" to a workflow), the composition contract and Tailwind v4 browser-runtime guidance (`/hyperframes-core`), all animation including the GSAP / Anime.js / CSS / Lottie / Three.js / WAAPI / TypeGPU runtime adapters (`/hyperframes-animation`), creative direction (`/hyperframes-creative`), media preprocessing (`/media-use`), registry block/component wiring (`/hyperframes-registry`), and the video workflows. The `init` command also offers to install skills automatically after scaffolding a project.
-
-    #### Troubleshooting: `fatal: active post-checkout hook found during git clone`
-
-    If you installed Git LFS globally (`git lfs install`), Git 2.45+ refuses to run the LFS post-checkout hook during any `git clone` — including the clone the upstream `skills` CLI performs under the hood. The error looks like:
-
-    ```
-    ■  Failed to clone repository
-    fatal: active `post-checkout` hook found during `git clone`
-    └  Installation failed
-    ```
-
-    **Using `hyperframes skills` is already fine** — as of v0.4.5 the CLI sets `GIT_CLONE_PROTECTION_ACTIVE=0` on the child environment, which is the opt-in knob Git provides for exactly this case. You don't need to do anything.
-
-    **If you ran `npx skills add heygen-com/hyperframes` directly** (bypassing the HyperFrames CLI), set the env var yourself:
-
-    ```bash
-    GIT_CLONE_PROTECTION_ACTIVE=0 npx skills add heygen-com/hyperframes
-    ```
-
-    This is tracked in [GH #316](https://github.com/heygen-com/hyperframes/issues/316). An upstream fix in the `skills` CLI itself is the right long-term answer; until that lands, the env var is the correct workaround.
-  </Tab>
-</Tabs>
+Both stay silent in CI and non-TTY shells. `HYPERFRAMES_NO_UPDATE_CHECK=1` turns
+off the check, the install, and the notice.
+
+## Create a project
+
+### `init`
+
+Scaffold a new composition project from an example.
+
+```bash
+# Agents and CI — every input from a flag
+npx hyperframes init my-video --example blank --video video.mp4 --non-interactive
+
+# With the Tailwind browser runtime
+npx hyperframes init my-video --example blank --tailwind
+
+# Interactive on a TTY
+npx hyperframes init my-video
+```
+
+| Flag                | Description                                                                                                                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--example, -e`     | Example to scaffold. Required with `--non-interactive`. See [Examples](/examples) for the full list.                                                                                                                                                                                  |
+| `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
+| `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
+| `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
+| `--tailwind`        | Add Tailwind CSS browser-runtime support to the scaffolded HTML                                                                                                                                                                                                                      |
+| `--non-interactive` | Never prompt. For agents and CI.                                                                                                                                                                                                                                                     |
+| `--skip-transcribe` | Skip the automatic Whisper transcription                                                                                                                                                                                                                                             |
+| `--model`           | Whisper model for that transcription (for example `small.en`, `medium.en`, `large`)                                                                                                                                                                                                   |
+| `--language`        | Language code for transcription (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                                                                                         |
+| `--skip-skills`     | Currently ignored. Set `HYPERFRAMES_SKIP_SKILLS=1` to opt out in CI or tests.                                                                                                                                                                                                         |
+
+Pass `--video` or `--audio` and the CLI transcribes the audio with Whisper and
+patches the captions into the composition for you. `--skip-transcribe` turns
+that off.
+
+`--tailwind` injects the pinned Tailwind v4 browser runtime and exposes a
+`window.__tailwindReady` promise that renders wait on before capturing frame 0.
+Use the `/hyperframes-core` skill when editing these projects, so agents follow
+v4 CSS-first patterns instead of v3 `tailwind.config.js` patterns. The browser
+runtime is meant for scaffolded projects and quick iteration — for offline or
+locked-down production renders, compile Tailwind to CSS and link the stylesheet.
+
+After scaffolding, `init` checks and installs the core AI skills from the
+current GitHub source. See [`skills`](#skills).
+
+### `add`
+
+Install one item from the registry into a project you already have.
+[`init`](#init) scaffolds whole projects; `add` drops in a **block** (a
+sub-composition scene) or a **component** (an effect or snippet).
+
+```bash
+npx hyperframes add claude-code-window          # a block
+npx hyperframes add shader-wipe                 # a component
+npx hyperframes add captions                    # every block with this tag
+npx hyperframes add shader-wipe --dir ./my-video
+npx hyperframes add shader-wipe --no-clipboard --json   # headless / CI
+```
+
+The positional name is a registry item, or a tag — a tag installs every block
+carrying it. `--dir` picks the project directory, `--json` prints the written
+files and paste snippet, and `--no-clipboard` skips the clipboard copy for CI.
+
+Every install produces files plus a **paste snippet**: the `<iframe>` tag for a
+block, or the fragment path for a component. It goes to your clipboard by
+default. Naming an example instead of a registry item (`add warm-grain`) gets
+you a clear error pointing at `init --example`.
+
+`add` reads [`hyperframes.json`](#hyperframes-json) to learn which registry to
+pull from and where files land. If it is missing but the directory has an
+`index.html`, a default one is written on first use.
+
+### `catalog`
+
+Browse the registry.
+
+```bash
+npx hyperframes catalog                          # table of everything
+npx hyperframes catalog --type block --tag social
+npx hyperframes catalog --json
+npx hyperframes catalog --human-friendly         # picker; installs on select
+```
+
+Filter with `--type` (`block` or `component`) and `--tag` (`social`,
+`transition`, `text`, …). Default output is a table of name, type, description,
+and tags, shaped for agents to parse; `--json` is the structured form.
+`--human-friendly` opens a picker that runs `add` on whatever you select.
+
+## Bring in source material
+
+### `capture`
+
+Pull a real website into a working folder an agent can build from.
+
+```bash
+npx hyperframes capture https://stripe.com
+npx hyperframes capture https://linear.app -o linear-capture
+npx hyperframes capture https://example.com --json
+```
+
+```
+◇  Captured Stripe | Financial Infrastructure → capture
+
+  Screenshots: 12
+  Assets: 45
+  Sections: 15
+  Fonts: sohne-var
+```
+
+| Flag                | Description                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--output, -o`      | Output directory. Default `./capture`, then `./capture-2/`, `./capture-3/`, … if that name is taken.                                               |
+| `--timeout`         | Page load timeout in ms (default 120000)                                                                                                          |
+| `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
+| `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
+| `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
+| `--max-screenshots` | Accepted, but has no effect — capture picks its own scroll positions.                                                                              |
+| `--json`            | Structured output for programmatic use                                                                                                             |
+| `--video <folder>`  | Switch to video-download mode against a captured folder's manifest. Pair with `--list`, `--index`, or `--video-url`.                               |
+
+You get `AGENTS.md`, `CLAUDE.md`, `meta.json`, scroll screenshots, extracted
+HTML and CSS, visible text, design tokens, font files, images, SVGs, animation
+metadata, and contact sheets — plus whatever Lottie, video, and WebGL context
+the page exposed. It is raw material for an agent, not a finished composition;
+the `/product-launch-video` workflow uses it when a real product has to appear
+on screen. Dynamic sites, protected pages, and unusual media loaders produce
+partial results, so read the warnings and contact sheets before you build.
+
+For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
+(~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
+[OpenRouter](https://openrouter.ai) — it wins if both are set, and
+`HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
+
+### `transcribe`
+
+Turn audio or video into word-level timestamps, or import a transcript you
+already have.
+
+```bash
+# Local transcription
+npx hyperframes transcribe audio.mp3
+npx hyperframes transcribe video.mp4 --model medium.en --language en
+
+# Import from another tool
+npx hyperframes transcribe subtitles.srt
+npx hyperframes transcribe openai-response.json
+
+# Export a caption sidecar
+npx hyperframes transcribe transcript.json --to srt
+```
+
+| Flag              | Description                                                                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dir, -d`       | Project directory (default: current directory)                                                                                                                                                     |
+| `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed, else whisper), `parakeet`, or `whisper`                                                                                                        |
+| `--model, -m`     | Whisper model (default `small.en`): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`                                                                                                       |
+| `--language, -l`  | Language code (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                        |
+| `--to`            | Export a sidecar instead: `srt` or `vtt`                                                                                                                                                           |
+| `--output, -o`    | Where the exported SRT/VTT goes                                                                                                                                                                    |
+| `--preserve-cues` | Keep each transcript entry as its own caption cue, skipping word-level grouping                                                                                                                    |
+| `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions.                                                                              |
+| `--timeout`       | Whisper spawn timeout in ms, overriding the auto-scaled default. Raise it on slow or emulated CPUs where large models take many seconds per audio second. Whisper only — Parakeet has its own. Minimum 5000. Env: `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`. |
+| `--json`          | Output the result as JSON                                                                                                                                                                          |
+
+The command works out what you gave it. Audio and video are transcribed
+locally — Parakeet when it is installed (`uv pip install parakeet-mlx`; faster
+and more accurate), whisper.cpp otherwise. Transcript files are imported and
+normalized instead: whisper.cpp JSON, OpenAI Whisper API JSON with word
+timestamps, SRT, and VTT all land as the same `[{text, start, end}]` word array
+in `transcript.json`. If the project has caption HTML, it is patched
+automatically.
+
+Word-level transcripts get grouped into readable cues at sentence boundaries.
+Exporting straight from an `.srt` or `.vtt` keeps that file's cue boundaries.
+Add `--preserve-cues` when the source `transcript.json` already holds finished
+cues with no internal spaces — single-word or CJK captions.
+
+<Tip>
+  For music or noisy audio, `--model medium.en` is noticeably more accurate. For
+  production content, transcribe through the OpenAI or Groq Whisper API and import
+  the JSON.
+</Tip>
+
+### `tts`
+
+Generate speech with a local model (Kokoro-82M). No API key, nothing leaves the
+machine.
+
+```bash
+npx hyperframes tts "Welcome to HyperFrames"
+npx hyperframes tts "Intro" --voice bf_emma --output narration.wav
+npx hyperframes tts "Slow and clear" --speed 0.8
+npx hyperframes tts script.txt
+npx hyperframes tts --list
+```
+
+| Flag           | Description                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--output, -o` | Output path (default `speech.wav` in the current directory)                                                                              |
+| `--voice, -v`  | Voice ID. Run `--list` to see them all.                                                                                                 |
+| `--speed, -s`  | Speed multiplier (default 1.0)                                                                                                          |
+| `--lang, -l`   | Phonemizer locale: `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`. Inferred from the voice ID when you leave it out.   |
+| `--list`       | List the voices and exit                                                                                                                |
+| `--json`       | Output the result as JSON                                                                                                               |
+
+A voice ID's first letter is its language: `a` American, `b` British,
+`e` Spanish, `f` French, `h` Hindi, `i` Italian, `j` Japanese, `p` Brazilian
+Portuguese, `z` Mandarin. So `--voice ef_dora` already speaks Spanish. Reach for
+`--lang` only to deliberately mismatch them — English text through a French
+phonemizer, for a stylized accent.
+
+<Tip>
+  To get narration *and* caption timing in one pass: generate the audio with `tts`,
+  then run [`transcribe`](#transcribe) on the result.
+</Tip>
+
+### `remove-background`
+
+Cut the background out of a video or image with a local AI model. The output is
+transparent media you can drop straight into a `<video>` or `<img>`. No green
+screen.
+
+```bash
+# Default: VP9-with-alpha WebM, plays natively in HTML5
+npx hyperframes remove-background avatar.mp4 -o transparent.webm
+
+# ProRes 4444 for an editing round-trip
+npx hyperframes remove-background avatar.mp4 -o transparent.mov
+
+# One image → transparent PNG
+npx hyperframes remove-background portrait.jpg -o cutout.png
+
+# Cutout and inverse-alpha background plate in one pass
+npx hyperframes remove-background avatar.mp4 -o subject.webm --background-output plate.webm
+
+# What providers does this machine have?
+npx hyperframes remove-background --info
+```
+
+| Flag                      | Description                                                                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--output, -o`            | Output path. The format follows the extension: `.webm` (default), `.mov`, `.png`.                                                                                                                                                       |
+| `--background-output, -b` | Second output: the inverse-alpha plate, with the subject region transparent and its surroundings opaque. Must be `.webm` or `.mov`. It is a hole cut, not inpainted — composite something underneath.                                    |
+| `--device`                | Execution provider: `auto` (default), `cpu`, `coreml`, `cuda`                                                                                                                                                                            |
+| `--quality`               | WebM preset: `fast` (crf 30), `balanced` (crf 18, default), `best` (crf 12). Higher keeps the cutout's RGB closer to the source, which matters when you overlay it on its own footage. `.webm` only. |
+| `--info`                  | Print the detected execution providers and exit                                                                                                                                                                                         |
+| `--json`                  | Output the result as JSON                                                                                                                                                                                                                |
+
+Which format do you want?
+
+| Format               | Use case                                                  | Size (4s @ 1080p) |
+| -------------------- | --------------------------------------------------------- | ----------------- |
+| `.webm` (VP9 alpha)  | Drop into `<video>` for HTML5-native transparent playback | ~1 MB             |
+| `.mov` (ProRes 4444) | Editing round-trip in Premiere / Resolve / DaVinci        | ~50 MB            |
+| `.png`               | Single-image cutout                                       | varies            |
+
+The model is `u2net_human_seg` (MIT, ~168 MB ONNX). It downloads to
+`~/.cache/hyperframes/background-removal/models/` on first run and is reused
+after that. Peak inference RAM is about 1.5 GB.
+
+`--device auto` picks CoreML on Apple Silicon, CUDA where available, CPU
+otherwise. The CLI bundles the CPU build of `onnxruntime-node`; for CUDA, set
+`HYPERFRAMES_CUDA=1` and supply a GPU-enabled build.
+
+<Tip>
+  Chrome's `<video>` only honours the alpha plane when the WebM is `yuva420p` with
+  the `alpha_mode=1` metadata tag. The CLI sets both. If you re-encode the output
+  yourself, keep them.
+</Tip>
+
+The [Remove background guide](/guides/remove-background) has the whole
+workflow — using transparent video in compositions, per-platform performance,
+where `u2net_human_seg` falls down, and free alternatives.
+
+### `media-treatment`
+
+Read or edit the colour and effect treatment stored on one image or video.
+
+```bash
+# Find out what exists, then look at one family or effect
+npx hyperframes media-treatment --capabilities --json
+npx hyperframes media-treatment --capability kuwahara --json
+
+# Measure a selected local source
+npx hyperframes media-treatment --selector '#hero' --analyze --json
+
+# Apply, preview, or clear
+npx hyperframes media-treatment --selector '#hero' \
+  --grading '{"preset":"skin-soft","intensity":0.6}' --apply
+npx hyperframes media-treatment --file compositions/scene.html --selector 'video' \
+  --grading '{"preset":"warm-daylight"}' --apply --dry-run --json
+npx hyperframes media-treatment --selector '#hero' --clear
+```
+
+| Flag                   | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `--capabilities`       | Print the concise capability overview                                 |
+| `--capability <id>`    | Inspect one family, control, effect, preset, or palette               |
+| `--all`                | Print the exhaustive capability catalog                               |
+| `--project <dir>`      | Project directory (default: current directory)                        |
+| `--file <path>`        | Composition file (default `index.html`)                               |
+| `--selector <css>`     | CSS selector for one `<img>` or `<video>`                             |
+| `--selector-index <n>` | Zero-based match index when the selector is not unique                |
+| `--grading <json>`     | Validated colour-grading patch                                        |
+| `--apply`              | Apply the patch                                                       |
+| `--analyze`            | Measure the selected local media and suggest a bounded correction     |
+| `--clear`              | Remove colour grading from the target                                 |
+| `--dry-run`            | Validate and report without writing                                   |
+| `--json`               | Agent-readable JSON                                                   |
+
+The command writes `data-color-grading` — the same contract Studio, preview, and
+render all read, so the two can never disagree. It does not recognise subjects
+or isolate part of an image; the effect covers the whole media layer.
+
+### `beats`
+
+Find the beats in a composition's music and write them where Studio expects
+them.
+
+```bash
+npx hyperframes beats [dir]
+npx hyperframes beats [dir] --json   # { ok, file, count, bpm }
+```
+
+`beats` finds the music track — an `<audio>` element with
+`data-timeline-role="music"`, or an id like `music`, `bgm`, or `soundtrack` —
+runs the same decode and BPM analysis Studio uses inside headless Chrome, and
+writes `beats/<audio-path>.json`:
+
+```json
+{
+  "version": 1,
+  "audio": "music.wav",
+  "beats": [{ "time": 2.027, "strength": 0.924 }]
+}
+```
+
+Run it while authoring, so the file exists **before** Studio opens — Studio
+loads this file as-is and only generates one when none exists. `time` is seconds
+into the audio; `strength` (0–1) is relative loudness. Beats you add, move, or
+delete in Studio save back to the same file.
+
+Needs a local Chrome, the same one `render` uses. Run
+`npx hyperframes browser ensure` if it is missing. Results match Studio's to
+within a frame or two — a different headless-Chrome audio sample rate can shift
+a beat slightly.
+
+## Look at it
+
+### `normalize-audio`
+
+Match one authored audio clip to a reference using the exact local media bytes
+and FFmpeg's integrated EBU R128 loudness measurement.
+
+```bash
+# Measure only (the default)
+npx hyperframes normalize-audio --reference target-audio --target user-audio
+
+# Persist the computed gain on #user-audio
+npx hyperframes normalize-audio --reference target-audio --target user-audio --write
+
+# Agent-readable result
+npx hyperframes normalize-audio --reference target-audio --target user-audio --json
+```
+
+`--reference` and `--target` are `<audio>` element ids, with or without `#`.
+The reference stays unchanged; the command accounts for both clips' current
+`data-volume` and writes the target's absolute matched gain. It measures
+`data-media-start` and `data-duration`, rejects remote or out-of-project sources,
+and refuses a result that exceeds Studio's +12 dB ceiling or would clip. Dry-run
+is deliberate: inspect the measurement before passing `--write`. Use
+`--tolerance <LU>` to change the default 0.5 LU no-op threshold.
+
+### `preview`
+
+Start a live preview server with hot reload.
+
+```bash
+npx hyperframes preview [dir]
+npx hyperframes preview --port 4567
+npx hyperframes preview --background     # keep running after the command exits
+npx hyperframes preview --foreground     # stay attached in a non-interactive shell
+npx hyperframes preview --status --json  # inspect a managed preview from an agent
+npx hyperframes preview --list           # every running preview
+```
+
+| Flag                                 | Description                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `--port`                             | Server port (default 3002)                                                                                |
+| `--open` / `--no-open`               | Open a browser, or leave it closed                                                                        |
+| `--background`                       | Keep an embedded preview running after the command exits                                                  |
+| `--foreground`                       | Keep the preview attached even when the shell is non-interactive                                          |
+| `--json`                             | Emit one versioned JSON result for managed start, status, stop, list, and kill-all operations              |
+| `--browser-gpu` / `--no-browser-gpu` | Hardware GPU for Studio thumbnails and frame capture, or deterministic SwiftShader (default: auto-detect)  |
+| `--proxy` / `--no-proxy`             | Auto-transcode browser-hostile codecs (HEVC, ProRes, AV1) to a cached authoring proxy (default: on)        |
+| `--browser-path`                     | Open a specific browser. `--user-data-dir`, `--remote-debugging-port`, and `--browser-no-gpu` require it.  |
+
+To manage running servers: `--status` and `--stop` act on this project's
+background preview, `--list` and `--kill-all` act on all of them, and
+`--force-new` starts a second server for a project that already has one. Each
+exits straight after.
+
+Bare `preview` chooses the safest lifecycle for its caller: it stays in the
+foreground in a human interactive terminal, while a non-interactive or agent
+shell starts a managed background preview. Re-running the command for the same
+project reuses the healthy preview. Every start or status result includes the
+exact Studio project URL as well as the underlying server URL, so agents can
+hand off the intended project without guessing from the port.
+
+To read a running Studio from a script: `--selection` prints the selected
+element and `--context` prints the agent-readable context, both with `--json`.
+Narrow the context with `--context-fields` (`server`, `selection`, `lint`,
+`capabilities`) and `--context-detail` (`compact` or `full`).
+
+Your composition opens in HyperFrames Studio, and edits to `index.html` and its
+sub-compositions refresh live. Preview and render share the same runtime.
+
+The server picks one of three modes by itself: **embedded** (the default for
+`npx` — Studio bundled in the CLI, no extra dependencies), **local studio**
+(Vite with full HMR, when `@hyperframes/studio` is in your `node_modules`), or
+**monorepo** (the studio dev server, when you run from the source repo).
+`--background` works with the embedded server only.
+
+<Note>
+  Preview plays in real time, so paint-heavy compositions can stutter on your
+  machine. Render seeks and captures one frame at a time, so the same work usually
+  means a longer render rather than dropped frames. Browser, font, and GPU
+  differences still move exact pixels — judge the rendered file. See
+  [Performance](/guides/performance).
+</Note>
+
+### `present` and `play`
+
+`present` serves a slideshow and opens its presenter view. The presenter and
+audience views stay in sync for as long as the command runs.
+
+```bash
+npx hyperframes present [dir]
+npx hyperframes present [dir] --port 3004
+```
+
+`--port` defaults to 3004. `--open` / `--no-open` controls the browser, and
+`--browser-path` opens a specific one — `--user-data-dir` and
+`--remote-debugging-port` both require it.
+
+`play` opens a composition in the lightweight Player instead of Studio — no
+editor, just playback. Same flags, `--port` defaults to 3003, plus `--proxy` /
+`--no-proxy`.
+
+### `publish`
+
+Upload the project and get back a stable `hyperframes.dev` URL.
+
+```bash
+npx hyperframes publish [dir]
+npx hyperframes publish --yes
+npx hyperframes publish --update <url-or-id>
+npx hyperframes publish --space <space-id>
+```
+
+| Flag                     | Description                                                        |
+| ------------------------ | ------------------------------------------------------------------ |
+| `--yes, -y`              | Skip the confirmation prompt                                       |
+| `--public`               | Make the claimed project visible to anyone                         |
+| `--update <url-or-id>`   | Update an existing project in place. Requires sign-in.             |
+| `--space <space-id>`     | Publish into a shared team space. Requires sign-in.                |
+| `--proxy` / `--no-proxy` | Bake H.264 proxies for browser-hostile codecs, or skip them        |
+
+`publish` zips the project, uploads it, and prints a URL that resolves to stored
+content — so it keeps working after the CLI exits. No local server stays alive,
+and no tunnel is opened.
+
+You can publish while signed out. The printed URL then carries a claim token:
+whoever opens it on `hyperframes.dev` can sign in, claim the project, and keep
+editing in the web app.
+
+Sign in with `npx hyperframes auth login` first when you want an owned, stable
+link you can publish to again. `--update` and `--space` both need that
+ownership.
+
+## Check your work
+
+### `lint`
+
+Read the HTML and report common mistakes. No browser, so it is fast.
+
+```bash
+npx hyperframes lint [dir]
+npx hyperframes lint [dir] --verbose   # include info-level findings
+npx hyperframes lint [dir] --json
+```
+
+```
+◆  Linting my-project/index.html
+
+  ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
+  ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
+
+◇  1 error(s), 1 warning(s)
+```
+
+Errors (`✗`) must be fixed before rendering — a missing adapter library, invalid
+attributes. Warnings (`⚠`) are likely problems. Info (`ℹ`) notices are hidden
+unless you pass `--verbose`, which keeps output clean for agents and CI.
+`--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
+
+The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
+Three.js), and structural problems. [Troubleshooting](/guides/troubleshooting)
+explains each rule.
+
+### `check`
+
+The browser gate. Everything the old `validate` → `inspect` → `snapshot` loop
+did, in one command and one browser session.
+
+```bash
+npx hyperframes check [dir]
+npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+npx hyperframes check [dir] --snapshots
+npx hyperframes check [dir] --at 1.5,4,7.25
+npx hyperframes check [dir] --strict       # warnings fail too
+```
+
+`check` runs the linter first and skips the browser entirely on a lint error.
+Then it loads the bundled composition once and sweeps a single seek grid,
+running every audit at every sample: runtime console errors and failed requests,
+layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
+drift), `*.motion.json` assertions, and WCAG AA contrast.
+
+| Flag                                         | Description                                                                                                                 |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
+| `--snapshots`                                | Save the five audited frames under `snapshots/`, plus a `finding-NN-<code>.png` crop per finding                             |
+| `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
+| `--at`                                       | Explicit timestamps in seconds, comma-separated                                                                             |
+| `--at-transitions`                           | Also sample every tween start and end, to catch transient overlaps at transition seams                                       |
+| `--max-transition-samples`                   | Cap the transition-derived samples. When it truncates, the omitted count is reported. Default: unlimited.                    |
+| `--max-issues`                               | Findings to print or return after static collapse (default 80)                                                              |
+| `--collapse-static` / `--no-collapse-static` | Fold a repeated static finding into one row (default: on)                                                                    |
+| `--tolerance`                                | Allowed overflow in px before reporting (default 2)                                                                         |
+| `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 3000)                                   |
+| `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
+| `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
+| `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags content whose centre sits inside the fractional band. Optional `severity` and `seek`.               |
+| `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
+| `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
+| `--browser-gpu` / `--no-browser-gpu`         | Hardware GPU capture, or deterministic SwiftShader (default: auto-detect)                                                   |
+| `--proxy` / `--no-proxy`                     | Auto-transcode browser-hostile codecs before checking (default: on)                                                        |
+
+Contrast failures are errors, and each one reports the sampled foreground and
+background colours, the measured ratio against the required one, and a
+compliant colour you could use instead.
+
+Severity is persistence-aware: a finding at a single sample demotes to info, a
+finding that persists gates the exit code, and a timeline that never moves on a
+composition of 3s or more fails with `sweep_static`.
+
+{/* VISUAL: a `check --snapshots` overview frame beside one finding crop, with the labelled finding box visible on both */}
+
+#### Mark intentional layout choices
+
+When the audit is wrong because the layout is deliberate, say so in the HTML and
+re-run. Put `data-layout-allow-overflow` on a planned off-canvas entrance,
+`data-layout-allow-overlap` on text you meant to stack, `data-layout-allow-occlusion`
+on text you meant to hide behind a prop, and `data-layout-ignore` on decoration
+that should not be audited at all. Each is inherited, so an ancestor works.
+
+For deliberate lower-third copy under `--caption-zone`, use
+`data-layout-allow-caption-zone`. It silences `caption_zone_collision` and
+nothing else — overflow, overlap, occlusion, and contrast still apply. Put it on
+the narrowest wrapper that owns the band copy.
+
+#### Verify motion, not just layout
+
+Layout sampling cannot catch a render-≠-preview bug: an entrance the seek lands
+past, a broken stagger order, an element that drifts off-frame mid-tween, a shot
+that freezes. Motion assertions can. Drop a `*.motion.json` sidecar next to the
+composition and `check` evaluates it automatically — no flag, no changes to your
+HTML. Without a sidecar, nothing changes.
+
+```json
+{
+  "duration": 6,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#headline", "bySec": 0.5 },
+    { "kind": "before", "a": "#headline", "b": "#cta" },
+    { "kind": "staysInFrame", "selector": ".card" },
+    { "kind": "keepsMoving", "withinSelector": ".scene" }
+  ]
+}
+```
+
+| Assertion                      | Catches                                                                                                        |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `appearsBy(selector, bySec)`   | A reveal the seek lands past — the element must reach opacity ≥ 0.5 by `bySec` (`motion_appears_late`)          |
+| `before(a, b)`                 | Broken stagger order — `a` must first appear strictly before `b` (`motion_out_of_order`)                        |
+| `staysInFrame(selector)`       | Off-frame drift — once visible, the box never leaves the canvas (`motion_off_frame`)                            |
+| `keepsMoving(withinSelector?)` | A frozen shot — no fully static window longer than `maxStaticSec`, default 2s (`motion_frozen`)                 |
+
+`duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are
+optional. Findings use the same shape and envelope as layout findings and are
+errors by default, so a failed assertion fails the run. A selector that matches
+nothing reports `motion_selector_missing` rather than quietly passing.
+
+### `snapshot`
+
+Capture specific frames as PNGs, without waiting for a full render.
+
+```bash
+npx hyperframes snapshot my-project --at 2.9,10.4,18.7
+npx hyperframes snapshot my-project --frames 10
+npx hyperframes snapshot my-project --zoom '#headline'
+```
+
+```
+◆  Capturing 3 frames at [2.9s, 10.4s, 18.7s] from my-project
+
+◇  3 snapshots saved to snapshots/
+   snapshots/frame-00-at-2.9s.png
+   snapshots/frame-01-at-10.4s.png
+   snapshots/frame-02-at-18.7s.png
+```
+
+| Flag                    | Description                                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--at`                  | Timestamps in seconds, comma-separated (`3.0,10.5,18.0`)                                                                                                           |
+| `--frames`              | Evenly spaced frames instead (default 5)                                                                                                                            |
+| `--output, -o`          | Where the PNGs go (default `<project>/snapshots`)                                                                                                                   |
+| `--end` / `--no-end`    | Always add a readable end-of-timeline frame (default: on). `--no-end` captures only your `--at` times.                                                              |
+| `--zoom`                | Crop to a CSS selector or an exact `x,y,w,h` region, using a raised device scale factor. Layout is untouched — never CSS zoom or a resized viewport. A selector that matches nothing is an error. |
+| `--zoom-scale`          | Pixel density for `--zoom` crops (default 3)                                                                                                                        |
+| `--angle`               | Orthogonal 3D camera for depth and occlusion checks: `front`, `iso`, `top`, `side`, or `yaw,pitch` in degrees. Tilts the whole stage, so you get real pixels.        |
+| `--describe`            | Gemini vision analysis of each frame. Runs by default when `GEMINI_API_KEY` is set. Pass a question to override the prompt, or `--describe false` to opt out.        |
+| `--timeout`             | Ms to wait for the runtime (default 5000)                                                                                                                           |
+| `--browser-gpu`, `--proxy` | Same meaning as on [`check`](#check)                                                                                                                             |
+
+Each snapshot is a 1920×1080 PNG taken by bundling the project, serving it,
+launching headless Chrome, and seeking. Useful for visual verification during
+the [product launch video](/guides/product-launch-video) workflow.
+
+### `keyframes`
+
+Show the GSAP, CSS, and Anime.js keyframes actually detected in a composition —
+or render an onion-skin diagnostic of one element's motion.
+
+```bash
+npx hyperframes keyframes [dir]
+npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
+```
+
+| Flag                 | Description                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `--selector`         | Only keyframes matching this CSS selector                                                                                       |
+| `--runtime`          | Filter hint: `gsap`, `css`, `anime`, or `all`                                                                                   |
+| `--json`             | Machine-readable results                                                                                                        |
+| `--shot`             | Write an onion-skin PNG of the real element sampled over the timeline. Pair with `--selector` to focus one element.             |
+| `--samples`          | Onion samples at equal time steps (default 9)                                                                                   |
+| `--layout`           | `path` — ghosts at real positions plus a path (default) — or `strip`, a filmstrip by time, for in-place or overlapping motion   |
+| `--from`, `--to`     | Sample only this time range, in seconds                                                                                         |
+| `--angle`            | Orbit camera: `front`, `iso`, `top`, `side`, `rear-iso`, or `yaw,pitch` in degrees                                             |
+| `--fit` / `--no-fit` | Zoom the motion to fill the diagnostic frame (default: on)                                                                      |
+| `--ghost`            | Composite the real canvas frames as translucent ghosts, older fainter, instead of bounding-box markers. Needs a `<canvas>`.     |
+
+Use `--ghost` for motion that happens *inside* a canvas, where the marker onion
+has nothing to draw.
+
+### `compare` and `grade-compare`
+
+`compare` renders two or more independent variants into one labelled PNG.
+
+```bash
+npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
+```
+
+| Flag        | Description                                        |
+| ----------- | -------------------------------------------------- |
+| `--at`      | Timeline time in seconds to seek before capture    |
+| `--labels`  | Comma-separated labels, one per input path         |
+| `--out`     | Output path (default `./compare.png`)              |
+| `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
+| `--timeout` | Render-ready timeout per variant (default 5000 ms) |
+| `--json`    | Machine-readable results                           |
+
+`grade-compare` does the same for colour: candidate grades or LUTs applied to
+one reference frame.
+
+```bash
+npx hyperframes grade-compare --for frame.png --luts warm.cube,cool.cube
+```
+
+| Flag                           | Description                                              |
+| ------------------------------ | -------------------------------------------------------- |
+| `--for`                        | Required. An image, or a video sampled at zero seconds.   |
+| `--grades`                     | JSON array of `{ label, grading }` candidates            |
+| `--luts`                       | Comma-separated `.cube` LUT files                        |
+| `--project`                    | Base directory for relative paths                        |
+| `--out`                        | Output PNG (default `<project>/grade-compare.png`)       |
+| `--baseline` / `--no-baseline` | Include the ungraded frame as an `original` cell (on)    |
+| `--timeout`                    | Render-ready timeout (default 5000 ms)                   |
+| `--json`                       | Machine-readable results                                 |
+
+### Deprecated: `validate`, `inspect`, and `layout`
+
+All three still run, and all three print a deprecation line on stderr and set
+`_meta.deprecated: true` in `--json` output. `validate` was the runtime-only
+browser check; `inspect` (and its alias `layout`) was the layout sweep and
+motion-sidecar pass. [`check`](#check) does everything they did, in one browser
+session, and it is where new work should go. Their flags are unchanged — run
+`npx hyperframes inspect --help` if you are maintaining automation that still
+calls them.
+
+## Render to a file
+
+### `render`
+
+Render a composition to MP4, WebM, MOV, GIF, or an RGBA PNG sequence.
+
+```bash
+# Fast iteration
+npx hyperframes render --output output.mp4
+
+# Deterministic output
+npx hyperframes render --docker --output output.mp4
+
+# Transparent, for overlays and lower thirds
+npx hyperframes render --format webm --output overlay.webm
+
+npx hyperframes render --output output.mp4 --fps 60 --quality high
+npx hyperframes render --gpu --output gpu.mp4
+```
+
+The flags that come up most:
+
+| Flag                | Default                       | Description                                                                                                                                       |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--output, -o`      | `renders/<name>.mp4`          | Output file path                                                                                                                                  |
+| `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
+| `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
+| `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
+| `--quality, -q`     | `standard`                    | `draft`, `standard`, or `high`. Drives CRF and bitrate.                                                                                            |
+| `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
+| `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
+| `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
+| `--variables-file`  | —                             | Read those overrides from a JSON file instead                                                                                                     |
+| `--batch`           | —                             | Render one output per variables row, from a JSON array or a `{ "rows": [...] }` object                                                             |
+| `--json`            | off                           | With `--batch`, print one final JSON result document instead of progress                                                                            |
+
+Quality and file size:
+
+| Flag                   | Default         | Description                                                                                              |
+| ---------------------- | --------------- | -------------------------------------------------------------------------------------------------------- |
+| `--crf`                | from `--quality`| Override encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`.                          |
+| `--video-bitrate`      | from `--quality`| Target bitrate, e.g. `10M` or `5000k`. Not with `--crf`.                                                  |
+| `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
+| `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
+| `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
+| `--hdr`                | off             | Force HDR even with no HDR sources. MP4 only. See [HDR rendering](/guides/hdr).                           |
+| `--sdr`                | off             | Force SDR even when HDR sources are detected                                                              |
+
+How it uses the machine, and when it gives up:
+
+| Flag                                                     | Default                                    | Description                                                                                                       |
+| -------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `--workers, -w`                                          | auto                                       | 1–24 workers. Each is a separate Chrome, roughly 256 MB. Auto weighs cores, memory, frame count, and cost.          |
+| `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no calibration. See the note below.                                   |
+| `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
+| `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back.                |
+| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for compatible SDR shader transitions, ~6× faster. HDR, alpha, and video disable it themselves.     |
+| `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
+| `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
+| `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
+| `--best-effort` / `--no-best-effort`                     | on                                         | Finish with capture-readiness warnings, or fail when media is missing or unready                                   |
+| `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
+| `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
+| `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
+| `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
+| `--quiet`                                                | off                                        | Less output                                                                                                        |
+| `--skill`                                                | —                                          | Record which authoring workflow started this render, in anonymous telemetry                                        |
+
+Low-memory detection reads **host** RAM, not cgroup or container limits, so
+containerised callers — including `--docker` — should set
+`PRODUCER_LOW_MEMORY_MODE` explicitly.
+
+#### When a render times out
+
+Three separate budgets can expire, and the error message tells you which. All
+three have environment fallbacks that take **milliseconds**, even where the flag
+does not.
+
+- **The page never loaded.** `--browser-timeout` is the Puppeteer navigation
+  budget for the entry HTML, and the flag takes **seconds** (default 60, range
+  0.001–86400). Raise it when a composition with many videos, fonts, or asset
+  requests cannot reach `domcontentloaded` in time. Env:
+  `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS`.
+- **The player never became ready.** After navigation, `window.__hf` readiness
+  has its own budget: `--player-ready-timeout`, in ms, default 45000. Env:
+  `PRODUCER_PLAYER_READY_TIMEOUT_MS`.
+- **A single CDP call hung.** `--protocol-timeout` is the per-call budget for
+  seek, paint, and screenshot round-trips, in ms, default 300000. This is the
+  one behind `Runtime.callFunctionOn timed out` and `Target closed`. Raise it on
+  hosts with 8 GB RAM or less and on asset-heavy compositions. The default
+  auto-scales with output pixel area, capped at 30 minutes; an explicit value
+  becomes a floor and disables that scaling below it. Env:
+  `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS`.
+
+#### Render the same composition with different content
+
+Declare the variables on the composition root, read them inside it, then
+override them at render time.
+
+```html index.html
+<html
+  data-composition-variables='[
+    {"id":"title","label":"Title","type":"string","default":"Hello"},
+    {"id":"theme","label":"Theme","type":"enum","options":[
+      {"value":"light","label":"Light"},
+      {"value":"dark","label":"Dark"}
+    ],"default":"light"}
+  ]'
+>
+  <script>
+    const vars = window.__hyperframes.getVariables();
+    document.getElementById("hero").textContent = vars.title;
+    document.body.dataset.theme = vars.theme;
+  </script>
+</html>
+```
+
+```bash
+# Declared defaults — preview uses these too
+npx hyperframes render --output default.mp4
+
+# Override; missing keys fall through to the defaults
+npx hyperframes render --variables '{"title":"Q4 Report","theme":"dark"}' --output q4.mp4
+
+npx hyperframes render --variables-file ./vars.json --output out.mp4
+```
+
+`getVariables()` returns the declared defaults merged with any overrides, so the
+same composition runs unchanged in preview and in production. For many outputs
+at once, `--batch` renders one file per row of a JSON array. See
+[Variables](/concepts/variables) for the whole model.
+
+#### Transparent WebM for overlays
+
+`--format webm` produces VP9 with an alpha channel — the standard format for
+overlayable video.
+
+```bash
+npx hyperframes render --format webm --output captions.webm
+
+ffmpeg -c:v libvpx-vp9 -i captions.webm -i background.mp4 \
+  -filter_complex "[1:v][0:v]overlay=0:0" -y composited.mp4
+```
+
+<Tip>
+  For transparency to survive, your composition's root elements need
+  `background: transparent`. WebM renders capture PNG frames rather than JPEG to
+  keep the alpha channel.
+</Tip>
+
+[Rendering](/guides/rendering) covers every mode in context.
+
+### `benchmark`
+
+Find good render settings for this machine.
+
+```bash
+npx hyperframes benchmark [dir]
+```
+
+It runs several configurations — varying fps, quality, and worker count — and
+compares time and file size. `--runs` sets runs per configuration (1–20,
+default 3); `--json` prints the results as JSON.
+
+## Keep the environment healthy
+
+### `doctor`
+
+Check the machine for everything a render needs.
+
+```bash
+npx hyperframes doctor
+npx hyperframes doctor --json
+```
+
+```
+hyperframes doctor
+
+  ✓ Version          0.1.4 (latest)
+  ✓ Node.js          v22.x (linux x64)
+  ✓ FFmpeg            7.x
+  ✓ FFprobe           7.x
+  ✓ Chrome            (system or cached)
+  ✓ Docker            24.x
+  ✓ Docker running    Running
+
+  ◇  All checks passed
+```
+
+It reports CLI version, Node.js, CPU, memory, disk, the extracted-frame cache,
+the archive extractor, `/dev/shm` on Linux, environment, whisper-cpp, local TTS
+and BGM models, FFmpeg, FFprobe, Chrome, and Docker.
+
+The **frames cache** row is worth knowing about: it prints the effective cache
+directory, its free space, and whether the location came from
+`HYPERFRAMES_EXTRACT_CACHE_DIR` or the default. Under 2 GB free it fails, since
+a long render can fill the drive from there. Move it with that variable or
+[`render --frames-cache-dir`](#render).
+
+**Gating CI on it.** `doctor --json` always exits 0 when it ran successfully —
+the command worked, whatever it found. Environment health lives in the payload's
+`ok` field, so a new CLI release (which flips the version row to not-ok) can
+never break your pipeline. Gate on the payload:
+
+```bash
+hyperframes doctor --json | jq -e '.ok' > /dev/null || handle_failure
+```
+
+In JSON mode, paths inside `detail` and `hint` are redacted — your home
+directory becomes the literal `$HOME`, so output is safe to paste into a bug
+report or an agent context.
+
+### `info` and `compositions`
+
+`npx hyperframes info [dir]` prints project metadata: name, resolution,
+duration, element counts by type, track count, and total size.
+`npx hyperframes compositions` lists every composition in the project with its
+ID, duration, resolution, and element count. Both take `--json`.
+
+### `upgrade`
+
+```bash
+npx hyperframes upgrade
+npx hyperframes upgrade --check         # check and exit, no prompt
+npx hyperframes upgrade --check --json  # for agents
+npx hyperframes upgrade --yes           # upgrade a global install without prompting
+npx hyperframes upgrade --project       # bump pinned CLI scripts in package.json
+```
+
+`upgrade` compares your installed version against npm. `--check` exits without
+prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
+the right `npx` command), and `--project [dir]` rewrites
+`hyperframes@<version>` script pins in a project's `package.json`.
+`--check --json` returns:
+
+```json
+{
+  "current": "0.7.84",
+  "latest": "0.7.85",
+  "updateAvailable": true,
+  "_meta": { "version": "0.7.84", "latestVersion": "0.7.85", "updateAvailable": true }
+}
+```
+
+### `browser`
+
+Manage the Chrome that rendering uses.
+
+```bash
+npx hyperframes browser ensure           # find it, or download it
+npx hyperframes browser ensure --force   # discard any cached download and re-fetch
+npx hyperframes browser path             # print the executable path
+npx hyperframes browser clear            # remove the cached download
+```
+
+`path` prints only the path, so it composes:
+`$(npx hyperframes browser path)`. Use `--force` when a download was
+interrupted and left a partial file behind.
+
+### `docs`
+
+Read documentation in the terminal.
+
+```bash
+npx hyperframes docs [topic]
+```
+
+Topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`,
+`compositions`. Run it bare to list them.
+
+### `feedback`
+
+Send anonymous feedback about how it went.
+
+```bash
+npx hyperframes feedback --rating 10
+npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
+npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
+```
+
+`--rating` is required, 0–10. `--comment` adds free text. `--file-issue`
+also opens a GitHub issue, `--dir` picks the project published as its repro
+(default: current directory), and `--yes, -y` skips the consent prompt for
+scripts.
+
+With `--file-issue`, the CLI publishes a minimal repro to a public URL — with
+your consent — and opens a pre-filled `bug` issue draft that you review and
+submit yourself. No token, no backend. See
+[Share feedback](/guides/feedback#report-a-reproducible-bug).
+
+Agents can call this after a render;
+[About feedback data](/guides/feedback#about-feedback-data) covers what the
+surface includes. With telemetry disabled it prints
+`Telemetry is disabled. Feedback not sent.` and exits cleanly.
+
+### `telemetry`
+
+```bash
+npx hyperframes telemetry enable
+npx hyperframes telemetry disable
+npx hyperframes telemetry status
+```
+
+Telemetry collects command names, render performance, render checkpoint and
+error names, aggregate browser diagnostic counts, browser initialization
+duration and tween count, aggregate video-extraction workload counts (extracted
+frames, VFR preflights), example choices, the names of registry items `add`
+installs, and system info — including a coarse
+environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
+runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
+CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
+inferred from which well-known environment variables exist; their values are
+never read. Local paths and URL query strings are redacted from error and
+checkpoint messages. Project names, video content, and environment variable
+values are never collected.
+
+Nothing personally identifying is collected until you sign in. When you run
+`hyperframes auth login`, your HeyGen account email — or username, if the
+account has no email — is linked to your usage, and your prior anonymous usage
+is stitched to it. Nothing else personal, and only once you choose to sign in.
+
+Turn it all off with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
+[Feedback collection](/guides/feedback) explains the post-render prompt and the
+Studio feedback bar.
+
+One consequence worth knowing: turning telemetry off also opts the install out
+of **canary rollouts**. A staged release enables a change for a stable slice of
+installs, and an install that reports nothing cannot be compared against
+anything. Every route counts — `telemetry disable`,
+`HYPERFRAMES_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, and dev builds. See
+[Canary rollouts](/contributing/canary-rollouts).
+
+### `skills`
+
+Install or refresh the HyperFrames skills that AI coding tools read.
+
+```bash
+# Install the complete published set and link it into installed agents
+npx hyperframes skills
+
+# What is installed?
+npx hyperframes skills check
+npx hyperframes skills check --json
+
+# Refresh the core set and everything already installed
+npx hyperframes skills update
+
+# Refresh, and also install one workflow on demand
+npx hyperframes skills update pr-to-video
+```
+
+Bare `skills` installs everything. `skills update` keeps a deliberate partial
+installation partial: it refreshes the core set plus whatever is already
+installed, and never expands beyond that unless you name a workflow. Naming one
+adds it. `check` and `update` both accept `--json`, plus `--dir` and `--source`
+to point removed-detection at a different skills directory or source — those two
+scope the prune, not the install.
+
+The CLI installs from the current HyperFrames GitHub source and links the global
+bundles into whichever compatible agents it finds. After scaffolding, `init`
+also refreshes the core set plus any HyperFrames skills you already have.
+
+#### `fatal: active post-checkout hook found during git clone`
+
+If Git LFS is installed globally, Git 2.45+ refuses to run the LFS
+post-checkout hook during any `git clone` — including the clone the upstream
+`skills` CLI does internally:
+
+```
+■  Failed to clone repository
+fatal: active `post-checkout` hook found during `git clone`
+└  Installation failed
+```
+
+`hyperframes skills` already handles this. You do not need an environment
+variable.
+
+If you called the upstream command directly instead, set it yourself:
+
+```bash
+GIT_CLONE_PROTECTION_ACTIVE=0 npx skills add heygen-com/hyperframes --full-depth
+```
+
+### `figma` and `events`
+
+`npx hyperframes figma` imports through the Figma REST API, with three
+subcommands: `asset` (export an image or SVG), `tokens` (pull design tokens),
+and `component` (import an editable component). Run it bare for usage. See
+[Figma integration](/guides/figma) for setup and examples.
+
+`npx hyperframes events` lets an installed workflow skill emit an anonymous
+usage event (`--skill`, `--event`, `--outcome`). Nothing calls it by hand.
 
 ## hyperframes auth
 
-Sign in to HeyGen and manage credentials. Credentials are stored in
-`~/.heygen/credentials` (mode `0600`) and are **shared with the
-`heygen` CLI** — sign in with one and the other picks up the session.
+Sign in to HeyGen and manage credentials. They live in `~/.heygen/credentials`
+(mode `0600`) and are **shared with the `heygen` CLI** — sign in with one and
+the other picks up the session.
 
-Resolution order (first match wins):
+First match wins:
 
-1. `HEYGEN_API_KEY` environment variable
-2. `HYPERFRAMES_API_KEY` environment variable (hyperframes alias)
+1. `HEYGEN_API_KEY`
+2. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
 3. `~/.heygen/credentials`
 
-### Subcommands
+### `auth login`
 
-#### `auth login --api-key`
-
-Save a HeyGen API key. The key is verified against `GET /v3/users/me`
-before the command reports success; a rejected key is not left on disk.
+Opens a browser for OAuth:
 
 ```bash
-# Interactive hidden-input prompt
+hyperframes auth login
+```
+
+Pass `--api-key` when you want a long-lived HeyGen API key instead. The key is
+verified against `GET /v3/users/me` before the command reports success, so a
+rejected key is never left on disk.
+
+```bash
+# Hidden-input prompt
 hyperframes auth login --api-key
 
-# Pipe a key from stdin (CI-friendly)
+# From stdin, for CI
 echo "$HEYGEN_API_KEY" | hyperframes auth login --api-key
 ```
 
-#### `auth status`
+### `auth status`
 
-Show the active credential's source, type, and verified identity
-(account + billing snapshot). Exits non-zero when nothing is configured
-or the API rejects the credential, so scripts can check sign-in state.
+Shows the active credential's source and type, and the verified identity —
+account plus billing snapshot. It exits non-zero when nothing is configured or
+the API rejects the credential, so a script can test sign-in state.
 
 ```bash
 hyperframes auth status
-hyperframes auth status --json   # machine-readable
+hyperframes auth status --json
 ```
 
-#### `auth logout`
+### `auth refresh`
 
-Remove the stored credential. Prompts for confirmation on a TTY.
+Force-refreshes the stored OAuth access token. Applies to an OAuth session, not
+an API key.
+
+```bash
+hyperframes auth refresh
+```
+
+### `auth logout`
+
+Removes the stored credential, with a confirmation on a TTY.
 
 ```bash
 hyperframes auth logout
-hyperframes auth logout --keep-api-key   # clear only an OAuth session
-hyperframes auth logout --yes            # skip the confirmation prompt
+hyperframes auth logout --keep-api-key   # clear only the OAuth session
+hyperframes auth logout --yes            # no prompt
 ```
 
 ### Environment variables
 
-| Variable | Description |
-|----------|-------------|
-| `HEYGEN_API_KEY` | Override the stored credential. |
-| `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`. |
-| `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
-| `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
+| Variable              | Description                                      |
+| --------------------- | ------------------------------------------------ |
+| `HEYGEN_API_KEY`      | Override the stored credential.                  |
+| `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
+| `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
+| `HEYGEN_CONFIG_DIR`   | Credentials directory (default `~/.heygen`).     |
 
-For the keys other capabilities use — ElevenLabs and Gemini for voice/music fallback, OpenRouter/Gemini for capture — and how the skills prioritize them, see [Authentication & API keys](/guides/authentication).
+For the keys other capabilities use — ElevenLabs and Gemini for voice and music
+fallback, OpenRouter and Gemini for capture — and how the skills prioritize
+them, see [Authentication and API keys](/guides/authentication).
 
 ## hyperframes cloud
 
-Render a HyperFrames composition on HeyGen's hosted cloud — no local Chrome, no local ffmpeg, no AWS to manage. Sign in once with `hyperframes auth login` and the same credential drives every `cloud` subcommand.
+Render on HeyGen's hosted cloud. No local Chrome, no local ffmpeg, no AWS to
+manage. Sign in once and the same credential drives every subcommand.
 
 ```bash
 hyperframes auth login                          # one-time
-hyperframes cloud render ./my-video             # zip + upload + poll + download
+hyperframes cloud render ./my-video             # zip, upload, poll, download
 hyperframes cloud render ./my-video --no-wait   # submit and exit with the render_id
-hyperframes cloud list                          # browse recent renders
+hyperframes cloud list                          # recent renders
 ```
 
-### Subcommands
+### `cloud render [<projectDir>]`
 
-#### `cloud render [<projectDir>]`
+End to end: zips the project, uploads it through the direct-to-S3 asset flow,
+submits `POST /v3/hyperframes/renders`, polls
+`GET /v3/hyperframes/renders/{id}` until it finishes or fails, and streams the
+video to disk.
 
-End-to-end render: zips the project (excluding `.git`, `node_modules`, `dist`, `.next`, `coverage`, dotfiles), uploads it via `POST /v3/assets`, submits `POST /v3/hyperframes/renders`, polls `GET /v3/hyperframes/renders/{id}` until the render completes or fails, and streams the resulting video to disk.
+The zip excludes root `renders` and `snapshots`, `.git`, `node_modules`, `dist`,
+`.next`, `coverage`, dotfiles, and anything your `.hyperframesignore` rules
+match. Those rules use gitignore syntax and apply to `hyperframes publish` too.
+Keep them narrow — a dynamically selected asset may have no static reference to
+protect it.
 
-Render parameters mirror the local `hyperframes render` UX where they overlap:
+The zip has to come in under 200 MB — the direct-upload cap. Use `--dry-run`
+first to see the compressed size and the largest included files, without
+authenticating, uploading, or starting anything. If you are over, add only
+paths you have verified are unneeded to `.hyperframesignore`, or pre-host the
+large media and reference it by URL.
 
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--fps` | `30` | Integer 1-240. |
-| `--quality` | `standard` | `draft`, `standard`, or `high`. |
-| `--format` | `mp4` | `mp4`, `webm`, or `mov`. |
-| `--resolution` | `1080p` | `1080p` or `4k`. 4k is billed at 1.5× and can't be combined with `webm`/`mov`. |
-| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width`/`data-height`; for `--asset-id`/`--url` it defaults to `16:9` unless set. |
-| `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
-| `--variables` | — | Inline JSON object overriding `data-composition-variables`. |
-| `--variables-file` | — | Path to a JSON file (alternative to `--variables`). |
-| `--strict-variables` | off | Fail when variables are undeclared or have the wrong type. |
-| `--title` | — | Free-text label echoed back in detail responses. |
-| `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the downloaded video. |
+Render parameters mirror local `hyperframes render` where they overlap:
 
-Lifecycle / control flags:
+| Flag                   | Default                     | Description                                                                                                                                     |
+| ---------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--fps`                | `30`                        | Integer, 1–240                                                                                                                                  |
+| `--quality`            | `standard`                  | `draft`, `standard`, or `high`                                                                                                                  |
+| `--format`             | `mp4`                       | `mp4`, `webm`, or `mov`                                                                                                                         |
+| `--resolution`         | `1080p`                     | `1080p` or `4k`. 4k bills at 1.5× and cannot combine with `webm` or `mov`.                                                                       |
+| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. With `--asset-id` or `--url` the server defaults to `16:9`. |
+| `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip                                                                                                                   |
+| `--variables`          | —                           | Inline JSON overriding `data-composition-variables`                                                                                              |
+| `--variables-file`     | —                           | Read those overrides from a JSON file                                                                                                            |
+| `--strict-variables`   | off                         | Fail when a variable is undeclared or the wrong type                                                                                             |
+| `--title`              | —                           | Free-text label echoed back in detail responses                                                                                                  |
+| `--output` / `-o`      | `renders/<render_id>.<ext>` | Where the downloaded video lands                                                                                                                 |
+| `--dry-run`            | off                         | Build and inspect the zip without authenticating, uploading, or rendering                                                                        |
 
-| Flag | Meaning |
-| --- | --- |
-| `--no-wait` | Submit and exit immediately; print the `render_id` to stdout. |
-| `--callback-url` | HTTPS webhook fired when the render terminates (compose with `--no-wait`). |
-| `--callback-id` | Opaque tracking ID echoed in webhook payloads. |
-| `--asset-id` | Skip zip+upload; submit an already-uploaded composition. Mutually exclusive with the project dir and `--url`. |
-| `--url` | Submit a public HTTPS zip URL. Same mutual-exclusion as `--asset-id`. |
-| `--poll-interval` | Poll cadence in seconds (default `10`). |
-| `--max-wait` | Max poll duration in minutes (default `60`). |
-| `--idempotency-key` | Optional `Idempotency-Key` for safe retries (1-255 chars from `[A-Za-z0-9_:.-]`). |
-| `--json` | Emit machine-readable JSON instead of human-friendly progress. |
+Lifecycle and control:
+
+| Flag                | Description                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--no-wait`         | Submit and exit immediately, printing the `render_id` to stdout                                                 |
+| `--callback-url`    | HTTPS webhook fired when the render terminates. It fires whether or not the CLI is still polling — pair with `--no-wait` for true fire-and-forget. |
+| `--callback-id`     | Opaque tracking ID echoed in webhook payloads                                                                   |
+| `--asset-id`        | Skip zip and upload; submit an already-uploaded composition. Mutually exclusive with the project dir and `--url`. |
+| `--url`             | Submit a public HTTPS zip URL. Same mutual exclusion as `--asset-id`.                                            |
+| `--poll-interval`   | Poll cadence in seconds (default 10)                                                                            |
+| `--max-wait`        | Maximum poll duration in minutes (default 60)                                                                   |
+| `--idempotency-key` | `Idempotency-Key` for safe retries. 1–255 characters from `[A-Za-z0-9_:.-]`.                                     |
+| `--json`            | Machine-readable JSON instead of human progress                                                                 |
 
 ```bash
-# Default flow — render the current directory.
-hyperframes cloud render
-
-# Pick a composition + output path.
+# Pick a composition and an output path.
 hyperframes cloud render . \
   --composition compositions/intro.html \
   --output ./renders/intro.mp4
 
-# Higher quality at 60fps.
-hyperframes cloud render --quality high --fps 60
-
-# Fire-and-forget with a webhook (no local polling).
+# Fire and forget, with a webhook.
 hyperframes cloud render --callback-url https://example.com/hf-hook --no-wait
 
-# Re-render an already-uploaded composition (skips zip + upload).
+# Re-render something already uploaded, or render straight from a public URL.
 hyperframes cloud render --asset-id asst_abc123
-
-# Render from a public URL (no upload).
 hyperframes cloud render --url https://cdn.example.com/site.zip
 ```
 
-##### Safe retries via `--idempotency-key`
+#### Why you want `--idempotency-key`
 
-The CLI transparently retries on a `401 Unauthorized` by force-refreshing the OAuth token and replaying the failed request. For most reads that's harmless, but `POST /v3/assets` (the zip upload) is *not* idempotent on its own — a retry without an `Idempotency-Key` would create a duplicate asset and bill the workspace twice.
+On a `401`, the CLI force-refreshes the OAuth token and replays the request. For
+reads that is harmless. But `POST /v3/assets` — the zip upload — is not
+idempotent on its own, so a retry without a key would create a duplicate asset
+and bill the workspace twice.
 
-Pass `--idempotency-key <key>` whenever you want safe retries on `cloud render`. The key is forwarded to both the upload and submit calls; the server scopes idempotency per-endpoint, so reusing the same value across the two steps is safe and prevents duplicates on either step. Use a UUID per logical render, or any opaque string in `[A-Za-z0-9_:.-]` (1-255 chars).
+Pass `--idempotency-key <key>` whenever you want safe retries. It is forwarded
+to both the upload and the submit, and the server scopes idempotency per
+endpoint, so reusing one value across both steps is safe and prevents a
+duplicate at either. Use a UUID per logical render, or any opaque string.
 
 ```bash
 hyperframes cloud render . --idempotency-key "$(uuidgen)"
 ```
 
-#### `cloud list`
+### `cloud list`
 
-Pages through recent renders. Cursor-based: `--limit` caps a single page (1-100), `--token` resumes from a previous `next_token`, `--all` walks the full list until exhausted.
+Pages through recent renders, cursor-based. `--limit` caps one page (1–100,
+default 10), `--token` resumes from a previous `next_token`, and `--all` walks
+until exhausted. `--json` for the machine-readable form.
 
 ```bash
 hyperframes cloud list
@@ -1104,39 +1364,45 @@ hyperframes cloud list --limit 50 --json
 hyperframes cloud list --all
 ```
 
-#### `cloud get <render_id>`
+### `cloud get <render_id>`
 
-Fetches the full detail record for one render, including the short-lived signed `video_url` and `thumbnail_url` (presigned S3 URLs — re-fetch on demand rather than cache).
+Fetches one render's full detail record, including the short-lived signed
+`video_url` and `thumbnail_url`. Those are presigned S3 URLs — re-fetch on
+demand rather than caching them.
 
 ```bash
 hyperframes cloud get hfr_abc123
 hyperframes cloud get hfr_abc123 --json
 ```
 
-#### `cloud delete <render_id>`
+### `cloud delete <render_id>`
 
-Soft-deletes a render. Subsequent `GET` calls return 404 and the signed video URL stops working shortly after. Prompts for confirmation interactively; pass `--no-confirm` to bypass for scripts.
+Soft-deletes a render. Later `GET` calls return 404 and the signed video URL
+stops working shortly after. It prompts interactively; `--no-confirm` skips
+that, and is required alongside `--json`.
 
 ```bash
 hyperframes cloud delete hfr_abc123
 hyperframes cloud delete hfr_abc123 --no-confirm --json
 ```
 
-### When to pick `cloud` vs `lambda` vs local render
+### Which one should you use?
 
-- `hyperframes render` (local): fastest iteration loop. Use during composition authoring.
-- `hyperframes lambda render`: bring-your-own-AWS distributed rendering. Use when you've already invested in AWS and want chunked parallelism on your own account.
-- `hyperframes cloud render`: zero-infra option. HeyGen runs the render; you pay per credit. Use when you don't want to manage Chrome/ffmpeg/AWS locally.
+- **`hyperframes render`** — the fastest loop. Use it while authoring.
+- **`hyperframes cloud render`** — zero infrastructure. HeyGen runs it, you pay
+  per credit. Use it when you do not want Chrome, ffmpeg, or AWS on your
+  machine.
+- **`hyperframes lambda render`** — your own AWS, chunked in parallel. Use it
+  when you have already invested in AWS and want the work on your account.
 
-### Auth + base URL
-
-`cloud` reuses the credential resolved by `hyperframes auth status`. Override the API base for staging tests with `HEYGEN_API_URL` (default `https://api.heygen.com`).
+`cloud` reuses whatever credential `hyperframes auth status` resolves. Override
+the API base for staging with `HEYGEN_API_URL`.
 
 ## hyperframes lambda
 
-Deploy HyperFrames distributed rendering to AWS Lambda and drive renders from your laptop or CI.
-
-The `hyperframes lambda` command group wraps the `@hyperframes/aws-lambda` SDK plus AWS SAM so an end-to-end render is three commands:
+Deploy distributed rendering to AWS Lambda and drive it from your laptop or CI.
+The command group wraps the `@hyperframes/aws-lambda` SDK plus AWS SAM, so an
+end-to-end render is three commands:
 
 ```bash
 hyperframes lambda deploy
@@ -1144,17 +1410,56 @@ hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
 hyperframes lambda destroy   # when you're done
 ```
 
-### Prerequisites
+You need AWS credentials (env vars, `~/.aws/credentials`, SSO, or IMDS), the
+[AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+on `PATH`, and `bun` on `PATH` to build the handler ZIP.
 
-- AWS credentials configured (env vars, `~/.aws/credentials`, SSO, or IMDS).
-- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) on `PATH`.
-- `bun` on `PATH` (used to build the Lambda handler ZIP).
+Flags are shared across the whole group. These identify the stack and shape the
+deploy:
 
-### Subcommands
+| Flag              | Default                              | Description                                              |
+| ----------------- | ------------------------------------ | -------------------------------------------------------- |
+| `--stack-name`    | `hyperframes-default`                | CloudFormation stack name                                |
+| `--region`        | `AWS_REGION`, else `us-east-1`       | AWS region                                               |
+| `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
+| `--concurrency`   | `8`                                  | Lambda reserved concurrency                              |
+| `--memory`        | `10240`                              | Lambda memory in MB                                      |
+| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
+| `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 
-#### `lambda deploy`
+And these drive `render` and `render-batch`:
 
-Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack at `examples/aws-lambda/template.yaml`. On success, writes `<cwd>/.hyperframes/lambda-stack-<stackName>.json` so the other subcommands don't need to re-derive the bucket / state-machine ARN.
+| Flag                    | Default                             | Description                                                                                                       |
+| ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
+| `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
+| `--fps`                 | `30`                                | `24`, `30`, or `60`                                                                                               |
+| `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
+| `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
+| `--quality`             | `standard`                          | `draft`, `standard`, or `high`                                                                                    |
+| `--output-resolution`   | —                                   | Supersample via Chrome `deviceScaleFactor` to a preset (`1080p`, `4k`, `uhd`, `hd`, `landscape-4k`, …) without changing layout |
+| `--chunk-size`          | `240`                               | Frames per chunk                                                                                                  |
+| `--max-parallel-chunks` | `16`                                | Concurrent chunks per render                                                                                      |
+| `--target-chunk-frames` | —                                   | Ceiling on frames per chunk. The planner adds chunks — up to `--max-parallel-chunks` — to stay under it, and short videos still collapse to fewer. Ignored when `--chunk-size` is set. |
+| `--variables`           | —                                   | JSON object reaching every chunk worker as `window.__hfVariables`                                                  |
+| `--variables-file`      | —                                   | Read those from a JSON file                                                                                       |
+| `--strict-variables`    | off                                 | Fail instead of warn on an undeclared or mistyped key                                                             |
+| `--execution-name`      | `hf-render-<uuid>`                  | Step Functions execution name                                                                                     |
+| `--output-key`          | `renders/<exec>/output.<ext>`       | Final output S3 key                                                                                               |
+| `--batch`               | —                                   | JSONL batch file for `render-batch`                                                                               |
+| `--max-concurrent`      | `50`                                | In-flight Step Functions executions for `render-batch`                                                            |
+| `--dry-run`             | off                                 | For `render-batch`: print the manifest without calling AWS                                                        |
+| `--wait`                | off                                 | Block until the render finishes, streaming per-chunk progress                                                     |
+| `--wait-interval-ms`    | `5000`                              | Poll cadence while `--wait` is set                                                                                |
+| `--json`                | off                                 | Machine-readable output                                                                                            |
+
+### `lambda deploy`
+
+Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack at
+`examples/aws-lambda/template.yaml`. On success it writes
+`<cwd>/.hyperframes/lambda-stack-<stackName>.json`, so the other subcommands do
+not have to re-derive the bucket and state-machine ARN. Re-running on the same
+`--stack-name` is a no-op when nothing changed.
 
 ```bash
 hyperframes lambda deploy \
@@ -1164,11 +1469,10 @@ hyperframes lambda deploy \
   --memory=10240
 ```
 
-Idempotent — re-running on the same `--stack-name` resolves to a no-op when nothing changed.
+### `lambda sites create <projectDir>`
 
-#### `lambda sites create <projectDir>`
-
-Tars + uploads `<projectDir>` to S3 with a content-addressed key. Returns a `siteId` you can reuse across multiple renders so a re-render of the same tree skips the upload.
+Tars and uploads the project to S3 under a content-addressed key, and returns a
+`siteId` you can reuse. A re-render of the same tree then skips the upload.
 
 ```bash
 hyperframes lambda sites create ./my-project
@@ -1177,40 +1481,36 @@ hyperframes lambda sites create ./my-project
 hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
 ```
 
-#### `lambda render <projectDir>`
+### `lambda render <projectDir>`
 
-Starts a Step Functions execution. Returns immediately with a `renderId` (use `lambda progress` to poll) unless `--wait` is set, in which case the CLI blocks until the render finishes and streams per-chunk progress lines.
+Starts a Step Functions execution and returns a `renderId` immediately — poll it
+with `lambda progress` — unless you pass `--wait`.
 
 ```bash
 hyperframes lambda render ./my-project \
   --width=1920 --height=1080 --fps=30 --format=mp4 \
   --chunk-size=240 --max-parallel-chunks=16 \
   --wait
-```
 
-`--json` swaps the human-readable output for a machine-parseable JSON snapshot.
-
-The composition can be parameterised with `--variables` / `--variables-file`, mirroring the local `hyperframes render` flags. Variables flow into the Step Functions execution input and reach every chunk worker as `window.__hfVariables`. Mismatches against the composition's `data-composition-variables` declaration print as warnings; pass `--strict-variables` to fail the command instead.
-
-```bash
 hyperframes lambda render ./my-template --site-id=abc1234deadbeef0 \
   --width=1920 --height=1080 \
   --variables '{"title":"Hello Alice","accent":"#ff0000"}'
 ```
 
-```bash
-hyperframes lambda render ./my-template --site-id=abc1234deadbeef0 \
-  --width=1920 --height=1080 \
-  --variables-file ./alice.json --strict-variables
-```
+Variables travel inside the Step Functions Standard execution input, which AWS
+caps at 256 KiB for the whole payload. So pass typed data through variables —
+strings, numbers, records — and reference media by URL for the composition to
+resolve at render time, rather than inlining bytes. The SDK checks the size
+client-side and rejects an oversize input with a clear error before any AWS call
+runs. The [templates-on-lambda guide](/deploy/templates-on-lambda) explains the
+URL-your-assets convention.
 
-Variables travel inside the Step Functions Standard execution input, which AWS caps at 256 KiB for the entire payload. Pass typed data (strings, numbers, structured records) through variables; URL-reference media assets (images, audio, video) the composition resolves at render time rather than inlining bytes. The SDK validates the size client-side and rejects oversize inputs with a clear error before any AWS call runs — see the [templates-on-lambda guide](/deploy/templates-on-lambda) for the URL-your-assets convention.
+### `lambda render-batch <projectDir>`
 
-#### `lambda render-batch <projectDir>`
-
-Fans out N personalised renders from a JSONL batch file — the headline ergonomic for automated template-rendering pipelines. Deploys the site once (or skips with `--site-id`), then invokes `renderToLambda` per batch row with per-entry `variables` and `outputKey`. Concurrent Step Functions starts are capped at `--max-concurrent` (default 50) so a 10 000-entry batch doesn't try to spawn 10 000 executions at once and trip AWS account limits.
-
-Batch file format (JSONL — one JSON object per line):
+Fans out N personalised renders from a JSONL batch file — the headline
+ergonomic for automated template pipelines. It deploys the site once (or skips
+that with `--site-id`), then invokes `renderToLambda` per row with that row's
+`variables` and `outputKey`.
 
 ```jsonl
 {"outputKey": "renders/alice.mp4", "variables": {"name": "Alice", "accent": "#ff0000"}}
@@ -1225,7 +1525,7 @@ hyperframes lambda render-batch ./my-template \
   --max-concurrent 10
 ```
 
-The verb prints a manifest — one row per input line — with `executionArn` + status:
+It prints one row per input line, with the `executionArn` and status:
 
 ```
 Batch dispatched: 3 started, 0 failed-to-start.
@@ -1235,104 +1535,116 @@ Batch dispatched: 3 started, 0 failed-to-start.
   ✓ line 3  renders/carol.mp4  arn:aws:states:us-east-1:1234:execution:hf:hf-carol-001
 ```
 
-Pass `--json` for the machine-readable form. Poll each execution via `hyperframes lambda progress <renderId>` (or use the returned `executionArn`).
+Poll each one with `hyperframes lambda progress <renderId>`, or use the returned
+`executionArn`. Run it with `--dry-run` first to lint the batch file before
+committing to N billable executions — every entry comes back as
+`status: "would-invoke"`.
 
-`--dry-run` skips the AWS calls and prints the manifest with `status: "would-invoke"` for every entry — use it to lint the batch file before committing to N billable executions:
+`--max-concurrent` (default 50) caps `StartExecution` calls, so a 10,000-entry
+batch does not try to spawn 10,000 executions and trip your account limits. It
+is orchestrator-side only, and cannot enforce your account's Lambda concurrency
+quota — pick a value from that quota and the reserved concurrency you set at
+`lambda deploy --concurrency=<N>`. It is not `--max-parallel-chunks`, which caps
+chunks inside one render.
 
-```bash
-hyperframes lambda render-batch ./my-template --batch ./users.jsonl \
-  --width 1920 --height 1080 --dry-run --json
-```
+### `lambda progress <renderId | executionArn>`
 
-`--max-concurrent` is orchestrator-side only: it caps how many `StartExecution` calls run simultaneously, not how many Lambda invocations the account can run. AWS account-level Lambda concurrency limits live one level up and `render-batch` cannot enforce them; pick `--max-concurrent` based on your account's `concurrent-execution` quota and the Lambda reserved concurrency you provisioned via `lambda deploy --concurrency=<N>`.
-
-#### `lambda progress <renderId | executionArn>`
-
-Prints one progress snapshot — overall percent, frames rendered, Lambda invocations, accrued cost, and any errors. Accepts either a bare `renderId` (resolved against the stack's state-machine ARN) or a full SFN execution ARN.
+Prints one snapshot: overall percent, frames rendered, Lambda invocations,
+accrued cost, and any errors. A bare `renderId` is resolved against the stack's
+state-machine ARN; a full SFN execution ARN also works.
 
 ```bash
 hyperframes lambda progress hf-render-abcd1234
 ```
 
-#### `lambda destroy`
+### `lambda destroy`
 
-Calls `sam delete --no-prompts` and drops the local state file. The render S3 bucket is configured with CloudFormation `Retain` so it survives destruction — empty and delete it via the AWS console / CLI if you want the storage back.
+Runs `sam delete --no-prompts` and drops the local state file. The render S3
+bucket is configured with CloudFormation `Retain`, so it survives — empty and
+delete it via the console or AWS CLI if you want the storage back.
 
-#### `lambda policies role | user | validate`
+### `lambda policies role | user | validate`
 
-Print or validate the minimum IAM policy the CLI needs to deploy / invoke / destroy the stack.
+Prints or validates the minimum IAM policy the CLI needs.
 
 ```bash
-# Print an inline-policy doc you can attach to an IAM user that runs the CLI.
+# Inline-policy doc for an IAM user that runs the CLI.
 hyperframes lambda policies user
 
-# Print { TrustRelationship, InlinePolicy } for an IAM role (default: cloudformation principal).
-hyperframes lambda policies role --principal=cloudformation
+# { TrustRelationship, InlinePolicy } for a CloudFormation service role.
+hyperframes lambda policies role
 
-# Validate a checked-in policy still covers the CLI's needs.
+# Does a checked-in policy still cover the CLI?
 hyperframes lambda policies validate ./infra/iam/hyperframes-deploy.json
 ```
 
-`validate` reads the JSON doc and checks the union of its `Effect: Allow` actions against the CLI's required action set, expanding `s3:*` / `s3:Get*` / `*` wildcards. Missing actions print to stderr and the command exits non-zero — wire it into CI to catch drift before the next deploy fails.
+`validate` reads the JSON doc and checks the union of its `Effect: Allow`
+actions against what the CLI needs, expanding `s3:*`, `s3:Get*`, and `*`
+wildcards. Missing actions print to stderr and it exits non-zero — wire it into
+CI to catch drift before the next deploy fails.
 
-The actions list is deliberately broad (`Resource: "*"`) because CloudFormation creates new function / state-machine / bucket ARNs on every adopter's first deploy. Adopters with stricter security postures should narrow `Resource` to the deployed ARNs after the first successful run.
+The action list is deliberately broad (`Resource: "*"`) because CloudFormation
+mints new function, state-machine, and bucket ARNs on every adopter's first
+deploy. Narrow `Resource` to the deployed ARNs after that first success if your
+security posture calls for it.
 
 ### State files
 
-`hyperframes lambda` keeps per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` so the verbs don't need to call `describe-stacks` every time. Commit the file to a repo or `.gitignore` it depending on your workflow — it contains the bucket name, state-machine ARN, and region, none of which are secrets but all of which are AWS-account-identifying.
+`hyperframes lambda` keeps per-stack metadata under
+`<cwd>/.hyperframes/lambda-stack-<name>.json`, so the verbs never have to call
+`describe-stacks`. Commit it or `.gitignore` it as you prefer — it holds the
+bucket name, state-machine ARN, and region. None are secrets, but all identify
+your AWS account.
 
 ## hyperframes cloudrun
 
-The Google Cloud counterpart to `hyperframes lambda`. Deploys HyperFrames distributed rendering to Cloud Run + Cloud Workflows and drives renders from your laptop or CI. Wraps the `@hyperframes/gcp-cloud-run` SDK plus `terraform` (the module shipped with the package) and `gcloud` / Cloud Build for the image.
+The Google Cloud counterpart to [`lambda`](#hyperframes-lambda): distributed
+rendering on Cloud Run plus Cloud Workflows, driven from your laptop or CI. It
+wraps the `@hyperframes/gcp-cloud-run` SDK plus `terraform` (the module shipped
+with the package) and `gcloud` or Cloud Build for the image.
 
 ```bash
 hyperframes cloudrun deploy --project my-gcp-project
 hyperframes cloudrun render ./my-project --width 1920 --height 1080 --wait
-hyperframes cloudrun destroy --project my-gcp-project   # when you're done
+hyperframes cloudrun destroy --project my-gcp-project
 ```
 
-#### `cloudrun deploy`
+**`deploy`** enables the required APIs, builds and pushes the render image via
+Cloud Build unless you pass `--image`, then `terraform apply`s the module that
+provisions the GCS bucket, Cloud Run service, Cloud Workflows definition, two
+service accounts, and a runaway-request alert. It caches the bucket, service URL,
+and workflow id so later verbs do not need them again. `--project` is required;
+`--region` defaults to `us-central1` and `--repo` (the Artifact Registry repo)
+to `hyperframes`. Sizing is `--cpu` (1, 2, 4, or 8; default 4), `--memory`
+(default `16Gi`), `--max-instances` (the fan-out ceiling, default 100), and
+`--timeout` (per-request seconds, max 3600). Omit one and the module default
+stands; for anything finer, apply the Terraform module directly.
 
-Enables the required APIs, builds + pushes the render image via Cloud Build (unless you pass `--image`), then `terraform apply`s the module that provisions the GCS bucket, Cloud Run service, Cloud Workflows definition, two service accounts, and a runaway-request alert. Caches the resulting bucket / service URL / workflow id so later verbs don't need them re-passed.
+The other verbs mirror [`lambda`](#hyperframes-lambda) one for one, and so do
+their flags:
 
-```bash
-hyperframes cloudrun deploy --project my-gcp-project --region us-central1
-hyperframes cloudrun deploy --project my-gcp-project --image us-central1-docker.pkg.dev/my-gcp-project/hyperframes/hyperframes-render:v1
-```
+- `sites create <projectDir>` uploads a project to GCS once and prints the
+  `gs://` URI.
+- `render <projectDir>` starts a distributed render. `--width` and `--height`
+  are required, and `--render-id` stands in for `--execution-name`.
+- `render-batch <projectDir>` fans out from a JSONL file.
+- `progress <executionName>` prints progress and cost — coarse while running,
+  exact on success.
+- `destroy` runs `terraform destroy` and force-destroys the render bucket.
 
-Flags: `--project` (required), `--region` (default `us-central1`), `--image` (skip the build), `--repo` (Artifact Registry repo, default `hyperframes`). Machine sizing / scaling: `--cpu` (1/2/4/8, default 4), `--memory` (e.g. `32Gi`, default `16Gi`), `--max-instances` (render fan-out ceiling, default 100), `--timeout` (per-request seconds, max 3600). Omitted sizing flags keep the module defaults; for anything finer, apply the Terraform module directly.
-
-#### `cloudrun sites create <projectDir>`
-
-Tar + upload a project to GCS once and reuse it across renders. `--site-id` overrides the content hash. Prints the `gs://` URI.
-
-#### `cloudrun render <projectDir>`
-
-Start a distributed render. `--width` / `--height` are required; `--fps` (24/30/60), `--format`, `--codec`, `--quality`, `--chunk-size`, `--max-parallel-chunks`, `--target-chunk-frames`, and `--output-resolution` (deviceScaleFactor supersampling, e.g. `4k`) mirror the local render flags. `--target-chunk-frames` caps the frames per chunk so a single chunk can't run past a per-chunk timeout on a long video: the planner uses the fewest chunks that keep each at or below the bound, up to `--max-parallel-chunks`, and short videos still collapse to fewer chunks. It's a ceiling, not a fixed size, and is ignored when `--chunk-size` is set. Pass composition variables with `--variables '{"title":"Hi"}'` or `--variables-file alice.json`; add `--strict-variables` to fail on a key that's undeclared or mistyped vs the composition's `data-composition-variables`. `--wait` polls until the render finishes and prints the output URI + cost; without it the command returns an execution name.
-
-#### `cloudrun render-batch <projectDir>`
-
-Fan out N personalised renders from a JSONL batch file (`--batch users.jsonl`, one `{"outputKey":"...","variables":{...}}` per line). Deploys the site once and starts an execution per entry, capped at `--max-concurrent` (default 50). `--dry-run` prints the resolved manifest without starting anything. Shares the render flags above.
-
-#### `cloudrun progress <executionName>`
-
-Print progress + cost for an in-flight or finished render. Coarse `running` progress; exact frame counts + cost on success.
-
-#### `cloudrun destroy`
-
-`terraform destroy` the stack (force-destroys the render bucket). Reads the cached project/region, or pass `--project` / `--region`.
-
-### When to pick `cloudrun` vs `lambda`
-
-Same trade-off as `lambda`, on Google Cloud instead of AWS. Pick `cloudrun` when your backend + storage already live on GCP. The render primitives are identical; only the storage (GCS), compute (Cloud Run), and orchestration (Cloud Workflows) adapters differ.
-
-### State file
-
-`hyperframes cloudrun` caches the deployed stack's coordinates under `~/.hyperframes/cloudrun-state.json` (project id, region, bucket, service URL, workflow id) so `render` / `progress` / `destroy` don't need them re-passed. None are secrets, but all are GCP-project-identifying.
+Pick `cloudrun` when your backend and storage already live on GCP. The render
+primitives are identical; only the storage (GCS), compute (Cloud Run), and
+orchestration (Cloud Workflows) adapters differ. The deployed stack's
+coordinates cache in `~/.hyperframes/cloudrun-state.json` — project id, region,
+bucket, service URL, workflow id. None are secrets, but all identify your GCP
+project. [Google Cloud Run](/deploy/gcp-cloud-run) has the full walkthrough.
 
 ## hyperframes.json
 
-`hyperframes init` writes a `hyperframes.json` file at the root of every new project. `hyperframes add` reads it to know which registry to pull items from and where to drop them. Edit the file (or delete it to fall back to defaults) to reshape your project layout or point at a custom registry.
+`hyperframes init` writes a `hyperframes.json` at the root of every new project,
+and `hyperframes add` reads it to learn which registry to pull from and where
+files go. Edit it to reshape your layout or point at a custom registry — or
+delete it to fall back to the defaults.
 
 ```json
 {
@@ -1346,16 +1658,16 @@ Same trade-off as `lambda`, on Google Cloud instead of AWS. Pick `cloudrun` when
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `registry` | Base URL of the registry `add` pulls from. Defaults to the public Hyperframes registry. |
-| `paths.blocks` | Where block `.html` files land (relative to project root). |
-| `paths.components` | Where component files land (relative to project root). |
-| `paths.assets` | Where referenced asset files (images, fonts) land. |
+| Field              | Description                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `registry`         | Base URL of the registry `add` pulls from. Defaults to the public HyperFrames registry. |
+| `paths.blocks`     | Where block `.html` files land, relative to the project root.                            |
+| `paths.components` | Where component files land.                                                             |
+| `paths.assets`     | Where referenced assets — images, fonts — land.                                          |
 
-Missing fields are filled with defaults — you only need to specify what you want to override.
+Anything you leave out gets the default, so the file only needs your overrides.
 
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
   <Card title="Producer" icon="film" href="/packages/producer">

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=320, height=180" />
+    <title>Plan protocol size pressure</title>
+    <style>
+      html,
+      body {
+        width: 320px;
+        height: 180px;
+        margin: 0;
+        overflow: hidden;
+        background: #020617;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 30% 40%, #22d3ee 0 18px, transparent 19px),
+          radial-gradient(circle at 68% 60%, #f472b6 0 26px, transparent 27px), #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="root"
+      data-composition-id="plan-protocol-size-pressure"
+      data-start="0"
+      data-duration="1"
+      data-width="320"
+      data-height="180"
+      data-fps="30"
+      data-no-timeline
+    >
+      <audio
+        id="tone"
+        src="assets/tone.wav"
+        data-start="0"
+        data-duration="1"
+        data-volume="0.5"
+      ></audio>
+      <section class="scene clip" data-start="0" data-duration="1"></section>
+    </main>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>

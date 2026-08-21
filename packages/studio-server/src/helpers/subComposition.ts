@@ -21,22 +21,32 @@ function isFullHtmlDocument(html: string): boolean {
 /**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all
  * three dispatch branches (template, full-doc, fragment) to avoid drift.
+ *
+ * The preview page borrows the project-root `<base>`, so a composition at
+ * `design/styleframes/frame-01.html` referencing its sibling `_shared.css` was
+ * requested as `/preview/_shared.css` (404). The frame then rendered unstyled,
+ * which the thumbnailer's transparent-body fallback painted dark navy — the
+ * "illegible styleframe thumbnail" bug. The `assetExists` probe re-points such
+ * refs at the composition's own directory; see `rewriteAssetPath`.
  */
-function rewriteRelativePaths(root: ParentNode, compPath: string): void {
+function rewriteRelativePaths(root: ParentNode, compPath: string, projectDir: string): void {
+  const assetExists = (path: string) => existsSync(join(projectDir, path));
   rewriteAssetPaths(
     root.querySelectorAll("[src], [href]"),
     compPath,
     (el: Element, attr: string) => el.getAttribute(attr),
     (el: Element, attr: string, value: string) => el.setAttribute(attr, value),
+    assetExists,
   );
   rewriteInlineStyleAssetUrls(
     root.querySelectorAll("[style]"),
     compPath,
     (el: Element) => el.getAttribute("style"),
     (el: Element, value: string) => el.setAttribute("style", value),
+    assetExists,
   );
   for (const styleEl of root.querySelectorAll("style")) {
-    styleEl.textContent = rewriteCssAssetUrls(styleEl.textContent || "", compPath);
+    styleEl.textContent = rewriteCssAssetUrls(styleEl.textContent || "", compPath, assetExists);
   }
 }
 
@@ -110,6 +120,7 @@ function fixDigitLeadingIdSelectors(root: ParentNode): void {
 function extractFullDocumentParts(
   rawHtml: string,
   compPath: string,
+  projectDir: string,
 ): {
   headContent: string;
   bodyContent: string;
@@ -120,7 +131,7 @@ function extractFullDocumentParts(
 
   const rewriteTargets = [doc.head, doc.body].filter(Boolean);
   for (const target of rewriteTargets) {
-    rewriteRelativePaths(target, compPath);
+    rewriteRelativePaths(target, compPath, projectDir);
   }
   // Run on the whole document: ids live in <body> but their rules may live in
   // a <head> <style>, so the scope must span both.
@@ -278,12 +289,12 @@ export function buildSubCompositionHtml(
     const { document: contentDoc } = parseHTML(
       `<!DOCTYPE html><html><head></head><body>${templateInner}</body></html>`,
     );
-    rewriteRelativePaths(contentDoc, compPath);
+    rewriteRelativePaths(contentDoc, compPath, projectDir);
     fixDigitLeadingIdSelectors(contentDoc);
     promoteTemplateCompositionId(rawComp, contentDoc.body);
     rewrittenContent = contentDoc.body.innerHTML || templateInner;
   } else if (isFullHtmlDocument(rawComp)) {
-    const parts = extractFullDocumentParts(rawComp, compPath);
+    const parts = extractFullDocumentParts(rawComp, compPath, projectDir);
     compHeadContent = parts.headContent;
     rewrittenContent = parts.bodyContent;
     htmlAttrs = parts.htmlAttrs;
@@ -292,7 +303,7 @@ export function buildSubCompositionHtml(
     const { document: contentDoc } = parseHTML(
       `<!DOCTYPE html><html><head></head><body>${rawComp}</body></html>`,
     );
-    rewriteRelativePaths(contentDoc, compPath);
+    rewriteRelativePaths(contentDoc, compPath, projectDir);
     fixDigitLeadingIdSelectors(contentDoc);
     rewrittenContent = contentDoc.body.innerHTML || rawComp;
   }

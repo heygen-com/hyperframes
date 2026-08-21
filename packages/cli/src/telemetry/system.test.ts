@@ -110,3 +110,54 @@ describe("getAvailableMemoryMb", () => {
     expect(getAvailableMemoryMb()).toBe(6144);
   });
 });
+
+describe("power state (laptop fleet segmentation)", () => {
+  it("parsePmsetPowerSource reads battery vs AC", async () => {
+    const { parsePmsetPowerSource } = await import("./system.js");
+    expect(parsePmsetPowerSource("Now drawing from 'Battery Power'\n -InternalBattery-0")).toBe(
+      true,
+    );
+    expect(parsePmsetPowerSource("Now drawing from 'AC Power'\n -InternalBattery-0")).toBe(false);
+    expect(parsePmsetPowerSource("garbage output")).toBe(null);
+  });
+
+  it("getPowerState samples pmset on darwin", async () => {
+    vi.doMock("node:os", async () => ({
+      ...(await vi.importActual<typeof import("node:os")>("node:os")),
+      platform: () => "darwin",
+    }));
+    vi.doMock("node:child_process", async () => ({
+      ...(await vi.importActual<typeof import("node:child_process")>("node:child_process")),
+      execSync: (cmd: string) =>
+        cmd === "pmset -g batt"
+          ? "Now drawing from 'Battery Power'\n"
+          : "SleepDisabled 0\n lowpowermode         1\n",
+    }));
+    const { getPowerState } = await import("./system.js");
+    expect(getPowerState()).toEqual({ on_battery: true, low_power_mode: true });
+  });
+
+  it("getPowerState returns nulls off-darwin (no guessing)", async () => {
+    vi.doMock("node:os", async () => ({
+      ...(await vi.importActual<typeof import("node:os")>("node:os")),
+      platform: () => "linux",
+    }));
+    const { getPowerState } = await import("./system.js");
+    expect(getPowerState()).toEqual({ on_battery: null, low_power_mode: null });
+  });
+
+  it("getPowerState survives pmset failure with nulls", async () => {
+    vi.doMock("node:os", async () => ({
+      ...(await vi.importActual<typeof import("node:os")>("node:os")),
+      platform: () => "darwin",
+    }));
+    vi.doMock("node:child_process", async () => ({
+      ...(await vi.importActual<typeof import("node:child_process")>("node:child_process")),
+      execSync: () => {
+        throw new Error("pmset: command failed");
+      },
+    }));
+    const { getPowerState } = await import("./system.js");
+    expect(getPowerState()).toEqual({ on_battery: null, low_power_mode: null });
+  });
+});

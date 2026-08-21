@@ -1,5 +1,8 @@
 // Shared harness helpers for selection hook tests (useDomSelection,
 // usePreviewInteraction). Test-only module.
+import type React from "react";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import type { DomEditSelection } from "../components/editor/domEditing";
 
 export function installReactActEnvironment(): void {
@@ -7,6 +10,17 @@ export function installReactActEnvironment(): void {
     value: true,
     configurable: true,
   });
+}
+
+/** Mount a React element into a fresh detached host and return its root. */
+export function mountReactHarness(node: React.ReactElement): Root {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(node);
+  });
+  return root;
 }
 
 export function makeSelection(label: string, element: HTMLElement): DomEditSelection {

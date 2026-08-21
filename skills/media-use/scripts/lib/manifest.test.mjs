@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -9,6 +17,7 @@ import {
   findByEntity,
   nextId,
   allocateId,
+  withReservedFileSync,
   normalizePrompt,
   manifestPath,
   mediaDir,
@@ -161,6 +170,38 @@ function runTests() {
     setup();
     appendRecord(tmp, makeRecord({ id: "bgm_005" }));
     assert.equal(allocateId(tmp, "bgm", ".wav").id, "bgm_006");
+    cleanup();
+  });
+
+  test("failed reservation rollback preserves another completed reservation", () => {
+    setup();
+    const kept = withReservedFileSync(tmp, "bgm", ".wav", (reservation) => {
+      writeFileSync(reservation.fullPath, "completed asset");
+      return reservation;
+    });
+
+    assert.throws(
+      () =>
+        withReservedFileSync(tmp, "bgm", ".wav", () => {
+          throw new Error("populate failed");
+        }),
+      /populate failed/,
+    );
+
+    assert.equal(kept.id, "bgm_001");
+    assert.equal(readFileSync(kept.fullPath, "utf8"), "completed asset");
+    assert.deepStrictEqual(readdirSync(typeDirPath(tmp, "bgm")), ["bgm_001.wav"]);
+    assert.equal(allocateId(tmp, "bgm", ".wav").id, "bgm_002");
+    cleanup();
+  });
+
+  test("empty reservation result releases the placeholder", () => {
+    setup();
+    assert.equal(
+      withReservedFileSync(tmp, "image", ".jpg", () => null),
+      null,
+    );
+    assert.deepStrictEqual(readdirSync(typeDirPath(tmp, "image")), []);
     cleanup();
   });
 

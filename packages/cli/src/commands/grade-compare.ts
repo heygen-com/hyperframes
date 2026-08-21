@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import {
   copyFileSync,
   existsSync,
@@ -688,7 +689,7 @@ export default defineCommand({
       } else {
         console.error(`\n${c.error("✗")} Grade compare failed: ${message}`);
       }
-      process.exit(1);
+      failCommand();
     } finally {
       if (preparedDir) {
         rmSync(preparedDir, { recursive: true, force: true });

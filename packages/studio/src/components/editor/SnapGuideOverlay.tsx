@@ -1,7 +1,6 @@
-// fallow-ignore-file unused-file
 import { memo, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import type { SnapGuide, SpacingGuide } from "./snapEngine";
+import { resolveGuideLineRect, type SnapGuide, type SpacingGuide } from "./snapEngine";
 
 export interface SnapGuidesState {
   guides: SnapGuide[];
@@ -17,22 +16,35 @@ const SPACING_BG = "rgba(255, 68, 204, 0.15)";
 
 interface SnapGuideOverlayProps {
   snapGuidesRef: RefObject<SnapGuidesState | null>;
-  overlayWidth: number;
-  overlayHeight: number;
+  /** Composition rect in overlay space — guide lines span exactly this rect. */
+  compositionLeft: number;
+  compositionTop: number;
+  compositionWidth: number;
+  compositionHeight: number;
 }
 
 export const SnapGuideOverlay = memo(function SnapGuideOverlay({
   snapGuidesRef,
-  overlayWidth,
-  overlayHeight,
+  compositionLeft,
+  compositionTop,
+  compositionWidth,
+  compositionHeight,
 }: SnapGuideOverlayProps) {
   const guideElsRef = useRef<(HTMLDivElement | null)[]>([]);
   const spacingElsRef = useRef<(HTMLDivElement | null)[]>([]);
   const spacingLabelElsRef = useRef<(HTMLSpanElement | null)[]>([]);
-  const overlayWidthRef = useRef(overlayWidth);
-  overlayWidthRef.current = overlayWidth;
-  const overlayHeightRef = useRef(overlayHeight);
-  overlayHeightRef.current = overlayHeight;
+  const compositionRectRef = useRef({
+    left: compositionLeft,
+    top: compositionTop,
+    width: compositionWidth,
+    height: compositionHeight,
+  });
+  compositionRectRef.current = {
+    left: compositionLeft,
+    top: compositionTop,
+    width: compositionWidth,
+    height: compositionHeight,
+  };
 
   useMountEffect(() => {
     let frame = 0;
@@ -44,8 +56,7 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
       const state = snapGuidesRef.current;
       const guides = state?.guides ?? [];
       const spacingGuides = state?.spacingGuides ?? [];
-      const w = overlayWidthRef.current;
-      const h = overlayHeightRef.current;
+      const composition = compositionRectRef.current;
 
       for (let i = 0; i < MAX_GUIDES; i++) {
         const el = guideElsRef.current[i];
@@ -58,17 +69,11 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
         }
 
         el.style.display = "";
-        if (guide.axis === "x") {
-          el.style.left = `${guide.position}px`;
-          el.style.top = "0";
-          el.style.width = "1px";
-          el.style.height = `${h}px`;
-        } else {
-          el.style.left = "0";
-          el.style.top = `${guide.position}px`;
-          el.style.width = `${w}px`;
-          el.style.height = "1px";
-        }
+        const line = resolveGuideLineRect(guide, composition);
+        el.style.left = `${line.left}px`;
+        el.style.top = `${line.top}px`;
+        el.style.width = `${line.width}px`;
+        el.style.height = `${line.height}px`;
       }
 
       for (let i = 0; i < MAX_SPACING_GUIDES; i++) {

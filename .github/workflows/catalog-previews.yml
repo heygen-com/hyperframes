@@ -15,6 +15,11 @@ on:
       - "registry/blocks/**"
       - "registry/components/**"
       - "scripts/generate-catalog-previews.ts"
+      # Modules the renderer imports. Without them a change to path-traversal
+      # defence or temp-directory allocation alone never re-runs the job that
+      # exercises it.
+      - "scripts/registry-target-paths.mjs"
+      - "scripts/catalog-preview-temp.ts"
       - ".github/workflows/catalog-previews.yml"
 
 concurrency:
@@ -55,15 +60,41 @@ jobs:
         with:
           chrome-version: stable
 
+      # The renderer shells out to ffmpeg for both halves of a preview: the
+      # poster transcode and the web encode of the mp4. Neither ran here before
+      # (`--skip-video` skipped the encode, and the poster copy was a plain
+      # file copy), so the job never needed it and ubuntu-latest does not ship
+      # it.
+      - name: Install ffmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
+
       - name: Render changed block/component previews
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Find which blocks/components changed in this PR
+          # Find which blocks/components changed in this PR. The trailing slash
+          # in the grep matters: an item is a directory, and a file sitting
+          # directly under registry/components (CATALOG.md) does not match the
+          # sed, so without it the whole path survives and is passed to the
+          # renderer as if it were an item name.
           CHANGED_ITEMS=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- registry/blocks/ registry/components/ \
-            | grep -E '^registry/(blocks|components)/' \
+            | grep -E '^registry/(blocks|components)/[^/]+/' \
             | sed 's|^registry/[^/]*/\([^/]*\)/.*|\1|' \
             | sort -u)
+
+          # A renderer change reaches every item, so it cannot be trusted to a
+          # PR that happens to also touch a block. Two canaries cover the two
+          # shapes the renderer has to tell apart: a block whose scene lives in
+          # a <template> (mounted through a wrapper) and one that registers its
+          # timeline at body level (rendered directly). Getting that wrong is
+          # silent — the wrong-shaped block renders blank, not red.
+          RENDERER_CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD \
+            -- scripts/generate-catalog-previews.ts scripts/registry-target-paths.mjs \
+               scripts/catalog-preview-temp.ts)
+          if [ -n "$RENDERER_CHANGED" ]; then
+            CHANGED_ITEMS=$(printf '%s\n' $CHANGED_ITEMS \
+              code-snippet-visual-studio-dark code-snippet-apple-terminal-pro | sort -u)
+          fi
 
           if [ -z "$CHANGED_ITEMS" ]; then
             echo "No block/component changes detected."

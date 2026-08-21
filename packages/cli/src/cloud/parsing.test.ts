@@ -1,22 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "./parsing.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 describe("cloud/parsing", () => {
-  // process.exit has signature `(code?) => never` which doesn't unify
-  // with vi.spyOn's mock-function inference; cast through `unknown` so
-  // the test compiles. The spy itself still records calls correctly.
-  let exitSpy: { mockRestore: () => void } & { mock: { calls: unknown[][] } };
   let errorSpy: { mockRestore: () => void };
 
   beforeEach(() => {
-    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("process.exit called");
-    }) as unknown as (code?: string | number | null) => never) as unknown as typeof exitSpy;
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
@@ -30,20 +23,19 @@ describe("cloud/parsing", () => {
     });
 
     it("rejects trailing garbage that Number.parseInt would silently accept", () => {
-      expect(() => parseIntFlag("10abc", { flag: "--x" })).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(() => parseIntFlag("10abc", { flag: "--x" })).toThrow(CliUsageError);
     });
 
     it("rejects decimals", () => {
-      expect(() => parseIntFlag("10.5", { flag: "--x" })).toThrow("process.exit called");
+      expect(() => parseIntFlag("10.5", { flag: "--x" })).toThrow(CliUsageError);
     });
 
     it("enforces min", () => {
-      expect(() => parseIntFlag("0", { flag: "--x", min: 1 })).toThrow("process.exit called");
+      expect(() => parseIntFlag("0", { flag: "--x", min: 1 })).toThrow(CliUsageError);
     });
 
     it("enforces max", () => {
-      expect(() => parseIntFlag("101", { flag: "--x", max: 100 })).toThrow("process.exit called");
+      expect(() => parseIntFlag("101", { flag: "--x", max: 100 })).toThrow(CliUsageError);
     });
 
     it("accepts negative integers when no min is set", () => {
@@ -61,13 +53,11 @@ describe("cloud/parsing", () => {
     });
 
     it("rejects trailing garbage that Number.parseFloat would silently accept", () => {
-      expect(() => parseNumericFlag("10seconds", { flag: "--x" })).toThrow("process.exit called");
+      expect(() => parseNumericFlag("10seconds", { flag: "--x" })).toThrow(CliUsageError);
     });
 
     it("rejects NaN", () => {
-      expect(() => parseNumericFlag("not-a-number", { flag: "--x" })).toThrow(
-        "process.exit called",
-      );
+      expect(() => parseNumericFlag("not-a-number", { flag: "--x" })).toThrow(CliUsageError);
     });
   });
 
@@ -81,7 +71,7 @@ describe("cloud/parsing", () => {
     it("rejects an unknown value", () => {
       expect(() =>
         parseEnumFlag("ultra", ["draft", "standard", "high"], { flag: "--quality" }),
-      ).toThrow("process.exit called");
+      ).toThrow(CliUsageError);
     });
 
     it("returns undefined when raw is undefined", () => {

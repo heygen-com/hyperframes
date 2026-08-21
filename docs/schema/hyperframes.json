@@ -40,6 +40,22 @@
           "description": "Where asset files (images, fonts, videos) land. Defaults to `assets`."
         }
       }
+    },
+    "media": {
+      "type": "object",
+      "description": "Media handling options.",
+      "additionalProperties": false,
+      "properties": {
+        "autoProxy": {
+          "type": "boolean",
+          "description": "Automatically create H.264 proxies for browser-hostile video codecs on supported preview surfaces. Defaults to true."
+        }
+      }
+    },
+    "authoringSkill": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+      "description": "Owning authoring-workflow skill slug (e.g. product-launch-video). Set by `hyperframes init --skill` or seeded from the first `hyperframes render --skill`; every render of this project is then attributed to it on anonymous telemetry, without re-passing the flag."
     }
   }
 }

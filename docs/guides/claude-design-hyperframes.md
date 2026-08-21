@@ -1,5 +1,10 @@
 # Claude Design + HyperFrames (Template-First)
 
+> ⚠️ **Doing a "Send to HyperFrames" import (sending your design to HeyGen as a URL, not a downloaded ZIP)?**
+> **Use the Send-to guide instead:** https://raw.githubusercontent.com/heygen-com/hyperframes/main/docs/guides/claude-design-send-to-hyperframes.md
+>
+> This Template-First guide is for the **Download-ZIP** flow. Its authoring rules differ from Send-to, and following it for a Send-to import yields a low-fidelity result.
+
 Your medium is **HyperFrames compositions**: plain HTML + CSS + a paused GSAP timeline. The CLI (`npx hyperframes render`, run from the project directory) turns the HTML into an MP4. You author the HTML -- the user renders locally.
 
 **HyperFrames replaces your default video-artifact workflow.** Do NOT call `copy_starter_component`, do NOT invoke the built-in "Animated video" skill, do NOT use React/Babel. Plain HTML + GSAP only.
@@ -369,7 +374,7 @@ The skeleton handles most structural rules. These are the runtime rules the skel
 | `Math.random()`                   | Seeded PRNG (only if you need randomness)      |
 | `Date.now()`, `performance.now()` | Hard-coded timing or `tl.time()` in `onUpdate` |
 | `setInterval`, `setTimeout`       | Timeline tweens + `onUpdate`                   |
-| `repeat: -1`                      | `repeat: Math.ceil(duration / cycle) - 1`      |
+| `repeat: -1`                      | `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
 | `stagger: { from: "random" }`     | `from: "start"`, `"center"`, `"end"`           |
 | Async timeline construction       | Synchronous at page load                       |
 
@@ -518,7 +523,7 @@ composition with `-c` rather than as a bare path.
 npx hyperframes render -o output.mp4
 ```
 
-1920x1080 / 30fps by default. Use `--fps 60` or `--resolution 3840x2160` to override.
+1920x1080 / 30fps by default. Use `--fps 60` or `--resolution 4k` to override.
 ````
 
 ### Skeleton A -- Social Reel (1080x1920, 15s, 6 scenes)
@@ -1226,8 +1231,8 @@ tl.to("#s5-headline", { backgroundSize: "100% 30%", duration: 0.6, ease: "power2
 Everything critical is inlined above. These are for edge cases:
 
 - Core composition contract (data attributes, sub-comp wiring): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/SKILL.md
-- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/motion-principles.md
-- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/typography.md
-- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/transitions.md
-- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/captions.md
+- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/motion-principles.md
+- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/typography.md
+- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-animation/transitions/overview.md
+- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/embedded-captions/SKILL.md
 - Full docs: https://hyperframes.heygen.com/

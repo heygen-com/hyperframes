@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.7.48",
+  "version": "0.8.6",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -15,19 +15,30 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
-    "./server": {
-      "import": "./dist/public-server.js"
-    },
+    "./server": "./src/server.ts",
     "./distributed": {
-      "import": "./dist/distributed.js",
-      "types": "./dist/distributed.d.ts"
+      "bun": "./src/distributed.ts",
+      "import": "./src/distributed.ts",
+      "types": "./src/distributed.ts"
     }
   },
   "publishConfig": {
     "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./server": "./dist/public-server.js",
+      "./distributed": {
+        "import": "./dist/distributed.js",
+        "types": "./dist/distributed.d.ts"
+      }
+    },
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
@@ -36,6 +47,7 @@
     "build:hf-early-stub": "bun run scripts/build-hf-early-stub.ts",
     "typecheck": "tsc --noEmit",
     "parity:check": "tsx src/parity-harness.ts",
+    "parity:plans": "tsx src/plan-parity-harness.ts",
     "parity:fixtures": "tsx src/parity-fixtures.ts",
     "parity:fixtures:ci": "tsx src/parity-fixtures.ts",
     "parity:check:ci": "tsx src/parity-harness.ts --preview-url \"http://127.0.0.1:4173/minimal-wysiwyg.html\" --producer-url \"http://127.0.0.1:4173/minimal-wysiwyg.html?mode=producer\" --checkpoints \"0,0.5,1,1.5\" --allow-mismatch-ratio 0 --emulate-producer-swap true --artifacts-dir \".debug/parity-harness-ci\"",
@@ -43,15 +55,23 @@
     "check:runtime-conformance": "tsx src/runtime-conformance.ts",
     "benchmark": "tsx src/benchmark.ts",
     "bench:hdr": "tsx src/benchmark.ts --tags hdr",
-    "test": "tsx src/regression-harness.ts --exclude-tags transparency",
-    "test:update": "tsx src/regression-harness.ts --update --exclude-tags transparency",
-    "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency --mode=distributed-simulated",
+    "test": "bun run test:unit",
+    "test:classification": "node --test scripts/test-classification.test.mjs && node scripts/check-test-classification.mjs",
+    "test:unit": "bun run test:classification && node scripts/run-test-lane.mjs unit",
+    "test:unit:bun": "node scripts/run-test-lane.mjs unit bun",
+    "test:unit:vitest": "node scripts/run-test-lane.mjs unit vitest",
+    "test:integration": "bun run test:classification && node scripts/run-test-lane.mjs integration",
+    "test:integration:bun": "node scripts/run-test-lane.mjs integration bun",
+    "test:integration:vitest": "node scripts/run-test-lane.mjs integration vitest",
+    "test:regression": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer",
+    "test:regression:update": "tsx src/regression-harness.ts --update --exclude-tags transparency,field-signal-reproducer",
+    "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer --mode=distributed-simulated",
     "test:transparency": "tsx src/transparency-test.ts",
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",
     "docker:test": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test",
     "docker:test:update": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update",
     "docker:test:distributed": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=distributed-simulated",
-    "test:lambda-local": "tsx src/regression-harness.ts --exclude-tags transparency --mode=lambda-local",
+    "test:lambda-local": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer --mode=lambda-local",
     "docker:test:lambda-local": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=lambda-local",
     "prepublishOnly": "echo skip"
   },
@@ -67,7 +87,7 @@
     "@fontsource/oswald": "^5.2.8",
     "@fontsource/outfit": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.5",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
     "@hyperframes/lint": "workspace:^",
@@ -93,7 +113,8 @@
     "@webgpu/types": "^0.1.69",
     "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=22"

@@ -1,0 +1,17 @@
+{
+  "name": "Distributed: Plan v2 partial color metadata",
+  "description": "Valid H.264 SDR video whose stream declares only color_space=bt709. The source omits color_transfer and color_primaries, exercising Plan v2 conversion of ffprobe-normalized empty color components across a two-chunk render.",
+  "tags": ["distributed", "mp4", "h264", "sdr", "plan-v2"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+
+  "renderConfig": {
+    "fps": 24,
+    "chunkSize": 12,
+    "maxParallelChunks": 2
+  }
+}

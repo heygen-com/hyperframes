@@ -47,6 +47,7 @@ The Lambda handler is a thin dispatch: parse the Step Functions event, download 
 | AWS credentials | The CLI and the deploy step both call AWS APIs. | Env vars, `~/.aws/credentials`, SSO, or IMDS — any chain the AWS SDK for JavaScript v3 would resolve. |
 | AWS SAM CLI | `hyperframes lambda deploy/destroy` shells out to `sam deploy`/`sam delete`. | [Install guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) |
 | `bun` | Used to build `packages/aws-lambda/dist/handler.zip` at deploy time. | `npm install -g bun` or [bun.sh](https://bun.sh) |
+| Lambda adapter | The published CLI loads the AWS adapter only for Lambda commands. | `npm install -g @hyperframes/aws-lambda` alongside the CLI |
 | HyperFrames repo checkout | `lambda deploy` builds the Lambda handler ZIP from source. Adopters who deploy outside a checkout can set `HYPERFRAMES_REPO_ROOT` to point at one. | `git clone https://github.com/heygen-com/hyperframes` |
 
 ## Three deployment paths
@@ -63,7 +64,10 @@ hyperframes lambda deploy \
   --memory=10240
 ```
 
-The default `--concurrency=8` is deliberately conservative for first-time users. The Lambda Map state's default would let an unbounded number of chunks fan out in parallel; 8 caps your worst-case spend on a runaway render at roughly `8 × (15 min × 10 GB × $0.0000167/GB-s) ≈ $1.20`. Raise it after you've sized your typical render's chunk count.
+The default `--concurrency=8` is deliberately conservative for first-time
+users. It limits how many Lambda workers the deployed stack can run at once.
+Raise it only after you have measured a typical render and checked the account's
+limits and budget.
 
 After `deploy`, render anything with:
 
@@ -150,7 +154,7 @@ The CLI ships a built-in IAM bootstrap to avoid the "User is not authorized to p
 hyperframes lambda policies user
 
 # Print { TrustRelationship, InlinePolicy } for a CloudFormation service role.
-hyperframes lambda policies role --principal=cloudformation
+hyperframes lambda policies role
 
 # Validate a checked-in policy still covers the CLI's needs (exit non-zero on missing).
 hyperframes lambda policies validate ./infra/iam/hyperframes-deploy.json
@@ -172,7 +176,8 @@ hyperframes lambda progress my-render-id
 # Output:    s3://hyperframes-renders/.../output.mp4
 ```
 
-The cost number is best-effort: Lambda billed duration comes from the handler's own `DurationMs` return value (which SFN history surfaces in the success payload) and S3 transfer is not included. The math is in `packages/aws-lambda/src/sdk/costAccounting.ts` if you want to verify; CLI-shown values match what AWS Billing reports within rounding noise.
+The cost number is an estimate: Lambda duration comes from the handler result,
+and S3 transfer is not included. Use AWS billing data for actual spend.
 
 ## Troubleshooting
 
@@ -209,9 +214,18 @@ If progress doesn't advance for >10 minutes, check the Step Functions execution 
 
 The render bucket is created with CloudFormation `Retain` on delete — `hyperframes lambda destroy` (or `sam delete`) tears the function + state machine down but the bucket survives. This is intentional: it protects final-rendered MP4s from being lost when you re-deploy. To fully reclaim storage, empty + delete the bucket via the AWS console / `aws s3 rb`.
 
-## What's NOT in the v1 surface
+## Current limits
 
-- **Webhooks on completion.** Not in v1 — poll with `hyperframes lambda progress` or watch the Step Functions execution. A `--webhook` flag with an SNS topic is on the Phase 6c backlog.
-- **`compositions` discovery verb.** Coming separately (PR 6.10 on the plan); for now, point `lambda render` at the project directory containing your `index.html`.
-- **Multi-region.** Each `--region` is an independent stack. There is no built-in cross-region failover.
-- **HDR.** Distributed mode is SDR-only. HDR mp4 with bsf signaling is on the v1.5 backlog.
+- There is no completion webhook. Poll with `hyperframes lambda progress` or
+  watch the Step Functions execution.
+- There is no Lambda-specific composition-discovery verb. Point
+  `lambda render` at the project directory containing `index.html`.
+- Each `--region` is an independent stack. Cross-region failover is not built
+  in.
+- The distributed AWS path is SDR-only.
+
+## Related topics
+
+- [Render variable-driven templates on Lambda](/deploy/templates-on-lambda)
+- [Use the AWS Lambda package](/packages/aws-lambda)
+- [Choose another rendering path](/deploy/overview)

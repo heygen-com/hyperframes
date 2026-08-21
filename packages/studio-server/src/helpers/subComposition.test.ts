@@ -359,4 +359,60 @@ describe("buildSubCompositionHtml", () => {
     // The <style> sibling was not tagged.
     expect(html).not.toMatch(/<style[^>]*data-composition-id/i);
   });
+
+  // Regression guard for the dark/illegible styleframe thumbnail: a composition
+  // in a subdirectory that references a SIBLING file (`_shared.css`, not
+  // `../_shared.css`) used to be served unrewritten under the project-root
+  // <base>, so the browser requested /preview/_shared.css → 404. The frame then
+  // rendered unstyled, and the thumbnailer's transparent-body fallback painted
+  // it dark navy with unreadable text.
+  it("resolves same-directory asset refs against the composition's own directory", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "design/styleframes/_shared.css": `.stage { background: #fff; }`,
+      "design/styleframes/frame-01.png": `png`,
+      "design/styleframes/frame-01.html": `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="_shared.css" />
+    <style>.stage { background-image: url("frame-01.png"); }</style>
+  </head>
+  <body><div class="stage"><img src="frame-01.png" alt="" /></div></body>
+</html>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "design/styleframes/frame-01.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+
+    expect(html).not.toBeNull();
+    expect(html).toContain('href="design/styleframes/_shared.css"');
+    expect(html).toContain('src="design/styleframes/frame-01.png"');
+    expect(html).toContain('url("design/styleframes/frame-01.png")');
+    expect(html).not.toContain('href="_shared.css"');
+  });
+
+  it("leaves project-root-relative asset refs alone when no sibling file exists", () => {
+    // Registry blocks are installed into a subdirectory but reference assets at
+    // the project root (`assets/logo.png`). Those already resolve correctly
+    // under the project-root <base> and must not be re-pointed at the block dir.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "assets/logo.png": `png`,
+      "blocks/hero.html": `<div data-composition-id="hero"><img src="assets/logo.png" alt="" /></div>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "blocks/hero.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+
+    expect(html).toContain('src="assets/logo.png"');
+  });
 });

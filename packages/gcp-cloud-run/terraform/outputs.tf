@@ -3,6 +3,16 @@ output "render_bucket_name" {
   value       = google_storage_bucket.render.name
 }
 
+output "project_name" {
+  description = "Resource prefix used by this deployment."
+  value       = var.project_name
+}
+
+output "render_service_name" {
+  description = "Cloud Run service name."
+  value       = google_cloud_run_v2_service.render.name
+}
+
 output "service_url" {
   description = "HTTPS URL of the Cloud Run render service. Pass as renderToCloudRun({ serviceUrl })."
   value       = google_cloud_run_v2_service.render.uri

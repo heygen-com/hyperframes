@@ -87,6 +87,18 @@ const progress = await getRenderProgress({ executionArn: handle.executionArn });
 console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
 ```
 
+Plan v2 is the default because workers fetch manifest-selected
+content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
+omitted. Deprecated v1 compatibility remains available by passing
+`planProtocol: "v1"`.
+
+<Warning>
+  For an existing installation, pause new renders and drain active Step
+  Functions executions. Redeploy the Lambda handler and SAM/CDK state machine
+  from the same package version before upgrading the application SDK. Older
+  infrastructure may default omission to v1 or lack v2 support.
+</Warning>
+
 `renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.
 
 ## Using the CDK Construct
@@ -119,7 +131,7 @@ bun run --cwd packages/aws-lambda verify:zip-size
 
 The build stages Chromium, Puppeteer, FFmpeg, and the handler bundle into `packages/aws-lambda/dist/handler.zip`. The size verifier keeps the unzipped artifact below Lambda's deployment limit.
 
-## Related Guides
+## Related topics
 
 <CardGroup cols={2}>
   <Card title="AWS Lambda Deployment" icon="cloud" href="/deploy/aws-lambda">

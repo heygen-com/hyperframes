@@ -22,10 +22,14 @@ export function isSplitTimeWithinBounds(
 }
 
 export function canSplitElement(el: TimelineElement): boolean {
+  const hasStableIdentity = Boolean(el.hfId || el.domId || el.selector);
+  const hasValidRate =
+    el.playbackRate == null || (Number.isFinite(el.playbackRate) && el.playbackRate > 0);
   return (
     !el.timelineLocked &&
     el.timingSource !== "implicit" &&
-    !el.compositionSrc &&
+    hasStableIdentity &&
+    hasValidRate &&
     !!el.duration &&
     Number.isFinite(el.duration)
   );

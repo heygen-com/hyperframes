@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { lintHyperframeHtml } from "../src/lint/hyperframeLinter";
-import type { HyperframeLintResult } from "../src/lint/types";
+import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/lint";
 
 function formatCounts(result: HyperframeLintResult): string {
   const parts = [`${result.warningCount} warning${result.warningCount === 1 ? "" : "s"}`];

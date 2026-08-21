@@ -142,6 +142,32 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(wrappedScript).toContain('"intro"');
   });
 
+  it("maps a template-local timeline id onto a differently named mount", () => {
+    const document = makeHostDocument("captions-comp");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const captionsHtml = `<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080">
+    <style>[data-composition-id="captions"] { opacity: 1; }</style>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["captions"] = { duration: 4 };
+    </script>
+  </div>
+</template>`;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => captionsHtml,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(host.getAttribute("data-composition-id")).toBe("captions-comp");
+    expect(host.querySelector('[data-composition-id="captions"]')).not.toBeNull();
+    expect(result.styles.join("\n")).toContain('[data-composition-id="captions-comp"]');
+    const wrappedScript = result.scripts.join("\n");
+    expect(wrappedScript).toContain('var __hfCompId = "captions"');
+    expect(wrappedScript).toContain('var __hfTimelineCompId = "captions-comp"');
+  });
+
   it("bundler path (with flattenInnerRoot): preserves inner root as a child element", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
@@ -258,6 +284,61 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       rel: "stylesheet",
       crossorigin: undefined,
     });
+  });
+
+  it("collects an inline <head> script instead of discarding it", () => {
+    // The <head> loop had a `src` branch and no else, so an inline <head>
+    // script was silently dropped on render while the mount path executed it.
+    const subCompWithHeadScript = `<!doctype html>
+<html><head>
+  <script>window.__headScriptRan = true;</script>
+</head><body>
+  <div data-composition-id="intro" data-width="1920" data-height="1080"><span>Hi</span></div>
+</body></html>`;
+
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => subCompWithHeadScript,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.scripts.join("\n")).toContain("window.__headScriptRan = true;");
+    expect(result.scriptItems).toContainEqual({
+      kind: "inline",
+      content: expect.stringContaining("window.__headScriptRan = true;"),
+    });
+  });
+
+  it("hoists a <link> from a TEMPLATED sub-composition's head", () => {
+    // Hoisting used to be gated on the composition being non-templated, so a
+    // templated composition's webfont link was kept in preview (the mount path
+    // hoists unconditionally) and dropped from the render.
+    const templatedSubCompWithLink = `<!doctype html>
+<html><head>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat">
+</head><body>
+  <template id="intro-template">
+    <div data-composition-id="intro" data-width="1920" data-height="1080"><span>Hi</span></div>
+  </template>
+</body></html>`;
+
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => templatedSubCompWithLink,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.externalLinks).toEqual([
+      {
+        href: "https://fonts.googleapis.com/css2?family=Montserrat",
+        rel: "stylesheet",
+        crossorigin: undefined,
+      },
+    ]);
   });
 
   it("deduplicates link hrefs across multiple sub-compositions", () => {
@@ -400,5 +481,198 @@ describe("inlineSubCompositions – variable defaults on a template sub-comp roo
       parseHostVariables: parseHostVariableValues,
     });
     expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
+  });
+});
+
+describe("inlineSubCompositions – recursive host discovery", () => {
+  const MAX_NESTING_DEPTH = 20;
+
+  function compositionHtml(label: string, nestedSrcs: string[] = []) {
+    const nestedHosts = nestedSrcs
+      .map(
+        (src, index) =>
+          `<div data-composition-id="${label}-child-${index}" data-composition-src="${src}"></div>`,
+      )
+      .join("");
+    return `<template><div data-composition-id="${label}"><span data-level="${label}">${label}</span>${nestedHosts}</div></template>`;
+  }
+
+  function inlineFixture(rootHosts: string[], compositions: Record<string, string>) {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <main data-level="root">root</main>
+      ${rootHosts
+        .map(
+          (src, index) =>
+            `<div data-composition-id="root-host-${index}" data-composition-src="${src}"></div>`,
+        )
+        .join("")}
+    </body></html>`);
+    const missing: Array<{ src: string; reason?: string }> = [];
+
+    inlineSubCompositions(
+      document,
+      Array.from(document.querySelectorAll("[data-composition-src]")),
+      {
+        resolveHtml: (src) => compositions[src] ?? null,
+        parseHtml: (html) => parseHTML(html).document,
+        onMissingComposition: (src, reason) => missing.push({ src, reason }),
+      },
+    );
+
+    return { document, missing };
+  }
+
+  it("inlines a three-level root -> A -> B chain", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B"),
+    });
+
+    expect(document.querySelector('[data-level="root"]')?.textContent).toBe("root");
+    expect(document.querySelector('[data-level="A"]')?.textContent).toBe("A");
+    expect(document.querySelector('[data-level="B"]')?.textContent).toBe("B");
+    expect(missing).toEqual([]);
+  });
+
+  it("inlines a four-level root -> A -> B -> C chain", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B", ["c.html"]),
+      "c.html": compositionHtml("C"),
+    });
+
+    expect(
+      Array.from(document.querySelectorAll("[data-level]")).map((element) => element.textContent),
+    ).toEqual(["root", "A", "B", "C"]);
+    expect(missing).toEqual([]);
+  });
+
+  it("reports and leaves a direct circular reference uninlined", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["a.html"]),
+    });
+
+    expect(document.querySelectorAll('[data-level="A"]')).toHaveLength(1);
+    expect(document.querySelector('[data-composition-src="a.html"]')).not.toBeNull();
+    expect(missing).toEqual([{ src: "a.html", reason: "circular composition reference" }]);
+  });
+
+  it("reports and leaves an indirect circular reference uninlined", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B", ["a.html"]),
+    });
+
+    expect(document.querySelectorAll('[data-level="A"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-level="B"]')).toHaveLength(1);
+    expect(document.querySelector('[data-composition-src="a.html"]')).not.toBeNull();
+    expect(missing).toEqual([{ src: "a.html", reason: "circular composition reference" }]);
+  });
+
+  it("inlines the same sub-composition in sibling branches", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["shared.html", "shared.html"]),
+      "shared.html": compositionHtml("shared"),
+    });
+
+    expect(document.querySelectorAll('[data-level="shared"]')).toHaveLength(2);
+    expect(missing).toEqual([]);
+  });
+
+  it("allows the depth ceiling and stops only the branch one level beyond it", () => {
+    const compositions: Record<string, string> = {
+      "sibling.html": compositionHtml("sibling"),
+    };
+    for (const prefix of ["exact", "overflow"]) {
+      const length = prefix === "exact" ? MAX_NESTING_DEPTH : MAX_NESTING_DEPTH + 1;
+      for (let level = 1; level <= length; level += 1) {
+        const nextSrc = level < length ? [`${prefix}-${level + 1}.html`] : [];
+        compositions[`${prefix}-${level}.html`] = compositionHtml(`${prefix}-${level}`, nextSrc);
+      }
+    }
+
+    const { document, missing } = inlineFixture(
+      ["exact-1.html", "overflow-1.html", "sibling.html"],
+      compositions,
+    );
+
+    expect(document.querySelector(`[data-level="exact-${MAX_NESTING_DEPTH}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-level="overflow-${MAX_NESTING_DEPTH}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-level="overflow-${MAX_NESTING_DEPTH + 1}"]`)).toBeNull();
+    expect(document.querySelector('[data-level="sibling"]')).not.toBeNull();
+    expect(missing).toEqual([
+      {
+        src: `overflow-${MAX_NESTING_DEPTH + 1}.html`,
+        reason: "nesting depth exceeded",
+      },
+    ]);
+  });
+});
+
+describe("inlineSubCompositions – sub-composition asset paths", () => {
+  // Every asset ref a sub-composition in a subdirectory carries has to be
+  // re-pointed when its content moves into the project-root document. Hoisted
+  // <head> <link>/<script src> used to bypass the rewrite entirely (so even the
+  // documented `../` form escaped the project), and sibling refs (`_shared.css`)
+  // silently 404'd. Both render the frame unstyled.
+  const SUB_COMP = `<!doctype html>
+<html><head>
+  <link rel="stylesheet" href="_shared.css">
+  <link rel="stylesheet" href="../shared/theme.css">
+  <script src="helper.js"></script>
+  <style>.badge { background-image: url("frame.png"); }</style>
+</head><body>
+  <div data-composition-id="frame" data-width="1920" data-height="1080">
+    <img src="frame.png" alt="">
+    <div style="background-image: url('frame.png')"></div>
+  </div>
+</body></html>`;
+
+  const PROJECT_FILES = [
+    "design/styleframes/_shared.css",
+    "design/styleframes/frame.png",
+    "design/styleframes/helper.js",
+    "design/shared/theme.css",
+  ];
+
+  function inlineFrame() {
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-id="frame" data-composition-src="design/styleframes/frame-01.html"
+         data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector("[data-composition-src]")!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP,
+      parseHtml: (html) => parseHTML(html).document,
+      rewriteInlineStyles: true,
+      assetExists: (path: string) => PROJECT_FILES.includes(path),
+    });
+    return { document, result };
+  }
+
+  it("rewrites hoisted <link> hrefs against the sub-composition dir", () => {
+    const { result } = inlineFrame();
+    const hrefs = result.externalLinks.map((l) => l.href);
+    expect(hrefs).toContain("design/styleframes/_shared.css");
+    expect(hrefs).toContain("design/shared/theme.css");
+    expect(hrefs).not.toContain("_shared.css");
+    expect(hrefs).not.toContain("../shared/theme.css");
+  });
+
+  it("rewrites hoisted external script srcs", () => {
+    const { result } = inlineFrame();
+    expect(result.externalScriptSrcs).toContain("design/styleframes/helper.js");
+  });
+
+  it("rewrites sibling refs in markup, hoisted CSS, and inline styles", () => {
+    const { document, result } = inlineFrame();
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("design/styleframes/frame.png");
+    expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
+    expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
+      "design/styleframes/frame.png",
+    );
   });
 });

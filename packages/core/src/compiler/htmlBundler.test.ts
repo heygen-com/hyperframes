@@ -1,10 +1,12 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
-import { describe, it, expect, vi } from "vitest";
-import { bundleToSingleHtml } from "./htmlBundler";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
+import { resetUnknownEnumWarnings } from "../runtime/getVariables";
+import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
@@ -51,7 +53,89 @@ function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): b
   }
 }
 
+function makeSymlinkProject(
+  projectFiles: Record<string, string>,
+  secretCss: string,
+): { dir: string; outsideDir: string } {
+  const outsideDir = mkdtempSync(join(tmpdir(), "hf-outside-"));
+  writeFileSync(join(outsideDir, "secret.css"), secretCss);
+  const dir = makeTempProject(projectFiles);
+  symlinkSync(join(outsideDir, "secret.css"), join(dir, "evil.css"));
+  return { dir, outsideDir };
+}
+
 describe("bundleToSingleHtml", () => {
+  it("bundles a direct composition entry with paths relative to its file", async () => {
+    const dir = makeTempProject({
+      "index.html": "<html><body>wrong entry</body></html>",
+      "compositions/scene.html": `<!doctype html><html><head><link rel="stylesheet" href="scene.css"></head><body>
+        <div data-composition-id="scene" data-width="320" data-height="180">direct scene</div>
+      </body></html>`,
+      "compositions/scene.css": ".direct-scene { color: rgb(1, 2, 3); }",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("direct scene");
+    expect(bundled).not.toContain("wrong entry");
+    expect(bundled).toContain(".direct-scene { color: rgb(1, 2, 3); }");
+  });
+
+  it("rebases direct-entry authored asset paths before inlining", async () => {
+    const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
+    const bgSvg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';
+    const dir = makeTempProject({
+      "index.html": "<html><body>wrong entry</body></html>",
+      "compositions/scene.html": `<!doctype html><html><head>
+        <style>.scene { background-image: url("./bg.svg"); }</style>
+      </head><body>
+        <div class="scene" data-composition-id="scene" data-width="320" data-height="180" data-start="0" data-duration="1">
+          <img src="./sprite.svg">
+        </div>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.scene = {}</script>
+      </body></html>`,
+      "compositions/sprite.svg": spriteSvg,
+      "compositions/bg.svg": bgSvg,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+    const spriteDataUrl = `data:image/svg+xml;base64,${Buffer.from(spriteSvg).toString("base64")}`;
+    const bgDataUrl = `data:image/svg+xml;base64,${Buffer.from(bgSvg).toString("base64")}`;
+
+    expect(bundled).toContain(`src="${spriteDataUrl}"`);
+    expect(bundled).toContain(`url("${bgDataUrl}")`);
+    expect(bundled).not.toContain("./sprite.svg");
+    expect(bundled).not.toContain("./bg.svg");
+  });
+
+  it("preserves external SVG fragment references used by <use>", async () => {
+    const spriteSvg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <symbol id="patch-head" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></symbol>
+    </svg>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="1">
+          <svg>
+            <use id="href-use" href="assets/patch.svg#patch-head"></use>
+            <use id="xlink-use" xlink:href="assets/patch.svg#patch-head"></use>
+          </svg>
+        </div>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.main = {}</script>
+      </body></html>`,
+      "assets/patch.svg": spriteSvg,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    expect(document.getElementById("href-use")?.getAttribute("href")).toBe(
+      "assets/patch.svg#patch-head",
+    );
+    expect(document.getElementById("xlink-use")?.getAttribute("xlink:href")).toBe(
+      "assets/patch.svg#patch-head",
+    );
+    expect(bundled).not.toContain("data:image/svg+xml;base64");
+  });
+
   it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -360,6 +444,22 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("window.PowerGlitch = { glitch()");
     expect(bundled).not.toContain('src="assets/scene-runtime.js"');
     expect(bundled).not.toContain('src="vendor/effect-plugin.js"');
+  });
+
+  it("preserves local module scripts and their import base URL", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="1"></div>
+        <script type="module" src="./module.js"></script>
+      </body></html>`,
+      "module.js": `import { value } from "./value.js"; window.result = value;`,
+      "value.js": `export const value = "loaded";`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(/<script\b[^>]*\btype="module"[^>]*\bsrc="\.\/module\.js"/);
+    expect(bundled).not.toContain('import { value } from "./value.js"');
   });
 
   it("preserves local sub-composition script order before inline scene scripts", async () => {
@@ -794,6 +894,44 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toMatch(/card__hf2[\s\S]*Enterprise[\s\S]*light/);
   });
 
+  it("does not redefine an authored CSS variable for a bundled sub-composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <style>:root { --accent: #4287f5; } .host-badge { color: var(--accent); }</style>
+</head><body>
+  <div
+    data-composition-id="main"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="5">
+    <div
+      data-composition-id="card"
+      data-composition-src="compositions/card.html"
+      data-variable-values='{"accent":"blue"}'></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/card.html": `<!doctype html>
+<html data-composition-variables='[{"id":"accent","type":"string","label":"Accent","default":"red"}]'>
+  <body>
+    <div
+      data-composition-id="card"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5"></div>
+  </body>
+</html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain(":root { --accent: #4287f5; }");
+    expect(bundled).not.toMatch(/\[data-composition-id="card[^"]*"\]\s*\{[^}]*--accent:\s*blue/);
+  });
+
   it("scopes external sub-composition styles and classic scripts", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -1219,5 +1357,275 @@ describe("bundleToSingleHtml", () => {
       "html,body,*{text-rendering:geometricPrecision}",
     );
     expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
+  });
+
+  // Regression: cli-feedback field cluster (crons 61-68, n=25+, cross-OS,
+  // versions 0.7.56-0.7.64). Reporter L3 cite (ts=1784519869):
+  // "bundleToSingleHtml compiles data-duration into data-end, then validates
+  // the compiled HTML and reports its own generated data-end as deprecated.
+  // Raw-source lint passes with 0 errors and 0 warnings." The end-to-end
+  // guarantee: source authored with only data-duration must round-trip through
+  // bundle + StaticGuard without producing a StaticGuard warning on the
+  // compiler's own consistent data-end. Facet-(a)/(e) fix.
+  it("does not emit a StaticGuard warning for source-authored data-duration on media", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="18">
+    <audio id="bgm" src="bgm.mp3" data-start="0" data-duration="18"></audio>
+    <audio id="narration" src="narr.mp3" data-start="5" data-duration="10"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = { duration: () => 18, seek() {}, pause() {} };</script>
+</body></html>`,
+      "bgm.mp3": "",
+      "narr.mp3": "",
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      // Sanity: the compiler MUST have emitted data-end for both audio elements,
+      // so the linter is actually seeing the compiled shape (not the raw source).
+      expect(bundled).toContain('id="bgm"');
+      expect(bundled).toMatch(/id="bgm"[^>]*data-end="18"|data-end="18"[^>]*id="bgm"/);
+      expect(bundled).toMatch(/id="narration"[^>]*data-end="15"|data-end="15"[^>]*id="narration"/);
+
+      const staticGuardWarnings = warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+      expect(staticGuardWarnings).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  describe("symlink path traversal (security: F-005)", () => {
+    it("does not inline CSS from a symlink pointing outside projectDir", async () => {
+      const { dir, outsideDir } = makeSymlinkProject(
+        {
+          "index.html": `<!doctype html><html><head>
+<link rel="stylesheet" href="evil.css"></head>
+<body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+        },
+        ".outside-secret { color: red; }",
+      );
+      try {
+        expect(await bundleToSingleHtml(dir)).not.toContain("outside-secret");
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not inline CSS via @import through a symlink pointing outside projectDir", async () => {
+      const { dir, outsideDir } = makeSymlinkProject(
+        {
+          "index.html": `<!doctype html><html><head>
+<link rel="stylesheet" href="main.css"></head>
+<body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+          "main.css": "@import './evil.css';",
+        },
+        ".import-secret { color: blue; }",
+      );
+      try {
+        expect(await bundleToSingleHtml(dir)).not.toContain("import-secret");
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+/**
+ * A sub-composition given a value outside a declared enum's `options` falls
+ * back silently. The runtime guard in getVariables.ts cannot see it: the
+ * bundler bakes the per-instance values into `window.__hfVariablesByComp` at
+ * compile time and the sub-comp's scoped `getVariables` shim only reads that
+ * table. Compile time is therefore the only place the defect is observable on
+ * this path, so the same warning is emitted here.
+ */
+describe("bundleToSingleHtml unknown enum values", () => {
+  let warnings: string[];
+
+  beforeEach(() => {
+    resetUnknownEnumWarnings();
+    warnings = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetUnknownEnumWarnings();
+  });
+
+  const enumWarnings = () => warnings.filter((w) => w.includes("runtime_unknown_enum_value"));
+
+  const ACCENT_ENUM =
+    '[{"id":"accent","type":"enum","label":"Accent","default":"green","options":["green","blue","violet"]}]';
+
+  function makeSubCompProject(variableValues: string, declaration = ACCENT_ENUM): string {
+    return makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      data-composition-id="card"
+      data-composition-src="compositions/card.html"
+      data-variable-values='${variableValues}'></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/card.html": `<!doctype html>
+<html data-composition-variables='${declaration}'>
+  <body>
+    <div data-composition-id="card" data-width="1920" data-height="1080"></div>
+  </body>
+</html>`,
+    });
+  }
+
+  it("warns when a sub-composition instance value is not a declared option", async () => {
+    await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
+
+    expect(enumWarnings()).toEqual([
+      '[hyperframes] runtime_unknown_enum_value: card variable "accent" got "orange", ' +
+        "which is not a declared option (green, blue, violet). " +
+        'Rendering "green" instead.',
+    ]);
+  });
+
+  it("is silent when the instance value is a declared option", async () => {
+    await bundleToSingleHtml(makeSubCompProject('{"accent":"violet"}'));
+
+    expect(enumWarnings()).toEqual([]);
+  });
+
+  it("never inspects a variable declared without options", async () => {
+    const declaration = '[{"id":"accent","type":"string","label":"Accent","default":"green"}]';
+    await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}', declaration));
+
+    expect(enumWarnings()).toEqual([]);
+  });
+
+  it("is silent for a declared enum absent from the instance values", async () => {
+    await bundleToSingleHtml(makeSubCompProject('{"unrelated":"whatever"}'));
+
+    expect(enumWarnings()).toEqual([]);
+  });
+
+  it("passes the unknown value through to the bundle unrewritten", async () => {
+    const bundled = await bundleToSingleHtml(makeSubCompProject('{"accent":"orange"}'));
+
+    expect(bundled).toContain("window.__hfVariablesByComp = Object.assign({}, ");
+    expect(bundled).toContain('{ "card": { "accent": "orange" } }');
+    expect(bundled).toMatch(/\[data-composition-id="card"\]\s*\{[^}]*--accent:\s*orange/);
+    expect(bundled).not.toContain("--accent: green");
+  });
+
+  it("warns once for the same composition, variable and value across bundles", async () => {
+    const dir = makeSubCompProject('{"accent":"orange"}');
+    await bundleToSingleHtml(dir);
+    await bundleToSingleHtml(dir);
+
+    expect(enumWarnings()).toHaveLength(1);
+  });
+
+  it("warns for a <template>-mounted composition too", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div data-composition-id="card" data-variable-values='{"accent":"orange"}'></div>
+  </div>
+  <template id="card-template">
+    <div data-composition-id="card" data-width="1920" data-height="1080"
+      data-composition-variables='${ACCENT_ENUM}'></div>
+  </template>
+  <script>window.__timelines={};</script>
+</body></html>`,
+    });
+
+    await bundleToSingleHtml(dir);
+
+    expect(enumWarnings()).toEqual([
+      '[hyperframes] runtime_unknown_enum_value: card variable "accent" got "orange", ' +
+        "which is not a declared option (green, blue, violet). " +
+        'Rendering "green" instead.',
+    ]);
+  });
+});
+
+/**
+ * Composition variable values are emitted as CSS declarations inside a `<style>`
+ * element. `<style>` is a RAW TEXT element: HTML serialization does not escape its
+ * content and the tokenizer closes it at the first `</style`. An unescaped value could
+ * therefore close the element and have the remainder parsed as markup.
+ */
+describe("emitRootCompositionVariableStyles — <style> breakout", () => {
+  /**
+   * The payload leads with a benign `<` before its `</style`, so escaping or
+   * stripping only the first match does not pass: that pins the `/g` flag rather
+   * than merely "something ran". A lone `<` in a value (`a < b`) is the common case.
+   */
+  const BREAKOUT = "x<y</style><script>window.__pwned=1</script><style>";
+
+  /** Emit into a document, serialize it the way the compilers do, then re-parse. */
+  function scriptsAfterRoundTrip(
+    variablesByComp: Record<string, Record<string, unknown>>,
+    body = "x",
+  ) {
+    const { document } = parseHTML(`<!doctype html><html><head></head><body>${body}</body></html>`);
+    emitRootCompositionVariableStyles(document, variablesByComp);
+    const { document: reparsed } = parseHTML(document.toString());
+    return {
+      scripts: [...reparsed.querySelectorAll("script")].map((s) => s.textContent ?? ""),
+      css: [...reparsed.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n"),
+      reparsed,
+    };
+  }
+
+  it("does not let a variable VALUE close the style element", () => {
+    const { scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: BREAKOUT } });
+    expect(scripts).toEqual([]);
+  });
+
+  it("does not let a COMP ID close the style element through the generated selector", () => {
+    // The comp id reaches the stylesheet as an attribute selector, which is escaped
+    // for selector-string syntax but says nothing about element termination.
+    const { scripts, css } = scriptsAfterRoundTrip(
+      { [`comp-a${BREAKOUT}`]: { brand: "#fff" } },
+      '<div data-composition-id="comp-a"></div>',
+    );
+    expect(scripts).toEqual([]);
+    expect(css).not.toContain("</style");
+  });
+
+  it("strips the characters that smuggle a sibling rule, matching the runtime", () => {
+    // `sanitizeCssValue` is the runtime contract for a scalar folded into
+    // `background: var(--x)`; the compile path has to reach the same result, or a
+    // rendered MP4 diverges from the preview it was approved from.
+    const smuggle = "red; } body { background-image: url(//evil?data=1) } x { y:z";
+    const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: smuggle } });
+
+    expect(css).not.toContain("body {");
+    // One rule, one declaration: with no `;{}` left in the value there is nothing to
+    // close the declaration with, so no sibling rule can be opened.
+    expect(css.match(/\}/g) ?? []).toHaveLength(1);
+    expect(css).toContain(`--brand: ${sanitizeCssValue(smuggle)};`);
+  });
+
+  it("strips '<' from a value the way the runtime does", () => {
+    const { css, scripts } = scriptsAfterRoundTrip({ "comp-a": { brand: "a<b" } });
+    expect(scripts).toEqual([]);
+    expect(css).not.toContain("a<b");
+    expect(css).toContain("ab");
+  });
+
+  it("leaves values without '<' untouched", () => {
+    const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: "#ff0066" } });
+    expect(css).toContain("#ff0066");
   });
 });

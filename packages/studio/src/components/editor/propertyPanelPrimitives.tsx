@@ -1,128 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
+import {
+  DesignPanelInputProvider,
+  useTrackDesignInput,
+} from "../../contexts/DesignPanelInputContext";
+import { FIELD, LABEL } from "./propertyPanelHelpers";
+import { CommitField } from "./propertyPanelCommitField";
 
-function CommitField({
-  value,
-  disabled,
-  liveCommit,
-  onCommit,
-}: {
-  value: string;
-  disabled?: boolean;
-  liveCommit?: boolean;
-  onCommit: (nextValue: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const valueRef = useRef(value);
-  const draftRef = useRef(draft);
-  const escapedRef = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  valueRef.current = value;
-  draftRef.current = draft;
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => {
-      if (disabled || document.activeElement !== el) return;
-      const delta = e.deltaY === 0 ? e.deltaX : e.deltaY;
-      if (delta === 0) return;
-      const nextDraft = adjustNumericToken(draftRef.current, delta < 0 ? 1 : -1, e);
-      if (!nextDraft) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setDraft(nextDraft);
-      scheduleCommitRef.current(nextDraft);
-    };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
-  }, [disabled]);
-
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-      if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-
-  // Commit handlers silently drop unparseable values, which would otherwise
-  // leave the field displaying rejected text forever (the value prop never
-  // changes, so the sync effect never fires). After a blur-commit, re-sync
-  // the draft to whatever the accepted value is once the parent state settles.
-  const scheduleResync = () => {
-    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
-    resyncTimerRef.current = setTimeout(() => {
-      if (document.activeElement !== inputRef.current && draftRef.current !== valueRef.current) {
-        setDraft(valueRef.current);
-      }
-    }, 250);
-  };
-
-  const scheduleCommit = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 120);
-  };
-  const scheduleCommitRef = useRef(scheduleCommit);
-  scheduleCommitRef.current = scheduleCommit;
-
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={draft}
-      disabled={disabled}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        if (liveCommit) scheduleCommit(e.target.value);
-      }}
-      onBlur={() => {
-        if (escapedRef.current) {
-          escapedRef.current = false;
-          return;
-        }
-        commitDraft(draft);
-        scheduleResync();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          escapedRef.current = true;
-          setDraft(valueRef.current);
-          if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-          e.currentTarget.blur();
-          e.stopPropagation();
-          return;
-        }
-        if (e.key === "Enter") {
-          (e.target as HTMLInputElement).blur();
-          return;
-        }
-        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-        const nextDraft = adjustNumericToken(draft, e.key === "ArrowUp" ? 1 : -1, e);
-        if (!nextDraft) return;
-        e.preventDefault();
-        setDraft(nextDraft);
-        scheduleCommit(nextDraft);
-      }}
-      title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
-      className="min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
-    />
-  );
-}
+export { CommitField } from "./propertyPanelCommitField";
 
 /* ------------------------------------------------------------------ */
 /*  MetricField                                                        */
@@ -145,9 +29,17 @@ export function MetricField({
   scrub?: boolean;
   suffix?: string;
   tooltip?: string;
-  onCommit: (nextValue: string) => void;
+  onCommit: (nextValue: string) => void | Promise<void>;
 }) {
+  const track = useTrackDesignInput();
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
+  const commit = useCallback(
+    (nextValue: string) => {
+      if (nextValue !== value) track("metric", label);
+      return onCommit(nextValue);
+    },
+    [label, onCommit, track, value],
+  );
 
   const handleScrubPointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -165,9 +57,9 @@ export function MetricField({
       const state = scrubRef.current;
       if (!state) return;
       const delta = e.clientX - state.startX;
-      onCommit(String(Math.round(state.startValue + delta)));
+      commit(String(Math.round(state.startValue + delta)));
     },
-    [onCommit],
+    [commit],
   );
 
   const handleScrubPointerUp = useCallback(() => {
@@ -191,12 +83,7 @@ export function MetricField({
     <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{label}</span>
-        <CommitField
-          value={value}
-          disabled={disabled}
-          liveCommit={liveCommit}
-          onCommit={onCommit}
-        />
+        <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>
@@ -218,17 +105,23 @@ export function DetailField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
+  const commit = (nextValue: string) => {
+    if (nextValue !== value) track("text", label);
+    onCommit(nextValue);
+  };
   return (
     <label className="grid min-w-0 gap-1.5">
       <span className={LABEL}>{label}</span>
       <div className={FIELD}>
-        <CommitField value={value} disabled={disabled} onCommit={onCommit} />
+        <CommitField value={value} disabled={disabled} onCommit={commit} />
       </div>
     </label>
   );
 }
 
 export function SliderControl({
+  trackName,
   value,
   min,
   max,
@@ -236,9 +129,9 @@ export function SliderControl({
   displayValue,
   formatDisplayValue,
   disabled,
-  ariaLabel,
   onCommit,
 }: {
+  trackName: string;
   value: number;
   min: number;
   max: number;
@@ -246,11 +139,12 @@ export function SliderControl({
   displayValue: string;
   formatDisplayValue?: (nextValue: number) => string;
   disabled?: boolean;
-  ariaLabel?: string;
   onCommit: (nextValue: number) => void;
 }) {
+  const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionChangedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
 
@@ -266,6 +160,10 @@ export function SliderControl({
 
   const commitDraft = (nextDraft: number) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    if (interactionChangedRef.current) {
+      interactionChangedRef.current = false;
+      track("slider", trackName);
+    }
     if (nextDraft !== valueRef.current) onCommit(nextDraft);
   };
   const scheduleCommit = (nextDraft: number) => {
@@ -284,16 +182,19 @@ export function SliderControl({
         step={step}
         value={draft}
         disabled={disabled}
-        aria-label={ariaLabel}
+        aria-label={trackName}
         onChange={(e) => {
           const n = Number(e.target.value);
           setDraft(n);
+          interactionChangedRef.current = true;
           scheduleCommit(n);
         }}
         onMouseUp={() => commitDraft(draft)}
         onTouchEnd={() => commitDraft(draft)}
         onBlur={() => commitDraft(draft)}
-        className="h-4 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+        // h-6 is the 24x24 WCAG 2.2 (2.5.8) target: the visible track stays 2px
+        // and the thumb 10px, only the pointer box grows.
+        className="h-6 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />
       <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">
         {formatDisplayValue?.(draft) ?? displayValue}
@@ -303,16 +204,19 @@ export function SliderControl({
 }
 
 export function SegmentedControl({
+  trackName,
   options,
   value,
   disabled,
   onChange,
 }: {
+  trackName: string;
   options: Array<{ label: string; value: string }>;
   value: string;
   disabled?: boolean;
   onChange: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div
       className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
@@ -323,9 +227,12 @@ export function SegmentedControl({
           key={option.value}
           type="button"
           disabled={disabled}
-          onClick={() => onChange(option.value)}
+          onClick={() => {
+            if (option.value !== value) track("segmented", trackName);
+            onChange(option.value);
+          }}
           aria-pressed={option.value === value}
-          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors active:scale-[0.98] disabled:cursor-not-allowed ${
+          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
             option.value === value
               ? "bg-panel-hover text-white"
               : "text-panel-text-4 hover:text-panel-text-2"
@@ -351,6 +258,7 @@ export function SelectField({
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
@@ -358,7 +266,10 @@ export function SelectField({
       <select
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          track("select", label);
+          onChange(e.target.value);
+        }}
         className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
       >
         {renderedOptions.map((option) => (
@@ -399,25 +310,25 @@ export function Section({
     </svg>
   );
 
+  const section = slugifyPanelSectionTitle(title);
   return (
-    <section
-      className="min-w-0 border-t border-panel-border"
-      data-panel-section={slugifyPanelSectionTitle(title)}
-    >
-      <div className="flex w-full items-center gap-2 px-4 py-2.5">
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left active:scale-[0.99]"
-        >
-          <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
-          {collapseIcon}
-        </button>
-        {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
-      </div>
-      {!collapsed && <div className="px-4 pb-3">{children}</div>}
-    </section>
+    <DesignPanelInputProvider section={section}>
+      <section className="min-w-0 border-t border-panel-border" data-panel-section={section}>
+        <div className="flex w-full items-center gap-2 px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+            className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+          >
+            <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
+            {collapseIcon}
+          </button>
+          {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
+        </div>
+        {!collapsed && <div className="px-4 pb-3">{children}</div>}
+      </section>
+    </DesignPanelInputProvider>
   );
 }
 

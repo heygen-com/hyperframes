@@ -19,7 +19,7 @@ describe("mapEase", () => {
       ease: "power2.inOut",
     });
     expect(mapEase("backOut")).toEqual({ kind: "named", ease: "back.out" });
-    expect(mapEase("HOLD")).toEqual({ kind: "named", ease: "steps(1)" });
+    expect(mapEase("HOLD")).toEqual({ kind: "named", ease: "hold" });
   });
   it("falls back to none for unknown named eases", () => {
     expect(mapEase("wobble")).toEqual({ kind: "named", ease: "none" });

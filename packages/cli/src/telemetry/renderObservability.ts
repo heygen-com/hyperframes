@@ -40,6 +40,20 @@ export function renderObservabilityTelemetryPayload(
     capturePlayerReadyTimeoutMs: capture.playerReadyTimeoutMs,
     captureTransientRetries: capture.transientRetries,
     captureMemoryExhaustionDetected: capture.memoryExhaustionDetected,
+    captureDeWorkerInversion: capture.deWorkerInversion,
+    captureDePreInversionWorkers: capture.dePreInversionWorkers,
+    captureCompositionElementCount: capture.compositionElementCount,
+    captureCompositionElementCountSource: capture.compositionElementCountSource,
+    captureDeShortBand: capture.deShortBand,
+    captureDeParallelRouter: capture.deParallelRouter,
+    captureDeGpuRenderer: capture.deGpuRenderer,
+    captureDePreRouterWorkers: capture.dePreRouterWorkers,
+    captureDeSelfVerifyFallback: capture.deSelfVerifyFallback,
+    captureDeFallbackReason: capture.deFallbackReason,
+    captureDeFallbackFailedDb: capture.deFallbackFailedDb,
+    captureDeFallbackFrameIndex: capture.deFallbackFrameIndex,
+    captureDeFallbackThresholdDb: capture.deFallbackThresholdDb,
+    captureParallelStream: capture.captureParallelStream,
     observabilityExtractVideoCount: extraction?.videoCount,
     observabilityExtractedVideoCount: extraction?.extractedVideoCount,
     observabilityExtractTotalFrames: extraction?.totalFramesExtracted,
@@ -52,6 +66,7 @@ export function renderObservabilityTelemetryPayload(
     observabilityExtractCacheMisses: extraction?.cacheMisses,
     observabilityInitDurationMs: init?.initDurationMs,
     observabilityInitTweenCount: init?.tweenCount,
+    observabilityInitElementCount: init?.elementCount,
   };
 }
 

@@ -13,6 +13,29 @@ import type { Fps } from "@hyperframes/core";
  */
 export type SubTimelineWaitOutcome = "ready" | "timeout" | "script_failure";
 
+export type CaptureWarningCode =
+  | "media_readiness_timeout"
+  | "media_load_failed"
+  | "audio_processing_failed"
+  | "sub_timeline_readiness_timeout"
+  | "sub_timeline_script_failure"
+  | "live_map_detected";
+
+/** Structured correctness warning produced while preparing a capture session. */
+export interface CaptureWarning {
+  code: CaptureWarningCode;
+  message: string;
+  details?: {
+    mediaType?: "image" | "video" | "audio";
+    sources?: string[];
+    timeoutMs?: number;
+    failureReasons?: string[];
+    failureStages?: string[];
+    failureOwner?: "user" | "system";
+    retryable?: boolean;
+  };
+}
+
 // ── Seek Protocol ──────────────────────────────────────────────────────────────
 
 /**
@@ -158,6 +181,16 @@ export interface CaptureOptions {
    * warmup loop).
    */
   lockWarmupTicks?: boolean;
+  /**
+   * drawElement self-verify ground-truth sample count for this session.
+   * Overrides the HF_DE_VERIFY default (4). The parallel coordinator raises
+   * it for multi-worker drawElement capture — N concurrent hardware-GPU
+   * browsers widen the damage surface (compositor tile eviction under
+   * GPU/memory pressure), and each worker only drains ~1/N of the shared
+   * sample grid, thinning effective coverage exactly when risk peaks.
+   * Clamped to 0..8 like the env knob; HF_DE_VERIFY, when set, still wins.
+   */
+  deVerifySamples?: number;
 }
 
 export interface CaptureVideoMetadataHint {
@@ -190,8 +223,58 @@ export interface CapturePerfSummary {
    * averages). Basis for in-the-wild speedup estimates. 0 when no frames.
    */
   p50TotalMs: number;
+  /**
+   * 95th-percentile per-frame capture time (nearest-rank). Emitted alongside
+   * p50 so the fast-capture-fallback-profile diagnostic (opt-in via
+   * `HF_PROFILE_FALLBACK_CAPTURE=true`) can distinguish "steady-state slow"
+   * from "long-tail spikes"; the p50 alone hides the tail on any sample set
+   * with a heavy right-skew (typical of screenshot capture on GC pauses or
+   * paint-heavy frames). 0 when no frames.
+   */
+  p95TotalMs: number;
+  /**
+   * 99th-percentile per-frame capture time (nearest-rank). Same purpose as
+   * `p95TotalMs` — the extreme-tail counterpart, useful for characterizing
+   * the WORST frame you're likely to encounter on the fallback path. 0 when
+   * no frames.
+   */
+  p99TotalMs: number;
   /** Sub-composition timeline wait outcome (absent pre-init). */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /**
+   * Session init telemetry, mirrored from the `[FrameCapture:INIT]` console
+   * line so PARALLEL workers report it too: worker sessions' console buffers
+   * only propagate to the orchestrator on failure, which left the
+   * multi-worker path — the short-comp band's entire population — with 0%
+   * coverage of the motion axis (`observability_init_tween_count`) in fleet
+   * telemetry. Riding the perf summary reuses the one channel that already
+   * flows back per worker on success.
+   */
+  initDurationMs?: number;
+  /** GSAP tween count at init — the motion-axis signal for capture routing analysis. */
+  initTweenCount?: number;
+  /**
+   * Live DOM element count at end of init; undefined when the measurement
+   * failed (never 0 — see collectSessionInitTelemetry).
+   *
+   * WHICH FIELD TO QUERY — two element counts exist and they answer
+   * different questions:
+   *   • `composition_element_count` (+ `_source`) is the ROUTING-RELEVANT
+   *     one. Measured from the PROBE session before the routing decision,
+   *     falling back to a static source scan. That is what the short-comp
+   *     band actually gates on.
+   *   • `observability_init_element_count` (this field) is the
+   *     OBSERVATIONAL counterpart. Measured from the capture session's own
+   *     DOM at end of init, on every surviving render — including the ~83%
+   *     with no probe, where the routing signal is a blind static scan.
+   * They agree for most comps and diverge for one that mutates its DOM
+   * between probe launch and capture init. Use this for distribution and
+   * tail questions; use `composition_element_count` for anything about what
+   * the router did (review finding).
+   */
+  initElementCount?: number;
+  /** Correctness warnings observed before or during capture. */
+  warnings?: CaptureWarning[];
   /**
    * Frames served from the static-dedup cache instead of a real seek+screenshot
    * (opt-out HF_STATIC_DEDUP=false). 0 when dedup was off or never armed. NOT counted
@@ -212,9 +295,27 @@ export interface CapturePerfSummary {
    * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
+  // ── BeginFrame no-damage reuse (Linux/Docker lastFrameCache visibility) ──
+  /**
+   * BeginFrame frames where Chrome reported `hasDamage=false` and the previous
+   * buffer was reused from the per-page lastFrameCache (screenshotService.ts) —
+   * the BF counterpart of `staticDedupReused` (predictive dedup never arms
+   * under beginframe). Undefined/0 outside beginframe capture mode.
+   */
+  beginFrameNoDamage?: number;
+  /** BeginFrame frames where Chrome reported damage (fresh screenshot encoded). */
+  beginFrameHasDamage?: number;
   // ── drawElement fast-capture outcome (default-on release visibility) ──
   /** Final capture mode this session used: "drawelement" | "screenshot" | "beginframe". */
   captureMode: string;
+  /**
+   * Low-cardinality GPU bucket from DE session init: `<backend>/<vendor>`
+   * (e.g. `metal/apple`, `d3d11/nvidia`). Undefined when drawElement was
+   * never attempted. Lets telemetry cluster backend-specific damage now that
+   * DE engages on both Metal (darwin) and D3D11 (win32). Bucketed, not raw —
+   * see `classifyGpuRenderer`.
+   */
+  gpuRenderer?: string;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
    * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
@@ -222,6 +323,18 @@ export interface CapturePerfSummary {
    * drawElement ran or was never attempted.
    */
   deGateReason?: string;
+  /**
+   * Full-fidelity fallback trigger — the specific reason (CSS FX + property,
+   * e.g. `filter:blur`, `filter:drop-shadow`, `backdrop-filter`, `clip-path`,
+   * or an unsanitized gate name like `at_risk_timeline`, `swiftshader`,
+   * `unsupported_chrome`, `render_mode_hint`, `supersampling`, `3d_init_failed`)
+   * that gated drawElement off. Complementary to {@link deGateReason}, which
+   * sanitizes down to a low-cardinality bucket for aggregation; this field
+   * keeps the specific CSS FX so the `capture_fallback_profile` observability
+   * checkpoint can characterize per-frame perf by the exact trigger. Undefined
+   * when drawElement ran (no fallback) or was never attempted.
+   */
+  deFallbackTrigger?: string;
   /** Worker-encode pipeline active (the drain that runs self-verification). */
   deWorkerEncode: boolean;
   /** Self-verification ground-truth samples armed at init (0 = verification off/skipped). */

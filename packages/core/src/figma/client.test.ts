@@ -271,6 +271,54 @@ describe("error mapping", () => {
   });
 });
 
+describe("endpoint attribution", () => {
+  it("labels each call's error with a low-cardinality endpoint, never the raw fileKey/nodeId", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(500, {})).fetch,
+    });
+    const cases: Array<[string, () => Promise<unknown>]> = [
+      ["images", () => client.renderNode({ fileKey: "SECRET", nodeId: "1:2" }, { format: "png" })],
+      ["images", () => client.renderNodes("SECRET", ["1:2"], { format: "png" })],
+      ["files_images", () => client.imageFills("SECRET")],
+      ["variables_local", () => client.variables("SECRET")],
+      ["styles", () => client.styles("SECRET")],
+      ["files_nodes", () => client.nodeTree({ fileKey: "SECRET", nodeId: "1:2" })],
+      ["file_meta", () => client.fileVersion("SECRET")],
+    ];
+    for (const [expected, call] of cases) {
+      const err = await call().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(FigmaClientError);
+      if (err instanceof FigmaClientError) {
+        expect(err.endpoint).toBe(expected);
+        expect(err.endpoint).not.toContain("SECRET");
+      }
+    }
+  });
+
+  it("still labels RENDER_FAILED and NODE_NOT_FOUND (thrown outside the shared get())", async () => {
+    const nullRender = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(200, { images: { "1:2": null } })).fetch,
+    });
+    const renderErr = await nullRender
+      .renderNode({ fileKey: "F", nodeId: "1:2" }, { format: "svg" })
+      .catch((e: unknown) => e);
+    expect(renderErr).toBeInstanceOf(FigmaClientError);
+    if (renderErr instanceof FigmaClientError) expect(renderErr.endpoint).toBe("images");
+
+    const missingNode = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(200, { nodes: {} })).fetch,
+    });
+    const notFoundErr = await missingNode
+      .nodeTree({ fileKey: "F", nodeId: "9:9" })
+      .catch((e: unknown) => e);
+    expect(notFoundErr).toBeInstanceOf(FigmaClientError);
+    if (notFoundErr instanceof FigmaClientError) expect(notFoundErr.endpoint).toBe("files_nodes");
+  });
+});
+
 describe("renderNodes (batch)", () => {
   it("fetches many nodes in ONE /v1/images call and maps each url", async () => {
     const stub = fetchStub(() =>

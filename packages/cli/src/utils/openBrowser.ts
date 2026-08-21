@@ -4,6 +4,14 @@ export interface OpenBrowserOptions {
   browserPath?: string;
   userDataDir?: string;
   remoteDebuggingPort?: number;
+  /**
+   * Launch the browser with --disable-gpu. For hosts where hardware
+   * acceleration crashes the graphics driver (wild report: auto-opened
+   * preview triggered NVIDIA Xid 32 resets on NixOS). Only effective with
+   * `browserPath` — the `open`-package fallback launches the system default
+   * browser with no way to pass Chromium flags.
+   */
+  disableGpu?: boolean;
 }
 
 export function parseRemoteDebuggingPort(value: string | undefined): number | undefined {
@@ -51,6 +59,9 @@ export function buildBrowserArgs(url: string, options: OpenBrowserOptions): stri
   // the CLI validation layer requires both flags together.
   if (options.remoteDebuggingPort !== undefined && options.userDataDir) {
     args.push(`--remote-debugging-port=${options.remoteDebuggingPort}`);
+  }
+  if (options.disableGpu) {
+    args.push("--disable-gpu");
   }
   args.push(url);
   return args;

@@ -108,7 +108,6 @@ const SETPIECE_PREF_TOP = {
   decode: 26,
   drawon: 18,
   cpslam: 27,
-  coverword: 27,
   settle: 27,
   flapboard: 25,
   ledwipe: 52,
@@ -510,30 +509,6 @@ if (!heroInline && !HEROLESS) {
     HG.fontPx = Math.min(dna.hero.fontPx || 130, Math.floor((W * 0.92 - n * 6) / em1));
     Object.assign(HG, sceneHeroXY("ransomnote", HG.fontPx));
     HG.halfW = (em1 * HG.fontPx + n * 6) / 2;
-  } else if (dna.hero.setpiece === "coverword") {
-    // metric-exact fit from the replica font's advance widths (logo case:
-    // first letter upper, rest lower — the official mark's own arrangement)
-    const CPM = JSON.parse(
-      fs.readFileSync(path.join(SKILL, "assets/brand/cyberpunk-widths.json"), "utf8"),
-    );
-    const disp = heroText[0].toUpperCase() + heroText.slice(1).toLowerCase();
-    const bad = [...disp].filter((c) => !(c in CPM.widths));
-    if (bad.length)
-      throw new Error(
-        `[make-theme] coverword: no replica glyph for ${JSON.stringify(bad)} in "${heroText}" — pick a hero without digits/special chars or use hero.text`,
-      );
-    const em = [...disp].reduce((a, c) => a + CPM.widths[c], 0) + 0.01 * (disp.length - 1);
-    // glyph ink is small inside the em box (x-height ~0.3em) -> size by INK:
-    // dna fontPx = target ink height in px, not nominal font-size
-    const inkTop = Math.max(...[...disp].map((c) => (CPM.bounds[c] || [0, 0, 0, 0.5])[3]));
-    const inkBot = Math.min(...[...disp].map((c) => (CPM.bounds[c] || [0, -0.1, 0, 0])[1]));
-    const inkH = inkTop - inkBot;
-    HG.fontPx = Math.round(Math.min((dna.hero.fontPx || 150) / inkH, (W * 0.84) / em));
-    Object.assign(HG, sceneHeroXY("coverword", Math.round(HG.fontPx * inkH)));
-    HG.halfW = (em * HG.fontPx) / 2 + 0.9 * HG.fontPx;
-    HG.coverEm = em;
-    HG.coverDisp = disp;
-    HG.coverInk = { inkTop, inkBot, inkH };
   }
   // keep the word on frame (when wider than the frame, CENTER it — an inverted
   // Math.max/Math.min clamp would silently pin to the lower bound off-center)
@@ -5111,176 +5086,6 @@ function setpieceCpslam() {
   return { css, html, js };
 }
 
-function setpieceCoverword() {
-  // CP2077 COVER-LETTERFORM slam, precision pass: the spoken apex word set in
-  // the replica typeface of the official mark (assets/brand/CyberpunkReplica.ttf
-  // — lowercase glyphs carry the logo's actual brush chops, blade terminals and
-  // spikes), in logo case (First-upper). The setpiece adds only what the FONT
-  // does not carry: the solid cyan duplicate offset down-left, the baseline
-  // streak + cyan pixel debris, the circuit trace off the tail, and the
-  // tear-in/living-print/tear-out choreography. No synthetic letter surgery.
-  const h = dna.hero,
-    p = h.params || {},
-    I = heroIn;
-  const YEL = dna.palette.hot || "#FCEE0A",
-    CYN = dna.palette.accent || "#52BEDC";
-  const srnd = (() => {
-    let a = p.seed || 77;
-    return () => {
-      a |= 0;
-      a = (a + 0x6d2b79f5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  })();
-  const CPM = JSON.parse(
-    fs.readFileSync(path.join(SKILL, "assets/brand/cyberpunk-widths.json"), "utf8"),
-  );
-  const fontB64 = fs
-    .readFileSync(path.join(SKILL, "assets/brand/CyberpunkReplica.ttf"))
-    .toString("base64");
-  const DISP = HG.coverDisp || heroText[0].toUpperCase() + heroText.slice(1).toLowerCase();
-  const hpx = HG.fontPx;
-  const em =
-    HG.coverEm ||
-    [...DISP].reduce((a, c) => a + (CPM.widths[c] || 0.7), 0) + 0.01 * (DISP.length - 1);
-  const INK = HG.coverInk || { inkTop: 0.5, inkBot: -0.25, inkH: 0.75 };
-  const IH = INK.inkH * hpx; // visual ink height (px)
-  const Wd = em * hpx;
-  const BW = Math.round(Wd + 2.4 * hpx),
-    BH = Math.round(IH + 0.7 * hpx);
-  // baseline placed so the measured ink box is vertically centered
-  const baseY = Math.round(BH / 2 + ((INK.inkTop + INK.inkBot) / 2) * hpx);
-  const feetY = Math.round(baseY - INK.inkBot * hpx); // lowest ink (px, y-down)
-  const x0 = Math.round((BW - Wd) / 2),
-    x1 = Math.round(x0 + Wd);
-  const CX = BW - 120 > W ? W / 2 : Math.max(BW / 2 - 60, Math.min(W - BW / 2 + 60, HG.x)),
-    CY = HG.y;
-  const P = (pts, fill) =>
-    `<polygon points="${pts.map((q) => q[0].toFixed(0) + "," + q[1].toFixed(0)).join(" ")}" fill="${fill}"/>`;
-  // baseline streak: thin brush drag just under the glyph feet, pointed right
-  // tip past the tail (the font's own C/K blades carry the rest of the energy)
-  let extras = "";
-  // streak band MERGES with the glyph feet (official: letters melt into it)
-  const sT = feetY - 0.075 * IH,
-    sB = feetY + 0.012 * IH;
-  extras += P(
-    [
-      [x0 - 0.16 * hpx, sT + 2],
-      [x1 + 0.1 * hpx, sT],
-      [x1 + 0.55 * hpx, sB - 1],
-      [x0 - 0.05 * hpx, sB],
-    ],
-    "white",
-  );
-  let cuts = "";
-  for (let k = 0; k < 3; k++) {
-    const gx = x0 + (0.1 + srnd() * 0.8) * Wd,
-      gw = (0.05 + srnd() * 0.1) * hpx;
-    cuts += P(
-      [
-        [gx, sT - 1],
-        [gx + gw, sT - 1],
-        [gx + gw, sB + 1],
-        [gx, sB + 1],
-      ],
-      "black",
-    );
-  }
-  // cyan pixel debris along the streak
-  let debris = "";
-  for (let k = 0; k < 8; k++) {
-    const dx = x0 - 0.3 * hpx + srnd() * (Wd + 0.9 * hpx),
-      dw = (0.06 + srnd() * 0.3) * hpx;
-    const dy = sT - 2 + srnd() * (sB - sT + 4);
-    debris += `<rect x="${dx.toFixed(0)}" y="${dy.toFixed(0)}" width="${dw.toFixed(0)}" height="${(1.5 + srnd() * 2.5).toFixed(1)}" fill="${CYN}" opacity="0.85"/>`;
-  }
-  // circuit trace off the tail (the official mark's cyan trace language)
-  const tx = x1 + 0.25 * hpx,
-    ty = feetY + 0.14 * IH;
-  const trace = `<g id="cwT" opacity="0">
-      <path d="M ${x0 + Wd * 0.45} ${ty} H ${tx} l ${0.14 * hpx} ${0.07 * hpx} h ${0.3 * hpx}" stroke="${CYN}" stroke-width="2" fill="none"/>
-      <circle cx="${(tx + 0.05 * hpx).toFixed(0)}" cy="${ty.toFixed(0)}" r="3.5" fill="none" stroke="${CYN}" stroke-width="2"/>
-      <circle cx="${(tx + 0.44 * hpx).toFixed(0)}" cy="${(ty + 0.07 * hpx).toFixed(0)}" r="3.5" fill="${CYN}"/>
-    </g>`;
-  const bnd = [
-    [0, 0.42],
-    [0.42, 0.6],
-    [0.6, 1],
-  ];
-  const clipDefs = bnd
-    .map(
-      (b, i) =>
-        `<clipPath id="cwb${i}"><rect x="-60" y="${(b[0] * BH).toFixed(0)}" width="${BW + 120}" height="${((b[1] - b[0]) * BH).toFixed(0)}"/></clipPath>`,
-    )
-    .join("");
-  const layer = (fill) =>
-    `<rect x="0" y="0" width="${BW}" height="${BH}" fill="${fill}" mask="url(#cwm)"/>`;
-  const EX = theme.hero.exitAt ?? Math.min(heroOut - 0.2, I + (p.hold ?? 2.6));
-  const css = `
-  @font-face { font-family:'CPReplica'; src: url(data:font/ttf;base64,${fontB64}) format('truetype'); font-display: block; }
-  #cw { position:absolute; left:${CX}px; top:${CY}px; width:0; height:0; opacity:0; }
-  #cwW { position:absolute; left:0; top:0; transform:translate(-50%,-50%);
-         filter: drop-shadow(0 5px 20px rgba(0,0,0,0.5)); }`;
-  const html = `      <div id="cw">
-        <svg id="cwW" width="${BW}" height="${BH}" viewBox="0 0 ${BW} ${BH}" style="overflow:visible">
-          <defs>
-            <mask id="cwm">
-              <text x="${x0}" y="${baseY}" font-family="'CPReplica'" font-size="${hpx}"
-                    letter-spacing="${(hpx * 0.01).toFixed(1)}" fill="white">${esc(DISP)}</text>
-              ${extras}
-              ${cuts}
-            </mask>
-            ${clipDefs}
-          </defs>
-          <g id="cwC" transform="translate(-7 8)">${layer(CYN)}</g>
-          ${bnd.map((_, i) => `<g clip-path="url(#cwb${i})"><g id="cwY${i}">${layer(YEL)}</g></g>`).join("\n          ")}
-          <g id="cwD">${debris}</g>
-          ${trace}
-        </svg>
-      </div>`;
-  const js = `
-  // ---- setpiece: COVERWORD v2 (replica letterforms; tear-in -> living print -> tear-out) ----
-  const I = ${I.toFixed(3)};
-  const wrnd = mulberry32(${p.seed || 77});
-  const TB = (sel, dx, dy, at) => tl.set(sel, { attr: { transform: "translate(" + dx + " " + (dy || 0) + ")" } }, at);
-  // corrupted boot-flick of the whole lockup during the charge
-  tl.set("#cw", { opacity: 0.35, filter: "saturate(0) brightness(1.6)" }, I - 0.30);
-  tl.set("#cw", { opacity: 0 }, I - 0.30 + F);
-  tl.set("#cw", { opacity: 0.5, filter: "saturate(0) brightness(2)" }, I - 0.13);
-  tl.set("#cw", { opacity: 0 }, I - 0.13 + F);
-  // SLAM: crush in with slice displacement, snap into register
-  tl.set("#cw", { opacity: 1, filter: "none" }, I - 0.02);
-  tl.fromTo("#cwW", { scale: 2.4 }, { scale: 1, duration: 0.10, ease: "power4.in" }, I - 0.02);
-  TB("#cwY0", -34, 0, I - 0.02); TB("#cwY1", 26, 0, I - 0.02); TB("#cwY2", -18, 0, I - 0.02);
-  TB("#cwC", -44, 8, I - 0.02);
-  tl.set("#cwD", { opacity: 0 }, I - 0.02);
-  TB("#cwY0", 0, 0, I + 0.10); TB("#cwY1", 0, 0, I + 0.10); TB("#cwY2", 0, 0, I + 0.10);
-  TB("#cwC", -7, 8, I + 0.10);
-  tl.set("#cwW", { scaleX: 1.08, scaleY: 0.94 }, I + 0.10);
-  tl.to("#cwW", { scaleX: 1, scaleY: 1, duration: 0.45, ease: "elastic.out(1.05, 0.38)" }, I + 0.16);
-  tl.set("#cwD", { opacity: 1 }, I + 0.12);
-  tl.set("#cwT", { opacity: 0.9 }, I + 0.34);
-  // living print: seeded slice slips + cyan jolts
-  let gt = I + 0.55;
-  while (gt < ${EX.toFixed(3)} - 0.25) {
-    const r = wrnd();
-    if (r < 0.4) { const b = Math.floor(wrnd() * 3); TB("#cwY" + b, (wrnd() - 0.5) * 22, 0, gt); TB("#cwY" + b, 0, 0, gt + F); }
-    else if (r < 0.7) { TB("#cwC", -16, 8, gt); TB("#cwC", -7, 8, gt + F); }
-    else { tl.set("#cw", { x: (wrnd() - 0.5) * 9 }, gt); tl.set("#cw", { x: 0 }, gt + F); }
-    gt += 0.4 + wrnd() * 0.55;
-  }
-  tl.to("#cwW", { scale: 1.04, duration: 1.1, ease: "power1.inOut" }, I + 0.66);
-  // EXIT: tear cascade -> gone
-  const E = ${EX.toFixed(3)};
-  TB("#cwY0", 52, 0, E); TB("#cwY1", -38, 0, E); TB("#cwY2", 30, 0, E);
-  TB("#cwC", -30, 8, E);
-  tl.set("#cwT", { opacity: 0 }, E);
-  tl.set("#cw", { opacity: 0.45 }, E + F);
-  tl.set("#cw", { opacity: 0, display: "none" }, E + 2 * F);`;
-  return { css, html, js };
-}
 function setpieceSettle() {
   const I = heroIn;
   const E = theme.hero.exitAt ?? Math.min(heroOut, DUR - 0.12);
@@ -8659,7 +8464,6 @@ const SETPIECES = {
   decode: setpieceDecode,
   drawon: setpieceDrawon,
   cpslam: setpieceCpslam,
-  coverword: setpieceCoverword,
   settle: setpieceSettle,
   flapboard: setpieceFlapboard,
   ledwipe: setpieceLedwipe,

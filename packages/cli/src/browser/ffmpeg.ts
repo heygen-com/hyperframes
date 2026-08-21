@@ -1,82 +1,61 @@
-// fallow-ignore-file code-duplication
-import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
 
-export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
-export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
+export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binaries";
 
-function chooseBestPathCandidate(
-  name: "ffmpeg" | "ffprobe",
-  candidates: string[],
-): string | undefined {
-  const normalized = candidates.map((s) => s.trim()).filter(Boolean);
-  if (normalized.length === 0) return undefined;
-  const lowerName = name.toLowerCase();
-  const preferredExe = normalized.find((candidate) =>
-    candidate.toLowerCase().endsWith(`${lowerName}.exe`),
-  );
-  if (preferredExe) return preferredExe;
-  const exact = normalized.find((candidate) => candidate.toLowerCase().endsWith(lowerName));
-  if (exact) return exact;
-  const nonShellShim = normalized.find((candidate) => {
-    const lower = candidate.toLowerCase();
-    return !lower.endsWith(".cmd") && !lower.endsWith(".bat");
+export type H264EncoderMode = "software" | "gpu";
+
+/**
+ * Select the H.264 encoder class supported by an FFmpeg build.
+ *
+ * Some macOS FFmpeg distributions expose VideoToolbox but omit libx264. The
+ * default CPU render path must not pass libx264-only options such as `-preset`
+ * to those builds.
+ */
+export function resolveH264EncoderMode(
+  ffmpegEncodersOutput: string,
+  gpuRequested: boolean,
+): H264EncoderMode {
+  if (gpuRequested) return "gpu";
+  if (/\blibx264\b/.test(ffmpegEncodersOutput)) return "software";
+  if (/\bh264_videotoolbox\b/.test(ffmpegEncodersOutput)) return "gpu";
+  throw new Error("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
+}
+
+export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean): H264EncoderMode {
+  const encoders = execFileSync(ffmpegPath, ["-hide_banner", "-encoders"], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5000,
   });
-  return nonShellShim ?? normalized[0];
+  return resolveH264EncoderMode(encoders, gpuRequested);
 }
 
-function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
-    return candidate ? resolve(candidate) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// GUI/Dock/launchd-spawned processes on macOS don't inherit the shell PATH, so
-// `which ffmpeg` fails even when ffmpeg is installed via Homebrew. Probe the
-// well-known install dirs as a fallback. (No-op on Windows, where `where` and
-// installer-added PATH entries cover it.)
-const COMMON_BIN_DIRS =
-  process.platform === "win32"
-    ? []
-    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
-
-function findInCommonDirs(name: "ffmpeg" | "ffprobe"): string | undefined {
-  for (const dir of COMMON_BIN_DIRS) {
-    const candidate = `${dir}/${name}`;
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
-function findConfiguredBinary(
-  envName: string,
-  binaryName: "ffmpeg" | "ffprobe",
-): string | undefined {
-  const configured = process.env[envName]?.trim();
-  if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findOnPath(binaryName) ?? findInCommonDirs(binaryName);
-}
-
+// `configuredMustExist`: the CLI surfaces an install hint when a binary is
+// missing, so an env override pointing at a nonexistent file reports as
+// not-found instead of being handed to spawn.
 export function findFFmpeg(): string | undefined {
-  return findConfiguredBinary(FFMPEG_PATH_ENV, "ffmpeg");
+  return findFfBinary("ffmpeg", { configuredMustExist: true });
 }
 
 export function findFFprobe(): string | undefined {
-  return findConfiguredBinary(FFPROBE_PATH_ENV, "ffprobe");
+  return findFfBinary("ffprobe", { configuredMustExist: true });
 }
 
-export function getFFmpegInstallHint(): string {
+const FFMPEG_DOWNLOAD_URL = "https://ffmpeg.org/download.html";
+
+/**
+ * The one command that installs FFmpeg on this machine, or `undefined` when
+ * the platform has no single command worth pasting.
+ *
+ * Separate from `getFFmpegInstallHint` because Studio renders this behind a
+ * copy button, and a copy button over prose ("download the build from ... and
+ * add its bin/ directory to PATH") copies something that is not a command.
+ * This is the only place that maps a platform to an install command; the hint
+ * below is derived from it.
+ */
+export function getFFmpegInstallCommand(): string | undefined {
   switch (process.platform) {
     case "darwin":
       return "brew install ffmpeg";
@@ -84,11 +63,27 @@ export function getFFmpegInstallHint(): string {
       // Distro-aware so WSL/Fedora/Arch/Alpine users get a command that
       // actually works instead of a Debian-only `apt` line.
       const distro = detectLinuxDistro();
+      if (distro.family === "unknown") return undefined;
       return ffmpegInstallCommand(distro.family);
     }
+    // winget ships with Windows 10 1809+ and Windows 11. Machines without it
+    // still get the manual download route from the hint below.
     case "win32":
-      return "Download the 64-bit Windows build from https://ffmpeg.org/download.html#build-windows and add its bin/ directory to PATH.";
+      return "winget install --id Gyan.FFmpeg -e";
     default:
-      return "https://ffmpeg.org/download.html";
+      return undefined;
   }
+}
+
+export function getFFmpegInstallHint(): string {
+  const command = getFFmpegInstallCommand();
+  // Guarding on `command`, not the platform alone: the function above is the
+  // sole owner of platform-to-command, so the day win32 stops returning one
+  // this would otherwise interpolate "undefined, or download the ...".
+  if (command && process.platform === "win32") {
+    return `${command}, or download the 64-bit build from ${FFMPEG_DOWNLOAD_URL}#build-windows and add its bin/ directory to PATH.`;
+  }
+  if (command) return command;
+  if (process.platform === "linux") return ffmpegInstallCommand("unknown");
+  return FFMPEG_DOWNLOAD_URL;
 }

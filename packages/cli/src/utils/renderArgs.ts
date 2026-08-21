@@ -1,3 +1,4 @@
+import { failUsage } from "./commandResult.js";
 /**
  * Pure parsers for `hyperframes render` argv that aren't already shared
  * (fps, quality, format, variables live elsewhere). Lives separately so
@@ -112,9 +113,25 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   if (!result.ok) {
     const { title, message, hint } = browserTimeoutErrorMessage(result.error);
     errorBox(title, message, hint);
-    process.exit(1);
+    failUsage();
   }
   return result.value;
+}
+
+/**
+ * Navigation budget shared by snapshot/check/inspect browser diagnostics.
+ *
+ * The environment variable remains the historical global override. Callers
+ * with their own timeout knob can supply a minimum without shortening that
+ * override or the existing 10-second default.
+ */
+export function resolveDiagnosticNavigationTimeoutMs(
+  env: Record<string, string | undefined> = process.env,
+  minimumTimeoutMs = 0,
+): number {
+  const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
+  const configured = Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  return Math.max(configured, minimumTimeoutMs);
 }
 
 // ── --composition ──────────────────────────────────────────────────────
@@ -127,6 +144,15 @@ export type CompositionEntryParseError =
 export type CompositionEntryParseResult =
   | { ok: true; value: string | undefined }
   | { ok: false; error: CompositionEntryParseError };
+
+function normalizeCompositionEntryArg(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
+  return !trimmed || trimmed === "." ? undefined : trimmed;
+}
+
+export function hasExplicitCompositionArg(raw: string | undefined): boolean {
+  return normalizeCompositionEntryArg(raw) !== undefined;
+}
 
 /**
  * Parse and validate `--composition <path>` into a project-relative
@@ -146,11 +172,11 @@ export function parseCompositionEntryArg(
   projectDir: string,
   stat: (path: string) => Stats,
 ): CompositionEntryParseResult {
-  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
+  const trimmed = normalizeCompositionEntryArg(raw);
   // Normalize the project-root shorthands to "no entry override" so the
   // producer falls back to index.html instead of statSync-ing the dir
   // and later blowing up with EISDIR inside readFileSync().
-  if (!trimmed || trimmed === ".") return { ok: true, value: undefined };
+  if (!trimmed) return { ok: true, value: undefined };
 
   const absProjectDir = resolve(projectDir);
   const entryPath = resolve(absProjectDir, trimmed);
@@ -217,7 +243,7 @@ export function resolveCompositionEntryArg(
   if (!result.ok) {
     const { title, message, hint } = compositionEntryErrorMessage(result.error);
     errorBox(title, message, hint);
-    process.exit(1);
+    failUsage();
   }
   return result.value;
 }

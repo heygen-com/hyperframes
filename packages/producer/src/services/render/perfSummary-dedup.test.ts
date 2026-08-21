@@ -162,3 +162,34 @@ describe("buildRenderPerfSummary capture average attribution", () => {
     expect(summary.captureAvgMs).toBe(43);
   });
 });
+
+describe("buildRenderPerfSummary beginframe no-damage reuse aggregation", () => {
+  it("is undefined when no capture session ran", () => {
+    expect(buildRenderPerfSummary(baseInput([])).beginFrameReuse).toBeUndefined();
+  });
+
+  it("is undefined when no session captured in beginframe mode (both counters zero)", () => {
+    const s = buildRenderPerfSummary(
+      baseInput([perf({ staticDedupEnabled: true, staticDedupReused: 10 })]),
+    ).beginFrameReuse;
+    expect(s).toBeUndefined();
+  });
+
+  it("SUMs no-damage and has-damage frames across workers", () => {
+    const s = buildRenderPerfSummary(
+      baseInput([
+        perf({ beginFrameNoDamage: 240, beginFrameHasDamage: 160 }),
+        perf({ beginFrameNoDamage: 245, beginFrameHasDamage: 155 }),
+        perf({ beginFrameNoDamage: 235, beginFrameHasDamage: 165 }),
+      ]),
+    ).beginFrameReuse;
+    expect(s).toEqual({ noDamageFrames: 720, hasDamageFrames: 480 });
+  });
+
+  it("reports an all-damage beginframe render (noDamageFrames 0, not undefined)", () => {
+    const s = buildRenderPerfSummary(
+      baseInput([perf({ beginFrameNoDamage: 0, beginFrameHasDamage: 400 })]),
+    ).beginFrameReuse;
+    expect(s).toEqual({ noDamageFrames: 0, hasDamageFrames: 400 });
+  });
+});

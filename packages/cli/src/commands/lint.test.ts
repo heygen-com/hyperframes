@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // Regression: `lint --json` used process.exit() right after console.log(JSON).
 // process.exit() terminates before Node flushes an async (non-TTY / piped)
 // stdout, so piping `hyperframes lint --json` on Windows silently lost the whole
@@ -6,6 +7,7 @@
 // right exitCode, for the success, error-findings, and thrown-error paths.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { consumeCommandResult } from "../utils/commandResult.js";
 
 const lintProjectMock = vi.fn();
 
@@ -28,10 +30,8 @@ function run(args: Record<string, unknown>): Promise<unknown> {
 }
 
 describe("lint command exit handling", () => {
-  const origExitCode = process.exitCode;
-
   beforeEach(() => {
-    process.exitCode = undefined;
+    consumeCommandResult();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     // If run() ever calls process.exit, fail loudly (that's the bug).
@@ -42,7 +42,7 @@ describe("lint command exit handling", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    process.exitCode = origExitCode;
+    consumeCommandResult();
   });
 
   it("--json with errors sets exitCode 1 and does NOT call process.exit", async () => {
@@ -54,7 +54,7 @@ describe("lint command exit handling", () => {
     });
     await run({ json: true, verbose: false });
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(consumeCommandResult().exitCode).toBe(1);
   });
 
   it("--json when clean sets exitCode 0 and does NOT call process.exit", async () => {
@@ -66,14 +66,14 @@ describe("lint command exit handling", () => {
     });
     await run({ json: true, verbose: false });
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(0);
+    expect(consumeCommandResult().exitCode).toBe(0);
   });
 
   it("--json on a thrown error sets exitCode 1 and does NOT call process.exit", async () => {
     lintProjectMock.mockRejectedValue(new Error("boom"));
     await run({ json: true, verbose: false });
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(consumeCommandResult().exitCode).toBe(1);
   });
 
   it("human-readable path with errors sets exitCode 1 without process.exit", async () => {
@@ -85,6 +85,6 @@ describe("lint command exit handling", () => {
     });
     await run({ json: false, verbose: false });
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(consumeCommandResult().exitCode).toBe(1);
   });
 });

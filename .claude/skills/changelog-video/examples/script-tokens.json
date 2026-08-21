@@ -1,0 +1,34 @@
+{
+  "_readme": "Two-layer script example. Bare string = display and spoken identical; object = they diverge (display for captions, spoken for TTS). One line = one caption phrase (≤ ~40 display chars). vo-spoken.txt = all spoken forms joined.",
+  "lines": [
+    { "id": "l1", "tokens": ["This", "week", "at", "HyperFrames", "—"] },
+    { "id": "l2", "tokens": ["fifteen", "releases,", "and", "one", "big", "story."] },
+    { "id": "l3", "tokens": ["Feed", "it", "a", "Figma", "frame,"] },
+    { "id": "l4", "tokens": ["get", "a", "working", "composition", "back", "—"] },
+    { "id": "l5", "tokens": ["tokens,", "components,", "and", "motion", "all", "mapped."] },
+    {
+      "id": "l6",
+      "tokens": [
+        "Even",
+        "the",
+        { "display": "JSON", "spoken": "jay-sawn" },
+        "manifest",
+        "comes",
+        "along."
+      ]
+    },
+    {
+      "id": "l7",
+      "tokens": ["And", "it's", "all", "one", { "display": "CLI", "spoken": "C L I" }, "command."]
+    },
+    {
+      "id": "l8",
+      "tokens": [
+        "See",
+        "everything",
+        "at",
+        { "display": "hyperframes.heygen.com", "spoken": "hyperframes dot hey-jen dot com" }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,10 @@ const {
   trackStudioRenderStart,
   trackStudioRazorSplit,
   trackStudioExpandedClipEdit,
+  trackStudioKeyframeLaneExpand,
+  trackStudioSegmentEaseEdit,
+  trackStudioFeedback,
+  trackStudioTimelinePerformance,
 } = await import("./events");
 
 describe("studio telemetry events", () => {
@@ -60,6 +64,26 @@ describe("studio telemetry events", () => {
     });
   });
 
+  it("trackStudioTimelinePerformance emits raw timeline measurements", () => {
+    const sample = {
+      total_clip_count: 3_000,
+      mounted_clip_count: 160,
+      total_row_count: 24,
+      timeline_dom_node_count: 957,
+      viewport_width: 1_200,
+      viewport_height: 360,
+      zoom_mode: "fit",
+      scroll_sample_count: 20,
+      scroll_frame_latency_p95_ms: 24.5,
+      scroll_frame_latency_max_ms: 31.2,
+      frame_interval_p95_ms: 42.3,
+    };
+
+    trackStudioTimelinePerformance(sample);
+
+    expect(trackEvent).toHaveBeenCalledWith("studio_timeline_performance", sample);
+  });
+
   it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {
     trackStudioRazorSplit({ mode: "all", count: 3 });
     expect(trackEvent).toHaveBeenCalledWith("studio_razor_split", { mode: "all", count: 3 });
@@ -68,5 +92,27 @@ describe("studio telemetry events", () => {
   it("trackStudioExpandedClipEdit emits 'studio_expanded_clip_edit' with action", () => {
     trackStudioExpandedClipEdit({ action: "resize" });
     expect(trackEvent).toHaveBeenCalledWith("studio_expanded_clip_edit", { action: "resize" });
+  });
+
+  it("trackStudioKeyframeLaneExpand emits 'studio_keyframe_lane_expand' with expanded", () => {
+    trackStudioKeyframeLaneExpand({ expanded: true });
+    expect(trackEvent).toHaveBeenCalledWith("studio_keyframe_lane_expand", { expanded: true });
+  });
+
+  it("trackStudioSegmentEaseEdit emits 'studio_segment_ease_edit' with action and ease", () => {
+    trackStudioSegmentEaseEdit({ action: "commit", ease: "power2.out" });
+    expect(trackEvent).toHaveBeenCalledWith("studio_segment_ease_edit", {
+      action: "commit",
+      ease: "power2.out",
+    });
+  });
+
+  it.each([0, 10])("trackStudioFeedback preserves NPS boundary %i and its scale", (rating) => {
+    trackStudioFeedback({ rating });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "studio_feedback",
+      expect.objectContaining({ rating, rating_scale: 10 }),
+    );
   });
 });

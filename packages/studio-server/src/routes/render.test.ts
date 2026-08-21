@@ -33,12 +33,36 @@ function createAdapter(
   return { adapter, rendersDir };
 }
 
-function buildApp(spy: ReturnType<typeof vi.fn>): { app: Hono; cleanup: () => void } {
+function buildApp(spy: ReturnType<typeof vi.fn>): {
+  app: Hono;
+  rendersDir: string;
+  cleanup: () => void;
+} {
   const { adapter, rendersDir } = createAdapter(spy);
   const app = new Hono();
   registerRenderRoutes(app, adapter);
-  return { app, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
+  return { app, rendersDir, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
 }
+
+describe("GET /projects/:id/renders — stale sidecar status", () => {
+  it("does not mark an existing output failed from stale metadata", async () => {
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    try {
+      writeFileSync(join(rendersDir, "retry.mp4"), "valid-output");
+      writeFileSync(
+        join(rendersDir, "retry.meta.json"),
+        JSON.stringify({ status: "failed", error: "first attempt" }),
+      );
+      const res = await app.request("http://localhost/projects/demo/renders");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.renders).toEqual([expect.objectContaining({ id: "retry", status: "complete" })]);
+    } finally {
+      cleanup();
+    }
+  });
+});
 
 describe("POST /projects/:id/render — outputResolution forwarding", () => {
   it("forwards a valid resolution preset to the adapter", async () => {
@@ -100,6 +124,42 @@ describe("POST /projects/:id/render — outputResolution forwarding", () => {
       cleanup();
     }
   });
+
+  // Contract pin per PR #2529 R2 review: the HTTP route accepts canonical
+  // presets only, not the CLI-side tier aliases (`1080p` / `hd` / `4k` /
+  // `uhd`, `landscape-4k` is already canonical). Miga asked that Studio
+  // Server's contract stay explicit here rather than silently extending it.
+  // Aliases fall through to the same `undefined` sink as any unknown value,
+  // which means the render falls back to composition dimensions — a safe,
+  // deliberate no-op rather than a portrait-1080p failure mode.
+  it.each(["1080p", "4k", "hd", "uhd"])(
+    "does NOT accept the CLI-side tier alias %s (canonical-only contract)",
+    async (alias) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            fps: 30,
+            quality: "standard",
+            format: "mp4",
+            resolution: alias,
+          }),
+        });
+        expect(res.status).toBe(200);
+        // Alias falls through to undefined → render uses composition dims.
+        // If Studio Server ever extends its contract to accept aliases,
+        // it must also plumb `outputResolutionAspectAgnostic` alongside so
+        // the compile stage can remap orientation; today the surface is
+        // deliberately narrow.
+        expect(spy.mock.calls[0][0].outputResolution).toBeUndefined();
+      } finally {
+        cleanup();
+      }
+    },
+  );
 
   it("accepts each canonical preset value", async () => {
     for (const preset of VALID_CANVAS_RESOLUTIONS) {
@@ -541,6 +601,55 @@ describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
       cleanup();
     }
   });
+
+  // Explicit suppression, forwarded so the CLI can honour a browser opt-out
+  // it has no other way to observe.
+  it("forwards an explicit telemetryOptOut", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          telemetryOptOut: true,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].telemetryOptOut).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  // An old client omits the flag, and a non-boolean is not a signal either.
+  // Defaulting those to "opted out" would silently drop every pre-upgrade
+  // render outcome.
+  it.each([undefined, false, "true"])(
+    "treats telemetryOptOut %s as not opted out",
+    async (flag) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            fps: 30,
+            quality: "standard",
+            format: "mp4",
+            telemetryOptOut: flag,
+          }),
+        });
+        expect(spy.mock.calls[0][0].telemetryOptOut).toBe(false);
+      } finally {
+        cleanup();
+      }
+    },
+  );
 
   it("ignores a non-string telemetryDistinctId", async () => {
     const spy = vi.fn();

@@ -1,0 +1,72 @@
+{
+  "package": "@hyperframes/studio-server",
+  "localNodeRuntime": true,
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["bun", "node"]
+    },
+    "./screenshot-clip": {
+      "source": "./src/helpers/screenshotClip.ts",
+      "runtime": "./dist/helpers/screenshotClip.js",
+      "types": "./dist/helpers/screenshotClip.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./manual-edits-render-script": {
+      "source": "./src/helpers/manualEditsRenderScript.ts",
+      "runtime": "./dist/helpers/manualEditsRenderScript.js",
+      "types": "./dist/helpers/manualEditsRenderScript.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./studio-motion-render-script": {
+      "source": "./src/helpers/studioMotionRenderScript.ts",
+      "runtime": "./dist/helpers/studioMotionRenderScript.js",
+      "types": "./dist/helpers/studioMotionRenderScript.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./draft-markers": {
+      "source": "./src/helpers/draftMarkers.ts",
+      "runtime": "./dist/helpers/draftMarkers.js",
+      "types": "./dist/helpers/draftMarkers.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./finite-mutation": {
+      "source": "./src/helpers/finiteMutation.ts",
+      "runtime": "./dist/helpers/finiteMutation.js",
+      "types": "./dist/helpers/finiteMutation.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./source-mutation": {
+      "source": "./src/helpers/sourceMutation.ts",
+      "runtime": "./dist/helpers/sourceMutation.js",
+      "types": "./dist/helpers/sourceMutation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-codec-map": {
+      "source": "./src/helpers/mediaCodecMap.ts",
+      "runtime": "./dist/helpers/mediaCodecMap.js",
+      "types": "./dist/helpers/mediaCodecMap.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./proxy-transcoder": {
+      "source": "./src/helpers/proxyTranscoder.ts",
+      "runtime": "./dist/helpers/proxyTranscoder.js",
+      "types": "./dist/helpers/proxyTranscoder.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./media-proxy-preview": {
+      "source": "./src/helpers/mediaProxyPreview.ts",
+      "runtime": "./dist/helpers/mediaProxyPreview.js",
+      "types": "./dist/helpers/mediaProxyPreview.d.ts",
+      "environments": ["bun", "node"]
+    }
+  }
+}

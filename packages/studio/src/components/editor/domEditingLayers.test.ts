@@ -224,3 +224,27 @@ describe("buildTextFieldChildLocator", () => {
     expect(buildTextFieldChildLocator(fields, "missing")).toBeNull();
   });
 });
+
+describe("collectDomEditLayerItems item budget", () => {
+  function documentWith(count: number): HTMLElement {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "index.html");
+    for (let i = 0; i < count; i++) {
+      const child = document.createElement("div");
+      child.id = `el-${i}`;
+      root.append(child);
+    }
+    return root;
+  }
+
+  it("returns the whole document by default", () => {
+    // A default cap here silently truncated the marquee's candidate list: a drag
+    // over the whole canvas only ever saw the first 80 elements, so everything
+    // past them was unselectable and survived a Delete.
+    expect(collectDomEditLayerItems(documentWith(200), opts)).toHaveLength(200);
+  });
+
+  it("truncates only when a caller asks for a rendering budget", () => {
+    expect(collectDomEditLayerItems(documentWith(200), opts, 80)).toHaveLength(80);
+  });
+});

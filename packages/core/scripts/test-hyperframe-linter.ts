@@ -1,21 +1,36 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import fs from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { lintHyperframeHtml } from "../src/lint/hyperframeLinter";
+import { fileURLToPath } from "node:url";
+import { lintHyperframeHtml } from "@hyperframes/lint";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const VALID_COMPOSITION = `
+<html>
+<body>
+  <div id="root" data-composition-id="comp-1" data-width="1920" data-height="1080" data-start="0">
+    <div id="stage"></div>
+  </div>
+  <script src="https://cdn.gsap.com/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#stage", { opacity: 1, duration: 1 }, 0);
+    window.__timelines["comp-1"] = tl;
+  </script>
+</body>
+</html>`;
 
-function testCleanFixturePasses() {
-  const fixturePath = path.join(ROOT, "src/tests/chat-project-9/index.html");
-  const html = fs.readFileSync(fixturePath, "utf8");
-  const result = lintHyperframeHtml(html, { filePath: fixturePath });
+async function testCleanFixturePasses() {
+  const result = await lintHyperframeHtml(VALID_COMPOSITION, { filePath: "valid.html" });
 
-  assert.equal(result.ok, true, "chat-project-9 should pass without lint errors");
-  assert.equal(result.errorCount, 0, "chat-project-9 should have zero lint errors");
+  assert.equal(result.ok, true, "valid composition should pass without lint errors");
+  assert.equal(result.errorCount, 0, "valid composition should have zero lint errors");
 }
 
-function testDetectsMissingCompositionHostId() {
+async function testDetectsMissingCompositionHostId() {
   const html = `
     <html>
       <body>
@@ -31,7 +46,7 @@ function testDetectsMissingCompositionHostId() {
     </html>
   `;
 
-  const result = lintHyperframeHtml(html);
+  const result = await lintHyperframeHtml(html);
   const codes = result.findings.map((finding) => finding.code);
 
   assert.equal(result.ok, false, "missing composition ids should fail lint");
@@ -39,7 +54,7 @@ function testDetectsMissingCompositionHostId() {
   assert.ok(codes.includes("host_missing_composition_id"));
 }
 
-function testDetectsOverlappingGsapTweens() {
+async function testDetectsOverlappingGsapTweens() {
   const html = `
     <html>
       <body>
@@ -57,7 +72,7 @@ function testDetectsOverlappingGsapTweens() {
     </html>
   `;
 
-  const result = lintHyperframeHtml(html);
+  const result = await lintHyperframeHtml(html);
   const overlapFinding = result.findings.find(
     (finding) => finding.code === "overlapping_gsap_tweens",
   );
@@ -67,29 +82,30 @@ function testDetectsOverlappingGsapTweens() {
 }
 
 function testCliJsonOutput() {
-  const fixturePath = path.join(ROOT, "src/tests/chat-project-9/index.html");
-  const tsxBin = path.join(ROOT, "node_modules/.bin/tsx");
-  const stdout = execFileSync(
-    tsxBin,
-    ["scripts/check-hyperframe-static.ts", "--json", fixturePath],
-    {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "hf-core-lint-script-"));
+  try {
+    const fixturePath = path.join(tempDir, "index.html");
+    writeFileSync(fixturePath, VALID_COMPOSITION, "utf8");
+    const stdout = execFileSync("bun", ["run", "check:hyperframe-html", "--json", fixturePath], {
       cwd: ROOT,
       encoding: "utf8",
-    },
-  );
-  const payload = JSON.parse(stdout);
+    });
+    const payload = JSON.parse(stdout);
 
-  assert.equal(payload.ok, true);
-  assert.equal(typeof payload.errorCount, "number");
-  assert.ok(Array.isArray(payload.findings));
+    assert.equal(payload.ok, true);
+    assert.equal(typeof payload.errorCount, "number");
+    assert.ok(Array.isArray(payload.findings));
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
-function main() {
-  testCleanFixturePasses();
-  testDetectsMissingCompositionHostId();
-  testDetectsOverlappingGsapTweens();
+async function main() {
+  await testCleanFixturePasses();
+  await testDetectsMissingCompositionHostId();
+  await testDetectsOverlappingGsapTweens();
   testCliJsonOutput();
   console.log("hyperframe linter tests passed");
 }
 
-main();
+await main();

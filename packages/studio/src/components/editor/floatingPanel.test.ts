@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { resolveFloatingPanelPosition } from "./floatingPanel";
+import { clampCentredLeft, resolveFloatingPanelPosition } from "./floatingPanel";
+
+describe("clampCentredLeft", () => {
+  it("leaves a bubble that already fits alone", () => {
+    expect(clampCentredLeft(400, 104, 800, 8)).toBe(400);
+  });
+
+  it("pushes a bubble whose left half would leave the viewport", () => {
+    // Trigger centred at x=20 with a 104px bubble would render at left=-32.
+    expect(clampCentredLeft(20, 104, 800, 8)).toBe(60);
+  });
+
+  it("pushes a bubble whose right half would leave the viewport", () => {
+    expect(clampCentredLeft(790, 104, 800, 8)).toBe(740);
+  });
+
+  it("keeps the left edge visible when the bubble is wider than the viewport", () => {
+    expect(clampCentredLeft(10, 900, 800, 8)).toBe(458);
+  });
+});
 
 describe("resolveFloatingPanelPosition", () => {
   it("places the panel below the anchor when there is space", () => {

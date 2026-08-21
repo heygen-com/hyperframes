@@ -51,6 +51,7 @@ const ffprobe = (file) =>
       "format=duration",
       "-of",
       "csv=p=0",
+      "--",
       file,
     ])
       .toString()
@@ -69,6 +70,7 @@ const dims = execFileSync("ffprobe", [
   "stream=width,height",
   "-of",
   "csv=p=0",
+  "--",
   reference,
 ])
   .toString()

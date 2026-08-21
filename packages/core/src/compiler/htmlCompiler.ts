@@ -4,7 +4,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
-  shouldClampMediaDuration,
+  shouldClampResolvedMediaDuration,
   type ResolvedDuration,
 } from "./timingCompiler";
 
@@ -23,7 +23,8 @@ function resolveMediaSrc(src: string, projectDir: string): string {
  *
  * 1. Static pass: compileTimingAttrs() adds data-end where data-duration exists
  * 2. For unresolved video/audio (no data-duration): probe via probeMediaDuration, inject durations
- * 3. For pre-resolved video/audio: validate data-duration against actual source, clamp if needed
+ * 3. For pre-resolved audio: clamp data-duration to playable source when needed.
+ *    Explicit video slots are preserved and hold their final frame.
  *
  * @param rawHtml - The raw HTML string
  * @param projectDir - The project directory for resolving relative paths
@@ -54,10 +55,8 @@ export async function compileHtml(
       if (fileDuration <= 0) continue;
 
       const effectiveDuration = fileDuration - el.mediaStart;
-      resolutions.push({
-        id: el.id,
-        duration: effectiveDuration > 0 ? effectiveDuration : fileDuration,
-      });
+      const sourceDuration = effectiveDuration > 0 ? effectiveDuration : fileDuration;
+      resolutions.push({ id: el.id, duration: sourceDuration });
     }
 
     if (resolutions.length > 0) {
@@ -65,7 +64,8 @@ export async function compileHtml(
     }
   }
 
-  // Phase 2: Validate pre-resolved media — clamp data-duration to actual source duration
+  // Phase 2: Bound authored audio to playable source. Explicit video slots may
+  // outlive their source and render by holding the final frame.
   const preResolved = extractResolvedMedia(html);
   const clampList: ResolvedDuration[] = [];
 
@@ -77,7 +77,7 @@ export async function compileHtml(
     if (fileDuration <= 0) continue;
 
     const maxDuration = fileDuration - el.mediaStart;
-    if (maxDuration > 0 && shouldClampMediaDuration(el.duration, maxDuration)) {
+    if (maxDuration > 0 && shouldClampResolvedMediaDuration(el.tagName, el.duration, maxDuration)) {
       clampList.push({ id: el.id, duration: maxDuration });
     }
   }

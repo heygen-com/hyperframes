@@ -41,8 +41,7 @@ export const SpeedMenu = memo(function SpeedMenu({
           type="button"
           onClick={() => setShowSpeedMenu((v) => !v)}
           disabled={disabled}
-          className="w-10 px-2 py-1 rounded-md text-[10px] font-mono tabular-nums transition-colors"
-          style={{ color: "#71717A", background: "rgba(255,255,255,0.04)" }}
+          className="h-7 w-8 rounded-md font-mono text-[10px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-200 disabled:opacity-30"
         >
           {playbackRate === 1 ? "1x" : `${playbackRate}x`}
         </button>

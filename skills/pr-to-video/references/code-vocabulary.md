@@ -5,7 +5,7 @@ PR videos run on two kinds of moving picture: **code** (the lines that changed) 
 For code beats the registry ships purpose-built **code animation blocks** that render a diff, a typed-on snippet, a morph, a highlight, a scroll, or a 3D/particle/dissolve reveal — far better than hand-built motion. **Reach for one of these first** for any code beat; fall back to hand-authored composition only when none fits.
 
 - **Step 4 (visual design):** for each `diff` / `before_after` / code beat, name the block in the frame's `scene` (e.g. "the `request()` retry block, ~6 lines, `code-diff`"). One judgment call: which block.
-- **Step 5 (frame worker):** install the named block and fill it with the real diff/snippet (below). The block is the frame's centerpiece, composited onto claude's navy **Code Surface**.
+- **Step 5 (frame worker):** install the named block and fill it with the real diff/snippet (below). The block is the frame's centerpiece, composited onto code-editorial's navy **Code Surface**.
 
 ## Install + use
 
@@ -64,7 +64,7 @@ These are **NOT palettes you attach to the animation blocks** — each is its ow
 - **VS Code workbench (12):** full VS Code window (activity bar, file-tree, tabs, editor with per-char typing, integrated terminal running `pytest`, status bar) in each theme. `dark-plus`, `light-plus`, `dark-modern`, `light-modern`, `dark-2026`, `light-2026`, `monokai`, `solarized-light`, `visual-studio-dark`, `visual-studio-light`, `high-contrast`, `high-contrast-light`. (Each pulls a `background.jpeg` into `assets/`.)
 - **Apple Terminal (12):** macOS Terminal.app window typing a shell command per profile. `apple-terminal-` + `basic`, `clear-dark`, `clear-light`, `grass`, `homebrew`, `man-page`, `novel`, `ocean`, `pro`, `red-sands`, `silver-aerogel`, `solid-colors`.
 
-The theme is baked into each block (not chosen at runtime); to use a given look, install that block and edit its `codeLines`. For claude's editorial register, prefer the focused animation blocks on the navy Code Surface; reach for a `code-snippet-*` UI only when "show it in a real editor/terminal" is the point.
+The theme is baked into each block (not chosen at runtime); to use a given look, install that block and edit its `codeLines`. For code-editorial's editorial register, prefer the focused animation blocks on the navy Code Surface; reach for a `code-snippet-*` UI only when "show it in a real editor/terminal" is the point.
 
 ## Showing behavior — the mechanism beat (not a `code-*` block)
 
@@ -72,7 +72,7 @@ A `code-*` block shows **the code**. It does not show **what the code does**. Th
 
 A mechanism beat is **not** a registry `code-*` block. It is one of:
 
-- an **invented animated diagram** — SVG / HTML / GSAP the frame worker builds from claude's atoms (hairline-ink nodes / edges / lanes on cream, one coral marker on the active element), the build playing out the behavior across the shot; **or**
+- an **invented animated diagram** — SVG / HTML / GSAP the frame worker builds from code-editorial's atoms (hairline-ink nodes / edges / lanes on cream, one coral marker on the active element), the build playing out the behavior across the shot; **or**
 - a **`flowchart` / `flowchart-vertical`** registry block — a process / pipeline / state flow; **or**
 - a **`data-chart`** registry block — a perf / metric comparison (two bars or timelines racing).
 
@@ -106,6 +106,6 @@ Unlike a `code-*` block (which owns its own animation), the diagram's motion is 
 | Hero / title code moment ("the feature")                 | `code-3d-extrude`                                                                                                                                                |
 | "Compiles / builds / works now" reveal                   | `code-shader-dissolve`                                                                                                                                           |
 | Big dramatic snippet reveal / climax                     | `code-particle-assemble`                                                                                                                                         |
-| A benchmark / metric / count-up                          | **Not a `code-*` block** — use claude's `number-lockup` (Number/Impact treatment) or the `data-chart` registry block                                             |
+| A benchmark / metric / count-up                          | **Not a `code-*` block** — use code-editorial's `number-lockup` (Number/Impact treatment) or the `data-chart` registry block                                     |
 | **What the change DOES at runtime** (behavior, not code) | **Not a `code-*` block** — a `mechanism` beat: an invented SVG/GSAP diagram, or `flowchart` / `flowchart-vertical` / `data-chart`. See "Showing behavior" above. |
 | Show the change in a realistic IDE / terminal (ambient)  | a `code-snippet-*` VS Code theme (editor) or Apple Terminal profile (CLI run)                                                                                    |

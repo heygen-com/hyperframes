@@ -1,3 +1,4 @@
+import { failCommand } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud list` — page through GET /v3/hyperframes/renders.
  *
@@ -85,7 +86,7 @@ async function fetchAll(
         "Server returned has_more: true with no next_token — incomplete response.",
         "Retry the command, or report this if it persists.",
       );
-      process.exit(1);
+      failCommand();
     }
     if (seenCursors.has(result.next_token)) {
       errorBox(
@@ -93,7 +94,7 @@ async function fetchAll(
         `Server returned the same next_token (${result.next_token}) twice.`,
         "Retry the command, or report this if it persists.",
       );
-      process.exit(1);
+      failCommand();
     }
     seenCursors.add(result.next_token);
     token = result.next_token;
@@ -103,7 +104,7 @@ async function fetchAll(
     `Stopped after ${MAX_ALL_PAGES} pages to avoid an unbounded loop.`,
     `Re-run with a higher --limit, or paginate manually with --token.`,
   );
-  process.exit(1);
+  failCommand();
 }
 
 // fallow-ignore-next-line complexity

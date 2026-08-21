@@ -1,99 +1,72 @@
 ---
 title: "@hyperframes/studio-server"
-description: "The studio preview/editor backend — a mountable Hono API, extracted from core."
+description: "Mount the Studio project and preview API in your own server."
 ---
 
-The studio-server package is the HTTP backend that powers studio preview and editing — project routes, file serving, preview bundling, thumbnails, and source-mutation helpers. It was extracted from `@hyperframes/core/studio-api` into a dedicated package so an embedder can mount the studio backend **without** depending on core's full surface, and so core no longer ships a web server it doesn't need at render time.
+`@hyperframes/studio-server` is the backend used by Studio. It serves projects
+and previews, applies source mutations, creates thumbnails, and starts render
+jobs.
+
+Most users do not need it. The CLI wires the server and Studio together when
+you run `npx hyperframes preview`. Use this package only when your own
+application must host the Studio backend.
 
 ```bash
 npm install @hyperframes/studio-server
 ```
 
-## When to Use
+## Mount the API
 
-<Tip>
-  **Most users do not need this package directly.** The [CLI](/packages/cli) (`npx hyperframes preview`) and [studio](/packages/studio) wire it up for you. Reach for it when you're **embedding** the studio backend into your own server.
-</Tip>
+`createStudioApi()` returns a Hono application. The adapter is the boundary
+between Studio and your project storage, bundler, linter, and renderer.
 
-**Use `@hyperframes/studio-server` when you need to:**
-- Mount the studio preview/editing API into an existing Node/Hono server
-- Serve project files and bundled preview HTML to a custom frontend
-- Drive source mutations (manual edits, draft markers) from your own tooling
-
-<Info>
-  `@hyperframes/core/studio-api` still resolves (via a back-compat re-export stub), so existing imports keep working. New code should import from `@hyperframes/studio-server` directly.
-</Info>
-
-## Package Exports
-
-| Import | Description |
-|--------|-------------|
-| `@hyperframes/studio-server` | `createStudioApi`, helpers, types |
-| `@hyperframes/studio-server/source-mutation` | Source mutation utilities |
-| `@hyperframes/studio-server/screenshot-clip` | Element screenshot-clip geometry |
-| `@hyperframes/studio-server/manual-edits-render-script` | Manual-edits render body script |
-| `@hyperframes/studio-server/studio-motion-render-script` | Studio motion render body script |
-| `@hyperframes/studio-server/draft-markers` | Draft gesture-marker attributes |
-| `@hyperframes/studio-server/finite-mutation` | Finite-mutation safety checks |
-
-## Mounting the API
-
-`createStudioApi` returns a [Hono](https://hono.dev) app you can mount into any server. You supply a `StudioApiAdapter` that tells the API how to resolve projects, bundle preview HTML, and lint:
-
-```typescript
-import { createStudioApi } from '@hyperframes/studio-server';
-import type { StudioApiAdapter, ResolvedProject } from '@hyperframes/studio-server';
-
-const adapter: StudioApiAdapter = {
-  listProjects: () => projects,
-  resolveProject: (id) => projectsById.get(id) ?? null,
-  bundle: async (projectDir) => bundleToSingleHtml(projectDir),
-  lint: (html, opts) => lintHyperframeHtml(html, opts),
-  runtimeUrl: '/hyperframe-runtime.js',
-  rendersDir: (project) => join(project.dir, 'renders'),
-  startRender: async (opts) => startRenderJob(opts),
-};
-
-const api = createStudioApi(adapter); // → Hono app
-
-// Mount under /api in your own Hono server
-app.route('/api', api);
-```
-
-The adapter is the seam between the framework-agnostic route logic and your storage / bundling / lint implementation — the [CLI](/packages/cli) supplies a filesystem-backed adapter, but you can back it with anything.
-
-## Helpers
-
-```typescript
+```ts
+import type { Hono } from "hono";
 import {
-  createProjectSignature,   // cache key for a project's files
-  isSafePath,               // path-traversal guard
-  walkDir,
-  getMimeType,
-  buildSubCompositionHtml,
-  getElementScreenshotClip,
-} from '@hyperframes/studio-server';
-import type {
-  ResolvedProject,
-  RenderJobState,
-  LintResult,
-  ScreenshotClip,
-} from '@hyperframes/studio-server';
+  createStudioApi,
+  type StudioApiAdapter,
+} from "@hyperframes/studio-server";
+
+export function mountStudioApi(
+  app: Hono,
+  adapter: StudioApiAdapter,
+) {
+  app.route("/api", createStudioApi(adapter));
+}
 ```
 
-## Related Packages
+A `StudioApiAdapter` supplies:
+
+- project listing and resolution;
+- composition bundling and linting;
+- render output storage and job startup;
+- optional thumbnails, sessions, registry installation, and background removal.
+
+Use the interface exported by your installed version as the exact contract. It
+changes as Studio gains capabilities.
+
+## Other entry points
+
+| Import | Purpose |
+| --- | --- |
+| `@hyperframes/studio-server/source-mutation` | Apply guarded changes to composition source |
+| `@hyperframes/studio-server/screenshot-clip` | Calculate element screenshot geometry |
+| `@hyperframes/studio-server/manual-edits-render-script` | Reapply Studio manual edits during render |
+| `@hyperframes/studio-server/studio-motion-render-script` | Reapply Studio motion edits during render |
+| `@hyperframes/studio-server/draft-markers` | Work with draft gesture markers |
+| `@hyperframes/studio-server/finite-mutation` | Guard source mutations against non-finite values |
+| `@hyperframes/studio-server/media-proxy-preview` | Support proxied media in preview |
+
+`@hyperframes/core/studio-api` remains a deprecated compatibility re-export.
+New integrations should import from `@hyperframes/studio-server`.
+
+## Related topics
 
 <CardGroup cols={2}>
-  <Card title="Studio" icon="palette" href="/packages/studio">
-    The browser editor UI this server backs.
+  <Card title="@hyperframes/studio" icon="palette" href="/packages/studio">
+    Embed lower-level Studio interface components.
   </Card>
-  <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
-    The HTML + GSAP parsing layer it builds on.
-  </Card>
-  <Card title="@hyperframes/core" icon="cube" href="/packages/core">
-    Types and runtime; re-exports the studio API for back-compat.
-  </Card>
-  <Card title="CLI" icon="terminal" href="/packages/cli">
-    `npx hyperframes preview` wires this server up for you.
+  <Card title="Studio guide" icon="display" href="/studio">
+    Use the complete editor that ships with HyperFrames.
   </Card>
 </CardGroup>

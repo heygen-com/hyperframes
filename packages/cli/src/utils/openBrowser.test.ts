@@ -158,3 +158,16 @@ describe("validateRemoteDebuggingPortDeps", () => {
     ).toBe("--remote-debugging-port requires --browser-path");
   });
 });
+
+describe("buildBrowserArgs --disable-gpu", () => {
+  it("appends --disable-gpu before the url when disableGpu is set", () => {
+    expect(buildBrowserArgs("http://localhost:3002", { disableGpu: true })).toEqual([
+      "--disable-gpu",
+      "http://localhost:3002",
+    ]);
+  });
+
+  it("omits --disable-gpu by default", () => {
+    expect(buildBrowserArgs("http://localhost:3002", {})).toEqual(["http://localhost:3002"]);
+  });
+});

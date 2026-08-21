@@ -18,6 +18,8 @@ export interface StudioLeftSidebarProps {
   linting: boolean;
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
+  onAddAssetToTimeline?: (path: string) => void;
+  onAddCompositionToTimeline?: (path: string) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -30,15 +32,19 @@ export function StudioLeftSidebar({
   linting,
   lintFindingCount,
   lintFindingsByFile,
+  onAddAssetToTimeline,
+  onAddCompositionToTimeline,
 }: StudioLeftSidebarProps) {
   const {
-    leftCollapsed,
+    effectiveLeftCollapsed,
     leftWidth,
-    setLeftWidth,
+    adjustPanelWidth,
     toggleLeftSidebar,
     handlePanelResizeStart,
     handlePanelResizeMove,
     handlePanelResizeEnd,
+    setRightPanelTab,
+    setRightCollapsed,
   } = usePanelLayoutContext();
   const { projectId, renderQueue, waitForPendingDomEditSaves } = useStudioShellContext();
   const {
@@ -60,16 +66,27 @@ export function StudioLeftSidebar({
 
   const handleRenderComposition = useCallback(
     async (comp: string) => {
+      // startRender refuses without an encoder, so nothing unfinishable gets
+      // queued either way. What it cannot do from here is show the reason:
+      // its refusal lands as a row in the Renders panel, which may be
+      // collapsed or on another tab, so the click would look like nothing
+      // happened. Same move the header makes: put the prompt in front of the
+      // user, then stop.
+      if (renderQueue.ffmpegMissing) {
+        setRightPanelTab("renders");
+        setRightCollapsed(false);
+        return;
+      }
       await waitForPendingDomEditSaves();
       const { format, quality, fps } = getPersistedRenderSettings();
       await renderQueue.startRender({ composition: comp, format, quality, fps });
     },
-    [renderQueue, waitForPendingDomEditSaves],
+    [renderQueue, waitForPendingDomEditSaves, setRightPanelTab, setRightCollapsed],
   );
 
-  if (leftCollapsed) {
+  if (effectiveLeftCollapsed) {
     return (
-      <div className="flex w-10 flex-shrink-0 flex-col items-center border-r border-neutral-800/50 bg-neutral-950 pt-1">
+      <div className="mr-0.5 flex w-10 flex-shrink-0 flex-col items-center rounded-lg border border-neutral-800/50 bg-neutral-950 pt-1">
         <button
           type="button"
           onClick={toggleLeftSidebar}
@@ -147,13 +164,19 @@ export function StudioLeftSidebar({
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
         onPreviewBlock={onPreviewBlock}
+        onAddAssetToTimeline={onAddAssetToTimeline}
+        onAddCompositionToTimeline={onAddCompositionToTimeline}
       />
+      {/* Vertical resize divider: 3px visible seam, 13px pointer-capture zone via
+          the absolutely-positioned inner hit area. The outer element is w-[3px] so
+          it contributes only 3px of gap in the flex row; the inner -left-[2px]
+          element widens the hit area without affecting layout. */}
       <div
         role="separator"
         aria-label="Resize sidebar"
         aria-orientation="vertical"
         tabIndex={0}
-        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("left", e)}
         onPointerMove={handlePanelResizeMove}
@@ -163,11 +186,18 @@ export function StudioLeftSidebar({
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
           e.preventDefault();
           const delta = e.key === "ArrowLeft" ? -16 : 16;
-          const maxLeft = Math.floor(window.innerWidth * 0.5);
-          setLeftWidth(Math.max(160, Math.min(maxLeft, leftWidth + delta)));
+          adjustPanelWidth("left", delta);
         }}
       >
-        <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+        {/* Expanded hit zone, deliberately asymmetric: 2px into the sidebar card,
+            the 3px seam, then 8px into the preview pane's p-2 stage gutter — the
+            only dead space adjacent to this seam. It stops at 13px rather than the
+            24px WCAG 2.2 (2.5.8) target because the next pixel on either side is
+            live: the sidebar's scrolling tab content on the left, the preview
+            stage on the right. Silently stealing their clicks is the worse bug. */}
+        <div className="absolute inset-y-0 -left-[2px] w-[13px]" />
+        {/* Visible hairline */}
+        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
     </>
   );

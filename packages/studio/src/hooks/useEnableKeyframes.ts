@@ -12,15 +12,26 @@ import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gs
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
-import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 import {
+  existingTweenTargetSelector,
+  computeElementPercentage,
+  KEYFRAME_PCT_MATCH,
+  isInstantHold,
+  resolveEditableTweenDuration,
+  writeTargetSelector,
+} from "./gsapShared";
+import {
+  absoluteToPercentage,
   resolveTweenStart,
   resolveTweenDuration,
   isTimeWithinTween,
 } from "../utils/globalTimeCompiler";
 import { POSITION_PROPS } from "./gsapRuntimeReaders";
 import { roundTo3 } from "../utils/rounding";
-import { nearestPointOnPath } from "../components/editor/motionPathGeometry";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import { buildTemporalArcKeyframes } from "./gsapDragPositionCommit";
+
+let enableKeyframesTransactionCounter = 0;
 
 export interface EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -30,16 +41,19 @@ export interface EnableKeyframesSession {
   handleGsapConvertToKeyframes: (
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
+    duration?: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => void | Promise<void>;
   handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
   handleGsapAddKeyframeBatch?: (
     animId: string,
     pct: number,
     properties: Record<string, number | string>,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => Promise<void>;
   commitMutation?: (
     mutation: Record<string, unknown>,
-    options: { label: string; softReload?: boolean },
+    options: CommitMutationOptions,
   ) => Promise<void>;
 }
 
@@ -65,11 +79,22 @@ export function animatedProps(anim: GsapAnimation | null): string[] {
  * Whether the playhead sits inside an animation's tween range. When the tween's
  * start can't be resolved we don't block (the percentage falls back to clip range,
  * preserving prior behavior for elements without explicit timing).
+ *
+ * Pass the selection whenever the caller has one: a duration-less tween spans
+ * its clip, and answering from GSAP's 0.5s default reports the playhead outside
+ * a window the edit paths treat as clip-wide.
  */
-export function isPlayheadWithinTween(anim: GsapAnimation, currentTime: number): boolean {
+export function isPlayheadWithinTween(
+  anim: GsapAnimation,
+  currentTime: number,
+  selection?: DomEditSelection | null,
+): boolean {
   const start = resolveTweenStart(anim);
   if (start === null) return true;
-  return isTimeWithinTween(currentTime, start, resolveTweenDuration(anim));
+  const duration = selection
+    ? resolveEditableTweenDuration(anim, selection)
+    : resolveTweenDuration(anim);
+  return isTimeWithinTween(currentTime, start, duration);
 }
 
 /**
@@ -83,9 +108,10 @@ export function buildExtendedKeyframes(
   anim: GsapAnimation,
   currentTime: number,
   position: Record<string, number>,
+  sourceDuration = resolveTweenDuration(anim),
 ): { position: number; duration: number; keyframes: GsapPercentageKeyframe[] } {
   const oldStart = resolveTweenStart(anim) ?? 0;
-  const oldDuration = resolveTweenDuration(anim);
+  const oldDuration = sourceDuration;
   const newStart = Math.min(oldStart, currentTime);
   const newEnd = Math.max(oldStart + oldDuration, currentTime);
   const newDuration = roundTo3(newEnd - newStart);
@@ -105,6 +131,36 @@ export function buildExtendedKeyframes(
   const added: GsapPercentageKeyframe = { percentage: toPct(currentTime), properties: position };
   const keyframes = [...rescaled, added].sort((a, b) => a.percentage - b.percentage);
   return { position: roundTo3(newStart), duration: newDuration, keyframes };
+}
+
+async function replaceSetWithSingleKeyframe(
+  session: EnableKeyframesSession,
+  sel: DomEditSelection,
+  setAnim: GsapAnimation,
+  t: number,
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+): Promise<void> {
+  const position = readElementPosition(iframe, sel, setAnim);
+  if (Object.keys(position).length === 0) {
+    for (const [key, held] of Object.entries(setAnim.properties ?? {})) {
+      if (typeof held === "number") position[key] = held;
+    }
+  }
+  if (Object.keys(position).length === 0 || !session.commitMutation) return;
+  const range = resolveNewTweenRange(sel.dataAttributes?.start, sel.dataAttributes?.duration, t);
+  await session.commitMutation(
+    {
+      type: "replace-with-keyframes",
+      animationId: setAnim.id,
+      targetSelector: selector,
+      position: roundTo3(range.start),
+      duration: roundTo3(range.duration),
+      keyframes: [{ percentage: 0, properties: position }],
+      ease: setAnim.ease,
+    },
+    { label: "Enable keyframes", softReload: true },
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -186,6 +242,40 @@ async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAni
   return (await tryFetchAnimationsForElement(sel)) ?? [];
 }
 
+async function extendKeyframedTweenToPlayhead(
+  session: EnableKeyframesSession,
+  sel: DomEditSelection,
+  anim: GsapAnimation,
+  currentTime: number,
+  duration: number,
+  iframe: HTMLIFrameElement | null,
+  commitOverrides?: Partial<CommitMutationOptions>,
+): Promise<void> {
+  // Re-authoring an EXISTING tween: keep the target it already writes rather
+  // than re-deriving one from the selection, which would widen a tween already
+  // narrowed to one element back onto its class siblings (existingTweenTargetSelector).
+  const selector = existingTweenTargetSelector(anim, sel);
+  const position = readElementPosition(iframe, sel, anim);
+  if (!selector || Object.keys(position).length === 0 || !session.commitMutation) return;
+  const extended = buildExtendedKeyframes(anim, currentTime, position, duration);
+  await session.commitMutation(
+    {
+      type: "replace-with-keyframes",
+      animationId: anim.id,
+      targetSelector: selector,
+      position: extended.position,
+      duration: extended.duration,
+      keyframes: extended.keyframes,
+      ease: anim.ease,
+    },
+    {
+      label: "Add keyframe",
+      softReload: true,
+      ...commitOverrides,
+    },
+  );
+}
+
 /**
  * Apply "add keyframe at playhead" to a tween that already has x/y keyframes:
  * toggle off an existing stop, add one at the playhead's tween-relative %, or —
@@ -199,29 +289,27 @@ async function applyKeyframeAtPlayhead(
   kfAnim: GsapAnimation,
   t: number,
   iframe: HTMLIFrameElement | null,
+  commitOverrides?: Partial<CommitMutationOptions>,
 ): Promise<void> {
-  if (!isPlayheadWithinTween(kfAnim, t)) {
-    const position = readElementPosition(iframe, sel, kfAnim);
-    const selector = selectorFromSelection(sel);
-    if (selector && Object.keys(position).length > 0 && session.commitMutation) {
-      const extended = buildExtendedKeyframes(kfAnim, t, position);
-      await session.commitMutation(
-        {
-          type: "replace-with-keyframes",
-          animationId: kfAnim.id,
-          targetSelector: selector,
-          position: extended.position,
-          duration: extended.duration,
-          keyframes: extended.keyframes,
-          ease: kfAnim.ease,
-        },
-        { label: "Add keyframe", softReload: true },
-      );
-    }
+  const duration = resolveEditableTweenDuration(kfAnim, sel);
+  const start = resolveTweenStart(kfAnim);
+  if (start !== null && !isTimeWithinTween(t, start, duration)) {
+    await extendKeyframedTweenToPlayhead(
+      session,
+      sel,
+      kfAnim,
+      t,
+      duration,
+      iframe,
+      commitOverrides,
+    );
     return;
   }
-  const pct = computeElementPercentage(t, sel, kfAnim);
-  const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
+  const pct =
+    start === null ? computeElementPercentage(t, sel) : absoluteToPercentage(t, start, duration);
+  const existing = kfAnim.keyframes?.keyframes.find(
+    (k) => Math.abs(k.percentage - pct) <= KEYFRAME_PCT_MATCH,
+  );
   if (existing) {
     session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);
     return;
@@ -229,7 +317,7 @@ async function applyKeyframeAtPlayhead(
   if (session.handleGsapAddKeyframeBatch) {
     const position = readElementPosition(iframe, sel, kfAnim);
     if (Object.keys(position).length > 0) {
-      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position);
+      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position, commitOverrides);
     }
   }
 }
@@ -251,7 +339,10 @@ export async function promoteSetToKeyframes(
   t: number,
   iframe: HTMLIFrameElement | null,
 ): Promise<void> {
-  const selector = selectorFromSelection(sel);
+  // Re-authoring an EXISTING tween: keep the target it already writes rather
+  // than re-deriving one from the selection, which would widen a tween already
+  // narrowed to one element back onto its class siblings (existingTweenTargetSelector).
+  const selector = existingTweenTargetSelector(setAnim, sel);
   const setStart = resolveTweenStart(setAnim) ?? 0;
   if (!selector || !session.commitMutation) return;
   // Playhead at or before the set → there's no forward range to promote into.
@@ -259,27 +350,7 @@ export async function promoteSetToKeyframes(
   // the set with a single keyframe at the playhead holding its value, matching the
   // no-animation branch: one diamond the user can build motion from.
   if (t <= setStart) {
-    const position = readElementPosition(iframe, sel, setAnim);
-    if (Object.keys(position).length === 0) {
-      for (const key of Object.keys(setAnim.properties ?? {})) {
-        const held = setAnim.properties?.[key];
-        if (typeof held === "number") position[key] = held;
-      }
-    }
-    if (Object.keys(position).length === 0) return;
-    const range = resolveNewTweenRange(sel.dataAttributes?.start, sel.dataAttributes?.duration, t);
-    await session.commitMutation(
-      {
-        type: "replace-with-keyframes",
-        animationId: setAnim.id,
-        targetSelector: selector,
-        position: roundTo3(range.start),
-        duration: roundTo3(range.duration),
-        keyframes: [{ percentage: 0, properties: position }],
-        ease: setAnim.ease,
-      },
-      { label: "Enable keyframes", softReload: true },
-    );
+    await replaceSetWithSingleKeyframe(session, sel, setAnim, t, iframe, selector);
     return;
   }
   const endPosition = readElementPosition(iframe, sel, setAnim);
@@ -311,14 +382,13 @@ export async function promoteSetToKeyframes(
 }
 
 /**
- * An arc (motionPath) tween — its waypoints are reconstructed onto `keyframes`, so
- * it must be edited as waypoints (not x/y keyframes, which would break the curve).
- * "Add keyframe at playhead" drops a waypoint where the element currently sits on
- * the path, inserted at the matching segment so the curve is preserved. Outside the
- * range, extend the duration so the motion reaches the playhead.
+ * Convert an arc (motionPath) tween to temporal x/y keyframes before toggling the
+ * playhead stop. A toolbar command named "Add keyframe at playhead" must preserve
+ * every authored stop's time; inserting a spatial waypoint instead redistributes
+ * the path and can silently compress the animation.
  */
 // fallow-ignore-next-line complexity
-async function applyArcWaypointAtPlayhead(
+export async function applyArcKeyframeAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
   arcAnim: GsapAnimation,
@@ -326,8 +396,14 @@ async function applyArcWaypointAtPlayhead(
   iframe: HTMLIFrameElement | null,
 ): Promise<void> {
   if (!session.commitMutation) return;
-  if (!isPlayheadWithinTween(arcAnim, t)) {
-    const start = resolveTweenStart(arcAnim) ?? 0;
+  // Re-authoring an EXISTING tween: keep the target it already writes rather
+  // than re-deriving one from the selection, which would widen a tween already
+  // narrowed to one element back onto its class siblings (existingTweenTargetSelector).
+  const targetSelector = existingTweenTargetSelector(arcAnim, sel);
+  if (!targetSelector) return;
+  const start = resolveTweenStart(arcAnim) ?? 0;
+  const duration = resolveEditableTweenDuration(arcAnim, sel);
+  if (!isTimeWithinTween(t, start, duration)) {
     if (t > start) {
       await session.commitMutation(
         {
@@ -340,30 +416,45 @@ async function applyArcWaypointAtPlayhead(
     }
     return;
   }
+  const nodes = arcAnim.keyframes?.keyframes ?? [];
+  const playheadPercentage = absoluteToPercentage(t, start, duration);
+  const timedNodeIndex = nodes.findIndex(
+    (node) => Math.abs(node.percentage - playheadPercentage) <= KEYFRAME_PCT_MATCH,
+  );
+  if (timedNodeIndex !== -1) {
+    if (timedNodeIndex > 0 && timedNodeIndex < nodes.length - 1) {
+      await session.commitMutation(
+        {
+          type: "replace-with-keyframes",
+          animationId: arcAnim.id,
+          targetSelector,
+          position: roundTo3(start),
+          duration: roundTo3(duration),
+          keyframes: nodes.filter((_, index) => index !== timedNodeIndex),
+          ease: "none",
+        },
+        { label: "Remove keyframe", softReload: true },
+      );
+    }
+    return;
+  }
+
   const live = readElementPosition(iframe, sel, arcAnim);
   if (typeof live.x !== "number" || typeof live.y !== "number") return;
-  const liveX = live.x;
-  const liveY = live.y;
-  const nodes = (arcAnim.keyframes?.keyframes ?? [])
-    .map((k) => ({ x: k.properties.x, y: k.properties.y }))
-    .filter(
-      (p): p is { x: number; y: number } => typeof p.x === "number" && typeof p.y === "number",
-    );
-  // Don't duplicate a waypoint that already sits where the element is (e.g. at the
-  // path endpoints).
-  const WAYPOINT_MERGE_PX = 6;
-  if (nodes.some((n) => Math.hypot(n.x - liveX, n.y - liveY) <= WAYPOINT_MERGE_PX)) return;
-  const proj = nearestPointOnPath(liveX, liveY, nodes);
-  if (!proj) return;
   await session.commitMutation(
     {
-      type: "add-motion-path-point",
+      type: "replace-with-keyframes",
       animationId: arcAnim.id,
-      index: proj.segIndex + 1,
-      x: liveX,
-      y: liveY,
+      targetSelector,
+      position: roundTo3(start),
+      duration: roundTo3(duration),
+      keyframes: buildTemporalArcKeyframes(arcAnim, playheadPercentage, {
+        x: live.x,
+        y: live.y,
+      }),
+      ease: "none",
     },
-    { label: "Add waypoint", softReload: true },
+    { label: "Add keyframe", softReload: true },
   );
 }
 
@@ -395,11 +486,11 @@ export function useEnableKeyframes(
     // the curve.
     const arcAnim = anims.find((a) => a.arcPath);
     const kfAnim = anims.find((a) => a.keyframes && !a.arcPath);
-    const setAnim = anims.find((a) => a.method === "set" && !a.keyframes && !a.arcPath);
-    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && a.method !== "set");
+    const setAnim = anims.find((a) => isInstantHold(a) && !a.keyframes && !a.arcPath);
+    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && !isInstantHold(a));
 
     if (arcAnim) {
-      await applyArcWaypointAtPlayhead(session, sel, arcAnim, t, iframe);
+      await applyArcKeyframeAtPlayhead(session, sel, arcAnim, t, iframe);
     } else if (kfAnim) {
       await applyKeyframeAtPlayhead(session, sel, kfAnim, t, iframe);
     } else if (setAnim) {
@@ -409,9 +500,32 @@ export function useEnableKeyframes(
       // resolvedFromValues, so the 0%/100% stops keep the real start→end motion
       // (passing the playhead value would flatten it). Then apply uniformly so an
       // out-of-range playhead extends the range just like a keyframe tween.
-      await session.handleGsapConvertToKeyframes(flatAnim.id);
+      enableKeyframesTransactionCounter += 1;
+      const coalesceKey = `enable-keyframes:${flatAnim.id}:${enableKeyframesTransactionCounter}`;
+      const convertCommitOverrides: Partial<CommitMutationOptions> = {
+        skipReload: true,
+        coalesceKey,
+        coalesceMs: Number.POSITIVE_INFINITY,
+      };
+      await session.handleGsapConvertToKeyframes(
+        flatAnim.id,
+        undefined,
+        undefined,
+        convertCommitOverrides,
+      );
       const converted = (await fetchAnimationsForElement(sel)).find((a) => a.keyframes);
-      if (converted) await applyKeyframeAtPlayhead(session, sel, converted, t, iframe);
+      if (converted) {
+        const applyCommitOverrides: Partial<CommitMutationOptions> = {
+          softReload: true,
+          coalesceKey,
+          // Must match the convert phase's window: editHistory keys coalescing
+          // off the incoming entry, so without Infinity here the apply (landing
+          // after two POSTs + a fetch) falls back to the 300ms default and the
+          // conversion splits into two undo entries under real latency.
+          coalesceMs: Number.POSITIVE_INFINITY,
+        };
+        await applyKeyframeAtPlayhead(session, sel, converted, t, iframe, applyCommitOverrides);
+      }
     } else {
       const position = readElementPosition(iframe, sel, null);
       const { start: elStart, duration: elDuration } = resolveNewTweenRange(
@@ -419,7 +533,10 @@ export function useEnableKeyframes(
         sel.dataAttributes?.duration,
         t,
       );
-      const selector = selectorFromSelection(sel);
+      // A brand-new tween: author it against the one element the user selected.
+      // The bare class selectorFromSelection hands back for an id-less element
+      // animates every sibling sharing the class (see writeTargetSelector).
+      const selector = writeTargetSelector(sel);
 
       if (!selector) {
         session.handleGsapAddAnimation("to");

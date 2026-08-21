@@ -39,6 +39,8 @@ describe("runAudioStage", () => {
       workDir,
       compiledDir: join(workDir, "compiled"),
       duration: 5,
+      ffmpegProcessTimeout: 3_600_000,
+      audioGain: 1,
       audios,
       abortSignal: undefined,
       assertNotAborted: () => {},
@@ -49,22 +51,45 @@ describe("runAudioStage", () => {
   it("surfaces the mixer's error as audioError when the mix fails", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 0,
       error: "Source not found: a1 (narration.wav)",
+      failures: [
+        {
+          stage: "source",
+          reason: "source_not_found",
+          owner: "user",
+          retryable: false,
+          elementId: "a1",
+          detail: "Source not found for audio element a1",
+        },
+      ],
     });
 
     const result = await runAudioStage(makeInput());
 
     expect(result.hasAudio).toBe(false);
     expect(result.audioError).toBe("Source not found: a1 (narration.wav)");
+    expect(result.audioFailures).toEqual([
+      expect.objectContaining({ reason: "source_not_found", stage: "source" }),
+    ]);
+    expect(processCompositionAudioMock).toHaveBeenCalledWith(
+      audios,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      5,
+      undefined,
+      { ffmpegProcessTimeout: 3_600_000, audioGain: 1 },
+      expect.any(String),
+    );
   });
 
   it("falls back to a generic message when the mixer fails without an error string", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 0,
     });
@@ -78,7 +103,7 @@ describe("runAudioStage", () => {
   it("does not set audioError when the mix succeeds", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: true,
-      outputPath: "audio.aac",
+      outputPath: "audio.m4a",
       durationMs: 1,
       tracksProcessed: 1,
     });
@@ -95,5 +120,54 @@ describe("runAudioStage", () => {
     expect(processCompositionAudioMock).not.toHaveBeenCalled();
     expect(result.hasAudio).toBe(false);
     expect(result.audioError).toBeUndefined();
+    expect(result.audioFailures).toBeUndefined();
+  });
+
+  it("reports a rejection as audioError instead of letting it escape the stage", async () => {
+    // An FX failure the mixer cannot degrade past rejects rather than returning a
+    // result. Escaping here would reach the orchestrator as an unclassified
+    // pipeline exception, losing the stage/owner/retryable classification — and
+    // skipping the abort check this stage runs.
+    processCompositionAudioMock.mockRejectedValue(
+      new Error("Audio FX failed for track bgm: browser launch failed"),
+    );
+    const result = await runAudioStage(makeInput());
+    expect(result.hasAudio).toBe(false);
+    expect(result.audioError).toMatch(/Audio FX failed for track bgm/);
+    // And it is classified. This used to come back undefined, so the warning
+    // policy — which reads owner, retryability, reason and stage off this list
+    // — described the FATAL failure with strictly less detail than a single
+    // dropped track gets.
+    expect(result.audioFailures).toEqual([
+      {
+        stage: "internal",
+        reason: "internal",
+        owner: "system",
+        retryable: false,
+        detail: "Audio FX failed for track bgm: browser launch failed",
+      },
+    ]);
+  });
+
+  it("bounds the synthesised failure's detail", async () => {
+    // `detail` is contractually bounded diagnostic text; an ffmpeg-flavoured
+    // message can run to tens of kilobytes.
+    processCompositionAudioMock.mockRejectedValue(new Error("x".repeat(5_000)));
+    const result = await runAudioStage(makeInput());
+    expect(result.audioFailures?.[0]?.detail.length).toBe(2_000);
+  });
+
+  it("lets an abort keep its own shape rather than becoming an audio error", async () => {
+    processCompositionAudioMock.mockRejectedValue(new Error("boom"));
+    const aborted = new Error("render aborted");
+    await expect(
+      runAudioStage(
+        makeInput({
+          assertNotAborted: () => {
+            throw aborted;
+          },
+        }),
+      ),
+    ).rejects.toBe(aborted);
   });
 });

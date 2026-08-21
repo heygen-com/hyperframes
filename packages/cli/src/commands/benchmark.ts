@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, statSync } from "node:fs";
@@ -64,7 +65,7 @@ export default defineCommand({
     const runsPerConfig = parseInt(args.runs ?? "3", 10);
     if (isNaN(runsPerConfig) || runsPerConfig < 1 || runsPerConfig > 20) {
       errorBox("Invalid runs", `Got "${args.runs ?? "3"}". Must be between 1 and 20.`);
-      process.exit(1);
+      failCommand();
     }
 
     const jsonOutput = args.json ?? false;
@@ -88,7 +89,7 @@ export default defineCommand({
           "Ensure @hyperframes/producer is built and linked.",
         );
       }
-      process.exit(1);
+      failCommand();
     }
 
     // ── Print header ─────────────────────────────────────────────────────

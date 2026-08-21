@@ -1,0 +1,14 @@
+{
+  "name": "software-beginframe-yoyo-compositor",
+  "description": "Regression guard for Chromium issue 535256667: stale SwiftShader compositor layers after a GSAP yoyo reversal. At 25 fps the unfixed BeginFrame path briefly retained the first output badge at its previous transform, painting a third ghost badge around 10.12 seconds.",
+  "tags": ["regression", "beginframe", "gsap"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 25,
+    "workers": 1,
+    "captureMode": "beginframe"
+  }
+}

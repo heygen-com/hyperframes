@@ -1,8 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseBatchFile, runWithConcurrencyLimit } from "./render-batch.js";
+import { CliRuntimeError } from "../../utils/commandResult.js";
+import {
+  buildLambdaBatchRenderConfig,
+  parseBatchFile,
+  runWithConcurrencyLimit,
+  type RenderBatchArgs,
+} from "./render-batch.js";
 
 let tmpDir: string;
 
@@ -110,19 +116,9 @@ describe("parseBatchFile", () => {
     expect(out[1]?.lineNumber).toBe(5);
   });
 
-  // Helper: stub `process.exit` to throw a sentinel, run the parser, and
-  // verify it called exit(1). Dedupes the 3 error-path tests so each one
-  // is a single readable assertion.
+  // Keep malformed input assertions focused on the typed command boundary.
   function expectExitOne(content: string): void {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("EXIT_CALLED");
-    });
-    try {
-      expect(() => parseBatchFile(writeBatch(content))).toThrow(/EXIT_CALLED/);
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-    }
+    expect(() => parseBatchFile(writeBatch(content))).toThrow(CliRuntimeError);
   }
 
   it("exits with a clear message on malformed JSON, naming the offending line", () => {
@@ -135,5 +131,40 @@ describe("parseBatchFile", () => {
 
   it("rejects variables that's not a plain object", () => {
     expectExitOne('{"outputKey":"renders/a.mp4","variables":[1,2,3]}\n');
+  });
+});
+
+// See `../cloudrun.test.ts` / `./render.test.ts` for the sibling wire-config
+// coverage. Repeating it at every entrypoint is deliberate: cross-scaffold
+// drift is exactly what shipped PR #2529 R2 CHANGES_REQUESTED.
+describe("buildLambdaBatchRenderConfig — aspect-agnostic wire threading", () => {
+  const baseArgs: RenderBatchArgs = {
+    projectDir: "/tmp/hf-batch",
+    stackName: "hf-test",
+    batch: "/tmp/batch.jsonl",
+    fps: 30,
+    width: 1080,
+    height: 1920,
+    format: "mp4",
+    json: false,
+  };
+
+  it("threads outputResolutionAspectAgnostic=true through for portrait 1080p", () => {
+    // The batch entrypoint fans out N Step Functions executions from a
+    // single wire config, so a dropped alias flag multiplies into N broken
+    // renders — pin it here.
+    const config = buildLambdaBatchRenderConfig({
+      ...baseArgs,
+      outputResolution: "landscape",
+      outputResolutionAspectAgnostic: true,
+    });
+    expect(config.outputResolution).toBe("landscape");
+    expect(config.outputResolutionAspectAgnostic).toBe(true);
+  });
+
+  it("keeps the aspect-agnostic key absent when the flag is a canonical preset", () => {
+    const config = buildLambdaBatchRenderConfig({ ...baseArgs, outputResolution: "portrait-4k" });
+    expect(config.outputResolution).toBe("portrait-4k");
+    expect(config.outputResolutionAspectAgnostic).toBeUndefined();
   });
 });

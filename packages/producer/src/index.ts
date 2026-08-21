@@ -11,13 +11,31 @@ export {
   createRenderJob,
   executeRenderJob,
   RenderCancelledError,
+  RenderQualityError,
+  applyRenderWarningPolicy,
   type RenderConfig,
   type RenderConfigInput,
   type RenderJob,
   type RenderStatus,
+  type RenderOutcome,
+  type RenderStrictness,
+  type RenderWarning,
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  RENDER_REQUEST_VERSION,
+  createRenderRequest,
+  distributedConfigFromRequest,
+  parseRenderRequest,
+  renderConfigFromRequest,
+  renderRequestFromDistributedConfig,
+  serializeRenderRequest,
+  type CreateRenderRequestInput,
+  type DistributedRenderOptions,
+  type RenderRequest,
+  type RenderRequestOptions,
+} from "./renderRequest.js";
 export {
   type BrowserDiagnosticSummary,
   type RenderCaptureObservability,
@@ -45,6 +63,10 @@ export {
   captureFrameToBuffer,
   getCompositionDuration,
   getCapturePerfSummary,
+  // Transient-vs-genuine init failure classifier — re-exported so standalone
+  // skill helpers (animation-map, contrast-report) can reuse the render
+  // pipeline's canonical retry gating instead of re-deriving it.
+  isTransientBrowserError,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
   type CaptureSession,
@@ -86,6 +108,21 @@ export {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
+// Font localization: fetch + embed @font-face rules for requested families
+// (including those declared only via a remote <link>) so a bundled composition
+// renders with the real font instead of a fallback, regardless of network
+// timing. The render pipeline runs this in its compile stage; the CLI audit
+// paths (snapshot/check) reuse it so their captures match the render.
+export {
+  FONT_FETCH_FAILED,
+  FONT_FETCH_UNAVAILABLE,
+  FontFetchError,
+  FontFetchUnavailableError,
+  injectDeterministicFontFaces,
+  type FontFetchErrorCode,
+  type FontFetchRetryPolicy,
+  type InjectDeterministicFontFacesOptions,
+} from "./services/deterministicFonts.js";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 
@@ -102,10 +139,58 @@ export {
 // separate subpath import.
 export {
   assemble,
+  assembleV2,
+  CURRENT_PLAN_PROTOCOL,
+  DISTRIBUTED_RENDER_CAPABILITIES,
+  getDistributedRenderCapabilities,
+  PLAN_ARTIFACT_LAYOUT,
+  PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_V1,
+  PLAN_PROTOCOL_V2,
+  PLAN_PROTOCOL_UNSUPPORTED,
+  PLAN_SCHEMA_VERSION,
+  PLAN_V2_ARTIFACT_LAYOUT,
+  PLAN_V2_HASH_SCHEMA,
+  PLAN_V2_INTEGRITY_UNRECOVERABLE,
+  PLAN_V2_MATERIALIZATION_MARKER,
+  PLAN_V2_SCHEMA_VERSION,
+  createPlanV2FromExecutionPlan,
+  createPlanV2FromV1,
+  getPlanV2ExecutionPlanHash,
+  listPlanV2ArtifactsForTarget,
+  materializePlanV2Target,
   plan,
+  planV2,
+  planV2WithPublisher,
+  PlanV2IntegrityError,
+  PlanProtocolUnsupportedError,
+  readPlanProtocol,
+  readPlanProtocolV1,
+  readPlanV2Manifest,
+  publishPlanV2FromExecutionPlan,
+  publishPlanV2FromV1,
   renderChunk,
+  renderChunkV2,
+  validatePlanV2MaterializedTarget,
   type AssembleResult,
+  type ChunkRenderer,
   type ChunkResult,
+  type EffectiveChunkResult,
+  type DistributedRenderCapabilities,
   type DistributedRenderConfig,
+  type PlanProtocolConsumerCapabilities,
+  type PlanProtocolDescriptor,
+  type PlanProtocolV1Descriptor,
+  type PlanProtocolV2Descriptor,
   type PlanResult,
+  type PlanV2Artifact,
+  type PlanV2Limitations,
+  type PlanV2Manifest,
+  type PlanV2MaterializationResult,
+  type PlanV2MaterializationTarget,
+  type PlanV2Result,
+  type PlanV2WithPublisherOptions,
+  type PlanV2ArtifactPublisher,
+  type PlanV2PublishBlob,
+  type SupportedPlanProtocolDescriptor,
 } from "./distributed.js";

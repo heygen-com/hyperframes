@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Dynamic Grid - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #07131d, #13312d);
+        color: white;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-dynamic-grid {
+        --hf-grid-size: 72px;
+        --hf-grid-color: rgba(255, 255, 255, 0.16);
+        --hf-grid-x: 0px;
+        --hf-grid-y: 0px;
+        --hf-grid-opacity: 1;
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--hf-grid-opacity);
+        background-image:
+          linear-gradient(var(--hf-grid-color) 1px, transparent 1px),
+          linear-gradient(90deg, var(--hf-grid-color) 1px, transparent 1px);
+        background-size: var(--hf-grid-size) var(--hf-grid-size);
+        background-position: var(--hf-grid-x) var(--hf-grid-y);
+      }
+      .content {
+        position: absolute;
+        left: 180px;
+        bottom: 170px;
+        width: 1020px;
+      }
+      .title {
+        font-size: 118px;
+        line-height: 0.96;
+        font-weight: 900;
+        letter-spacing: -0.035em;
+      }
+      .copy {
+        margin-top: 34px;
+        width: 760px;
+        font-size: 38px;
+        line-height: 1.2;
+        color: rgba(255, 255, 255, 0.65);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="dynamic-grid-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div
+        class="hf-dynamic-grid"
+        aria-hidden="true"
+        data-composition-variables='[
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Cell size of the grid: fine reads as graph paper, coarse as a few large panels.", "default": "standard", "options": [{ "value": "fine", "label": "Fine" }, { "value": "standard", "label": "Standard" }, { "value": "coarse", "label": "Coarse" }] },
+    { "id": "weight", "type": "enum", "role": "style", "label": "Weight", "description": "Thickness of the grid lines, from a hairline rule to a bold structural grid.", "default": "hairline", "options": [{ "value": "hairline", "label": "Hairline" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Line colour: neutral is the translucent white the original ships with, and the accents ride --brand, --accent and --accent-2.", "default": "neutral", "options": [{ "value": "neutral", "label": "Neutral" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+      ></div>
+      <div class="content">
+        <div class="title">Dynamic grid motion</div>
+        <div class="copy">
+          A web-native background primitive for product demos, explainers, and data scenes.
+        </div>
+      </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var sizes = { fine: "44px", standard: "72px", coarse: "112px" };
+          var weights = { hairline: "1px", standard: "2px", bold: "3px" };
+          var tones = {
+            neutral: "rgba(255, 255, 255, 0.16)",
+            green: "color-mix(in srgb, var(--brand, #34d399) 34%, transparent)",
+            blue: "color-mix(in srgb, var(--accent, #38bdf8) 34%, transparent)",
+            violet: "color-mix(in srgb, var(--accent-2, #a78bfa) 34%, transparent)",
+          };
+
+          var size = sizes[pick(sizes, vars.density, "standard")];
+          var line = weights[pick(weights, vars.weight, "hairline")];
+          var color = tones[pick(tones, vars.tone, "neutral")];
+
+          var roots = document.querySelectorAll(".hf-dynamic-grid");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-grid-size", size);
+            roots[i].style.setProperty("--hf-grid-line", line);
+            roots[i].style.setProperty("--hf-grid-color", color);
+          }
+        })();
+      </script>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.from(".content", { opacity: 0, y: 32, duration: 0.7, ease: "power3.out" }, 0.25);
+        tl.to(
+          ".hf-dynamic-grid",
+          { "--hf-grid-x": "72px", "--hf-grid-y": "-72px", duration: 6, ease: "none" },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["dynamic-grid-demo"] = tl;
+      </script>
+    </div>
+    <style>
+      .hf-dynamic-grid {
+        --hf-grid-size: 72px;
+        --hf-grid-line: 1px;
+        --hf-grid-color: rgba(255, 255, 255, 0.16);
+        --hf-grid-x: 0px;
+        --hf-grid-y: 0px;
+        --hf-grid-opacity: 1;
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--hf-grid-opacity);
+        background-image:
+          linear-gradient(
+            var(--hf-grid-color) var(--hf-grid-line),
+            transparent var(--hf-grid-line)
+          ),
+          linear-gradient(
+            90deg,
+            var(--hf-grid-color) var(--hf-grid-line),
+            transparent var(--hf-grid-line)
+          );
+        background-size: var(--hf-grid-size) var(--hf-grid-size);
+        background-position: var(--hf-grid-x) var(--hf-grid-y);
+      }
+    </style>
+  </body>
+</html>

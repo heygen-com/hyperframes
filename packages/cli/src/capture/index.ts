@@ -19,6 +19,7 @@ import { extractDesignStyles } from "./designStyleExtractor.js";
 import { downloadAssets, downloadAndRewriteFonts } from "./assetDownloader.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { diag } from "../ui/diagnostics.js";
 // briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
 import {
   setupAnimationCapture,
@@ -36,11 +37,23 @@ import {
   extractVisibleText,
   captionImagesWithGemini,
   generateAssetDescriptions,
+  resolveVisionPhaseCompletion,
 } from "./contentExtractor.js";
+import type { VisionCaptionOutcome } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
-import type { CaptureOptions, CaptureResult } from "./types.js";
+import { detectBlockedPage } from "./pageBlockDetection.js";
+import { navigateForCapture } from "./navigateForCapture.js";
+import {
+  captureProtocolTimeoutMs,
+  isDegradableEvaluateTimeoutError,
+  withRemainingBudget,
+} from "./captureTimeout.js";
+import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
+import type { CaptureOptions, CapturePhase, CapturePhaseProgress, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
+
+const DEFAULT_POST_NAVIGATION_BUDGET_MS = 120_000;
 
 // fallow-ignore-next-line complexity
 export async function captureWebsite(
@@ -56,12 +69,49 @@ export async function captureWebsite(
     settleTime = 3000,
     maxScreenshots: _maxScreenshots = 24,
     skipAssets = false,
+    skipVision = false,
+    postNavigationBudgetMs = DEFAULT_POST_NAVIGATION_BUDGET_MS,
+    onPhase,
   } = opts;
 
   const warnings: string[] = [];
   const progress = (stage: string, detail?: string) => {
     onProgress?.(stage, detail);
   };
+  const budgetMs =
+    Number.isFinite(postNavigationBudgetMs) && postNavigationBudgetMs > 0
+      ? postNavigationBudgetMs
+      : DEFAULT_POST_NAVIGATION_BUDGET_MS;
+  let postNavigationDeadline: number | undefined;
+  const remainingMs = (): number =>
+    postNavigationDeadline === undefined
+      ? budgetMs
+      : Math.max(0, postNavigationDeadline - Date.now());
+  let lastPhase: CapturePhaseProgress = {
+    schema: "hyperframes.capture.phase.v1",
+    phase: "browser",
+    status: "started",
+    remainingMs: null,
+  };
+  const phase = (
+    name: CapturePhase,
+    status: CapturePhaseProgress["status"],
+    reason?: CapturePhaseProgress["reason"],
+  ): void => {
+    const remaining = postNavigationDeadline === undefined ? null : remainingMs();
+    lastPhase = reason
+      ? {
+          schema: "hyperframes.capture.phase.v1",
+          phase: name,
+          status,
+          remainingMs: remaining,
+          reason,
+        }
+      : { schema: "hyperframes.capture.phase.v1", phase: name, status, remainingMs: remaining };
+    onPhase?.(lastPhase);
+  };
+
+  phase("browser", "started");
 
   // Load .env file from repo root if it exists (for GEMINI_API_KEY, etc.)
   loadEnvFile(outputDir);
@@ -79,6 +129,7 @@ export async function captureWebsite(
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
     executablePath: browser.executablePath,
+    protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),
     args: [
       "--no-sandbox",
       "--disable-dev-shm-usage",
@@ -101,6 +152,8 @@ export async function captureWebsite(
     // Goal: Catalog animations + take screenshots (with JS rendering)
     // ═══════════════════════════════════════════════════════════════
 
+    phase("browser", "completed");
+    phase("navigation", "started");
     progress("animations", "Cataloging animations (full JS)...");
 
     const page1 = await chromeBrowser.newPage();
@@ -193,68 +246,95 @@ export async function captureWebsite(
       }
     });
 
-    // Use networkidle2 (allows 2 ongoing connections) instead of networkidle0 —
-    // modern SPAs often have persistent WebSocket/analytics connections that
-    // prevent networkidle0 from ever resolving.
-    await page1.goto(url, { waitUntil: "networkidle2", timeout });
+    const navigation = await navigateForCapture(page1, url, timeout);
+    const navigationResponse = navigation.response;
+    if (navigation.fellBackFromNetworkIdle) {
+      warnings.push(
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continued with domcontentloaded`,
+      );
+      progress(
+        "warn",
+        `networkidle2 timed out after ${navigation.networkIdleTimeoutMs}ms; continuing with domcontentloaded`,
+      );
+    }
+    postNavigationDeadline = Date.now() + budgetMs;
     await new Promise((r) => setTimeout(r, settleTime));
 
-    // Check if the page loaded real content or an anti-bot challenge
-    // Use structural detection (DOM elements + cookies), not text regex matching —
-    // text matching causes false positives on sites that mention "blocked" or "verify" in copy
-    const pageContentCheck = (await page1.evaluate(`(() => {
-      var text = (document.body.innerText || "").trim();
+    let pageContentCheck: {
+      textLength: number;
+      title: string;
+      hasChallengeElement: boolean;
+      bodyChildCount: number;
+    } = {
+      textLength: 0,
+      title: "",
+      hasChallengeElement: false,
+      bodyChildCount: Number.POSITIVE_INFINITY,
+    };
+    let contentCheckTimedOut = false;
+    try {
+      pageContentCheck = (await withRemainingBudget(
+        page1.evaluate(`(() => {
+      var text = (document.body && document.body.innerText || "").trim();
       var title = document.title || "";
-      // Structural: Cloudflare Turnstile widget or challenge iframe
       var hasCfTurnstile = !!document.querySelector('.cf-turnstile, [data-sitekey], iframe[src*="challenges.cloudflare.com"], #challenge-running, #challenge-form');
-      // Structural: page is almost empty (challenge pages have minimal DOM)
-      var bodyChildCount = document.body.children.length;
-      var isMinimalDom = bodyChildCount <= 5 && text.length < 500;
-      // Title-based: only check title on near-empty pages
-      var hasChallengeTitle = isMinimalDom && /just a moment|attention required|access denied/i.test(title);
-      var isChallenged = hasCfTurnstile || hasChallengeTitle;
-      return { textLength: text.length, title: title, isChallenged: isChallenged, bodyChildCount: bodyChildCount };
-    })()`)) as { textLength: number; title: string; isChallenged: boolean; bodyChildCount: number };
+      var bodyChildCount = document.body ? document.body.children.length : 0;
+      return { textLength: text.length, title: title, hasChallengeElement: hasCfTurnstile, bodyChildCount: bodyChildCount };
+    })()`),
+        Math.min(5_000, remainingMs()),
+        "content-check",
+      )) as typeof pageContentCheck;
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      contentCheckTimedOut = true;
+      const message =
+        "post-navigation content check timed out; continuing with HTTP-status blocked-page detection only";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
-    if (pageContentCheck.isChallenged || pageContentCheck.textLength < 100) {
-      const reason = pageContentCheck.isChallenged
-        ? "Anti-bot protection detected (Cloudflare challenge or similar)"
-        : "Page has very little text content (" +
-          pageContentCheck.textLength +
-          " chars) — may be blocked or a client-rendered SPA that needs more time";
+    const blockedReason = detectBlockedPage({
+      httpStatus: navigationResponse?.status() ?? null,
+      ...(contentCheckTimedOut
+        ? {
+            title: "",
+            textLength: 0,
+            bodyChildCount: 0,
+            hasChallengeElement: false,
+          }
+        : pageContentCheck),
+    });
+    if (blockedReason) {
+      phase("navigation", "degraded", "blocked");
+      throw new Error(blockedReason);
+    }
+
+    phase("navigation", "completed");
+    phase("core-extraction", "started");
+
+    if (!contentCheckTimedOut && pageContentCheck.textLength < 100) {
+      const reason =
+        "Page has very little text content (" +
+        pageContentCheck.textLength +
+        " chars) — may be blocked or a client-rendered SPA that needs more time";
       warnings.push(reason);
       progress("warn", reason);
     }
 
-    // Scroll through page to trigger lazy-loaded images and Lottie animations
-    // Framer and other modern sites use IntersectionObserver — images only load
-    // when scrolled into view. We scroll the full page, then wait for all images
-    // to finish loading before proceeding.
-    await page1.evaluate(`(async () => {
-      var h = document.body.scrollHeight;
-      for (var y = 0; y < h; y += window.innerHeight * 0.7) {
-        window.scrollTo(0, y);
-        await new Promise(function(r) { setTimeout(r, 400); });
-      }
-      // Scroll to very bottom to catch footer lazy-loads
-      window.scrollTo(0, document.body.scrollHeight);
-      await new Promise(function(r) { setTimeout(r, 800); });
-      // Wait for all images to finish loading
-      var imgs = Array.from(document.querySelectorAll('img'));
-      var pending = imgs.filter(function(img) { return !img.complete; });
-      if (pending.length > 0) {
-        await Promise.race([
-          Promise.all(pending.map(function(img) {
-            return new Promise(function(r) { img.onload = r; img.onerror = r; });
-          })),
-          new Promise(function(r) { setTimeout(r, 5000); })
-        ]);
-      }
-      window.scrollTo(0, 0);
-      await new Promise(function(r) { setTimeout(r, 500); });
-    })()`);
-
-    await page1.evaluate(`window.scrollTo(0, 0)`);
+    const lazyLoadBudgetMs = Math.min(15_000, remainingMs());
+    const lazyScroll = await lazyScrollForCapture(page1, lazyLoadBudgetMs, {
+      onWarning: (message) => {
+        warnings.push(message);
+        progress("warn", message);
+      },
+    });
+    if (lazyScroll.timedOut && !lazyScroll.degraded) {
+      const message = `lazy-scroll stopped after ${lazyScroll.steps} steps (budget ${lazyLoadBudgetMs}ms)`;
+      warnings.push(message);
+      progress("warn", message);
+    }
     await new Promise((r) => setTimeout(r, 300));
 
     // Save discovered Lottie animations
@@ -288,13 +368,14 @@ export async function captureWebsite(
       /* DOM scan failed — non-critical */
     }
 
-    if (discoveredLotties.length > 0) {
+    if (discoveredLotties.length > 0 && remainingMs() > 0) {
       const lottieDir = join(outputDir, "assets", "lottie");
       mkdirSync(lottieDir, { recursive: true });
-      const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir);
+      const lottieBudget = { remainingMs };
+      const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
       // Generate manifest + preview thumbnails so the agent can SEE what each animation is
-      if (savedCount > 0) {
-        await renderLottiePreviews(chromeBrowser, lottieDir, outputDir);
+      if (savedCount > 0 && remainingMs() > 0) {
+        await renderLottiePreviews(chromeBrowser, lottieDir, outputDir, lottieBudget);
         progress("lottie", `${savedCount} Lottie animation(s) saved`);
       }
     }
@@ -360,15 +441,47 @@ export async function captureWebsite(
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
 
-    // Collect animation catalog
     progress("animations", "Cataloging animations...");
-    animationCatalog = await collectAnimationCatalog(page1, cdpAnims, cdp);
+    try {
+      const animationOutcome = await collectAnimationCatalog(page1, cdpAnims, cdp, {
+        scrollBudgetMs: Math.min(8_000, remainingMs()),
+        evaluateBudgetMs: Math.min(15_000, remainingMs()),
+      });
+      animationCatalog = animationOutcome.catalog;
+      if (animationOutcome.timedOut) {
+        const message =
+          "animation catalog evaluate timed out; continuing without animation catalog";
+        warnings.push(message);
+        progress("warn", message);
+      }
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "animation catalog evaluate timed out; continuing without animation catalog";
+      warnings.push(message);
+      progress("warn", message);
+      try {
+        await cdp.send("Animation.disable");
+      } catch {
+        /* ignore */
+      }
+    }
 
-    // Capture scroll-position viewport screenshots
     progress("screenshots", "Capturing scroll screenshots...");
     const { captureScrollScreenshots } = await import("./screenshotCapture.js");
-    const screenshots = await captureScrollScreenshots(page1, outputDir);
-    progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    let screenshots: string[] = [];
+    try {
+      screenshots = await captureScrollScreenshots(page1, outputDir, { remainingMs });
+      progress("screenshots", `${screenshots.length} scroll screenshots captured`);
+    } catch (err) {
+      if (!isDegradableEvaluateTimeoutError(err)) {
+        throw err;
+      }
+      const message = "scroll screenshots timed out; continuing without screenshots";
+      warnings.push(message);
+      progress("warn", message);
+    }
 
     // Catalog all assets (must run before extractHtml which converts img src to data URLs)
     progress("design", "Cataloging assets...");
@@ -436,10 +549,15 @@ export async function captureWebsite(
     // Generate video manifest — screenshot each <video> element + extract surrounding context
     // so Claude Code can SEE what each video shows and WHERE it was used on the page.
     try {
-      await captureVideoManifest(page1, outputDir, progress, {
-        networkVideoUrls: discoveredVideoUrls, // Layer 1 (live Set, read after sampling)
-        sampleMs: 12000, // Layer 2: poll DOM ≤12s so auto-rotating carousels reveal each slide
-      });
+      const videoBudgetMs = remainingMs();
+      if (videoBudgetMs > 0) {
+        await captureVideoManifest(page1, outputDir, progress, {
+          networkVideoUrls: discoveredVideoUrls, // Layer 1 (live Set, read after sampling)
+          sampleMs: Math.min(12000, videoBudgetMs), // Layer 2: poll DOM within the shared budget
+          downloadBudgetMs: videoBudgetMs,
+          remainingMs,
+        });
+      }
     } catch {
       /* non-blocking — video manifest is best-effort */
     }
@@ -458,8 +576,25 @@ export async function captureWebsite(
 
     await page1.close();
 
+    phase("core-extraction", "completed");
+
     // Download fonts and rewrite URLs to local paths
-    extracted.headHtml = await downloadAndRewriteFonts(extracted.headHtml, outputDir);
+    if (remainingMs() > 0) {
+      phase("fonts", "started");
+      extracted.headHtml = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
+        remainingMs,
+      });
+      phase(
+        "fonts",
+        remainingMs() > 0 ? "completed" : "degraded",
+        remainingMs() > 0 ? undefined : "budget-exhausted",
+      );
+    } else {
+      warnings.push(
+        "Capture budget exhausted before font downloads; extracted font tokens were preserved.",
+      );
+      phase("fonts", "degraded", "budget-exhausted");
+    }
 
     // Identify each downloaded font by reading its OpenType name table.
     // Modern frameworks hash font filenames; this manifest tells the
@@ -474,15 +609,17 @@ export async function captureWebsite(
         const summary = fontsManifest.families
           .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
           .join(", ");
-        console.log(`Font metadata extracted: ${summary}`);
+        // stderr (via diag): `capture --json` writes its envelope to stdout, so
+        // these progress/advisory lines must not land there.
+        diag.notice(`Font metadata extracted: ${summary}`);
         if (fontsManifest.unidentified.length > 0) {
-          console.warn(
+          diag.warn(
             `  ${fontsManifest.unidentified.length} font file(s) could not be identified — DESIGN.md should flag these explicitly.`,
           );
         }
       }
     } catch (err) {
-      console.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
+      diag.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
     }
 
     // Save animation catalog — lean version for the agent (not 745 raw CSS declarations)
@@ -515,8 +652,23 @@ export async function captureWebsite(
     // Download assets — single pass using the catalog for best image quality
     let assets: CaptureResult["assets"] = [];
     if (!skipAssets) {
-      progress("assets", "Downloading assets...");
-      assets = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks);
+      if (remainingMs() > 0) {
+        phase("assets", "started");
+        progress("assets", "Downloading assets...");
+        assets = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
+          remainingMs,
+        });
+        phase(
+          "assets",
+          remainingMs() > 0 ? "completed" : "degraded",
+          remainingMs() > 0 ? undefined : "budget-exhausted",
+        );
+      } else {
+        warnings.push("Capture budget exhausted before asset downloads; extraction continued.");
+        phase("assets", "degraded", "budget-exhausted");
+      }
+    } else {
+      phase("assets", "degraded", "disabled");
     }
 
     // Join in-section media URLs → downloaded local paths, then re-write
@@ -570,7 +722,34 @@ export async function captureWebsite(
     // detected-libraries and assets-catalog removed — 0/8 agents read them in v6 testing
 
     // AI-powered image captioning via Gemini (optional — enriches asset descriptions)
-    const geminiCaptions = await captionImagesWithGemini(outputDir, progress, warnings);
+    let geminiCaptions: Record<string, string> = {};
+    if (skipVision) {
+      phase("vision", "degraded", "disabled");
+    } else if (remainingMs() <= 0) {
+      warnings.push(
+        "Capture budget exhausted before vision captioning; catalog descriptions were preserved.",
+      );
+      phase("vision", "degraded", "budget-exhausted");
+    } else {
+      phase("vision", "started");
+      let visionOutcome: VisionCaptionOutcome = {
+        timedOutRequests: 0,
+        failedRequests: 0,
+        budgetExhausted: false,
+      };
+      geminiCaptions = await captionImagesWithGemini(outputDir, progress, warnings, {
+        remainingMs,
+        onOutcome: (outcome) => {
+          visionOutcome = outcome;
+        },
+      });
+      const completion = resolveVisionPhaseCompletion(visionOutcome, remainingMs());
+      phase(
+        "vision",
+        completion.status,
+        completion.status === "degraded" ? completion.reason : undefined,
+      );
+    }
 
     // Generate asset descriptions for the AI agent
     progress("design", "Generating asset descriptions...");
@@ -578,8 +757,13 @@ export async function captureWebsite(
       const lines = generateAssetDescriptions(outputDir, tokens, catalogedAssets, geminiCaptions);
 
       if (lines.length > 0) {
-        const hasGeminiKey = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
-        const header = hasGeminiKey
+        const hasVisionKey = !!(
+          !skipVision &&
+          (process.env.OPENROUTER_API_KEY ||
+            process.env.GEMINI_API_KEY ||
+            process.env.GOOGLE_API_KEY)
+        );
+        const header = hasVisionKey
           ? "# Asset Descriptions\n\nOne line per file. Read this instead of opening every image individually.\n\nTo find a specific brand or icon, **grep this file for the brand name in the description text** (e.g. `grep -i 'autodesk' asset-descriptions.md`). The Gemini Vision captions identify what's actually in each file — that's the agent's selector.\n\nThe `logo-<hash>.svg` filename prefix is a cheap structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). It is NOT a content claim — many `logo-*` files are nav icons or decorative shapes. Trust the captions, not the filename prefix.\n\n"
           : "# Asset Descriptions\n\n⚠️  GEMINI_API_KEY not set — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY) and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
         writeFileSync(
@@ -589,7 +773,7 @@ export async function captureWebsite(
         );
         progress(
           "design",
-          `${lines.length} asset descriptions written${hasGeminiKey ? "" : " (no Gemini key — catalog-fallback mode)"}`,
+          `${lines.length} asset descriptions written${hasVisionKey ? "" : " (no vision provider — catalog-fallback mode)"}`,
         );
       }
     } catch {
@@ -600,51 +784,74 @@ export async function captureWebsite(
 
     // Generate contact sheets (saves AI agents 50-65% tokens vs reading images individually)
     // All functions return string[] — paginated so every image is covered
-    try {
-      const { createScrollContactSheet, createAssetContactSheet, createSvgContactSheet } =
-        await import("./contactSheet.js");
+    if (remainingMs() > 0) {
+      phase("contact-sheets", "started");
+      try {
+        const { createScrollContactSheet, createAssetContactSheet, createSvgContactSheet } =
+          await import("./contactSheet.js");
 
-      const scrollSheets = await createScrollContactSheet(
-        join(outputDir, "screenshots"),
-        join(outputDir, "screenshots", "contact-sheet.jpg"),
-      );
-      if (scrollSheets.length > 0)
-        progress(
-          "design",
-          `Screenshot contact sheet generated (${scrollSheets.length} page${scrollSheets.length > 1 ? "s" : ""})`,
-        );
+        const contactSheetBudget = { remainingMs };
 
-      const assetsImgDir = join(outputDir, "assets");
-      if (existsSync(assetsImgDir)) {
-        const assetSheets = await createAssetContactSheet(
-          assetsImgDir,
-          join(outputDir, "assets", "contact-sheet.jpg"),
+        const scrollSheets = await createScrollContactSheet(
+          join(outputDir, "screenshots"),
+          join(outputDir, "screenshots", "contact-sheet.jpg"),
+          contactSheetBudget,
         );
-        if (assetSheets.length > 0)
+        if (scrollSheets.length > 0)
           progress(
             "design",
-            `Asset contact sheet generated (${assetSheets.length} page${assetSheets.length > 1 ? "s" : ""})`,
+            `Screenshot contact sheet generated (${scrollSheets.length} page${scrollSheets.length > 1 ? "s" : ""})`,
           );
-      }
 
-      // Scan assets/svgs/ (inline SVGs) AND assets/ root (external SVGs from <img src="*.svg">)
-      // so sites like huly.io that only use external SVGs still get a grid
-      const svgsDir = join(outputDir, "assets", "svgs");
-      const assetsRootDir = join(outputDir, "assets");
-      const svgOutputPath = existsSync(svgsDir)
-        ? join(outputDir, "assets", "svgs", "contact-sheet.jpg")
-        : join(outputDir, "assets", "contact-sheet-svgs.jpg");
-      const svgSheets = await createSvgContactSheet(svgsDir, svgOutputPath, assetsRootDir);
-      if (svgSheets.length > 0)
-        progress(
-          "design",
-          `SVG contact sheet generated (${svgSheets.length} page${svgSheets.length > 1 ? "s" : ""})`,
+        const assetsImgDir = join(outputDir, "assets");
+        if (existsSync(assetsImgDir)) {
+          const assetSheets = await createAssetContactSheet(
+            assetsImgDir,
+            join(outputDir, "assets", "contact-sheet.jpg"),
+            contactSheetBudget,
+          );
+          if (assetSheets.length > 0)
+            progress(
+              "design",
+              `Asset contact sheet generated (${assetSheets.length} page${assetSheets.length > 1 ? "s" : ""})`,
+            );
+        }
+
+        // Scan assets/svgs/ (inline SVGs) AND assets/ root (external SVGs from <img src="*.svg">)
+        // so sites like huly.io that only use external SVGs still get a grid
+        const svgsDir = join(outputDir, "assets", "svgs");
+        const assetsRootDir = join(outputDir, "assets");
+        const svgOutputPath = existsSync(svgsDir)
+          ? join(outputDir, "assets", "svgs", "contact-sheet.jpg")
+          : join(outputDir, "assets", "contact-sheet-svgs.jpg");
+        const svgSheets = await createSvgContactSheet(
+          svgsDir,
+          svgOutputPath,
+          assetsRootDir,
+          contactSheetBudget,
         );
-    } catch {
-      /* contact sheets are non-critical — agent can still read images individually */
+        if (svgSheets.length > 0)
+          progress(
+            "design",
+            `SVG contact sheet generated (${svgSheets.length} page${svgSheets.length > 1 ? "s" : ""})`,
+          );
+      } catch {
+        /* contact sheets are non-critical — agent can still read images individually */
+      }
+      phase(
+        "contact-sheets",
+        remainingMs() > 0 ? "completed" : "degraded",
+        remainingMs() > 0 ? undefined : "budget-exhausted",
+      );
+    } else {
+      warnings.push(
+        "Capture budget exhausted before contact sheets; source images were preserved.",
+      );
+      phase("contact-sheets", "degraded", "budget-exhausted");
     }
 
     // Generate project scaffold (index.html, meta.json, CLAUDE.md)
+    phase("scaffold", "started");
     await generateProjectScaffold(
       outputDir,
       url,
@@ -658,8 +865,10 @@ export async function captureWebsite(
       warnings,
       detectedLibraries,
     );
+    phase("scaffold", "completed");
 
     progress("done", "Capture complete");
+    phase("complete", "completed");
 
     return {
       ok: true,
@@ -672,6 +881,7 @@ export async function captureWebsite(
       assets,
       animationCatalog,
       warnings,
+      lastPhase,
     };
   } finally {
     await chromeBrowser.close();

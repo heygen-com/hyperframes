@@ -2,13 +2,14 @@
  * Block drop/add handlers for the Studio.
  * Extracted from App.tsx to keep file sizes under the 600-line limit.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
+import type { MediaOverlayPlacement } from "../components/editor/propertyPanelTypes";
 
 interface BlockCtxDeps {
   activeCompPath: string | null;
@@ -46,6 +47,7 @@ export interface UseBlockHandlersResult {
   >;
   handleAddBlock: (blockName: string) => void;
   handleTimelineBlockDrop: (blockName: string, placement: { start: number; track: number }) => void;
+  handleAddMediaOverlay: (blockName: string, placement: MediaOverlayPlacement) => Promise<void>;
   handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
 
@@ -83,17 +85,41 @@ export function useBlockHandlers({
     ],
   );
 
+  // Block installs hit the server and end in a full preview reload; without a
+  // guard, repeat drops while one is in flight stack duplicate installs.
+  const installingBlockRef = useRef(false);
+  const runBlockInstall = useCallback(
+    async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
+      if (installingBlockRef.current) {
+        blockCtx.showToast("A block is already installing — one moment…", "info");
+        return null;
+      }
+      installingBlockRef.current = true;
+      blockCtx.showToast(`Adding ${blockName}…`, "info");
+      try {
+        return await install();
+      } finally {
+        installingBlockRef.current = false;
+      }
+    },
+    [blockCtx],
+  );
+
   const handleAddBlock = useCallback(
     (blockName: string) => {
       if (!projectId) return;
+      // fallow-ignore-next-line complexity
       void (async () => {
-        const result = await addBlockToProject({
-          projectId,
-          blockName,
-          ...blockCtx,
-          previewIframe: previewIframeRef.current,
-          currentTime: usePlayerStore.getState().currentTime,
-        });
+        const result = await runBlockInstall(blockName, () =>
+          addBlockToProject({
+            projectId,
+            blockName,
+            ...blockCtx,
+            previewIframe: previewIframeRef.current,
+            currentTime: usePlayerStore.getState().currentTime,
+          }),
+        );
+        if (result === null) return;
         const params = result?.block.type === "hyperframes:block" ? result.block.params : undefined;
         if (params?.length) {
           setActiveBlockParams({
@@ -107,37 +133,60 @@ export function useBlockHandlers({
         }
       })();
     },
-    [projectId, blockCtx, previewIframeRef, setRightCollapsed, setRightPanelTab],
+    [projectId, blockCtx, previewIframeRef, runBlockInstall, setRightCollapsed, setRightPanelTab],
   );
 
   const handleTimelineBlockDrop = useCallback(
     (blockName: string, placement: { start: number; track: number }) => {
       if (!projectId) return;
-      void addBlockToProject({
-        projectId,
-        blockName,
-        placement,
-        ...blockCtx,
-        previewIframe: previewIframeRef.current,
-        currentTime: usePlayerStore.getState().currentTime,
-      });
+      void runBlockInstall(blockName, () =>
+        addBlockToProject({
+          projectId,
+          blockName,
+          placement,
+          ...blockCtx,
+          previewIframe: previewIframeRef.current,
+          currentTime: usePlayerStore.getState().currentTime,
+        }),
+      );
     },
-    [projectId, blockCtx, previewIframeRef],
+    [projectId, blockCtx, previewIframeRef, runBlockInstall],
+  );
+
+  const handleAddMediaOverlay = useCallback(
+    async (blockName: string, placement: MediaOverlayPlacement) => {
+      if (!projectId) return;
+      const { compositionPath, ...timelinePlacement } = placement;
+      await runBlockInstall(blockName, () =>
+        addBlockToProject({
+          projectId,
+          blockName,
+          ...blockCtx,
+          activeCompPath: compositionPath ?? blockCtx.activeCompPath,
+          placement: timelinePlacement,
+          previewIframe: previewIframeRef.current,
+          currentTime: usePlayerStore.getState().currentTime,
+        }),
+      );
+    },
+    [projectId, blockCtx, previewIframeRef, runBlockInstall],
   );
 
   const handlePreviewBlockDrop = useCallback(
     (blockName: string, position: { left: number; top: number }) => {
       if (!projectId) return;
-      void addBlockToProject({
-        projectId,
-        blockName,
-        visualPosition: position,
-        ...blockCtx,
-        previewIframe: previewIframeRef.current,
-        currentTime: usePlayerStore.getState().currentTime,
-      });
+      void runBlockInstall(blockName, () =>
+        addBlockToProject({
+          projectId,
+          blockName,
+          visualPosition: position,
+          ...blockCtx,
+          previewIframe: previewIframeRef.current,
+          currentTime: usePlayerStore.getState().currentTime,
+        }),
+      );
     },
-    [projectId, blockCtx, previewIframeRef],
+    [projectId, blockCtx, previewIframeRef, runBlockInstall],
   );
 
   return {
@@ -145,6 +194,7 @@ export function useBlockHandlers({
     setActiveBlockParams,
     handleAddBlock,
     handleTimelineBlockDrop,
+    handleAddMediaOverlay,
     handlePreviewBlockDrop,
   };
 }

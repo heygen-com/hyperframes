@@ -7,7 +7,7 @@ export function absoluteToPercentage(
 ): number {
   if (tweenDuration <= 0) return 0;
   const raw = ((time - tweenStart) / tweenDuration) * 100;
-  return Math.max(0, Math.min(100, Math.round(raw * 10) / 10));
+  return Math.max(0, Math.min(100, Math.round(raw * 1000) / 1000));
 }
 
 export function percentageToAbsolute(
@@ -34,8 +34,8 @@ export function resolveTweenStart(animation: GsapAnimation): number | null {
   return null;
 }
 
-export function resolveTweenDuration(animation: GsapAnimation): number {
-  return animation.duration ?? 0.5;
+export function resolveTweenDuration(animation: GsapAnimation, fallback = 0.5): number {
+  return animation.duration ?? fallback;
 }
 
 export function findTweenAtTime(

@@ -1,0 +1,133 @@
+---
+title: "Get unstuck"
+sidebarTitle: "Get unstuck"
+description: "Start with what you can see, try the smallest useful fix, and get back to your HyperFrames task."
+---
+
+Find the symptom that looks like yours below.
+
+## Studio will not open
+
+The browser never opens, the page is unreachable, or the project does not load.
+
+1. Open a terminal in the HyperFrames project folder.
+2. Run `npx hyperframes preview`.
+3. Keep that process running while Studio is open.
+4. Use the local URL printed in the terminal.
+
+If the command cannot find a project, check that you are inside the project folder rather than its parent.
+
+## Preview is wrong or stale
+
+A change is missing, playback looks old, or the preview is blank. Preview's Code
+editor and visual controls save automatically. Storyboard drafts show a Save
+action when they still need one. If you edited the project in another
+application, save that file first.
+
+1. Wait for the project refresh, then reload Studio once.
+2. Check the terminal for a build or runtime error.
+3. Run the project checks:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+`lint` checks the composition structure. `check` opens the project in a browser gate and catches runtime, layout, motion, and contrast problems.
+
+## I cannot select or edit something
+
+Selection, canvas controls, timing, or an Inspector field is unavailable.
+
+- Open **Layers** and select the element there when clicking the canvas is difficult.
+- Confirm you are in **Preview**, not Storyboard.
+- Scrub to a time where the element is actually visible.
+- Check whether the visual lives inside a nested composition.
+- Ask the agent when the change affects source structure rather than one visible element.
+
+[Open Studio troubleshooting →](/studio/troubleshooting)
+
+## Media is missing or black
+
+An image, video, font, or audio file is absent or does not render. Check that:
+
+- the file still exists inside the project;
+- the path and filename capitalisation match;
+- the source is local and available during rendering;
+- the browser can decode the format;
+- the media is visible at the current time;
+- the terminal reports no download, decode, or CORS error.
+
+Never rely on a temporary signed URL or a render-time network request. Ask the agent to copy required media into the project.
+
+## Animation is wrong
+
+Motion jumps, drifts, starts at the wrong time, or changes after seeking. First decide whether it happens:
+
+- during normal playback;
+- only after scrubbing;
+- only in the final render.
+
+That distinction separates a timeline mistake from non-deterministic animation. HyperFrames animation must be seekable: the same frame should look the same every time it is requested.
+
+Run `npx hyperframes check`, then give your agent the smallest affected scene and the exact timestamp.
+
+## Render failed or differs from preview
+
+Export stops, produces the wrong result, or disagrees with Studio.
+
+1. Preserve the complete render error.
+2. Run `npx hyperframes check`.
+3. Confirm fonts and media are local and load before capture.
+4. Check the affected timestamp in Studio.
+5. Try the normal MP4 preset before changing codecs or advanced flags.
+
+The [complete troubleshooting guide](/guides/troubleshooting) covers codec, browser, FFmpeg, GPU, HDR, and deployment-specific failures.
+
+## Copy a useful diagnostic
+
+If none of the above resolved it, send this to your agent with the visible facts filled in:
+
+```text
+What I was trying to do:
+
+What I clicked or ran:
+
+What I expected:
+
+What happened instead:
+
+Exact error:
+
+Where it happens: Studio / lint / check / render
+
+Does it happen every time?
+
+HyperFrames version:
+
+Operating system:
+
+Affected file or timestamp:
+```
+
+Add a screenshot or short recording when the failure is visual. Never paste access tokens, credentials, or private media into a public issue.
+
+## Still stuck
+
+<CardGroup cols={2}>
+  <Card title="Complete troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Less common project, media, animation, rendering, and environment failures.
+  </Card>
+  <Card title="Share product feedback" icon="comment" href="/guides/feedback">
+    Explain a confusing or broken experience with useful context.
+  </Card>
+  <Card title="Search GitHub issues" icon="github" href="https://github.com/heygen-com/hyperframes/issues">
+    Find a known problem, or open a reproducible one.
+  </Card>
+</CardGroup>
+
+## Related topics
+
+- [Troubleshoot a project, preview, or render](/guides/troubleshooting)
+- [Recover from a Studio problem](/studio/troubleshooting)
+- [Finish and share a video](/guides/export-and-share)

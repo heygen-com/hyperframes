@@ -13,6 +13,7 @@
  * "Which tween" is resolved by the same all-timelines scan `readRuntimeKeyframes`
  * uses (`resolveRuntimeTween`), so read and write agree on the target.
  */
+import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../utils/authoredOpacity";
 import {
   resolveRuntimeTween,
   type RuntimeTween,
@@ -235,6 +236,34 @@ function seekToCurrent(iframe: HTMLIFrameElement, timeline: RuntimeTimeline): vo
   player?.seek?.(Number.isFinite(currentTime) ? currentTime : 0);
 }
 
+/** Does this change touch the opacity channel (whose re-init reads inline style)? */
+function changeTouchesOpacity(change: RuntimeTweenChange): boolean {
+  if (change.kind === "set" || change.kind === "global-set")
+    return change.props.opacity !== undefined;
+  if (change.kind === "keyframes") return change.keyframes.some((step) => "opacity" in step);
+  return "opacity" in change.props;
+}
+
+/**
+ * A tween re-initialization (invalidate, or kill+recreate for keyframe-rebuild)
+ * captures opacity from the element's CURRENT inline style — for a color-graded
+ * source (hidden with `opacity: 0 !important`) or a mid-flight tween that's a
+ * runtime transient, not the authored value, and the capture makes it permanent.
+ * Restore the runtime's parse-time authored capture (data-hf-authored-opacity)
+ * first; the re-seek after the patch re-renders the animated value anyway.
+ * Duck-typed (no instanceof): the targets live in the preview iframe's realm.
+ */
+function restoreAuthoredOpacityForCapture(tween: RuntimeTween): void {
+  const targets = typeof tween.targets === "function" ? tween.targets() : [];
+  for (const target of targets ?? []) {
+    const el = target as HTMLElement | null;
+    if (!el?.style || typeof el.getAttribute !== "function") continue;
+    const authored = readStampedAuthoredOpacity(el);
+    if (authored === null) continue;
+    applyAuthoredInlineOpacity(el.style, authored);
+  }
+}
+
 /** Apply `change` to the resolved tween. `true` if applied, `false` to soft-reload.
  *  `global-set` is handled before this (no tween) and never reaches here. */
 function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
@@ -248,12 +277,16 @@ function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
 /**
  * Edit one tween in `window.__timelines` in place + re-seek to the current playhead.
  * Returns `true` on a confident patch, `false` otherwise (caller soft-reloads).
+ *
+ * `deferSeek` skips the re-render, for a caller patching several tweens in a row
+ * that will render once after the last one.
  */
 export function patchRuntimeTweenInPlace(
   iframe: HTMLIFrameElement | null,
   selector: string,
   change: RuntimeTweenChange,
   compositionId?: string,
+  deferSeek = false,
 ): boolean {
   if (!iframe) return false;
   // A base `gsap.set` has no timeline tween to resolve — apply the value straight
@@ -270,15 +303,26 @@ export function patchRuntimeTweenInPlace(
     if (!resolved) return false;
     const { tween, timeline } = resolved;
 
+    if (changeTouchesOpacity(change)) restoreAuthoredOpacityForCapture(tween);
     if (!applyChange(tween, change)) return false;
 
     // A rebuild already recreated the tween; set/keyframes mutate vars in place, so
     // invalidate to make GSAP re-read them on the next render. Either way, re-seek.
+    // Invalidate ONLY the edited tween — never the whole timeline. A timeline-wide
+    // invalidate re-initializes every from() tween against the CURRENT inline
+    // styles, and the color-grading engine hides its source elements with
+    // `opacity: 0 !important` — so every graded element's from(opacity) re-captures
+    // 0 as its end value and animates 0→0 forever (all graded elements vanish).
     if (change.kind !== "keyframe-rebuild") {
       tween.invalidate?.();
-      timeline.invalidate?.();
     }
-    seekToCurrent(iframe, timeline);
+    // A seek re-renders the WHOLE timeline, not just the tween we patched. Under a
+    // multi-element commit that is a visible jump: the members still queued behind
+    // this one get repainted from their un-patched tweens, back to where they were
+    // before the gesture, and stay there until their own patch lands. Deferring
+    // leaves them showing the gesture's own transform, and the caller's last patch
+    // seeks once for the whole group.
+    if (!deferSeek) seekToCurrent(iframe, timeline);
     return true;
   } catch {
     return false;

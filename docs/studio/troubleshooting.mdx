@@ -1,0 +1,60 @@
+---
+title: "Studio troubleshooting"
+description: "Recover from selection, preview, editing, timeline, and export problems."
+---
+
+## I cannot select the right element
+
+- Pause on a frame where it is visible.
+- Choose it from Layers.
+- Check whether it belongs to a group or nested composition.
+- Look for an off-canvas indicator.
+
+## A direct edit is unavailable
+
+The selected element may be generated, nested, or unsupported for that operation.
+
+Try the inspector, open the nested composition, copy context to the agent, or make a focused source edit.
+
+## A canvas move became animation
+
+Check whether auto-keyframing is enabled. Undo the edit, turn it off, and make the layout change again.
+
+## The timeline edit landed at the wrong time
+
+Undo, zoom in, place the playhead more precisely, and retry. Check whether snapping moved the boundary to a nearby clip or beat.
+
+## The preview did not update
+
+- Preview's Code editor and visual controls save automatically. Storyboard
+  narration and feedback drafts show their own Save action. If the change came
+  from another editor or an agent, confirm that the external file was saved.
+- Wait for the project refresh.
+- Check the terminal running `hyperframes preview`.
+- Reload Studio if the preview process is still healthy.
+- Restart `npx hyperframes preview` when the server stopped.
+
+## Media is missing or slow
+
+Confirm that the file exists inside the project and that its path is correct. Large media may need time to prepare a preview. Remote files can fail because of access or cross-origin restrictions.
+
+## An edit failed to save
+
+Keep the error visible, avoid stacking more edits on top of it, and undo if available. Copy the issue to your agent with the action that caused it.
+
+## A render failed
+
+Keep the complete error. Run the project checks, confirm FFmpeg and source media are available, then retry:
+
+```bash
+npx hyperframes lint
+npx hyperframes check
+```
+
+For lower-level failures, continue to [general troubleshooting](/guides/troubleshooting).
+
+## Related topics
+
+- [Work with source and an agent](/studio/source)
+- [Finish, render, and share](/guides/export-and-share)
+- [Diagnose a project or CLI problem](/guides/troubleshooting)

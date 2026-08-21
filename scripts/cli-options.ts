@@ -27,7 +27,7 @@ export function parseMappedArgument<
   parsed: Parsed,
   config: ParserConfig<Parsed, ValueKey, BooleanKey>,
 ) {
-  const arg = args[index];
+  const arg = args[index] ?? config.fail(`No argument at index ${index}`);
 
   if (applyInlineValueOption(arg, parsed, config.inlineValueOptions)) {
     return index;

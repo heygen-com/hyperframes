@@ -79,6 +79,7 @@ const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".cube": "text/plain; charset=utf-8",
   ".png": "image/png",
@@ -677,6 +678,14 @@ export interface FileServerHandle {
 }
 
 /**
+ * Set before the Hyperframes runtime executes so render/probe pages can avoid
+ * preview-only initialization work that mutates the live visual timeline.
+ * Audio automation is discovered by the producer in an isolated pass and
+ * baked before frame capture.
+ */
+export const RENDER_CAPTURE_MODE_SHIM = "globalThis.__HF_RENDER_CAPTURE_MODE = true;";
+
+/**
  * Close a file server handle, swallowing and logging any error.
  *
  * `FileServerHandle.close` tears down the underlying http.Server, whose
@@ -709,7 +718,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   // bodyScripts later upgrades this stub with `seek` / `duration` once the
   // Hyperframe runtime's __player is ready, while preserving any fields
   // already written.
-  const preHeadScripts = [HF_EARLY_STUB, ...(options.preHeadScripts ?? [])];
+  const preHeadScripts = [
+    HF_EARLY_STUB,
+    RENDER_CAPTURE_MODE_SHIM,
+    ...(options.preHeadScripts ?? []),
+  ];
   // Default scripts: Hyperframe runtime in <head>, render mode in </body>
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];

@@ -9,6 +9,32 @@
 
 // ── Phase 1: Capture ────────────────────────────────────────────────────────
 
+export type CapturePhase =
+  | "browser"
+  | "navigation"
+  | "core-extraction"
+  | "fonts"
+  | "assets"
+  | "vision"
+  | "contact-sheets"
+  | "scaffold"
+  | "complete";
+
+export interface CapturePhaseProgress {
+  schema: "hyperframes.capture.phase.v1";
+  phase: CapturePhase;
+  status: "started" | "completed" | "degraded";
+  /** Null before the post-navigation budget begins. */
+  remainingMs: number | null;
+  reason?:
+    | "budget-exhausted"
+    | "disabled"
+    | "request-timeout"
+    | "provider-error"
+    | "internal-error"
+    | "blocked";
+}
+
 export interface CaptureOptions {
   /** URL to capture */
   url: string;
@@ -26,6 +52,12 @@ export interface CaptureOptions {
   maxScreenshots?: number;
   /** Skip asset downloads */
   skipAssets?: boolean;
+  /** Skip optional vision captioning */
+  skipVision?: boolean;
+  /** Cooperative post-navigation budget in ms (default: 120000). */
+  postNavigationBudgetMs?: number;
+  /** Stable, non-sensitive progress records for watchdog diagnostics. */
+  onPhase?: (event: CapturePhaseProgress) => void;
   /** Output JSON for programmatic use */
   json?: boolean;
 }
@@ -51,6 +83,8 @@ export interface CaptureResult {
   animationCatalog?: import("./animationCataloger.js").AnimationCatalog;
   /** Errors/warnings encountered during capture */
   warnings: string[];
+  /** Final structured phase record emitted by a successful capture. */
+  lastPhase: CapturePhaseProgress;
 }
 
 export interface ExtractedHtml {

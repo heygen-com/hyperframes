@@ -4,6 +4,9 @@
  * URLs and srcdoc HTML.
  */
 
+import { ensureRuntimeBeforeBodyScripts } from "./runtime-in-srcdoc.js";
+import { RUNTIME_CDN_URL } from "./runtime-url.js";
+
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
 export const SHADER_LOADING_ATTR = "shader-loading";
 const SHADER_CAPTURE_SCALE_PARAM = "__hf_shader_capture_scale";
@@ -60,11 +63,25 @@ function normalizeShaderLoadingMode(value: string | null): ShaderLoadingMode {
   return "composition";
 }
 
-function setQueryParam(params: URLSearchParams, key: string, value: string | null): void {
-  if (value === null) params.delete(key);
-  else params.set(key, value);
+/** Drop one of our own keys from raw `a=1&b=2` pairs, matched by name so that
+ *  nothing around it has to be decoded. */
+function withoutParam(pairs: string[], key: string): string[] {
+  return pairs.filter((pair) => pair !== "" && pair.split("=")[0] !== key);
 }
 
+/**
+ * The player's own params, appended to the query the composition author wrote
+ * rather than merged into a re-serialized copy of it.
+ *
+ * `new URLSearchParams(query).toString()` is a form-encoding round trip: it
+ * re-encodes the *whole* query as application/x-www-form-urlencoded, which
+ * writes every space as `+`. A composition reading its own query with
+ * `decodeURIComponent` — percent-decoding, which leaves `+` alone — cannot undo
+ * that, so a value of "Ship it today" arrived on the page as "Ship+it+today".
+ * The two codecs are not inverses, and the player has no business picking one
+ * for a query it is only passing along. The author's bytes now travel through
+ * byte-identical; only our two keys are rewritten.
+ */
 function withShaderQueryParams(
   src: string,
   scale: string | null,
@@ -76,10 +93,13 @@ function withShaderQueryParams(
   const queryIndex = beforeHash.indexOf("?");
   const path = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash;
   const query = queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : "";
-  const params = new URLSearchParams(query);
-  setQueryParam(params, SHADER_CAPTURE_SCALE_PARAM, scale);
-  setQueryParam(params, SHADER_LOADING_PARAM, loadingMode === "composition" ? null : loadingMode);
-  const nextQuery = params.toString();
+  let pairs = withoutParam(query.split("&"), SHADER_CAPTURE_SCALE_PARAM);
+  pairs = withoutParam(pairs, SHADER_LOADING_PARAM);
+  if (scale !== null) pairs.push(`${SHADER_CAPTURE_SCALE_PARAM}=${encodeURIComponent(scale)}`);
+  if (loadingMode !== "composition") {
+    pairs.push(`${SHADER_LOADING_PARAM}=${encodeURIComponent(loadingMode)}`);
+  }
+  const nextQuery = pairs.join("&");
   return `${path}${nextQuery ? `?${nextQuery}` : ""}${hash}`;
 }
 
@@ -124,9 +144,15 @@ export function prepareSrcForElement(el: Element, src: string): string {
 }
 
 export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
-  return injectShaderOptionsIntoSrcdoc(
-    srcdoc,
-    normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
-    getShaderModeFromElement(el),
+  // Runtime first, and in the head: a component's inline script reads its
+  // variables while the body is parsing, long before the probe's own injection
+  // could land. See runtime-in-srcdoc.ts.
+  return ensureRuntimeBeforeBodyScripts(
+    injectShaderOptionsIntoSrcdoc(
+      srcdoc,
+      normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
+      getShaderModeFromElement(el),
+    ),
+    RUNTIME_CDN_URL,
   );
 }

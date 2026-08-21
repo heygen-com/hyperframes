@@ -1,0 +1,83 @@
+---
+title: When to generate artwork
+description: "Code-drawn wins for UI, type, geometry, and 3D. Illustration-led hero art comes from an image model, animated as layers."
+---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
+
+Your Level 1 music slideshow cut real photos to the beat. There was real art to
+work with. This chapter is for the opposite case: a hero character, a painterly
+scene, or sculptural objects that do not exist yet as a photo or a capture.
+
+## What code draws well — and what it doesn't
+
+Code-drawn HTML, CSS, and SVG excel where the medium is native. That means UI
+mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js.
+
+**Illustration-led** hero art is the exception. Characters, painterly scenes,
+and sculptural objects are what hand-drawn SVG is worst at. It tops out at
+clipart quality no matter how well you prompt.
+
+## The hybrid: generate the art, animate it in code
+
+Ask for the still art from an image model, then move it with code:
+
+> Generate the hero artwork as an image (via the media-use skill's image generation), then animate it with code. Anything that must move independently — eyelids, light beams, drawing lines — stays a code layer on top of the static art.
+
+The generated image is one flat layer. Everything that has to move on its own
+stays a code layer above it.
+
+## Three rules that make this work
+
+1. **Generate on a solid contrasting background.** Magenta works well. It lets
+   the subject key out cleanly. A light subject on a light background gets
+   silently eaten.
+2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI
+   background removal. `remove-background` runs a human-segmentation matting
+   model, so it is tuned for photographs and people. It reads flat art
+   unreliably, and sometimes keeps the background instead of the subject. Save
+   `remove-background` for photographs.
+3. **Put a restraint clause in the generation prompt** — "minimal, lots of
+   negative space". Image models fill the frame by default. A busy generated
+   texture reads as cheap as bad vector art.
+
+## The difference, side by side
+
+The same brief built both ways: four people arm in arm, warm gradient sweaters,
+flat-illustration style. Same animation beats, same craft layer of lighting,
+atmosphere, and grade. The only variable is where the figures came from.
+
+<DocsVideo
+  title="HyperFrames video: Artwork Hand Drawn"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-hand-drawn.mp4#t=0.1"
+  loop
+/>
+*Hand-drawn SVG figures — clean, but the proportions and gesture read as clipart.*
+
+<DocsVideo
+  title="HyperFrames video: Artwork Generated"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-generated.mp4#t=0.1"
+  loop
+/>
+*Generated illustration animated as layers — real anatomy and editorial shading. The animated line still passes behind the figures, because the artwork was keyed to transparency.*
+
+<Note>
+**Capstone thread** — the [Level 7 film](/prompting/capstone)'s Surface region
+rides on generated artwork. The mural is generated palette-neutral, then
+duotoned live by CSS from the composition's two variables. So even the raster
+re-skins on a `--variables` render. That region is cut from the film below.
+</Note>
+
+This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word)
+that buys the piece — prompt language you can lift for your own video:
+
+> […] over a **generated-artwork backdrop** — a flat abstract mural evoking motion trails, generated **palette-neutral (grayscale) and duotoned live by CSS** from the two variables so it re-skins with everything else. **The mural is a full-frame, screen-fixed backdrop: it never moves on screen — the widening iris circle alone reveals it already in place at full frame […] and it exits by fading out.**
+
+<DocsVideo
+  title="HyperFrames video: Capstone Region Surface"
+  src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-region-surface.mp4#t=0.1"
+  loop
+/>
+*That clause, rendered — the region cut from the finished film.*
+
+*Next: [Color grading and film effects](/prompting/color-grading) — treat the media itself: tonal work, hue keys, print and analogue looks, and why the source matters more than the payload.*

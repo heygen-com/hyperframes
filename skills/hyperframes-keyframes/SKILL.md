@@ -1,9 +1,10 @@
 ---
 name: hyperframes-keyframes
 description: >
-  Use when a HyperFrames composition needs seek-safe 2D/3D keyframes, GSAP
-  timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw,
-  text trails, 3D depth, or `hyperframes keyframes` diagnostics.
+  Use when a HyperFrames composition needs a punch-in, punch-out, zoom, reframe,
+  Ken Burns treatment, camera move, visual match/whip handoff, or other seek-safe
+  2D/3D keyframes; also for GSAP, CSS keyframes, Anime.js, WAAPI, FLIP, paths,
+  masks, SVG morph/draw, text trails, 3D depth, or `hyperframes keyframes` diagnostics.
   Don't use for broad scene strategy, brand design, media sourcing, captions, or
   general video planning.
 ---
@@ -12,16 +13,46 @@ description: >
 
 Keyframes are a pose contract: visible states, continuous subject identity, seek-safe runtime, verified pixels.
 
-Use `hyperframes-animation` for broad scene recipes.
-Use `hyperframes-cli` for full command docs.
-Use `references/keyframe-patterns.md` only when choosing implementation mechanisms, not visual style.
+Use `hyperframes-animation` for broad scene recipes. Use `hyperframes-cli` for full command docs. Use `references/keyframe-patterns.md` only when choosing implementation mechanisms, not visual style.
+
+## Creator editing boundary
+
+Keyframes own visual motion, not clip assembly. Source-range hard cuts, trim,
+splice, and reorder belong to `/hyperframes-core`: author one media element per
+kept range, place it with `data-start` and `data-duration`, and select its source
+offset with `data-media-start`. Adjacent ranges make a hard cut. A crossfade
+uses overlapping clips on different tracks plus visual opacity keyframes; sound
+fades use `/hyperframes-audio`.
+
+| Creator request                         | Truthful mechanism                                                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Punch-in / punch-out                    | Keyframe `scale` with `x`/`y` or percentage translation on a non-timed visual/crop wrapper inside the clip. Use a set/short tween for a hard punch and a tween for a smooth move.                                           |
+| Smooth multi-state zoom or reframe      | Keep one subject wrapper alive and author multiple zoom/reframe states as a pose ladder with per-segment easing.                                                                                                            |
+| Pan, reframe, or Ken Burns camera move  | Animate wrapper translation plus scale. Geometry is authored; this is not face tracking or automatic semantic reframing.                                                                                                    |
+| Chained camera moves                    | Chain labeled transform beats on one registered seek-safe timeline.                                                                                                                                                         |
+| Match cut or whip pan                   | `/hyperframes-animation` owns the visual handoff; `/hyperframes-registry` supplies primitives; keyframes preserve authored geometry, direction, and velocity. There is no automatic matching-frame discovery.               |
+| Crop and mask reframe                   | Interpolate `clip-path` or a mask on an inner visual wrapper to crop/reframe without changing source time. Polygon keyframes can form a polygon/mask transition.                                                            |
+| Directional wipe cut or iris/reveal cut | Animate a mask/clip boundary across overlapping visual clips; `/hyperframes-animation` owns the handoff choreography.                                                                                                       |
+| Split-screen handoff                    | Keep both visual clips placed by core, then keyframe their inner crop/mask wrappers and divider geometry.                                                                                                                   |
+| Constant source retime                  | `/hyperframes-core` owns normalized `data-playback-rate` (`0.1..5`) for render-safe picture and pitch-preserved sound. It is constant for the whole media element.                                                          |
+| Source speed ramps                      | Not supported: there is no time-varying playback-rate envelope. Preprocess a derived media asset, then place it through core.                                                                                               |
+| Freeze / hold                           | A visual pose, final source frame, or finished sub-composition can hold. Arbitrary mid-source freeze is not supported; preprocess a still/derived segment, place it as its own clip, then resume with another source range. |
+
+When editing picture and sound together, load `/hyperframes-core`, this skill for
+visual motion, and `/hyperframes-audio` for fades, crossfades, volume automation,
+ducking/carve, or effects on the placed tracks.
+
+A visual transition or cropping treatment is not a temporal source trim or
+splice. `/hyperframes-core` owns the timeline, clip timing, and source ranges;
+keyframes only animate the visible handoff or crop on wrappers inside those clips.
+For copyable combined picture/sound recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ## Procedure
 
 1. Identify the animated subject, visible states, final state, and runtime.
 2. Choose the smallest mechanism that proves the prompt. Read `references/keyframe-patterns.md` only if the mechanism is unclear.
 3. Author seek-safe keyframes in the declared runtime. Build synchronously and register the runtime instance.
-4. Verify with lint, validate, `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
+4. Verify with `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
 5. If proof fails, fix the source keyframes and rerun the smallest failing diagnostic before rendering.
 
 ## Contract
@@ -101,9 +132,7 @@ window.__timelines = window.__timelines || {};
 window.__timelines[compositionId] = tl;
 ```
 
-Use labels for semantic states.
-Use position parameters instead of chained delays.
-Use `immediateRender: false` for later `from()`/`fromTo()` tweens touching the same property.
+Use labels for semantic states. Use position parameters instead of chained delays. Use `immediateRender: false` for later `from()`/`fromTo()` tweens touching the same property.
 
 ## Keyframe Forms
 
@@ -119,11 +148,11 @@ For one subject moving between two boxes, prefer one continuous transform tween 
 
 ## Channels
 
-Prefer compositor/visual channels:
-`x/y/z`, `xPercent/yPercent`, `scale`, `rotationX/Y/Z`, `skew`, `transformOrigin`, `svgOrigin`, `opacity`, `autoAlpha`, `clip-path`, masks, CSS vars, SVG path/dash values, camera transforms, shader uniforms.
+Prefer compositor/visual channels: `x/y/z`, `xPercent/yPercent`, `scale`, `rotationX/Y/Z`, `skew`, `transformOrigin`, `svgOrigin`, `opacity`, `autoAlpha`, `clip-path`, masks, CSS vars, SVG path/dash values, camera transforms, shader uniforms.
 
-Avoid layout/lifecycle channels:
-`top/left/right/bottom`, `width/height`, `margin/padding`, `display`, `visibility`, late DOM creation, helper overlays doing subject motion.
+Avoid layout/lifecycle channels: `top/left/right/bottom`, `width/height`, `margin/padding`, `display`, `visibility`, late DOM creation, helper overlays doing subject motion.
+
+For visibility changes, use `autoAlpha` on the registered seekable GSAP timeline, or a zero-duration `tl.set()` at an explicit boundary. Target only a non-clip element or a wrapper inside the clip; never target `.clip` itself. Never duration-tween raw `visibility`, and never tween `display`.
 
 ## Mechanism Choice
 
@@ -165,13 +194,11 @@ Preserve line boxes, word spacing, readability, and final fit. If text moves int
 
 ## SVG
 
-For stroke growth prefer `DrawSVGPlugin`, then `stroke-dasharray`/`stroke-dashoffset`.
-For shape interpolation prefer `MorphSVGPlugin`; convert primitives to paths when needed and split complex silhouettes into simpler parts.
+For stroke growth prefer `DrawSVGPlugin`, then `stroke-dasharray`/`stroke-dashoffset`. For shape interpolation prefer `MorphSVGPlugin`; convert primitives to paths when needed and split complex silhouettes into simpler parts.
 
 ## 3D
 
-Scale alone is fake depth.
-Use perspective on a stable parent, `transform-style: preserve-3d`, z travel, rotation, camera/world motion, occlusion, and layer order when objects cross.
+Scale alone is fake depth. Use perspective on a stable parent, `transform-style: preserve-3d`, z travel, rotation, camera/world motion, occlusion, and layer order when objects cross.
 
 Use one or two diagnostic angles that expose the depth relationship. If angled proof shows no depth crossing, improve z/camera/occlusion.
 
@@ -183,7 +210,7 @@ Keyframe camera position, camera target, object transform, material opacity, sha
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 npx hyperframes keyframes .
 npx hyperframes keyframes . --json
 npx hyperframes keyframes . --runtime all
@@ -193,9 +220,7 @@ npx hyperframes keyframes . --shot "<file>" --ghost --angle <angle>
 npx hyperframes snapshot . --at <times>
 ```
 
-Choose `<selector>` for the real animated subject.
-Choose `<times>` for first frame, proof poses, final-minus-hold, and exact final.
-Choose `<angle>` only when depth must be proven.
+Choose `<selector>` for the real animated subject. Choose `<times>` for first frame, proof poses, final-minus-hold, and exact final. Choose `<angle>` only when depth must be proven.
 
 | Tool             | Proves                                                                                              |
 | ---------------- | --------------------------------------------------------------------------------------------------- |
@@ -234,4 +259,4 @@ A helper-selector shot is not proof. An onion shot over a broken full frame is n
 
 ## Done
 
-Run lint, validate, keyframes, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.
+Run `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.

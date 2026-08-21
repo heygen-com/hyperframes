@@ -105,25 +105,91 @@ export function instrumentAcceleratedCanvases(): void {
   };
 }
 
+export interface GpuBackendInfo {
+  /** SwiftShader (software rasterizer) — e.g. Docker headless-shell. */
+  isSwiftShader: boolean;
+  /**
+   * Raw UNMASKED_RENDERER_WEBGL string (e.g. "ANGLE (Apple, ANGLE Metal
+   * Renderer: Apple M4 Pro, ...)", "ANGLE (NVIDIA, GeForce RTX 3080 Direct3D11
+   * vs_5_0 ps_5_0, D3D11)"), or null when WebGL / the debug extension is
+   * unavailable. LOCAL USE ONLY — this is unbounded driver-supplied text and
+   * must not be shipped to telemetry verbatim; send
+   * {@link classifyGpuRenderer}'s bucket instead.
+   */
+  renderer: string | null;
+}
+
 /**
- * Detect whether the page is running on SwiftShader (software rasterizer).
+ * Low-cardinality bucket for a raw WebGL renderer string: `<backend>/<vendor>`
+ * (e.g. `metal/apple`, `d3d11/nvidia`, `swiftshader/other`).
  *
- * Returns true inside Docker headless-shell with --use-angle=swiftshader.
- * Returns false on macOS / Linux with a real GPU.
- * Call once after window.__hf is ready; cache result on session.
+ * drawElement failure modes proved compositor-backend-specific during the
+ * macOS rollout, so the win32/D3D11 cohort needs damage attributable to an
+ * ANGLE backend + GPU vendor. The raw string can't do that job in telemetry:
+ * it is unbounded, driver-authored, carries specific GPU model names, and is
+ * joined across parallel sessions — high cardinality by construction. The
+ * bucket keeps the analytic signal (which backend, which vendor) and drops
+ * everything else, matching how `deGateReason` is a sanitized bucket rather
+ * than the full fallback trigger. Pure; exported for tests.
  */
-export async function detectSwiftShader(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
+export function classifyGpuRenderer(renderer: string | null | undefined): string | undefined {
+  if (!renderer) return undefined;
+  const r = renderer.toLowerCase();
+  const backend = r.includes("swiftshader")
+    ? "swiftshader"
+    : r.includes("metal")
+      ? "metal"
+      : r.includes("direct3d11") || r.includes("d3d11")
+        ? "d3d11"
+        : r.includes("direct3d9") || r.includes("d3d9")
+          ? "d3d9"
+          : r.includes("vulkan")
+            ? "vulkan"
+            : r.includes("opengl") || r.includes("angle")
+              ? "opengl"
+              : "other";
+  const vendor = r.includes("apple")
+    ? "apple"
+    : r.includes("nvidia")
+      ? "nvidia"
+      : r.includes("amd") || r.includes("radeon")
+        ? "amd"
+        : r.includes("intel")
+          ? "intel"
+          : r.includes("microsoft")
+            ? "microsoft"
+            : "other";
+  return `${backend}/${vendor}`;
+}
+
+/**
+ * Detect the page's WebGL backend: SwiftShader vs a real GPU, plus the raw
+ * renderer string for telemetry.
+ *
+ * `isSwiftShader` is true inside Docker headless-shell with
+ * --use-angle=swiftshader. Call once after window.__hf is ready; cache the
+ * result on the session.
+ */
+export async function detectGpuBackend(page: Page): Promise<GpuBackendInfo> {
+  return page.evaluate((): GpuBackendInfo => {
     const canvas = document.createElement("canvas");
     const gl =
       canvas.getContext("webgl") ||
       (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
-    if (!gl) return false;
+    if (!gl) return { isSwiftShader: false, renderer: null };
     const ext = gl.getExtension("WEBGL_debug_renderer_info");
-    if (!ext) return false;
+    if (!ext) return { isSwiftShader: false, renderer: null };
     const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string;
-    return renderer.toLowerCase().includes("swiftshader");
+    return { isSwiftShader: renderer.toLowerCase().includes("swiftshader"), renderer };
   });
+}
+
+/**
+ * Back-compat wrapper over {@link detectGpuBackend} for callers that only
+ * need the SwiftShader boolean.
+ */
+export async function detectSwiftShader(page: Page): Promise<boolean> {
+  return (await detectGpuBackend(page)).isSwiftShader;
 }
 
 /**
@@ -941,6 +1007,7 @@ export async function produceDrawElementFrameBatch(
         __hf_accel_canvases?: HTMLCanvasElement[];
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
+        __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
         __hfDeInvalidate?: () => boolean;
         __HF_ROOT_PROPS__?: boolean;
         __HF_ROOT_BASE_OPACITY__?: number;
@@ -975,6 +1042,7 @@ export async function produceDrawElementFrameBatch(
         const { t, fid } = frame;
         try {
           if (aw.__hf && typeof aw.__hf.seek === "function") aw.__hf.seek(t);
+          await aw.__hfDecodeDynamicCssBackgroundImages?.();
           aw.__hf3d?.update();
           const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
           for (const c of accel) {

@@ -2,6 +2,7 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import {
   applyManualOffsetDragCommit,
+  resumeGsapTimelines,
   applyManualOffsetDragDraft,
   applyManualOffsetDragMatrix,
   createManualOffsetDragMember,
@@ -88,6 +89,41 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     expect(element.style.getPropertyValue("translate")).toBe("");
   });
 
+  /**
+   * The element that has never been offset is the common case, and it used to skip
+   * the measurement and assume the canvas zoom was the whole story. Any transform
+   * above the element makes that assumption wrong: the mirrored parent here sends a
+   * rightward drag left, so the overlay followed the pointer while the element went
+   * the other way, and only on drop did the overlay jump to where the element really
+   * was. The fixture mirrors x and scales both axes by 1.2, as a `rotationY: 180`
+   * card at `scale: 1.2` does.
+   */
+  it("measures a mirrored parent even when the element carries no offset yet", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(100 - 1.2 * offsetX, 200 + 1.2 * offsetY, 40, 20);
+    };
+
+    const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
+    if (!measured.ok) throw new Error(measured.reason);
+
+    // Dragging one screen px right must move the element one screen px right, which
+    // on a mirrored parent means writing a NEGATIVE offset.
+    const offset = resolveManualOffsetForPointerDelta({
+      initialOffset: { x: 0, y: 0 },
+      screenToOffset: measured.matrix,
+      dx: 60,
+      dy: 60,
+    });
+    expect(offset.x).toBeCloseTo(-50, 6);
+    expect(offset.y).toBeCloseTo(50, 6);
+  });
+
   it("measures movement in parent viewport pixels when the element is inside a scaled iframe", () => {
     const window = new Window();
     const iframe = window.document.createElement("iframe");
@@ -133,7 +169,12 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     expect(nextOffset).toEqual({ x: 100, y: 50 });
   });
 
-  it("returns identity matrix for non-path-offset elements with zero initial offset", () => {
+  // Carrying no path offset used to be taken as permission to assume the response
+  // instead of measuring it. It is not a signal about the transforms above the
+  // element, so it no longer changes the answer: an element that does not move is
+  // unmeasurable either way, and the caller falls back rather than being handed a
+  // matrix that was never checked.
+  it("does not treat a missing path offset as a measurable response", () => {
     const window = new Window();
     const element = window.document.createElement("div");
     window.document.body.append(element);
@@ -141,10 +182,7 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
 
     const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
 
-    expect(measured.ok).toBe(true);
-    if (measured.ok) {
-      expectMatrixClose(measured.matrix, { a: 1, b: 0, c: 0, d: 1 });
-    }
+    expect(measured.ok).toBe(false);
   });
 
   it("rejects path-offset elements whose movement response cannot be measured", () => {
@@ -157,6 +195,56 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
 
     expect(measured.ok).toBe(false);
+  });
+});
+
+/**
+ * A group drag is rigid: every member is handed the SAME pointer delta and must
+ * travel the same distance on screen, or the group visibly comes apart mid-drag.
+ * Members do not share a mapping though — each measures its own, because each can
+ * sit under different ancestor transforms. A member whose movement cannot be
+ * measured falls back to a guess, and this pins what that guess costs the group.
+ */
+describe("group drag stays rigid", () => {
+  function member(key: string, response: number, measurable: boolean) {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+    element.getBoundingClientRect = () => {
+      const ox = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const oy = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      const move = measurable ? response : 0;
+      return new window.DOMRect(100 + move * ox, 200 + move * oy, 40, 20);
+    };
+    const result = createManualOffsetDragMember({
+      key,
+      selection: { element } as never,
+      element,
+      rect: { left: 100, top: 200, width: 40, height: 20, editScaleX: 1, editScaleY: 1 },
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return { member: result.member, response };
+  }
+
+  /** Screen distance this member travels for a pointer delta of `d`. */
+  function screenTravel(entry: ReturnType<typeof member>, d: number): number {
+    const offset = resolveManualOffsetForPointerDelta({
+      initialOffset: entry.member.initialOffset,
+      screenToOffset: entry.member.screenToOffset,
+      dx: d,
+      dy: 0,
+    });
+    return offset.x * entry.response;
+  }
+
+  it("moves every measurable member the same distance for one pointer delta", () => {
+    // Two members under different ancestor scales: one 1:1, one inside a half-scale
+    // parent. Different offsets, identical screen travel — that is what rigid means.
+    const a = member("a", 1, true);
+    const b = member("b", 0.5, true);
+
+    expect(screenTravel(a, 60)).toBeCloseTo(60, 6);
+    expect(screenTravel(b, 60)).toBeCloseTo(60, 6);
   });
 });
 
@@ -358,5 +446,53 @@ describe("GSAP-element drag — dot-a flies regressions", () => {
     expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(false);
     // ...and the position survives in the GSAP transform (no stale var to compose).
     expect(element.style.getPropertyValue("transform")).toMatch(/translate\(/);
+  });
+});
+
+describe("resumeGsapTimelines", () => {
+  it("unpauses exactly the timelines the drag start paused, then re-seeks the player", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    element.setAttribute("data-hf-drag-paused-timelines", "figma-demo-unlock,figma-demo-stagger");
+    window.document.body.append(element);
+
+    const pausedState: Record<string, boolean> = {
+      "figma-demo-unlock": true,
+      "figma-demo-stagger": true,
+      main: true,
+    };
+    const makeTl = (id: string) => ({
+      paused: (value?: boolean) => {
+        if (value !== undefined) pausedState[id] = value;
+        return pausedState[id]!;
+      },
+    });
+    const seeks: number[] = [];
+    const win = element.ownerDocument.defaultView as unknown as {
+      __timelines?: Record<string, unknown>;
+      __player?: { seek: (t: number) => void; getTime: () => number };
+    };
+    win.__timelines = {
+      "figma-demo-unlock": makeTl("figma-demo-unlock"),
+      "figma-demo-stagger": makeTl("figma-demo-stagger"),
+      main: makeTl("main"),
+    };
+    win.__player = { seek: (t: number) => seeks.push(t), getTime: () => 3.5 };
+
+    resumeGsapTimelines(element);
+
+    expect(pausedState["figma-demo-unlock"]).toBe(false);
+    expect(pausedState["figma-demo-stagger"]).toBe(false);
+    // main was NOT paused by the drag — leave its state alone
+    expect(pausedState["main"]).toBe(true);
+    expect(seeks).toEqual([3.5]);
+    expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
+  });
+
+  it("is a no-op without the paused-timelines attribute", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+    expect(() => resumeGsapTimelines(element)).not.toThrow();
   });
 });

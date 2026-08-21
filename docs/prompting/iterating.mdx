@@ -1,0 +1,56 @@
+---
+title: Iterating
+description: "Talk to the agent like a video editor — small targeted edits beat re-specification."
+---
+
+[Editing existing videos](/prompting/editing-existing-videos) already leaned on two habits — one variable per render, absolute targets over relative nudges — for every verb on that page. This is where they come from, stated plainly, so you can apply them anywhere: HyperFrames is a conversation. After the first render, talk to the agent the way you'd talk to a video editor — don't re-prompt from scratch:
+
+> Make the title 2x bigger.
+
+> Swap to dark mode.
+
+> Add a fade-out at the end and a lower third at 0:03 with my name and title.
+
+> The captions are too small and they overlap the lower third. Move them up and shrink them.
+
+> Replace the background music with `assets/track.mp3`.
+
+The agent already has the composition open and the skills loaded — small targeted edits produce better results than long re-specifications.
+
+## The gates can't tell you it's good
+
+Before the loop: know what you are iterating *against*. `lint` and `check` are necessary and not sufficient — they verify structure, not quality. `lint` reads the HTML, `check` runs the composition in a headless browser and reports runtime errors, layout collisions, motion problems, and contrast failures. Every one of those is a fact about whether the composition is *well-formed*. None of them is an opinion about whether the video is *good*.
+
+So the failure mode to expect is: **passes every automated gate, fails human review.** Both earlier builds of this guide's [capstone](/prompting/capstone) did exactly that — one came back clean and read as sparse elements floating in empty frames, the next came back clean and read as a well-dressed slideshow. No linter has an opinion about either.
+
+Which is why the loop below always ends at the render, not at the gate. Watch the output, name what's wrong in specific terms, and change one thing.
+
+## Editing is for nudging, not gambling
+
+Three moves keep iteration convergent instead of circular:
+
+1. **One variable per edit.** Change one thing, render, judge, repeat. A request that moves three things at once ("bigger title, warmer colors, faster cuts") makes it impossible to attribute what helped and what hurt.
+2. **Layer one element type at a time.** Building up a complex scene? Start with the minimal version (subject + its motion only), confirm it reads, then add exactly one layer per pass — camera move, then background motion, then style treatment. Every addition stays attributable.
+3. **Strip, then re-layer.** When a scene keeps misfiring, don't pile on corrections — strip it back to the simplest version that works (freeze the camera, simplify the motion, clear the background), confirm, then reintroduce complexity one layer at a time until you find the ingredient that breaks it.
+
+## Calibrate with absolute targets
+
+When you're dialing in a look, relative corrections oscillate — "make the dots finer" overshoots, "a bit bigger" overshoots back. State targets as absolute values and the agent lands them in one pass:
+
+- ❌ `make the dots 2x finer`
+- ✅ `dot radius = 25% of row spacing, with clear gaps between dots`
+
+- ❌ `the glow is too strong`
+- ✅ `glow at ~35% peak opacity, always subtler than the orb itself`
+
+And freeze what already works: "the framing and motion are right — don't touch them; only change the dot size." Without the freeze clause, a rebuild can drift on axes you'd already settled.
+
+<Note>
+**Capstone thread** — several clauses in the [Level 7 film](/prompting/capstone)'s prompt exist only because frame review caught the builder drifting — the chip's hard bind to the wire, the pinned mural, the Depth region's occlusion contract. Each catch was folded back into the prompt so the next run can't regress: this chapter's loop, applied to the prompt itself.
+</Note>
+
+This is the clause in the [full capstone prompt](/prompting/capstone#the-prompt-word-for-word) that buys the piece — prompt language you can lift for your own video:
+
+> **The chip sits ON the wire at every moment: bind its position to the wire's actual path geometry (sample the drawn path, seek-safe), never keyframe it independently — through every bend, arc, waveform, and dive, the chip visibly hugs the line. A chip floating off-path breaks the story.**
+
+*Next: [Recreating something you saw](/prompting/recreating-references) — the same absolute-target discipline, applied to matching a specific reference frame by frame.*

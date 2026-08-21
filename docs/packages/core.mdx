@@ -1,453 +1,176 @@
 ---
 title: "@hyperframes/core"
-description: "Types, HTML generation, runtime, and linter — the foundation every other package depends on."
+description: "Composition types, generation, compilation, and browser runtime."
 ---
 
-The core package provides the foundational types, HTML parsing/generation, runtime, and composition linter that all other Hyperframes packages build on. If you are building tooling, writing a custom integration, or extending Hyperframes itself, this is the package you need.
+`@hyperframes/core` contains the shared composition model and browser runtime
+used across HyperFrames.
+
+Most people should use the [CLI](/developers/cli), [Studio](/studio), or
+[SDK](/sdk/quickstart). Install Core directly when you are generating composition
+HTML, compiling projects, building tooling around the shared types, or embedding
+the runtime.
 
 ```bash
 npm install @hyperframes/core
 ```
 
-## When to Use
+## Main surfaces
 
-<Tip>
-  **Most users do not need to install `@hyperframes/core` directly.** The [CLI](/packages/cli), [producer](/packages/producer), and [studio](/packages/studio) packages all depend on core internally. You only need it if you are doing one of the things listed below.
-</Tip>
+| Need                                    | Import                                   |
+| --------------------------------------- | ---------------------------------------- |
+| Types, generators, and common utilities | `@hyperframes/core`                      |
+| Timing compilation and project bundling | `@hyperframes/core/compiler`             |
+| Variable declarations and validation    | `@hyperframes/core/variables`            |
+| Composition contract helpers            | `@hyperframes/core/composition-contract` |
+| Prebuilt browser runtime                | `@hyperframes/core/runtime`              |
 
-**Use `@hyperframes/core` when you need to:**
-- Lint compositions programmatically (CI pipelines, editor plugins)
-- Parse HTML compositions into structured TypeScript objects
-- Generate composition HTML from data (e.g., from an API or AI agent)
-- Access the Hyperframes type system for your own tooling
-- Embed the Hyperframes runtime in a custom player
-
-**Use a different package if you want to:**
-- Preview compositions in the browser — use the [CLI](/packages/cli) (`npx hyperframes preview`) or [studio](/packages/studio)
-- Render compositions to MP4 — use the [CLI](/packages/cli) (`npx hyperframes render`) or [producer](/packages/producer)
-- Capture frames from a headless browser — use the [engine](/packages/engine)
-
-## Package Exports
-
-The core package has four entry points:
-
-| Import | Description |
-|--------|-------------|
-| `@hyperframes/core` | Types, parsers, generators, adapters, runtime utilities |
-| `@hyperframes/core/lint` | Composition linter |
-| `@hyperframes/core/compiler` | Timing compiler, HTML compiler, bundler, static guard |
-| `@hyperframes/core/runtime` | Pre-built IIFE runtime for browser injection |
+The standalone [Parsers](/packages/parsers) and [Linter](/packages/lint)
+packages own those concerns for new integrations. Core retains compatibility
+re-exports for some older imports.
 
 ## Types
 
-The core type system models compositions, timeline elements, and variables:
-
-```typescript
+```ts
 import type {
+  CanvasResolution,
+  CompositionSpec,
+  CompositionVariable,
+  TimelineCompositionElement,
   TimelineElement,
   TimelineMediaElement,
   TimelineTextElement,
-  TimelineCompositionElement,
-  TimelineElementType,       // "video" | "image" | "text" | "audio" | "composition"
-  CompositionSpec,
-  CompositionVariable,
-  CanvasResolution,          // "landscape" | "portrait" | "landscape-4k" | "portrait-4k" | "square" | "square-4k"
-  Orientation,               // "16:9" | "9:16"
-  FrameAdapter,
-  FrameAdapterContext,
-} from '@hyperframes/core';
-
-// Type guards
-import {
-  isTextElement,
-  isMediaElement,
-  isCompositionElement,
-} from '@hyperframes/core';
-
-// Constants
-import {
-  CANVAS_DIMENSIONS,        // { landscape: { width, height }, portrait: { width, height } }
-  TIMELINE_COLORS,
-  DEFAULT_DURATIONS,
-} from '@hyperframes/core';
+} from "@hyperframes/core";
 ```
 
-### Variable Types
+Composition variables support `string`, `number`, `color`, `boolean`, `enum`,
+`font`, and `image` values.
 
-Compositions can expose typed variables for dynamic content:
+## Parse or generate HTML
 
-```typescript
-import type {
-  CompositionVariableType,   // "string" | "number" | "color" | "boolean" | "enum"
-  StringVariable,
-  NumberVariable,
-  ColorVariable,
-  BooleanVariable,
-  EnumVariable,
-} from '@hyperframes/core';
+Core re-exports the common parsing helpers:
+
+```ts
+import { extractCompositionMetadata, parseHtml } from "@hyperframes/core";
+
+const parsed = parseHtml(html);
+const metadata = extractCompositionMetadata(html);
+
+console.log(metadata.compositionId, metadata.compositionDuration, metadata.variables);
 ```
 
-### Keyframe Types
+Generate a complete composition from `TimelineElement` data:
 
-```typescript
-import type {
-  Keyframe,
-  KeyframeProperties,
-  ElementKeyframes,
-  StageZoom,
-  StageZoomKeyframe,
-} from '@hyperframes/core';
+```ts
+import { generateHyperframesHtml } from "@hyperframes/core";
 
-import { getDefaultStageZoom } from '@hyperframes/core';
+const html = generateHyperframesHtml(elements, 6, {
+  compositionId: "product-intro",
+  resolution: "landscape",
+  animations,
+  styles,
+});
 ```
 
-## Parsing and Generating HTML
+The second argument is the requested duration in seconds. Pass a stable
+`compositionId` when output must be reproducible.
 
-Round-trip between HTML and structured data:
+## Read and validate variables
 
-```typescript
-import { parseHtml, generateHyperframesHtml } from '@hyperframes/core';
-import type { ParsedHtml, CompositionMetadata } from '@hyperframes/core';
+Inside a composition script, `getVariables()` reads declared defaults plus the
+values supplied for the current preview or render:
 
-// Parse HTML into structured data
-const parsed: ParsedHtml = parseHtml(htmlString);
-// parsed.elements, parsed.gsapScript, parsed.styles, parsed.resolution, parsed.keyframes
+```ts
+import { getVariables } from "@hyperframes/core";
 
-// Extract composition metadata
-import { extractCompositionMetadata } from '@hyperframes/core';
-const meta: CompositionMetadata = extractCompositionMetadata(htmlString);
-// meta.id, meta.duration, meta.width, meta.height, meta.variables
-//
-// Variable metadata is declared on the document root, for example:
-// <html
-//   data-composition-id="card"
-//   data-composition-duration="3"
-//   data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Hello"}]'
-// >
-
-// Read resolved variables inside a composition (declared defaults +
-// CLI overrides + per-instance host data-variable-values):
-import { getVariables } from '@hyperframes/core';
 const { title } = getVariables<{ title: string }>();
+```
 
-// Validate CLI / host overrides against the declared schema:
-import { validateVariables, formatVariableValidationIssue } from '@hyperframes/core';
-const issues = validateVariables({ title: 'Hello', count: 'three' }, meta.variables);
+In Node tooling, validate a values object against declarations parsed from the
+composition:
+
+```ts
+import { formatVariableValidationIssue, validateVariables } from "@hyperframes/core";
+
+const issues = validateVariables({ title: "Launch day" }, metadata.variables);
+
 for (const issue of issues) {
   console.warn(formatVariableValidationIssue(issue));
 }
-
-// Generate HTML from structured data
-const html = generateHyperframesHtml(elements, {
-  animations,
-  styles,
-  resolution: 'landscape',
-  compositionId: 'my-video',
-});
 ```
 
-### Modifying HTML
+## Compile a project
 
-```typescript
-import {
-  updateElementInHtml,
-  addElementToHtml,
-  removeElementFromHtml,
-  validateCompositionHtml,
-} from '@hyperframes/core';
+Use the compiler entry when your integration needs resolved media timing or a
+single bundled document.
 
-// Update an element's properties
-const updatedHtml = updateElementInHtml(html, 'el-1', { start: 5 });
+```ts
+import { bundleToSingleHtml, compileHtml } from "@hyperframes/core/compiler";
 
-// Add a new element
-const newHtml = addElementToHtml(html, newElement);
-
-// Remove an element
-const cleanHtml = removeElementFromHtml(html, 'el-1');
-
-// Validate HTML structure
-const result = validateCompositionHtml(html);
-// result.valid, result.errors
-```
-
-### GSAP Script Parsing
-
-<Info>
-  The GSAP + HTML parsing layer now lives in its own standalone package, [`@hyperframes/parsers`](/packages/parsers). Core re-exports the API below for back-compat; import from `@hyperframes/parsers` directly in new code.
-</Info>
-
-```typescript
-import {
-  serializeGsapAnimations,
-  getAnimationsForElementId,
-  validateCompositionGsap,
-  keyframesToGsapAnimations,
-  gsapAnimationsToKeyframes,
-} from '@hyperframes/core';
-
-// GSAP parsing, mutation, and constants live in @hyperframes/parsers:
-import { parseGsapScript, SUPPORTED_PROPS, SUPPORTED_EASES } from '@hyperframes/parsers/gsap-parser';
-import { updateAnimationInScript, addAnimationToScript, removeAnimationFromScript } from '@hyperframes/parsers/gsap-writer-acorn';
-import type { GsapAnimation, GsapMethod, ParsedGsap } from '@hyperframes/core';
-
-// Parse GSAP script into structured animations
-const parsed: ParsedGsap = parseGsapScript(scriptContent);
-// parsed.animations, parsed.timelineVar, parsed.preamble, parsed.postamble
-
-// Serialize back to script
-const script = serializeGsapAnimations(parsed.animations);
-```
-
-### HTML Generation
-
-```typescript
-import {
-  generateHyperframesHtml,
-  generateGsapTimelineScript,
-  generateHyperframesStyles,
-} from '@hyperframes/core';
-
-// Generate a complete HTML composition
-const html = generateHyperframesHtml(elements, options);
-
-// Generate just the GSAP script
-const script = generateGsapTimelineScript(animations, options);
-
-// Generate CSS styles
-const { coreCss, customCss, googleFontsLink } = generateHyperframesStyles(
-  elements, 'landscape', customStyles
+const compiled = await compileHtml(rawHtml, "./project", async (mediaPath) =>
+  probeDuration(mediaPath),
 );
+
+const bundled = await bundleToSingleHtml("./project", {
+  entryFile: "index.html",
+});
 ```
 
-### Template Utilities
+The compiler also exposes lower-level timing helpers such as
+`compileTimingAttrs()`, `injectDurations()`, and `extractResolvedMedia()`.
 
-```typescript
-import {
-  generateBaseHtml,
-  getStageStyles,
-  GSAP_CDN,
-  BASE_STYLES,
-  ELEMENT_BASE_STYLES,
-  MEDIA_STYLES,
-  TEXT_STYLES,
-  ZOOM_CONTAINER_STYLES,
-} from '@hyperframes/core';
+## Check the static contract
 
-// Generate base HTML structure for a resolution
-const baseHtml = generateBaseHtml('landscape');
-const styles = getStageStyles('portrait');
-```
+```ts
+import { validateHyperframeHtmlContract } from "@hyperframes/core/compiler";
 
-## Linter
+const result = await validateHyperframeHtmlContract(html);
 
-<Info>
-  The composition linter now lives in its own package, [`@hyperframes/lint`](/packages/lint) — install it directly to lint a project or HTML string from Node without the CLI. `@hyperframes/core/lint` remains a back-compat re-export.
-</Info>
-
-The composition linter checks for structural issues that would cause rendering failures or unexpected behavior. You can run it from the CLI with `npx hyperframes lint`, or call it programmatically:
-
-```typescript
-import { lintHyperframeHtml, lintMediaUrls } from '@hyperframes/core/lint';
-import type {
-  HyperframeLintResult,
-  HyperframeLintFinding,
-  HyperframeLintSeverity,     // "error" | "warning" | "info"
-  HyperframeLinterOptions,
-} from '@hyperframes/core/lint';
-
-const result: HyperframeLintResult = lintHyperframeHtml(html, { filePath: 'index.html' });
-// result.ok, result.errorCount, result.warningCount, result.findings
-
-for (const finding of result.findings) {
-  console.log(finding.severity, finding.code, finding.message);
-  // finding.file, finding.selector, finding.elementId, finding.fixHint, finding.snippet
+if (!result.isValid) {
+  console.error(result.missingKeys);
 }
-
-// Additional media URL validation
-const mediaFindings = lintMediaUrls(result.findings);
 ```
 
-Detected issues include:
+For the full composition lint result, use [`@hyperframes/lint`](/packages/lint)
+or run `npx hyperframes lint`.
 
-- Missing timeline registration (`window.__timelines`)
-- Unmuted video elements (causes autoplay failures)
-- Missing `class="clip"` on timed visible elements
-- Deprecated attribute names
-- Missing composition dimensions (`data-width`, `data-height`)
-- Invalid `data-start` references to nonexistent clip IDs
+## Build a frame adapter
 
-<Info>
-  For a full list of what the linter catches and how to fix each issue, see [Common Mistakes](/guides/common-mistakes) and [Troubleshooting](/guides/troubleshooting).
-</Info>
+Frame adapters make an animation runtime seekable by frame. Core includes the
+GSAP adapter:
 
-## Compiler
+```ts
+import { createGSAPFrameAdapter } from "@hyperframes/core";
 
-The compiler sub-package handles timing resolution, HTML compilation, and bundling:
-
-```typescript
-// Timing compiler (browser-safe — no Node.js dependencies)
-import {
-  compileTimingAttrs,
-  injectDurations,
-  extractResolvedMedia,
-  clampDurations,
-} from '@hyperframes/core/compiler';
-import type {
-  UnresolvedElement,
-  ResolvedDuration,
-  ResolvedMediaElement,
-  CompilationResult,
-} from '@hyperframes/core/compiler';
-
-// Compile timing attributes from HTML
-const compiled: CompilationResult = compileTimingAttrs(html);
-
-// Inject resolved durations back into HTML
-const updatedHtml = injectDurations(html, compiled.durations);
-
-// Extract resolved media elements
-const media: ResolvedMediaElement[] = extractResolvedMedia(html);
-```
-
-```typescript
-// HTML compiler (Node.js — requires media probing)
-import { compileHtml } from '@hyperframes/core/compiler';
-import type { MediaDurationProber } from '@hyperframes/core/compiler';
-
-const prober: MediaDurationProber = async (src) => getDuration(src);
-const compiledHtml = await compileHtml(html, prober);
-```
-
-```typescript
-// HTML bundler (Node.js — bundles to single file)
-import { bundleToSingleHtml } from '@hyperframes/core/compiler';
-import type { BundleOptions } from '@hyperframes/core/compiler';
-
-const bundled = await bundleToSingleHtml({ entryPath: './index.html', inline: true });
-```
-
-```typescript
-// Static guard — validate HTML contract
-import { validateHyperframeHtmlContract } from '@hyperframes/core/compiler';
-import type {
-  HyperframeStaticGuardResult,
-  HyperframeStaticFailureReason,
-} from '@hyperframes/core/compiler';
-
-const guard: HyperframeStaticGuardResult = validateHyperframeHtmlContract(html);
-// guard.ok, guard.failures[]
-// Failure reasons: "missing_composition_id" | "missing_composition_dimensions"
-//   | "missing_timeline_registry" | "invalid_script_syntax"
-//   | "invalid_static_hyperframe_contract"
-```
-
-## Runtime
-
-The Hyperframes runtime manages playback, seeking, and clip lifecycle in the browser. The core package provides utilities for building and loading the runtime:
-
-```typescript
-import {
-  loadHyperframeRuntimeSource,
-  buildHyperframesRuntimeScript,
-  HYPERFRAME_RUNTIME_ARTIFACTS,
-  HYPERFRAME_RUNTIME_CONTRACT,
-  HYPERFRAME_RUNTIME_GLOBALS,
-  HYPERFRAME_BRIDGE_SOURCES,
-  HYPERFRAME_CONTROL_ACTIONS,
-} from '@hyperframes/core';
-import type {
-  HyperframeControlAction,
-  HyperframesRuntimeBuildOptions,
-} from '@hyperframes/core';
-
-// Load the pre-built runtime IIFE
-const runtimeSource = loadHyperframeRuntimeSource();
-
-// Build a custom runtime script
-const script = buildHyperframesRuntimeScript(options);
-```
-
-The pre-built runtime IIFE is available as a direct import:
-
-```typescript
-import runtime from '@hyperframes/core/runtime';
-```
-
-## Frame Adapters
-
-The core package defines the [Frame Adapter](/concepts/frame-adapters) interface and provides the built-in GSAP adapter:
-
-```typescript
-import { createGSAPFrameAdapter } from '@hyperframes/core';
-import type {
-  FrameAdapter,
-  FrameAdapterContext,
-  GSAPTimelineLike,
-  CreateGSAPFrameAdapterOptions,
-} from '@hyperframes/core';
-
-// Create a GSAP frame adapter
-const adapter: FrameAdapter = createGSAPFrameAdapter({
-  id: 'my-composition',
+const adapter = createGSAPFrameAdapter({
+  id: "product-intro",
   fps: 30,
-  timeline: gsapTimeline,
+  timeline,
 });
 
-// Adapter lifecycle
-await adapter.init?.(context);
-const durationFrames = adapter.getDurationFrames();
+await adapter.init?.({
+  compositionId: "product-intro",
+  fps: 30,
+  width: 1920,
+  height: 1080,
+});
+
 await adapter.seekFrame(42);
-await adapter.destroy?.();
 ```
 
-## Media Utilities
-
-```typescript
-import {
-  MEDIA_VISUAL_STYLE_PROPERTIES,
-  copyMediaVisualStyles,
-  quantizeTimeToFrame,
-} from '@hyperframes/core';
-import type { MediaVisualStyleProperty } from '@hyperframes/core';
-
-// Quantize a time value to the nearest frame boundary
-const frameTime = quantizeTimeToFrame(5.033, 30); // → 5.033... snapped to frame
-
-// Copy visual styles between media elements
-copyMediaVisualStyles(fromElement, toElement);
-```
-
-## Picker API
-
-For element selection in editor UIs:
-
-```typescript
-import type {
-  HyperframePickerApi,
-  HyperframePickerBoundingBox,
-  HyperframePickerElementInfo,
-} from '@hyperframes/core';
-```
-
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
-  <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
-    The standalone GSAP + HTML parsing layer extracted from core.
+  <Card title="Composition schema" icon="code" href="/reference/html-schema">
+    Learn the HTML contract that Core reads and writes.
+  </Card>
+  <Card title="@hyperframes/parsers" icon="brackets-curly" href="/packages/parsers">
+    Work directly with HTML and GSAP parsing.
   </Card>
   <Card title="@hyperframes/lint" icon="circle-check" href="/packages/lint">
-    The composition linter as a standalone library.
+    Validate composition HTML in your own tooling.
   </Card>
-  <Card title="@hyperframes/studio-server" icon="server" href="/packages/studio-server">
-    The mountable studio preview/editor backend.
-  </Card>
-  <Card title="CLI" icon="terminal" href="/packages/cli">
-    The easiest way to create, preview, lint, and render compositions.
-  </Card>
-  <Card title="Engine" icon="gear" href="/packages/engine">
-    Low-level frame capture pipeline that uses core types and runtime.
-  </Card>
-  <Card title="Producer" icon="film" href="/packages/producer">
-    Full rendering pipeline built on top of core and engine.
+  <Card title="@hyperframes/producer" icon="video" href="/packages/producer">
+    Turn a project into a finished video from Node.js.
   </Card>
 </CardGroup>

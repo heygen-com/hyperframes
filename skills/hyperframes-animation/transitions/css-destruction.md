@@ -10,7 +10,7 @@ This transition has three systems working together:
 2. **Scene clipping** — the outgoing scene uses an SVG clip-path (with `fill-rule: evenodd`) that cuts a hole matching the fire front. As the fire expands, more of the scene is clipped away. All content (text, images, lines) burns with the page — no separate debris.
 3. **Scorched edge** — a `<canvas>` overlay draws a radial gradient fringe at the fire boundary to simulate charring
 
-**When to use:** Dramatic reveals, edgy/destructive mood, gaming, cyberpunk. This is the most dramatic transition in the catalog — reserve it for hero moments.
+**When to use:** Dramatic reveals, edgy/destructive mood, gaming, neon-noir. This is the most dramatic transition in the catalog — reserve it for hero moments.
 
 **Requirements:**
 

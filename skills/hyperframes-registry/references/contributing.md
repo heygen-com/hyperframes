@@ -89,6 +89,10 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 #### All types
 
+- **Placeholder content is monochrome** — read
+  [placeholder-material.md](placeholder-material.md) before choosing a single colour. Stand-in
+  screens, images, cards, avatars, logos and chart series use four alpha steps of the
+  composition's ink; accent marks one element and never a placeholder.
 - `data-composition-id` MUST match `window.__timelines["id"]`
 - All element IDs prefixed with block abbreviation
 - `gsap.timeline({ paused: true })` — always paused
@@ -98,7 +102,7 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 ```bash
 hyperframes lint                    # 0 errors required
-hyperframes validate --no-contrast  # 0 console errors required
+hyperframes check --no-contrast  # 0 console errors required
 ```
 
 ### Step 5: Preview
@@ -132,8 +136,12 @@ git checkout -b feat/registry-{name}
 # 2. Format HTML
 npx oxfmt registry/{kind}/{name}/*.html
 
-# 3. Update registry/registry.json — add entry to the "items" array:
-#    { "name": "{name}", "type": "hyperframes:block" }  (or "hyperframes:component")
+# 3. Regenerate registry/registry.json from the item directories.
+#    Do not hand-edit it: an entry added by hand survives until the next
+#    regeneration and then vanishes, and one left behind for a directory that
+#    no longer exists is worse, because `hyperframes add <name>` resolves the
+#    name and then fails on missing files.
+npx tsx scripts/generate-registry-items.ts
 
 # 4. Generate catalog docs page
 npx tsx scripts/generate-catalog-pages.ts
@@ -157,7 +165,7 @@ gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.dev-
 ## Quality Gate
 
 - [ ] `hyperframes lint` → 0 errors
-- [ ] `hyperframes validate` → 0 console errors
+- [ ] `hyperframes check` → 0 console errors
 - [ ] `npx oxfmt --check` passes
 - [ ] `registry/registry.json` updated with new entry
 - [ ] `scripts/generate-catalog-pages.ts` run (docs page generated)

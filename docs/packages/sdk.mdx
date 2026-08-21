@@ -12,6 +12,7 @@ npm install @hyperframes/sdk
 ## When to Use
 
 **Use `@hyperframes/sdk` when you need to:**
+
 - Build a custom composition editor in your own application
 - Let an agent inspect and edit composition HTML without driving a browser UI
 - Apply batch text, style, timing, asset, variable, or animation edits from code
@@ -20,27 +21,33 @@ npm install @hyperframes/sdk
 - Layer sparse overrides on top of a reusable base composition template
 
 **Use a different package if you want to:**
+
 - Render compositions to MP4 or WebM - use the [CLI](/packages/cli) or [producer](/packages/producer)
 - Preview and edit visually out of the box - use the [CLI](/packages/cli) (`npx hyperframes preview`) or [studio](/packages/studio)
-- Parse, lint, or generate low-level composition HTML - use [core](/packages/core)
+- Parse composition HTML - use [parsers](/packages/parsers)
+- Lint composition HTML or projects - use [lint](/packages/lint)
+- Compile or generate low-level composition HTML - use [core](/packages/core)
 - Capture frames from a headless browser - use [engine](/packages/engine)
 
 <Tip>
-  The SDK is the right layer for product integrations and agents that need structured edits. The CLI and Studio are user-facing tools built around the same composition format; the SDK is the editing engine you embed behind your own UI or automation.
+  The SDK is the right layer for product integrations and agents that need structured edits. The CLI
+  and Studio are user-facing tools built around the same composition format; the SDK is the editing
+  engine you embed behind your own UI or automation.
 </Tip>
 
 <Note>
-  This page is the package overview. For the full API — guides and a complete reference for every method, operation, type, and adapter — see the [**SDK**](/sdk/overview) tab.
+  This page is the package overview. Start with the [SDK quickstart](/sdk/quickstart), then use the
+  focused guides and reference pages for exact methods, operations, types, and adapters.
 </Note>
 
 ## Package Exports
 
-| Import | Description |
-|--------|-------------|
-| `@hyperframes/sdk` | Main editing API, types, memory/headless adapters, iframe preview adapter |
-| `@hyperframes/sdk/adapters/memory` | In-memory persistence adapter for tests, demos, and ephemeral sessions |
-| `@hyperframes/sdk/adapters/fs` | Node.js filesystem persistence adapter with version history |
-| `@hyperframes/sdk/adapters/headless` | No-op preview adapter for agents, CI, and server-side editing |
+| Import                               | Description                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `@hyperframes/sdk`                   | Main editing API, types, memory/headless adapters, iframe preview adapter |
+| `@hyperframes/sdk/adapters/memory`   | In-memory persistence adapter for tests, demos, and ephemeral sessions    |
+| `@hyperframes/sdk/adapters/fs`       | Node.js filesystem persistence adapter with version history               |
+| `@hyperframes/sdk/adapters/headless` | No-op preview adapter for agents, CI, and server-side editing             |
 
 ## Quick Start
 
@@ -209,7 +216,7 @@ const comp = await openComposition(html, {
 
 For browser integrations, `createIframePreviewAdapter()` bridges the SDK to a same-origin composition iframe so hit-testing, selection, and draft preview updates can stay outside the model mutation path.
 
-## Related Packages
+## Related topics
 
 <CardGroup cols={2}>
   <Card title="@hyperframes/core" icon="cube" href="/packages/core">

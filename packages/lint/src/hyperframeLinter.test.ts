@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { lintHyperframeHtml } from "./hyperframeLinter.js";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { lintHyperframeHtml, lintMediaUrls } from "./hyperframeLinter.js";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("lintHyperframeHtml — orchestrator", () => {
   const validComposition = `
@@ -120,5 +122,28 @@ describe("lintHyperframeHtml — orchestrator", () => {
       (f) => f.code === "root_missing_composition_id" || f.code === "root_missing_dimensions",
     );
     expect(rootFindings).toHaveLength(0);
+  });
+});
+
+describe("lintMediaUrls", () => {
+  it("checks top-level remote media elements", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await lintMediaUrls('<img id="hero" src="https://example.com/hero.png">');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/hero.png",
+      expect.objectContaining({ method: "HEAD" }),
+    );
+  });
+
+  it("ignores remote media embedded inside an iframe srcdoc attribute", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await lintMediaUrls(`<iframe srcdoc='<img src="https://example.com/embedded.png">'></iframe>`);
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

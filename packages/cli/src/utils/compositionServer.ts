@@ -1,9 +1,21 @@
 // Shared scaffolding for the lightweight composition servers used by `play` and
 // `present`: locating the built runtime/player/slideshow bundles, serving
 // composition asset files, and binding to a free port.
-import { existsSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { getMimeType } from "@hyperframes/studio-server";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+
+/**
+ * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
+ * by `play` and the static project server. Re-exported from the
+ * single shared implementation in
+ * `packages/studio-server/src/helpers/mediaProxyPreview.ts` (also used by the
+ * studio preview route) so injection behavior cannot drift between surfaces.
+ */
+export { injectMediaCodecMapIntoHtml as injectMediaCodecMap } from "@hyperframes/studio-server/media-proxy-preview";
 
 /** Minimal surface of a listening server (satisfied by @hono/node-server's ServerType). */
 interface PortBindable {
@@ -52,33 +64,74 @@ export function resolveSlideshowPath(): string | null {
   return candidates.find((p) => existsSync(p)) ?? null;
 }
 
-/** Inject the runtime <script> into composition HTML before </body> (or at the end). */
+/**
+ * Inject the runtime <script> at the top of the composition's <head>, ahead of
+ * every author script. Compositions read `window.__hyperframes.getVariables()`
+ * from an inline script at init, so a runtime appended before </body> is not
+ * loaded yet at that point and the documented API is undefined. The compiled
+ * render path hoists the runtime into <head> the same way; this keeps the
+ * served `play` document in parity with it. Placement falls back to before
+ * <body>, then to the top of the document, for fragments without a <head>.
+ */
 export function injectRuntime(html: string): string {
-  const runtimeTag = `<script src="/runtime.js"></script>`;
-  return html.includes("</body>")
-    ? html.replace("</body>", `${runtimeTag}\n</body>`)
-    : html + `\n${runtimeTag}`;
+  return injectTagsAtHeadStart(html, `<script src="/runtime.js"></script>`);
 }
 
-const ASSET_CONTENT_TYPES: Record<string, string> = {
-  js: "application/javascript",
-  css: "text/css",
-  json: "application/json",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  svg: "image/svg+xml",
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-};
-
 export function assetContentType(filePath: string): string {
-  const ext = filePath.split(".").pop() ?? "";
-  // Own-property check so an ext like "__proto__" can't resolve to Object.prototype.
-  const type = Object.hasOwn(ASSET_CONTENT_TYPES, ext) ? ASSET_CONTENT_TYPES[ext] : undefined;
-  return type ?? "application/octet-stream";
+  return getMimeType(filePath);
+}
+
+/**
+ * Hono-native Range/206 response for a file on disk, mirroring the inline
+ * Range logic in `packages/studio-server/src/routes/preview.ts`'s static
+ * asset route. `staticProjectServer.ts`'s raw-`node:http` counterpart is
+ * `serveFileWithRange`; this version converts Node's bounded file stream to a
+ * Fetch API stream for Hono without allocating the whole media/proxy file.
+ */
+export function buildRangeResponse(
+  filePath: string,
+  contentType: string,
+  rangeHeader: string | undefined,
+): Response {
+  const size = statSync(filePath).size;
+  const last = size - 1;
+  const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
+
+  const body = (start: number, end: number): ReadableStream<Uint8Array> | null =>
+    size === 0
+      ? null
+      : (Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>);
+
+  if (!match) {
+    return new Response(body(0, last), {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(size),
+      },
+    });
+  }
+
+  const hasStart = match[1] !== "";
+  const start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+  const end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+  if (start > end || start > last) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
+    });
+  }
+
+  return new Response(body(start, end), {
+    status: 206,
+    headers: {
+      "Content-Type": contentType,
+      "Accept-Ranges": "bytes",
+      "Content-Range": `bytes ${start}-${end}/${size}`,
+      "Content-Length": String(end - start + 1),
+    },
+  });
 }
 
 /**
