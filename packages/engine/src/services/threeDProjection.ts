@@ -816,7 +816,11 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
       // rendering a two-plane preserve-3d comp on both capture paths and
       // comparing; the self-verify net CANNOT catch a regression here, because
       // it captures ground truth after this rewrite and would compare wrong
-      // geometry against wrong geometry.
+      // geometry against wrong geometry (measured: a 65 dB "pass" over a
+      // truly-broken 18.8 dB render). The only backstop that can see this class
+      // of regression is a render-parity comp in a regression shard, which
+      // needs harness plumbing rather than a fixture drop — PRINFRA-570 carries
+      // the scope. Until it lands, THIS SIGN IS UNCOVERED BY CI.
       const ndc: Mat4 = [
         2 / canvasW,
         0,
