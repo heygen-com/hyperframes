@@ -81,6 +81,7 @@ packages/producer/src/services/fontData.generated.ts
 docs/plans/
 
 # Local proof / test artifacts
+.a5c/
 qa-artifacts/
 my-video/
 # Studio project state (hf-id backups, per-file state) — always runtime-generated,

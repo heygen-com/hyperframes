@@ -35,7 +35,8 @@
         gap: 28px;
         background: #ffffff;
         border-radius: 60px;
-        padding: 20px 32px 20px 20px;
+        padding-block: 20px;
+        padding-inline: 20px 32px;
         box-shadow: 0 6px 32px rgba(0, 0, 0, 0.14);
       }
 
@@ -51,7 +52,9 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
-        margin-right: 20px;
+        margin-inline-end: 20px;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="yt-lower-third"] .channel-name {
@@ -60,6 +63,7 @@
         color: #0f0f0f;
         line-height: 1.3;
         letter-spacing: -0.01em;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="yt-lower-third"] .subscriber-count {
@@ -67,6 +71,7 @@
         font-weight: 400;
         color: #606060;
         line-height: 1.3;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="yt-lower-third"] .subscribe-btn {
@@ -134,8 +139,8 @@
       >
         <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
         <div class="channel-info">
-          <div class="channel-name">HeyGen</div>
-          <div class="subscriber-count">82.2K subscribers</div>
+          <div class="channel-name" dir="auto">HeyGen</div>
+          <div class="subscriber-count" dir="auto">82.2K subscribers</div>
         </div>
         <div id="subscribe-btn" class="subscribe-btn">
           <span id="btn-subscribe" class="btn-text btn-text-subscribe">Subscribe</span>

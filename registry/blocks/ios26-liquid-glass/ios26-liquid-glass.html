@@ -174,7 +174,7 @@
       .ios-battery::after {
         content: "";
         position: absolute;
-        right: -3px;
+        inset-inline-end: -3px;
         top: 7px;
         width: 3px;
         height: 7px;
@@ -219,7 +219,7 @@
       .ios-badge {
         position: absolute;
         top: -8px;
-        right: -8px;
+        inset-inline-end: -8px;
         min-width: 24px;
         padding: 3px 7px;
         border-radius: 999px;
@@ -268,22 +268,20 @@
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.72);
         transform: rotate(45deg) translate(-6px, 6px);
-        margin-left: -10px;
+        margin-inline-start: -10px;
       }
       .ios-notification-layer {
         display: none;
         position: absolute;
         z-index: 5;
         top: 82px;
-        left: 15px;
-        right: 15px;
+        inset-inline: 15px;
         height: 222px;
         pointer-events: none;
       }
       .ios-notification-card {
         position: absolute;
-        left: 0;
-        right: 0;
+        inset-inline: 0;
         display: flex;
         align-items: center;
         gap: 10px;

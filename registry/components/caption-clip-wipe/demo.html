@@ -48,7 +48,7 @@
       .wp-group {
         position: absolute;
         bottom: 120px;
-        left: 0;
+        inset-inline-start: 0;
         width: 100%;
         display: flex;
         flex-wrap: wrap;
@@ -70,6 +70,9 @@
         clip-path: inset(0 100% 0 0);
         will-change: clip-path, color, opacity;
       }
+      :dir(rtl) .wp-word {
+        clip-path: inset(0 0 0 100%);
+      }
     </style>
   </head>
   <body>
@@ -89,6 +92,8 @@
     <script>
       (function () {
         window.__timelines = window.__timelines || {};
+        var isRtl = getComputedStyle(document.documentElement).direction === "rtl";
+        var exitClipPath = isRtl ? "inset(0 100% 0 0)" : "inset(0 0% 0 100%)";
 
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
@@ -206,7 +211,7 @@
           tl.to(
             wordEls,
             {
-              clipPath: "inset(0 0% 0 100%)",
+              clipPath: exitClipPath,
               duration: 0.25,
               stagger: 0.04,
               ease: "power2.in",

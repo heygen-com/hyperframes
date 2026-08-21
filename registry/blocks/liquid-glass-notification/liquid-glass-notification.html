@@ -124,6 +124,8 @@
       .notif-body {
         flex: 1;
         min-width: 0;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
       .notif-header {
         display: flex;
@@ -148,9 +150,9 @@
       }
       .notif-progress {
         position: absolute;
-        right: 26px;
+        inset-inline-end: 26px;
         bottom: 15px;
-        left: 168px;
+        inset-inline-start: 168px;
         height: 3px;
         overflow: hidden;
         border-radius: 999px;
@@ -172,7 +174,7 @@
       }
       .notif-actions {
         position: absolute;
-        right: 22px;
+        inset-inline-end: 22px;
         bottom: 13px;
         display: flex;
         gap: 8px;
@@ -190,7 +192,7 @@
       .typing-dots {
         display: inline-flex;
         gap: 3px;
-        margin-left: 5px;
+        margin-inline-start: 5px;
         transform: translateY(-1px);
       }
       .typing-dots span {
@@ -227,12 +229,12 @@
             />
           </div>
           <div class="notif-body">
-            <div class="notif-header">
-              <span class="notif-name">Render complete</span>
+            <div class="notif-header" dir="auto">
+              <span class="notif-name" dir="auto">Render complete</span>
               <span class="status-dot" id="status-dot"></span>
-              <span class="notif-time" id="render-status">rendering</span>
+              <span class="notif-time" id="render-status" dir="auto">rendering</span>
             </div>
-            <div class="notif-text" id="render-copy">
+            <div class="notif-text" id="render-copy" dir="auto">
               Liquid glass preview is encoding with GPU capture.
             </div>
             <div class="notif-progress">
@@ -243,11 +245,11 @@
         <div class="notif-card c2" id="txt2">
           <div class="avatar avatar-kl">M</div>
           <div class="notif-body">
-            <div class="notif-header">
-              <span class="notif-name">Messages</span>
-              <span class="notif-time">now</span>
+            <div class="notif-header" dir="auto">
+              <span class="notif-name" dir="auto">Messages</span>
+              <span class="notif-time" dir="auto">now</span>
             </div>
-            <div class="notif-text">
+            <div class="notif-text" dir="auto">
               Miguel: can it feel alive but still native?
               <span class="typing-dots" id="typing-dots"
                 ><span></span><span></span><span></span

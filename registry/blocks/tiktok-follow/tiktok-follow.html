@@ -35,7 +35,8 @@
         gap: 30px;
         background: #1a1a1a;
         border-radius: 75px;
-        padding: 25px 40px 25px 25px;
+        padding-block: 25px;
+        padding-inline: 25px 40px;
         box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
       }
 
@@ -52,7 +53,9 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
-        margin-right: 20px;
+        margin-inline-end: 20px;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="tiktok-follow"] .display-name {
@@ -61,6 +64,7 @@
         color: #ffffff;
         line-height: 1.3;
         letter-spacing: -0.01em;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="tiktok-follow"] .handle {
@@ -68,6 +72,7 @@
         font-weight: 400;
         color: #a0a0a0;
         line-height: 1.3;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="tiktok-follow"] .follower-count {
@@ -75,6 +80,7 @@
         font-weight: 400;
         color: #737373;
         line-height: 1.3;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="tiktok-follow"] .follow-btn {
@@ -142,9 +148,9 @@
       >
         <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
         <div class="profile-info">
-          <div class="display-name">HeyGen</div>
-          <div class="handle">@heygen.com</div>
-          <div class="follower-count">1,999 followers</div>
+          <div class="display-name" dir="auto">HeyGen</div>
+          <div class="handle" dir="auto">@heygen.com</div>
+          <div class="follower-count" dir="auto">1,999 followers</div>
         </div>
         <div id="follow-btn" class="follow-btn">
           <span id="btn-follow" class="btn-text btn-text-follow">Follow</span>
