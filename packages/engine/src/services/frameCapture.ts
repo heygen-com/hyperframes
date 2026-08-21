@@ -3202,6 +3202,42 @@ export async function withFrameDeadline<T>(
   }
 }
 
+function isDeFrameTimeoutError(err: unknown): boolean {
+  return err instanceof DeFrameTimeoutError;
+}
+
+/**
+ * Bound a drawElement round-trip, counting and logging the stall if the
+ * deadline wins. Every drawElement capture entry point goes through this —
+ * streaming (`captureFrameToBuffer`), disk (`captureFrame`) and worker-encode
+ * (`captureFrameToBufferPipelined`). Bounding only one of them left the other
+ * two hitting the 60 s render-level watchdog on the same wedged renderer,
+ * which is the whole failure this deadline exists to replace.
+ */
+function withDeFrameDeadline<T>(
+  session: CaptureSession,
+  frameIndex: number,
+  work: Promise<T>,
+): Promise<T> {
+  if (session.captureMode !== "drawelement") return work;
+  return withFrameDeadline(work, `frame ${frameIndex}`, DE_FRAME_TIMEOUT_MS, () => {
+    // Deliberately NO per-frame screenshot fallback. When the renderer stops
+    // scheduling it is wedged for EVERY subsequent round-trip on that page —
+    // measured: the screenshot fallback blew the same deadline. Fail fast and
+    // let the producer re-render the whole comp on a fresh page via the
+    // screenshot path, the only recovery that works. Counted here rather than
+    // in a capture catch: the deadline rejects from OUTSIDE the work promise,
+    // so no catch inside it ever runs.
+    session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
+    console.log(
+      `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
+        `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
+        `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
+        `retries via screenshot.`,
+    );
+  });
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
@@ -3376,10 +3412,10 @@ export async function captureFrame(
   frameIndex: number,
   time: number,
 ): Promise<CaptureResult> {
-  const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
+  const { buffer, quantizedTime, captureTimeMs } = await withDeFrameDeadline(
     session,
     frameIndex,
-    time,
+    captureFrameCore(session, frameIndex, time),
   );
   const framePath = writeCapturedFrame(session, frameIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
@@ -3413,30 +3449,11 @@ export async function captureFrameToBuffer(
   frameIndex: number,
   time: number,
 ): Promise<CaptureBufferResult> {
-  const { buffer, captureTimeMs } =
-    session.captureMode === "drawelement"
-      ? await withFrameDeadline(
-          captureFrameCore(session, frameIndex, time),
-          `frame ${frameIndex}`,
-          DE_FRAME_TIMEOUT_MS,
-          () => {
-            // Deliberately NO per-frame screenshot fallback. When the renderer
-            // stops scheduling it is wedged for EVERY subsequent round-trip on
-            // that page — measured: the screenshot fallback blew the same
-            // deadline. Fail fast and let the producer re-render the whole comp
-            // on a fresh page via the screenshot path, the only recovery that
-            // works. Counted here rather than in captureFrameCore's catch: the
-            // deadline rejects from outside it, so that catch never runs.
-            session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
-            console.log(
-              `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
-                `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
-                `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
-                `retries via screenshot.`,
-            );
-          },
-        )
-      : await captureFrameCore(session, frameIndex, time);
+  const { buffer, captureTimeMs } = await withDeFrameDeadline(
+    session,
+    frameIndex,
+    captureFrameCore(session, frameIndex, time),
+  );
 
   return { buffer, captureTimeMs };
 }
@@ -3535,12 +3552,10 @@ export async function captureFrameToBufferPipelined(
     // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
     // BeginFrame branch present in the synchronous captureFrameCore is therefore
     // unreachable here and intentionally omitted.
-    const { encodeResult } = await produceDrawElementFrame(
-      page,
-      options.width,
-      options.height,
-      options.quality ?? 80,
-      true,
+    const { encodeResult } = await withDeFrameDeadline(
+      session,
+      frameIndex,
+      produceDrawElementFrame(page, options.width, options.height, options.quality ?? 80, true),
     );
 
     const captureTimeMs = Date.now() - startTime;
@@ -3574,6 +3589,11 @@ export async function captureFrameToBufferPipelined(
       const buffer = await pageScreenshotCapture(page, options);
       return { encodeResult: Promise.resolve(buffer), captureTimeMs: Date.now() - startTime };
     }
+    // A blown deadline means the renderer is not draining its task queue, so
+    // the diagnostics below — which screenshot and evaluate against that same
+    // page — would block until the render-level watchdog fires, spending the
+    // whole budget the deadline just saved.
+    if (isDeFrameTimeoutError(captureError)) throw captureError;
     // Mirror captureFrameCore: capture per-frame diagnostics (frame-error
     // PNG/HTML/JSON + console tail) before rethrowing so pipelined-path
     // failures are debuggable like the serial path.
