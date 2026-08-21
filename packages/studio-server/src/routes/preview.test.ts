@@ -1,10 +1,10 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerPreviewRoutes } from "./preview";
+import { PreviewDocumentCache, registerPreviewRoutes } from "./preview";
 import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
@@ -65,6 +65,144 @@ async function getPreviewSignature(projectDir: string): Promise<string> {
 }
 
 describe("registerPreviewRoutes", () => {
+  it("caches an hf-id-stamped preview under the post-stamp project signature", async () => {
+    const projectDir = createProjectDir();
+    const sourceHtml =
+      "<!doctype html><html><head></head><body><div class='clip'>Preview</div></body></html>";
+    writeFileSync(join(projectDir, "index.html"), sourceHtml);
+    const bundle = vi.fn(async () => sourceHtml);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const first = await app.request("http://localhost/projects/demo/preview");
+    const firstHtml = await first.text();
+    const second = await app.request("http://localhost/projects/demo/preview");
+    const secondHtml = await second.text();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(firstHtml).toContain('data-hf-id="hf-');
+    expect(secondHtml).toBe(firstHtml);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain('data-hf-id="hf-');
+    expect(bundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not memoize the bundle-failure fallback — a recovered bundler is served", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!doctype html><html><head></head><body><div data-hf-id="hf-root">Fallback</div></body></html>',
+    );
+    let bundlerBroken = true;
+    const bundle = vi.fn(async () => {
+      if (bundlerBroken) throw new Error("bundler unavailable");
+      return '<!doctype html><html><head></head><body><div data-hf-id="hf-root">Bundled</div></body></html>';
+    });
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const failedHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+    bundlerBroken = false;
+    const recoveredHtml = await (
+      await app.request("http://localhost/projects/demo/preview")
+    ).text();
+
+    expect(failedHtml).toContain("Fallback");
+    // The project never changed, so a cached fallback would pin the degraded
+    // document forever; the bundler must be retried instead.
+    expect(recoveredHtml).toContain("Bundled");
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves byte-identical cached HTML for consecutive cold requests", async () => {
+    const projectDir = createProjectDir();
+    const sourceHtml =
+      '<!doctype html><html><head></head><body><div class="clip" data-hf-id="hf-root">Preview</div></body></html>';
+    writeFileSync(join(projectDir, "index.html"), sourceHtml);
+    const bundle = vi.fn(async () => sourceHtml);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const firstHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const secondHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    expect(secondHtml).toBe(firstHtml);
+    expect(bundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuilds the cached preview after a source file edit", async () => {
+    const projectDir = createProjectDir();
+    const indexPath = join(projectDir, "index.html");
+    writeFileSync(
+      indexPath,
+      '<!doctype html><html><head></head><body><div data-hf-id="hf-root">First</div></body></html>',
+    );
+    const bundle = vi.fn(async (dir: string) => readFileSync(join(dir, "index.html"), "utf-8"));
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const firstHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+    writeFileSync(
+      indexPath,
+      '<!doctype html><html><head></head><body><div data-hf-id="hf-root">Second, changed size</div></body></html>',
+    );
+    const secondHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    expect(firstHtml).toContain("First");
+    expect(secondHtml).toContain("Second, changed size");
+    expect(secondHtml).not.toBe(firstHtml);
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps matching ETag revalidation on the 304 path without rebuilding", async () => {
+    const projectDir = createProjectDir();
+    const bundle = vi.fn(
+      async () =>
+        '<!doctype html><html><head></head><body><div data-hf-id="hf-root">Preview</div></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const first = await app.request("http://localhost/projects/demo/preview");
+    const etag = first.headers.get("ETag");
+    const revalidated = await app.request("http://localhost/projects/demo/preview", {
+      headers: { "If-None-Match": etag! },
+    });
+
+    expect(etag).toBeTruthy();
+    expect(revalidated.status).toBe(304);
+    expect(revalidated.headers.get("ETag")).toBe(etag);
+    expect(await revalidated.text()).toBe("");
+    expect(bundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates the parent cached preview after a sub-composition edit", async () => {
+    const projectDir = createProjectDir();
+    const scenePath = join(projectDir, "scene.html");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!doctype html><html><head></head><body><main data-hf-id="hf-root"></main></body></html>',
+    );
+    writeFileSync(scenePath, '<section data-hf-id="hf-scene">First scene</section>');
+    const bundle = vi.fn(async (dir: string) => {
+      const scene = readFileSync(join(dir, "scene.html"), "utf-8");
+      return `<!doctype html><html><head></head><body>${scene}</body></html>`;
+    });
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+
+    const firstHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(await (await app.request("http://localhost/projects/demo/preview")).text()).toBe(
+      firstHtml,
+    );
+    writeFileSync(scenePath, '<section data-hf-id="hf-scene">Second scene, changed size</section>');
+    const editedHtml = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    expect(editedHtml).toContain("Second scene, changed size");
+    expect(editedHtml).not.toBe(firstHtml);
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -378,6 +516,34 @@ describe("registerPreviewRoutes", () => {
     const signature = await getPreviewSignature(projectDir);
 
     expect(signature).toMatch(/^[a-f0-9]{24}$/);
+  });
+});
+
+describe("PreviewDocumentCache", () => {
+  it("evicts the least-recently-used entry when the entry budget is exceeded", () => {
+    const cache = new PreviewDocumentCache({ maxEntries: 2, maxBytes: 100 });
+    cache.set("recently-accessed", "one");
+    cache.set("oldest-untouched", "two");
+    expect(cache.get("recently-accessed")).toBe("one");
+
+    cache.set("new", "three");
+
+    expect(cache.get("oldest-untouched")).toBeUndefined();
+    expect(cache.get("recently-accessed")).toBe("one");
+    expect(cache.get("new")).toBe("three");
+  });
+
+  it("evicts the least-recently-used entry when the byte budget is exceeded", () => {
+    const cache = new PreviewDocumentCache({ maxEntries: 10, maxBytes: 10 });
+    cache.set("recently-accessed", "1234");
+    cache.set("oldest-untouched", "5678");
+    expect(cache.get("recently-accessed")).toBe("1234");
+
+    cache.set("new", "abcde");
+
+    expect(cache.get("oldest-untouched")).toBeUndefined();
+    expect(cache.get("recently-accessed")).toBe("1234");
+    expect(cache.get("new")).toBe("abcde");
   });
 });
 
