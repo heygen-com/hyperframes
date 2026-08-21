@@ -875,7 +875,7 @@ describe("FxSection chain", () => {
 
       click(host.querySelector(".hf-fx-add"));
       expect(host.querySelector(".hf-fx-add-menu")).toBeNull();
-      expect(byText(host, "button", "Add effect")).toBeTruthy();
+      expect(byText(host, "button", "+ effect")).toBeTruthy();
     });
 
     it("opens one menu in place of the other", () => {
@@ -1046,7 +1046,7 @@ describe("FxSection chain", () => {
 
     it("auditions an effect the add menu is offering", () => {
       const { host, onChainPreview, onChainChange } = mount({ chain: chainOf("peaking") });
-      click(byText(host, "button", "Add effect"));
+      click(byText(host, "button", "+ effect"));
       enter(byText(host, "button", EFFECT_COPY.reverb?.title ?? ""));
 
       const heard = onChainPreview.mock.calls.at(-1)?.[0] as HfAudioFxChain;
@@ -1063,7 +1063,7 @@ describe("FxSection chain", () => {
         onLevel: vi.fn(),
         onAuditionLevel,
       });
-      click(byText(host, "button", "Add effect"));
+      click(byText(host, "button", "+ effect"));
       enter(byText(host, "button", "Even Out Levels"));
       expect(onAuditionLevel).toHaveBeenLastCalledWith(true);
       leave(host, ".hf-fx-add-menu");

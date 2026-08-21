@@ -1,12 +1,12 @@
 import { join, relative, resolve } from "node:path";
-import { setCommandExitCode } from "../utils/commandResult.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
 import { defineCommand } from "citty";
 import * as clack from "@clack/prompts";
 
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { lintProject } from "../utils/lintProject.js";
+import { hasDefinitiveEntryMismatch, lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
@@ -91,6 +91,11 @@ export default defineCommand({
         console.log();
         for (const line of formatLintFindings(lintResult)) console.log(line);
         console.log();
+      }
+      if (hasDefinitiveEntryMismatch(lintResult)) {
+        console.log(c.error("  Aborting publish because the default index.html entry is blank."));
+        console.log();
+        failCommand();
       }
     }
 

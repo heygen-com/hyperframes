@@ -1,14 +1,22 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { Music } from "../../icons/SystemIcons";
-import type { TimelineElement } from "../store/playerStore";
+import {
+  HF_AUDIO_FX_ATTR,
+  serializeAudioFxChain,
+  type HfAudioFxChain,
+} from "@hyperframes/core/audio-fx";
+import { classifyAudioName } from "@hyperframes/core/audio-carve";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { VisibilityButton, PlainTrackHeader } from "./TimelineTrackPlainHeader";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
+import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { groupAutomationLanes } from "./automationLaneData";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LayerDisclosureRow } from "./LayerDisclosureRow";
-import { TrackClipCount } from "./TrackClipCount";
 import { LABEL_COL_W, LANE_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import {
@@ -59,90 +67,6 @@ interface TimelineTrackHeaderProps {
    *  hides the control rather than offering a button that cannot act. */
   onRemoveAutomationLane?: (target: string) => void;
   onSeek?: (time: number) => void;
-}
-
-function VisibilityButton({
-  hidden,
-  trackNumber,
-  trackDisplayNumber,
-  visible,
-  onToggle,
-}: {
-  hidden: boolean;
-  trackNumber: number;
-  trackDisplayNumber: number | null;
-  visible: boolean;
-  onToggle: TimelineEditCallbacks["onToggleTrackHidden"];
-}) {
-  if (!visible) return <span aria-hidden="true" className="h-6 w-6 shrink-0" />;
-  // Display number in the text, real key in the callback. The two must not be
-  // conflated in either direction.
-  const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const label = hidden ? `Show track${suffix}` : `Hide track${suffix}`;
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
-        hidden ? "text-[#3CE6AC] hover:text-white" : "text-white/35 hover:text-white/75"
-      }`}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.stopPropagation();
-        void onToggle?.(trackNumber, !hidden);
-      }}
-    >
-      {hidden ? (
-        <EyeSlash size={14} weight="bold" aria-hidden="true" />
-      ) : (
-        <Eye size={14} weight="bold" aria-hidden="true" />
-      )}
-    </button>
-  );
-}
-
-// The header a track gets when it has no keyframe clip to disclose: label, clip
-// count, eye. Not deprecated — it is the live path for every track without lanes.
-function PlainTrackHeader({
-  trackNumber,
-  trackDisplayNumber,
-  trackLabel,
-  clipCount,
-  showTrackLabel,
-  isTrackHidden,
-  isAudioTrack,
-  onToggleTrackHidden,
-}: Pick<
-  TimelineTrackHeaderProps,
-  | "trackNumber"
-  | "trackDisplayNumber"
-  | "trackLabel"
-  | "clipCount"
-  | "isTrackHidden"
-  | "isAudioTrack"
-  | "onToggleTrackHidden"
-> & { showTrackLabel: boolean }) {
-  return (
-    <>
-      {isAudioTrack && (
-        <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
-      )}
-      {showTrackLabel && (
-        <span className="min-w-0 flex-1 truncate text-[11px]" title={trackLabel}>
-          {trackLabel}
-        </span>
-      )}
-      {showTrackLabel && <TrackClipCount clipCount={clipCount} />}
-      <VisibilityButton
-        hidden={isTrackHidden}
-        trackNumber={trackNumber}
-        trackDisplayNumber={trackDisplayNumber}
-        visible
-        onToggle={onToggleTrackHidden}
-      />
-    </>
-  );
 }
 
 // Figma layout: prev-keyframe ‹, the add/remove toggle (children), next ›.
@@ -406,6 +330,7 @@ function AutomationLaneHeaderRow({
   );
 }
 
+// fallow-ignore-next-line complexity
 export function TimelineTrackHeader({
   trackNumber,
   trackDisplayNumber,
@@ -457,6 +382,38 @@ export function TimelineTrackHeader({
   // left an audio clip's envelopes unreachable, since the track could not expand.
   const disclosable = lanes.length > 0 || automationRows.length > 0;
   const isKeyframeLayer = !!keyframeClip && disclosable;
+  // Solo is per-clip/per-group, never per track (design doc §2.2) — this header
+  // acts on the track's first clip as a pragmatic stand-in for "this track",
+  // the same simplification the mute button doesn't need to make (it patches
+  // every clip on the track at once).
+  const soloTargetId = trackElements[0] ? (trackElements[0].key ?? trackElements[0].id) : null;
+  const soloed = usePlayerStore((s) => s.soloed);
+  const toggleSolo = usePlayerStore((s) => s.toggleSolo);
+
+  // C1: the FX entry point. A single audio clip has one chain to point at; a
+  // track holding several ungrouped ones has no single chain — the design
+  // doc refuses to build "N clips = N chains", so that case gets a pointer
+  // at grouping (B6's normative rule) instead of a popover.
+  const { onGroupClips, onSetElementAttributeLive, onSetElementAttributeQuiet } =
+    useTimelineEditContextOptional();
+  const domEditActions = useDomEditActionsContextOptional();
+  const singleAudioClip =
+    isAudioTrack && clipCount === 1 && trackElements.length > 0 ? trackElements[0] : null;
+  const isTrackGrouped = trackElements.some((el) => el.audioGroup);
+  const writeClipFxChain = (clip: TimelineElement, next: HfAudioFxChain, live: boolean) => {
+    const value = next.nodes.length ? serializeAudioFxChain(next) : null;
+    if (live) onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
+    else void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+  };
+  const openClipFxRack = (clip: TimelineElement) => {
+    void domEditActions?.handleTimelineElementSelect(clip);
+  };
+  const groupUngroupedClips = () => {
+    const doc = domEditActions?.previewIframeRef.current?.contentDocument;
+    if (!doc || !onGroupClips) return;
+    const clipIds = trackElements.map((el) => el.key ?? el.id);
+    void onGroupClips(clipIds, mintGroupId(doc));
+  };
 
   return (
     <div
@@ -476,16 +433,34 @@ export function TimelineTrackHeader({
       }}
     >
       {!keyframeClip || !disclosable ? (
-        <PlainTrackHeader
-          trackNumber={trackNumber}
-          trackDisplayNumber={trackDisplayNumber}
-          trackLabel={trackLabel}
-          clipCount={clipCount}
-          showTrackLabel={showTrackLabel}
-          isTrackHidden={isTrackHidden}
-          isAudioTrack={isAudioTrack}
-          onToggleTrackHidden={onToggleTrackHidden}
-        />
+        <>
+          <PlainTrackHeader
+            trackNumber={trackNumber}
+            trackDisplayNumber={trackDisplayNumber}
+            trackLabel={trackLabel}
+            clipCount={clipCount}
+            showTrackLabel={showTrackLabel}
+            isTrackHidden={isTrackHidden}
+            isAudioTrack={isAudioTrack}
+            isGroupMuted={trackElements.some((el) => el.audioGroupHidden)}
+            isSoloed={soloTargetId !== null && soloed.has(soloTargetId)}
+            onToggleSolo={soloTargetId ? (options) => toggleSolo(soloTargetId, options) : undefined}
+            onToggleTrackHidden={onToggleTrackHidden}
+          />
+          {singleAudioClip && (
+            <TimelineFxButton
+              variant="chain"
+              fxChainRaw={singleAudioClip.fxChain}
+              trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
+              onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
+              onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+              onOpenRack={() => openClipFxRack(singleAudioClip)}
+            />
+          )}
+          {isAudioTrack && clipCount > 1 && !isTrackGrouped && (
+            <TimelineFxButton variant="group-pointer" onGroupClips={groupUngroupedClips} />
+          )}
+        </>
       ) : (
         <>
           <LayerDisclosureRow
@@ -515,6 +490,7 @@ export function TimelineTrackHeader({
               trackNumber={trackNumber}
               trackDisplayNumber={trackDisplayNumber}
               visible
+              isAudioTrack={isAudioTrack}
               onToggle={onToggleTrackHidden}
             />
           </LayerDisclosureRow>

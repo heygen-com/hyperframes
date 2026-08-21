@@ -536,12 +536,11 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
       if (!xRow) throw new Error("expected an X row");
       const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
       if (!gutter) throw new Error("expected a keyframe gutter on the X row");
-      // The diamond button always carries a `title`; the two plain arrow
-      // buttons don't. At currentPct=0 (playhead on the 0% keyframe), the prev
-      // arrow is disabled (no earlier keyframe) and the next arrow seeks to
-      // the 50% keyframe — exactly the case the coherence bug affected.
+      // At currentPct=0 (playhead on the 0% keyframe) the prev arrow is
+      // disabled (no earlier keyframe) and the next arrow seeks to the 50%
+      // keyframe — exactly the case the coherence bug affected.
       const nextArrow = Array.from(gutter.querySelectorAll<HTMLButtonElement>("button")).find(
-        (b) => !b.title && !b.disabled,
+        (b) => b.title === "Next keyframe" && !b.disabled,
       );
       if (!nextArrow) throw new Error("expected an enabled next-keyframe arrow button");
       act(() => nextArrow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -582,7 +581,9 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
       if (!xRow) throw new Error("expected an X row");
       const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
       if (!gutter) throw new Error("expected a keyframe gutter on the X row");
-      const diamond = gutter.querySelector<HTMLButtonElement>("button[title]");
+      // The diamond is the only gutter button that reports a pressed state;
+      // the prev/next arrows carry titles too, so `button[title]` is ambiguous.
+      const diamond = gutter.querySelector<HTMLButtonElement>("button[aria-pressed]");
       if (!diamond) throw new Error("expected a keyframe diamond button");
       // KeyframeDiamond's title mapping: active -> "Remove ... keyframe",
       // inactive -> "Add ... keyframe", ghost -> "Convert ... to keyframes".

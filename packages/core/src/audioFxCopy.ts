@@ -221,6 +221,17 @@ export const EFFECT_COPY: Record<string, EffectCopy> = {
       mix: { label: "Blend with the original" },
     },
   },
+  pitchshift: {
+    title: "Higher or Lower",
+    does: "Shifts everything up or down without changing its speed.",
+    reachFor: "It should sound squeakier, or deeper.",
+    primary: "semitones",
+    primaryEnds: { low: "Much deeper", high: "Much higher" },
+    params: {
+      semitones: { label: "How far", ends: { low: "Much deeper", high: "Much higher" } },
+      mix: { label: "Blend with the original" },
+    },
+  },
   delay: {
     title: "Echo",
     does: "Repeats the sound after a gap.",
@@ -328,6 +339,9 @@ export const PRESET_PROBLEM: Record<string, string> = {
   "pa-system": "Make it sound like a station announcement",
   intercom: "Make it sound like a door intercom",
   "doofus-worble": "Make it wobble like it is seasick",
+  chipmunk: "Make it small and squeaky",
+  giant: "Make it huge and deep",
+  monster: "Make it a monster",
   "room-tight": "It sounds dry and stuck to the speaker",
   "room-natural": "It should sound like a real place",
   hall: "It should sound far away and big",
@@ -386,6 +400,10 @@ export const SUMMARY: Record<string, (p: P) => string> = {
   saturate: (p) =>
     `${strength(Math.min(1, Math.abs(n(p.threshold, -6)) / 30), ["A little", "Some", "Heavy"])} warmth`,
   bitcrush: (p) => `Crushed to ${n(p.bits, 8)} bits`,
+  pitchshift: (p) =>
+    n(p.semitones, 0) === 0
+      ? "Unchanged pitch"
+      : `${n(p.semitones, 0) > 0 ? "Up" : "Down"} ${Math.abs(n(p.semitones, 0))} semitones`,
   delay: (p) => `Echo every ${n(p.time, 250)} ms`,
   reverb: (p) =>
     `${strength(n(p.size, 0.7), ["A small", "A medium", "A large"])} room, ${strength(n(p.wet, 0.35), ["lightly", "moderately", "heavily"])}`,

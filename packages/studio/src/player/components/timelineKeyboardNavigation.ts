@@ -1,6 +1,7 @@
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../store/playerStore";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
+import { groupAutomationLanes } from "./automationLaneData";
 import {
   timelineKeyframeSelectionKey,
   type TimelineKeyframeTarget,
@@ -8,11 +9,13 @@ import {
 import {
   timelineClipFocusId,
   timelineEaseFocusId,
+  timelineGroupRowId,
   timelineKeyframeFocusId,
   timelinePropertyRowId,
   timelineTrackRowId,
 } from "./timelineNavigationIdentity";
 import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
+import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 
 export type TimelineNavigationKey =
   | "ArrowLeft"
@@ -54,9 +57,11 @@ export interface TimelineLogicalRow {
   kind: "row";
   physicalTrackKey: number;
   logicalIndex: number;
-  level: 1 | 2;
+  level: 1 | 2 | 3;
   parentId: string | null;
   elementId: string | null;
+  /** Set only on a group's own row (level 1, no clips of its own). */
+  groupId?: string;
   expandable: boolean;
   expanded: boolean;
   propertyGroup?: PropertyGroupName;
@@ -65,13 +70,19 @@ export interface TimelineLogicalRow {
 
 export type TimelineLogicalTarget = TimelineLogicalRow | TimelineLogicalItem;
 
-interface BuildTimelineLogicalRowsInput {
+export interface BuildTimelineLogicalRowsInput {
   tracks: readonly (readonly [number, readonly TimelineElement[]])[];
   displayTrackOrder: readonly number[];
   laneCounts: ReadonlyMap<string, number>;
   selectedElementId: string | null;
   selectedElementIds: ReadonlySet<string>;
   expandedClipIds: ReadonlySet<string>;
+  /** Groups whose member rows the caret has shown (structural, not lanes). */
+  expandedGroupIds: ReadonlySet<string>;
+  /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
+  expandedLaneOwnerIds: ReadonlySet<string>;
+  groups: readonly TimelineTrackGroupInfo[];
+  trackGroupOf: ReadonlyMap<number, TimelineTrackGroupInfo>;
   gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
 }
 
@@ -104,6 +115,35 @@ function clipItems(rowId: string, elements: readonly TimelineElement[]): Timelin
         time: element.start + element.duration / 2,
       };
     });
+}
+
+/** A track's active clip (if any), its element id, and its automation lanes. */
+function resolveActiveTrackClip(
+  elements: readonly TimelineElement[],
+  laneCounts: BuildTimelineLogicalRowsInput["laneCounts"],
+  selectedElementId: string | null,
+  selectedElementIds: ReadonlySet<string>,
+  gsapAnimations: BuildTimelineLogicalRowsInput["gsapAnimations"],
+): {
+  activeClip: TimelineElement | null;
+  activeId: string | null;
+  lanes: ReturnType<typeof getTimelinePropertyLanes>;
+} {
+  const activeClip = resolveTrackKeyframeClip(
+    elements,
+    laneCounts,
+    selectedElementId,
+    selectedElementIds,
+  );
+  const activeId = activeClip ? elementId(activeClip) : null;
+  const lanes = activeClip
+    ? getTimelinePropertyLanes(
+        gsapAnimations.get(elementId(activeClip)) ?? [],
+        activeClip.start,
+        activeClip.duration,
+      )
+    : [];
+  return { activeClip, activeId, lanes };
 }
 
 function keyframeTarget(
@@ -167,6 +207,42 @@ function propertyItems(
   return items;
 }
 
+/** A clip's lanes are visible when either the caret or the `∿` button opened it. */
+function isRowOpen(
+  activeId: string | null,
+  expandedClipIds: ReadonlySet<string>,
+  expandedLaneOwnerIds: ReadonlySet<string>,
+): boolean {
+  if (activeId === null) return false;
+  return expandedClipIds.has(activeId) || expandedLaneOwnerIds.has(activeId);
+}
+
+/** A single automation-lane row, one level deeper than the track/group row that owns it. */
+function buildLaneRow(
+  track: number,
+  logicalIndex: number,
+  activeId: string,
+  activeClip: TimelineElement,
+  lane: ReturnType<typeof getTimelinePropertyLanes>[number],
+  level: 2 | 3,
+  parentId: string,
+): TimelineLogicalRow {
+  const laneRowId = timelinePropertyRowId(activeId, lane.group);
+  return {
+    id: laneRowId,
+    kind: "row",
+    physicalTrackKey: track,
+    logicalIndex,
+    level,
+    parentId,
+    elementId: activeId,
+    expandable: false,
+    expanded: false,
+    propertyGroup: lane.group,
+    items: propertyItems(laneRowId, activeClip, lane.keyframes),
+  };
+}
+
 /** Canonical model of the treegrid, independent of which virtual rows or clips are mounted. */
 export function buildTimelineLogicalRows({
   tracks,
@@ -175,57 +251,98 @@ export function buildTimelineLogicalRows({
   selectedElementId,
   selectedElementIds,
   expandedClipIds,
+  expandedGroupIds,
+  expandedLaneOwnerIds,
+  groups,
+  trackGroupOf,
   gsapAnimations,
 }: BuildTimelineLogicalRowsInput): TimelineLogicalRow[] {
   const trackMap = new Map(tracks);
+  const groupByAnchor = new Map(groups.map((group) => [group.anchorKey, group]));
   const rows: TimelineLogicalRow[] = [];
-  for (const track of displayTrackOrder) {
+
+  // A real track's own row (level 1 ungrouped, level 2 under a group) plus,
+  // when its clip's lanes are open, the lane rows one level deeper.
+  function emitTrack(track: number, level: 1 | 2, parentId: string | null): void {
     const elements = trackMap.get(track) ?? [];
     const trackId = timelineTrackRowId(track);
-    const activeClip = resolveTrackKeyframeClip(
+    const { activeClip, activeId, lanes } = resolveActiveTrackClip(
       elements,
       laneCounts,
       selectedElementId,
       selectedElementIds,
+      gsapAnimations,
     );
-    const activeId = activeClip ? elementId(activeClip) : null;
-    const lanes = activeClip
-      ? getTimelinePropertyLanes(
-          gsapAnimations.get(elementId(activeClip)) ?? [],
-          activeClip.start,
-          activeClip.duration,
-        )
-      : [];
-    const expanded = activeId !== null && expandedClipIds.has(activeId) && lanes.length > 0;
+    const expanded = isRowOpen(activeId, expandedClipIds, expandedLaneOwnerIds) && lanes.length > 0;
     rows.push({
       id: trackId,
       kind: "row",
       physicalTrackKey: track,
       logicalIndex: rows.length,
-      level: 1,
-      parentId: null,
+      level,
+      parentId,
       elementId: activeId,
       expandable: lanes.length > 0,
       expanded,
       items: clipItems(trackId, elements),
     });
-    if (!expanded || !activeClip) continue;
+    if (!expanded || !activeClip || !activeId) return;
     for (const lane of lanes) {
-      const rowId = timelinePropertyRowId(activeId, lane.group);
-      rows.push({
-        id: rowId,
-        kind: "row",
-        physicalTrackKey: track,
-        logicalIndex: rows.length,
-        level: 2,
-        parentId: trackId,
-        elementId: activeId,
-        expandable: false,
-        expanded: false,
-        propertyGroup: lane.group,
-        items: propertyItems(rowId, activeClip, lane.keyframes),
-      });
+      rows.push(
+        buildLaneRow(track, rows.length, activeId, activeClip, lane, level === 1 ? 2 : 3, trackId),
+      );
     }
+  }
+
+  // A group's own row (level 1) plus, when its `∿` is open, its own
+  // automation-lane rows (level 2) — structural content deferred to whatever
+  // step wires group automation editing; this reserves the rows and their
+  // count.
+  function emitGroup(group: TimelineTrackGroupInfo): void {
+    const groupRowId = timelineGroupRowId(group.id);
+    const groupExpanded = expandedGroupIds.has(group.id);
+    rows.push({
+      id: groupRowId,
+      kind: "row",
+      physicalTrackKey: group.anchorKey,
+      logicalIndex: rows.length,
+      level: 1,
+      parentId: null,
+      elementId: null,
+      groupId: group.id,
+      expandable: group.memberTracks.length > 0,
+      expanded: groupExpanded,
+      items: [],
+    });
+    if (expandedLaneOwnerIds.has(group.id)) {
+      const memberElements = group.memberTracks.flatMap((track) => trackMap.get(track) ?? []);
+      for (const laneGroup of groupAutomationLanes(memberElements)) {
+        rows.push({
+          id: `${groupRowId}::${laneGroup.key}`,
+          kind: "row",
+          physicalTrackKey: group.anchorKey,
+          logicalIndex: rows.length,
+          level: 2,
+          parentId: groupRowId,
+          elementId: null,
+          expandable: false,
+          expanded: false,
+          items: [],
+        });
+      }
+    }
+    if (!groupExpanded) return;
+    for (const track of group.memberTracks) emitTrack(track, 2, groupRowId);
+  }
+
+  for (const key of displayTrackOrder) {
+    const group = groupByAnchor.get(key);
+    if (group) {
+      emitGroup(group);
+      continue;
+    }
+    if (trackGroupOf.has(key)) continue; // emitted above, under its group
+    emitTrack(key, 1, null);
   }
   return rows;
 }

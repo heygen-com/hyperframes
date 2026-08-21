@@ -52,7 +52,6 @@ vi.mock("./nle/PreviewPane", () => ({ PreviewPane: () => null }));
 vi.mock("./nle/PreviewOverlays", () => ({ PreviewOverlays: () => null }));
 vi.mock("./nle/TimelinePane", () => ({ TimelinePane: () => null }));
 vi.mock("../captions/components/CaptionTimeline", () => ({ CaptionTimeline: () => null }));
-vi.mock("./StudioFeedbackBar", () => ({ StudioFeedbackBar: () => null }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -82,6 +81,7 @@ describe("EditorShell timeline selection sync", () => {
           handleTimelineElementResize={vi.fn()}
           handleTimelineGroupResize={vi.fn()}
           handleToggleTrackHidden={vi.fn()}
+          setAudioGroupAttribute={{ setLive: vi.fn(), setQuiet: vi.fn() }}
           handleBlockedTimelineEdit={vi.fn()}
           handleTimelineElementSplit={vi.fn()}
           handleRazorSplit={vi.fn()}

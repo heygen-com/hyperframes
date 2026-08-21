@@ -1,17 +1,10 @@
 import { useMemo } from "react";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import type { TimelineElement } from "../store/playerStore";
-import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
+import {
+  buildTimelineLogicalRows,
+  type BuildTimelineLogicalRowsInput,
+} from "./timelineKeyboardNavigation";
 
-interface TimelineLogicalRowsInput {
-  tracks: readonly (readonly [number, readonly TimelineElement[]])[];
-  displayTrackOrder: readonly number[];
-  laneCounts: ReadonlyMap<string, number>;
-  selectedElementId: string | null;
-  selectedElementIds: ReadonlySet<string>;
-  expandedClipIds: ReadonlySet<string>;
-  gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
-}
+type TimelineLogicalRowsInput = BuildTimelineLogicalRowsInput;
 
 /** Shared by rendering and focus coordination; stable input refs preserve memo identity. */
 export function useTimelineLogicalRows({
@@ -21,6 +14,10 @@ export function useTimelineLogicalRows({
   selectedElementId,
   selectedElementIds,
   expandedClipIds,
+  expandedGroupIds,
+  expandedLaneOwnerIds,
+  groups,
+  trackGroupOf,
   gsapAnimations,
 }: TimelineLogicalRowsInput) {
   return useMemo(
@@ -32,11 +29,19 @@ export function useTimelineLogicalRows({
         selectedElementId,
         selectedElementIds,
         expandedClipIds,
+        expandedGroupIds,
+        expandedLaneOwnerIds,
+        groups,
+        trackGroupOf,
         gsapAnimations,
       }),
     [
       displayTrackOrder,
       expandedClipIds,
+      expandedGroupIds,
+      expandedLaneOwnerIds,
+      groups,
+      trackGroupOf,
       gsapAnimations,
       laneCounts,
       selectedElementId,

@@ -186,3 +186,15 @@ export function trackStudioFeedback(
     source: "studio",
   });
 }
+
+export function trackBlockParamCommit(props: {
+  tone: "saved" | "error" | "confirm";
+  blockName: string;
+  key: string;
+}): void {
+  trackEvent("studio_block_param_commit", {
+    tone: props.tone,
+    block_name: props.blockName,
+    param_key: props.key,
+  });
+}

@@ -63,6 +63,14 @@ export interface KeyframeSlice {
   /** Union-expand clips (keyframed clips are expanded by default on load). */
   expandClips: (ids: readonly string[]) => void;
 
+  /** Groups whose member rows the caret has shown (structural, not lanes). */
+  expandedGroupIds: Set<string>;
+  toggleGroupExpanded: (id: string) => void;
+
+  /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
+  expandedLaneOwnerIds: Set<string>;
+  toggleLaneOwnerExpanded: (id: string) => void;
+
   /**
    * Project/session/element-scoped request. Its nonce is monotonic across store
    * resets so a stale consumer can never collide with a later request.
@@ -117,6 +125,24 @@ export function createKeyframeSlice(
         const next = new Set(state.expandedClipIds);
         for (const id of ids) next.add(id);
         return { expandedClipIds: next };
+      }),
+
+    expandedGroupIds: new Set(),
+    toggleGroupExpanded: (id) =>
+      set((state) => {
+        const next = new Set(state.expandedGroupIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { expandedGroupIds: next };
+      }),
+
+    expandedLaneOwnerIds: new Set(),
+    toggleLaneOwnerExpanded: (id) =>
+      set((state) => {
+        const next = new Set(state.expandedLaneOwnerIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return { expandedLaneOwnerIds: next };
       }),
 
     focusedEaseSegment: null,

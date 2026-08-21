@@ -23,6 +23,7 @@ import {
   isNonRelativeUrl,
   parseStrictFiniteTimingNumber,
   readMediaStart,
+  redactTelemetryString,
   resolveNaturalMediaTimelineDurationFromValues,
   type ResolvedDuration,
   type UnresolvedElement,
@@ -444,6 +445,31 @@ async function resolveMediaDuration(
     return { duration: null, resolvedPath: filePath };
   }
 
+  // STUDIO-5433: attach the remote `src` to any ffprobe failure surfaced from
+  // this branch. `extractMediaMetadata` → `runFfprobe` intentionally redacts
+  // its local `filePath` out of the error message (see
+  // engine/utils/ffprobe.ts::redactFfprobeInput), so a bare `moov atom not
+  // found` in Datadog carries no attribution and requires a Temporal history
+  // dump to identify the offending source. Re-throwing with the `src`
+  // (query-string redacted via `redactTelemetryString` so pre-signed URL
+  // signatures never reach telemetry) makes the next occurrence diagnosable
+  // directly from the render error. Fail-fast semantics for the video branch
+  // are preserved — only the message is enriched.
+  const withSrcContext = (error: unknown): Error => {
+    // A NotMediaPayloadError already carries its own attribution AND the
+    // routing metadata downstream keys on — `.code = "NOT_MEDIA_PAYLOAD"`,
+    // `.owner = "user"`, `.retryable = false`, `.elementFingerprints`. Wrapping
+    // it in a bare Error drops all four, flipping a user-input bug to
+    // generic/system/retryable: it pages ops and re-runs the render. Pass it
+    // through untouched.
+    if (error instanceof NotMediaPayloadError) return error;
+    const originalMessage = error instanceof Error ? error.message : String(error);
+    const safeSrc = redactTelemetryString(src);
+    const wrapped = new Error(`${originalMessage} [src=${safeSrc}]`);
+    if (error instanceof Error && error.stack) wrapped.stack = error.stack;
+    return wrapped;
+  };
+
   return withMediaProbeSlot(async () => {
     let profile: MediaProbeProfile;
     try {
@@ -471,13 +497,17 @@ async function resolveMediaDuration(
         }
         return { duration: null, resolvedPath: filePath };
       }
-      throw error;
+      throw withSrcContext(error);
     }
     assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, elementIdentity);
 
     let metadata: { durationSeconds: number };
     if (tagName === "video") {
-      metadata = await extractMediaMetadata(filePath);
+      try {
+        metadata = await extractMediaMetadata(filePath);
+      } catch (error) {
+        throw withSrcContext(error);
+      }
     } else {
       try {
         metadata = await extractAudioMetadata(filePath);

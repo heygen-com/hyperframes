@@ -163,6 +163,25 @@ export function Transform3DCube({
     setDraft(null);
   };
 
+  const onKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    const STEP = e.altKey ? 1 : 5;
+    let next: CubePose | null = null;
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const dir = e.key === "ArrowUp" ? -1 : 1;
+      next = e.shiftKey
+        ? { ...shown, rotationZ: wrapDeg(shown.rotationZ + dir * STEP) }
+        : { ...shown, rotationX: wrapDeg(shown.rotationX + dir * STEP) };
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      next = e.shiftKey
+        ? { ...shown, rotationZ: wrapDeg(shown.rotationZ + dir * STEP) }
+        : { ...shown, rotationY: wrapDeg(shown.rotationY + dir * STEP) };
+    }
+    if (!next) return;
+    e.preventDefault();
+    onPoseCommit(next);
+  };
+
   return (
     <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950">
       <svg
@@ -174,8 +193,10 @@ export function Transform3DCube({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onKeyDown={onKeyDown}
+        tabIndex={0}
         role="slider"
-        aria-label="Drag to rotate in 3D; hold Shift to roll; scroll to change depth"
+        aria-label="3D rotation. Arrow keys rotate X/Y, Shift+arrows roll Z, Alt for fine steps; drag to rotate, scroll to change depth"
         aria-valuetext={`X ${Math.round(shown.rotationX)}°, Y ${Math.round(
           shown.rotationY,
         )}°, Z ${Math.round(shown.rotationZ)}°`}

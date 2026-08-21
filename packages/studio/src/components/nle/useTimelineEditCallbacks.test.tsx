@@ -104,6 +104,7 @@ function renderCallbacks(): { callbacks: TimelineEditCallbacks; unmount: () => v
       handleTimelineElementResize: vi.fn(),
       handleTimelineGroupResize: vi.fn(),
       handleToggleTrackHidden: vi.fn(),
+      setAudioGroupAttribute: { setLive: vi.fn(), setQuiet: vi.fn() },
       handleBlockedTimelineEdit: vi.fn(),
       handleTimelineElementSplit: vi.fn(),
       handleRazorSplit: vi.fn(),

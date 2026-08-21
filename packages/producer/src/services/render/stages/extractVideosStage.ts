@@ -29,7 +29,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import {
   type CaptureVideoMetadataHint,
   type EngineConfig,
@@ -247,6 +247,34 @@ function applyVideoExtractionFailurePolicy(
   return policy.failureMode === "enforce" ? error : null;
 }
 
+/**
+ * Probe a media file's color space, returning null when it can't be read.
+ *
+ * Both HDR probes below widened which files they resolve (PRINFRA-349: the
+ * shared resolver percent-decodes non-ASCII names, so `%E5%9B%BE1.png` now
+ * finds `图1.png`). Files that used to silently fail to resolve are therefore
+ * reachable for the first time — including truncated / 0-byte assets, on which
+ * ffprobe exits non-zero and `extractMediaMetadata` throws. These probes run
+ * inside a bare `Promise.all`, so an unguarded throw aborts the whole render
+ * over one unreadable image. A probe that can't read a file must skip it, not
+ * kill the render.
+ */
+async function probeColorSpaceSafely(
+  path: string,
+  log: ProducerLogger | undefined,
+): Promise<VideoColorSpace | null> {
+  try {
+    const meta = await extractMediaMetadata(path);
+    return meta.colorSpace;
+  } catch (error) {
+    log?.warn("HDR color-space probe failed; treating source as SDR", {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export async function runExtractVideosStage(
   input: ExtractVideosStageInput,
 ): Promise<ExtractVideosStageResult> {
@@ -282,14 +310,14 @@ export async function runExtractVideosStage(
     log?.info("Probing video color spaces...", { videoCount: composition.videos.length });
     const probeFailures = await Promise.all(
       composition.videos.map(async (v) => {
-        // Use the shared resolver so a `<video src="../assets/foo">` in a
-        // sub-composition resolves the same way the browser would (see
-        // resolveProjectRelativeSrc in videoFrameExtractor for the full
-        // explanation). isAbsolute (not `startsWith("/")`) so Windows
-        // absolute paths like `C:\...` skip the join correctly.
-        const videoPath = isAbsolute(v.src)
-          ? v.src
-          : resolveProjectRelativeSrc(v.src, projectDir, compiledDir);
+        // Shared resolver so a `<video src="../assets/foo">` in a sub-composition
+        // resolves the same way the browser would, and a percent-encoded
+        // non-ASCII name decodes to its real on-disk path. Called with no
+        // isAbsolute() pre-check: the resolver already returns an absolute path
+        // that exists, and otherwise treats a leading slash as a browser
+        // origin-root URL — pre-checking would hand back `/assets/%E5%9B%BE1.png`
+        // undecoded and re-open PRINFRA-349 for root-relative srcs.
+        const videoPath = resolveProjectRelativeSrc(v.src, projectDir, compiledDir);
         if (!existsSync(videoPath)) return null;
         try {
           // Retries are separately opt-in from the failure gate. With the
@@ -338,21 +366,19 @@ export async function runExtractVideosStage(
   if (job.config.hdrMode !== "force-sdr" && composition.images.length > 0) {
     const probed = await Promise.all(
       composition.images.map(async (img) => {
-        let imgPath = img.src;
-        if (!imgPath.startsWith("/")) {
-          const fromCompiled = existsSync(join(compiledDir, imgPath))
-            ? join(compiledDir, imgPath)
-            : join(projectDir, imgPath);
-          imgPath = fromCompiled;
-        }
+        // Same shared resolver as the video probe above — a percent-encoded
+        // non-ASCII `<img src>` must decode to the on-disk path, or the HDR image
+        // never enters nativeHdrImageIds and the composition silently renders
+        // through the SDR fallback with wrong color (PRINFRA-349 symptom c).
+        const imgPath = resolveProjectRelativeSrc(img.src, projectDir, compiledDir);
         if (!existsSync(imgPath)) return null;
-        const meta = await extractMediaMetadata(imgPath);
-        if (isHdrColorSpace(meta.colorSpace)) {
+        const colorSpace = await probeColorSpaceSafely(imgPath, log);
+        if (isHdrColorSpace(colorSpace)) {
           nativeHdrImageIds.add(img.id);
-          imageTransfers.set(img.id, detectTransfer(meta.colorSpace));
+          imageTransfers.set(img.id, detectTransfer(colorSpace));
           hdrImageSrcPaths.set(img.id, imgPath);
         }
-        return meta.colorSpace;
+        return colorSpace;
       }),
     );
     imageColorSpaces.push(...probed);

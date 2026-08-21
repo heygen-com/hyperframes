@@ -92,7 +92,11 @@ export function formatFfmpegError(
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
-  const ffmpeg = spawn(getFfmpegBinary(), args);
+  // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
+  // this Node opens a visible console window per spawn on Windows. A render
+  // shells out dozens of times across parallel workers, which flashes a burst
+  // of windows across the user's desktop. No-op on macOS and Linux.
+  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
   trackChildProcess(ffmpeg);
   const managed = new ManagedChildProcess(ffmpeg, {
     signal: opts?.signal,

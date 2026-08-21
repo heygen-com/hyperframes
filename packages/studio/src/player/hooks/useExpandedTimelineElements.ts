@@ -35,7 +35,6 @@ function resolveRawId(
 
 interface TimelineExpansionRawIdInput {
   selectedElementId: string | null;
-  isPlaying: boolean;
   currentTime: number;
   manifest: ClipManifestClip[];
   parentMap: Map<string, string>;
@@ -97,14 +96,12 @@ function findActiveExpandableCompositionId(
 
 export function resolveTimelineExpansionRawId({
   selectedElementId,
-  isPlaying,
   currentTime,
   manifest,
   parentMap,
 }: TimelineExpansionRawIdInput): string | null {
   const selectedRawId = resolveRawId(selectedElementId, manifest, parentMap);
   if (selectedRawId) return selectedRawId;
-  if (isPlaying) return null;
   return findActiveExpandableCompositionId(currentTime, manifest, parentMap);
 }
 
@@ -334,7 +331,7 @@ export function buildExpandedElements(
       : (el.key ?? el.id) === parentKey;
 
   // ADDITIVE drill-in: the host row stays and its children are appended under
-  // it. Expansion is also triggered by the playhead alone (paused auto-expand),
+  // it. Expansion is also triggered by the playhead alone (active auto-expand),
   // so substituting the host row made it vanish on an ordinary seek, and with
   // it the host's keyframe lane, since diamonds render per row from
   // `keyframeCache.get(elementKey)`. The synthetic fractional lanes above sit
@@ -356,13 +353,14 @@ export function useExpandedTimelineElements(): TimelineElement[] {
   const clipParentMap = usePlayerStore((s) => s.clipParentMap);
   const domClipChildren = usePlayerStore((s) => s.domClipChildren);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const currentTime = usePlayerStore((s) => s.currentTime);
 
-  // Resolve which raw clip drives expansion. This reads currentTime (for paused
-  // auto-expand) so it re-runs each scrub tick, but it's a cheap manifest scan and
-  // its RESULT only changes when the playhead crosses a composition boundary. Keying
-  // the expensive build below on these ids (not raw currentTime) avoids re-allocating
+  // Resolve which raw clip drives expansion from the store's committed playhead
+  // time. The RAF loop keeps live time out of React and Zustand during playback,
+  // so this target deliberately stays stable until the loop commits or a seek /
+  // pause updates the store. The scan re-runs on scrub ticks, but its RESULT only
+  // changes when the playhead crosses a composition boundary. Keying the expensive
+  // build below on these ids (not raw currentTime) avoids re-allocating
   // expandedElements — and cascading TimelineClip re-renders — on every tick.
   const { rawId, selectedRawId } = useMemo(() => {
     if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
@@ -371,14 +369,13 @@ export function useExpandedTimelineElements(): TimelineElement[] {
     return {
       rawId: resolveTimelineExpansionRawId({
         selectedElementId,
-        isPlaying,
         currentTime,
         manifest: clipManifest,
         parentMap: clipParentMap,
       }),
       selectedRawId: resolveRawId(selectedElementId, clipManifest, clipParentMap),
     };
-  }, [clipManifest, clipParentMap, selectedElementId, isPlaying, currentTime]);
+  }, [clipManifest, clipParentMap, selectedElementId, currentTime]);
 
   return useMemo(() => {
     if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {

@@ -9,6 +9,25 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.6"
+  description="Released - 2026-08-21"
+  tags={["Release", "Audio", "Core", "Skills", "Lint"]}
+>
+Audio now replays reliably after backward seeks, and rendered mixes keep every clip at its authored time.
+Studio keeps nested timelines open, skill updates require confirmation, and a brittle lint error is gone.
+
+## Fixes
+
+- **Audio:** Keep delayed clips at their authored times in rendered mixes, preventing late clips from jumping to the start or disappearing ([c056289d8](https://github.com/heygen-com/hyperframes/commit/c056289d832351dc35256bda8b36188a77bc557a), [#3380](https://github.com/heygen-com/hyperframes/pull/3380)).
+- **Core:** Replay ended audio after backward timeline seeks without repeating tails during ordinary playback ([477e09642](https://github.com/heygen-com/hyperframes/commit/477e09642b6db735866316301d924d0dfdc3cf38), [#3383](https://github.com/heygen-com/hyperframes/pull/3383)).
+- **Skills:** Ask for confirmation before updating installed skills ([efc2e1964](https://github.com/heygen-com/hyperframes/commit/efc2e1964a1c837f748a1c319896998a0e9da211), [#3295](https://github.com/heygen-com/hyperframes/pull/3295)).
+- **Studio:** Keep subcomposition timelines open during playback ([a340ed382](https://github.com/heygen-com/hyperframes/commit/a340ed382aa5d335a3b7e40b6cfb4dfae1870569), [#3382](https://github.com/heygen-com/hyperframes/pull/3382)).
+- **Lint:** Remove the fragile `head_leaked_text` rule that could block correct compositions ([a89780679](https://github.com/heygen-com/hyperframes/commit/a8978067981805bdae72b8f16ca1c57153ec207a), [#3385](https://github.com/heygen-com/hyperframes/pull/3385)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.5...v0.8.6).
+</Update>
+
+<Update
   label="HyperFrames v0.8.5"
   description="Released - 2026-08-20"
   tags={["Release", "Studio", "Lint", "Telemetry"]}

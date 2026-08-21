@@ -11,7 +11,7 @@ import { usePlayerStore } from "../../player/store/playerStore";
 import { timelineClipFocusId } from "../../player/components/timelineNavigationIdentity";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
-import { basename, ext, truncateMiddle, formatDuration } from "./assetHelpers";
+import { basename, ext, truncateMiddle, formatDuration, type CopyFeedback } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
@@ -20,6 +20,23 @@ function writeAssetDragData(e: React.DragEvent, asset: string): void {
   e.dataTransfer.effectAllowed = "copy";
   e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
   e.dataTransfer.setData("text/plain", asset);
+}
+
+/** Copy-path outcome chip. Copying is a context-menu action, so this is pure
+ *  feedback — it renders only once a copy has succeeded or failed, and never
+ *  as an idle affordance for something the tile itself does not do. */
+function CopyChip({ feedback, asset }: { feedback: CopyFeedback; asset: string }) {
+  if (feedback?.path !== asset) return null;
+  return (
+    <span
+      role="status"
+      className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
+        feedback.ok ? "text-panel-accent bg-panel-accent/10" : "text-red-400 bg-red-500/10"
+      }`}
+    >
+      {feedback.ok ? "Copied" : "Copy failed"}
+    </span>
+  );
 }
 
 /** Open the row/tile context menu at the pointer, shared by asset tile + font row. */
@@ -90,7 +107,7 @@ export interface AssetCardProps {
   used: boolean;
   duration?: number;
   onCopy: (path: string) => void;
-  isCopied: boolean;
+  copyFeedback: CopyFeedback;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
@@ -112,13 +129,15 @@ export function AssetCard({
   used,
   duration,
   onCopy,
-  isCopied,
+  copyFeedback,
   onDelete,
   onRename,
   onAddAssetToTimeline,
 }: AssetCardProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
   const fullName = asset.split("/").pop() ?? asset;
   const name = basename(asset);
   const extension = ext(asset);
@@ -143,66 +162,80 @@ export function AssetCard({
     pointerDownRef.current = { x: e.clientX, y: e.clientY };
   }, []);
 
+  // Reveal the clip when the asset is already on the timeline, otherwise open
+  // the preview overlay. Shared by pointer-up and keyboard activation so the
+  // tile does the same thing however it is operated.
+  const activateCard = useCallback(() => {
+    if (used) {
+      const clip = findClipForAsset(elements, asset);
+      if (clip) {
+        // Dismiss any open preview overlay (from another asset) — the reveal
+        // must not leave a stale preview card floating over the canvas.
+        clearPreviewAsset();
+        const clipKey = clip.key ?? clip.id;
+        setSelectedElementId(clipKey);
+        // Scroll the timeline so the selected clip is actually visible.
+        requestTimelineFocus(timelineClipFocusId(clipKey));
+        return;
+      }
+    }
+    // Not added (or no matching clip found) → preview overlay
+    setPreviewAsset(asset, projectId);
+  }, [
+    used,
+    elements,
+    asset,
+    projectId,
+    setSelectedElementId,
+    requestTimelineFocus,
+    setPreviewAsset,
+    clearPreviewAsset,
+  ]);
+
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       const origin = pointerDownRef.current;
       pointerDownRef.current = null;
       if (!origin) return;
       if (!isPointerClick(e.clientX - origin.x, e.clientY - origin.y)) return;
-      // Treat as click
-      if (used) {
-        const clip = findClipForAsset(elements, asset);
-        if (clip) {
-          // Dismiss any open preview overlay (from another asset) — the reveal
-          // must not leave a stale preview card floating over the canvas.
-          clearPreviewAsset();
-          const clipKey = clip.key ?? clip.id;
-          setSelectedElementId(clipKey);
-          // Scroll the timeline so the selected clip is actually visible.
-          requestTimelineFocus(timelineClipFocusId(clipKey));
-          return;
-        }
-      }
-      // Not added (or no matching clip found) → preview overlay
-      setPreviewAsset(asset, projectId);
+      activateCard();
     },
-    [
-      used,
-      elements,
-      asset,
-      projectId,
-      setSelectedElementId,
-      requestTimelineFocus,
-      setPreviewAsset,
-      clearPreviewAsset,
-    ],
+    [activateCard],
   );
 
   return (
     <>
       <div
         draggable
+        role="button"
+        tabIndex={0}
+        aria-label={`${name} — open, drag to timeline, right-click for actions`}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            activateCard();
+          }
+        }}
         onDragStart={(e) => writeAssetDragData(e, asset)}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors ${
+        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors outline-none focus-visible:bg-neutral-800/60 ${
           isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/40"
         }`}
       >
         {/* Thumbnail */}
         <div className="w-full aspect-video rounded overflow-hidden bg-neutral-900 relative">
-          {isImage && (
+          {isImage && !imgError && (
             <img
               src={serveUrl}
               alt={name}
               loading="lazy"
               className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
+              onError={() => setImgError(true)}
             />
           )}
           {isVideo && (
@@ -220,7 +253,7 @@ export function AssetCard({
               )}
             </>
           )}
-          {!isImage && !isVideo && (
+          {((!isImage && !isVideo) || (isImage && imgError)) && (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-[10px] font-medium text-neutral-600">{extension}</span>
             </div>
@@ -242,14 +275,17 @@ export function AssetCard({
         </div>
 
         {/* Filename caption */}
-        <span
-          className={`text-[10px] leading-tight text-center block w-full ${
-            used ? "text-panel-text-2" : "text-panel-text-4"
-          }`}
-          title={fullName}
-        >
-          {truncateMiddle(fullName, 22)}
-        </span>
+        <div className="flex items-center justify-center gap-1">
+          <span
+            className={`text-[10px] leading-tight text-center ${
+              used ? "text-panel-text-2" : "text-panel-text-4"
+            }`}
+            title={fullName}
+          >
+            {truncateMiddle(fullName, 22)}
+          </span>
+          <CopyChip feedback={copyFeedback} asset={asset} />
+        </div>
       </div>
 
       {contextMenu && (
@@ -272,7 +308,7 @@ export interface FontRowProps {
   asset: string;
   used: boolean;
   onCopy: (path: string) => void;
-  isCopied: boolean;
+  copyFeedback: CopyFeedback;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
@@ -285,7 +321,7 @@ export function FontRow({
   asset,
   used,
   onCopy,
-  isCopied,
+  copyFeedback,
   onDelete,
   onRename,
   onAddAssetToTimeline,
@@ -293,15 +329,26 @@ export function FontRow({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const name = basename(asset);
   const extension = ext(asset);
+  const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
 
   return (
     <>
       <div
         draggable
+        role="button"
+        tabIndex={0}
+        aria-label={`${name} — copy path, drag to timeline, right-click for actions`}
         onClick={() => onCopy(asset)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onCopy(asset);
+          }
+        }}
         onDragStart={(e) => writeAssetDragData(e, asset)}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
-        className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors ${
+        className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors outline-none focus-visible:bg-neutral-800/60 ${
           isCopied
             ? "bg-studio-accent/10 border-l-2 border-studio-accent"
             : "border-l-2 border-transparent hover:bg-neutral-800/50"
@@ -323,6 +370,7 @@ export function FontRow({
                 in use
               </span>
             )}
+            <CopyChip feedback={copyFeedback} asset={asset} />
           </div>
         </div>
       </div>

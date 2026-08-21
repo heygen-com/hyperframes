@@ -55,6 +55,7 @@ export function AudioFxGroup({
   element,
   onSetAttributeQuiet: onSetAttributeQuietRaw,
   onSetAttributeLive,
+  onAutoGroupCarveSources,
 }: {
   element: DomEditSelection;
   /**
@@ -70,6 +71,8 @@ export function AudioFxGroup({
   onSetAttributeQuiet: (attr: string, value: string | null) => void | Promise<void>;
   /** Continuous, non-persisting write for a dial being dragged. */
   onSetAttributeLive: (attr: string, value: string | null) => void | Promise<void>;
+  /** Write `data-audio-group` on every named clip, atomically, one undo entry. */
+  onAutoGroupCarveSources?: (clipIds: readonly string[], groupId: string) => Promise<void>;
 }) {
   const chain = ((): HfAudioFxChain => {
     const raw = element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY];
@@ -231,6 +234,7 @@ export function AudioFxGroup({
     onSetAttributeQuiet,
     writeAutomation,
     setAnalysing,
+    onAutoGroupCarveSources,
   );
 
   const { runLeveller, auditionTransport, auditioningLevel, auditionLevel, removeLeveller } =

@@ -230,6 +230,7 @@ export async function lintProject(
     ...lintMissingLocalAsset(projectDir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
+    ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
@@ -252,6 +253,46 @@ export async function lintProject(
   }
 
   return { results, totalErrors, totalWarnings, totalInfos };
+}
+
+function lintBlankRootWithStandaloneComposition(
+  rootHtml: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
+  const { document: rootDocument } = parseHTML(rootHtml);
+  const root = rootDocument.querySelector("body [data-composition-id]");
+  // A no-media scaffold has no rendered descendants and can silently mask an authored file below.
+  // A scaffold that retained its A-roll <video>/<audio> is visibly non-blank, so this rule leaves it
+  // alone even when another composition is unmounted.
+  if (!root || root.querySelector("*:not(script):not(style):not(link):not(meta):not(template)")) {
+    return [];
+  }
+
+  const standaloneCandidates: string[] = [];
+  for (const source of htmlSources) {
+    if (!source.compSrcPath) continue;
+    const { document } = parseHTML(source.html);
+    const composition = document.querySelector("body [data-composition-id]");
+    if (!composition) continue;
+    const authoredTimedContent = Array.from(
+      composition.querySelectorAll(
+        ".clip, [data-start], [data-end], video, audio, img, svg, canvas",
+      ),
+    ).some((element) => !element.hasAttribute("data-composition-src"));
+    if (authoredTimedContent) standaloneCandidates.push(source.compSrcPath);
+  }
+
+  if (standaloneCandidates.length === 0) return [];
+  return [
+    {
+      code: "blank_root_with_standalone_composition",
+      severity: "error",
+      message: `The default index.html composition has no renderable content, but ${standaloneCandidates.join(", ")} contains a standalone timed composition. Default check, snapshot, preview, and render commands open index.html, so they will capture only its background.`,
+      fixHint:
+        `Move the authored composition into index.html, or mount it from index.html with data-composition-src and the sub-composition <template> contract. ` +
+        `If the separate file is intentional, render it explicitly with --composition ${standaloneCandidates[0]}.`,
+    },
+  ];
 }
 
 function lintProjectAudioFiles(

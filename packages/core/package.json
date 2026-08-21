@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "",
   "repository": {
     "type": "git",
@@ -165,6 +165,12 @@
       "node": "./dist/audioCarve.js",
       "import": "./src/audioCarve.ts",
       "types": "./src/audioCarve.ts"
+    },
+    "./audio-groups": {
+      "bun": "./src/audioGroups.ts",
+      "node": "./dist/audioGroups.js",
+      "import": "./src/audioGroups.ts",
+      "types": "./src/audioGroups.ts"
     },
     "./audio-automation": {
       "bun": "./src/audioAutomation.ts",
@@ -479,6 +485,10 @@
       "./audio-carve": {
         "import": "./dist/audioCarve.js",
         "types": "./dist/audioCarve.d.ts"
+      },
+      "./audio-groups": {
+        "import": "./dist/audioGroups.js",
+        "types": "./dist/audioGroups.d.ts"
       },
       "./audio-automation": {
         "import": "./dist/audioAutomation.js",

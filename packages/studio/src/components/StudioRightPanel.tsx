@@ -45,6 +45,7 @@ export function StudioRightPanel({
   domEditSaveTimestampRef,
   recordEdit,
   onToggleElementHidden,
+  onAutoGroupCarveSources,
   onAddMediaOverlay,
 }: StudioRightPanelProps) {
   const {
@@ -328,6 +329,7 @@ export function StudioRightPanel({
         copiedAgentPrompt={copiedAgentPrompt}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
+        onAutoGroupCarveSources={onAutoGroupCarveSources}
         onUngroup={handleUngroupSelection}
         onSetStyle={handleDomStyleCommit}
         onSetAttribute={handleDomAttributeCommit}

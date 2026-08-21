@@ -58,23 +58,42 @@ function delayTail(time: number, feedback: number): number {
   return Math.ceil(Math.log(TAIL_FLOOR) / Math.log(fb)) * gap;
 }
 
+// Exactly the generated impulse's length — see synthesizeReverbImpulse, which
+// is the same expression. A convolution is as long as its impulse.
+function reverbTail(node: HfAudioFxNode, automation?: HfAutomation): number {
+  return knobMax(node, "wet", automation) > 0
+    ? 0.6 + Math.max(0, Math.min(1, knobMax(node, "size", automation))) * 2.6
+    : 0;
+}
+
+function delayNodeTail(node: HfAudioFxNode, automation?: HfAutomation): number {
+  return knobMax(node, "mix", automation) > 0
+    ? delayTail(knobMax(node, "time", automation), knobMax(node, "feedback", automation))
+    : 0;
+}
+
+/** A single delay line, no feedback: it rings for one delay (≤100 ms). */
+function chorusTail(node: HfAudioFxNode, automation?: HfAutomation): number {
+  return knobMax(node, "mix", automation) > 0 ? knobMax(node, "delay", automation) / 1000 : 0;
+}
+
+/** Two 100 ms grains: worst case the tail is still draining the grain that was mid-crossfade when the input stopped. */
+function pitchshiftTail(node: HfAudioFxNode, automation?: HfAutomation): number {
+  return knobMax(node, "mix", automation) > 0 ? 0.2 : 0;
+}
+
 /** One node's tail. Zero when it has none, or when it is mixed out entirely. */
 function nodeTail(node: HfAudioFxNode, automation?: HfAutomation): number {
   if (node.enabled === false) return 0;
   switch (node.type) {
     case "reverb":
-      // Exactly the generated impulse's length — see synthesizeReverbImpulse,
-      // which is the same expression. A convolution is as long as its impulse.
-      return knobMax(node, "wet", automation) > 0
-        ? 0.6 + Math.max(0, Math.min(1, knobMax(node, "size", automation))) * 2.6
-        : 0;
+      return reverbTail(node, automation);
     case "delay":
-      return knobMax(node, "mix", automation) > 0
-        ? delayTail(knobMax(node, "time", automation), knobMax(node, "feedback", automation))
-        : 0;
+      return delayNodeTail(node, automation);
     case "chorus":
-      // A single delay line, no feedback: it rings for one delay (≤100 ms).
-      return knobMax(node, "mix", automation) > 0 ? knobMax(node, "delay", automation) / 1000 : 0;
+      return chorusTail(node, automation);
+    case "pitchshift":
+      return pitchshiftTail(node, automation);
     default:
       // Everything else settles with its input. The phaser is an all-pass chain
       // with no recirculation (group delay, not a tail); the dynamics nodes have

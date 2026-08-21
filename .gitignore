@@ -185,3 +185,6 @@ tmp/
 
 # Local editor settings
 .zed/
+
+# Local Chrome-for-Testing downloads (large binaries, never commit)
+chrome/

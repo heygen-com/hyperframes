@@ -333,7 +333,11 @@ let cachedFfmpegVersion: string | null = null;
  */
 export async function readFfmpegVersion(): Promise<string> {
   if (cachedFfmpegVersion !== null) return cachedFfmpegVersion;
-  const { stdout } = await execFile("ffmpeg", ["-version"], { maxBuffer: 1024 * 1024 });
+  const { stdout } = await execFile("ffmpeg", ["-version"], {
+    maxBuffer: 1024 * 1024,
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    windowsHide: true,
+  });
   const firstLine = stdout.split(/\r?\n/)[0]?.trim() ?? "";
   if (!firstLine) {
     throw new Error("ffmpeg -version returned empty output");

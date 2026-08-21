@@ -1376,6 +1376,30 @@ describe("useDomEditCommits attribute persist handling", () => {
     }
   });
 
+  it("sets and removes data-audio-group like any other data attribute", async () => {
+    stubPatchFetch({ ok: true, changed: true, matched: true });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("audio-group", "voiceover", undefined, {
+          previewOnly: true,
+        });
+      });
+      expect(element.getAttribute("data-audio-group")).toBe("voiceover");
+
+      await act(async () => {
+        await rendered.hook.handleDomAttributeLiveCommit("audio-group", "", undefined, {
+          previewOnly: true,
+        });
+      });
+      expect(element.getAttribute("data-audio-group")).toBeNull();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
   it("keeps a data-attribute commit on success", async () => {
     stubPatchFetch({
       ok: true,

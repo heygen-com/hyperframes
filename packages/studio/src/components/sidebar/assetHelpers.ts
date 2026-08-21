@@ -24,6 +24,14 @@ export function basename(path: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+/** Last path segment WITH its extension (basename() strips it). */
+export function filename(path: string): string {
+  return path.split("/").pop() ?? path;
+}
+
+/** Feedback shown on an asset row/card after a copy-path attempt. */
+export type CopyFeedback = { path: string; ok: boolean } | null;
+
 export function ext(path: string): string {
   const name = path.split("/").pop() ?? path;
   const dot = name.lastIndexOf(".");

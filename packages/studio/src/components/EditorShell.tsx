@@ -85,6 +85,9 @@ export function EditorShell({
   handleTimelineElementResize,
   handleTimelineGroupResize,
   handleToggleTrackHidden,
+  setAudioGroupAttribute,
+  handleGroupClips,
+  setElementFxAttribute,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -135,6 +138,9 @@ export function EditorShell({
     handleTimelineElementResize,
     handleTimelineGroupResize,
     handleToggleTrackHidden,
+    setAudioGroupAttribute,
+    handleGroupClips,
+    setElementFxAttribute,
     handleBlockedTimelineEdit,
     handleTimelineElementSplit,
     handleRazorSplit,
@@ -231,6 +237,12 @@ function EditorShellBody({
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
 
+  // The caption track's blocks are seek targets; CaptionTimeline took an onSeek
+  // prop that nothing ever passed, so clicking a block did nothing.
+  const seekCaptionTime = useCallback((time: number) => {
+    usePlayerStore.getState().requestSeek(time);
+  }, []);
+
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -282,7 +294,7 @@ function EditorShellBody({
                   Captions
                 </span>
               </div>
-              <CaptionTimeline pixelsPerSecond={100} />
+              <CaptionTimeline pixelsPerSecond={100} onSeek={seekCaptionTime} />
             </div>
           ) : undefined
         }

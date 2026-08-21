@@ -67,6 +67,16 @@ export interface TimelineElement {
   hidden?: boolean;
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
+  /** Verbatim `data-audio-group` — the id of the `<hf-audio-group>` this clip belongs to, when any. */
+  audioGroup?: string;
+  /** The owning group's `data-label` (falls back to its id) — resolved once per parse. */
+  audioGroupLabel?: string;
+  /** The owning group's `data-volume` (defaults to 1) — resolved once per parse. */
+  audioGroupVolume?: number;
+  /** The owning group's `data-hidden` (defaults to false) — resolved once per parse. */
+  audioGroupHidden?: boolean;
+  /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
+  audioGroupFxChain?: string;
   /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child

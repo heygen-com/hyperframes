@@ -15,6 +15,8 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
+import { hasDefinitiveEntryMismatch, lintProject } from "../utils/lintProject.js";
+import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -650,6 +652,22 @@ export default defineCommand({
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
+    const lintResult = await lintProject(project.dir);
+    if (hasDefinitiveEntryMismatch(lintResult)) {
+      console.log("");
+      for (const line of formatLintFindings(lintResult, { errorsFirst: true })) {
+        console.log(line);
+      }
+      console.log("");
+      console.log(c.error("  Aborting snapshot because the default index.html entry is blank."));
+      console.log(
+        c.dim(
+          "  Move or mount the authored file, or snapshot its directory directly: hyperframes snapshot <project>/compositions",
+        ),
+      );
+      console.log("");
+      failCommand();
+    }
     const frames = parseInt(args.frames as string, 10) || 5;
     const timeout = parseInt(args.timeout as string, 10) || 5000;
     const atTimestamps = args.at

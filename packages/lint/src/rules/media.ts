@@ -632,6 +632,8 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_volume_tween_overrides_gain
   findVolumeTweenOverridesGainFindings,
+  // audio_carve_ungrouped_sources
+  findCarveUngroupedSourcesFindings,
 ];
 
 /**
@@ -717,6 +719,51 @@ function findVolumeDoubleAutomationFindings(ctx: LintContext): HyperframeLintFin
       elementId: id,
       fixHint:
         "Keep one of them: delete the volume lane to go back to tweening, or drop the tween and shape the level in the automation lane.",
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/**
+ * A carve's `sources` naming two or more plain clip ids is the normative
+ * mistake groups exist to prevent (groups doc §1.6): the list silently rots
+ * when a voice clip is added or removed, since nothing re-derives it. Naming
+ * a group instead means membership resolves at analysis time. Silent when
+ * `sources` already names a group, or names at most one clip.
+ */
+function findCarveUngroupedSourcesFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const groupIds = new Set(
+    ctx.tags.filter((tag) => tag.name === "hf-audio-group").map((tag) => readAttr(tag.raw, "id")),
+  );
+
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    const raw = readDecodedAttr(tag.raw, "data-fx-carve");
+    if (raw === null) continue;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    const sources = (parsed as { sources?: unknown }).sources;
+    if (!Array.isArray(sources)) continue;
+    const clipIds = sources.filter(
+      (id): id is string => typeof id === "string" && !groupIds.has(id),
+    );
+    if (clipIds.length < 2) continue;
+
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    findings.push({
+      code: "audio_carve_ungrouped_sources",
+      severity: "warning",
+      message: `${elementId ? `#${elementId}'s` : "This"} carve names ${clipIds.length} voice clips directly (${clipIds.join(", ")}) instead of a group.`,
+      elementId,
+      fixHint:
+        "Group the voice clips and carve against the group — a hand-rolled clip list silently rots when a clip is added.",
       snippet: truncateSnippet(tag.raw),
     });
   }

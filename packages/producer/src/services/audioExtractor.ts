@@ -88,7 +88,8 @@ export function parseAudioElements(html: string): AudioElement[] {
  */
 function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(getFfmpegBinary(), args);
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
     trackChildProcess(ffmpeg);
     let stderr = "";
 
@@ -211,8 +212,9 @@ async function mixTracks(
     const delayMs = Math.round(track.start * 1000);
     const trimDuration = track.duration > 0 ? track.duration : totalDuration;
 
+    // See audioMixer.ts for why asetpts sits between apad and atrim.
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,atrim=0:${totalDuration}[a${i}]`,
+      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${totalDuration}[a${i}]`,
     );
   });
 

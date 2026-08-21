@@ -234,11 +234,19 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
 
   const handleCopyElementInfo = () => {
     const text = buildElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef);
-    void navigator.clipboard.writeText(text);
-    showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
-    setClipboardCopied(true);
-    clearTimeout(clipboardTimerRef.current);
-    clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+    // Claim the copy only once the write actually lands — a denied clipboard
+    // permission otherwise reports a copy that never happened.
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
+        setClipboardCopied(true);
+        clearTimeout(clipboardTimerRef.current);
+        clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+      })
+      .catch(() => {
+        showToast("Couldn't copy to the clipboard — check browser permissions", "error");
+      });
   };
 
   if (STUDIO_FLAT_INSPECTOR_ENABLED) {

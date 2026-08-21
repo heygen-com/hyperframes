@@ -152,6 +152,12 @@
       "types": "./dist/audioCarve.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-groups": {
+      "source": "./src/audioGroups.ts",
+      "runtime": "./dist/audioGroups.js",
+      "types": "./dist/audioGroups.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-automation": {
       "source": "./src/audioAutomation.ts",
       "runtime": "./dist/audioAutomation.js",

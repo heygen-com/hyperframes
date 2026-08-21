@@ -18,6 +18,18 @@ export interface AudioElement {
   fxChain?: string;
   /** Serialised automation JSON from `data-automation`, when set. */
   automation?: string;
+  /** The id of the `data-audio-group` this element is a member of, when set. */
+  groupId?: string;
+  /**
+   * The group's own FX chain / automation / volume, duplicated identically
+   * onto every member of the same group — all resolved from the one
+   * `resolveAudioGroups` call `parseAudioElements` already makes, so a
+   * render pass building a group sub-mix from a set of members has
+   * everything it needs from any one of them without a second lookup.
+   */
+  groupFxChain?: string;
+  groupAutomation?: string;
+  groupVolume?: number;
   type: "audio" | "video";
 }
 

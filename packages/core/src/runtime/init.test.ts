@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
+import { WebAudioTransport } from "./webAudioTransport";
 import type { RuntimeTimelineLike } from "./types";
 
 it("schedules WebAudio element gain from author volume without bridge volume", () => {
@@ -1319,6 +1320,99 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(7);
     expect(hiddenClip.style.visibility).toBe("hidden");
     expect(hiddenClip.style.display).toBe("");
+  });
+
+  it("excludes a data-hidden audio clip from Web Audio scheduling", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const hiddenAudio = document.createElement("audio");
+    hiddenAudio.setAttribute("data-start", "0");
+    hiddenAudio.setAttribute("data-duration", "10");
+    hiddenAudio.setAttribute("data-hidden", "");
+    hiddenAudio.load = () => {};
+    hiddenAudio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(hiddenAudio);
+
+    const audibleAudio = document.createElement("audio");
+    audibleAudio.setAttribute("data-start", "0");
+    audibleAudio.setAttribute("data-duration", "10");
+    audibleAudio.load = () => {};
+    audibleAudio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audibleAudio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    // `scheduleMediaElementPlayback` is the Web Audio scheduling entry point (#3322 routed
+    // media-element clips straight through the graph; `decodeAudioElement` is only the fallback
+    // for the rate-shifted case, so it is NOT called on this path).
+    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+
+    const player = window.__player;
+    player?.play();
+    player?.seek(0);
+
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
+  });
+
+  it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    // Two separately-toggled audio clips (not a wrapper div — the visibility
+    // sweep only walks [data-start] nodes, so the attribute must sit on each
+    // timed element itself, matching how the eye button hides per-element).
+    const audioA = document.createElement("audio");
+    audioA.setAttribute("data-start", "0");
+    audioA.setAttribute("data-duration", "10");
+    audioA.setAttribute("data-hidden", "");
+    audioA.load = () => {};
+    audioA.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audioA);
+
+    const audioB = document.createElement("audio");
+    audioB.setAttribute("data-start", "0");
+    audioB.setAttribute("data-duration", "10");
+    audioB.setAttribute("data-hidden", "");
+    audioB.load = () => {};
+    audioB.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audioB);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    // play() alone (no seek) already runs one visibility pass while the clock
+    // is playing, registering both clips as hidden — the baseline this test
+    // toggles away from.
+    player?.play();
+
+    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+    const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
+
+    // Both become visible in the SAME sync pass — must still be one reschedule.
+    // keepPlaying: a plain seek() pauses the clock before re-syncing visibility,
+    // which would make the hiddenAudioDirty branch's isPlaying() gate a no-op.
+    audioA.removeAttribute("data-hidden");
+    audioB.removeAttribute("data-hidden");
+    player?.seek(1, { keepPlaying: true });
+
+    expect(generationSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy).toHaveBeenCalledTimes(2);
   });
 
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {

@@ -35,7 +35,6 @@ import {
 import {
   readTimelineDurationFromDocument,
   mergeTimelineElementsPreservingDowngrades,
-  parseTimelineFromDOM,
 } from "../lib/timelineDOM";
 import { normalizeToZones } from "../components/timelineZones";
 import {
@@ -48,7 +47,7 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
-import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 
 export function useTimelinePlayer() {
@@ -488,51 +487,14 @@ export function useTimelinePlayer() {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
     const handleWindowKeyUp = (e: KeyboardEvent) => playbackKeyUpRef.current(e);
 
-    // Pre-existing message-router complexity — surfaced by line shifts, not new logic.
-    // fallow-ignore-next-line complexity
-    const handleMessage = (e: MessageEvent) => {
-      if (hasTimelinePerformanceFixtureLease()) return;
-      const data = e.data;
-      const ourIframe = iframeRef.current;
-      if (e.source && ourIframe && e.source !== ourIframe.contentWindow) {
-        return;
-      }
-      if (data?.source === "hf-preview") {
-        if (!acceptStudioRuntimeMessage(data)) return;
-      }
-      if (data?.source === "hf-preview" && data?.type === "state") {
-        try {
-          if (usePlayerStore.getState().elements.length === 0) {
-            const iframeWin = ourIframe?.contentWindow as IframeWindow | null;
-            const manifest = iframeWin?.__clipManifest;
-            if (manifest && manifest.clips.length > 0) {
-              processTimelineMessageRef.current(manifest);
-            }
-          }
-          const msSinceTimeline = Date.now() - lastTimelineMessageRef.current;
-          if (msSinceTimeline > 500) {
-            enrichMissingCompositionsRef.current();
-          }
-        } catch {}
-      }
-      if (data?.source === "hf-preview" && data?.type === "timeline" && Array.isArray(data.clips)) {
-        lastTimelineMessageRef.current = Date.now();
-        processTimelineMessageRef.current(data);
-        enrichMissingCompositionsRef.current();
-        if (usePlayerStore.getState().elements.length === 0) {
-          try {
-            const doc = ourIframe?.contentDocument;
-            const adapter = getAdapter();
-            if (doc && adapter) {
-              const els = parseTimelineFromDOM(doc, adapter.getDuration());
-              if (els.length > 0) {
-                syncTimelineElements(els);
-              }
-            }
-          } catch {}
-        }
-      }
-    };
+    const handleMessage = createPreviewMessageHandler({
+      iframeRef,
+      processTimelineMessageRef,
+      enrichMissingCompositionsRef,
+      lastTimelineMessageRef,
+      getAdapter,
+      syncTimelineElements,
+    });
 
     const handleVisibilityChange = () => {
       if (document.hidden && usePlayerStore.getState().isPlaying) {

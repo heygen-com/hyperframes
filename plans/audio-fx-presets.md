@@ -88,7 +88,10 @@ These are ordinary filter + saturation + bitcrush recipes and we can do all of
 them. **The character half of CapCut's list we cannot do**: Chipmunk, Deep
 Voice, Robot, Alien, Monster, Elf — every one of those is pitch, formant or
 ring modulation, and the registry has no pitch shifter, no time-stretch and no
-ring mod. Out of scope unless a new effect is added.
+ring mod. Out of scope unless a new effect is added. **Update (2026-08-14,
+PR #3276/#3277):** a pitch shifter landed, and Chipmunk, Giant, and Monster now
+ship as presets; Robot and Alien are still out of scope (they need ring
+modulation, which the registry still does not have).
 
 ---
 
@@ -112,7 +115,9 @@ Plus two force multipliers the catalog depends on:
 **Hard limits, stated once:** no noise reduction, no de-reverberation, no pitch
 or formant shift, no time-stretch, no spectral repair, no stereo widening
 beyond `chorus`, no true multiband compression (though stacked peaking + a
-`mix`-blended compressor approximates it).
+`mix`-blended compressor approximates it). **Update (2026-08-14, PR
+#3276):** pitch shift landed as a worklet effect — the "no pitch or formant
+shift" limit above is now half-lifted (pitch, still no formant shift).
 
 ---
 
