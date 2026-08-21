@@ -1446,7 +1446,7 @@ function handleRenderError(
       message,
       windowsRemediation,
     );
-    process.exit(1);
+    failCommand();
   }
   errorBox("Render failed", message, hint);
   failCommand();
