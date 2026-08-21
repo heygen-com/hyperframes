@@ -529,9 +529,9 @@ export interface RenderPerfSummary {
      * `fallbackReason` being set is the "any fallback fired" signal.
      */
     selfVerifyFallback: boolean;
-    /** What tripped the fallback retry: psnr | blank | oom | capture_error. */
+    /** What tripped the fallback retry: psnr | blank | oom | de_renderer_stall | capture_error. */
     fallbackReason?: string;
-    /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for blank/oom/capture_error (no score exists). */
+    /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for every other reason (no score exists). */
     fallbackFailedDb?: number;
     /** Frame index the verification failure was detected at; set for both "psnr" and "blank" fallback reasons. */
     fallbackFrameIndex?: number;
@@ -545,6 +545,13 @@ export interface RenderPerfSummary {
     boundaryFrames: number;
     /** Per-frame "No cached paint record" screenshot fallbacks. */
     ncprFallbacks: number;
+    /**
+     * Frames that blew `HF_DE_FRAME_TIMEOUT_MS` — a wedged renderer
+     * (PRINFRA-488). Distinct from the other fallback counters: this one always
+     * costs a whole-render re-run via screenshot, so its rate is worth graphing
+     * on its own rather than inside `capture_error`.
+     */
+    frameTimeouts: number;
   };
 }
 

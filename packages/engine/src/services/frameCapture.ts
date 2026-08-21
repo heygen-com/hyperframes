@@ -3163,21 +3163,34 @@ class DeFrameTimeoutError extends Error {
   }
 }
 
-function isDeFrameTimeoutError(err: unknown): boolean {
-  return err instanceof DeFrameTimeoutError;
-}
-
 /**
  * Race `work` against a deadline. The losing promise is NOT cancellable —
  * puppeteer cannot abort an in-flight `page.evaluate` — so its rejection is
  * swallowed to avoid an unhandled rejection when it eventually settles (or
- * never does).
+ * never does). The orphaned round-trip keeps running in its Chrome worker;
+ * that worker is reclaimed by the outer retry rebuilding the page
+ * (`closeOrphanedProbeForRetry`), not by anything here.
+ *
+ * `onTimeout` fires exactly when the deadline wins, and is the ONLY place the
+ * stall is observable: because the deadline races `work` from outside, nothing
+ * inside `work` — including its own catch blocks — ever sees this error.
+ *
+ * Exported for the deadline unit test; `captureFrameToBuffer` is the only
+ * production caller.
  */
-async function withFrameDeadline<T>(work: Promise<T>, label: string, ms: number): Promise<T> {
+export async function withFrameDeadline<T>(
+  work: Promise<T>,
+  label: string,
+  ms: number,
+  onTimeout?: () => void,
+): Promise<T> {
   if (!(ms > 0)) return work;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const guard = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new DeFrameTimeoutError(label, ms)), ms);
+    timer = setTimeout(() => {
+      onTimeout?.();
+      reject(new DeFrameTimeoutError(label, ms));
+    }, ms);
   });
   try {
     return await Promise.race([work, guard]);
@@ -3316,22 +3329,6 @@ async function captureFrameCore(
         // (display toggled / detached / freshly-shown at a clip-cut boundary). This
         // is a per-frame condition, not a whole-comp one — fall back to screenshot
         // for THIS frame instead of aborting the render. See fast-capture-limitations.md.
-        if (isDeFrameTimeoutError(err)) {
-          // Deliberately NO per-frame screenshot fallback here. When the
-          // renderer stops scheduling, it is wedged for EVERY subsequent
-          // round-trip on that page — measured: the screenshot fallback blew
-          // the same deadline. Fail fast instead and let the producer re-render
-          // the whole comp on a fresh page via the screenshot path, which is
-          // the only recovery that actually works.
-          session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
-          console.log(
-            `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
-              `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
-              `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
-              `retries via screenshot.`,
-          );
-          throw err;
-        }
         if (isNoCachedPaintRecordError(err)) {
           session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
           console.log(
@@ -3422,6 +3419,22 @@ export async function captureFrameToBuffer(
           captureFrameCore(session, frameIndex, time),
           `frame ${frameIndex}`,
           DE_FRAME_TIMEOUT_MS,
+          () => {
+            // Deliberately NO per-frame screenshot fallback. When the renderer
+            // stops scheduling it is wedged for EVERY subsequent round-trip on
+            // that page — measured: the screenshot fallback blew the same
+            // deadline. Fail fast and let the producer re-render the whole comp
+            // on a fresh page via the screenshot path, the only recovery that
+            // works. Counted here rather than in captureFrameCore's catch: the
+            // deadline rejects from outside it, so that catch never runs.
+            session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
+            console.log(
+              `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
+                `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
+                `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
+                `retries via screenshot.`,
+            );
+          },
         )
       : await captureFrameCore(session, frameIndex, time);
 
