@@ -6,7 +6,7 @@ vi.mock("./publishProject.js", () => ({
   getPublishApiBaseUrl: getPublishApiBaseUrlMock,
 }));
 
-import { submitFeedback } from "./submitFeedback.js";
+import { submitCatalogSearchMiss, submitFeedback } from "./submitFeedback.js";
 
 describe("submitFeedback", () => {
   beforeEach(() => {
@@ -96,5 +96,61 @@ describe("submitFeedback", () => {
 
     await expect(submitFeedback({ rating: 2, cliVersion: "1.2.3" })).resolves.toBeUndefined();
     await expect(submitFeedback({ rating: 3, cliVersion: "1.2.3" })).resolves.toBeUndefined();
+  });
+});
+
+describe("submitCatalogSearchMiss", () => {
+  beforeEach(() => {
+    getPublishApiBaseUrlMock.mockReturnValue("https://api.example.com");
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the gap to the catalog endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitCatalogSearchMiss({
+      query: "typewriter that deletes",
+      wanted: "text that types then backspaces",
+      tier: "on-device",
+      cliVersion: "0.7.106",
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://api.example.com/v1/hyperframes/catalog_search_miss");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      query: "typewriter that deletes",
+      wanted: "text that types then backspaces",
+      tier: "on-device",
+      cli_version: "0.7.106",
+    });
+  });
+
+  it("truncates a field the backend would reject outright", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitCatalogSearchMiss({ query: "q".repeat(900), cliVersion: "0.7.106" });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init?.body)).query).toHaveLength(500);
+  });
+
+  it("never throws when the forward fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    await expect(
+      submitCatalogSearchMiss({ query: "a query", cliVersion: "0.7.106" }),
+    ).resolves.toBeUndefined();
   });
 });
