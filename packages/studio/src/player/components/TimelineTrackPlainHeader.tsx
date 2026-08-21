@@ -5,9 +5,20 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
-// Audio tracks say "Mute", not "Hide" — the eye IS mute for sound-only rows.
+/**
+ * Audio tracks say "Mute", not "Hide" — the eye IS mute for sound-only rows.
+ *
+ * Action-phrased and per-track, like the visual branch: `hidden` here is the
+ * CURRENT state, so the name has to promise the opposite. It read "Muted" /
+ * "Mute" until the rollout, which named the state instead of the action (a
+ * screen-reader user could not tell that activating an already-muted row would
+ * unmute it) and dropped `suffix`, so every audio row shared one accessible
+ * name — music plus VO being the ordinary case. The wording matches the undo
+ * entry `timelineTrackVisibility` writes for the same click, where `hidden` is
+ * the INCOMING state and the two therefore read inverted.
+ */
 function visibilityButtonLabel(showAsMute: boolean, hidden: boolean, suffix: string): string {
-  if (showAsMute) return hidden ? "Muted" : "Mute";
+  if (showAsMute) return hidden ? `Unmute track${suffix}` : `Mute track${suffix}`;
   return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
 }
 

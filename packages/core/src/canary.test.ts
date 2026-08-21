@@ -437,7 +437,17 @@ describe("canary reason property", () => {
  * nothing else would say so.
  */
 describe("the audio rollout", () => {
-  it("registers no audio canary", () => {
+  // The three names by hand, because that is the assertion the intent needs: a
+  // prefix check catches `audio-fx-rack` coming back but not `fx-rack` or
+  // `audiofx-rack`, and it is the specific feature being re-hidden that matters.
+  it("registers none of the three retired audio canaries", () => {
+    const retired = ["audio-fx-rack", "audio-track-mute", "audio-groups"];
+    expect(retired.filter((name) => findCanary(name))).toEqual([]);
+  });
+
+  // The family guard, kept alongside it: a fourth audio canary would gate a
+  // feature that now ships to everyone.
+  it("registers no audio canary at all", () => {
     expect(CANARIES.filter((c) => c.name.startsWith("audio-")).map((c) => c.name)).toEqual([]);
   });
 });
