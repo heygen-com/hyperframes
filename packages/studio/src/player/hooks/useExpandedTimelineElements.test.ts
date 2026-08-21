@@ -371,7 +371,6 @@ describe("buildExpandedElements", () => {
     for (const currentTime of [0, 7.68, 0.2]) {
       const rawId = resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime,
         manifest,
         parentMap,
@@ -430,7 +429,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 2,
         manifest,
         parentMap: new Map(),
@@ -448,7 +446,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 2,
         manifest,
         parentMap,
@@ -468,7 +465,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 12,
         manifest,
         parentMap,
@@ -491,7 +487,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 5,
         manifest,
         parentMap,
@@ -513,7 +508,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 3.5,
         manifest,
         parentMap,
@@ -521,7 +515,7 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBe("inner");
   });
 
-  it("does not auto-expand an active composition while playing", () => {
+  it("auto-expands an active composition while playing", () => {
     const manifest = [
       clip({ id: "scene", start: 0, duration: 5 }),
       clip({ id: "headline", start: 1, duration: 2 }),
@@ -531,15 +525,14 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: true,
         currentTime: 2,
         manifest,
         parentMap,
       }),
-    ).toBeNull();
+    ).toBe("scene");
   });
 
-  it("keeps selected elements ahead of paused active composition auto-expansion", () => {
+  it("keeps selected elements ahead of active composition auto-expansion", () => {
     const manifest = [
       clip({ id: "scene", start: 0, duration: 6 }),
       clip({ id: "headline", start: 1, duration: 2 }),
@@ -553,7 +546,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: "caption",
-        isPlaying: false,
         currentTime: 1.5,
         manifest,
         parentMap,
