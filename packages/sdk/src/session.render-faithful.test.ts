@@ -87,6 +87,10 @@ describe("serialize() render-faithfulness (WS-F)", () => {
     // data-start and data-end are the serialized form of timing
     expect(html).toContain('data-start="2"');
     expect(html).toContain('data-end="5"');
+    // hf-title already carries data-end="5", so the assertion above passes even
+    // if the write became a no-op. hf-body's own pre-mutation end is the half
+    // that has to disappear.
+    expect(html).not.toContain('data-end="6"');
   });
 
   it("moveElement edit is present in serialized output", async () => {
@@ -140,9 +144,12 @@ describe("serialize() render-faithfulness (WS-F)", () => {
     expect(html).toContain('data-start="0.5"');
     expect(html).toContain('data-end="4.5"');
 
-    // moveElement
+    // moveElement. data-x="900" is unique to this edit; data-y="50" is not —
+    // hf-box carries it in the fixture — so pin the disappearance of hf-logo's
+    // own pre-move y as well.
     expect(html).toContain('data-x="900"');
     expect(html).toContain('data-y="50"');
+    expect(html).not.toContain('data-y="200"');
 
     // addGsapTween — id is returned and script contains new tween
     expect(tweenId).not.toBe("");
