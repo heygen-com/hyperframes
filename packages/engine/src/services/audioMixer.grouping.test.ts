@@ -21,6 +21,45 @@ import { MIXED_AUDIO_FILENAME, processCompositionAudio } from "./audioMixer.js";
  * loud. These tests are the instrument that catches that class.
  */
 
+/**
+ * The production ffmpeg process timeout is 5 minutes — far above any test
+ * budget — so a stalled mix could only ever surface here as a bare
+ * "Test timed out in 30000ms": no stderr, no clue which stage hung. That is
+ * what made the Windows CI failure from this file undiagnosable. Capping it
+ * well under the per-test timeout turns a stall into a fast, reported failure,
+ * while leaving a merely slow runner room to finish.
+ */
+const TEST_FFMPEG_TIMEOUT_MS = 20_000;
+
+/**
+ * `processCompositionAudio` with the short process timeout, throwing the
+ * recorded failures rather than returning `success: false`. Every call here
+ * asserts success immediately afterwards, so a bare `expected false to be true`
+ * was all a broken mix ever reported — the reason was sitting unread in
+ * `failures`.
+ */
+async function mixAudio(
+  elements: Parameters<typeof processCompositionAudio>[0],
+  baseDir: string,
+  workDir: string,
+  outputPath: string,
+  totalDuration: number,
+): ReturnType<typeof processCompositionAudio> {
+  const result = await processCompositionAudio(
+    elements,
+    baseDir,
+    workDir,
+    outputPath,
+    totalDuration,
+    undefined,
+    { ffmpegProcessTimeout: TEST_FFMPEG_TIMEOUT_MS },
+  );
+  if (!result.success) {
+    throw new Error(`mix failed: ${JSON.stringify(result.failures ?? result, null, 2)}`);
+  }
+  return result;
+}
+
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 const tempDirs: string[] = [];
 
@@ -94,21 +133,15 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const oneUp = join(projectDir, `one-${MIXED_AUDIO_FILENAME}`);
     const twoUp = join(projectDir, `two-${MIXED_AUDIO_FILENAME}`);
 
-    const one = await processCompositionAudio([track("a", 2)], projectDir, workDir, oneUp, 2);
-    const two = await processCompositionAudio(
-      [track("a", 2), track("b", 2)],
-      projectDir,
-      workDir,
-      twoUp,
-      2,
-    );
+    const one = await mixAudio([track("a", 2)], projectDir, workDir, oneUp, 2);
+    const two = await mixAudio([track("a", 2), track("b", 2)], projectDir, workDir, twoUp, 2);
     expect(one.success).toBe(true);
     expect(two.success).toBe(true);
 
     // Two coherent copies of one tone = +6.02 dB. If amix's 1/N ever survives
     // the correction, this lands at 0 dB instead.
     expect(meanVolumeDb(twoUp) - meanVolumeDb(oneUp)).toBeCloseTo(6.02, 0);
-  }, 30_000);
+  }, 60_000);
 
   it("does not lift the survivors when a shorter track ends", async () => {
     // amix with normalize=true rescales by the number of CURRENTLY ACTIVE
@@ -129,14 +162,14 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const together = join(projectDir, `both-${MIXED_AUDIO_FILENAME}`);
     const alone = join(projectDir, `alone-${MIXED_AUDIO_FILENAME}`);
 
-    const both = await processCompositionAudio(
+    const both = await mixAudio(
       [track("short", 1), track("long", 3)],
       projectDir,
       workDir,
       together,
       3,
     );
-    const solo = await processCompositionAudio([track("long", 3)], projectDir, workDir, alone, 3);
+    const solo = await mixAudio([track("long", 3)], projectDir, workDir, alone, 3);
     expect(both.success).toBe(true);
     expect(solo.success).toBe(true);
 
@@ -145,7 +178,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const tailTogether = meanVolumeDb(together, 1.5, 3);
     const tailAlone = meanVolumeDb(alone, 1.5, 3);
     expect(Math.abs(tailTogether - tailAlone)).toBeLessThan(0.5);
-  }, 30_000);
+  }, 60_000);
 
   /**
    * The gate for group buses (plans/audio-mixer-groups.md §1).
@@ -170,14 +203,8 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
     const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
 
-    const flat = await processCompositionAudio(
-      [track("a", 2), track("b", 2)],
-      projectDir,
-      workDir,
-      flatOut,
-      2,
-    );
-    const grouped = await processCompositionAudio(
+    const flat = await mixAudio([track("a", 2), track("b", 2)], projectDir, workDir, flatOut, 2);
+    const grouped = await mixAudio(
       [
         { ...track("a", 2), groupId: "voiceover" },
         { ...track("b", 2), groupId: "voiceover" },
@@ -193,7 +220,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // An empty group chain is pure routing — the export must read the same
     // whether or not the two tones happened to share a group.
     expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.3);
-  }, 30_000);
+  }, 60_000);
 
   it("a group FX chain fully cutting its members leaves an ungrouped track untouched (routing isolation)", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-"));
@@ -210,20 +237,14 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
       nodes: [{ type: "gain", id: "g", params: { gain: -60 } }],
     });
 
-    const mixed = await processCompositionAudio(
+    const mixed = await mixAudio(
       [{ ...track("voice", 2), groupId: "vo", groupFxChain: groupChain }, track("sfx", 2)],
       projectDir,
       workDir,
       mixedOut,
       2,
     );
-    const sfxAlone = await processCompositionAudio(
-      [track("sfx", 2)],
-      projectDir,
-      workDir,
-      sfxAloneOut,
-      2,
-    );
+    const sfxAlone = await mixAudio([track("sfx", 2)], projectDir, workDir, sfxAloneOut, 2);
     expect(mixed.success).toBe(true);
     expect(sfxAlone.success).toBe(true);
 
@@ -231,7 +252,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // and the ungrouped sfx track's own processing is unaffected by the
     // group existing at all.
     expect(Math.abs(meanVolumeDb(mixedOut) - meanVolumeDb(sfxAloneOut))).toBeLessThan(0.5);
-  }, 30_000);
+  }, 60_000);
 
   it("a member's own volume envelope still applies inside a group", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-env-"));
@@ -250,14 +271,14 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
       ],
     };
 
-    const grouped = await processCompositionAudio(
+    const grouped = await mixAudio(
       [{ ...withEnvelope, groupId: "vo" }],
       projectDir,
       workDir,
       groupedOut,
       4,
     );
-    const flat = await processCompositionAudio([withEnvelope], projectDir, workDir, flatOut, 4);
+    const flat = await mixAudio([withEnvelope], projectDir, workDir, flatOut, 4);
     expect(grouped.success).toBe(true);
     expect(flat.success).toBe(true);
 
@@ -267,5 +288,5 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const groupedTail = meanVolumeDb(groupedOut, 3, 4);
     const flatTail = meanVolumeDb(flatOut, 3, 4);
     expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
-  }, 30_000);
+  }, 60_000);
 });
