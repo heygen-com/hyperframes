@@ -379,22 +379,41 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).not.toHaveBeenCalled();
     });
 
-    it("bounds by clip content seconds, NOT scaled by playback rate", async () => {
+    it("keeps source bounds in authored media time when global rate changes", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      // clipDuration (10) is composition seconds; media advances 1:1 with
-      // composition, so the buffer content to play is 10 regardless of rate —
-      // playbackRate alone stretches it to the right wall time. elapsed=3 → 7.
+      // Global rate=2 changes wallclock speed, not source-time span.
       await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
       expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
     });
 
-    it("plays the full clip at half speed (regression: audio cut out partway)", async () => {
+    // The bound is in BUFFER seconds, and an authored `data-playback-rate`
+    // is the only thing that makes buffer seconds differ from composition
+    // seconds — the global rate scales the transport clock and the source's
+    // playbackRate together, so it cancels out. Dropping the `* mediaRate`
+    // therefore looks harmless at the default rate and truncates every
+    // authored-fast clip, which is why these two cases exist.
+    it("bounds an authored 2x clip by its buffer length, not its clip length", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      // rate=0.5, clipDuration=10, play from start → full 10 content-seconds,
-      // which playbackRate stretches to 20s wallclock. The old `* rate` bound
-      // played only 5 content-seconds, so audio stopped at the clip's midpoint.
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 5, 1, gen, 0.5, 10);
-      expect(mock.startFn).toHaveBeenCalledWith(0, 0, 10);
+      const fast = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "2" : null),
+      } as unknown as HTMLMediaElement;
+      // A 10s clip authored at 2x consumes 20 buffer seconds; playing from the
+      // start must hand `start()` all 20, or the audio stops at the halfway mark.
+      await transport.schedulePlayback(fast, mockBuffer, 5, 0, 5, 1, gen, 1, 10);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 0, 20);
+    });
+
+    it("bounds an authored 0.5x clip by its buffer length, not its clip length", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const slow = {
+        muted: false,
+        getAttribute: (name: string) => (name === "data-playback-rate" ? "0.5" : null),
+      } as unknown as HTMLMediaElement;
+      // The mirror case: 10 composition seconds at 0.5x consume 5 buffer
+      // seconds, so an unscaled bound of 10 would run 5s past the clip's end.
+      await transport.schedulePlayback(slow, mockBuffer, 5, 0, 5, 1, gen, 1, 10);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 0, 5);
     });
 
     it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
