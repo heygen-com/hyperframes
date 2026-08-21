@@ -559,10 +559,19 @@ function parseRotationSample(value: unknown, time: number): RotationSample[] {
   const w = numberValue(value, "w");
   const h = numberValue(value, "h");
   const angle = numberValue(value, "angle");
-  if (!selector || cx === null || cy === null || w === null || h === null || angle === null) {
+  const ancestorTransformSignature = stringValue(value, "ancestorTransformSignature");
+  if (
+    !selector ||
+    cx === null ||
+    cy === null ||
+    w === null ||
+    h === null ||
+    angle === null ||
+    ancestorTransformSignature === null
+  ) {
     return [];
   }
-  return [{ time, selector, cx, cy, w, h, angle }];
+  return [{ time, selector, cx, cy, w, h, angle, ancestorTransformSignature }];
 }
 
 async function collectOffPivotRotationSample(page: Page, time: number): Promise<OffPivotFrame> {

@@ -141,6 +141,9 @@ export interface RotationSample {
   w: number;
   h: number;
   angle: number;
+  /** Computed-transform chain above this element, used to distinguish a bad
+   * local pivot from viewport motion introduced by an animated ancestor. */
+  ancestorTransformSignature: string;
 }
 
 /** One elongated rotating SVG figure's material geometry at a single seeked

@@ -15,7 +15,17 @@ function rotatedAabb(elemW: number, elemH: number, angleDeg: number): { w: numbe
 
 /** One rotation sample; defaults describe a large square. */
 function sample(overrides: Partial<RotationSample> = {}): RotationSample {
-  return { time: 0, selector: "#spokes", cx: 250, cy: 250, w: 200, h: 200, angle: 0, ...overrides };
+  return {
+    time: 0,
+    selector: "#spokes",
+    cx: 250,
+    cy: 250,
+    w: 200,
+    h: 200,
+    angle: 0,
+    ancestorTransformSignature: "none",
+    ...overrides,
+  };
 }
 
 /** Rigid rectangle sample: AABB is derived from unrotated size + angle. */
@@ -173,6 +183,25 @@ describe("detectRotationPivotDrift", () => {
       rigidSample(200, 200, { time: 1, angle: 120 }),
       rigidSample(200, 200, { time: 2, angle: 240 }),
     ];
+    expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
+  });
+
+  it("does not attribute translating ancestor motion to the child's rotation pivot", () => {
+    const group = [
+      {
+        ...rigidSample(220, 220, { time: 0, angle: 0, cx: 200, cy: 250 }),
+        ancestorTransformSignature: "matrix(1, 0, 0, 1, 0, 0)",
+      },
+      {
+        ...rigidSample(220, 220, { time: 1, angle: 90, cx: 450, cy: 250 }),
+        ancestorTransformSignature: "matrix(1, 0, 0, 1, 250, 0)",
+      },
+      {
+        ...rigidSample(220, 220, { time: 2, angle: 180, cx: 700, cy: 250 }),
+        ancestorTransformSignature: "matrix(1, 0, 0, 1, 500, 0)",
+      },
+    ];
+
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
   });
 
