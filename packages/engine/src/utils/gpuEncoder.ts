@@ -64,6 +64,8 @@ export async function selectUsableGpuEncoder(
 export async function detectGpuEncoder(): Promise<GpuEncoder> {
   const ffmpeg = spawn(getFfmpegBinary(), ["-encoders"], {
     stdio: ["pipe", "pipe", "pipe"],
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    windowsHide: true,
   });
   trackChildProcess(ffmpeg);
   let stdout = "";
@@ -146,6 +148,7 @@ export function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
 async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
   const ffmpeg = spawn(getFfmpegBinary(), getProbeArgs(encoder), {
     stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
   });
   trackChildProcess(ffmpeg);
   const outcome = await new ManagedChildProcess(ffmpeg, {

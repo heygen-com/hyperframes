@@ -88,7 +88,8 @@ export function parseAudioElements(html: string): AudioElement[] {
  */
 function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(getFfmpegBinary(), args);
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
     trackChildProcess(ffmpeg);
     let stderr = "";
 

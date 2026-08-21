@@ -457,6 +457,8 @@ export async function spawnStreamingEncoder(
 
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    windowsHide: true,
   });
   trackChildProcess(ffmpeg);
 
