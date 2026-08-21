@@ -129,7 +129,15 @@ export class WebAudioTransport {
   // a group does not rebuild its chain; only `destroy()` disposes these.
   private _groups = new Map<
     string,
-    { input: GainNode; analyser: AnalyserNode; levelBuf: Float32Array; dispose(): void }
+    {
+      input: GainNode;
+      analyser: AnalyserNode;
+      // `Float32Array<ArrayBuffer>`, not bare `Float32Array`: the runtime
+      // typecheck resolves the latter to `Float32Array<ArrayBufferLike>`, which
+      // `getFloatTimeDomainData` rejects (it wants a non-shared buffer).
+      levelBuf: Float32Array<ArrayBuffer>;
+      dispose(): void;
+    }
   >();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
