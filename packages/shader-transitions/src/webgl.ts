@@ -15,6 +15,34 @@ export function createContext(
   return gl as WebGLRenderingContext;
 }
 
+/**
+ * Keep `gl` recoverable, and hand it back explicitly when the caller is done.
+ *
+ * Browsers cap concurrent WebGL contexts (~16) and silently drop the oldest.
+ * The default action of `webglcontextlost` makes that drop permanent, so
+ * without `preventDefault()` a transition just stops rendering with no
+ * diagnostic. The returned teardown releases the context instead of waiting
+ * for the canvas to become collectable.
+ */
+export function manageContextLoss(
+  canvas: HTMLCanvasElement,
+  gl: WebGLRenderingContext,
+  handlers: { onLost: () => void; onRestored: () => void },
+): () => void {
+  const handleLost = (event: Event): void => {
+    event.preventDefault();
+    handlers.onLost();
+  };
+  const handleRestored = (): void => handlers.onRestored();
+  canvas.addEventListener("webglcontextlost", handleLost);
+  canvas.addEventListener("webglcontextrestored", handleRestored);
+  return () => {
+    canvas.removeEventListener("webglcontextlost", handleLost);
+    canvas.removeEventListener("webglcontextrestored", handleRestored);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  };
+}
+
 export function setupQuad(gl: WebGLRenderingContext): WebGLBuffer {
   const buf = gl.createBuffer();
   if (!buf) throw new Error("[HyperShader] Failed to create quad buffer");
@@ -22,8 +50,6 @@ export function setupQuad(gl: WebGLRenderingContext): WebGLBuffer {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
   return buf;
 }
-
-let cachedVertexShader: WebGLShader | null = null;
 
 function compileShader(gl: WebGLRenderingContext, src: string, type: number): WebGLShader {
   const s = gl.createShader(type);
@@ -52,11 +78,13 @@ function linkProgram(
   return p;
 }
 
+// The shared vertex shader used to be cached in a module-level singleton. That
+// made it outlive both the context it was compiled in and any second context on
+// the page, so every program linked after a context loss would link against a
+// dead shader. It is five lines of GLSL compiled a handful of times per init —
+// cheaper to recompile than to invalidate.
 export function createProgram(gl: WebGLRenderingContext, fragSrc: string): WebGLProgram {
-  if (!cachedVertexShader) {
-    cachedVertexShader = compileShader(gl, vertSrc, gl.VERTEX_SHADER);
-  }
-  return linkProgram(gl, cachedVertexShader, fragSrc);
+  return createProgramWithVertex(gl, vertSrc, fragSrc);
 }
 
 export function createProgramWithVertex(
