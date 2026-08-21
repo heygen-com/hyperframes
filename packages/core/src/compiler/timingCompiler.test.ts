@@ -133,6 +133,17 @@ describe("compileTimingAttrs", () => {
     expect(compiled).not.toContain("data-hf-auto-start");
   });
 
+  it("leaves data-end off a relative data-start id-ref", () => {
+    const html =
+      '<video id="intro" src="a.mp4" data-start="0" data-duration="10">' +
+      '<video id="main" src="b.mp4" data-start="intro" data-duration="20">';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-start="intro"');
+    expect(compiled).not.toMatch(/id="main"[^>]*data-end=/);
+    expect(compiled).toMatch(/id="intro"[^>]*data-end="10"/);
+  });
+
   it("compiles audio tags the same as video (minus data-has-audio)", () => {
     const html = '<audio id="a1" src="music.mp3" data-start="0" data-duration="10">';
     const { html: compiled } = compileTimingAttrs(html);
@@ -228,6 +239,15 @@ describe("injectDurations", () => {
 
     // data-duration already present, should not be duplicated
     expect(result).toContain('data-duration="3"');
+  });
+
+  it("injects data-duration but not data-end when data-start is a relative id-ref", () => {
+    const html = '<video id="main" src="b.mp4" data-start="intro">';
+    const result = injectDurations(html, [{ id: "main", duration: 5 }]);
+
+    expect(result).toContain('data-duration="5"');
+    expect(result).toContain('data-start="intro"');
+    expect(result).not.toMatch(/data-end=/);
   });
 });
 

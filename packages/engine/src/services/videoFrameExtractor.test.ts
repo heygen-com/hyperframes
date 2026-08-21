@@ -57,6 +57,7 @@ import {
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
 import { resolveRuntimeMediaClipDuration } from "../../../core/src/runtime/media.js";
+import { compileTimingAttrs } from "@hyperframes/core";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
 // regression test at packages/producer/tests/vfr-screen-recording/ runs inside
@@ -800,6 +801,16 @@ describe("parseVideoElements", () => {
     );
     const main = videos.find((v) => v.id === "main");
     // intro ends at 10, so main starts at 10 and ends at 30 — not NaN.
+    expect(main?.start).toBe(10);
+    expect(main?.end).toBe(30);
+  });
+
+  it("still resolves relative data-start after compileTimingAttrs", () => {
+    const raw =
+      '<video id="intro" src="a.mp4" data-start="0" data-duration="10"></video>' +
+      '<video id="main" src="b.mp4" data-start="intro" data-duration="20"></video>';
+    const { html } = compileTimingAttrs(raw);
+    const main = parseVideoElements(html).find((v) => v.id === "main");
     expect(main?.start).toBe(10);
     expect(main?.end).toBe(30);
   });
