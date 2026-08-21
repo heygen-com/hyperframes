@@ -1350,16 +1350,17 @@ describe("initSandboxRuntimeModular", () => {
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
 
-    const decodeSpy = vi
-      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
-      .mockResolvedValue(null);
+    // `scheduleMediaElementPlayback` is the Web Audio scheduling entry point (#3322 routed
+    // media-element clips straight through the graph; `decodeAudioElement` is only the fallback
+    // for the rate-shifted case, so it is NOT called on this path).
+    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
 
     const player = window.__player;
     player?.play();
     player?.seek(0);
 
-    expect(decodeSpy).toHaveBeenCalledTimes(1);
-    expect(decodeSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
   });
 
   it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {
@@ -1400,9 +1401,7 @@ describe("initSandboxRuntimeModular", () => {
     // toggles away from.
     player?.play();
 
-    const decodeSpy = vi
-      .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
-      .mockResolvedValue(null);
+    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
     const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
 
     // Both become visible in the SAME sync pass — must still be one reschedule.
@@ -1413,7 +1412,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(1, { keepPlaying: true });
 
     expect(generationSpy).toHaveBeenCalledTimes(1);
-    expect(decodeSpy).toHaveBeenCalledTimes(2);
+    expect(scheduleSpy).toHaveBeenCalledTimes(2);
   });
 
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {
