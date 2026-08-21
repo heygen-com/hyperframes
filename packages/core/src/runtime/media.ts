@@ -115,6 +115,10 @@ export function refreshRuntimeMediaCache(params?: {
 // a scrub (where offset jumps in one tick). Cleared when a clip becomes
 // inactive so the next activation gets a hard resync on its first tick.
 const lastOffset = new WeakMap<HTMLMediaElement, number>();
+// Desired source time from the previous active tick. Unlike `forceSync`, which
+// also covers play/pause and rate changes, a decrease here identifies an actual
+// backward transport seek within an audio clip.
+const lastRelativeTime = new WeakMap<HTMLMediaElement, number>();
 
 const strictDriftSamples = new WeakMap<HTMLMediaElement, number>();
 
@@ -167,6 +171,7 @@ function clampVolume(volume: number): number {
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
   lastOffset.delete(el);
+  lastRelativeTime.delete(el);
   strictDriftSamples.delete(el);
   seekLoadRetried.delete(el);
   lastRuntimeAppliedVolume.delete(el);
@@ -176,6 +181,7 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
 export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   return (
     lastOffset.has(el) ||
+    lastRelativeTime.has(el) ||
     strictDriftSamples.has(el) ||
     seekLoadRetried.has(el) ||
     lastRuntimeAppliedVolume.has(el)
@@ -234,21 +240,29 @@ export function syncRuntimeMedia(params: {
     if (isHeldVideoTail && clip.sourceDuration != null) {
       relTime = clip.sourceDuration;
     }
-    const canSeekEndedVideoBackward =
-      isNonLoopVideo &&
+    const previousRelativeTime = lastRelativeTime.get(el);
+    const audioReenteredAfterBackwardSeek =
+      el.tagName === "AUDIO" &&
+      (previousRelativeTime === undefined || relTime < previousRelativeTime - 0.04);
+    const canSeekEndedMediaBackward =
+      !clip.loop &&
       clip.sourceDuration != null &&
       relTime >= clip.mediaStart &&
-      relTime < clip.sourceDuration;
-    // Audio that ended naturally stays silent. A non-loop video remains an
-    // active visual through its authored window: tail seeks clamp to the final
-    // frame, and backward seeks can re-enter playable source without depending
-    // on the browser having reset `ended` first.
+      relTime < clip.sourceDuration &&
+      (isNonLoopVideo || audioReenteredAfterBackwardSeek);
+    // Ended media can re-enter playable source after a backward timeline seek
+    // without depending on the browser having reset `ended` first. Audio needs
+    // a fresh activation or a measured backward transport seek so ordinary EOF
+    // and non-seek force-sync transitions cannot replay its tail. A non-loop
+    // video additionally remains an active visual through
+    // its authored window, with tail seeks clamped to the final frame.
     const isActive =
       params.timeSeconds >= clip.start &&
       params.timeSeconds < clip.end &&
       relTime >= 0 &&
-      (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedVideoBackward);
+      (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedMediaBackward);
     if (isActive) {
+      lastRelativeTime.set(el, relTime);
       // Loop wrapping: when media reaches end, restart from mediaStart
       if (clip.loop && clip.sourceDuration != null && clip.sourceDuration > 0) {
         const loopLength = clip.sourceDuration - clip.mediaStart;
@@ -365,9 +379,17 @@ export function syncRuntimeMedia(params: {
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
       const catastrophicDrift = drift > 3;
+      // A short audio clip can leave its native element paused just before EOF.
+      // When the timeline re-enters the clip, rewind stale forward state at the
+      // strict threshold; do not force cold audio forward while it buffers.
+      const staleAudioOnFirstTick =
+        el.tagName === "AUDIO" &&
+        firstTickOfClip &&
+        currentElTime - relTime > STRICT_DRIFT_THRESHOLD;
       const hardSync =
         (isHeldVideoTail && drift > 0.001) ||
-        (el.ended && canSeekEndedVideoBackward && drift > 0.001) ||
+        (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
+        staleAudioOnFirstTick ||
         (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
       // Playing video elements use the browser's native decoder pipeline for
       // timing. Seeking a playing video resets the decoder, causing a ~150ms
@@ -465,9 +487,16 @@ export function syncRuntimeMedia(params: {
       }
       continue;
     }
-    // Clip left its active window — drop the offset baseline so the next
-    // activation (e.g. re-entering a sub-composition) gets a hard resync.
+    // Drop drift state when the element is not playable. If native audio EOF
+    // arrived slightly before the authored boundary, preserve only its desired
+    // source time while the transport remains inside that boundary. Otherwise
+    // the next poll would mistake the cleared baseline for a fresh activation
+    // and replay the tail. A real backward seek still decreases relTime, and a
+    // true outside-window transition clears every baseline as before.
+    const remainsInsideAuthoredWindow =
+      params.timeSeconds >= clip.start && params.timeSeconds < clip.end;
     evictMediaSyncState(el);
+    if (remainsInsideAuthoredWindow) lastRelativeTime.set(el, relTime);
     if (!el.paused) el.pause();
   }
 }
