@@ -820,10 +820,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "checkout-flow",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "chromatic-aberration-wipe",
       "type": "hyperframes:component"
     },
@@ -1533,6 +1529,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "032078c10ac211b74a29a4826f113876ee4ef14c3e4cf9f935b0ec763cdca97f"
+    "revision": "fbf1facc93a2cd1dc4507407f21fe4f6097da56670aaab4a0689b12dc0c43d09"
   }
 }
