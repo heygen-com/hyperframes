@@ -42,7 +42,7 @@ test("heygen provider is first for every type it serves", () => {
 
 test("sanctioned providers only: heygen, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
+    /^heygen|^acestep\.remote$|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -61,6 +61,14 @@ test("image cascade: heygen catalog, then local mflux, then the codex upsell", (
   assert.ok(names.indexOf("mflux.local") < names.indexOf("codex.image_gen"), "local before codex");
   assert.ok(!mflux.network, "local mflux is kept under --local-only");
   assert.ok(codex.network, "codex is network (skipped under --local-only)");
+});
+
+test("bgm supports ACE-Step generation without replacing HeyGen retrieval", () => {
+  const ps = getProviders("bgm");
+  assert.equal(ps[0].name, "heygen.audio.sounds");
+  assert.equal(ps[1].name, "acestep.remote");
+  assert.equal(typeof ps[1].generate, "function");
+  assert.ok(ps[1].network, "ACE-Step is skipped by --local-only");
 });
 
 test("voice cascade: HeyGen TTS first, Kokoro remains the local fallback", () => {
