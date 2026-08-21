@@ -73,7 +73,7 @@ export function resolveClipFadeBinding(
   // has carried two bends all along.
   const curves: ClipFadeCurves = readClipFadeCurves(lane.points, fades);
 
-  const apply = (next: ClipFades, shape: ClipFadeCurves, persist: boolean) => {
+  const apply = (next: ClipFades, shape: ClipFadeCurves | undefined, persist: boolean) => {
     if (binding.readOnly) return;
     const points = writeClipFades(lane.points, element.duration, next, shape);
     const automation = withLane(binding.automation, { target, points });
@@ -90,8 +90,8 @@ export function resolveClipFadeBinding(
     curves,
     sample: (edge) => envelopeFadeSampler(edge === "in" ? curves.in : curves.out),
     readOnly: binding.readOnly,
-    onPreview: (next) => apply(next, curves, false),
-    onCommit: (next) => apply(next, curves, true),
+    onPreview: (next) => apply(next, undefined, false),
+    onCommit: (next) => apply(next, undefined, true),
     onBend: (edge, bend, persist) => apply(fades, withBend(curves, edge, bend), persist),
   };
 }

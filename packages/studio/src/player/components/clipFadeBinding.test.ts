@@ -46,6 +46,11 @@ const laneOf = (call: unknown, target: string) =>
 const withLane = (target: string, points: { t: number; v: number; curve?: number }[]) =>
   ({ version: 1, lanes: [{ target, points }] }) as HfAutomation;
 
+const STRAIGHT_OPACITY_FADE = withLane("opacity", [
+  { t: 0, v: 0 },
+  { t: 2, v: 1 },
+]);
+
 describe("which lane a clip's fade lives in", () => {
   it("puts a picture's fade in the opacity lane", () => {
     const { bag, onCommit } = deps();
@@ -119,6 +124,23 @@ describe("reading a fade back", () => {
 });
 
 describe("writing a fade", () => {
+  it("gives new fade edges the default ease", () => {
+    const { bag, onCommit } = deps();
+    resolveClipFadeBinding(el(), bag)!.onCommit({ fadeIn: 1, fadeOut: 1 });
+
+    const points = (onCommit.mock.calls[0]![0] as HfAutomation).lanes[0]!.points;
+    expect(points[0]?.curve).toBeCloseTo(-0.5, 6);
+    expect(points[2]?.curve).toBeCloseTo(0.5, 6);
+  });
+
+  it("keeps an existing straight fade straight when its length changes", () => {
+    const { bag, onCommit } = deps({ automation: STRAIGHT_OPACITY_FADE });
+    resolveClipFadeBinding(el(), bag)!.onCommit({ fadeIn: 1, fadeOut: 0 });
+
+    const points = (onCommit.mock.calls[0]![0] as HfAutomation).lanes[0]!.points;
+    expect(points[0]?.curve).toBeUndefined();
+  });
+
   it("previews without persisting, and commits once", () => {
     const { bag, onPreview, onCommit } = deps();
     const fade = resolveClipFadeBinding(el(), bag)!;
@@ -131,12 +153,7 @@ describe("writing a fade", () => {
   });
 
   it("drops the lane entirely once the last fade is dragged away", () => {
-    const { bag, onCommit } = deps({
-      automation: withLane("opacity", [
-        { t: 0, v: 0 },
-        { t: 2, v: 1 },
-      ]),
-    });
+    const { bag, onCommit } = deps({ automation: STRAIGHT_OPACITY_FADE });
     resolveClipFadeBinding(el(), bag)!.onCommit({ fadeIn: 0, fadeOut: 0 });
     expect((onCommit.mock.calls[0]![0] as HfAutomation).lanes).toEqual([]);
   });

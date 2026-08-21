@@ -88,7 +88,8 @@ export interface ClipFadeCurves {
   out: number;
 }
 
-const NO_FADE_CURVES: ClipFadeCurves = { in: 0, out: 0 };
+/** New fades ease out toward their visible end state. Existing fades keep their stored shape. */
+const DEFAULT_FADE_CURVES: ClipFadeCurves = { in: 0.5, out: -0.5 };
 
 export const NO_FADES: ClipFades = { fadeIn: 0, fadeOut: 0 };
 
@@ -271,14 +272,23 @@ export function writeClipFades(
   points: readonly HfAutomationPoint[],
   duration: number,
   fades: ClipFades,
-  curves: ClipFadeCurves = NO_FADE_CURVES,
+  curves?: ClipFadeCurves,
   min = 0,
   max = 1,
 ): HfAutomationPoint[] {
   const { fadeIn, fadeOut } = clampClipFades(fades, duration);
   const existing = readClipFades(points, duration, min, max);
-  const headCurvature = envelopeCurveForFade(curves.in);
-  const tailCurvature = envelopeCurveForFade(curves.out);
+  const existingCurves = curves ?? readClipFadeCurves(points, existing);
+  const headCurvature = envelopeCurveForFade(
+    curves === undefined && existing.fadeIn === 0 && fadeIn > 0
+      ? DEFAULT_FADE_CURVES.in
+      : existingCurves.in,
+  );
+  const tailCurvature = envelopeCurveForFade(
+    curves === undefined && existing.fadeOut === 0 && fadeOut > 0
+      ? DEFAULT_FADE_CURVES.out
+      : existingCurves.out,
+  );
 
   // Everything strictly between the two fades is the author's; the old fade
   // points are not, so they are dropped by the same window.
