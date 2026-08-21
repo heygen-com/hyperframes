@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Character Rig Demo</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111318;
+      }
+      #root {
+        position: relative;
+        width: 1080px;
+        height: 1080px;
+      }
+      #stage {
+        position: absolute;
+        inset: 0;
+      }
+      #stage svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div id="stage" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+          <!-- Outer group: idle bounce (translate only, no rotation, so no origin needed) -->
+          <g id="character">
+            <!-- Body -->
+            <ellipse id="body" cx="540" cy="680" rx="100" ry="130" fill="#2b2f3a" />
+
+            <!-- Arm: shoulder pivot -> elbow pivot, a 2-joint hierarchy -->
+            <g id="arm-shoulder">
+              <line
+                x1="620"
+                y1="600"
+                x2="660"
+                y2="700"
+                stroke="#2b2f3a"
+                stroke-width="36"
+                stroke-linecap="round"
+              />
+              <g id="arm-elbow">
+                <line
+                  x1="660"
+                  y1="700"
+                  x2="650"
+                  y2="800"
+                  stroke="#2b2f3a"
+                  stroke-width="30"
+                  stroke-linecap="round"
+                />
+                <circle cx="650" cy="800" r="20" fill="#2b2f3a" />
+              </g>
+            </g>
+
+            <!-- Head: neck pivot -->
+            <g id="head-pivot">
+              <circle id="head" cx="540" cy="480" r="90" fill="#3a4152" />
+
+              <!-- Eyes: blink via scaleY on this wrapper -->
+              <g id="eyes">
+                <circle cx="510" cy="470" r="12" fill="#7dd3fc" />
+                <circle cx="570" cy="470" r="12" fill="#7dd3fc" />
+              </g>
+
+              <!-- Mouth: 3 discrete shapes, amplitude-driven swap -->
+              <g id="mouth-shapes">
+                <line
+                  id="mouth-closed"
+                  x1="518"
+                  y1="512"
+                  x2="562"
+                  y2="512"
+                  stroke="#e6f1ff"
+                  stroke-width="6"
+                  stroke-linecap="round"
+                />
+                <ellipse
+                  id="mouth-open"
+                  cx="540"
+                  cy="514"
+                  rx="16"
+                  ry="10"
+                  fill="#e6f1ff"
+                  opacity="0"
+                />
+                <ellipse
+                  id="mouth-wide"
+                  cx="540"
+                  cy="516"
+                  rx="22"
+                  ry="20"
+                  fill="#e6f1ff"
+                  opacity="0"
+                />
+              </g>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <script>
+      var COMPOSITION_ID = "main";
+      var FPS = 30;
+      var DURATION = 4;
+
+      // Stand-in for a real VO envelope. Swap this for the output of
+      // hyperframes-creative/scripts/extract-audio-data.py (or
+      // embedded-captions/scripts/audio-envelope.cjs) run against an actual
+      // voice file — same {time, rms} shape, same tl.call() wiring below.
+      function synthesizeSpeechEnvelope(totalFrames, fps) {
+        var words = [
+          [0.4, 1.1],
+          [1.4, 2.0],
+          [2.3, 3.4],
+        ];
+        var frames = [];
+        for (var f = 0; f < totalFrames; f++) {
+          var t = f / fps;
+          var rms = 0;
+          for (var i = 0; i < words.length; i++) {
+            var start = words[i][0];
+            var end = words[i][1];
+            if (t >= start && t <= end) {
+              var p = (t - start) / (end - start);
+              var v = Math.sin(p * Math.PI) * (0.55 + 0.35 * Math.sin(p * 17));
+              rms = Math.max(rms, v);
+            }
+          }
+          rms = Math.max(0, Math.min(1, rms));
+          frames.push({ time: +t.toFixed(4), rms: +rms.toFixed(4) });
+        }
+        return frames;
+      }
+
+      var mouthClosed = document.getElementById("mouth-closed");
+      var mouthOpen = document.getElementById("mouth-open");
+      var mouthWide = document.getElementById("mouth-wide");
+
+      function setMouthFromRms(rms) {
+        var wide = rms >= 0.45;
+        var open = !wide && rms >= 0.12;
+        var closed = !wide && !open;
+        mouthClosed.style.opacity = closed ? 1 : 0;
+        mouthOpen.style.opacity = open ? 1 : 0;
+        mouthWide.style.opacity = wide ? 1 : 0;
+      }
+
+      // svgOrigin pivots in the SVG's global coordinate space (unlike CSS
+      // transform-origin, which is local-box relative and breaks on nested
+      // rotated groups) — set once, GSAP caches it for later tweens on the element.
+      gsap.set("#arm-shoulder", { svgOrigin: "620 600" });
+      gsap.set("#arm-elbow", { svgOrigin: "660 700" });
+      gsap.set("#head-pivot", { svgOrigin: "540 560" });
+      gsap.set("#eyes", { svgOrigin: "540 470" });
+
+      var tl = gsap.timeline({ paused: true });
+
+      // Idle bounce: finite yoyo, cycle = 1s, floor(duration/cycle) - 1 repeats
+      // so the full tween (initial pass + repeats) exactly fills DURATION.
+      var bounceCycle = 1;
+      var bounceRepeat = Math.max(0, Math.floor(DURATION / bounceCycle) - 1);
+      tl.to(
+        "#character",
+        {
+          y: -14,
+          duration: bounceCycle,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: bounceRepeat,
+        },
+        0,
+      );
+
+      // Blinks: quick squash on the eyes wrapper, explicit beats.
+      [0.6, 2.8].forEach(function (beat) {
+        tl.to("#eyes", { scaleY: 0.05, duration: 0.06, ease: "power1.in" }, beat);
+        tl.to("#eyes", { scaleY: 1, duration: 0.08, ease: "power1.out" }, beat + 0.06);
+      });
+
+      // Arm wave: shoulder swings the whole arm, elbow follows through
+      // slightly after and settles slightly later (parent/child counter-transform).
+      tl.to("#arm-shoulder", { rotation: -55, duration: 0.4, ease: "power2.out" }, 1.0)
+        .to("#arm-shoulder", { rotation: 0, duration: 0.5, ease: "power2.inOut" }, 1.7)
+        .to("#arm-elbow", { rotation: 25, duration: 0.35, ease: "power2.out" }, 1.08)
+        .to("#arm-elbow", { rotation: 0, duration: 0.5, ease: "power2.inOut" }, 1.75);
+
+      // Mouth: sampled every frame from the (synthetic, for now) envelope —
+      // per-frame tl.call(), not a single tween, so it actually tracks amplitude.
+      var totalFrames = DURATION * FPS;
+      var envelope = synthesizeSpeechEnvelope(totalFrames, FPS);
+      for (var f = 0; f < totalFrames; f++) {
+        tl.call(setMouthFromRms, [envelope[f].rms], f / FPS);
+      }
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines[COMPOSITION_ID] = tl;
+    </script>
+  </body>
+</html>

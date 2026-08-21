@@ -1,0 +1,152 @@
+<template>
+  <div
+    id="beat-papercut"
+    data-composition-id="papercut"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-papercut {
+        background: #c9b795;
+        overflow: hidden;
+      }
+      #beat-papercut .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #221d16;
+      }
+      #beat-papercut .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #7a4a2a;
+        margin-bottom: 14px;
+      }
+      #beat-papercut .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-papercut .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #5c5140;
+        margin-top: 12px;
+      }
+      #beat-papercut .pc-mat {
+        position: absolute;
+        inset: 0;
+        background: #c9b795;
+      }
+      #beat-papercut .pc-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-papercut .pc-chip {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+        font-weight: 700;
+        color: #221d16;
+        box-shadow: 0 14px 26px rgba(60, 44, 24, 0.34);
+      }
+    </style>
+
+    <div class="pc-mat"></div>
+    <div class="pc-stage" id="pc-stage"></div>
+
+    <div class="beat-label">
+      <div class="beat-num">14 / CUT-OUT</div>
+      <div class="beat-name">Paper cut-out</div>
+      <div class="beat-tech">Seeded torn edges, steps() drops, 8fps wobble</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        function mulberry32(a) {
+          return function () {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        var stage = document.getElementById("pc-stage");
+        var WORDS = ["CUT", "IT", "OUT"];
+        var TONES = ["#efe4cb", "#e8c9a0", "#f3ece0"];
+        var chips = [];
+
+        WORDS.forEach(function (w, i) {
+          var rnd = mulberry32(9000 + i * 7717);
+          var el = document.createElement("div");
+          el.className = "pc-chip";
+          el.textContent = w;
+          el.style.left = 430 + i * 380 + "px";
+          el.style.top = 430 + "px";
+          el.style.width = "320px";
+          el.style.height = "220px";
+          el.style.background = TONES[i];
+          // Torn edge: a seeded polygon with jittered vertices down each side.
+          var pts = [];
+          for (var k = 0; k <= 10; k++) pts.push(k * 10 + "% " + (rnd() * 4).toFixed(2) + "%");
+          for (var k2 = 0; k2 <= 6; k2++)
+            pts.push((100 - rnd() * 3).toFixed(2) + "% " + (k2 * 16.6).toFixed(1) + "%");
+          for (var k3 = 10; k3 >= 0; k3--)
+            pts.push(k3 * 10 + "% " + (100 - rnd() * 4).toFixed(2) + "%");
+          for (var k4 = 6; k4 >= 0; k4--)
+            pts.push((rnd() * 3).toFixed(2) + "% " + (k4 * 16.6).toFixed(1) + "%");
+          el.style.clipPath = "polygon(" + pts.join(",") + ")";
+          stage.appendChild(el);
+          chips.push({ el: el, rnd: mulberry32(4400 + i * 991), rot: (rnd() - 0.5) * 9 });
+        });
+
+        // Stop-motion placement: each chip drops in discrete steps, contacts
+        // with a squash, then settles through baked poses. No smooth easing —
+        // the discreteness IS the medium.
+        chips.forEach(function (c, i) {
+          var C = 0.35 + i * 0.5;
+          tl.fromTo(
+            c.el,
+            { y: -520, rotation: c.rot - 10, opacity: 0 },
+            { y: 0, rotation: c.rot, opacity: 1, duration: 0.25, ease: "steps(3)" },
+            C - 0.25,
+          );
+          tl.set(c.el, { scaleX: 1.08, scaleY: 0.9 }, C);
+          tl.set(c.el, { scaleX: 0.97, scaleY: 1.05, y: -6 }, C + 0.0833);
+          tl.set(c.el, { scaleX: 1.01, scaleY: 0.99, y: 3 }, C + 0.1667);
+          tl.set(c.el, { scaleX: 1, scaleY: 1, y: 0 }, C + 0.25);
+
+          // 8fps handmade wobble — baked sets every 3 frames at 24fps
+          for (var t = C + 0.42; t < 3.4; t += 0.125) {
+            tl.set(
+              c.el,
+              {
+                rotation: c.rot + (c.rnd() - 0.5) * 1.5,
+                x: (c.rnd() - 0.5) * 2.2,
+                y: (c.rnd() - 0.5) * 2.2,
+              },
+              t,
+            );
+          }
+        });
+
+        tl.from(
+          "#beat-papercut .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["papercut"] = tl;
+      })();
+    </script>
+  </div>
+</template>

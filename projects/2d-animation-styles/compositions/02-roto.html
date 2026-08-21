@@ -1,0 +1,171 @@
+<template>
+  <div
+    id="beat-roto"
+    data-composition-id="roto"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-roto {
+        background: #2e3b47;
+        overflow: hidden;
+      }
+      #beat-roto .rt-plate {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        object-fit: fill;
+      }
+      #beat-roto .rt-trace {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-roto .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f1ece1;
+      }
+      #beat-roto .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #d0a271;
+        margin-bottom: 14px;
+      }
+      #beat-roto .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-roto .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #b3bcc4;
+        margin-top: 12px;
+      }
+    </style>
+
+    <!-- The plate. HyperFrames never seeks a live <video> at render time: the
+         engine pre-decodes the file to numbered stills at the render fps and
+         injects the correct frame per capture. That is what makes tracing
+         frame-exact rather than approximate. -->
+    <video
+      id="rt-plate"
+      class="rt-plate clip"
+      src="assets/roto-plate.mp4"
+      data-start="0"
+      data-duration="3.5"
+      data-track-index="1"
+      muted
+      playsinline
+    ></video>
+
+    <div class="rt-trace">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <path
+          id="rt-arc"
+          fill="none"
+          stroke="#ffd76a"
+          stroke-width="4"
+          stroke-dasharray="10 14"
+          opacity="0.5"
+          d="M300 740 Q 640 180 980 740 T 1660 740"
+        />
+        <g fill="none" stroke="#ffd76a" stroke-width="7" stroke-linecap="round">
+          <circle id="rt-ring" cx="300" cy="740" r="128" />
+          <!-- construction marks: the animator's squash/stretch axes -->
+          <path id="rt-axis-h" d="M172 740 L428 740" stroke-width="3" opacity="0.65" />
+          <path id="rt-axis-v" d="M300 612 L300 868" stroke-width="3" opacity="0.65" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">02 / TRADITIONAL</div>
+      <div class="beat-name">Rotoscoping</div>
+      <div class="beat-tech">Traced over frame-exact decoded footage</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var ring = document.getElementById("rt-ring");
+        var axisH = document.getElementById("rt-axis-h");
+        var axisV = document.getElementById("rt-axis-v");
+
+        // The trace is locked to the same closed-form path the plate was
+        // generated from, so the outline sits exactly on the subject at every
+        // frame. In a real roto job these numbers come from eyeballing the
+        // decoded stills — the mechanism is identical either way.
+        function subjectAt(t) {
+          return {
+            x: 300 + (1360 * t) / 3.5,
+            y: 740 - 500 * Math.abs(Math.sin(2.6 * t)),
+          };
+        }
+
+        var proxy = { t: 0 };
+        tl.to(
+          proxy,
+          {
+            t: 3.5,
+            duration: 3.5,
+            ease: "none",
+            onUpdate: function () {
+              var p = subjectAt(proxy.t);
+              ring.setAttribute("cx", p.x.toFixed(2));
+              ring.setAttribute("cy", p.y.toFixed(2));
+              axisH.setAttribute(
+                "d",
+                "M" +
+                  (p.x - 128).toFixed(1) +
+                  " " +
+                  p.y.toFixed(1) +
+                  " L" +
+                  (p.x + 128).toFixed(1) +
+                  " " +
+                  p.y.toFixed(1),
+              );
+              axisV.setAttribute(
+                "d",
+                "M" +
+                  p.x.toFixed(1) +
+                  " " +
+                  (p.y - 128).toFixed(1) +
+                  " L" +
+                  p.x.toFixed(1) +
+                  " " +
+                  (p.y + 128).toFixed(1),
+              );
+            },
+          },
+          0,
+        );
+
+        // Draw the motion arc on, then dim the plate so the drawing stands
+        // alone — the roto hand-off moment.
+        var arc = document.getElementById("rt-arc");
+        var arcLen = arc.getTotalLength();
+        gsap.set(arc, { strokeDasharray: arcLen, strokeDashoffset: arcLen });
+        tl.to(arc, { strokeDashoffset: 0, duration: 1.6, ease: "none" }, 0.4);
+
+        tl.from("#rt-ring", { opacity: 0, duration: 0.3, ease: "power1.out" }, 0.15);
+        tl.to("#rt-plate", { opacity: 0.26, duration: 0.7, ease: "power2.inOut" }, 2.3);
+
+        tl.from(
+          "#beat-roto .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["roto"] = tl;
+      })();
+    </script>
+  </div>
+</template>

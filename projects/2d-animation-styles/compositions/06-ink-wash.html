@@ -1,0 +1,180 @@
+<template>
+  <div
+    id="beat-inkwash"
+    data-composition-id="inkwash"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-inkwash {
+        background: #efe9dc;
+        overflow: hidden;
+      }
+      #beat-inkwash .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #191713;
+      }
+      #beat-inkwash .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #906342;
+        margin-bottom: 14px;
+      }
+      #beat-inkwash .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-inkwash .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #6b6459;
+        margin-top: 12px;
+      }
+      #beat-inkwash .iw-paper {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse at 60% 30%, rgba(255, 255, 250, 0.9), rgba(0, 0, 0, 0) 60%),
+          #efe9dc;
+      }
+      #beat-inkwash .iw-stage {
+        position: absolute;
+        inset: 0;
+        mix-blend-mode: multiply;
+      }
+    </style>
+
+    <div class="iw-paper"></div>
+    <div class="iw-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <defs>
+          <!-- Gooey stack: blur hard, then threshold the alpha back to a hard
+               edge. Adjacent blobs fuse instead of overlapping — that fusing
+               is what reads as wet ink spreading on absorbent paper. -->
+          <filter id="iw-goo" x="-35%" y="-35%" width="170%" height="170%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="22" result="iw-blur" />
+            <feColorMatrix
+              in="iw-blur"
+              type="matrix"
+              values="1 0 0 0 0
+                      0 1 0 0 0
+                      0 0 1 0 0
+                      0 0 0 26 -11"
+              result="iw-goo-out"
+            />
+            <feComposite in="SourceGraphic" in2="iw-goo-out" operator="atop" />
+          </filter>
+          <filter id="iw-bleed" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="18" />
+          </filter>
+        </defs>
+
+        <!-- soft wash haloes sitting under the stroke -->
+        <g id="iw-wash" filter="url(#iw-bleed)" opacity="0.34">
+          <ellipse cx="700" cy="470" rx="210" ry="150" fill="#3b4a5c" />
+          <ellipse cx="1120" cy="560" rx="250" ry="170" fill="#2c3a49" />
+          <ellipse cx="900" cy="700" rx="300" ry="120" fill="#4a5567" />
+        </g>
+
+        <!-- the fusing blob cluster -->
+        <g id="iw-blobs" filter="url(#iw-goo)" fill="#141c26">
+          <circle id="iw-b1" cx="700" cy="470" r="86" />
+          <circle id="iw-b2" cx="880" cy="510" r="66" />
+          <circle id="iw-b3" cx="1040" cy="470" r="78" />
+          <circle id="iw-b4" cx="1190" cy="540" r="58" />
+        </g>
+
+        <!-- the brush stroke itself, drawn on at constant pen speed -->
+        <path
+          id="iw-stroke"
+          d="M420 800 C 620 700, 760 880, 980 790 S 1400 640, 1560 726"
+          fill="none"
+          stroke="#141c26"
+          stroke-width="26"
+          stroke-linecap="round"
+        />
+        <path
+          id="iw-stroke-dry"
+          d="M420 800 C 620 700, 760 880, 980 790 S 1400 640, 1560 726"
+          fill="none"
+          stroke="#141c26"
+          stroke-width="9"
+          stroke-linecap="round"
+          opacity="0.55"
+        />
+
+        <!-- seal chop: the one hard red mark that makes the rest read as ink -->
+        <rect id="iw-seal" x="1600" y="820" width="86" height="86" fill="#a5322a" rx="6" />
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">06 / PAINTERLY</div>
+      <div class="beat-name">Ink-wash</div>
+      <div class="beat-tech">Gooey blur-threshold bleed + brush draw-on, multiply on paper</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Constant-speed draw-on: ease "none" is what makes it read as a pen
+        // moving at a steady rate rather than an object easing into place.
+        [
+          ["#iw-stroke", 0.35, 1.5],
+          ["#iw-stroke-dry", 0.45, 1.6],
+        ].forEach(function (spec) {
+          var el = document.querySelector(spec[0]);
+          var len = el.getTotalLength();
+          gsap.set(el, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(el, { strokeDashoffset: 0, duration: spec[2], ease: "none" }, spec[1]);
+        });
+
+        // Blobs bloom outward — the gooey threshold fuses them as they meet.
+        tl.from("#iw-b1", { attr: { r: 0 }, duration: 0.7, ease: "power2.out" }, 0.15);
+        tl.from("#iw-b2", { attr: { r: 0 }, duration: 0.7, ease: "power2.out" }, 0.34);
+        tl.from("#iw-b3", { attr: { r: 0 }, duration: 0.7, ease: "power2.out" }, 0.5);
+        tl.from("#iw-b4", { attr: { r: 0 }, duration: 0.7, ease: "power2.out" }, 0.68);
+
+        // The wash spreads slower than the ink that made it.
+        tl.from(
+          "#iw-wash",
+          {
+            scale: 0.55,
+            transformOrigin: "960px 560px",
+            opacity: 0,
+            duration: 2.2,
+            ease: "power1.out",
+          },
+          0.2,
+        );
+
+        tl.from(
+          "#iw-seal",
+          {
+            opacity: 0,
+            scale: 0.4,
+            transformOrigin: "1643px 863px",
+            duration: 0.34,
+            ease: "back.out(2.2)",
+          },
+          2.5,
+        );
+
+        tl.from(
+          "#beat-inkwash .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["inkwash"] = tl;
+      })();
+    </script>
+  </div>
+</template>
