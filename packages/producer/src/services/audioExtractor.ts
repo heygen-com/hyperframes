@@ -211,8 +211,9 @@ async function mixTracks(
     const delayMs = Math.round(track.start * 1000);
     const trimDuration = track.duration > 0 ? track.duration : totalDuration;
 
+    // See audioMixer.ts for why asetpts sits between apad and atrim.
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,atrim=0:${totalDuration}[a${i}]`,
+      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${totalDuration}[a${i}]`,
     );
   });
 

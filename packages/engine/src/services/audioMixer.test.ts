@@ -296,7 +296,7 @@ describe("processCompositionAudio", () => {
 
     expect(filter).toContain("volume=0");
     expect(filter).toContain("[mixed]volume=1[out]");
-    expect(filter).toContain("apad,atrim=0:2");
+    expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:2");
     expect(filter).not.toContain("whole_dur");
     expect(filter).not.toContain("normalize=");
     expect(filter).not.toContain("weights=");
@@ -464,7 +464,7 @@ describe("processCompositionAudio", () => {
     // 2 s clip + the 1.9 s tail 0.6 + size * 2.6 generates.
     expect(filter).toContain("atrim=0:3.9,");
     // And still cut at the composition's end, so a tail cannot extend the video.
-    expect(filter).toContain("apad,atrim=0:8");
+    expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:8");
   });
 
   it("hands the volume envelope to the FX pass instead of ducking the file after it", async () => {
@@ -1076,6 +1076,60 @@ describe("processCompositionAudio", () => {
     // indefinite `apad` to cap the padded stream at composition duration.
     expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount * 2);
     expect((filter?.match(/apad,/g) ?? []).length).toBe(trackCount);
+  });
+
+  it("renumbers timestamps between apad and atrim on every mixed branch", async () => {
+    // Regression: `apad` then `atrim` is the portable pad-to-length shape --
+    // #2769 moved off `apad=whole_dur=` because some builds reject that option.
+    // But on FFmpeg 5.x-8.0.x the padded samples carry timestamps `atrim`
+    // misreads, so a delayed branch sounds at t=0 and, past three branches, the
+    // last one vanishes from the mix. `asetpts=N/SR/TB` between the two rebuilds
+    // the timestamps from the sample count and costs no portability, since all
+    // three filters exist in every build we support.
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "a.wav"), "stub");
+    writeFileSync(join(baseDir, "b.wav"), "stub");
+
+    // Two branches, the second delayed: the shape that misplaced audio.
+    await processCompositionAudio(
+      [
+        {
+          id: "a",
+          src: "a.wav",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+        {
+          id: "b",
+          src: "b.wav",
+          start: 4,
+          end: 5,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      8,
+    );
+
+    const filter = capturedFilterScripts.at(-1) ?? "";
+    const branches = filter.match(/apad[^;]*/g) ?? [];
+    expect(branches).toHaveLength(2);
+    for (const branch of branches) {
+      expect(branch).toMatch(/^apad,asetpts=N\/SR\/TB,atrim=0:/);
+    }
+    // The portability constraint #2769 established still holds.
+    expect(filter).not.toContain("whole_dur");
   });
 
   it("retries with the current file-valued filter option when a nightly removes the legacy alias", async () => {

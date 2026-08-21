@@ -709,8 +709,19 @@ async function mixAudioTracks(
       // can run over what follows but never past the end of the video.
       const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
+      // `apad` then `atrim` is the portable pad-to-length shape: PR #2769 moved
+      // off `apad=whole_dur=` because some FFmpeg builds reject that option
+      // outright ("Error applying option 'whole_dur': Option not found").
+      // But on FFmpeg 5.x through 8.0.x the samples `apad` appends carry
+      // timestamps the following `atrim` misreads, so a delayed branch lands at
+      // t=0 and, once four or more branches are mixed, the last one disappears
+      // entirely. `asetpts=N/SR/TB` renumbers the padded stream from the sample
+      // count before the trim reads it, which fixes the misplacement while
+      // keeping the filter set every build supports. Verified correct on 4.2.7,
+      // 7.0.2, an 8.x nightly and 8.1.1; the un-reset form is wrong on the
+      // middle two.
       filterParts.push(
-        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
+        `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
