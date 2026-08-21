@@ -392,9 +392,9 @@ export function TimelineLanes({
                       : 0;
                     // Fades ride the clip's own volume envelope; the binding is
                     // read-only until the clip is selected, exactly as its lanes are.
-                    const fadeBinding = resolveClipFadeBinding(el, (target) =>
-                      automationLanes.bind(target, isSelected),
-                    );
+                    const fadeBinding = resolveClipFadeBinding(el, {
+                      bindAutomation: (element) => automationLanes.bind(element, isSelected),
+                    });
                     const clipGestures = createClipGestureHandlers(
                       el,
                       elementKey,

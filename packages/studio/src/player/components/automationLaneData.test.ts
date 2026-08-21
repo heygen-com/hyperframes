@@ -9,6 +9,7 @@ import {
   elementFxChain,
 } from "./automationLaneData";
 import type { TimelineElement } from "../store/timelineElement";
+import { lanesOf, NARRATION_1_CHAIN, NARRATION_2_CHAIN } from "./automationLaneFixtures";
 
 const el = (over: Partial<TimelineElement> = {}): TimelineElement => ({
   id: "bgm",
@@ -208,30 +209,16 @@ describe("laneGroupKey", () => {
 });
 
 describe("groupAutomationLanes", () => {
-  const chainOf = (nodes: unknown[]) => JSON.stringify({ version: 1, nodes });
-  const lanesOf = (...targets: string[]) =>
-    JSON.stringify({
-      version: 1,
-      lanes: targets.map((target) => ({ target, points: [{ t: 0, v: 1 }] })),
-    });
-
-  // Two narration slices sharing a row. Each mints its own chain, so the node ids
-  // collide across them while meaning different things.
   const narration1 = el({
     id: "narration-1",
     key: "narration-1",
-    fxChain: chainOf([
-      { type: "lowpass", id: "n1", params: { frequency: 8000, q: 0.7, poles: "2" } },
-      { type: "peaking", id: "n2", params: { frequency: 1000, gain: -3, q: 1.4 } },
-    ]),
+    fxChain: NARRATION_1_CHAIN,
     automation: lanesOf("fx.n2.q"),
   });
   const narration2 = el({
     id: "narration-2",
     key: "narration-2",
-    fxChain: chainOf([
-      { type: "peaking", id: "n1", params: { frequency: 1000, gain: -6, q: 1.4 } },
-    ]),
+    fxChain: NARRATION_2_CHAIN,
     automation: lanesOf("fx.n1.q", "volume"),
   });
 
@@ -258,9 +245,16 @@ describe("groupAutomationLanes", () => {
     expect(groups.map((g) => g.entries.length)).toEqual([1, 1]);
   });
 
-  it("ignores clips that are not audio, the way the reserved height does", () => {
-    const video = el({ id: "titles", key: "titles", tag: "div", automation: lanesOf("volume") });
-    expect(groupAutomationLanes([video])).toEqual([]);
+  it("draws a picture's opacity lane, the way the reserved height counts it", () => {
+    // A fade on a video is an opacity envelope and earns a row exactly as a
+    // volume one does. Gating this on audio is what used to hide it.
+    const titles = el({ id: "titles", key: "titles", tag: "div", automation: lanesOf("opacity") });
+    expect(groupAutomationLanes([titles]).map((g) => g.key)).toEqual(["Opacity"]);
+  });
+
+  it("still ignores a clip carrying no automation at all", () => {
+    const bare = el({ id: "bare", key: "bare", tag: "div" });
+    expect(groupAutomationLanes([bare])).toEqual([]);
   });
 
   it("skips a target that does not resolve against its clip's chain", () => {

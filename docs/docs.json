@@ -212,6 +212,7 @@
               "studio/canvas",
               "studio/timeline",
               "studio/trim-tools",
+              "studio/fades",
               "studio/animation",
               "studio/captions"
             ]

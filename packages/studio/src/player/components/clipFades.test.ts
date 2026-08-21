@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { HfAutomationPoint } from "@hyperframes/core/audio-automation";
 import {
+  envelopeFadeSampler,
   clampClipFades,
   fadeWedgePath,
   MIN_FADE_SECONDS,
   NO_FADES,
+  readClipFadeCurves,
   readClipFades,
+  readFadeCurve,
   writeClipFades,
 } from "./clipFades";
 
@@ -113,34 +116,67 @@ describe("clampClipFades", () => {
 describe("fadeWedgePath", () => {
   const WIDTH = 200;
   const HEIGHT = 100;
-  const wedge = (
-    edge: "in" | "out",
-    curve: Parameters<typeof fadeWedgePath>[0]["curve"] = "linear",
-  ) =>
-    fadeWedgePath({ edge, seconds: 2, curve, pixelsPerSecond: 25, width: WIDTH, height: HEIGHT })
-      .line;
+  const wedge = (edge: "in" | "out", curve = 0) =>
+    fadeWedgePath({
+      edge,
+      seconds: 2,
+      sample: envelopeFadeSampler(curve),
+      pixelsPerSecond: 25,
+      width: WIDTH,
+      height: HEIGHT,
+    }).line;
   /** Every [x, y] the path visits, in order. */
   const points = (d: string) =>
     [...d.matchAll(/[ML] (-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
 
   it("draws a fade in rising out of the clip's start", () => {
     const path = points(wedge("in"));
-    expect(path[0]).toEqual([0, HEIGHT]); // silent, at the very start
-    expect(path[1]).toEqual([50, 0]); // full level, 2s in at 25px/s
+    expect(path.at(0)).toEqual([0, HEIGHT]); // silent, at the very start
+    expect(path.at(-1)).toEqual([50, 0]); // full level, 2s in at 25px/s
   });
 
   it("draws a fade out falling INTO the clip's end, not out of it", () => {
     const path = points(wedge("out"));
-    expect(path[0]).toEqual([WIDTH - 50, 0]); // still at full level, 2s from the end
-    expect(path[1]).toEqual([WIDTH, HEIGHT]); // silent, exactly on the end
+    expect(path.at(0)).toEqual([WIDTH - 50, 0]); // still at full level, 2s from the end
+    expect(path.at(-1)).toEqual([WIDTH, HEIGHT]); // silent, exactly on the end
   });
 
-  it("samples a curved fade instead of drawing a straight line", () => {
-    expect(points(wedge("in", "smooth")).length).toBeGreaterThan(5);
-    // The curve leaves silence slowly, so it sits BELOW the straight line at the
-    // halfway point (larger y is quieter).
-    const mid = points(wedge("in", "smooth")).find(([x]) => Math.abs(x - 25) < 2);
-    expect(mid?.[1]).toBeGreaterThan(HEIGHT / 2);
+  it("draws an audio fade on exactly the line the picture fades along", () => {
+    // The two are stored in different places and sampled through different
+    // code, so this is the check that they still describe one shape: a bend of
+    // -0.5 has to look the same on a music clip as on a video clip.
+    for (const curve of [-1, -0.5, 0, 0.5, 1]) {
+      const wedgeFor = (sample: (p: number) => number) =>
+        points(
+          fadeWedgePath({
+            edge: "in",
+            seconds: 2,
+            sample,
+            pixelsPerSecond: 25,
+            width: WIDTH,
+            height: HEIGHT,
+          }).line,
+        );
+      const visual = wedgeFor(envelopeFadeSampler(curve));
+      const audio = wedgeFor(envelopeFadeSampler(curve));
+      expect(visual.length).toBeGreaterThan(5);
+      expect(audio).toHaveLength(visual.length);
+      for (const [index, [x, y]] of visual.entries()) {
+        expect(audio[index]![0]).toBeCloseTo(x, 1);
+        expect(audio[index]![1]).toBeCloseTo(y, 0);
+      }
+    }
+  });
+
+  it("samples a bent fade instead of drawing a straight line", () => {
+    // A bend of -0.5 is p², so a quarter of the way in the level is 0.0625 and
+    // the line sits well below the straight one (larger y is quieter).
+    const quarter = points(wedge("in", -0.5)).find(([x]) => Math.abs(x - 12.5) < 1.1);
+    expect(quarter?.[1]).toBeCloseTo((1 - 0.0625) * HEIGHT, 1);
+
+    // Bent the other way it sits above the line by the same reasoning.
+    const bulged = points(wedge("in", 0.5)).find(([x]) => Math.abs(x - 12.5) < 1.1);
+    expect(bulged?.[1]).toBeCloseTo((1 - 0.5) * HEIGHT, 1);
   });
 
   it("draws nothing for a fade of no length", () => {
@@ -148,7 +184,7 @@ describe("fadeWedgePath", () => {
       fadeWedgePath({
         edge: "in",
         seconds: 0,
-        curve: "linear",
+        sample: envelopeFadeSampler(0),
         pixelsPerSecond: 25,
         width: WIDTH,
         height: HEIGHT,
@@ -160,17 +196,15 @@ describe("fadeWedgePath", () => {
     const { line, fill } = fadeWedgePath({
       edge: "in",
       seconds: 2,
-      curve: "linear",
+      sample: envelopeFadeSampler(0),
       pixelsPerSecond: 25,
       width: WIDTH,
       height: HEIGHT,
     });
     // The line is the level and nothing else: no close, no corner.
     expect(line).not.toContain("Z");
-    expect(points(line)).toEqual([
-      [0, HEIGHT],
-      [50, 0],
-    ]);
+    expect(points(line).at(0)).toEqual([0, HEIGHT]);
+    expect(points(line).at(-1)).toEqual([50, 0]);
     // The fill is that line closed back through the clip's corner.
     expect(fill.startsWith(line)).toBe(true);
     expect(fill.endsWith("L 0 0 Z")).toBe(true);
@@ -234,13 +268,93 @@ describe("writeClipFades", () => {
     expect(at(writeClipFades(faded, DURATION, NO_FADES))).toEqual([[4, 0.5]]);
   });
 
-  it("curves the segment leaving the fade's silent end", () => {
-    const smooth = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, "smooth");
-    expect(smooth[0]?.curve).toBeCloseTo(0.35, 6);
-    // The fade-out curves out of its full-level point, into silence.
-    expect(smooth[2]?.curve).toBeCloseTo(0.35, 6);
+  it("bends the segment leaving the fade's silent end", () => {
+    const bent = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: -0.5, out: -0.5 });
+    // The envelope stores the same bend with the opposite sign; see
+    // envelopeCurveForFade. Both ends carry it, each on the point it leaves.
+    expect(bent[0]?.curve).toBeCloseTo(0.5, 6);
+    expect(bent[2]?.curve).toBeCloseTo(0.5, 6);
+    // A straight fade writes no curvature at all rather than an explicit zero.
     expect(
-      writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, "linear")[0]?.curve,
+      writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 0 }, { in: 0, out: 0 })[0]?.curve,
     ).toBeUndefined();
+  });
+
+  it("gives each ramp its own curvature, on the point it leaves", () => {
+    const apart = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: -0.5, out: 0.25 });
+    expect(apart[0]?.curve).toBeCloseTo(0.5, 6);
+    expect(apart[2]?.curve).toBeCloseTo(-0.25, 6);
+  });
+
+  it("leaves a straight ramp bare even when the other one is bent", () => {
+    const half = writeClipFades([], DURATION, { fadeIn: 1, fadeOut: 1 }, { in: 0, out: -0.5 });
+    expect(half[0]?.curve).toBeUndefined();
+    expect(half[2]?.curve).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("readFadeCurve", () => {
+  it("is straight when the point carries no curvature", () => {
+    expect(readFadeCurve(undefined)).toBe(0);
+    expect(readFadeCurve(0)).toBe(0);
+  });
+
+  it("reads the stored curvature from the other end", () => {
+    expect(readFadeCurve(0.5)).toBe(-0.5);
+    expect(readFadeCurve(-0.5)).toBe(0.5);
+  });
+});
+
+describe("readClipFadeCurves", () => {
+  const curves = (points: HfAutomationPoint[]) =>
+    readClipFadeCurves(points, readClipFades(points, DURATION));
+
+  it("reads each ramp's bend off the point that ramp leaves", () => {
+    const points: HfAutomationPoint[] = [
+      { t: 0, v: 0, curve: 0.5 },
+      { t: 2, v: 1 },
+      { t: 6, v: 1, curve: -0.25 },
+      { t: DURATION, v: 0 },
+    ];
+    expect(curves(points)).toEqual({ in: -0.5, out: 0.25 });
+  });
+
+  it("does not hand a fade-out the fade-in's bend when there is no fade-out", () => {
+    // The regression: with only a fade-in the envelope has two points, so the
+    // one before last IS the fade-in's own start. Read positionally, the bend
+    // leaks across, and the next write stamps it onto a fade-out nobody bent.
+    const points: HfAutomationPoint[] = [
+      { t: 0, v: 0, curve: 1 },
+      { t: 3, v: 1 },
+    ];
+    expect(curves(points)).toEqual({ in: -1, out: 0 });
+  });
+
+  it("does not hand a fade-in the fade-out's bend when there is no fade-in", () => {
+    const points: HfAutomationPoint[] = [
+      { t: 5, v: 1, curve: 1 },
+      { t: DURATION, v: 0 },
+    ];
+    expect(curves(points)).toEqual({ in: 0, out: -1 });
+  });
+
+  it("reads straight off an envelope that is nobody's fade", () => {
+    expect(
+      curves([
+        { t: 2, v: 0.4, curve: 0.8 },
+        { t: 5, v: 0.9 },
+      ]),
+    ).toEqual({ in: 0, out: 0 });
+    expect(curves([])).toEqual({ in: 0, out: 0 });
+  });
+
+  it("reads points that arrive out of order", () => {
+    const points: HfAutomationPoint[] = [
+      { t: DURATION, v: 0 },
+      { t: 6, v: 1, curve: -0.25 },
+      { t: 2, v: 1 },
+      { t: 0, v: 0, curve: 0.5 },
+    ];
+    expect(curves(points)).toEqual({ in: -0.5, out: 0.25 });
   });
 });

@@ -2,6 +2,7 @@
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
+import { clipFadeFilter, clipFadeLevelAt, hasClipFadeAttributes, parseClipFade } from "../clipFade";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
@@ -658,10 +659,18 @@ export function initSandboxRuntimeModular(): void {
     }
   });
 
-  const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
+  /**
+   * The clip's own window, resolved exactly as visibility resolves it — the two
+   * must agree, because a fade running on a different window than the clip is
+   * visible for is a fade that clips or hangs. Null for nodes that are not
+   * timed content at all.
+   */
+  const resolveTimedElementWindow = (
+    rawNode: HTMLElement,
+  ): { start: number; end: number } | null => {
     const tag = rawNode.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
-      return false;
+      return null;
     }
 
     const isMedia = tag === "video" || tag === "audio";
@@ -692,9 +701,13 @@ export function initSandboxRuntimeModular(): void {
     }
     const computedEnd =
       duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-    return (
-      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime < computedEnd : true)
-    );
+    return { start, end: computedEnd };
+  };
+
+  const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
+    const span = resolveTimedElementWindow(rawNode);
+    if (!span) return false;
+    return currentTime >= span.start && (Number.isFinite(span.end) ? currentTime < span.end : true);
   };
 
   const hasExternalCompositions = !!document.querySelector("[data-composition-src]");
@@ -1916,6 +1929,65 @@ export function initSandboxRuntimeModular(): void {
   };
   const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
+  /**
+   * The inline `filter` each faded clip carried before the fade first touched
+   * it, captured on that first touch — which happens on the initial visibility
+   * pass, before the transport has advanced and before any tween has run.
+   */
+  const authoredClipFilters = new WeakMap<HTMLElement, string>();
+  const fadedClipNodes = new WeakSet<HTMLElement>();
+
+  /**
+   * Attenuate a clip across its declared fades.
+   *
+   * Writes `filter: opacity()`, never `opacity` itself: opacity is the property
+   * animation engines drive, and a runtime that rewrites it every frame fights
+   * them for it. A filter multiplies with whatever they set. Outside the fades
+   * the authored filter is restored exactly, so a clip that is not fading is
+   * left carrying only what its author gave it.
+   */
+  const restoreAuthoredClipFilter = (rawNode: HTMLElement) => {
+    if (!fadedClipNodes.has(rawNode)) return;
+    const authored = authoredClipFilters.get(rawNode);
+    if (authored) rawNode.style.filter = authored;
+    else rawNode.style.removeProperty("filter");
+    fadedClipNodes.delete(rawNode);
+  };
+
+  const applyClipFade = (rawNode: HTMLElement, currentTime: number, isVisible: boolean) => {
+    // Cheap gate first: this runs for every timed element on every frame, and
+    // almost none of them declare a fade.
+    if (!hasClipFadeAttributes((name) => rawNode.hasAttribute(name))) {
+      restoreAuthoredClipFilter(rawNode);
+      return;
+    }
+    // A clip outside its own window is already hidden; leaving a fade filter on
+    // it would show the author a style they never wrote.
+    if (!isVisible) {
+      restoreAuthoredClipFilter(rawNode);
+      return;
+    }
+    const fade = parseClipFade((name) => rawNode.getAttribute(name));
+    if (!fade) {
+      restoreAuthoredClipFilter(rawNode);
+      return;
+    }
+    const span = resolveTimedElementWindow(rawNode);
+    if (!span) return;
+    if (!authoredClipFilters.has(rawNode)) {
+      authoredClipFilters.set(rawNode, rawNode.style.getPropertyValue("filter"));
+    }
+    const authored = authoredClipFilters.get(rawNode) ?? "";
+    const level = clipFadeLevelAt(fade, currentTime - span.start);
+    const next = clipFadeFilter(authored, level);
+    if (next) {
+      rawNode.style.filter = next;
+      fadedClipNodes.add(rawNode);
+    } else {
+      rawNode.style.removeProperty("filter");
+      fadedClipNodes.delete(rawNode);
+    }
+  };
 
   const syncTimedElementVisibility = (
     currentTime: number,
@@ -1966,6 +2038,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
+      applyClipFade(rawNode, currentTime, isVisibleNow);
       if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }

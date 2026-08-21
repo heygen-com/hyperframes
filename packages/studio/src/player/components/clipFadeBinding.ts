@@ -1,74 +1,81 @@
+import { OPACITY_TARGET, VOLUME_TARGET } from "@hyperframes/core/audio-automation";
 import { laneFor, withLane } from "./automationLaneGeometry";
 import {
-  FADE_CURVES,
+  readClipFadeCurves,
   readClipFades,
+  resolveClipFadeCurves,
   writeClipFades,
+  type ClipFadeCurves,
   type ClipFades,
-  type FadeCurve,
 } from "./clipFades";
 import type { AutomationLaneBinding } from "./useAutomationLanes";
 import type { TimelineElement } from "../store/playerStore";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 
 /**
- * Wiring the fade grips to the clip's volume envelope.
+ * Wiring the fade grips to the clip's own envelope.
  *
- * Fades ride the automation the lane UI already edits, so this is a projection
- * of it, not a second store: read the volume lane's head and tail as fades,
- * write them back through the same binding a dragged breakpoint uses. That is
- * what makes the two agree — draw a fade with the grip, open the lane, and the
- * points are there.
+ * There is one storage and one gesture. A fade is a value that moves across a
+ * clip's life, which is what `data-automation` is for, so both media keep it
+ * there and only the lane differs: sound rides `volume`, picture rides
+ * `opacity`. Nothing here writes an attribute of its own.
  *
- * Audio only for now. A visual clip fades on opacity, which lives in the
- * composition's animation rather than in this envelope.
+ * Two things fall out of that which are worth more than the tidiness:
+ *
+ * - A fade drawn with a grip is the same two breakpoints the automation lane
+ *   edits, so it can be refined by hand afterwards, on a video as much as on
+ *   music.
+ * - A third point dragged into the middle stops it being a fade and makes it an
+ *   envelope, with nothing to migrate and no second representation to reconcile.
  */
-
-const VOLUME = "volume";
 
 export interface ClipFadeBinding {
   fades: ClipFades;
-  curve: FadeCurve;
+  /** How far each ramp is bent; 0 is a straight one. */
+  curves: ClipFadeCurves;
+  /** The shape an in-progress fade gesture will draw. */
+  curvesFor(next: ClipFades): ClipFadeCurves;
   readOnly: boolean;
   onPreview(next: ClipFades): void;
   onCommit(next: ClipFades): void;
-  onCycleCurve(): void;
+  /** Live while a fade line is dragged, then once more on release. */
+  onBend(edge: "in" | "out", curve: number, persist: boolean): void;
 }
 
-/** Which named curve an envelope's fade was written with. */
-export function readFadeCurve(curvature: number | undefined): FadeCurve {
-  if (!curvature) return "linear";
-  const named = (Object.keys(FADE_CURVES) as FadeCurve[]).find(
-    (key) => Math.abs(FADE_CURVES[key] - curvature) < 0.05,
-  );
-  return named ?? "linear";
+export interface ClipFadeDeps {
+  /** The clip's automation binding, which is the whole read and write path. */
+  bindAutomation(element: TimelineElement): AutomationLaneBinding;
 }
 
-/** The next shape a double-click on the grip moves to. */
-export function nextFadeCurve(curve: FadeCurve): FadeCurve {
-  const order = Object.keys(FADE_CURVES) as FadeCurve[];
-  return order[(order.indexOf(curve) + 1) % order.length]!;
-}
+/** Replace one edge's bend, leaving the other exactly as it was. */
+const withBend = (curves: ClipFadeCurves, edge: "in" | "out", curve: number): ClipFadeCurves =>
+  edge === "in" ? { ...curves, in: curve } : { ...curves, out: curve };
 
 /**
- * The fade binding for a clip, or undefined when fades do not apply to it.
+ * The fade binding for a clip. Every clip gets one; what differs is the lane.
  *
- * `bind` is called for every clip the timeline draws, so it must stay cheap:
- * everything here is a read off already-parsed automation plus two closures.
+ * Called for every clip the timeline draws, so it stays a read off already
+ * parsed state plus a few closures.
  */
 export function resolveClipFadeBinding(
   element: TimelineElement,
-  bind: (element: TimelineElement) => AutomationLaneBinding,
+  deps: ClipFadeDeps,
 ): ClipFadeBinding | undefined {
-  if (!isAudioTimelineElement(element)) return undefined;
-  const binding = bind(element);
-  const lane = laneFor(binding.automation, VOLUME);
-  const fades = readClipFades(lane.points, element.duration);
-  const curve = readFadeCurve(lane.points[0]?.curve);
+  // A clip with no length has no window to fade across.
+  if (!(element.duration > 0)) return undefined;
 
-  const apply = (next: ClipFades, shape: FadeCurve, persist: boolean) => {
+  const target = isAudioTimelineElement(element) ? VOLUME_TARGET : OPACITY_TARGET;
+  const binding = deps.bindAutomation(element);
+  const lane = laneFor(binding.automation, target);
+  const fades = readClipFades(lane.points, element.duration);
+  // Each ramp's curvature already lives on the point it leaves, so the envelope
+  // has carried two bends all along.
+  const curves: ClipFadeCurves = readClipFadeCurves(lane.points, fades);
+
+  const apply = (next: ClipFades, shape: ClipFadeCurves | undefined, persist: boolean) => {
     if (binding.readOnly) return;
     const points = writeClipFades(lane.points, element.duration, next, shape);
-    const automation = withLane(binding.automation, { target: VOLUME, points });
+    const automation = withLane(binding.automation, { target, points });
     // An envelope with no points left is no envelope: drop the lane so the clip
     // goes back to carrying no automation attribute at all.
     const lanes = automation.lanes.filter((l) => l.points.length > 0);
@@ -79,10 +86,11 @@ export function resolveClipFadeBinding(
 
   return {
     fades,
-    curve,
+    curves,
+    curvesFor: (next) => resolveClipFadeCurves(lane.points, element.duration, next),
     readOnly: binding.readOnly,
-    onPreview: (next) => apply(next, curve, false),
-    onCommit: (next) => apply(next, curve, true),
-    onCycleCurve: () => apply(fades, nextFadeCurve(curve), true),
+    onPreview: (next) => apply(next, undefined, false),
+    onCommit: (next) => apply(next, undefined, true),
+    onBend: (edge, bend, persist) => apply(fades, withBend(curves, edge, bend), persist),
   };
 }

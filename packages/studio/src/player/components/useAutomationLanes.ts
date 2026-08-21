@@ -93,6 +93,8 @@ export function useAutomationLanes(): UseAutomationLanesResult {
     [domEditSelection, elements],
   );
 
+  const updateElement = usePlayerStore((s) => s.updateElement);
+
   const bind = useCallback(
     (element: TimelineElement, isSelected: boolean): AutomationLaneBinding => {
       const chain = elementFxChain(element);
@@ -111,6 +113,13 @@ export function useAutomationLanes(): UseAutomationLanesResult {
         // and still resyncs the selection, so the next edit sees this one.
         if (persist) {
           void domEdit.handleDomAttributeQuietCommit(HF_AUDIO_AUTOMATION_ATTR, value, coalesce);
+          // And catch the store up in the same tick. The quiet commit reaches
+          // the file and the preview but deliberately skips the refresh that
+          // re-derives the timeline, so without this the next gesture reads the
+          // envelope as it was BEFORE this one: draw a fade in, draw a fade out
+          // a moment later, and the second write is computed from a clip that
+          // still looks like it has no fade, which drops the first.
+          updateElement(elementKey, { automation: value || undefined });
         }
         // Dragging a point writes live: no preview refresh, so the composition
         // does not reload and restart playback on every pixel.
@@ -163,6 +172,7 @@ export function useAutomationLanes(): UseAutomationLanesResult {
       automationSelection,
       setAutomationSelection,
       clearAutomationSelection,
+      updateElement,
     ],
   );
 

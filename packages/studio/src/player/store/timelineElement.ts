@@ -76,3 +76,24 @@ export interface TimelineElement {
   expandedParentStart?: number;
   expandedHostKey?: string;
 }
+
+/**
+ * The fields a timeline edit may write straight back onto an element.
+ *
+ * Optimistic application is the pattern every timing edit here uses: apply,
+ * then persist, then reassert — so the surface that can be applied that way is
+ * named once rather than re-listed at each writer.
+ */
+export type EditableTimelineFields = Pick<
+  TimelineElement,
+  | "start"
+  | "duration"
+  | "track"
+  | "zIndex"
+  | "hasExplicitZIndex"
+  | "playbackStart"
+  | "hidden"
+  // Written back optimistically after an envelope commit, so the next gesture
+  // reads the edit it just made rather than the state before it.
+  | "automation"
+>;

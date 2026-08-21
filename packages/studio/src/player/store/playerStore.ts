@@ -20,7 +20,7 @@ import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
 
-import type { TimelineElement } from "./timelineElement";
+import type { EditableTimelineFields, TimelineElement } from "./timelineElement";
 
 export type { TimelineElement };
 export type ZoomMode = "fit" | "manual";
@@ -141,15 +141,7 @@ interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, Thumbnail
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
-  updateElement: (
-    elementId: string,
-    updates: Partial<
-      Pick<
-        TimelineElement,
-        "start" | "duration" | "track" | "zIndex" | "hasExplicitZIndex" | "playbackStart" | "hidden"
-      >
-    >,
-  ) => void;
+  updateElement: (elementId: string, updates: Partial<EditableTimelineFields>) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;
