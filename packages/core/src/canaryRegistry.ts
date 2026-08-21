@@ -80,36 +80,6 @@ export const CANARIES: readonly CanaryDefinition[] = [
     owner: "vance",
     sunsetAfter: "2026-09-15",
   },
-  // ── Audio FX ─────────────────────────────────────────────────────────────
-  {
-    name: "audio-fx-rack",
-    percentage: 0,
-    description:
-      "Show the Audio FX rack on audio tracks in Studio — effects, presets, the voiceover carve and levelling. Gates the AUTHORING surface only: a composition that already carries data-fx-chain still plays and renders it, because a canary should stage who can reach a feature, not make a written attribute silently inert.",
-    owner: "vance",
-    sunsetAfter: "2026-11-15",
-  },
-  {
-    name: "audio-track-mute",
-    percentage: 0,
-    description:
-      "Label the visibility control as Mute on audio tracks, and make preview " +
-      "silence data-hidden audio the way the render already does. Fixes a " +
-      "shipped preview/export mismatch, so it is gated separately.",
-    owner: "vance",
-    sunsetAfter: "2026-12-15",
-  },
-  {
-    name: "audio-groups",
-    percentage: 0,
-    description:
-      "Group audio tracks under a shared label, FX chain, and automation " +
-      "clock. Gates the Studio UI for creating and managing groups; the " +
-      "underlying <hf-audio-group> element and data-audio-group membership " +
-      "parse and play regardless of enrollment.",
-    owner: "vance",
-    sunsetAfter: "2027-01-15",
-  },
 ] as const;
 
 export function findCanary(name: string): CanaryDefinition | undefined {

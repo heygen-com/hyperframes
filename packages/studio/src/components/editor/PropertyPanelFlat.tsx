@@ -14,7 +14,6 @@ import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
 import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
-import { isCanaryEnabled } from "../../telemetry/canary";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import { useVolumeAutomation } from "./useVolumeAutomation";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
@@ -428,10 +427,7 @@ export function PropertyPanelFlat({
       });
     }
   }
-  // Behind `audio-fx-rack`, at 0%. Gates the AUTHORING surface only: the runtime
-  // and render still honour a `data-fx-chain` already on an element, so a
-  // composition written through the skill does not go silently dry off-cohort.
-  if (sections.audioFx && isCanaryEnabled("audio-fx-rack")) {
+  if (sections.audioFx) {
     groups.push({
       id: "audio-fx",
       title: "Audio FX",

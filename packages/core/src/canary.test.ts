@@ -428,27 +428,16 @@ describe("canary reason property", () => {
 });
 
 /**
- * The audio FX rack ships dark.
+ * The audio features ship to everyone.
  *
- * Pinned as a test rather than trusted to review: the registry's own procedure
- * is "start at percentage: 0 and merge that", and the whole point of landing a
- * 47-PR stack behind a canary is defeated if the entry reaches main at anything
- * else. A ramp is a deliberate edit to this number, and it should have to break
- * a test that says so.
+ * They landed on main across twelve PRs while all three of their canaries sat
+ * at 0%, which meant the FX rack, the group rows, mute and solo were present in
+ * the build and reachable by nobody. Pinned as a test because the failure mode
+ * is silent: re-registering one of these re-hides a shipped feature, and
+ * nothing else would say so.
  */
-describe("the audio-fx-rack canary", () => {
-  const entry = CANARIES.find((c) => c.name === "audio-fx-rack");
-
-  it("is registered", () => {
-    expect(entry, "audio-fx-rack missing from the registry").toBeDefined();
-  });
-
-  it("ships at 0%", () => {
-    expect(entry?.percentage).toBe(0);
-  });
-
-  it("carries a sunset date, so the fork cannot outlive the rollout", () => {
-    expect(entry?.sunsetAfter).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(Date.parse(`${entry?.sunsetAfter}T00:00:00Z`)).toBeGreaterThan(Date.parse("2026-08-12"));
+describe("the audio rollout", () => {
+  it("registers no audio canary", () => {
+    expect(CANARIES.filter((c) => c.name.startsWith("audio-")).map((c) => c.name)).toEqual([]);
   });
 });

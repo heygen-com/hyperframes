@@ -1,5 +1,4 @@
 import { Eye, EyeSlash, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
-import { isCanaryEnabled } from "../../telemetry/canary";
 import { Music } from "../../icons/SystemIcons";
 import { TimelineSoloButton } from "./TimelineSoloButton";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -37,7 +36,7 @@ export function VisibilityButton({
   // Display number in the text, real key in the callback. The two must not be
   // conflated in either direction.
   const suffix = trackDisplaySuffix(trackDisplayNumber);
-  const showAsMute = Boolean(isAudioTrack) && isCanaryEnabled("audio-track-mute");
+  const showAsMute = Boolean(isAudioTrack);
   const label = visibilityButtonLabel(showAsMute, hidden, suffix);
   return (
     <button
@@ -93,9 +92,7 @@ export function PlainTrackHeader({
       {showTrackLabel && (
         <span
           className={`min-w-0 flex-1 truncate text-[11px] ${
-            isAudioTrack && (isTrackHidden || isGroupMuted) && isCanaryEnabled("audio-track-mute")
-              ? "line-through"
-              : ""
+            isAudioTrack && (isTrackHidden || isGroupMuted) ? "line-through" : ""
           }`}
           title={isGroupMuted && !isTrackHidden ? `${trackLabel} (group muted)` : trackLabel}
         >
@@ -111,7 +108,7 @@ export function PlainTrackHeader({
         isAudioTrack={isAudioTrack}
         onToggle={onToggleTrackHidden}
       />
-      {isAudioTrack && isCanaryEnabled("audio-track-mute") && onToggleSolo && (
+      {isAudioTrack && onToggleSolo && (
         <TimelineSoloButton isSoloed={isSoloed} onToggle={onToggleSolo} />
       )}
     </>
