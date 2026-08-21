@@ -45,6 +45,13 @@ export function windowsChromeCrashRemediation(errorMessage: string): string | un
     "",
     '  set HYPERFRAMES_BROWSER_PATH="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"',
     "",
+    // `set` is cmd.exe syntax. In PowerShell it resolves to the Set-Variable
+    // alias, which makes a shell variable rather than an environment one — it
+    // never reaches the child process, so the hint would look followed and
+    // change nothing.
+    "  PowerShell:",
+    '  $env:HYPERFRAMES_BROWSER_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"',
+    "",
     "Then re-run your command. Any Chrome build works for the screenshot capture path; install a real chrome-headless-shell later if you need the perf-optimized BeginFrame path.",
   ].join("\n");
 }
