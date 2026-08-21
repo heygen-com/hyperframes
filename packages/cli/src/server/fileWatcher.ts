@@ -1,4 +1,6 @@
 import { watch, type FSWatcher } from "node:fs";
+import { join } from "node:path";
+import { affectsProjectSignature } from "@hyperframes/studio-server";
 
 export type FileChangeListener = (relativePath: string) => void;
 
@@ -42,7 +44,17 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
     watcher = watch(projectDir, { recursive: true }, (_event, filename) => {
       if (!filename) return;
       const relativePath = filename.toString();
-      if (!shouldWatchProjectFile(relativePath)) return;
+      // The reload filter excludes all of `.hyperframes/`, but two files in
+      // there feed the preview signature and Studio writes one of them at
+      // runtime — dropping those at ingest left the CLI server's ETag stale
+      // until restart. Admit them here and let the reload listener re-apply
+      // its own filter, so what triggers a browser reload is unchanged.
+      if (
+        !shouldWatchProjectFile(relativePath) &&
+        !affectsProjectSignature(projectDir, join(projectDir, relativePath))
+      ) {
+        return;
+      }
 
       pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);

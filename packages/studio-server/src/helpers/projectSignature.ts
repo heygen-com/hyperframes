@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import { extname, isAbsolute, relative, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -36,6 +36,36 @@ const STUDIO_SIGNATURE_MANIFEST_PATHS = [
   ".hyperframes/studio-manual-edits.json",
   ".hyperframes/studio-motion.json",
 ] as const;
+
+/**
+ * Whether a write at `changedPath` can change `createProjectSignature(projectDir)`.
+ *
+ * Owned here because it is the exact complement of what the walk below collects,
+ * and a second copy of that reasoning drifts the moment either set changes. A
+ * watcher that invalidates on everything is not merely wasteful: `.thumbnails/`
+ * is written by the thumbnail route on every capture, and each capture reads the
+ * preview, so an unfiltered watcher discards the memo on roughly every request of
+ * the one workload the memo exists for.
+ *
+ * Note this is not `WATCHER_EXCLUDED_DIRS`, which is character-identical but
+ * excludes all of `.hyperframes/` — the signature deliberately reads two manifest
+ * files from inside it, so filtering with that set would stop motion-state saves
+ * from ever invalidating.
+ *
+ * Every segment is tested, not just the parents, so a directory event on an
+ * excluded dir itself (`unlinkDir .thumbnails`) is filtered too. The cost is that
+ * a *file* literally named `dist` at the project root reads as excluded; the walk
+ * would collect it, so it is a false negative, and no real project has one.
+ */
+export function affectsProjectSignature(projectDir: string, changedPath: string): boolean {
+  const relativePath = relative(resolve(projectDir), resolve(changedPath));
+  if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    return false;
+  }
+  const segments = relativePath.split(sep);
+  if (STUDIO_SIGNATURE_MANIFEST_PATHS.includes(segments.join("/") as never)) return true;
+  return !segments.some((segment) => SIGNATURE_EXCLUDED_DIRS.has(segment));
+}
 
 interface ProjectSignatureFile {
   file: string;

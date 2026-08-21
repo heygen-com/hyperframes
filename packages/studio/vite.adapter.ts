@@ -19,6 +19,7 @@ import {
   type BackgroundRemovalRender,
   createBackgroundRemovalJob,
   createProjectSignature,
+  affectsProjectSignature,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
@@ -40,8 +41,11 @@ export function resolveViteAutoProxy(value: string | undefined): boolean {
 /**
  * The preview ETag's cache, and the one thing allowed to clear it.
  *
- * The signature is expensive (it hashes every file in the project), so it is
- * memoised per project directory. Getting the invalidation wrong is not a
+ * The signature walks the whole project directory, so it is memoised per project
+ * directory. (The content hash underneath is already gated behind a stat-only
+ * fingerprint, so what this memo saves is the walk, not the hashing — worth
+ * knowing before deciding how aggressive invalidation is allowed to be.)
+ * Getting the invalidation wrong is not a
  * performance bug: the preview answers a revalidation with 304 and the browser
  * keeps serving the pre-edit composition, which is how a thumbnail regenerated
  * after an edit can still show the old frame.
@@ -79,8 +83,10 @@ export function createProjectSignatureCache({
       return signature;
     },
     invalidate(changedPath) {
+      // Filtered here rather than at the watcher so no caller can wire up a
+      // subscription that forgets to: the cache owns what can change its value.
       for (const projectDir of signatures.keys()) {
-        if (isPathWithin(projectDir, changedPath)) signatures.delete(projectDir);
+        if (affectsProjectSignature(projectDir, changedPath)) signatures.delete(projectDir);
       }
     },
   };
@@ -89,7 +95,7 @@ export function createProjectSignatureCache({
 export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
-  signatureCache: ProjectSignatureCache = createProjectSignatureCache(),
+  signatureCache: ProjectSignatureCache,
 ): StudioApiAdapter {
   let _bundler:
     | ((

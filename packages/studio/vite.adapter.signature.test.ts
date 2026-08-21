@@ -95,4 +95,28 @@ describe("createProjectSignatureCache", () => {
     expect(cache.get(resolve(PROJECT, "nested/.."))).toBe("sig-1");
     expect(source.calls).toBe(1);
   });
+
+  it("does not invalidate on a write the signature cannot see", () => {
+    const source = countingCompute();
+    const cache = createProjectSignatureCache({ compute: source.compute });
+
+    cache.get(PROJECT);
+    // Each thumbnail capture writes here and then reads the preview, so an
+    // unfiltered watcher discards the memo on roughly every request of the one
+    // workload the memo exists for.
+    cache.invalidate(resolve(PROJECT, ".thumbnails/frame-0.jpg"));
+
+    expect(cache.get(PROJECT)).toBe("sig-1");
+    expect(source.calls).toBe(1);
+  });
+
+  it("invalidates on a motion-state save, which lives under an otherwise-skipped dir", () => {
+    const source = countingCompute();
+    const cache = createProjectSignatureCache({ compute: source.compute });
+
+    cache.get(PROJECT);
+    cache.invalidate(resolve(PROJECT, ".hyperframes/studio-motion.json"));
+
+    expect(cache.get(PROJECT)).toBe("sig-2");
+  });
 });

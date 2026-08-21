@@ -9,7 +9,11 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
-import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
+import {
+  createProjectWatcher,
+  shouldWatchProjectFile,
+  type ProjectWatcher,
+} from "./fileWatcher.js";
 import {
   hashSignatureParts,
   loadRuntimeSource,
@@ -32,6 +36,7 @@ import {
   consumeFileWriteReceipt,
   fileContentVersion,
   getMimeType,
+  affectsProjectSignature,
   type PreviewApiAdapter,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
@@ -359,8 +364,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
   let cachedProjectSignature: string | null = null;
-  watcher.addListener(() => {
-    cachedProjectSignature = null;
+  watcher.addListener((changedPath) => {
+    if (affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
+      cachedProjectSignature = null;
+    }
   });
 
   const adapter: PreviewApiAdapter = {
@@ -765,7 +772,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
           .catch(() => {});
       };
-      watcher.addListener(listener);
+      // Re-applied here because the watcher now also emits the signature
+      // manifest files, which must not trigger a browser reload.
+      watcher.addListener((changedPath) => {
+        if (shouldWatchProjectFile(changedPath)) listener(changedPath);
+      });
       while (true) {
         await stream.sleep(30000);
       }
