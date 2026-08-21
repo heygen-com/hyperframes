@@ -6,7 +6,6 @@ import { TrackClipCount } from "./TrackClipCount";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 
 // Audio tracks say "Mute", not "Hide" — the eye IS mute for sound-only rows.
-// Gated: the relabel ships behind the canary, unlike the preview fix.
 function visibilityButtonLabel(showAsMute: boolean, hidden: boolean, suffix: string): string {
   if (showAsMute) return hidden ? "Muted" : "Mute";
   return hidden ? `Show track${suffix}` : `Hide track${suffix}`;
