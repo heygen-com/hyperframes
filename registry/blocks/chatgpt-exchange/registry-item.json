@@ -36,6 +36,11 @@
       "path": "assets/fonts/inter-LICENSE.txt",
       "target": "assets/fonts/inter-LICENSE.txt",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }

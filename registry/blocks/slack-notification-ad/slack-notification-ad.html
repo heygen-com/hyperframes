@@ -1,5 +1,35 @@
 <!doctype html>
-<html lang="en" data-resolution="portrait">
+<html
+  lang="en"
+  data-resolution="portrait"
+  data-composition-variables='[
+    { "id": "request1Title", "type": "string", "role": "content", "label": "Request 1 sender", "description": "First Slack notification sender or channel.", "default": "Sarah Chen" },
+    { "id": "request1Text", "type": "string", "role": "content", "label": "Request 1 message", "description": "First Slack notification message.", "default": "Hey! Any chance you could get the launch video done by Friday?" },
+    { "id": "request2Title", "type": "string", "role": "content", "label": "Request 2 sender", "description": "Second Slack notification sender or channel.", "default": "Marcus Webb" },
+    { "id": "request2Text", "type": "string", "role": "content", "label": "Request 2 message", "description": "Second Slack notification message.", "default": "also need a 30s demo cut for the keynote" },
+    { "id": "request3Title", "type": "string", "role": "content", "label": "Request 3 sender", "description": "Third Slack notification sender or channel.", "default": "#social" },
+    { "id": "request3Text", "type": "string", "role": "content", "label": "Request 3 message", "description": "Third Slack notification message.", "default": "Priya: can we get the launch video resized for TikTok + Reels?" },
+    { "id": "request4Title", "type": "string", "role": "content", "label": "Request 4 sender", "description": "Fourth Slack notification sender or channel.", "default": "Dana Okafor" },
+    { "id": "request4Text", "type": "string", "role": "content", "label": "Request 4 message", "description": "Fourth Slack notification message.", "default": "onboarding video needs a v2 with the new UI" },
+    { "id": "request5Title", "type": "string", "role": "content", "label": "Request 5 sender", "description": "Fifth Slack notification sender or channel.", "default": "#sales" },
+    { "id": "request5Text", "type": "string", "role": "content", "label": "Request 5 message", "description": "Fifth Slack notification message.", "default": "Tom: customer wants a 1-min walkthrough by EOD" },
+    { "id": "request6Title", "type": "string", "role": "content", "label": "Request 6 sender", "description": "Sixth Slack notification sender or channel.", "default": "Leila Haddad" },
+    { "id": "request6Text", "type": "string", "role": "content", "label": "Request 6 message", "description": "Sixth Slack notification message.", "default": "CEO is asking for a sizzle reel for the board deck" },
+    { "id": "request7Title", "type": "string", "role": "content", "label": "Request 7 sender", "description": "Seventh Slack notification sender or channel.", "default": "#events" },
+    { "id": "request7Text", "type": "string", "role": "content", "label": "Request 7 message", "description": "Seventh Slack notification message.", "default": "Jordan: offsite recap video??" },
+    { "id": "request8Title", "type": "string", "role": "content", "label": "Request 8 sender", "description": "Eighth Slack notification sender or channel.", "default": "Miguel Reyes" },
+    { "id": "request8Text", "type": "string", "role": "content", "label": "Request 8 message", "description": "Eighth Slack notification message.", "default": "can you do a Spanish version of the demo too?" },
+    { "id": "request9Title", "type": "string", "role": "content", "label": "Request 9 sender", "description": "Ninth Slack notification sender or channel.", "default": "#marketing" },
+    { "id": "request9Text", "type": "string", "role": "content", "label": "Request 9 message", "description": "Ninth Slack notification message.", "default": "Ava: we need 3 ad variants — portrait, square, landscape" },
+    { "id": "request10Title", "type": "string", "role": "content", "label": "Request 10 sender", "description": "Tenth Slack notification sender or channel.", "default": "Raj Patel" },
+    { "id": "request10Text", "type": "string", "role": "content", "label": "Request 10 message", "description": "Tenth Slack notification message.", "default": "investor update needs a quick video walkthrough" },
+    { "id": "request11Title", "type": "string", "role": "content", "label": "Request 11 sender", "description": "Eleventh Slack notification sender or channel.", "default": "Ben Liu" },
+    { "id": "request11Text", "type": "string", "role": "content", "label": "Request 11 message", "description": "Eleventh Slack notification message.", "default": "one more: Product Hunt launch video" },
+    { "id": "payoffTitle", "type": "string", "role": "content", "label": "Payoff sender", "description": "Final brand payoff title.", "default": "HeyGen" },
+    { "id": "payoffText", "type": "string", "role": "content", "label": "Payoff message", "description": "Final brand payoff message.", "default": "Heard you needed some videos?" },
+    { "id": "payoffIcon", "type": "image", "role": "content", "label": "Payoff logo", "description": "Logo shown only in the final payoff notification.", "default": "assets/img/heygen-mark.svg" }
+  ]'
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
@@ -413,31 +443,74 @@
     </div>
 
     <script>
-      /* ---------------- CONFIG — every content-facing string ---------------- */
+      var variables =
+        window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {};
+      function content(id, fallback) {
+        return typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+      }
+
       var CONFIG = {
         icon: "assets/img/slack-mark.svg",
         notifs: [
           {
-            title: "Sarah Chen",
-            text: "Hey! Any chance you could get the launch video done by Friday?",
+            title: content("request1Title", "Sarah Chen"),
+            text: content(
+              "request1Text",
+              "Hey! Any chance you could get the launch video done by Friday?",
+            ),
           },
-          { title: "Marcus Webb", text: "also need a 30s demo cut for the keynote" },
           {
-            title: "#social",
-            text: "Priya: can we get the launch video resized for TikTok + Reels?",
+            title: content("request2Title", "Marcus Webb"),
+            text: content("request2Text", "also need a 30s demo cut for the keynote"),
           },
-          { title: "Dana Okafor", text: "onboarding video needs a v2 with the new UI" },
-          { title: "#sales", text: "Tom: customer wants a 1-min walkthrough by EOD" },
-          { title: "Leila Haddad", text: "CEO is asking for a sizzle reel for the board deck" },
-          { title: "#events", text: "Jordan: offsite recap video??" },
-          { title: "Miguel Reyes", text: "can you do a Spanish version of the demo too?" },
-          { title: "#marketing", text: "Ava: we need 3 ad variants — portrait, square, landscape" },
-          { title: "Raj Patel", text: "investor update needs a quick video walkthrough" },
-          { title: "Ben Liu", text: "one more: Product Hunt launch video" },
           {
-            title: "HeyGen",
-            text: "Heard you needed some videos?",
-            icon: "assets/img/heygen-mark.svg",
+            title: content("request3Title", "#social"),
+            text: content(
+              "request3Text",
+              "Priya: can we get the launch video resized for TikTok + Reels?",
+            ),
+          },
+          {
+            title: content("request4Title", "Dana Okafor"),
+            text: content("request4Text", "onboarding video needs a v2 with the new UI"),
+          },
+          {
+            title: content("request5Title", "#sales"),
+            text: content("request5Text", "Tom: customer wants a 1-min walkthrough by EOD"),
+          },
+          {
+            title: content("request6Title", "Leila Haddad"),
+            text: content("request6Text", "CEO is asking for a sizzle reel for the board deck"),
+          },
+          {
+            title: content("request7Title", "#events"),
+            text: content("request7Text", "Jordan: offsite recap video??"),
+          },
+          {
+            title: content("request8Title", "Miguel Reyes"),
+            text: content("request8Text", "can you do a Spanish version of the demo too?"),
+          },
+          {
+            title: content("request9Title", "#marketing"),
+            text: content(
+              "request9Text",
+              "Ava: we need 3 ad variants — portrait, square, landscape",
+            ),
+          },
+          {
+            title: content("request10Title", "Raj Patel"),
+            text: content("request10Text", "investor update needs a quick video walkthrough"),
+          },
+          {
+            title: content("request11Title", "Ben Liu"),
+            text: content("request11Text", "one more: Product Hunt launch video"),
+          },
+          {
+            title: content("payoffTitle", "HeyGen"),
+            text: content("payoffText", "Heard you needed some videos?"),
+            icon: content("payoffIcon", "assets/img/heygen-mark.svg"),
           },
         ],
       };

@@ -68,6 +68,11 @@
       "path": "assets/hyperframes-logo-black.svg",
       "target": "assets/hyperframes-logo-black.svg",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }

@@ -8,8 +8,20 @@ import { describe, expect, it } from "vitest";
 const blocksDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../registry/blocks");
 
 interface RegistryManifest {
-  files: Array<{ path: string; type: string }>;
+  files: Array<{ path: string; target: string; type: string }>;
 }
+
+const promotedTemplateIds = [
+  "notification-cascade",
+  "share-sheet-carousel",
+  "ai-chat-reveal",
+  "message-thread-reveal",
+  "notes-reveal",
+  "chatgpt-exchange",
+  "claude-exchange",
+  "heygen-avatar-promo-card",
+  "slack-notification-ad",
+] as const;
 
 function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): string[] {
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
@@ -32,6 +44,31 @@ function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): s
 }
 
 describe("registry blocks", () => {
+  it("ships an editing contract and declared variables for every promoted template", () => {
+    for (const templateId of promotedTemplateIds) {
+      const itemDir = join(blocksDir, templateId);
+      const manifest = JSON.parse(
+        readFileSync(join(itemDir, "registry-item.json"), "utf8"),
+      ) as RegistryManifest;
+      const contractFiles = manifest.files.filter(
+        (file) =>
+          file.path === "TEMPLATE.md" &&
+          file.target === "TEMPLATE.md" &&
+          file.type === "hyperframes:asset",
+      );
+      const composition = manifest.files.find((file) => file.type === "hyperframes:composition");
+
+      expect(contractFiles, templateId).toHaveLength(1);
+      expect(composition, templateId).toBeDefined();
+      const html = readFileSync(join(itemDir, composition?.path ?? ""), "utf8");
+      const { document } = parseHTML(html);
+      const declarations = JSON.parse(
+        document.documentElement.getAttribute("data-composition-variables") ?? "[]",
+      ) as unknown[];
+      expect(declarations.length, templateId).toBeGreaterThan(0);
+    }
+  });
+
   it("installs every local script referenced by a block composition", () => {
     const missing: string[] = [];
 
