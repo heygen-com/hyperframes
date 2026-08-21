@@ -74,198 +74,206 @@ const track = (id: string, end: number, volume = 1) => ({
   type: "audio" as const,
 });
 
-describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
-  afterEach(() => {
-    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("keeps every track at its authored level regardless of how many there are", async () => {
-    // The property the compensation exists to hold: adding tracks must not
-    // duck the ones already there. Mixing the SAME tone twice is the cleanest
-    // probe — two coherent copies sum to exactly +6.02 dB, so any residual
-    // normalisation shows up as a plain arithmetic miss rather than something
-    // that has to be teased out of unrelated material.
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-count-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-count-work-"));
-    tempDirs.push(projectDir, workDir);
-
-    writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
-    writeTone(join(projectDir, "b.wav"), 440, 2, 0.4);
-    const oneUp = join(projectDir, `one-${MIXED_AUDIO_FILENAME}`);
-    const twoUp = join(projectDir, `two-${MIXED_AUDIO_FILENAME}`);
-
-    const one = await processCompositionAudio([track("a", 2)], projectDir, workDir, oneUp, 2);
-    const two = await processCompositionAudio(
-      [track("a", 2), track("b", 2)],
-      projectDir,
-      workDir,
-      twoUp,
-      2,
-    );
-    expect(one.success).toBe(true);
-    expect(two.success).toBe(true);
-
-    // Two coherent copies of one tone = +6.02 dB. If amix's 1/N ever survives
-    // the correction, this lands at 0 dB instead.
-    expect(meanVolumeDb(twoUp) - meanVolumeDb(oneUp)).toBeCloseTo(6.02, 0);
-  });
-
-  it("does not lift the survivors when a shorter track ends", async () => {
-    // amix with normalize=true rescales by the number of CURRENTLY ACTIVE
-    // inputs, so a track ending mid-composition would hand the remaining ones
-    // a level jump. `apad` to the full duration is what holds every input
-    // active for the whole graph and neutralises that — an invariant the
-    // filter string relies on without saying so.
-    //
-    // Measured without apad (spike, 2026-08-14): the tail runs +1.94 dB hot.
-    // Any group work that builds its own amix has to keep the padding, or
-    // inherit that bug one level down.
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-work-"));
-    tempDirs.push(projectDir, workDir);
-
-    writeTone(join(projectDir, "short.wav"), 440, 1, 0.5);
-    writeTone(join(projectDir, "long.wav"), 880, 3, 0.5);
-    const together = join(projectDir, `both-${MIXED_AUDIO_FILENAME}`);
-    const alone = join(projectDir, `alone-${MIXED_AUDIO_FILENAME}`);
-
-    const both = await processCompositionAudio(
-      [track("short", 1), track("long", 3)],
-      projectDir,
-      workDir,
-      together,
-      3,
-    );
-    const solo = await processCompositionAudio([track("long", 3)], projectDir, workDir, alone, 3);
-    expect(both.success).toBe(true);
-    expect(solo.success).toBe(true);
-
-    // After 1.5 s only `long` is sounding. It must read the same whether or not
-    // a second track happened to end earlier.
-    const tailTogether = meanVolumeDb(together, 1.5, 3);
-    const tailAlone = meanVolumeDb(alone, 1.5, 3);
-    expect(Math.abs(tailTogether - tailAlone)).toBeLessThan(0.5);
-  });
-
-  /**
-   * The gate for group buses (plans/audio-mixer-groups.md §1).
-   *
-   * Grouping is routing, not processing: a group whose FX chain is empty must
-   * be a no-op on the mix. Enable this the moment `data-audio-group` routes
-   * through a nested amix — it is the definition of done for §1.3, and the
-   * only thing standing between a wrong gain correction and a silently loud
-   * export.
-   *
-   * Proven reachable in the spike: nesting with each amix compensated by ITS
-   * OWN input count nulls against the flat mix to -inf (sample-identical), as
-   * does `amix=normalize=0` with no correction at all.
-   */
-  it("mixes a grouped composition at the same level as the ungrouped one", async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-level-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-level-work-"));
-    tempDirs.push(projectDir, workDir);
-
-    writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
-    writeTone(join(projectDir, "b.wav"), 660, 2, 0.4);
-    const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
-    const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
-
-    const flat = await processCompositionAudio(
-      [track("a", 2), track("b", 2)],
-      projectDir,
-      workDir,
-      flatOut,
-      2,
-    );
-    const grouped = await processCompositionAudio(
-      [
-        { ...track("a", 2), groupId: "voiceover" },
-        { ...track("b", 2), groupId: "voiceover" },
-      ],
-      projectDir,
-      workDir,
-      groupedOut,
-      2,
-    );
-    expect(flat.success).toBe(true);
-    expect(grouped.success).toBe(true);
-
-    // An empty group chain is pure routing — the export must read the same
-    // whether or not the two tones happened to share a group.
-    expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.3);
-  });
-
-  it("a group FX chain fully cutting its members leaves an ungrouped track untouched (routing isolation)", async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-work-"));
-    tempDirs.push(projectDir, workDir);
-
-    writeTone(join(projectDir, "voice.wav"), 440, 2, 0.4);
-    writeTone(join(projectDir, "sfx.wav"), 880, 2, 0.4);
-    const mixedOut = join(projectDir, `mixed-${MIXED_AUDIO_FILENAME}`);
-    const sfxAloneOut = join(projectDir, `sfx-alone-${MIXED_AUDIO_FILENAME}`);
-
-    const groupChain = JSON.stringify({
-      version: 1,
-      nodes: [{ type: "gain", id: "g", params: { gain: -60 } }],
+// Every case here shells out to real ffmpeg at least twice (the mix under
+// test plus a reference mix to compare it against). The 5s default is enough
+// on Linux and not on the Windows runner, where this suite timed out at
+// `routing isolation` — a slow host, not a hung mix.
+describe.skipIf(!HAS_FFMPEG)(
+  "mix level arithmetic",
+  () => {
+    afterEach(() => {
+      for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
     });
 
-    const mixed = await processCompositionAudio(
-      [{ ...track("voice", 2), groupId: "vo", groupFxChain: groupChain }, track("sfx", 2)],
-      projectDir,
-      workDir,
-      mixedOut,
-      2,
-    );
-    const sfxAlone = await processCompositionAudio(
-      [track("sfx", 2)],
-      projectDir,
-      workDir,
-      sfxAloneOut,
-      2,
-    );
-    expect(mixed.success).toBe(true);
-    expect(sfxAlone.success).toBe(true);
+    it("keeps every track at its authored level regardless of how many there are", async () => {
+      // The property the compensation exists to hold: adding tracks must not
+      // duck the ones already there. Mixing the SAME tone twice is the cleanest
+      // probe — two coherent copies sum to exactly +6.02 dB, so any residual
+      // normalisation shows up as a plain arithmetic miss rather than something
+      // that has to be teased out of unrelated material.
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-count-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-count-work-"));
+      tempDirs.push(projectDir, workDir);
 
-    // The voice group is cut ~60 dB — the mix should read close to sfx alone,
-    // and the ungrouped sfx track's own processing is unaffected by the
-    // group existing at all.
-    expect(Math.abs(meanVolumeDb(mixedOut) - meanVolumeDb(sfxAloneOut))).toBeLessThan(0.5);
-  });
+      writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
+      writeTone(join(projectDir, "b.wav"), 440, 2, 0.4);
+      const oneUp = join(projectDir, `one-${MIXED_AUDIO_FILENAME}`);
+      const twoUp = join(projectDir, `two-${MIXED_AUDIO_FILENAME}`);
 
-  it("a member's own volume envelope still applies inside a group", async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-env-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-env-work-"));
-    tempDirs.push(projectDir, workDir);
+      const one = await processCompositionAudio([track("a", 2)], projectDir, workDir, oneUp, 2);
+      const two = await processCompositionAudio(
+        [track("a", 2), track("b", 2)],
+        projectDir,
+        workDir,
+        twoUp,
+        2,
+      );
+      expect(one.success).toBe(true);
+      expect(two.success).toBe(true);
 
-    writeTone(join(projectDir, "a.wav"), 440, 4, 0.5);
-    const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
-    const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+      // Two coherent copies of one tone = +6.02 dB. If amix's 1/N ever survives
+      // the correction, this lands at 0 dB instead.
+      expect(meanVolumeDb(twoUp) - meanVolumeDb(oneUp)).toBeCloseTo(6.02, 0);
+    });
 
-    const withEnvelope = {
-      ...track("a", 4),
-      volumeKeyframes: [
-        { time: 0, volume: 1 },
-        { time: 4, volume: 0 },
-      ],
-    };
+    it("does not lift the survivors when a shorter track ends", async () => {
+      // amix with normalize=true rescales by the number of CURRENTLY ACTIVE
+      // inputs, so a track ending mid-composition would hand the remaining ones
+      // a level jump. `apad` to the full duration is what holds every input
+      // active for the whole graph and neutralises that — an invariant the
+      // filter string relies on without saying so.
+      //
+      // Measured without apad (spike, 2026-08-14): the tail runs +1.94 dB hot.
+      // Any group work that builds its own amix has to keep the padding, or
+      // inherit that bug one level down.
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-drop-work-"));
+      tempDirs.push(projectDir, workDir);
 
-    const grouped = await processCompositionAudio(
-      [{ ...withEnvelope, groupId: "vo" }],
-      projectDir,
-      workDir,
-      groupedOut,
-      4,
-    );
-    const flat = await processCompositionAudio([withEnvelope], projectDir, workDir, flatOut, 4);
-    expect(grouped.success).toBe(true);
-    expect(flat.success).toBe(true);
+      writeTone(join(projectDir, "short.wav"), 440, 1, 0.5);
+      writeTone(join(projectDir, "long.wav"), 880, 3, 0.5);
+      const together = join(projectDir, `both-${MIXED_AUDIO_FILENAME}`);
+      const alone = join(projectDir, `alone-${MIXED_AUDIO_FILENAME}`);
 
-    // The envelope fades to silent — the tail should read the same whether
-    // the track is grouped or not, proving member-level processing survives
-    // the group path unchanged.
-    const groupedTail = meanVolumeDb(groupedOut, 3, 4);
-    const flatTail = meanVolumeDb(flatOut, 3, 4);
-    expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
-  });
-});
+      const both = await processCompositionAudio(
+        [track("short", 1), track("long", 3)],
+        projectDir,
+        workDir,
+        together,
+        3,
+      );
+      const solo = await processCompositionAudio([track("long", 3)], projectDir, workDir, alone, 3);
+      expect(both.success).toBe(true);
+      expect(solo.success).toBe(true);
+
+      // After 1.5 s only `long` is sounding. It must read the same whether or not
+      // a second track happened to end earlier.
+      const tailTogether = meanVolumeDb(together, 1.5, 3);
+      const tailAlone = meanVolumeDb(alone, 1.5, 3);
+      expect(Math.abs(tailTogether - tailAlone)).toBeLessThan(0.5);
+    });
+
+    /**
+     * The gate for group buses (plans/audio-mixer-groups.md §1).
+     *
+     * Grouping is routing, not processing: a group whose FX chain is empty must
+     * be a no-op on the mix. Enable this the moment `data-audio-group` routes
+     * through a nested amix — it is the definition of done for §1.3, and the
+     * only thing standing between a wrong gain correction and a silently loud
+     * export.
+     *
+     * Proven reachable in the spike: nesting with each amix compensated by ITS
+     * OWN input count nulls against the flat mix to -inf (sample-identical), as
+     * does `amix=normalize=0` with no correction at all.
+     */
+    it("mixes a grouped composition at the same level as the ungrouped one", async () => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-level-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-level-work-"));
+      tempDirs.push(projectDir, workDir);
+
+      writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
+      writeTone(join(projectDir, "b.wav"), 660, 2, 0.4);
+      const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+      const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
+
+      const flat = await processCompositionAudio(
+        [track("a", 2), track("b", 2)],
+        projectDir,
+        workDir,
+        flatOut,
+        2,
+      );
+      const grouped = await processCompositionAudio(
+        [
+          { ...track("a", 2), groupId: "voiceover" },
+          { ...track("b", 2), groupId: "voiceover" },
+        ],
+        projectDir,
+        workDir,
+        groupedOut,
+        2,
+      );
+      expect(flat.success).toBe(true);
+      expect(grouped.success).toBe(true);
+
+      // An empty group chain is pure routing — the export must read the same
+      // whether or not the two tones happened to share a group.
+      expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.3);
+    });
+
+    it("a group FX chain fully cutting its members leaves an ungrouped track untouched (routing isolation)", async () => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-work-"));
+      tempDirs.push(projectDir, workDir);
+
+      writeTone(join(projectDir, "voice.wav"), 440, 2, 0.4);
+      writeTone(join(projectDir, "sfx.wav"), 880, 2, 0.4);
+      const mixedOut = join(projectDir, `mixed-${MIXED_AUDIO_FILENAME}`);
+      const sfxAloneOut = join(projectDir, `sfx-alone-${MIXED_AUDIO_FILENAME}`);
+
+      const groupChain = JSON.stringify({
+        version: 1,
+        nodes: [{ type: "gain", id: "g", params: { gain: -60 } }],
+      });
+
+      const mixed = await processCompositionAudio(
+        [{ ...track("voice", 2), groupId: "vo", groupFxChain: groupChain }, track("sfx", 2)],
+        projectDir,
+        workDir,
+        mixedOut,
+        2,
+      );
+      const sfxAlone = await processCompositionAudio(
+        [track("sfx", 2)],
+        projectDir,
+        workDir,
+        sfxAloneOut,
+        2,
+      );
+      expect(mixed.success).toBe(true);
+      expect(sfxAlone.success).toBe(true);
+
+      // The voice group is cut ~60 dB — the mix should read close to sfx alone,
+      // and the ungrouped sfx track's own processing is unaffected by the
+      // group existing at all.
+      expect(Math.abs(meanVolumeDb(mixedOut) - meanVolumeDb(sfxAloneOut))).toBeLessThan(0.5);
+    });
+
+    it("a member's own volume envelope still applies inside a group", async () => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-env-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-grp-env-work-"));
+      tempDirs.push(projectDir, workDir);
+
+      writeTone(join(projectDir, "a.wav"), 440, 4, 0.5);
+      const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
+      const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+
+      const withEnvelope = {
+        ...track("a", 4),
+        volumeKeyframes: [
+          { time: 0, volume: 1 },
+          { time: 4, volume: 0 },
+        ],
+      };
+
+      const grouped = await processCompositionAudio(
+        [{ ...withEnvelope, groupId: "vo" }],
+        projectDir,
+        workDir,
+        groupedOut,
+        4,
+      );
+      const flat = await processCompositionAudio([withEnvelope], projectDir, workDir, flatOut, 4);
+      expect(grouped.success).toBe(true);
+      expect(flat.success).toBe(true);
+
+      // The envelope fades to silent — the tail should read the same whether
+      // the track is grouped or not, proving member-level processing survives
+      // the group path unchanged.
+      const groupedTail = meanVolumeDb(groupedOut, 3, 4);
+      const flatTail = meanVolumeDb(flatOut, 3, 4);
+      expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
+    });
+  },
+  60_000,
+);
