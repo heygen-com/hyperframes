@@ -262,6 +262,16 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const tagsByCompositionId = new Map<string, string[]>();
     for (const tag of tags) {
       if (isInsideInertTemplate(tag, tags)) continue;
+      // A `data-composition-src` element is a MOUNT of a sub-composition, not a
+      // composition root, and sub-compositions.md documents mounting one source
+      // repeatedly with different `data-variable-values` to get per-instance
+      // variations. Those mounts legitimately share an id: the runtime rewrites
+      // repeated ones to `id__hf1`, `id__hf2` so they coexist. Counting them
+      // here made the documented pattern an error with no correct way to
+      // satisfy it. The collision this rule exists for -- a <meta> tag carrying
+      // the root's id, per its own fixHint -- is unaffected, since that tag has
+      // no `data-composition-src`.
+      if (readAttr(tag.raw, "data-composition-src")) continue;
       const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
       if (!compositionId || compositionId.trim().length === 0) continue;
 

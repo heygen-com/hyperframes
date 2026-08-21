@@ -315,6 +315,50 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not flag one sub-composition mounted repeatedly with per-instance values", async () => {
+      // Regression: sub-compositions.md "Per-Instance Variables" documents
+      // mounting one source several times with different data-variable-values.
+      // That necessarily repeats the id, and the runtime rewrites repeated
+      // mounts to `id__hf1`/`id__hf2` so they coexist. Flagging it made the
+      // documented pattern an error with no correct way to satisfy it.
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="6" data-no-timeline>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"one"}' data-start="0" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"two"}' data-start="2" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"three"}' data-start="4" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "duplicate_composition_id")).toBeUndefined();
+    });
+
+    it("still flags a real collision between a root and a non-mount element", async () => {
+      // The guard that keeps the exemption honest: skipping mounts must not
+      // blind the rule to the meta-versus-root collision it exists for, even
+      // when a legitimately repeated mount is present in the same file.
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="composition-id" data-composition-id="main">
+</head>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="4" data-no-timeline>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-start="2" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("main");
+    });
+
     it("ignores composition ids inside inert template content", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
