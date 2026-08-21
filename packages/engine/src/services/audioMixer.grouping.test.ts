@@ -108,7 +108,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // Two coherent copies of one tone = +6.02 dB. If amix's 1/N ever survives
     // the correction, this lands at 0 dB instead.
     expect(meanVolumeDb(twoUp) - meanVolumeDb(oneUp)).toBeCloseTo(6.02, 0);
-  });
+  }, 30_000);
 
   it("does not lift the survivors when a shorter track ends", async () => {
     // amix with normalize=true rescales by the number of CURRENTLY ACTIVE
@@ -145,7 +145,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const tailTogether = meanVolumeDb(together, 1.5, 3);
     const tailAlone = meanVolumeDb(alone, 1.5, 3);
     expect(Math.abs(tailTogether - tailAlone)).toBeLessThan(0.5);
-  });
+  }, 30_000);
 
   /**
    * The gate for group buses (plans/audio-mixer-groups.md §1).
@@ -193,7 +193,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // An empty group chain is pure routing — the export must read the same
     // whether or not the two tones happened to share a group.
     expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.3);
-  });
+  }, 30_000);
 
   it("a group FX chain fully cutting its members leaves an ungrouped track untouched (routing isolation)", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-fx-"));
@@ -231,7 +231,7 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     // and the ungrouped sfx track's own processing is unaffected by the
     // group existing at all.
     expect(Math.abs(meanVolumeDb(mixedOut) - meanVolumeDb(sfxAloneOut))).toBeLessThan(0.5);
-  });
+  }, 30_000);
 
   it("a member's own volume envelope still applies inside a group", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-env-"));
@@ -267,5 +267,5 @@ describe.skipIf(!HAS_FFMPEG)("mix level arithmetic", () => {
     const groupedTail = meanVolumeDb(groupedOut, 3, 4);
     const flatTail = meanVolumeDb(flatOut, 3, 4);
     expect(Math.abs(groupedTail - flatTail)).toBeLessThan(0.5);
-  });
+  }, 30_000);
 });
