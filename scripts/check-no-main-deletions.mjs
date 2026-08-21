@@ -98,6 +98,10 @@ export const ALLOWED_DELETIONS = new Map([
     "merged into build-inline-artifact.ts, same reason as build-audio-fx-runtime.ts above",
   ],
   [
+    "packages/producer/src/services/audioExtractor.ts",
+    "dead duplicate of engine's audioMixer: its processAudio had no callers and its parseAudioElements was shadowed by the @hyperframes/engine export every live consumer already imports (audioMixer.ts re-exports it, renderMediaCollector.ts and the playback-rate fixture import it directly). PRINFRA-349's review found the copy's hand-rolled source-path join reproducing the percent-encoded-CJK bug the engine resolver does not have — deleting the copy is the fix",
+  ],
+  [
     "packages/core/scripts/build-inline-artifact.ts",
     "a later branch in this stack (wa-20b2-lfo-fixes) independently deduped the same two build scripts a different way — buildInjectedArtifact.ts plus two thin per-target files — before this consolidation and that one had merged; this branch's tree keeps that shape instead, so build-inline-artifact.ts is the one that goes.",
   ],
