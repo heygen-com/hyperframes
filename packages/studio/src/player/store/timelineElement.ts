@@ -86,5 +86,14 @@ export interface TimelineElement {
  */
 export type EditableTimelineFields = Pick<
   TimelineElement,
-  "start" | "duration" | "track" | "zIndex" | "hasExplicitZIndex" | "playbackStart" | "hidden"
+  | "start"
+  | "duration"
+  | "track"
+  | "zIndex"
+  | "hasExplicitZIndex"
+  | "playbackStart"
+  | "hidden"
+  // Written back optimistically after an envelope commit, so the next gesture
+  // reads the edit it just made rather than the state before it.
+  | "automation"
 >;

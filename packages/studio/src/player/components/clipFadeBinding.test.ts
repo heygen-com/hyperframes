@@ -214,3 +214,29 @@ describe("readFadeCurve", () => {
     expect(readFadeCurve(-0.5)).toBe(0.5);
   });
 });
+
+describe("a second gesture sees the first one", () => {
+  it("draws a fade out without dropping the fade in", () => {
+    // The regression this guards: the quiet commit reaches the file and the
+    // preview but skips the refresh that re-derives the timeline. Draw a fade
+    // in, draw a fade out a moment later, and the second write was computed
+    // from a clip that still looked like it had none, which dropped the first.
+    // useAutomationLanes now catches the store up on persist; here we stand in
+    // for that by binding against what the first write produced.
+    const first = deps();
+    resolveClipFadeBinding(el(), first.bag)!.onCommit({ fadeIn: 1.5, fadeOut: 0 });
+    const afterFirst = first.onCommit.mock.calls[0]![0] as HfAutomation;
+
+    const second = deps({ automation: afterFirst });
+    const binding = resolveClipFadeBinding(el(), second.bag)!;
+    // The second gesture starts from the fade the first one drew.
+    expect(binding.fades).toEqual({ fadeIn: 1.5, fadeOut: 0 });
+    binding.onCommit({ fadeIn: 1.5, fadeOut: 2 });
+    expect(laneOf(second.onCommit.mock.calls[0]![0], "opacity")).toEqual([
+      [0, 0],
+      [1.5, 1],
+      [8, 1],
+      [10, 0],
+    ]);
+  });
+});
