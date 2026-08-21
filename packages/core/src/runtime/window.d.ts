@@ -37,18 +37,6 @@ declare global {
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
-      /**
-       * Canary states resolved by the HOST and pushed in, because core cannot
-       * resolve one itself: bucketing needs an install id, which lives in the
-       * studio's localStorage or the CLI's seed.
-       *
-       * One channel for every flag rather than a setter each — a per-flag
-       * setter meant a new `__hf` method, a new pusher and a new type entry
-       * for every runtime-visible canary. Unknown names are ignored, and any
-       * flag absent from the record keeps its default (off), so a host that
-       * knows nothing about a given canary cannot silently enable it.
-       */
-      setCanaries?: (states: Readonly<Record<string, boolean>>) => void;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

@@ -90,31 +90,21 @@ describe("scrubPreviewAudio", () => {
 });
 
 describe("applyPreviewAudioFlags", () => {
-  function fakeIframe(): { iframe: HTMLIFrameElement; calls: Record<string, unknown[]> } {
-    const calls: Record<string, unknown[]> = {};
-    const win = {
-      __hf: {
-        setCanaries: (states: Record<string, boolean>) => {
-          calls.canaries = [states];
-        },
-      },
-    };
-    const iframe = {
-      contentWindow: win,
-      contentDocument: null,
-      querySelector: () => null,
-    } as unknown as HTMLIFrameElement;
-    return { iframe, calls };
-  }
+  // Everything pushed here is state the runtime loses on reload and nothing else
+  // re-sends, so the push has to carry all of it every time. Volume in
+  // particular: the transport comes back at unity, so a preview the author had
+  // turned down came back loud.
+  it("re-pushes mute and volume together", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
 
-  // Everything pushed here is state the runtime loses on reload and nothing
-  // else re-sends, so the push has to carry all of it every time.
-  it("re-pushes the whole audio state", () => {
-    const { iframe, calls } = fakeIframe();
+    applyPreviewAudioFlags(iframe, true, 0.4);
 
-    applyPreviewAudioFlags(iframe, false, 1);
-
-    // Every runtime-visible flag in one push, each resolved by the host.
-    expect(calls.canaries?.[0]).toMatchObject({ "audio-track-mute": expect.any(Boolean) });
+    const actions = postMessage.mock.calls.map(
+      (call) => (call[0] as { action?: string }).action ?? "",
+    );
+    expect(actions).toContain("set-muted");
+    expect(actions).toContain("set-volume");
   });
 });

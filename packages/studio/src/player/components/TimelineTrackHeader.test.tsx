@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
@@ -13,17 +13,6 @@ import { getTimelineLaneTop, LABEL_COL_W, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-/** Enrolled canaries for the render under test. Both audio canaries sit at 0%,
- *  so the default here is "enrolled in nothing" — the state a real user is in. */
-const enabledCanaries = new Set<string>();
-vi.mock("../../telemetry/canary", () => ({
-  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
-}));
-
-beforeEach(() => {
-  enabledCanaries.clear();
-});
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -814,16 +803,8 @@ describe("TimelineTrackHeader", () => {
       act(() => view.root.unmount());
     });
 
-    it("hides the FX button outside the audio-fx-rack canary", () => {
+    it("offers the FX button on every audio track", () => {
       const view = renderHeader({
-        keyframeClip: VOICE,
-        animations: [],
-        expanded: false,
-        isAudioTrack: true,
-      });
-      expect(view.host.querySelector('button[aria-label="Effects"]')).toBeNull();
-      enabledCanaries.add("audio-fx-rack");
-      view.rerender({
         keyframeClip: VOICE,
         animations: [],
         expanded: false,
@@ -833,10 +814,21 @@ describe("TimelineTrackHeader", () => {
       act(() => view.root.unmount());
     });
 
-    // The group-pointer variant WRITES a group, so it needs the groups canary
-    // too — otherwise an unenrolled user creates a group and then has no UI to
-    // manage it.
-    it("hides the group pointer unless BOTH audio canaries are on", () => {
+    // A visual track has no chain to open, so the button must not follow the
+    // header onto every row.
+    it("withholds the FX button from a non-audio track", () => {
+      const view = renderHeader({
+        keyframeClip: ELEMENT,
+        animations: [],
+        expanded: false,
+      });
+      expect(view.host.querySelector('button[aria-label="Effects"]')).toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    // A chain belongs to ONE bus, so a track carrying several ungrouped clips
+    // gets the pointer instead of the FX button — group first, then mix.
+    it("shows the group pointer on a multi-clip ungrouped audio track", () => {
       const opts = {
         keyframeClip: VOICE,
         trackElements: [VOICE, VOICE_2],
@@ -848,13 +840,11 @@ describe("TimelineTrackHeader", () => {
       const pointer = (host: HTMLElement) =>
         host.querySelector('button[aria-label="Effects — group these clips first"]');
       const view = renderHeader(opts);
-      expect(pointer(view.host)).toBeNull();
-      enabledCanaries.add("audio-fx-rack");
-      view.rerender({ ...opts });
-      expect(pointer(view.host)).toBeNull();
-      enabledCanaries.add("audio-groups");
-      view.rerender({ ...opts });
       expect(pointer(view.host)).not.toBeNull();
+      // One clip needs no grouping — the real FX button takes its place.
+      view.rerender({ ...opts, trackElements: [VOICE], clipCount: 1 });
+      expect(pointer(view.host)).toBeNull();
+      expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
 
@@ -868,7 +858,6 @@ describe("TimelineTrackHeader", () => {
     // itself therefore centred the two lines in the FULL height, so opening a
     // lane pushed the name and its controls down on top of the lane rows.
     it("pins the two lines to the top TRACK_H, whatever the header grows to", () => {
-      enabledCanaries.add("audio-fx-rack");
       const automated: TimelineElement = {
         ...VOICE,
         automation: JSON.stringify({
@@ -898,8 +887,6 @@ describe("TimelineTrackHeader", () => {
     // what let a stray third child overflow the 48px box; now there is a single
     // row and the controls share one right-aligned group.
     it("keeps the name and every control on one line, controls to the right", () => {
-      enabledCanaries.add("audio-fx-rack");
-      enabledCanaries.add("audio-groups");
       const view = renderHeader({
         keyframeClip: VOICE,
         trackElements: [VOICE, VOICE_2],

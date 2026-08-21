@@ -180,38 +180,11 @@ export function initSandboxRuntimeModular(): void {
     webAudioReady = ok;
   });
   window.__hf = window.__hf || {};
-  // Canary states the HOST resolved, keyed by registry name. Core cannot
-  // resolve one itself — bucketing needs an install id it has no access to —
-  // so every runtime-visible flag arrives through this one channel rather than
-  // growing an `__hf` setter of its own.
-  //
-  // Every flag defaults OFF, which is the shipped behaviour: a host that never
-  // pushes (CLI preview, the bare player) behaves exactly as before.
-  const canaries: Record<string, boolean> = {};
-  // A2's preview/export parity fix: silence `data-hidden` audio the way the
-  // render already does. Off until enrolled, so a composition carrying
-  // `data-hidden` on an audio element keeps playing in preview meanwhile.
-  const silenceHiddenAudioEnabled = (): boolean => canaries["audio-track-mute"] === true;
   /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
    *  never an ancestor — membership is on the member's `data-audio-group` — so
    *  `closest()` alone could not see a muted group, which the render drops. */
   const isSilencedByHidden = (el: Element): boolean =>
     el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
-  window.__hf.setCanaries = (states) => {
-    const wasSilencing = silenceHiddenAudioEnabled();
-    for (const [name, enabled] of Object.entries(states)) canaries[name] = enabled === true;
-    if (silenceHiddenAudioEnabled() === wasSilencing) return;
-    // The active-clip set is built with this predicate baked in, so a flip
-    // mid-session has to rebuild it. `stopAll()` first: bumping the generation
-    // only rejects future STALE schedules, it does not stop sources already
-    // started, and there is no per-element dedup — so rescheduling on its own
-    // starts a second buffer source for every in-window clip on top of the ones
-    // still playing. `applyWebAudioRate` pairs the two for the same reason.
-    if (clock.isPlaying()) {
-      webAudio.stopAll();
-      scheduleWebAudioForActiveClips();
-    }
-  };
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -1967,7 +1940,7 @@ export function initSandboxRuntimeModular(): void {
   // one per toggled node.
   //
   // The reschedule is paired with `stopAll()` below, for the reason
-  // `setCanaries` and `applyWebAudioRate` already spell out: scheduling does
+  // `applyWebAudioRate` already spells out: scheduling does
   // NOT replace the active set. It bumps a generation, which only rejects
   // stale schedules still in flight — every source already started keeps
   // playing, and there is no per-element dedup. This comment used to claim the
@@ -2061,12 +2034,11 @@ export function initSandboxRuntimeModular(): void {
         rawNode.style.display = "none";
       }
     }
-    // Gated like every other consumer of this canary. The skips this reschedule
-    // exists to re-run (`silenceHiddenAudioEnabled() && …data-hidden`, below)
-    // are inert while the flag is off, so un-enrolled the whole stop/reschedule
-    // rebuilt an IDENTICAL active set — an audible stop-and-restart across the
-    // entire mix on every visibility toggle, at 100%, for a feature at 0%.
-    if (hiddenAudioDirty && silenceHiddenAudioEnabled() && clock.isPlaying()) {
+    // Only when a `data-hidden` mutation actually moved something: the skips
+    // this reschedule exists to re-run are what change the active set, so
+    // firing it otherwise was an audible stop-and-restart across the whole mix
+    // that rebuilt an identical set.
+    if (hiddenAudioDirty && clock.isPlaying()) {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
@@ -2132,7 +2104,6 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
-        silenceHiddenAudio: silenceHiddenAudioEnabled(),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -3013,7 +2984,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            if (silenceHiddenAudioEnabled() && isSilencedByHidden(rawEl)) continue;
+            if (isSilencedByHidden(rawEl)) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3121,7 +3092,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      if (silenceHiddenAudioEnabled() && isSilencedByHidden(rawEl)) continue;
+      if (isSilencedByHidden(rawEl)) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);

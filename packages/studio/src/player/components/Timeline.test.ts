@@ -46,17 +46,10 @@ vi.mock("./timelineRowVirtualizationFlag", () => ({
   STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED: false,
 }));
 
-/** Enrolled in nothing by default, matching a user outside every canary. */
-const enabledCanaries = new Set<string>();
-vi.mock("../../telemetry/canary", () => ({
-  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
-}));
-
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
-  enabledCanaries.clear();
   usePlayerStore.getState().reset();
 });
 
@@ -310,7 +303,6 @@ describe("Timeline provider boundary", () => {
   // while TimelineGroupRow called the THROWING context hook — one grouped clip
   // and the whole timeline render died, not just the row.
   it("renders without the provider even when a group row is on screen", () => {
-    enabledCanaries.add("audio-groups");
     const host = createSizedTimelineHost(640);
     usePlayerStore.setState({
       duration: 4,

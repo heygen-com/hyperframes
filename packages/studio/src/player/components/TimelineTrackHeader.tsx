@@ -12,7 +12,6 @@ import { useTimelineEditContextOptional } from "../../contexts/TimelineEditConte
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
 import { runtimeAudioId } from "../lib/timelineElementHelpers";
-import { isCanaryEnabled } from "../../telemetry/canary";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationLaneData";
@@ -285,7 +284,7 @@ export function TimelineTrackHeader({
               // On the control line rather than a third row of its own.
               trailing={
                 <>
-                  {singleAudioClip && isCanaryEnabled("audio-fx-rack") && (
+                  {singleAudioClip && (
                     <TimelineFxButton
                       variant="chain"
                       fxChainRaw={singleAudioClip.fxChain}
@@ -307,14 +306,9 @@ export function TimelineTrackHeader({
                       onOpenRack={() => openClipFxRack(singleAudioClip)}
                     />
                   )}
-                  {/* The rack shelf is `audio-fx-rack`; the group-pointer variant WRITES
-                  a group, so it needs `audio-groups` too — without it a user outside
-                  that canary could create a group and then have no UI to manage it. */}
                   {clipCount > 1 &&
                     !isTrackGrouped &&
-                    (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) &&
-                    isCanaryEnabled("audio-fx-rack") &&
-                    isCanaryEnabled("audio-groups") && (
+                    (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) && (
                       <TimelineFxButton
                         variant="group-pointer"
                         clipCount={trackElements.length}

@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { LANE_H, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -12,13 +12,7 @@ import { resolveTrackKeyframeClip, useTimelineTrackLayout } from "./useTimelineT
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const enabledCanaries = new Set<string>();
-vi.mock("../../telemetry/canary", () => ({
-  isCanaryEnabled: (name: string) => enabledCanaries.has(name),
-}));
-
 afterEach(() => {
-  enabledCanaries.clear();
   usePlayerStore.getState().reset();
 });
 
@@ -60,7 +54,6 @@ describe("collapsed audio groups", () => {
     layout: ReturnType<typeof useTimelineTrackLayout>;
     unmount: () => void;
   } {
-    enabledCanaries.add("audio-groups");
     if (collapsed) usePlayerStore.setState({ collapsedGroupIds: new Set(["voiceover"]) });
     const elements = [member("voice-1", 0), member("voice-2", 1)];
     let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
@@ -79,7 +72,6 @@ describe("collapsed audio groups", () => {
   // is what "expanding automation on a group doesn't show the automation"
   // looked like from outside.
   it("reserves room for the group's own automation rows, not just the strip", () => {
-    enabledCanaries.add("audio-groups");
     const automation = JSON.stringify({
       version: 1,
       lanes: [

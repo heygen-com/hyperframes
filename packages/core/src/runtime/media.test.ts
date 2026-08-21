@@ -583,14 +583,13 @@ describe("syncRuntimeMedia", () => {
       hiddenAncestor.appendChild(clip.el);
       return clip;
     };
-    const volumeSeen = (clip: ReturnType<typeof hiddenClip>, silenceHiddenAudio?: boolean) => {
+    const volumeSeen = (clip: ReturnType<typeof hiddenClip>) => {
       let seen = -1;
       syncRuntimeMedia({
         clips: [clip],
         timeSeconds: 1,
         playing: true,
         playbackRate: 1,
-        ...(silenceHiddenAudio === undefined ? {} : { silenceHiddenAudio }),
         onElementVolume: (_el, v) => {
           seen = v;
         },
@@ -599,19 +598,16 @@ describe("syncRuntimeMedia", () => {
     };
 
     it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
-      expect(volumeSeen(hiddenClip(), true)).toBe(0);
+      expect(volumeSeen(hiddenClip())).toBe(0);
     });
 
-    // The `audio-track-mute` canary sits at 0%: an existing composition that
-    // carries data-hidden on an audio element must keep playing in preview
-    // until its author is enrolled, or the upgrade silences them with no way
-    // back short of a revert.
-    it("leaves a hidden clip audible when the host has not opted in", () => {
-      expect(volumeSeen(hiddenClip(), false)).toBe(0.8);
-    });
-
-    it("defaults to audible when the flag is absent entirely", () => {
-      expect(volumeSeen(hiddenClip())).toBe(0.8);
+    // A visible clip is the control: the zero above has to come from the
+    // ancestor, not from the fixture reading 0 for some other reason.
+    it("leaves a visible clip at its authored volume", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      document.body.appendChild(clip.el);
+      expect(volumeSeen(clip)).toBe(0.8);
     });
 
     it("does not touch el.muted when silencing a hidden clip (RULES trap: transport owns el.muted)", () => {
@@ -623,7 +619,6 @@ describe("syncRuntimeMedia", () => {
         timeSeconds: 1,
         playing: true,
         playbackRate: 1,
-        silenceHiddenAudio: true,
       });
 
       expect(clip.el.muted).toBe(false);

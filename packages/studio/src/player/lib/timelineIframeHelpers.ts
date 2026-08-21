@@ -12,7 +12,6 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { IframeWindow } from "./playbackTypes";
-import { isCanaryEnabled } from "../../telemetry/canary";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import {
   getTimelineElementSelector,
@@ -144,35 +143,10 @@ export function setPreviewMediaVolume(iframe: HTMLIFrameElement | null, volume: 
 }
 
 /**
- * Every canary the preview runtime can act on, resolved here and pushed as one
- * record (see `window.__hf.setCanaries`). Core has no install id, so it cannot
- * bucket for itself; a flag missing from this list simply stays off in the
- * runtime, which is the shipped behaviour.
- *
- * Adding a runtime-visible canary means adding its name here and reading it in
- * core — no new `__hf` method, pusher or type entry per flag.
- */
-const RUNTIME_CANARIES = ["audio-track-mute", "audio-groups", "audio-fx-rack"] as const;
-
-function setPreviewCanaries(iframe: HTMLIFrameElement | null): void {
-  if (!iframe) return;
-  try {
-    const win = iframe.contentWindow as
-      | (Window & { __hf?: { setCanaries?: (states: Record<string, boolean>) => void } })
-      | null;
-    if (!win?.__hf?.setCanaries) return;
-    const states: Record<string, boolean> = {};
-    for (const name of RUNTIME_CANARIES) states[name] = isCanaryEnabled(name);
-    win.__hf.setCanaries(states);
-  } catch {}
-}
-
-/**
- * Everything the preview runtime has to be told about audio after it loads:
- * the transport's mute and the canary flags core
- * cannot resolve for itself. Called from `applyPreviewAudioState`, which is the
- * path that re-runs after a preview reload — the runtime comes back with every
- * one of these at its default and nothing else pushes them again.
+ * Everything the preview runtime has to be told about audio after it loads.
+ * Called from `applyPreviewAudioState`, which is the path that re-runs after a
+ * preview reload — the runtime comes back with the transport at its defaults
+ * and nothing else pushes them again.
  */
 export function applyPreviewAudioFlags(
   iframe: HTMLIFrameElement | null,
@@ -183,7 +157,6 @@ export function applyPreviewAudioFlags(
   // Volume too: the transport comes back at unity after a reload, so a preview
   // the author had turned down came back loud.
   setPreviewMediaVolume(iframe, volume);
-  setPreviewCanaries(iframe);
 }
 
 export function setPreviewPlaybackRate(

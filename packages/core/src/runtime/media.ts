@@ -218,11 +218,6 @@ export function syncRuntimeMedia(params: {
   /** Native media routed through WebAudio keeps its upstream element volume at
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
-  /** Silence media under a `data-hidden` ancestor, matching the render. Opt-in:
-   *  the host pushes it via `__hf.setCanaries` when the `audio-track-mute`
-   *  canary is on. Absent/false = the shipped behaviour (hidden audio still
-   *  plays in preview). */
-  silenceHiddenAudio?: boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -322,18 +317,15 @@ export function syncRuntimeMedia(params: {
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
-      // it); preview matches once the host opts in (`silenceHiddenAudio`, the
-      // `audio-track-mute` canary — see init.ts). Folded into the per-tick
-      // volume, not el.muted (RULES trap: el.muted is the transport's ownership
-      // flag).
+      // it), so preview matches. Folded into the per-tick volume, not
+      // el.muted (RULES trap: el.muted is the transport's ownership flag).
       // Two independent ways to be silent, and the second is not an ancestor
       // question: membership lives on the MEMBER's `data-audio-group`, so a
       // muted BUS is invisible to `closest()`. The render drops such members
       // (`memberGroupHidden`), so without this the export was silent where the
       // fallback played at full level.
-      const silencedByHidden = params.silenceHiddenAudio
-        ? el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el)
-        : false;
+      const silencedByHidden =
+        el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
       const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import { isCanaryEnabled } from "../../telemetry/canary";
 import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
 
 /** One resolved audio group, positioned in the row order. */
@@ -196,16 +195,10 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
   }, [expandedElements]);
 
   const collapsedGroupIds = usePlayerStore((s) => s.collapsedGroupIds);
-  const { tracks, groups, trackGroupOf } = useMemo(() => {
-    if (!isCanaryEnabled("audio-groups")) {
-      return {
-        tracks: rawTracks,
-        groups: [],
-        trackGroupOf: new Map<number, TimelineTrackGroupInfo>(),
-      };
-    }
-    return groupTimelineTracks(rawTracks, collapsedGroupIds);
-  }, [rawTracks, collapsedGroupIds]);
+  const { tracks, groups, trackGroupOf } = useMemo(
+    () => groupTimelineTracks(rawTracks, collapsedGroupIds),
+    [rawTracks, collapsedGroupIds],
+  );
 
   const trackStyles = useMemo(() => {
     const map = new Map<number, TrackVisualStyle>();
