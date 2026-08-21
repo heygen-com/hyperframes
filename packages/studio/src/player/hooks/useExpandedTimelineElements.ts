@@ -355,10 +355,12 @@ export function useExpandedTimelineElements(): TimelineElement[] {
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
 
-  // Resolve which raw clip drives expansion. This reads currentTime for active
-  // auto-expand, so it re-runs each scrub tick, but it's a cheap manifest scan and
-  // its RESULT only changes when the playhead crosses a composition boundary. Keying
-  // the expensive build below on these ids (not raw currentTime) avoids re-allocating
+  // Resolve which raw clip drives expansion from the store's committed playhead
+  // time. The RAF loop keeps live time out of React and Zustand during playback,
+  // so this target deliberately stays stable until the loop commits or a seek /
+  // pause updates the store. The scan re-runs on scrub ticks, but its RESULT only
+  // changes when the playhead crosses a composition boundary. Keying the expensive
+  // build below on these ids (not raw currentTime) avoids re-allocating
   // expandedElements — and cascading TimelineClip re-renders — on every tick.
   const { rawId, selectedRawId } = useMemo(() => {
     if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
