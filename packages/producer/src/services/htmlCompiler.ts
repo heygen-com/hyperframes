@@ -1668,7 +1668,21 @@ export async function localizeRemoteFontFaces(
   );
 }
 
-const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/gi;
+// `file:` joins data: and http(s): in the exclusion list. Without it an
+// absolute `file:///abs/path/font.ttf` src was read as a project-RELATIVE path,
+// resolved to `<projectDir>/file:/abs/path/...`, and the failed read was
+// swallowed below — leaving the rule untouched for the browser to reject.
+const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|file:|https?:\/\/)([^"')]+)["']?\)/gi;
+
+/**
+ * Match one `url(<path>)` occurrence, with or without quotes, for a literal
+ * path. Exported for tests: the suffix-collision it prevents is invisible in
+ * ordinary projects and easy to reintroduce.
+ */
+export function urlOccurrenceRe(localPath: string): RegExp {
+  const escaped = localPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`url\\((["']?)${escaped}\\1\\)`, "g");
+}
 // Base64 expands bytes by ~33%, then immutable HTML replacements retain more
 // string copies while compiling. Files up to and including 5 MiB remain inline;
 // the first byte above that stays file-backed. This conservative ceiling keeps
@@ -1739,10 +1753,26 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
               `[Compiler] Embedded local font file: ${localPath} (${(font.buffer.length / 1024).toFixed(0)} KB → data URI)`,
             );
           }
-          result = result.replaceAll(localPath, dataUri);
+          // Anchored on the `url(...)` occurrence, not a bare substring. A
+          // plain replaceAll of `localPath` also rewrites that text anywhere
+          // else it appears -- including inside a LONGER url whose tail
+          // happens to match, e.g. embedding `fonts/x.ttf` would corrupt an
+          // untouched `url("file:///abs/fonts/x.ttf")` into
+          // `url("file:///abs/<data-uri>")`. Any two paths where one is a
+          // suffix of the other collide the same way. Every sibling rewrite
+          // in this file already anchors like this.
+          result = result.replace(urlOccurrenceRe(localPath), `url("${dataUri}")`);
           embeddedPaths.add(localPath);
-        } catch {
-          // File read or compression failed — keep the original path
+        } catch (error) {
+          // Keep the original path: a font that cannot be read must not fail
+          // the render. Logged rather than silently swallowed -- a silent skip
+          // here means the composition renders in a fallback typeface and
+          // nothing says why.
+          defaultLogger.warn(
+            `[Compiler] Could not embed local font ${localPath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         }
       }
     }
