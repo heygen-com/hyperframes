@@ -9,6 +9,67 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.7"
+  description="Released - 2026-08-21"
+  tags={["Release", "Lint", "Catalog", "Core"]}
+>
+Audio now works in groups. Set one volume, one mute, or one FX rack across many clips at once, and hear the same thing in preview that lands in the export.
+Studio also got a broad UX pass across captions, the player, the panels, and the sidebar, and lint findings now show up inside Studio.
+
+## Features
+
+- **Studio,core:** Reach presets and the rack from the timeline ([6a92d2140](https://github.com/heygen-com/hyperframes/commit/6a92d21401974441a6a9b311c78e40df522e209d), [#3292](https://github.com/heygen-com/hyperframes/pull/3292)).
+- **Studio,core:** Mute groups, and hear-only-this that cannot reach the export ([0d26072e6](https://github.com/heygen-com/hyperframes/commit/0d26072e6cb3f5b901891c26396a0f6c1e0d8853), [#3291](https://github.com/heygen-com/hyperframes/pull/3291)).
+- **Studio,core:** A volume and a living meter on the group row ([5fd84c395](https://github.com/heygen-com/hyperframes/commit/5fd84c395b52d8533c924ea31628e71e7e5bc3f6), [#3290](https://github.com/heygen-com/hyperframes/pull/3290)).
+- **Engine:** Render grouped audio through a summed, FX-processed bus ([99f42be04](https://github.com/heygen-com/hyperframes/commit/99f42be04ce6bce535600c42a8eb694fed8ebc9e), [#3289](https://github.com/heygen-com/hyperframes/pull/3289)).
+- **Studio,lint:** Carve targets voiceover groups — always, when plural ([485c037dc](https://github.com/heygen-com/hyperframes/commit/485c037dcf2602b2b92fc9297a8dec8f965e79dc), [#3288](https://github.com/heygen-com/hyperframes/pull/3288)).
+- **Core:** Route grouped audio through a group bus in preview ([602cf53cf](https://github.com/heygen-com/hyperframes/commit/602cf53cf6d556711dc02592baad5f7e6088e748), [#3287](https://github.com/heygen-com/hyperframes/pull/3287)).
+- **Studio:** Group rows in the timeline, and a split disclosure ([acfa7c55a](https://github.com/heygen-com/hyperframes/commit/acfa7c55a2f3dcdb070e304bfb8e7b819d2ef3cf), [#3286](https://github.com/heygen-com/hyperframes/pull/3286)).
+- **Core:** The audio group model — element, membership, helpers ([524036715](https://github.com/heygen-com/hyperframes/commit/524036715043c4685d0fd41eaccb5addf5ce31c7), [#3278](https://github.com/heygen-com/hyperframes/pull/3278)).
+- **Core,studio:** The character presets pitch shift unlocks ([5e0cc7511](https://github.com/heygen-com/hyperframes/commit/5e0cc75115e3080aeb2ebab0f13ceac435fd52c4), [#3277](https://github.com/heygen-com/hyperframes/pull/3277)).
+- **Core:** Pitch shift — a granular shifter as the fifth FX worklet ([1b86b5612](https://github.com/heygen-com/hyperframes/commit/1b86b561273e85e09e4f1a2cc57233ceac1a2945), [#3276](https://github.com/heygen-com/hyperframes/pull/3276)).
+- **Studio:** Make presets the primary path into the FX rack ([43c4e6935](https://github.com/heygen-com/hyperframes/commit/43c4e6935ef34468b09b71f49a1977b83781e9a1), [#3274](https://github.com/heygen-com/hyperframes/pull/3274)).
+- **Producer:** Host/render telemetry in RenderPerfSummary ([7e3bcd9ef](https://github.com/heygen-com/hyperframes/commit/7e3bcd9ef145b9d0ebac7dd2b497b58b3e5d0ca2), [#1551](https://github.com/heygen-com/hyperframes/pull/1551)).
+
+## Fixes
+
+- **Lint:** Break two fix-loops and drop two rules the runtime owns ([9bb4b4ce6](https://github.com/heygen-com/hyperframes/commit/9bb4b4ce60b6d41f2aa5fc4c1bcfc3e4efa73b16), [#3400](https://github.com/heygen-com/hyperframes/pull/3400)).
+- **Core:** Bind native window methods in the scoped sub-composition proxy ([a1c1f519c](https://github.com/heygen-com/hyperframes/commit/a1c1f519cb1d83baf3162e78aa5271c72abcd937), [#3378](https://github.com/heygen-com/hyperframes/pull/3378)).
+- **Cli,studio:** Surface project lint in Studio ([8b67bb6db](https://github.com/heygen-com/hyperframes/commit/8b67bb6db591e8d2866abd914fd791583f5cc701), [#3393](https://github.com/heygen-com/hyperframes/pull/3393)).
+- **Studio:** Captions UX — mode exit, undo, autosave surfacing, honest gating ([254de3d1c](https://github.com/heygen-com/hyperframes/commit/254de3d1c4c1babe4484e0d3112a3c1e3e5c4cc1), [#1968](https://github.com/heygen-com/hyperframes/pull/1968)).
+- **Studio:** Player UX — honest waveform, keyframe menu actions, beat-delete gesture ([a01a5d7b3](https://github.com/heygen-com/hyperframes/commit/a01a5d7b3c6555b5e577fed45fbeb59c8f1cfcfe), [#1967](https://github.com/heygen-com/hyperframes/pull/1967)).
+- **Studio:** Sidebar/panels UX — asset delete confirm, rename, search trap, undo ([44791c3f7](https://github.com/heygen-com/hyperframes/commit/44791c3f7da178a114950e498ffd6396f8dcf2f1), [#1966](https://github.com/heygen-com/hyperframes/pull/1966)).
+- **Studio:** Editor panel UX — commit safety, keyboard a11y, wired BlockParamsPanel ([ba607bf88](https://github.com/heygen-com/hyperframes/commit/ba607bf88683f129a489ea6855e1ff562e4a4d93), [#1965](https://github.com/heygen-com/hyperframes/pull/1965)).
+- **Deps:** Bump puppeteer so the browser hides its console window on Windows ([63eb35041](https://github.com/heygen-com/hyperframes/commit/63eb35041c0c1ad4f571d7d21f24ac3689ac5df7), [#3394](https://github.com/heygen-com/hyperframes/pull/3394)).
+- **Engine:** Hide ffmpeg console windows on Windows ([315a7b758](https://github.com/heygen-com/hyperframes/commit/315a7b758cca73b67dc9cb0b2548bae6295cea73), [#3381](https://github.com/heygen-com/hyperframes/pull/3381)).
+- **CLI:** Reject blank default composition entries ([a9ea07edd](https://github.com/heygen-com/hyperframes/commit/a9ea07edde6648463e3970a572dc42f4007a3d7f), [#3392](https://github.com/heygen-com/hyperframes/pull/3392)).
+- **Core,studio:** Silence hidden audio in preview, and call it mute ([8f3ab60b5](https://github.com/heygen-com/hyperframes/commit/8f3ab60b5a2f5a3fc1757d43d2ff45b53368c5bd), [#3275](https://github.com/heygen-com/hyperframes/pull/3275)).
+- **Producer:** Attach src URL to ffprobe failures for compile-phase attribution (STUDIO-5433) ([00f08e8de](https://github.com/heygen-com/hyperframes/commit/00f08e8de461aa03f9c9c13aa6b1e6cb428ea5e7), [#3033](https://github.com/heygen-com/hyperframes/pull/3033)).
+- **Producer:** Decode percent-encoded video src in HDR pre-extract ([13c867267](https://github.com/heygen-com/hyperframes/commit/13c867267e50030e786bf209164d4817ff12869a), [#2759](https://github.com/heygen-com/hyperframes/pull/2759)).
+- **CLI:** Surface HYPERFRAMES_BROWSER_PATH hint on Windows chrome-headless-shell launch crashes ([7563b644a](https://github.com/heygen-com/hyperframes/commit/7563b644a2f5c4f8b6787b2b088695219aaf9419), [#2481](https://github.com/heygen-com/hyperframes/pull/2481)).
+- **CLI:** Add missing cache fields to telemetry test fixture ([24b3ebdf9](https://github.com/heygen-com/hyperframes/commit/24b3ebdf9f71d49aaffc48e077ab36ff5d5e3871), [#1915](https://github.com/heygen-com/hyperframes/pull/1915)).
+- **Studio:** Resume drag-paused timelines instead of only re-seeking ([64b94ebf3](https://github.com/heygen-com/hyperframes/commit/64b94ebf3a5ac4611292e10f6b676a4616e9dfe2), [#1876](https://github.com/heygen-com/hyperframes/pull/1876)).
+- **Core:** Play bounded WebAudio clips full-length at non-1x playback rate ([1ff99a50f](https://github.com/heygen-com/hyperframes/commit/1ff99a50f5b3673a5af722c848c3f13b161e0a03), [#1494](https://github.com/heygen-com/hyperframes/pull/1494)).
+- **Core:** Prevent symlink path traversal in htmlBundler safePath (F-005) ([c09b0b918](https://github.com/heygen-com/hyperframes/commit/c09b0b91830f26e34e2393d0c5ac8abc8b2da027), [#1214](https://github.com/heygen-com/hyperframes/pull/1214)).
+
+## Docs & Examples
+
+- Drop --full-depth from skills install commands ([9ec75a485](https://github.com/heygen-com/hyperframes/commit/9ec75a485f05e0e6a6190b0931aefbdc48bd8535), [#3399](https://github.com/heygen-com/hyperframes/pull/3399)).
+
+## Catalog
+
+- **Catalog:** Render the Matrix Decode docs preview; remove Checkout Flow ([d4765512d](https://github.com/heygen-com/hyperframes/commit/d4765512df8b9ff9636c7a2e5e4a41de08039a78), [#3396](https://github.com/heygen-com/hyperframes/pull/3396)).
+
+## Internal
+
+- **Engine:** Give the ffmpeg-bound grouping mixes their 30s timeout ([77566a198](https://github.com/heygen-com/hyperframes/commit/77566a198bcc8844f6f901be26b0dfc0c1f333f4), [#3398](https://github.com/heygen-com/hyperframes/pull/3398)).
+- **CLI:** Bump pinned Chromium to 152.0.7977.30 ([556fe936f](https://github.com/heygen-com/hyperframes/commit/556fe936f89d5d4cc520f2a4e7b60e31bb7ae01c), [#3231](https://github.com/heygen-com/hyperframes/pull/3231)).
+- Gitignore local chrome-for-testing downloads ([865f7fec5](https://github.com/heygen-com/hyperframes/commit/865f7fec52bf6288fcec55be8499757c0ab631e4), [#1451](https://github.com/heygen-com/hyperframes/pull/1451)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.6...v0.8.7).
+</Update>
+
+<Update
   label="HyperFrames v0.8.6"
   description="Released - 2026-08-21"
   tags={["Release", "Audio", "Core", "Skills", "Lint"]}
