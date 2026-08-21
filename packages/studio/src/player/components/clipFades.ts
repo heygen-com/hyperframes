@@ -175,6 +175,35 @@ export function readClipFadeCurves(
 }
 
 /**
+ * The curves a proposed fade gesture will use.
+ *
+ * Existing fades keep the curve already in their envelope. A newly created
+ * edge gets the default ease, so this is shared by the writer and the live
+ * overlay instead of letting them disagree during the first drag.
+ */
+export function resolveClipFadeCurves(
+  points: readonly HfAutomationPoint[],
+  duration: number,
+  fades: ClipFades,
+  curves?: ClipFadeCurves,
+  min = 0,
+  max = 1,
+): ClipFadeCurves {
+  const existing = readClipFades(points, duration, min, max);
+  const stored = curves ?? readClipFadeCurves(points, existing);
+  return {
+    in:
+      curves === undefined && existing.fadeIn === 0 && fades.fadeIn > 0
+        ? DEFAULT_FADE_CURVES.in
+        : stored.in,
+    out:
+      curves === undefined && existing.fadeOut === 0 && fades.fadeOut > 0
+        ? DEFAULT_FADE_CURVES.out
+        : stored.out,
+  };
+}
+
+/**
  * The longest each fade may be: together they may not overlap, and each is
  * capped at the clip. Split in proportion when both are dragged past the middle,
  * so a long fade-in shortens the room left for a fade-out rather than fighting
@@ -278,17 +307,16 @@ export function writeClipFades(
 ): HfAutomationPoint[] {
   const { fadeIn, fadeOut } = clampClipFades(fades, duration);
   const existing = readClipFades(points, duration, min, max);
-  const existingCurves = curves ?? readClipFadeCurves(points, existing);
-  const headCurvature = envelopeCurveForFade(
-    curves === undefined && existing.fadeIn === 0 && fadeIn > 0
-      ? DEFAULT_FADE_CURVES.in
-      : existingCurves.in,
+  const resolvedCurves = resolveClipFadeCurves(
+    points,
+    duration,
+    { fadeIn, fadeOut },
+    curves,
+    min,
+    max,
   );
-  const tailCurvature = envelopeCurveForFade(
-    curves === undefined && existing.fadeOut === 0 && fadeOut > 0
-      ? DEFAULT_FADE_CURVES.out
-      : existingCurves.out,
-  );
+  const headCurvature = envelopeCurveForFade(resolvedCurves.in);
+  const tailCurvature = envelopeCurveForFade(resolvedCurves.out);
 
   // Everything strictly between the two fades is the author's; the old fade
   // points are not, so they are dropped by the same window.

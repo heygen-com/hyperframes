@@ -1,13 +1,12 @@
 import { OPACITY_TARGET, VOLUME_TARGET } from "@hyperframes/core/audio-automation";
 import { laneFor, withLane } from "./automationLaneGeometry";
 import {
-  envelopeFadeSampler,
   readClipFadeCurves,
   readClipFades,
+  resolveClipFadeCurves,
   writeClipFades,
   type ClipFadeCurves,
   type ClipFades,
-  type FadeSampler,
 } from "./clipFades";
 import type { AutomationLaneBinding } from "./useAutomationLanes";
 import type { TimelineElement } from "../store/playerStore";
@@ -34,8 +33,8 @@ export interface ClipFadeBinding {
   fades: ClipFades;
   /** How far each ramp is bent; 0 is a straight one. */
   curves: ClipFadeCurves;
-  /** How a ramp's level is drawn, read back from the envelope it lives in. */
-  sample(edge: "in" | "out"): FadeSampler;
+  /** The shape an in-progress fade gesture will draw. */
+  curvesFor(next: ClipFades): ClipFadeCurves;
   readOnly: boolean;
   onPreview(next: ClipFades): void;
   onCommit(next: ClipFades): void;
@@ -88,7 +87,7 @@ export function resolveClipFadeBinding(
   return {
     fades,
     curves,
-    sample: (edge) => envelopeFadeSampler(edge === "in" ? curves.in : curves.out),
+    curvesFor: (next) => resolveClipFadeCurves(lane.points, element.duration, next),
     readOnly: binding.readOnly,
     onPreview: (next) => apply(next, undefined, false),
     onCommit: (next) => apply(next, undefined, true),

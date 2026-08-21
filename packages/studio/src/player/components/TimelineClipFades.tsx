@@ -7,7 +7,6 @@ import {
   MIN_FADE_SECONDS,
   type ClipFadeCurves,
   type ClipFades,
-  type FadeSampler,
 } from "./clipFades";
 import {
   bendFromPointer,
@@ -38,8 +37,8 @@ export interface TimelineClipFadesProps {
   width: number;
   /** How far each ramp is bent; 0 is a straight one. */
   curves: ClipFadeCurves;
-  /** How a ramp's level rises, read back from where it is kept. */
-  sample(edge: "in" | "out"): FadeSampler;
+  /** The curve an in-progress fade gesture will draw. */
+  curvesFor(next: ClipFades): ClipFadeCurves;
   /**
    * The clip's accent. The same colour, weight and opacity the automation lane
    * strokes an envelope with: a fade IS an envelope, and drawing the two alike
@@ -157,7 +156,7 @@ export function TimelineClipFades({
   pixelsPerSecond,
   width,
   curves,
-  sample,
+  curvesFor,
   accent,
   showGrips,
   readOnly,
@@ -174,13 +173,13 @@ export function TimelineClipFades({
   const dragRef = useRef<FadeDrag | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shown = draft ?? fades;
+  const shownCurves = curvesFor(shown);
   // The bend is previewed the same way the lengths are: the committed value
   // only catches up once the write lands, and the line has to stay under the
   // pointer until then.
   const shownCurve = (edge: "in" | "out") =>
-    bendDraft?.edge === edge ? bendDraft.curve : edge === "in" ? curves.in : curves.out;
-  const shownSample = (edge: "in" | "out") =>
-    bendDraft?.edge === edge ? envelopeFadeSampler(bendDraft.curve) : sample(edge);
+    bendDraft?.edge === edge ? bendDraft.curve : edge === "in" ? shownCurves.in : shownCurves.out;
+  const shownSample = (edge: "in" | "out") => envelopeFadeSampler(shownCurve(edge));
 
   const onHandleDown = useCallback(
     (edge: "in" | "out", event: ReactPointerEvent) => {

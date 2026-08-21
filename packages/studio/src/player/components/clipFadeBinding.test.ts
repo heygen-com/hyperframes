@@ -133,6 +133,11 @@ describe("writing a fade", () => {
     expect(points[2]?.curve).toBeCloseTo(0.5, 6);
   });
 
+  it("draws a new fade with the same default ease before it is committed", () => {
+    const binding = resolveClipFadeBinding(el(), deps().bag)!;
+    expect(binding.curvesFor({ fadeIn: 1, fadeOut: 1 })).toEqual({ in: 0.5, out: -0.5 });
+  });
+
   it("keeps an existing straight fade straight when its length changes", () => {
     const { bag, onCommit } = deps({ automation: STRAIGHT_OPACITY_FADE });
     resolveClipFadeBinding(el(), bag)!.onCommit({ fadeIn: 1, fadeOut: 0 });
