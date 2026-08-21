@@ -13,6 +13,14 @@ import {
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { AutomationToggle } from "./propertyPanelFxControls";
+import {
+  AUDIO_GAIN_FADER_MAX,
+  AUDIO_GAIN_FADER_MIN,
+  audioFaderPositionToGain,
+  formatAudioGain,
+  audioGainToFaderPosition,
+  audioGainToText,
+} from "@hyperframes/core/audio-gain";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -54,7 +62,7 @@ export function FlatMediaSection({
   const el = element.element;
 
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
-  const volumePercent = Math.round(volume * 100);
+  const volumeFaderPosition = audioGainToFaderPosition(volume);
   const mediaStart =
     Number.parseFloat(
       element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
@@ -215,13 +223,16 @@ export function FlatMediaSection({
             <div className="min-w-0 flex-1">
               <FlatSlider
                 label="Volume"
-                value={volumePercent}
-                min={0}
-                max={100}
-                tier={volumePercent === 100 ? "default" : "explicitCustom"}
-                displayValue={`${volumePercent}%`}
+                value={volumeFaderPosition}
+                min={AUDIO_GAIN_FADER_MIN}
+                max={AUDIO_GAIN_FADER_MAX}
+                tier={volume === 1 ? "default" : "explicitCustom"}
+                displayValue={audioGainToText(volume)}
                 disabled={volumeAutomated}
-                onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
+                centerTick
+                onCommit={(next) =>
+                  void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)))
+                }
               />
             </div>
             <AutomationToggle

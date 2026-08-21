@@ -22,6 +22,7 @@ const bgmElement: TimelineElement = {
 function callbacks() {
   return {
     handleTimelineElementDelete: vi.fn(async () => {}),
+    handleTimelineElementsDelete: vi.fn(async () => {}),
     handleTimelineElementSplit: vi.fn(async () => {}),
     handleDomEditElementDelete: vi.fn(async () => {}),
     handleUndo: vi.fn(async () => {}),
@@ -69,8 +70,88 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     const e = press("Delete");
     dispatchPlainKey(e, "delete", cb);
     // The pre-existing contract, pinned so the new guard cannot widen.
-    expect(cb.handleTimelineElementDelete).toHaveBeenCalledTimes(1);
+    expect(cb.handleTimelineElementsDelete).toHaveBeenCalledTimes(1);
+    expect(cb.handleTimelineElementsDelete).toHaveBeenCalledWith([bgmElement]);
     expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("deletes EVERY clip in a marquee selection, not just the first", () => {
+    // The reported bug: select all, press Delete, and one clip disappears while
+    // the rest stay — still drawn as selected. The handler used `elements.find`,
+    // which stops at the first match.
+    const clips = ["a", "b", "c"].map((id) => ({ ...bgmElement, id, key: id }));
+    usePlayerStore.setState({
+      elements: clips,
+      selectedElementId: null,
+      selectedElementIds: new Set(["a", "b", "c"]),
+    });
+
+    const cb = callbacks();
+    const e = press("Delete");
+    dispatchPlainKey(e, "delete", cb);
+
+    expect(cb.handleTimelineElementsDelete).toHaveBeenCalledTimes(1);
+    const [passed] = cb.handleTimelineElementsDelete.mock.calls[0] as [typeof clips];
+    expect(passed.map((c) => c.key)).toEqual(["a", "b", "c"]);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("hands a canvas selection its whole group instead of the timeline's partial copy", () => {
+    // The reported bug: marquee 73 elements on the canvas, press Delete, and 14
+    // vanish. Only those 14 owned a timeline row, and the timeline mirror drops
+    // every member that does not — so deleting through it left 59 behind, still
+    // drawn as selected.
+    const clips = ["a", "b"].map((id) => ({ ...bgmElement, id, key: id }));
+    usePlayerStore.setState({
+      elements: clips,
+      selectedElementId: null,
+      selectedElementIds: new Set(["a", "b"]),
+    });
+    const domSelection = { selector: ".title", selectorIndex: 0, sourceFile: "index.html" };
+
+    const cb = callbacks();
+    cb.domEditSelectionRef = { current: domSelection } as typeof cb.domEditSelectionRef;
+    const e = press("Delete");
+    dispatchPlainKey(e, "delete", cb);
+
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection, {
+      expandGroup: true,
+    });
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("asks for the whole group, so Cut can still take just the one it copied", () => {
+    // Expanding inside the delete handler meant every caller got the group.
+    // Cut copies the primary alone, so it put one element on the clipboard and
+    // removed every other member with it; paste brought back one.
+    usePlayerStore.setState({
+      elements: [],
+      selectedElementId: null,
+      selectedElementIds: new Set(),
+    });
+    const domSelection = { selector: ".title", selectorIndex: 0, sourceFile: "index.html" };
+
+    const cb = callbacks();
+    cb.domEditSelectionRef = { current: domSelection } as typeof cb.domEditSelectionRef;
+    dispatchPlainKey(press("Delete"), "delete", cb);
+
+    expect(cb.handleDomEditElementDelete).toHaveBeenCalledWith(domSelection, { expandGroup: true });
+  });
+
+  it("includes the primary selection alongside the marquee set", () => {
+    const clips = ["a", "b"].map((id) => ({ ...bgmElement, id, key: id }));
+    usePlayerStore.setState({
+      elements: clips,
+      selectedElementId: "b",
+      selectedElementIds: new Set(["a"]),
+    });
+
+    const cb = callbacks();
+    dispatchPlainKey(press("Delete"), "delete", cb);
+
+    const [passed] = cb.handleTimelineElementsDelete.mock.calls[0] as [typeof clips];
+    expect(passed.map((c) => c.key).sort()).toEqual(["a", "b"]);
   });
 
   it("leaves the clip alone when an automation range is active", () => {
@@ -82,7 +163,7 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     const cb = callbacks();
     const e = press("Delete");
     dispatchPlainKey(e, "delete", cb);
-    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
     // Must NOT be consumed: the automation handler downstream still needs it.
     expect(e.defaultPrevented).toBe(false);
   });
@@ -99,7 +180,7 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     const e = press("Backspace");
     dispatchPlainKey(e, "backspace", cb);
     expect(cb.onResetKeyframes).not.toHaveBeenCalled();
-    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
   });
 
@@ -113,7 +194,7 @@ describe("dispatchPlainKey — Delete arbitration", () => {
     const e = press("Delete");
     dispatchPlainKey(e, "delete", cb);
     expect(cb.onDeleteSelectedKeyframes).toHaveBeenCalledTimes(1);
-    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(true);
   });
 });

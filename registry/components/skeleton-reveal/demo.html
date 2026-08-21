@@ -83,11 +83,67 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-transition-skeleton-reveal">
+        <div
+          class="hf-transition-skeleton-reveal"
+          data-composition-variables='[
+    { "id": "name", "type": "string", "role": "content", "label": "Name", "description": "Primary line revealed once the skeleton fades out.", "default": "Jane Cooper" },
+    { "id": "detail", "type": "string", "role": "content", "label": "Detail", "description": "Secondary line under the name, such as an email or a role.", "default": "jane@example.com" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Card palette. Light is the paper card, dark is a near-black card with the matching skeleton bars and text.", "default": "light", "options": [{ "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" }] }
+  ]'
+        >
           <div class="skeleton"></div>
           <div class="content"><strong>Jane Cooper</strong><span>jane@example.com</span></div>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var tones = {
+            light: null,
+            dark: {
+              "--hf-sr-surface": "#18181b",
+              "--hf-sr-border": "#27272a",
+              "--hf-sr-bar": "#27272a",
+              "--hf-sr-bar-strong": "#3f3f46",
+              "--hf-sr-ink": "#fafafa",
+              "--hf-sr-muted": "#a1a1aa",
+            },
+          };
+          var defaultName = "Jane Cooper";
+          var defaultDetail = "jane@example.com";
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          function text(value, fallback) {
+            return typeof value === "string" && value.trim() ? value.trim() : fallback;
+          }
+
+          var tone = tones[pick(tones, vars.tone, "light")];
+          var name = text(vars.name, defaultName);
+          var detail = text(vars.detail, defaultDetail);
+
+          var roots = document.querySelectorAll(".hf-transition-skeleton-reveal");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            if (tone) {
+              for (var key in tone) root.style.setProperty(key, tone[key]);
+            }
+            var strong = root.querySelector(".content strong");
+            var span = root.querySelector(".content span");
+            if (strong) strong.textContent = name;
+            if (span) span.textContent = detail;
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
@@ -111,5 +167,43 @@
         window.__timelines["skeleton-reveal-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-skeleton-reveal {
+        position: relative;
+        width: 340px;
+        height: 76px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-skeleton-reveal .skeleton,
+      .hf-transition-skeleton-reveal .content {
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--hf-sr-border, #e4e4e7);
+        border-radius: 14px;
+        background: var(--hf-sr-surface, #fff);
+      }
+      .hf-transition-skeleton-reveal .skeleton {
+        background: linear-gradient(
+          90deg,
+          var(--hf-sr-bar, #f4f4f5),
+          var(--hf-sr-bar-strong, #e4e4e7),
+          var(--hf-sr-bar, #f4f4f5)
+        );
+        background-size: 240% 100%;
+        opacity: 1;
+      }
+      .hf-transition-skeleton-reveal .content {
+        display: grid;
+        align-content: center;
+        gap: 5px;
+        padding: 15px;
+        opacity: 0;
+        color: var(--hf-sr-ink, #18181b);
+      }
+      .hf-transition-skeleton-reveal span {
+        color: var(--hf-sr-muted, #71717a);
+        font-size: 14px;
+      }
+    </style>
   </body>
 </html>

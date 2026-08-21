@@ -819,3 +819,76 @@ export function trackCheckReport(props: {
     ...runIdField(props.runId),
   });
 }
+
+/**
+ * One lint pass over a project. `code_counts` is what makes "which rules
+ * actually fire" answerable; `rule_group_ms` and `slowest_rule` are what make
+ * "which rules are expensive" answerable. Only lint rule codes and timings are
+ * sent — never file paths, project names, or composition source.
+ */
+export function trackLintReport(props: {
+  /** The command that ran the lint: "lint" or "check". */
+  command: string;
+  durationMs: number;
+  filesScanned: number;
+  errorCount: number;
+  warningCount: number;
+  infoCount: number;
+  /** Finding count keyed by lint rule code. */
+  codeCounts: Record<string, number>;
+  /** Milliseconds spent per rule-source module, summed across files. */
+  ruleGroupMs: Record<string, number>;
+  /** Slowest single rule as `<group>#<index>`, across every file in the run. */
+  slowestRule: string;
+  slowestRuleMs: number;
+  /** How many rules this build ran, so a ruleset change is visible in the data. */
+  ruleCount: number;
+  /**
+   * Rule count per group. `slowest_rule` is positional, so a group that changed
+   * size between two builds has indices that no longer mean the same thing.
+   */
+  ruleGroupCounts: Record<string, number>;
+  runId?: string;
+}): void {
+  trackEvent("lint_report", {
+    command: props.command,
+    duration_ms: Math.round(props.durationMs),
+    files_scanned: props.filesScanned,
+    error_count: props.errorCount,
+    warning_count: props.warningCount,
+    info_count: props.infoCount,
+    codes: Object.keys(props.codeCounts).sort(),
+    code_counts: props.codeCounts,
+    rule_group_ms: props.ruleGroupMs,
+    slowest_rule: props.slowestRule,
+    slowest_rule_ms: Math.round(props.slowestRuleMs),
+    rule_count: props.ruleCount,
+    rule_group_counts: props.ruleGroupCounts,
+    ...runIdField(props.runId),
+  });
+}
+
+/**
+ * A finding that survived one or more edits to the file it was reported on.
+ *
+ * `cleared: false` with a high `edits` is the signal that matters most: a rule
+ * an agent kept trying and failing to satisfy. `cleared: true` gives the
+ * distribution to compare it against — how many edits a normal finding costs.
+ */
+export function trackLintRuleStreak(props: {
+  code: string;
+  severity: string;
+  edits: number;
+  cleared: boolean;
+  command: string;
+  runId?: string;
+}): void {
+  trackEvent("lint_rule_streak", {
+    code: props.code,
+    severity: props.severity,
+    edits: props.edits,
+    cleared: props.cleared,
+    command: props.command,
+    ...runIdField(props.runId),
+  });
+}

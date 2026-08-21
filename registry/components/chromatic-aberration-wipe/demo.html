@@ -104,13 +104,68 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-catalog-chromatic-aberration-wipe">
+        <div
+          class="hf-catalog-chromatic-aberration-wipe"
+          data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "The direction the reveal travels; both scenes slide the same way and the wipe edge follows.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Colour family of the incoming scene&#39;s gradient.", "default": "blue", "options": [{ "value": "blue", "label": "Blue" }, { "value": "green", "label": "Green" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "aberration", "type": "number", "role": "style", "label": "Aberration", "description": "Multiplies the red/cyan channel split: 0 removes it, 1 is the stock strength, 2 doubles the offset and saturates the flash.", "default": 1, "min": 0, "max": 2, "step": 0.1, "unit": "x" }
+  ]'
+        >
           <div class="scene from">Before</div>
           <div class="scene to">Chromatic Aberration Wipe</div>
           <div class="fx"></div>
           <div class="rgb"></div>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var directions = {
+            left: { ax: "1", ay: "0", t: "0", r: "1", b: "0", l: "0" },
+            right: { ax: "-1", ay: "0", t: "0", r: "0", b: "0", l: "1" },
+            up: { ax: "0", ay: "1", t: "1", r: "0", b: "0", l: "0" },
+            down: { ax: "0", ay: "-1", t: "0", r: "0", b: "1", l: "0" },
+          };
+          var accents = {
+            blue: ["#2563eb", "#7c3aed"],
+            green: ["#047857", "#34d399"],
+            violet: ["#6d28d9", "#a78bfa"],
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var direction = directions[pick(directions, vars.direction, "left")];
+          var accent = accents[pick(accents, vars.accent, "blue")];
+
+          var raw =
+            typeof vars.aberration === "string" ? parseFloat(vars.aberration) : vars.aberration;
+          var aberration =
+            typeof raw === "number" && isFinite(raw) ? Math.min(2, Math.max(0, raw)) : 1;
+
+          var roots = document.querySelectorAll(".hf-catalog-chromatic-aberration-wipe");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-wipe-ax", direction.ax);
+            roots[i].style.setProperty("--hf-wipe-ay", direction.ay);
+            roots[i].style.setProperty("--hf-wipe-t", direction.t);
+            roots[i].style.setProperty("--hf-wipe-r", direction.r);
+            roots[i].style.setProperty("--hf-wipe-b", direction.b);
+            roots[i].style.setProperty("--hf-wipe-l", direction.l);
+            roots[i].style.setProperty("--hf-scene-a", accent[0]);
+            roots[i].style.setProperty("--hf-scene-b", accent[1]);
+            roots[i].style.setProperty("--hf-rgb-strength", String(aberration));
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
@@ -161,5 +216,77 @@
         window.__timelines["chromatic-aberration-wipe-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-catalog-chromatic-aberration-wipe {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-catalog-chromatic-aberration-wipe {
+        position: relative;
+        width: 760px;
+        height: 428px;
+        overflow: hidden;
+        border-radius: 30px;
+        background: #111827;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+      }
+      .hf-catalog-chromatic-aberration-wipe .scene {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+        font-size: 58px;
+        letter-spacing: -0.05em;
+        color: #fff;
+      }
+      .hf-catalog-chromatic-aberration-wipe .from {
+        background: linear-gradient(135deg, #111827, #374151);
+        transform: translate(
+            calc(var(--hf-from-x, 0px) * var(--hf-wipe-ax, 1)),
+            calc(var(--hf-from-y, 0px) + var(--hf-from-x, 0px) * var(--hf-wipe-ay, 0))
+          )
+          scale(var(--hf-from-scale, 1));
+        filter: blur(var(--hf-from-blur, 0px));
+      }
+      .hf-catalog-chromatic-aberration-wipe .to {
+        background: linear-gradient(135deg, var(--hf-scene-a, #2563eb), var(--hf-scene-b, #7c3aed));
+        transform: translate(
+            calc(var(--hf-to-x, 0px) * var(--hf-wipe-ax, 1)),
+            calc(var(--hf-to-y, 0px) + var(--hf-to-x, 0px) * var(--hf-wipe-ay, 0))
+          )
+          scale(var(--hf-to-scale, 1));
+        clip-path: inset(
+          calc(var(--hf-clip-top, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-t, 0))
+            calc(var(--hf-clip-right, 100%) * var(--hf-wipe-r, 1))
+            calc(var(--hf-clip-bottom, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-b, 0))
+            calc(var(--hf-clip-left, 0%) + var(--hf-clip-right, 100%) * var(--hf-wipe-l, 0))
+        );
+      }
+      .hf-catalog-chromatic-aberration-wipe .fx {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+        mix-blend-mode: screen;
+        transform: translateX(var(--hf-fx-x, -110%));
+      }
+      .hf-catalog-chromatic-aberration-wipe .rgb {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: calc(var(--hf-rgb-opacity, 0) * var(--hf-rgb-strength, 1));
+        background: linear-gradient(
+          90deg,
+          rgba(239, 68, 68, 0.35),
+          transparent,
+          rgba(34, 211, 238, 0.35)
+        );
+        transform: translateX(calc(var(--hf-rgb-x, 0px) * var(--hf-rgb-strength, 1)));
+      }
+    </style>
   </body>
 </html>

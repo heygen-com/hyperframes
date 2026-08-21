@@ -85,39 +85,77 @@ export function useElementLifecycleOps({
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
   // fallow-ignore-next-line complexity
-  const handleDomEditElementDelete = useCallback(
+  const handleDomEditElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: DomEditSelection) => {
+    async (selections: DomEditSelection[]) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const label = selection.label || selection.id || selection.selector || selection.tagName;
+      const [selection] = selections;
+      if (!selection) return;
+      const label =
+        selections.length === 1
+          ? selection.label || selection.id || selection.selector || selection.tagName
+          : `${selections.length} elements`;
+      // Say the press landed before doing the work. Deleting a marquee selection
+      // takes seconds — reading the file, removing every member, saving, then
+      // reloading the preview — and until it finishes the canvas looks exactly
+      // like it did before. With nothing acknowledging the key, that silence is
+      // indistinguishable from Delete being broken, which is how it got read.
+      if (selections.length > 1) showToast(`Deleting ${label}...`, "info");
 
+      // One file per pass; anything authored elsewhere is dropped rather than
+      // patched into the wrong document.
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const sameFile = selections.filter(
+        (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
+      );
       try {
         const originalContent = await readProjectFileContent(pid, targetPath);
 
-        const patchTarget = buildDomEditPatchTarget(selection);
-        if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
+        const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
+        if (patchTargets.some((t) => !t.id && !t.selector && !t.hfId)) {
           throw new Error("Selected element has no patchable target");
         }
 
-        if (onTrySdkDelete && selection.hfId) {
-          const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
-          if (cutoverCommittedOrThrow(handled)) {
+        // The SDK path can take the whole selection only when every member is
+        // addressable in the SDK doc; otherwise fall through to REST for all of
+        // them rather than deleting a subset through each route.
+        const hfIds = sameFile
+          .map((member) => member.hfId)
+          .filter((hfId): hfId is string => Boolean(hfId));
+        if (onTrySdkDelete && hfIds.length === sameFile.length) {
+          let allHandled = true;
+          for (const hfId of hfIds) {
+            // The SDK owns the document it edits, so every member is removed
+            // against the same starting content rather than a threaded copy.
+            const handled = await onTrySdkDelete(hfId, originalContent, targetPath);
+            if (!cutoverCommittedOrThrow(handled)) {
+              allHandled = false;
+              break;
+            }
+          }
+          if (allHandled) {
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
-            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+            showToast(
+              `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+              "info",
+            );
             return;
           }
         }
 
         domEditSaveTimestampRef.current = Date.now();
+        // One request for the whole selection. Removing members one at a time
+        // cost a round trip and a rewrite of the file EACH, and a canvas
+        // selection runs to hundreds of members — the file ended up correct, but
+        // only after long enough that Delete looked like it had done nothing.
         const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+          `/api/projects/${pid}/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-            body: JSON.stringify({ target: patchTarget }),
+            body: JSON.stringify({ targets: patchTargets }),
           },
         );
         if (!removeResponse.ok) {
@@ -126,8 +164,18 @@ export function useElementLifecycleOps({
             `Failed to delete element from ${targetPath}`,
           );
         }
-
-        const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
+        const removeData = (await removeResponse.json()) as {
+          changed?: boolean;
+          content?: string;
+        };
+        if (!removeData.changed) {
+          // A member the file no longer holds simply does not match, which is
+          // normal for one nested inside another member already removed. Nothing
+          // matching at all means the preview is describing a document the file
+          // does not have — say so rather than reporting a delete that happened.
+          reloadPreview();
+          throw new Error("Nothing to delete — the preview was out of date. Try again.");
+        }
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
         // ponytail: the server remove-element route (removeElementFromHtml) strips
@@ -155,8 +203,11 @@ export function useElementLifecycleOps({
         // SDK edit doesn't resurrect the deleted element.
         forceReloadSdkSession?.();
         reloadPreview();
-        onElementDeleted?.(selection);
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        for (const member of sameFile) onElementDeleted?.(member);
+        showToast(
+          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+          "info",
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
@@ -337,8 +388,16 @@ export function useElementLifecycleOps({
     [commitDomEditPatchBatches, onReorderShadow],
   );
 
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection) => {
+      await handleDomEditElementsDelete([selection]);
+    },
+    [handleDomEditElementsDelete],
+  );
+
   return {
     handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };
 }

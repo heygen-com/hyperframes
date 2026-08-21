@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
-import { TimelineAutomationLaneSlot } from "./TimelineAutomationLane";
+import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { PAD_X } from "./automationLaneGeometry";
 import { getTimelineLaneTop } from "./timelineLayout";

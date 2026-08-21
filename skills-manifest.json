@@ -2,83 +2,83 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "14e79d53c24e3945",
+      "hash": "ab099eb22321e865",
       "files": 138
     },
     "faceless-explainer": {
-      "hash": "c70b904aa68cf7e5",
+      "hash": "5de02925f2431645",
       "files": 24
     },
     "figma": {
-      "hash": "4f524b4962bd8d7c",
+      "hash": "642cce1b5e211182",
       "files": 2
     },
     "general-video": {
-      "hash": "49f5216832cb8e91",
+      "hash": "16898c02677d09bc",
       "files": 4
     },
     "hyperframes": {
-      "hash": "756a72f58fa3739b",
+      "hash": "d64583e4aa8011f7",
       "files": 17
     },
     "hyperframes-animation": {
-      "hash": "5bc2ce098387a547",
+      "hash": "67d23c9507ebb1e8",
       "files": 121
     },
     "hyperframes-audio": {
-      "hash": "534cea75fe0f2bc6",
+      "hash": "94aba963d262d71d",
       "files": 6
     },
     "hyperframes-cli": {
-      "hash": "e042fcaaa3f9767f",
+      "hash": "3fa884269c43d7df",
       "files": 11
     },
     "hyperframes-core": {
-      "hash": "e9daaccaed05b8b4",
-      "files": 19
+      "hash": "74b9841f63c8f405",
+      "files": 20
     },
     "hyperframes-creative": {
-      "hash": "bacb5205ea5eb3d8",
+      "hash": "87bc09ec744313c8",
       "files": 78
     },
     "hyperframes-keyframes": {
-      "hash": "a568c05c01b27461",
+      "hash": "6bc62531ecea9a52",
       "files": 3
     },
     "hyperframes-registry": {
-      "hash": "9a4049ea33f0b914",
+      "hash": "d6dfcc8ceb7c8178",
       "files": 12
     },
     "media-use": {
-      "hash": "7e329ade41b1c1ba",
+      "hash": "1b0ce647f5c7df95",
       "files": 152
     },
     "motion-graphics": {
-      "hash": "1434e22bb0259bbb",
+      "hash": "853ac75cbab69036",
       "files": 23
     },
     "music-to-video": {
-      "hash": "55a2b5fdcd6f892c",
+      "hash": "39282be90a90f89f",
       "files": 132
     },
     "pr-to-video": {
-      "hash": "7769801640dca521",
+      "hash": "337d781bd7517d2c",
       "files": 30
     },
     "product-launch-video": {
-      "hash": "81953f054fcb9d91",
-      "files": 28
+      "hash": "6d691b3db92e2c39",
+      "files": 29
     },
     "remotion-to-hyperframes": {
-      "hash": "3ecc684432b298dd",
+      "hash": "79fcf8e9641d126e",
       "files": 70
     },
     "slideshow": {
-      "hash": "6a24a84b0c1a75f9",
+      "hash": "c68fb51d48b80802",
       "files": 2
     },
     "talking-head-recut": {
-      "hash": "2f5d99f823c48e75",
+      "hash": "2eaa83d6889537a5",
       "files": 28
     }
   }

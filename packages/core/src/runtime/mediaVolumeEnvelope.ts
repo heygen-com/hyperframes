@@ -1,4 +1,6 @@
 import type { RuntimeTimelineLike } from "./types";
+import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
+import { parseStrictFiniteTimingNumber } from "./playbackRate";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -31,7 +33,7 @@ export function normaliseEnvelope(
     .filter((k) => Number.isFinite(k.time) && Number.isFinite(k.volume))
     .map((k) => ({
       time: Math.max(0, k.time - trackStart),
-      volume: Math.max(0, Math.min(1, k.volume)),
+      volume: clampAudioGain(k.volume),
     }))
     .sort((a, b) => a.time - b.time);
 
@@ -47,7 +49,7 @@ export function normaliseEnvelope(
 
   if (deduped.length === 0) return deduped;
   if (deduped[0]!.time > 0) {
-    deduped.unshift({ time: 0, volume: Math.max(0, Math.min(1, baseVolume)) });
+    deduped.unshift({ time: 0, volume: clampAudioGain(baseVolume) });
   }
   return deduped;
 }
@@ -95,7 +97,7 @@ function recordVolumeSample(
   }
 }
 
-function parseFiniteDatasetNumber(value: string | undefined): number | undefined {
+function parseVolumeNumber(value: string | undefined): number | undefined {
   const parsed = Number.parseFloat(value ?? "");
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -104,18 +106,17 @@ function resolveVolumeProbeWindow(
   el: HTMLAudioElement | HTMLVideoElement,
   compositionDuration: number,
 ): { start: number; end: number; staticVolume: number } {
-  const start = parseFiniteDatasetNumber(el.dataset.start) ?? 0;
-  const endAttr = parseFiniteDatasetNumber(el.dataset.end);
-  const durAttr = parseFiniteDatasetNumber(el.dataset.duration);
+  const start = parseStrictFiniteTimingNumber(el.dataset.start) ?? 0;
+  const endAttr = parseStrictFiniteTimingNumber(el.dataset.end) ?? undefined;
+  const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration) ?? undefined;
   let end = compositionDuration;
   if (durAttr !== undefined && durAttr > 0) {
     end = start + durAttr;
   } else if (endAttr !== undefined && endAttr > start) {
     end = endAttr;
   }
-  const staticAttr = parseFiniteDatasetNumber(el.dataset.volume) ?? 1;
-  const staticVolume = Math.max(0, Math.min(1, staticAttr));
-  return { start, end, staticVolume };
+  const staticAttr = parseVolumeNumber(el.dataset.volume) ?? 1;
+  return { start, end, staticVolume: clampAudioGain(staticAttr) };
 }
 
 /**
@@ -136,29 +137,32 @@ export function probeElementVolumeKeyframes(
 ): VolumeKeyframe[] | null {
   const { start, end, staticVolume } = resolveVolumeProbeWindow(el, compositionDuration);
 
-  // Reset to data-volume so GSAP captures the correct FROM value.
-  el.volume = staticVolume;
-
   const step = 1 / Math.min(60, Math.max(1, sampleFps));
   const sampleStart = Math.max(0, start);
   const sampleEnd = Math.min(compositionDuration, end);
 
-  const keyframes: VolumeKeyframe[] = [];
-  let previousSample: VolumeKeyframe | undefined;
-  for (let t = sampleStart; t <= sampleEnd + 1e-6; t = Math.min(sampleEnd, t + step)) {
-    seekTimeline(t);
-    const raw = Number(el.volume);
-    if (Number.isFinite(raw)) {
-      const volume = Math.max(0, Math.min(1, raw));
-      const sample = {
-        time: Number(t.toFixed(6)),
-        volume: Number(volume.toFixed(6)),
-      };
-      recordVolumeSample(keyframes, previousSample, sample, t === sampleEnd);
-      previousSample = sample;
+  const keyframes: VolumeKeyframe[] = withUnclampedVolume(el, () => {
+    // Reset to data-volume so GSAP captures the correct FROM value. Above
+    // unity that only survives because the shadow accessor is installed.
+    el.volume = staticVolume;
+
+    const samples: VolumeKeyframe[] = [];
+    let previousSample: VolumeKeyframe | undefined;
+    for (let t = sampleStart; t <= sampleEnd + 1e-6; t = Math.min(sampleEnd, t + step)) {
+      seekTimeline(t);
+      const raw = Number(el.volume);
+      if (Number.isFinite(raw)) {
+        const sample = {
+          time: Number(t.toFixed(6)),
+          volume: Number(clampAudioGain(raw).toFixed(6)),
+        };
+        recordVolumeSample(samples, previousSample, sample, t === sampleEnd);
+        previousSample = sample;
+      }
+      if (t === sampleEnd) break;
     }
-    if (t === sampleEnd) break;
-  }
+    return samples;
+  });
 
   const hasAutomation = keyframes.some((kf) => Math.abs(kf.volume - staticVolume) > 0.0001);
   return hasAutomation ? keyframes : null;

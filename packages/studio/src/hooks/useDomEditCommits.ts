@@ -420,20 +420,21 @@ export function useDomEditCommits({
 
   // ── Element lifecycle (delete, z-index reorder) ──
 
-  const { handleDomEditElementDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
-    activeCompPath,
-    showToast,
-    writeProjectFile,
-    domEditSaveTimestampRef,
-    editHistory,
-    projectIdRef,
-    reloadPreview,
-    clearDomSelection,
-    onTrySdkDelete,
-    onReorderShadow,
-    forceReloadSdkSession,
-    commitDomEditPatchBatches,
-  });
+  const { handleDomEditElementDelete, handleDomEditElementsDelete, handleDomZIndexReorderCommit } =
+    useElementLifecycleOps({
+      activeCompPath,
+      showToast,
+      writeProjectFile,
+      domEditSaveTimestampRef,
+      editHistory,
+      projectIdRef,
+      reloadPreview,
+      clearDomSelection,
+      onTrySdkDelete,
+      onReorderShadow,
+      forceReloadSdkSession,
+      commitDomEditPatchBatches,
+    });
 
   return {
     resolveImportedFontAsset,
@@ -454,6 +455,7 @@ export function useDomEditCommits({
     handleDomRotationCommit,
     handleDomManualEditsReset,
     handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };
 }

@@ -11,7 +11,11 @@ import { type CaptureOptions } from "../types.js";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import {
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+  MEDIA_RENDER_ID_ATTR,
   MEDIA_VISUAL_STYLE_PROPERTIES,
+  RENDER_FRAME_ID_PREFIX,
+  RENDER_FRAME_ID_SUFFIX,
+  renderFrameIdForRenderId,
 } from "@hyperframes/core";
 
 export const cdpSessionCache = new WeakMap<Page, import("puppeteer-core").CDPSession>();
@@ -404,6 +408,9 @@ export async function applyDomLayerMask(
     (args: {
       show: string[];
       hide: string[];
+      renderIdAttr: string;
+      renderFramePrefix: string;
+      renderFrameSuffix: string;
       styleId: string;
       hiddenAttr: string;
       prevVisibilityAttr: string;
@@ -412,6 +419,11 @@ export async function applyDomLayerMask(
     }) => {
       const existing = document.getElementById(args.styleId);
       if (existing) existing.remove();
+
+      // Affixes come from core's renderFrameSibling, so the runtime readers and
+      // this lookup cannot drift apart on the id format.
+      const renderFrameId = (id: string) =>
+        `${args.renderFramePrefix}${id}${args.renderFrameSuffix}`;
 
       const restoreMaskedElements = () => {
         const masked = document.querySelectorAll(`[${args.hiddenAttr}="1"]`);
@@ -465,11 +477,21 @@ export async function applyDomLayerMask(
 
       const showSelectors: string[] = [];
       for (const id of args.show) {
-        const el = document.getElementById(id);
+        const el = window.__hfMediaEl?.(id) ?? document.getElementById(id);
         if (el) rememberHiddenTimedDescendants(el);
-        const escaped = CSS.escape(id);
-        showSelectors.push(`#${escaped}`, `#${escaped} *`);
-        const renderEscaped = CSS.escape(`__render_frame_${id}__`);
+        // Address the element by its render id when it has one. `#id` must not
+        // be used as an extra fallback here: an id is duplicated exactly when
+        // two compositions share it, so `#id` would also unhide the other
+        // scene's element — the collision this render id exists to resolve.
+        if (el?.hasAttribute(args.renderIdAttr)) {
+          const attrEscaped = id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          const byRenderId = `[${args.renderIdAttr}="${attrEscaped}"]`;
+          showSelectors.push(byRenderId, `${byRenderId} *`);
+        } else {
+          const escaped = CSS.escape(id);
+          showSelectors.push(`#${escaped}`, `#${escaped} *`);
+        }
+        const renderEscaped = CSS.escape(renderFrameId(id));
         showSelectors.push(`#${renderEscaped}`, `#${renderEscaped} *`);
         const colorGradingEscaped = CSS.escape(`${args.canvasIdPrefix}${id}`);
         showSelectors.push(`#${colorGradingEscaped}`, `#${colorGradingEscaped} *`);
@@ -491,11 +513,11 @@ export async function applyDomLayerMask(
       }
 
       for (const id of args.hide) {
-        const el = document.getElementById(id);
-        if (el) {
+        const el = window.__hfMediaEl?.(id) ?? document.getElementById(id);
+        if (el instanceof HTMLElement) {
           rememberAndHideElement(el);
         }
-        const img = document.getElementById(`__render_frame_${id}__`);
+        const img = document.getElementById(renderFrameId(id));
         if (img) {
           rememberAndHideElement(img);
         }
@@ -508,6 +530,9 @@ export async function applyDomLayerMask(
     {
       show: showIds,
       hide: extraHideIds,
+      renderIdAttr: MEDIA_RENDER_ID_ATTR,
+      renderFramePrefix: RENDER_FRAME_ID_PREFIX,
+      renderFrameSuffix: RENDER_FRAME_ID_SUFFIX,
       styleId: DOM_LAYER_MASK_STYLE_ID,
       hiddenAttr: DOM_LAYER_MASK_HIDDEN_ATTR,
       prevVisibilityAttr: DOM_LAYER_MASK_PREV_VISIBILITY_ATTR,
@@ -589,21 +614,29 @@ export async function removeDomLayerMask(page: Page, _extraHideIds: string[]): P
  * callers that don't run through `initializeSession`.
  */
 export async function ensureRenderFrameSiblings(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    for (const video of Array.from(
-      document.querySelectorAll<HTMLVideoElement>("video[data-start]"),
-    )) {
-      const next = video.nextElementSibling;
-      if (next !== null && next.classList.contains("__render_frame__")) continue;
-      const img = document.createElement("img");
-      img.classList.add("__render_frame__");
-      img.id = `__render_frame_${video.id}__`;
-      img.style.pointerEvents = "none";
-      img.style.position = "absolute";
-      img.style.visibility = "hidden";
-      video.parentNode?.insertBefore(img, video.nextSibling);
-    }
-  });
+  await page.evaluate(
+    (prefix: string, suffix: string) => {
+      for (const video of Array.from(
+        document.querySelectorAll<HTMLVideoElement>("video[data-start]"),
+      )) {
+        const next = video.nextElementSibling;
+        if (next !== null && next.classList.contains("__render_frame__")) continue;
+        const img = document.createElement("img");
+        img.classList.add("__render_frame__");
+        // Derive from the render id, not `video.id` — two scenes can share an
+        // element id, and two siblings sharing an id would collide in turn.
+        // `||`, not `??`: `__hfMediaId` returns "" for an element with neither
+        // id, and core's reader treats that as "no id" rather than a key.
+        img.id = `${prefix}${window.__hfMediaId?.(video) || video.id}${suffix}`;
+        img.style.pointerEvents = "none";
+        img.style.position = "absolute";
+        img.style.visibility = "hidden";
+        video.parentNode?.insertBefore(img, video.nextSibling);
+      }
+    },
+    RENDER_FRAME_ID_PREFIX,
+    RENDER_FRAME_ID_SUFFIX,
+  );
 }
 
 /**
@@ -622,7 +655,7 @@ export async function injectVideoFramesBatch(
   return await page.evaluate(
     // fallow-ignore-next-line complexity
     async (
-      items: Array<{ videoId: string; dataUri: string }>,
+      items: Array<{ videoId: string; dataUri: string; frameId: string }>,
       visualProperties: string[],
       colorGradingSourceHiddenAttr: string,
     ) => {
@@ -677,7 +710,8 @@ export async function injectVideoFramesBatch(
         return false;
       };
       for (const item of items) {
-        const video = document.getElementById(item.videoId) as HTMLVideoElement | null;
+        const video = (window.__hfMediaEl?.(item.videoId) ??
+          document.getElementById(item.videoId)) as HTMLVideoElement | null;
         if (!video) continue;
 
         let img = video.nextElementSibling as HTMLImageElement | null;
@@ -713,7 +747,7 @@ export async function injectVideoFramesBatch(
         if (isNewImage) {
           img = document.createElement("img");
           img.classList.add("__render_frame__");
-          img.id = `__render_frame_${item.videoId}__`;
+          img.id = item.frameId;
           img.style.pointerEvents = "none";
           video.parentNode?.insertBefore(img, video.nextSibling);
         }
@@ -796,7 +830,9 @@ export async function injectVideoFramesBatch(
       }
       return injectedIds;
     },
-    updates,
+    // Build the sibling id with core's function rather than a template here,
+    // so the id the readers look up has exactly one definition.
+    updates.map((update) => ({ ...update, frameId: renderFrameIdForRenderId(update.videoId) })),
     [...MEDIA_VISUAL_STYLE_PROPERTIES],
     COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   );

@@ -20,6 +20,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 interface RecordEditInput {
   label: string;
@@ -42,6 +43,7 @@ export interface UseDomEditSessionParams {
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
+  isRecordingRef?: React.RefObject<boolean>;
   refreshPreviewDocumentVersion: () => void;
   queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
@@ -60,7 +62,7 @@ export interface UseDomEditSessionParams {
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
-  syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  syncPreviewHotkeys: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
@@ -69,6 +71,22 @@ export interface UseDomEditSessionParams {
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
+}
+
+/**
+ * Which elements a delete acts on. `expandGroup` widens the primary to the
+ * whole marquee group, which is what the Delete key means.
+ *
+ * The caller chooses rather than the delete deciding for everyone: Cut copies
+ * the primary alone, so expanding for it put one element on the clipboard and
+ * removed every other member of the group with it.
+ */
+export function membersForDelete(
+  selection: DomEditSelection,
+  group: DomEditSelection[],
+  options?: { expandGroup?: boolean },
+): DomEditSelection[] {
+  return options?.expandGroup && group.length > 0 ? group : [selection];
 }
 
 export function useDomEditSession({
@@ -85,6 +103,7 @@ export function useDomEditSession({
   setRightCollapsed,
   setRightPanelTab,
   showToast,
+  isRecordingRef,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
   readProjectFile,
@@ -101,7 +120,7 @@ export function useDomEditSession({
   previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
-  syncPreviewHistoryHotkey,
+  syncPreviewHotkeys,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
   openSourceForSelection,
@@ -238,7 +257,7 @@ export function useDomEditSession({
     handleDomRemoveTextField,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
-    handleDomEditElementDelete,
+    handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditCommits({
     activeCompPath,
@@ -332,6 +351,21 @@ export function useDomEditSession({
     forceReloadSdkSession,
   });
 
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
+      // Same structural edit the timeline delete refuses mid-recording, so it
+      // refuses here too — this is now the path a Delete press takes whenever
+      // the canvas holds a selection.
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
+      await handleDomEditElementsDelete(members);
+    },
+    [domEditGroupSelectionsRef, handleDomEditElementsDelete, isRecordingRef, showToast],
+  );
+
   const handleGroupSelection = useCallback(() => {
     const group = domEditGroupSelectionsRef.current;
     const single = domEditSelectionRef.current;
@@ -400,7 +434,7 @@ export function useDomEditSession({
     bumpGsapCache,
     showToast,
     refreshPreviewDocumentVersion,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
     applyDomSelection,
     buildDomSelectionFromTarget,

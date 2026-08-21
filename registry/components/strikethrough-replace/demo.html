@@ -72,10 +72,56 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-catalog-strikethrough-replace">
+        <div
+          class="hf-catalog-strikethrough-replace"
+          data-composition-variables='[
+    { "id": "origin", "type": "enum", "role": "motion", "label": "Origin", "description": "Edge the strike grows out of as the timeline runs its scale from 0 to 1.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "center", "label": "Center" }, { "value": "right", "label": "Right" }] },
+    { "id": "thickness", "type": "enum", "role": "style", "label": "Thickness", "description": "Height of the strike line, from a hairline rule to a heavy bar.", "default": "standard", "options": [{ "value": "thin", "label": "Thin" }, { "value": "standard", "label": "Standard" }, { "value": "thick", "label": "Thick" }] },
+    { "id": "tint", "type": "enum", "role": "style", "label": "Tint", "description": "Strike colour. Blue and violet ride --accent and --accent-2.", "default": "red", "options": [{ "value": "red", "label": "Red" }, { "value": "amber", "label": "Amber" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Colour of both words: ink for light frames, paper for dark ones.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }] }
+  ]'
+        >
           <span>Slow</span><i></i><strong>Fast</strong>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var origins = { left: "left center", center: "center", right: "right center" };
+          var thicknesses = { thin: "3px", standard: "6px", thick: "10px" };
+          var tints = {
+            red: "#ef4444",
+            amber: "#f59e0b",
+            blue: "var(--accent, #38bdf8)",
+            violet: "var(--accent-2, #a78bfa)",
+          };
+          var tones = { ink: "#18181b", paper: "#fafafa" };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var origin = origins[pick(origins, vars.origin, "left")];
+          var thickness = thicknesses[pick(thicknesses, vars.thickness, "standard")];
+          var tint = tints[pick(tints, vars.tint, "red")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+
+          var roots = document.querySelectorAll(".hf-catalog-strikethrough-replace");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-strike-origin", origin);
+            roots[i].style.setProperty("--hf-strike-thickness", thickness);
+            roots[i].style.setProperty("--hf-strike-color", tint);
+            roots[i].style.setProperty("--hf-strike-text-color", tone);
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
@@ -96,5 +142,34 @@
         window.__timelines["strikethrough-replace-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-catalog-strikethrough-replace {
+        color: var(--hf-strike-text-color, #18181b);
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-catalog-strikethrough-replace {
+        position: relative;
+        display: inline-grid;
+        grid-auto-flow: column;
+        gap: 18px;
+        align-items: center;
+        font-size: 58px;
+      }
+      .hf-catalog-strikethrough-replace i {
+        position: absolute;
+        left: 0;
+        width: 48%;
+        height: var(--hf-strike-thickness, 6px);
+        border-radius: 999px;
+        background: var(--hf-strike-color, #ef4444);
+        transform: scaleX(var(--hf-strike-progress, 1));
+        transform-origin: var(--hf-strike-origin, left center);
+      }
+      .hf-catalog-strikethrough-replace strong {
+        opacity: var(--hf-replace-opacity, 1);
+      }
+    </style>
   </body>
 </html>

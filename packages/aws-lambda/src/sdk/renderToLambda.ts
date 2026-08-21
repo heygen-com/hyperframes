@@ -38,8 +38,8 @@ export interface RenderToLambdaOptions {
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
   /**
-   * Distributed plan transport. Defaults to `"v1"` for backwards
-   * compatibility. New integrations should explicitly select `"v2"`.
+   * Distributed plan transport. Defaults to `"v2"`. Select `"v1"`
+   * explicitly only for deprecated compatibility with the monolithic plan.
    */
   planProtocol?: LambdaPlanProtocol;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */
@@ -115,7 +115,7 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     PlanOutputS3Prefix: planOutputS3Prefix,
     OutputS3Uri: outputS3Uri,
     Config: opts.config,
-    PlanProtocol: opts.planProtocol ?? "v1",
+    PlanProtocol: opts.planProtocol ?? "v2",
   };
 
   // Reject oversize input client-side. Step Functions Standard caps the

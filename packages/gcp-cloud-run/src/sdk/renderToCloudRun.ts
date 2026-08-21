@@ -53,8 +53,8 @@ export interface RenderToCloudRunOptions {
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
   /**
-   * Distributed plan transport. Defaults to `"v1"` for backwards
-   * compatibility. New integrations should explicitly select `"v2"`.
+   * Distributed plan transport. Defaults to `"v2"`. Select `"v1"`
+   * explicitly only for deprecated compatibility with the monolithic plan.
    */
   planProtocol?: CloudRunPlanProtocol;
   /** GCS bucket from the Terraform output (`render_bucket_name`). */
@@ -149,7 +149,7 @@ export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<R
     OutputGcsUri: outputGcsUri,
     ServiceUrl: opts.serviceUrl,
     Config: opts.config,
-    PlanProtocol: opts.planProtocol ?? "v1",
+    PlanProtocol: opts.planProtocol ?? "v2",
   };
 
   // Reject oversize input client-side. Cloud Workflows caps the execution

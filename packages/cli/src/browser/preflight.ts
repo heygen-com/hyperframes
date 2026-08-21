@@ -111,7 +111,9 @@ function checkFFmpeg(): EnvironmentCheckOutcome {
     ok: false,
     level: "error",
     title: "FFmpeg not found",
-    detail: "FFmpeg is required to encode video. The render cannot proceed without it.",
+    // Second sentence dropped: "the render cannot proceed" is already said by
+    // the error this accompanies, and in Studio by the disabled Export button.
+    detail: "FFmpeg is required to encode video.",
     hint: getFFmpegInstallHint(),
   };
 }

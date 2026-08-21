@@ -55,17 +55,17 @@ interface PlanEventBase {
 }
 
 /**
- * Legacy/default plan transport. Absence is deliberately interpreted as v1.
+ * Legacy plan transport. Callers must select it explicitly.
  *
  * @deprecated Use {@link PlanV2Event} for new integrations.
  */
 export interface PlanV1Event extends PlanEventBase {
-  PlanProtocol?: "v1";
+  PlanProtocol: "v1";
 }
 
-/** Explicit opt-in to the content-addressed v2 plan transport. */
+/** Default content-addressed v2 plan transport. */
 export interface PlanV2Event extends PlanEventBase {
-  PlanProtocol: "v2";
+  PlanProtocol?: "v2";
 }
 
 export type PlanEvent = PlanV1Event | PlanV2Event;
@@ -90,12 +90,12 @@ interface RenderChunkEventBase {
 }
 
 /**
- * Legacy/default chunk event.
+ * Legacy chunk event. Callers must select it explicitly.
  *
  * @deprecated Use {@link RenderChunkV2Event} for new integrations.
  */
 export interface RenderChunkV1Event extends RenderChunkEventBase {
-  PlanProtocol?: "v1";
+  PlanProtocol: "v1";
   /** S3 URI of the v1 plan tar produced by a PlanEvent invocation. */
   PlanS3Uri: string;
 }
@@ -105,7 +105,7 @@ export interface RenderChunkV1Event extends RenderChunkEventBase {
  * describes the exact content-addressed artifacts needed by this chunk.
  */
 export interface RenderChunkV2Event extends RenderChunkEventBase {
-  PlanProtocol: "v2";
+  PlanProtocol?: "v2";
   PlanV2ManifestS3Uri: string;
   PlanV2ArtifactS3Prefix: string;
 }
@@ -136,19 +136,19 @@ interface AssembleEventBase {
 }
 
 /**
- * Legacy/default assemble event.
+ * Legacy assemble event. Callers must select it explicitly.
  *
  * @deprecated Use {@link AssembleV2Event} for new integrations.
  */
 export interface AssembleV1Event extends AssembleEventBase {
-  PlanProtocol?: "v1";
+  PlanProtocol: "v1";
   /** S3 URI of the v1 plan tar produced by a PlanEvent invocation. */
   PlanS3Uri: string;
 }
 
 /** V2 assemble event, scoped to manifest-declared assembler artifacts. */
 export interface AssembleV2Event extends AssembleEventBase {
-  PlanProtocol: "v2";
+  PlanProtocol?: "v2";
   PlanV2ManifestS3Uri: string;
   PlanV2ArtifactS3Prefix: string;
   PlanHash: string;

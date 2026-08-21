@@ -218,10 +218,9 @@ export function StudioApp() {
   });
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
-  const handleDomEditElementDeleteRef = useRef<(s: DomEditSelection) => Promise<void>>(
-    async () => {},
-  );
-  const domEditDeleteBridge = (s: DomEditSelection) => handleDomEditElementDeleteRef.current(s);
+  type DomEditDelete = (s: DomEditSelection, o?: { expandGroup?: boolean }) => Promise<void>;
+  const handleDomEditElementDeleteRef = useRef<DomEditDelete>(async () => {});
+  const domEditDeleteBridge: DomEditDelete = (s, o) => handleDomEditElementDeleteRef.current(s, o);
   const resetKeyframesRef = useRef<() => boolean>(() => false);
   const deleteSelectedKeyframesRef = useRef<() => void>(() => {});
   const { handleCopy, handlePaste, handleCut } = useClipboard({
@@ -238,7 +237,7 @@ export function StudioApp() {
     previewIframeRef,
   });
   const appHotkeys = useAppHotkeys({
-    handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
+    handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleTimelineElementSplit: timelineEditing.handleTimelineElementSplit,
     handleDomEditElementDelete: domEditDeleteBridge,
     domEditSelectionRef: domEditSelectionBridgeRef,
@@ -282,6 +281,7 @@ export function StudioApp() {
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,
+    isRecordingRef: isGestureRecordingRef,
     refreshPreviewDocumentVersion,
     queueDomEditSave: previewPersistence.queueDomEditSave,
     readProjectFile: fileManager.readProjectFile,
@@ -298,7 +298,7 @@ export function StudioApp() {
     previewDocumentVersion,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: previewPersistence.applyStudioManualEditsToPreviewRef,
-    syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
+    syncPreviewHotkeys: appHotkeys.syncPreviewHotkeys,
     reloadPreview,
     setRefreshKey,
     openSourceForSelection: fileManager.openSourceForSelection,
@@ -365,7 +365,6 @@ export function StudioApp() {
     isGestureRecordingRef,
   });
   handleToggleRecordingRef.current = handleToggleRecording;
-  const recordingToggle = handleToggleRecording;
   const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
@@ -378,8 +377,7 @@ export function StudioApp() {
     (iframe: HTMLIFrameElement | null) => {
       previewIframeRef.current = iframe;
       setPreviewIframe(iframe);
-      appHotkeys.syncPreviewTimelineHotkey(iframe);
-      appHotkeys.syncPreviewHistoryHotkey(iframe);
+      appHotkeys.syncPreviewHotkeys(iframe);
       resetConsoleErrors();
       refreshPreviewDocumentVersion();
     },
@@ -526,7 +524,7 @@ export function StudioApp() {
                           }}
                           recordingState={gestureState}
                           recordingDuration={gestureRecording.recordingDuration}
-                          onToggleRecording={recordingToggle}
+                          onToggleRecording={handleToggleRecording}
                           sdkSession={sdkHandle.session}
                           publishSdkSession={sdkHandle.publish}
                           forceReloadSdkSession={sdkHandle.forceReload}
@@ -561,7 +559,7 @@ export function StudioApp() {
                     shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                     isGestureRecording={gestureState === "recording"}
                     recordingState={gestureState}
-                    onToggleRecording={recordingToggle}
+                    onToggleRecording={handleToggleRecording}
                     blockPreview={blockPreview}
                     gestureOverlay={
                       gestureState === "recording" && previewIframe ? (

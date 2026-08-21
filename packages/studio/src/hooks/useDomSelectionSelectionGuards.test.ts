@@ -278,3 +278,52 @@ describe("useDomSelection — marquee multi-select survives the late async prima
     iframe.remove();
   });
 });
+
+describe("useDomSelection — picking a clip with no canvas node", () => {
+  function timelineEl(id: string): TimelineElement {
+    return { id, domId: id, tag: "div", start: 0, duration: 1, track: 0 };
+  }
+
+  it("drops the canvas selection without deselecting the clip", async () => {
+    // Delete acts on the canvas first, so a canvas selection left pointing at
+    // the previous element removed THAT element when the user pressed Delete
+    // right after picking an audio clip. Clearing it has to stay quiet, though:
+    // announcing the clear back would deselect the clip that was just picked.
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    const onCanvas = doc.createElement("div");
+    onCanvas.id = "on-canvas";
+    doc.body.append(onCanvas);
+
+    const setSelectedTimelineElementId = vi.fn();
+    const setTimelineSelectionSet = vi.fn();
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe,
+      timelineElements: [timelineEl("on-canvas"), timelineEl("audio-only")],
+      setSelectedTimelineElementId,
+      setTimelineSelectionSet,
+    });
+
+    await act(async () => {
+      const pending = harness.current().handleTimelineElementSelect(timelineEl("on-canvas"));
+      deferreds.get("on-canvas")?.resolve();
+      await pending;
+    });
+    expect(harness.current().domEditSelectionRef.current).not.toBeNull();
+
+    setSelectedTimelineElementId.mockClear();
+    setTimelineSelectionSet.mockClear();
+    await act(async () => {
+      await harness.current().handleTimelineElementSelect(timelineEl("audio-only"));
+    });
+
+    expect(harness.current().domEditSelectionRef.current).toBeNull();
+    expect(setSelectedTimelineElementId).not.toHaveBeenCalled();
+    expect(setTimelineSelectionSet).not.toHaveBeenCalled();
+
+    harness.cleanup();
+  });
+});

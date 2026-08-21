@@ -38,7 +38,11 @@ import {
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
 import { normalizeToZones } from "../components/timelineZones";
-import { setPreviewMediaMuted, setPreviewPlaybackRate } from "../lib/timelineIframeHelpers";
+import {
+  setPreviewMediaMuted,
+  setPreviewMediaVolume,
+  setPreviewPlaybackRate,
+} from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
@@ -231,8 +235,9 @@ export function useTimelinePlayer() {
     } catch {}
   }, []);
   const applyPreviewAudioState = useCallback(() => {
-    const { audioMuted } = usePlayerStore.getState();
+    const { audioMuted, audioVolume } = usePlayerStore.getState();
     setPreviewMediaMuted(iframeRef.current, audioMuted);
+    setPreviewMediaVolume(iframeRef.current, audioVolume);
   }, []);
   const play = useCallback(() => {
     stopRAFLoop();
@@ -570,7 +575,8 @@ export function useTimelinePlayer() {
     return usePlayerStore.subscribe((state, prev) => {
       const playbackRateChanged = state.playbackRate !== prev.playbackRate;
       const audioMutedChanged = state.audioMuted !== prev.audioMuted;
-      if (!playbackRateChanged && !audioMutedChanged) return;
+      const audioVolumeChanged = state.audioVolume !== prev.audioVolume;
+      if (!playbackRateChanged && !audioMutedChanged && !audioVolumeChanged) return;
 
       if (playbackRateChanged) {
         applyPlaybackRate(state.playbackRate);

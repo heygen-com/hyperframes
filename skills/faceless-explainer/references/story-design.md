@@ -233,7 +233,7 @@ Use the exact fields required by the core storyboard format. This is the narrati
 - type: feature_showcase
 - persuasion: Progressive disclosure
 - beat: comprehension
-- blueprint: messaging-multi-phase — candidate shape from the role→blueprint menu; omit when none fits
+- blueprint: dataviz-countup — candidate shape from the role→blueprint menu; omit when none fits
 
 narrativeRole: What this frame does in the viewer's understanding.
 keyMessage: The one idea the viewer should remember.

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.109",
+  "version": "0.8.6",
   "description": "",
   "repository": {
     "type": "git",
@@ -171,6 +171,12 @@
       "node": "./dist/audioAutomation.js",
       "import": "./src/audioAutomation.ts",
       "types": "./src/audioAutomation.ts"
+    },
+    "./audio-gain": {
+      "bun": "./src/audioGain.ts",
+      "node": "./dist/audioGain.js",
+      "import": "./src/audioGain.ts",
+      "types": "./src/audioGain.ts"
     },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
@@ -477,6 +483,10 @@
       "./audio-automation": {
         "import": "./dist/audioAutomation.js",
         "types": "./dist/audioAutomation.d.ts"
+      },
+      "./audio-gain": {
+        "import": "./dist/audioGain.js",
+        "types": "./dist/audioGain.d.ts"
       },
       "./color-grading": {
         "import": "./dist/colorGrading.js",

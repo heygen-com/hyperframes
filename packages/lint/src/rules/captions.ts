@@ -1,33 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 
-/** Extract a bracket-balanced array literal starting at the `[` found by `varMatch`. */
-// fallow-ignore-next-line complexity
-function extractArrayLiteral(src: string, varMatch: RegExpExecArray): string | null {
-  const openIdx = varMatch.index + varMatch[0].length - 1;
-  let depth = 0;
-  let inStr = false;
-  let strChar = "";
-  for (let i = openIdx; i < src.length; i++) {
-    const c = src[i]!;
-    if (inStr) {
-      if (c === "\\") {
-        i++;
-        continue;
-      }
-      if (c === strChar) inStr = false;
-    } else if (c === '"' || c === "'") {
-      inStr = true;
-      strChar = c;
-    } else if (c === "[") {
-      depth++;
-    } else if (c === "]") {
-      depth--;
-      if (depth === 0) return src.slice(openIdx, i + 1);
-    }
-  }
-  return null;
-}
-
 export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // caption_exit_missing_hard_kill
   ({ scripts, styles, options, rootCompositionId }) => {
@@ -120,30 +92,6 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
           'Embed the transcript as `var TRANSCRIPT = [{ "text": "...", "start": 0, "end": 1 }, ...]` ' +
           "with JSON-quoted property keys. See the captions skill for details.",
       });
-    }
-
-    if (hasInlineTranscript) {
-      // Verify the inline transcript can be parsed.
-      // Use a balanced-bracket scan instead of a regex to correctly handle
-      // nested arrays (e.g. word-level timing arrays inside each entry).
-      const varStart = /(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*\[/.exec(allScript);
-      const transcriptJson = varStart ? extractArrayLiteral(allScript, varStart) : null;
-      if (transcriptJson) {
-        try {
-          JSON.parse(transcriptJson);
-        } catch {
-          findings.push({
-            code: "caption_transcript_parse_error",
-            severity: "error",
-            message:
-              "Inline TRANSCRIPT array is not valid JSON. The studio caption editor may fail " +
-              "to parse it. Common cause: unquoted property keys with apostrophes in text.",
-            fixHint:
-              'Use JSON-quoted keys: { "text": "don\'t", "start": 0, "end": 1 } instead of ' +
-              '{ text: "don\'t", start: 0, end: 1 }.',
-          });
-        }
-      }
     }
 
     return findings;

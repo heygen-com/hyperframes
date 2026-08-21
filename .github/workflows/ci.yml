@@ -322,9 +322,7 @@ jobs:
           node-version: 22
       - name: Install FFmpeg for integration tests
         if: matrix.lane == 'integration'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
@@ -733,9 +731,7 @@ jobs:
         with:
           node-version: 22
       - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - name: Install dependencies
         run: bash scripts/ci/install-workspace-dependencies.sh

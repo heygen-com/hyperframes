@@ -24,16 +24,18 @@ interface MarqueeHit {
 }
 
 /**
- * Synchronous core of the marquee: the elements whose overlay-space rect
- * intersects the marquee rect. Uses the SAME `toOverlayRect` basis as the
- * single-selection / group-selection boxes, so what the marquee highlights
- * and selects is exactly the box the user sees when they click an element.
- * Shared by the live candidate highlight (per pointer-move) and the mouse-up
- * commit. No async source probe — that only happens once, on commit.
+ * Every element the marquee could hit, with the overlay-space rect it would be
+ * tested against. Uses the SAME `toOverlayRect` basis as the single-selection /
+ * group-selection boxes, so what the marquee highlights and selects is exactly
+ * the box the user sees when they click an element.
+ *
+ * Measured once per drag rather than per pointer-move: this reads layout for
+ * every element in the document, and a captured page has enough of them that
+ * doing it 60 times a second stalls the tab. The iframe DOM does not mutate
+ * mid-drag, so the rects it returns stay true for the whole gesture.
  */
 // fallow-ignore-next-line complexity
-function collectMarqueeHits(
-  rect: Rect,
+function collectMarqueeCandidates(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   activeCompositionPath: string,
@@ -53,35 +55,39 @@ function collectMarqueeHits(
     height: declH > 0 ? declH : rootEl.getBoundingClientRect().height || 1,
   };
 
-  const hits: MarqueeHit[] = [];
+  const candidates: MarqueeHit[] = [];
   for (const item of items) {
     const el = item.element;
     if (!isElementComputedVisible(el)) continue;
     if (coversComposition(el.getBoundingClientRect(), viewport)) continue;
     const overlayRect = toVisibleOverlayRect(overlayEl, iframe, el);
     if (!overlayRect) continue;
-    const r: Rect = {
-      left: overlayRect.left,
-      top: overlayRect.top,
-      width: overlayRect.width,
-      height: overlayRect.height,
-    };
-    if (!rectsOverlap(rect, r)) continue;
-    hits.push({ element: el, rect: r });
+    candidates.push({
+      element: el,
+      rect: {
+        left: overlayRect.left,
+        top: overlayRect.top,
+        width: overlayRect.width,
+        height: overlayRect.height,
+      },
+    });
   }
 
-  return hits;
+  return candidates;
+}
+
+function hitsWithin(rect: Rect, candidates: MarqueeHit[]): MarqueeHit[] {
+  return candidates.filter((candidate) => rectsOverlap(rect, candidate.rect));
 }
 
 async function runMarqueeIntersection(
   rect: Rect,
-  iframe: HTMLIFrameElement,
-  overlayEl: HTMLDivElement,
+  candidates: MarqueeHit[],
   activeCompositionPath: string,
 ): Promise<DomEditSelection[]> {
   const isMasterView = !activeCompositionPath || activeCompositionPath === "index.html";
   const hits: DomEditSelection[] = [];
-  for (const { element } of collectMarqueeHits(rect, iframe, overlayEl, activeCompositionPath)) {
+  for (const { element } of hitsWithin(rect, candidates)) {
     const sel = await resolveDomEditSelection(element, {
       activeCompositionPath,
       isMasterView,
@@ -116,6 +122,8 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
   // iframe DOM doesn't mutate during a drag, so a sync intersection per move
   // is cheap (clean layout → no thrash).
   const [candidateRects, setCandidateRects] = useState<Rect[]>([]);
+  // Measured once when the drag passes the threshold and reused until it ends.
+  const candidatesRef = useRef<MarqueeHit[] | null>(null);
 
   const commitMarquee = useCallback(
     async (
@@ -126,7 +134,8 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      const hits = await runMarqueeIntersection(rect, iframe, overlay, acp);
+      const candidates = candidatesRef.current ?? collectMarqueeCandidates(iframe, overlay, acp);
+      const hits = await runMarqueeIntersection(rect, candidates, acp);
       deps.onMarqueeSelectRef.current(hits, additive);
     },
     [deps.iframeRef, deps.overlayRef, deps.onMarqueeSelectRef, deps.activeCompositionPathRef],
@@ -145,6 +154,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
           const dy = m.currentY - m.startY;
           if (Math.hypot(dx, dy) < MARQUEE_THRESHOLD_PX) return;
           m.pastThreshold = true;
+          candidatesRef.current = null;
         }
         const rect: Rect = {
           left: Math.min(m.startX, m.currentX),
@@ -157,7 +167,8 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
         const overlay = deps.overlayRef.current;
         if (iframe && overlay) {
           const acp = deps.activeCompositionPathRef.current ?? "index.html";
-          setCandidateRects(collectMarqueeHits(rect, iframe, overlay, acp).map((h) => h.rect));
+          candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
+          setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
         }
         return;
       }
@@ -191,6 +202,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
         }
         setMarqueeRect(null);
         setCandidateRects([]);
+        candidatesRef.current = null;
         return;
       }
       deps.gestures.onPointerUp(event);
@@ -203,6 +215,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
       marqueeRef.current = null;
       setMarqueeRect(null);
       setCandidateRects([]);
+      candidatesRef.current = null;
       return;
     }
     deps.gestures.clearPointerState(deps.selectionRef);

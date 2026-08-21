@@ -31,7 +31,7 @@
 #   --region <region>          (default: $AWS_REGION or us-east-1)
 #   --profile <name>           (default: $AWS_PROFILE, otherwise the AWS
 #                               default profile resolution chain)
-#   --plan-protocol <v1|v2|both> (default: v1)
+#   --plan-protocol <v1|v2|both> (default: v2)
 #   --keep-stack               (skip `sam delete` at the end)
 #   --skip-build               (skip the ZIP rebuild; use the existing one)
 #
@@ -82,7 +82,7 @@ SMOKE_RUN_ID="${HYPERFRAMES_SMOKE_RUN_ID:-$(hf_new_smoke_run_id)}"
 STACK_NAME="${STACK_NAME:-hyperframes-lambda-smoke-${SMOKE_RUN_ID}}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE="${AWS_PROFILE:-}"
-PLAN_PROTOCOL="${PLAN_PROTOCOL:-v1}"
+PLAN_PROTOCOL="${PLAN_PROTOCOL:-v2}"
 KEEP_STACK="false"
 SKIP_BUILD="false"
 REQUIRE_ENCODED_SHA_EQUAL="${REQUIRE_ENCODED_SHA_EQUAL:-false}"
@@ -110,7 +110,7 @@ Flags:
   --stack-name <name>           SAM stack name (default: hyperframes-lambda-smoke-<unique-run-id>)
   --region <region>             AWS region (default: $AWS_REGION or us-east-1)
   --profile <name>              AWS profile (default: $AWS_PROFILE)
-  --plan-protocol <v1|v2|both>  plan transport(s) to compare (default: v1)
+  --plan-protocol <v1|v2|both>  plan transport(s) to compare (default: v2)
   --reserved-concurrency <N>    Lambda Map MaxConcurrency cap (default: 16)
   --keep-stack                  skip `sam delete` at the end (manual teardown later)
   --require-encoded-sha-equal   also gate byte-identical encoded MP4 output

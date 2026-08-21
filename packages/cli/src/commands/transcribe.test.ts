@@ -48,8 +48,16 @@ describe("transcribe command", () => {
   it("explicit run exits non-zero and is NOT reported as a command failure", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);
-    await transcribeCmd.run!({ args: { input, json: true, optional: false } } as never);
+    // Pin the engine. `auto` picks Parakeet whenever parakeet-mlx happens to be
+    // installed, and only the whisper path is mocked here -- so on those
+    // machines this test used to shell out to a real ASR binary, fail with
+    // "Parakeet did not produce output", and land in the generic failure branch
+    // instead of the soft-skip it is asserting.
+    await transcribeCmd.run!({
+      args: { input, json: true, optional: false, engine: "whisper" },
+    } as never);
 
+    expect(transcribeMock).toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(1);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: false });
     expect(trackCommandFailure).not.toHaveBeenCalled();
@@ -58,8 +66,14 @@ describe("transcribe command", () => {
   it("--optional skips cleanly with exit 0", async () => {
     const { dir, input } = dummyAudio();
     dirs.push(dir);
-    await transcribeCmd.run!({ args: { input, json: true, optional: true } } as never);
+    await transcribeCmd.run!({
+      args: { input, json: true, optional: true, engine: "whisper" },
+    } as never);
 
+    // Asserting the mock ran is what keeps this honest: without it the test
+    // passes on a machine with no Parakeet and silently tests nothing on one
+    // that has it.
+    expect(transcribeMock).toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(0);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: true });
     expect(trackCommandFailure).not.toHaveBeenCalled();

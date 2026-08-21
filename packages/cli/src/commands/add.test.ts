@@ -3,7 +3,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { AddError, buildSnippet, parseVariableValues, remapTarget, runAdd } from "./add.js";
+import {
+  AddError,
+  buildSnippet,
+  describeInstallFailure,
+  parseVariableValues,
+  remapTarget,
+  runAdd,
+} from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
@@ -460,5 +467,48 @@ describe("variable values in the snippet", () => {
     expect(() => parseVariableValues("not json")).toThrow(/JSON object/);
     expect(() => parseVariableValues("[1,2]")).toThrow(/JSON object/);
     expect(parseVariableValues(undefined)).toBeNull();
+  });
+});
+
+describe("describeInstallFailure", () => {
+  it("explains a bare transport failure instead of echoing it", () => {
+    // What the user actually sees after copying a command off the catalog page.
+    // Item FILES are not cached, so a blip surfaces as node's `fetch failed`
+    // with no URL and no cause, and reads like the command was wrong.
+    const message = describeInstallFailure(new Error("fetch failed"));
+
+    expect(message).toContain("could not download the item's files");
+    expect(message).toContain("rather than a bad command");
+    expect(message).toContain("HTTPS_PROXY");
+  });
+
+  it("names the project's own registry when it is not the public one", () => {
+    // The reported failure: hyperframes.json pointed at a private host with a
+    // self-signed certificate. Telling that reader to check their connection
+    // sends them to debug the one thing that was working.
+    const message = describeInstallFailure(
+      new Error("fetch failed"),
+      "https://private.example/registry",
+    );
+
+    expect(message).toContain("https://private.example/registry");
+    expect(message).toContain("not the public registry");
+  });
+
+  it("stays quiet about the registry when it is the default one", () => {
+    const message = describeInstallFailure(
+      new Error("fetch failed"),
+      "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+    );
+
+    expect(message).not.toContain("not the public registry");
+  });
+
+  it("leaves a non-transport failure exactly as it was", () => {
+    // An unsafe target or a malformed item is the caller's problem to read; a
+    // connectivity lecture there would send them to fix the wrong thing.
+    const message = describeInstallFailure(new Error('Unsafe target "../x"'));
+
+    expect(message).toBe('Install failed: Unsafe target "../x"');
   });
 });

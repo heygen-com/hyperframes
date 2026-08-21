@@ -19,6 +19,7 @@ function project(
   return {
     results: files.map(({ file, findings }) => ({
       file,
+      contentHash: "test",
       result: {
         ok: findings.every((f) => f.severity !== "error"),
         errorCount: findings.filter((f) => f.severity === "error").length,

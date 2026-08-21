@@ -1,11 +1,18 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import React, { act, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildExpandedElements,
   resolveTimelineExpansionRawId,
+  useExpandedTimelineElements,
 } from "./useExpandedTimelineElements";
 import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const clip = (over: Partial<ClipManifestClip>): ClipManifestClip => ({
   id: "x",
@@ -29,6 +36,19 @@ const el = (over: Partial<TimelineElement>): TimelineElement => ({
   track: 0,
   tag: "div",
   ...over,
+});
+
+function TimelineExpansionHarness({ onValue }: { onValue: (value: TimelineElement[]) => void }) {
+  const value = useExpandedTimelineElements();
+  useEffect(() => {
+    onValue(value);
+  }, [onValue, value]);
+  return null;
+}
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  usePlayerStore.getState().reset();
 });
 
 describe("buildExpandedElements", () => {
@@ -357,7 +377,7 @@ describe("buildExpandedElements", () => {
   it("keeps the host row present at every playhead position (keyframe lane repro)", () => {
     // Live repro with no drag at all: seek 0 gave 3 diamonds, seek 7.68 gave 0,
     // seek 0.2 gave 3. Diamonds render per row from keyframeCache.get(elementKey),
-    // so the whole lane went with the host row whenever the paused drill-in
+    // so the whole lane went with the host row whenever the store-time drill-in
     // substituted it for its children.
     const elements = [
       el({ id: "scene", domId: "scene", key: "index.html#scene", start: 0, duration: 12 }),
@@ -371,7 +391,6 @@ describe("buildExpandedElements", () => {
     for (const currentTime of [0, 7.68, 0.2]) {
       const rawId = resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime,
         manifest,
         parentMap,
@@ -424,13 +443,12 @@ describe("buildExpandedElements", () => {
 });
 
 describe("resolveTimelineExpansionRawId", () => {
-  it("returns null when paused inside a childless top-level clip", () => {
+  it("returns null inside a childless top-level clip", () => {
     const manifest = [clip({ id: "title", start: 0, duration: 4 })];
 
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 2,
         manifest,
         parentMap: new Map(),
@@ -438,7 +456,7 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBeNull();
   });
 
-  it("auto-expands an active composition with children when paused and nothing is selected", () => {
+  it("auto-expands an active composition with children when nothing is selected", () => {
     const manifest = [
       clip({ id: "scene", start: 1, duration: 5 }),
       clip({ id: "headline", start: 1.5, duration: 2 }),
@@ -448,7 +466,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 2,
         manifest,
         parentMap,
@@ -468,7 +485,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 12,
         manifest,
         parentMap,
@@ -491,7 +507,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 5,
         manifest,
         parentMap,
@@ -499,7 +514,7 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBe("second");
   });
 
-  it("auto-expands the innermost active nested composition when paused", () => {
+  it("auto-expands the innermost active nested composition", () => {
     const manifest = [
       clip({ id: "outer", start: 0, duration: 10 }),
       clip({ id: "inner", start: 2, duration: 5 }),
@@ -513,7 +528,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: false,
         currentTime: 3.5,
         manifest,
         parentMap,
@@ -521,7 +535,7 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBe("inner");
   });
 
-  it("does not auto-expand an active composition while playing", () => {
+  it("resolves an active composition from the current store time", () => {
     const manifest = [
       clip({ id: "scene", start: 0, duration: 5 }),
       clip({ id: "headline", start: 1, duration: 2 }),
@@ -531,15 +545,49 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: null,
-        isPlaying: true,
         currentTime: 2,
         manifest,
         parentMap,
       }),
-    ).toBeNull();
+    ).toBe("scene");
   });
 
-  it("keeps selected elements ahead of paused active composition auto-expansion", () => {
+  it("keeps inline children visible when the master timeline is playing", () => {
+    const elements = [
+      el({ id: "scene", domId: "scene", key: "index.html#scene", start: 0, duration: 5 }),
+    ];
+    const manifest = [
+      clip({ id: "scene", start: 0, duration: 5, compositionSrc: "scene.html" }),
+      clip({ id: "headline", start: 1, duration: 2 }),
+    ];
+    const parentMap = new Map([["headline", "scene"]]);
+    let rows: TimelineElement[] | undefined;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    act(() => {
+      usePlayerStore.setState({
+        elements,
+        clipManifest: manifest,
+        clipParentMap: parentMap,
+        currentTime: 2,
+        isPlaying: true,
+      });
+      root.render(
+        React.createElement(TimelineExpansionHarness, {
+          onValue: (value) => (rows = value),
+        }),
+      );
+    });
+
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(rows?.map((row) => row.domId ?? row.id)).toEqual(["scene", "headline"]);
+
+    act(() => root.unmount());
+  });
+
+  it("keeps selected elements ahead of active composition auto-expansion", () => {
     const manifest = [
       clip({ id: "scene", start: 0, duration: 6 }),
       clip({ id: "headline", start: 1, duration: 2 }),
@@ -553,7 +601,6 @@ describe("resolveTimelineExpansionRawId", () => {
     expect(
       resolveTimelineExpansionRawId({
         selectedElementId: "caption",
-        isPlaying: false,
         currentTime: 1.5,
         manifest,
         parentMap,

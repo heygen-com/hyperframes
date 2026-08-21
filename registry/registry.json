@@ -272,6 +272,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "heygen-avatar-promo-card",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "hw-frame",
       "type": "hyperframes:block"
     },
@@ -468,6 +472,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "slack-notification-ad",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "spain-map",
       "type": "hyperframes:block"
     },
@@ -646,14 +654,6 @@
     {
       "name": "yt-vertical-fill",
       "type": "hyperframes:block"
-    },
-    {
-      "name": "ai-generation-canvas",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ai-prompt-flow",
-      "type": "hyperframes:component"
     },
     {
       "name": "animated-bar-chart",
@@ -1533,6 +1533,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "6e83353888f7e2114f5195215d8b0cdf8794f925232ff8811428ac4d3979a7ba"
+    "revision": "032078c10ac211b74a29a4826f113876ee4ef14c3e4cf9f935b0ec763cdca97f"
   }
 }

@@ -21,9 +21,23 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
 5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
-7. **Open the final Studio preview:** run `npx hyperframes preview`, hand the timeline project URL to the user, and ask whether to revise or render.
+7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
 8. **Render only after approval:** use draft quality for iteration and high quality for delivery.
 9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
+
+## Mandatory creator-edit cross-references
+
+- Before authoring or diagnosing a zoom, punch-in/punch-out, reframe, camera
+  move, or any keyframe motion, read `/hyperframes-keyframes` first.
+- Before `hyperframes keyframes`, read `/hyperframes-keyframes`; the command
+  surfaces animation trajectories and does not diagnose clip cuts.
+- For a cut, trim, splice, reorder, or source timing edit, read
+  `/hyperframes-core` and use its clip/timeline contract.
+- For fade-in/fade-out, crossfade, track gain, volume automation, ducking,
+  voiceover carve, or FX on placed audio, read `/hyperframes-audio`. Load core
+  alongside it when clip placement or picture timing also changes.
+- Use `/media-use` only to source/generate media or preprocess a derived asset.
+  Copy creator edit markup from `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
 ```bash
 # Fast iteration check; repeat while authoring as needed.
@@ -31,7 +45,7 @@ npx hyperframes lint
 
 # Required final gate; includes lint.
 npx hyperframes check
-npx hyperframes preview
+npx hyperframes preview --background
 npx hyperframes render --quality high --output out.mp4
 test -s out.mp4
 ffprobe -v error -show_format out.mp4
@@ -62,10 +76,11 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 
 ## Agent conventions
 
-- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain language>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title and description, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
+- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain English>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title and description, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
+- **Query in English even when the video is not.** Both tiers index an English catalog, so a query in another script produces no searchable terms and returns nothing. Describe the move in English; the on-screen copy stays in whatever language the video needs. `No searchable words in query` means exactly this and is not a missing component, so do not report it as a catalog gap.
 - **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `query`, `tier` (`on-device` or `words`), `tier_detail`, `dropped`, `unindexed`, `shown`, `total` and `results`, plus `top_score` when the answering tier produces one and `warnings` when a tier was asked for and could not run. A weak result on `words` is expected; the same result on `on-device` is a bug. `top_score` is on-device only and has no threshold behind it: the ranker returns the whole catalog in some order for every query, so read it as evidence rather than as a pass or fail.
 - **`dropped` and `unindexed` are opposite skews between the registry and the on-device index, and rewording the query fixes neither.** `dropped` counts ranked names this registry cannot install, so the strongest matches are the ones being lost. `unindexed` counts registry moves the index cannot see at all, which no query can ever return. Refreshing the registry is not the answer to either: its manifest carries a 24h TTL and heals itself, while the vectors are a separately published artifact fetched into `~/.hyperframes/catalog/`. Re-running with `--on-device` refetches that index when `unindexed` is above zero, so that is the remedy to hand the user. A pure over-coverage skew (`dropped` above zero while `unindexed` is zero) does not trigger the refetch; clearing `~/.hyperframes/catalog/` is the only way out of that one. Both counts are of names rather than of results, so either can exceed `total`.
-- **When meaning search comes back with nothing worth installing, say so.** `npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier on-device`. This is the only path that sends a query anywhere, and it is a separate deliberate command precisely so plain `catalog --query` keeps its promise of sending nothing. Report the miss when the on-device tier answered and the top hits still do not do the thing; a weak result on the `words` tier is expected and is not worth reporting. What comes back is a list of moves the catalog does not have yet, read directly rather than guessed from install counts, so the phrasing that matters is the effect you wanted, not the item name you imagined. It carries no rating and never lands in the rating metric.
+- **When a search comes back with nothing worth installing, say so.** `npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier <the tier that answered>`. You do not have to assemble that line: `catalog --query` prints it pre-filled, and every `--json` search envelope carries it as `report_gap` with the query and tier already correct — fill in `--wanted` and send. This is the only path that sends a query anywhere, and it is a separate deliberate command precisely so plain `catalog --query` keeps its promise of sending nothing. **Report on either tier**, whenever the results do not do the thing; do not hold out for the on-device tier, which needs a consented 33 MB download and is therefore off in most agent runs — waiting for it means never reporting at all. The tier rides along in the report, so a vocabulary miss stays distinguishable from a meaning miss without you having to judge which one you hit. What comes back is a list of moves the catalog does not have yet, read directly rather than guessed from install counts, so the phrasing that matters is the effect you wanted, not the item name you imagined. It carries no rating and never lands in the rating metric.
 - **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY, and under `--json` nothing about it is printed at all, so in an agent run you have to raise it with the user yourself.
 
 - Prefer `--json` for agent and CI calls. Server-mode `render`, `preview`, and `play` do not provide ordinary JSON output; `preview --selection --json` and `preview --context --json` are query-mode exceptions.
@@ -141,6 +156,15 @@ The specialized commands are deliberately documented by their owning workflows:
 npx hyperframes present <project-dir> --port 3004 --no-open
 npx hyperframes beats <project-dir> --json
 npx hyperframes keyframes <project-dir> --json
+npx hyperframes media-treatment --capabilities
+npx hyperframes figma asset KEY:10-20
 ```
 
-`present` serves a navigable deck with presenter and audience synchronization. `beats` is the standalone Studio beat-grid utility defined in `references/beats.md`. `keyframes` surfaces seek-safe animation and motion-path diagnostics.
+`present` serves a navigable deck with presenter and audience synchronization. `beats` is the standalone Studio beat-grid utility defined in `references/beats.md`. `keyframes` surfaces seek-safe animation and motion-path diagnostics. `media-treatment` discovers, applies, and clears deterministic looks on local footage — start with `--capabilities` for the overview and `--capability <name>` for one family; `/media-use` owns which treatment a brief is asking for. `figma` imports over the REST API with the `asset`, `tokens`, and `component` subcommands and needs `FIGMA_TOKEN`; motion and shader import have no REST endpoint and are agent-only, so `/figma` owns those.
+
+## Commands you should not run
+
+Two entries in `hyperframes --help` are not part of the authoring loop, and reaching for them wastes a turn:
+
+- `events` is the telemetry endpoint skills use to report their **own** invocation, ideally from a bundled script. It emits an anonymous event and exits 0 no matter what you pass it. It is not a way to read telemetry back, and an agent has no reason to call it by hand.
+- `validate`, `inspect`, and `layout` are deprecated aliases kept for old scripts. `check` is the one that is maintained, and it is what every reference in this skill assumes.

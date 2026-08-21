@@ -12,5 +12,5 @@ export function scrubMusicAtSeek(iframe: HTMLIFrameElement | null, nextTime: num
   if (!music || s.audioMuted) return;
   const rel = nextTime - music.start;
   const audioFileTime = rel >= 0 && rel <= music.duration ? (music.playbackStart ?? 0) + rel : null;
-  scrubPreviewAudio(iframe, audioFileTime, music.domId ?? music.id);
+  scrubPreviewAudio(iframe, audioFileTime, music.domId ?? music.id, s.audioVolume);
 }

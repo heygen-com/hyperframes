@@ -75,7 +75,6 @@ aws stepfunctions start-execution \
   "ProjectS3Uri": "s3://${RENDER_BUCKET}/projects/my-project.tar.gz",
   "PlanOutputS3Prefix": "s3://${RENDER_BUCKET}/renders/$(date +%s)/",
   "OutputS3Uri": "s3://${RENDER_BUCKET}/output.mp4",
-  "PlanProtocol": "v2",
   "Config": {
     "fps": 30,
     "width": 1920,
@@ -92,10 +91,20 @@ EOF
 
 The Step Functions execution kicks off Plan, fans out RenderChunk via
 the Map state, and finally Assemble. Final mp4 lands at `OutputS3Uri`.
-Plan v2 is recommended for new integrations. `PlanProtocol` may be `"v1"` or
-`"v2"`; absent still defaults to v1 for backwards compatibility. V2 uses
-separate manifest and content-addressed artifact locators throughout the
-workflow and never places a v2 object in `PlanS3Uri`.
+Plan v2 is the default when `PlanProtocol` is absent. V2 uses separate
+manifest and content-addressed artifact locators throughout the workflow and
+never places a v2 object in `PlanS3Uri`. The deprecated v1 transport remains
+available by sending `"PlanProtocol": "v1"` explicitly.
+
+### Upgrading an existing stack
+
+Pause new renders and let active Step Functions executions drain before the
+upgrade. Redeploy the Lambda handler and this state machine (or the matching
+CDK construct) from the same package version before upgrading the application
+that calls `renderToLambda`. The new SDK sends explicit v2 by default, while
+older infrastructure may default omission to v1 or lack v2 support. Keep
+passing `planProtocol: "v1"` until the infrastructure redeploy completes if
+you need a staged migration.
 
 ## Local invocation
 
@@ -112,10 +121,13 @@ sam validate
 sam local invoke RenderFunction --event sample-events/plan.json
 ```
 
-The `sample-events/` directory ships small JSON payloads for each of the
-three actions. They reference fake S3 URIs — useful for sanity-checking
-the handler's dispatch logic; not for full end-to-end testing (real S3
-calls require credentials and a project zip to actually exist).
+The `sample-events/` directory ships three tiers for each action:
+`*.json` demonstrates default v2 with `PlanProtocol` omitted, `*-v1.json`
+demonstrates deprecated explicit-v1 compatibility, and `*-v2.json`
+demonstrates callers that stamp v2 explicitly. They reference fake S3 URIs —
+useful for sanity-checking the handler's dispatch logic; not for full
+end-to-end testing (real S3 calls require credentials and a project zip to
+actually exist).
 
 ## End-to-end smoke + benchmark
 
@@ -124,7 +136,7 @@ the architecture works on a deployed Lambda — use the local smoke
 script:
 
 ```bash
-# Defaults use the fixture's meta.json minPsnr (30 dB for mp4-h264-sdr).
+# Defaults use Plan v2 and the fixture's meta.json minPsnr (30 dB for mp4-h264-sdr).
 ./scripts/smoke.sh
 
 # Customised:

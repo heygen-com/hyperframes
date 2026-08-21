@@ -69,11 +69,68 @@
       data-width="1920"
       data-height="1080"
       data-duration="5"
+      data-composition-variables='[
+    { "id": "spin", "type": "enum", "role": "motion", "label": "Spin", "description": "How many full 0 to 9 revolutions each column adds before it lands, which is how far the reel travels in the same time.", "default": "single", "options": [{ "value": "single", "label": "Single" }, { "value": "double", "label": "Double" }, { "value": "triple", "label": "Triple" }] },
+    { "id": "spacing", "type": "enum", "role": "layout", "label": "Spacing", "description": "Gap between the digit columns.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Digit colour: inherit keeps the surrounding text colour, ink suits light frames, paper suits dark ones, accent rides --brand.", "default": "inherit", "options": [{ "value": "inherit", "label": "Inherit" }, { "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
     >
       <div class="metric">
         <div class="label">GitHub stars</div>
         <span class="hf-number-wheel" data-value="30222"></span>
       </div>
+      <script>
+        (function () {
+          const vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          const spins = { single: 0, double: 1, triple: 2 };
+          const gaps = { tight: "0em", standard: "0.02em", wide: "0.14em" };
+          const tones = {
+            inherit: "inherit",
+            ink: "#18181b",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+          const pick = (table, value, fallback) =>
+            Object.prototype.hasOwnProperty.call(table, value) ? table[value] : table[fallback];
+
+          const cycles = pick(spins, vars.spin, "single");
+          const gap = pick(gaps, vars.spacing, "standard");
+          const tone = pick(tones, vars.tone, "inherit");
+
+          document.querySelectorAll(".hf-number-wheel").forEach((el) => {
+            if (el.dataset.hfNumberWheelReady === "1") return;
+            el.style.setProperty("--hf-wheel-gap", gap);
+            el.style.setProperty("--hf-wheel-color", tone);
+            const value = el.dataset.value || "0";
+            el.textContent = "";
+            for (const char of value) {
+              if (!/\d/.test(char)) {
+                el.append(document.createTextNode(char));
+                continue;
+              }
+              const stops = cycles * 10 + Number(char);
+              const frame = document.createElement("span");
+              frame.className = "hf-number-wheel-digit";
+              const strip = document.createElement("span");
+              strip.className = "hf-number-wheel-strip";
+              strip.style.setProperty("--hf-number-target-y", `${-stops}em`);
+              for (let i = 0; i <= stops; i++) {
+                const step = document.createElement("span");
+                step.textContent = String(i % 10);
+                strip.appendChild(step);
+              }
+              frame.appendChild(strip);
+              el.appendChild(frame);
+            }
+            el.dataset.hfNumberWheelReady = "1";
+          });
+        })();
+      </script>
       <script>
         document.querySelectorAll(".hf-number-wheel").forEach((el) => {
           const value = el.dataset.value || "0";
@@ -114,5 +171,34 @@
         window.__timelines["number-wheel-demo"] = tl;
       </script>
     </div>
+    <style
+      data-composition-variables='[
+    { "id": "spin", "type": "enum", "role": "motion", "label": "Spin", "description": "How many full 0 to 9 revolutions each column adds before it lands, which is how far the reel travels in the same time.", "default": "single", "options": [{ "value": "single", "label": "Single" }, { "value": "double", "label": "Double" }, { "value": "triple", "label": "Triple" }] },
+    { "id": "spacing", "type": "enum", "role": "layout", "label": "Spacing", "description": "Gap between the digit columns.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Digit colour: inherit keeps the surrounding text colour, ink suits light frames, paper suits dark ones, accent rides --brand.", "default": "inherit", "options": [{ "value": "inherit", "label": "Inherit" }, { "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+    >
+      .hf-number-wheel {
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--hf-wheel-gap, 0.02em);
+        color: var(--hf-wheel-color, inherit);
+        font-variant-numeric: tabular-nums;
+      }
+      .hf-number-wheel-digit {
+        display: inline-block;
+        height: 1em;
+        overflow: hidden;
+      }
+      .hf-number-wheel-strip {
+        display: grid;
+        transform: translateY(0em);
+        will-change: transform;
+      }
+      .hf-number-wheel-strip span {
+        height: 1em;
+        line-height: 1em;
+      }
+    </style>
   </body>
 </html>

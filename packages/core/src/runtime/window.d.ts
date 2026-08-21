@@ -97,13 +97,15 @@ declare global {
     };
     THREE?: ThreeLike;
     /**
-     * Global anime.js instance (set by including the anime.iife.min.js script).
-     * The adapter uses `anime.running` for auto-discovery.
+     * Global Anime.js v4 namespace (set by the UMD or IIFE bundle).
+     * Register returned instances on `window.__hfAnime`; v4 has no
+     * `anime.running` auto-discovery registry.
      */
     anime?: {
-      (params: unknown): unknown;
-      timeline?: (params?: unknown) => unknown;
-      running: unknown[];
+      animate?: (targets: unknown, params?: unknown) => unknown;
+      createTimeline?: (params?: unknown) => unknown;
+      /** Legacy v3 registry retained for backward-compatible discovery. */
+      running?: unknown[];
     };
     /**
      * anime.js instances registered by compositions.

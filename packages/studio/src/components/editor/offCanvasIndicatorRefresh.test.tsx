@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DomEditOverlay } from "./DomEditOverlay";
+import { RECOMPUTE_INTERVAL_MS } from "./offCanvasIndicatorRefresh";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -47,7 +48,12 @@ function domRect(left: number, top: number, width: number, height: number): DOMR
   };
 }
 
+// The refresh rebuilds at most every RECOMPUTE_INTERVAL_MS — it walks the whole
+// preview and reads layout per element, which is too much to do per frame while
+// animation is writing inline styles. Waiting past that window is what makes
+// consecutive frames here represent consecutive rebuilds.
 async function flushAnimationFrames(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, RECOMPUTE_INTERVAL_MS + 5));
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });

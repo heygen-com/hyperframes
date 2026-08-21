@@ -232,6 +232,7 @@ describe("extractCompositionErrorsFromLint", () => {
       results: [
         {
           file: "index.html",
+          contentHash: "test",
           result: {
             ok: findings.length === 0,
             errorCount: 0,
@@ -282,6 +283,7 @@ describe("extractCompositionErrorsFromLint", () => {
       results: [
         {
           file: "index.html",
+          contentHash: "test",
           result: {
             ok: false,
             errorCount: 1,
@@ -298,6 +300,7 @@ describe("extractCompositionErrorsFromLint", () => {
         },
         {
           file: "compositions/nested.html",
+          contentHash: "test",
           result: {
             ok: false,
             errorCount: 1,

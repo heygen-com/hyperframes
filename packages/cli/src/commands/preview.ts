@@ -13,6 +13,7 @@ export const examples: Example[] = [
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
   ["Keep preview running after this command exits", "hyperframes preview --background"],
+  ["Force an attached preview in a non-interactive shell", "hyperframes preview --foreground"],
   ["Show the background preview for this project", "hyperframes preview --status"],
   ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
@@ -55,20 +56,30 @@ import {
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
+  activeServerOnPort,
   findPortAndServe,
   scanActiveServers,
   killActiveServers,
   type FindPortResult,
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, resolveProjectOrThrow } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import {
+  listBackgroundPreviewStatuses,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
   stopBackgroundPreview,
 } from "./previewLifecycle.js";
+import {
+  lifecycleFailurePayload,
+  lifecyclePayload,
+  writeLifecycleJson,
+  type PreviewLifecycleOperation,
+  type PreviewLifecyclePayload,
+  type PreviewLifecycleSession,
+} from "./previewLifecycleOutput.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 interface BrowserLaunchOptions {
@@ -83,6 +94,8 @@ interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  port?: number;
+  json?: boolean;
 }
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
@@ -91,6 +104,10 @@ interface EmbeddedStudioOptions extends StudioLaunchOptions {
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+interface StudioSignalTarget {
+  once(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+}
 type ContextField = "server" | "selection" | "lint" | "capabilities";
 type CompactSelectionPayload = Pick<
   StudioSelectionSnapshot,
@@ -110,10 +127,21 @@ type CompactSelectionPayload = Pick<
 const DEFAULT_CONTEXT_FIELDS: ContextField[] = ["server", "selection", "lint", "capabilities"];
 
 export default defineCommand({
-  meta: { name: "preview", description: "Start the studio for previewing compositions" },
+  meta: {
+    name: "preview",
+    description: "Start the studio for previewing compositions",
+  },
   args: {
-    dir: { type: "positional", description: "Project directory", required: false },
-    port: { type: "string", description: "Port to run the preview server on", default: "3002" },
+    dir: {
+      type: "positional",
+      description: "Project directory",
+      required: false,
+    },
+    port: {
+      type: "string",
+      description: "Port to run the preview server on",
+      default: "3002",
+    },
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
@@ -121,7 +149,12 @@ export default defineCommand({
     },
     background: {
       type: "boolean",
-      description: "Start an embedded preview that remains running after the command exits",
+      description: "Start a preview that remains running after the command exits",
+      default: false,
+    },
+    foreground: {
+      type: "boolean",
+      description: "Keep preview attached even when the shell is non-interactive",
       default: false,
     },
     status: {
@@ -156,7 +189,7 @@ export default defineCommand({
     },
     json: {
       type: "boolean",
-      description: "Output preview selection/context as JSON (only with --selection or --context)",
+      description: "Output selection, context, or managed lifecycle state as JSON",
       default: false,
     },
     context: {
@@ -207,6 +240,58 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const launchModeError = previewLaunchModeError({
+      background: Boolean(args.background),
+      foreground: Boolean(args.foreground),
+      forceNew: Boolean(args["force-new"]),
+      status: Boolean(args.status),
+      stop: Boolean(args.stop),
+      list: Boolean(args.list),
+      killAll: Boolean(args["kill-all"]),
+    });
+    if (launchModeError) {
+      if (args.json) {
+        writeLifecycleJson(
+          lifecycleFailurePayload(
+            args.status
+              ? "status"
+              : args.stop
+                ? "stop"
+                : args.list
+                  ? "list"
+                  : args["kill-all"]
+                    ? "kill-all"
+                    : "start",
+            "conflicting-lifecycle-flags",
+            launchModeError,
+          ),
+        );
+      } else {
+        clack.log.error(launchModeError);
+      }
+      setCommandExitCode(1);
+      return;
+    }
+
+    const portError = previewPortError(args.port);
+    if (portError) {
+      reportPreviewFailure(
+        Boolean(args.json),
+        args.status
+          ? "status"
+          : args.stop
+            ? "stop"
+            : args.list
+              ? "list"
+              : args["kill-all"]
+                ? "kill-all"
+                : "start",
+        "preview-validation-failed",
+        portError,
+      );
+      return;
+    }
+
     const browserGpuMode = resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined);
     if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
     if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
@@ -214,56 +299,83 @@ export default defineCommand({
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
     if (args.status || args.stop) {
-      const project = resolveProject(args.dir);
-      if (args.stop) {
-        const stopped = await stopBackgroundPreview(project.dir, startPort);
-        console.log(
-          stopped
-            ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
-            : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+      try {
+        const project = args.json ? resolveProjectOrThrow(args.dir) : resolveProject(args.dir);
+        if (args.stop) {
+          const stopped = await stopBackgroundPreview(project.dir, startPort);
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload(
+                "stop",
+                stopped
+                  ? { state: "stopped", projectDir: project.dir }
+                  : { state: "not-running", projectDir: project.dir },
+              ),
+            );
+          } else {
+            console.log(
+              stopped
+                ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+                : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+            );
+          }
+          return;
+        }
+        const status = await readBackgroundPreviewStatus(project.dir, startPort);
+        if (!status) {
+          if (args.json) {
+            writeLifecycleJson(
+              lifecyclePayload("status", {
+                state: "not-running",
+                projectDir: project.dir,
+              }),
+            );
+          } else {
+            console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+          }
+          return;
+        }
+        if (args.json) {
+          writeLifecycleJson(
+            lifecyclePayload(
+              "status",
+              previewLifecycleSession({
+                state: "running",
+                mode: "background",
+                projectName: project.name,
+                projectDir: project.dir,
+                port: status.port,
+                pid: status.pid,
+                logPath: status.logPath,
+              }),
+            ),
+          );
+          return;
+        }
+        printStudioSummary(project.name, previewBaseUrl(status.port), project.dir, {
+          details: [`Background preview running (PID ${status.pid}).`, `Log: ${status.logPath}`],
+        });
+        return;
+      } catch (error) {
+        reportPreviewFailure(
+          Boolean(args.json),
+          args.stop ? "stop" : "status",
+          args.stop ? "preview-stop-failed" : "preview-status-failed",
+          errorMessage(error),
         );
         return;
       }
-      const status = await readBackgroundPreviewStatus(project.dir, startPort);
-      if (!status) {
-        console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
-        return;
-      }
-      console.log(`\n  ${c.success("Background preview running")}`);
-      console.log(
-        `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
-      );
-      console.log(`  ${c.dim(status.logPath)}\n`);
-      return;
     }
 
     // --list: scan and display active servers
     if (args.list) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers found.\n");
-        return;
-      }
-      console.log(`\n  ${c.bold("Active preview servers:")}\n`);
-      for (const s of servers) {
-        const pidStr = s.pid ? c.dim(` (PID ${s.pid})`) : "";
-        console.log(
-          `  ${c.accent(`Port ${s.port}`)}  ${s.projectName}  ${c.dim(s.projectDir)}${pidStr}`,
-        );
-      }
-      console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+      await handlePreviewList(startPort, Boolean(args.json));
       return;
     }
 
     // --kill-all: kill all active servers
     if (args["kill-all"]) {
-      const servers = await scanActiveServers(startPort);
-      if (servers.length === 0) {
-        console.log("\n  No active preview servers to kill.\n");
-        return;
-      }
-      const killed = await killActiveServers(startPort);
-      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+      await handlePreviewKillAll(startPort, Boolean(args.json));
       return;
     }
 
@@ -287,23 +399,26 @@ export default defineCommand({
       );
     }
 
-    // Kill orphaned chrome-headless-shell processes from previous crashed sessions.
-    const orphansKilled = killOrphanedProcesses();
-    if (orphansKilled > 0) {
-      console.log(
-        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
-      );
-    }
-
     const rawArg = args.dir;
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
-    const project = resolveProject(rawArg);
+    let project;
+    try {
+      project = args.json ? resolveProjectOrThrow(rawArg) : resolveProject(rawArg);
+    } catch (error) {
+      reportPreviewFailure(
+        Boolean(args.json),
+        "start",
+        "preview-start-failed",
+        errorMessage(error),
+      );
+      return;
+    }
     const dir = project.dir;
     const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : project.name;
 
     // Lint before starting — surface issues for the agent to fix.
     const lintResult = await lintProject(dir);
-    if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
+    if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
       console.log();
       for (const line of formatLintFindings(lintResult)) console.log(line);
       console.log();
@@ -311,8 +426,12 @@ export default defineCommand({
 
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
-      clack.log.error("--user-data-dir requires --browser-path");
-      setCommandExitCode(1);
+      reportPreviewFailure(
+        Boolean(args.json),
+        "start",
+        "preview-validation-failed",
+        "--user-data-dir requires --browser-path",
+      );
       return;
     }
     // Validation: --remote-debugging-port deps
@@ -322,8 +441,7 @@ export default defineCommand({
       remoteDebuggingPort: args["remote-debugging-port"] as string | undefined,
     });
     if (depsError) {
-      clack.log.error(depsError);
-      setCommandExitCode(1);
+      reportPreviewFailure(Boolean(args.json), "start", "preview-validation-failed", depsError);
       return;
     }
 
@@ -331,10 +449,12 @@ export default defineCommand({
     const browserPath = args["browser-path"] as string | undefined;
     const browserNoGpu = !!args["browser-no-gpu"];
     if (browserNoGpu && !browserPath) {
-      clack.log.error(
+      reportPreviewFailure(
+        Boolean(args.json),
+        "start",
+        "preview-validation-failed",
         "--browser-no-gpu requires --browser-path (the system default browser cannot receive Chromium flags — use --no-open on GPU-unstable hosts)",
       );
-      setCommandExitCode(1);
       return;
     }
     const userDataDir = args["user-data-dir"] as string | undefined;
@@ -344,72 +464,85 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
-      setCommandExitCode(1);
+      reportPreviewFailure(
+        Boolean(args.json),
+        "start",
+        "preview-validation-failed",
+        (err as Error).message,
+      );
       return;
     }
     // Resolve once so embedded, monorepo-dev, and locally installed Studio
     // modes all receive identical --proxy/--no-proxy + config semantics.
     const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
 
-    if (isDevMode()) {
-      if (args.background) {
-        clack.log.error("--background currently supports the embedded preview server only");
-        setCommandExitCode(1);
-        return;
-      }
-      return runDevMode(dir, {
-        projectName,
-        noOpen,
-        browserPath,
-        userDataDir,
-        remoteDebuggingPort,
-        browserNoGpu,
-        autoProxy,
-      });
+    // Kill orphaned chrome-headless-shell processes from previous crashed
+    // sessions. Deliberately last: this reaches outside the process and kills
+    // other people's PIDs, so it must not run for an invocation that turns out
+    // to be a validation error and never starts anything.
+    const orphansKilled = killOrphanedProcesses();
+    if (orphansKilled > 0 && !args.json) {
+      console.log(
+        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
+      );
     }
 
-    // If @hyperframes/studio is installed locally, use Vite for full HMR
-    if (hasLocalStudio(dir)) {
-      if (args.background) {
-        clack.log.error("--background currently supports the embedded preview server only");
-        setCommandExitCode(1);
-        return;
-      }
-      return runLocalStudioMode(dir, {
-        projectName,
-        noOpen,
-        browserPath,
-        userDataDir,
-        remoteDebuggingPort,
-        browserNoGpu,
-        autoProxy,
-      });
-    }
+    const launchMode = previewLaunchMode({
+      background: Boolean(args.background),
+      foreground: Boolean(args.foreground),
+      interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+      devMode: isDevMode(),
+      localStudio: hasLocalStudio(dir),
+    });
 
-    if (args.background) {
+    if (launchMode === "background") {
       let background;
       try {
         background = await startBackgroundPreview(dir, startPort, {
           forceNew: Boolean(args["force-new"]),
-          browserGpuMode,
+          // A bare launch promises same-project reuse, regardless of the mode
+          // the existing managed server resolved earlier. Only an explicit
+          // --browser-gpu/--no-browser-gpu request authorizes replacement.
+          browserGpuMode: args["browser-gpu"] === undefined ? undefined : browserGpuMode,
         });
       } catch (error) {
-        clack.log.error(errorMessage(error));
+        const message = errorMessage(error);
+        if (args.json) {
+          writeLifecycleJson(lifecycleFailurePayload("start", "preview-start-failed", message));
+        } else {
+          clack.log.error(message);
+        }
         setCommandExitCode(1);
         return;
       }
       const url = `http://localhost:${background.port}`;
-      clack.intro(c.bold("hyperframes preview"));
-      printStudioSummary(projectName, url, {
-        details: [
-          background.type === "reused"
-            ? "Reusing the background server already running for this project."
-            : `Running in the background. Log: ${background.logPath}`,
-          "Changes reload automatically in the studio.",
-        ],
-        footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
-      });
+      if (args.json) {
+        writeLifecycleJson(
+          lifecyclePayload(
+            "start",
+            previewLifecycleSession({
+              state: background.type,
+              mode: "background",
+              projectName,
+              projectDir: dir,
+              port: background.port,
+              pid: background.pid,
+              ...(background.logPath ? { logPath: background.logPath } : {}),
+            }),
+          ),
+        );
+      } else {
+        clack.intro(c.bold("hyperframes preview"));
+        printStudioSummary(projectName, url, dir, {
+          details: [
+            background.type === "reused"
+              ? "Reusing the background server already running for this project."
+              : `Running in the background. Log: ${background.logPath}`,
+            "Changes reload automatically in the studio.",
+          ],
+          footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+        });
+      }
       openStudioBrowser(url, projectName, dir, {
         noOpen,
         browserPath,
@@ -418,6 +551,37 @@ export default defineCommand({
         browserNoGpu,
       });
       return;
+    }
+
+    if (launchMode === "dev") {
+      return runDevMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+        autoProxy,
+        browserGpuMode,
+        port: startPort,
+        json: Boolean(args.json),
+      });
+    }
+
+    // If @hyperframes/studio is installed locally, use Vite for full HMR
+    if (launchMode === "local") {
+      return runLocalStudioMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+        autoProxy,
+        browserGpuMode,
+        port: startPort,
+        json: Boolean(args.json),
+      });
     }
 
     const forceNew = !!args["force-new"];
@@ -431,12 +595,215 @@ export default defineCommand({
       remoteDebuggingPort,
       browserNoGpu,
       browserGpuMode,
+      json: Boolean(args.json),
     });
   },
 });
 
-// `host` is the loopback the server actually bound (Vite binds `[::1]`, embedded
-// binds `127.0.0.1`); default to IPv4 for the embedded/legacy callers.
+export type PreviewLaunchMode = "background" | "dev" | "local" | "embedded";
+
+export function previewLaunchMode(options: {
+  background: boolean;
+  foreground: boolean;
+  interactive: boolean;
+  devMode: boolean;
+  localStudio: boolean;
+}): PreviewLaunchMode {
+  if (options.background) return "background";
+  if (!options.foreground && !options.interactive) return "background";
+  if (options.devMode) return "dev";
+  return options.localStudio ? "local" : "embedded";
+}
+
+export function previewLaunchModeError(options: {
+  background: boolean;
+  foreground: boolean;
+  forceNew?: boolean;
+  status: boolean;
+  stop: boolean;
+  list: boolean;
+  killAll: boolean;
+}): string | null {
+  if (options.background && options.foreground) {
+    return "--background and --foreground cannot be used together";
+  }
+  const actionCount = [options.status, options.stop, options.list, options.killAll].filter(
+    Boolean,
+  ).length;
+  if (actionCount > 1) {
+    return "Only one of --status, --stop, --list, or --kill-all can be used at a time";
+  }
+  if (actionCount > 0 && (options.background || options.foreground || options.forceNew)) {
+    return "Preview launch overrides cannot be combined with lifecycle actions";
+  }
+  return null;
+}
+
+export function previewPortError(port: string | undefined): string | null {
+  const value = port ?? "3002";
+  if (!/^\d+$/.test(value)) return "--port must be an integer between 1 and 65535";
+  const parsed = Number(value);
+  return parsed >= 1 && parsed <= 65535 ? null : "--port must be an integer between 1 and 65535";
+}
+
+export function publicPreviewPid(
+  serverPid: string | null | undefined,
+  fallbackPid: number | null,
+): number | null {
+  const parsed = Number(serverPid);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallbackPid;
+}
+
+function reportPreviewFailure(
+  json: boolean,
+  operation: PreviewLifecycleOperation,
+  code: string,
+  message: string,
+): void {
+  if (json) writeLifecycleJson(lifecycleFailurePayload(operation, code, message));
+  else clack.log.error(message);
+  setCommandExitCode(1);
+}
+
+interface PreviewActionDependencies {
+  scan?: typeof scanActiveServers;
+  listManaged?: typeof listBackgroundPreviewStatuses;
+  stopManaged?: typeof stopBackgroundPreview;
+  killScanned?: typeof killActiveServers;
+}
+
+export async function handlePreviewList(
+  startPort: number,
+  json: boolean,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  try {
+    const [scannedServers, managedSessions] = await Promise.all([
+      (dependencies.scan ?? scanActiveServers)(startPort),
+      (dependencies.listManaged ?? listBackgroundPreviewStatuses)(),
+    ]);
+    const managedKeys = new Set(
+      managedSessions.map((session) => `${resolve(session.projectDir)}\0${session.port}`),
+    );
+    const servers = [
+      ...managedSessions.map((session) => ({
+        port: session.port,
+        host: "127.0.0.1",
+        projectName: basename(session.projectDir),
+        projectDir: session.projectDir,
+        version: "managed",
+        pid: String(session.pid),
+      })),
+      ...scannedServers.filter(
+        (server) => !managedKeys.has(`${resolve(server.projectDir)}\0${server.port}`),
+      ),
+    ];
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("list", {
+          state: "listed",
+          sessions: servers.map((server) =>
+            previewLifecycleSession({
+              state: "running",
+              mode: server.version === "managed" ? "background" : "unknown",
+              projectName: server.projectName,
+              projectDir: server.projectDir,
+              port: server.port,
+              pid: server.pid ? Number(server.pid) : null,
+              host: server.host,
+            }),
+          ),
+        }),
+      );
+      return;
+    }
+    if (servers.length === 0) {
+      console.log("\n  No active preview servers found.\n");
+      return;
+    }
+    console.log(`\n  ${c.bold("Active preview servers:")}\n`);
+    for (const server of servers) {
+      const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+      console.log(
+        `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+      );
+    }
+    console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+  } catch (error) {
+    reportPreviewFailure(json, "list", "preview-list-failed", errorMessage(error));
+  }
+}
+
+export async function handlePreviewKillAll(
+  startPort: number,
+  json: boolean,
+  dependencies: PreviewActionDependencies = {},
+): Promise<void> {
+  try {
+    const managedSessions = await (dependencies.listManaged ?? listBackgroundPreviewStatuses)();
+    let killed = 0;
+    // One unprovable record must not abandon the servers after it. A stop pass
+    // collects per-record failures and keeps going; propagating the first one
+    // left every later preview running AND unreported.
+    const failures: string[] = [];
+    for (const session of managedSessions) {
+      try {
+        if (
+          await (dependencies.stopManaged ?? stopBackgroundPreview)(
+            session.projectDir,
+            session.port,
+          )
+        ) {
+          killed++;
+        }
+      } catch (error) {
+        failures.push(`${session.projectDir}: ${errorMessage(error)}`);
+      }
+    }
+    const swept = await (dependencies.killScanned ?? killActiveServers)(startPort);
+    killed += swept.killed;
+    // Ports whose owner the OS could not confirm are skipped rather than
+    // signalled; an agent reading this envelope needs to see that too, not just
+    // a lower count.
+    const unverified = swept.unverified;
+    if (json) {
+      writeLifecycleJson(
+        lifecyclePayload("kill-all", {
+          state: "killed-all",
+          stopped: killed,
+          ...(failures.length > 0 ? { failed: failures } : {}),
+          ...(unverified.length > 0 ? { unverifiedPorts: unverified } : {}),
+        }),
+      );
+    } else if (failures.length > 0 || unverified.length > 0) {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
+      for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
+      if (unverified.length > 0) {
+        const plural = unverified.length === 1 ? "" : "s";
+        clack.log.warn(
+          `Left ${unverified.length} server${plural} alone (port${plural} ` +
+            `${unverified.join(", ")}): the OS could not confirm which process owns the ` +
+            `socket, and the server's own claim is not proof. Install lsof, or stop it ` +
+            `with its own preview --stop.`,
+        );
+      }
+      console.log();
+    } else if (killed === 0) {
+      console.log("\n  No active preview servers to kill.\n");
+    } else {
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+    }
+  } catch (error) {
+    reportPreviewFailure(json, "kill-all", "preview-kill-all-failed", errorMessage(error));
+  }
+}
+
+export function previewViteArgs(port: number | undefined): string[] {
+  return ["--host", "127.0.0.1", ...(port === undefined ? [] : ["--port", String(port)])];
+}
+
+// All preview modes bind the same IPv4 loopback so lifecycle probes and handed
+// URLs agree on the reachable server.
 function previewBaseUrl(port: number, host = "127.0.0.1"): string {
   return `http://${host}:${port}`;
 }
@@ -613,7 +980,12 @@ function countLintFindings(findings: Array<{ severity: string }>): {
 async function printCurrentContext(
   projectDir: string,
   startPort: number,
-  options: { json: boolean; fields?: string; detail?: string; preferredPort?: number },
+  options: {
+    json: boolean;
+    fields?: string;
+    detail?: string;
+    preferredPort?: number;
+  },
 ): Promise<void> {
   let fields: ContextField[];
   try {
@@ -700,7 +1072,10 @@ async function printCurrentContext(
           ok: false as const,
           error:
             selectionResult.status === "rejected"
-              ? { code: "selection-unavailable", message: errorMessage(selectionResult.reason) }
+              ? {
+                  code: "selection-unavailable",
+                  message: errorMessage(selectionResult.reason),
+                }
               : {
                   code: "no-selection",
                   message: "Studio is running, but no element is selected.",
@@ -718,8 +1093,14 @@ async function printCurrentContext(
           ok: false as const,
           error:
             lintResult.status === "rejected"
-              ? { code: "lint-unavailable", message: errorMessage(lintResult.reason) }
-              : { code: "lint-not-requested", message: "Lint was not requested." },
+              ? {
+                  code: "lint-unavailable",
+                  message: errorMessage(lintResult.reason),
+                }
+              : {
+                  code: "lint-not-requested",
+                  message: "Lint was not requested.",
+                },
         };
 
   const payload: Record<string, unknown> = { ok: true };
@@ -815,8 +1196,66 @@ export function studioLandingSearch(projectDir: string): string {
 // The full Studio URL to open or hand to the user: status-aware landing view
 // plus the project hash route. `url` never carries a trailing slash (both the
 // embedded server and the Vite `Local:` match strip it).
-function studioDeepLink(url: string, projectName: string, projectDir: string): string {
-  return `${url}/${studioLandingSearch(projectDir)}#project/${projectName}`;
+export function studioDeepLink(url: string, projectName: string, projectDir: string): string {
+  return `${url}/${studioLandingSearch(projectDir)}#project/${encodeURIComponent(projectName)}`;
+}
+
+export function studioSummaryUrls(
+  projectName: string,
+  serverUrl: string,
+  projectDir: string,
+): { serverUrl: string; studioUrl: string } {
+  return {
+    serverUrl,
+    studioUrl: studioDeepLink(serverUrl, projectName, projectDir),
+  };
+}
+
+export function foregroundPreviewReadyPayload(
+  projectName: string,
+  serverUrl: string,
+  projectDir: string,
+  pid: number | null,
+): PreviewLifecyclePayload {
+  const port = Number(new URL(serverUrl).port);
+  return lifecyclePayload(
+    "start",
+    previewLifecycleSession({
+      state: "started",
+      mode: "foreground",
+      projectName,
+      projectDir,
+      port,
+      pid,
+    }),
+  );
+}
+
+function previewLifecycleSession(options: {
+  state: PreviewLifecycleSession["state"];
+  mode: PreviewLifecycleSession["mode"];
+  projectName: string;
+  projectDir: string;
+  port: number;
+  pid: number | null;
+  host?: string;
+  logPath?: string;
+}): PreviewLifecycleSession {
+  const host = options.host ?? "127.0.0.1";
+  const serverUrl = previewBaseUrl(options.port, host);
+  return {
+    state: options.state,
+    mode: options.mode,
+    projectName: options.projectName,
+    projectDir: options.projectDir,
+    host,
+    port: options.port,
+    pid: options.pid,
+    serverUrl,
+    studioUrl: studioDeepLink(serverUrl, options.projectName, options.projectDir),
+    ready: true,
+    ...(options.logPath ? { logPath: options.logPath } : {}),
+  };
 }
 
 function openStudioBrowser(
@@ -836,12 +1275,15 @@ function openStudioBrowser(
 
 function printStudioSummary(
   projectName: string,
-  url: string,
+  serverUrl: string,
+  projectDir: string,
   opts: { details?: string[]; footer?: string } = {},
 ): void {
+  const urls = studioSummaryUrls(projectName, serverUrl, projectDir);
   console.log();
   console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
-  console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
+  console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
+  console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
   console.log();
   for (const detail of opts.details ?? []) {
     console.log(`  ${c.dim(detail)}`);
@@ -893,17 +1335,33 @@ function removeSymlinkOnExit(createdSymlink: boolean, symlinkPath: string): void
   });
 }
 
-function registerChildTreeShutdown(child: StudioChildProcess): void {
+export function waitForStudioChildClose(
+  child: StudioChildProcess,
+  signalTarget: StudioSignalTarget = process,
+): Promise<void> {
   const shutdown = (): void => {
     if (child.pid) killProcessTree(child.pid);
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-}
+  signalTarget.once("SIGINT", shutdown);
+  signalTarget.once("SIGTERM", shutdown);
 
-function waitForChildClose(child: StudioChildProcess): Promise<void> {
-  return new Promise<void>((resolveClose) => {
-    child.on("close", () => resolveClose());
+  // A short-lived Vite child can exit before launch setup reaches this point.
+  // ChildProcess does not replay lifecycle events to listeners attached later,
+  // so waiting unconditionally would strand the preview wrapper forever.
+  const closed =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolveClose) => {
+          // `close` waits for stdio to close too. A Vite descendant can inherit
+          // those pipes, so the wrapper must key its lifetime to process exit.
+          child.once("exit", () => resolveClose());
+        });
+
+  return closed.finally(() => {
+    // Signal listeners keep Bun's event loop alive even after Vite exits. Leaving
+    // them registered makes `preview --stop` close the port but leak the wrapper.
+    signalTarget.off("SIGINT", shutdown);
+    signalTarget.off("SIGTERM", shutdown);
   });
 }
 
@@ -912,28 +1370,58 @@ function attachStudioReadyHandler(
   spinner: ReturnType<typeof clack.spinner>,
   projectName: string,
   projectDir: string,
-  options?: BrowserLaunchOptions,
+  options?: StudioLaunchOptions,
 ): void {
   let detected = false;
 
-  function handleOutput(data: Buffer): void {
-    const url = data.toString().match(/Local:\s+(http:\/\/localhost:\d+)/)?.[1];
+  async function handleOutput(data: Buffer): Promise<void> {
+    const url = studioReadyUrl(data.toString());
     if (!url || detected) return;
 
     detected = true;
-    spinner.stop(c.success("Studio running"));
-    printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
+    if (options?.json) {
+      const port = Number(new URL(url).port);
+      const server = await activeServerOnPort(port);
+      writeLifecycleJson(
+        foregroundPreviewReadyPayload(
+          projectName,
+          url,
+          projectDir,
+          publicPreviewPid(server?.pid, child.pid ?? null),
+        ),
+      );
+    } else {
+      spinner.stop(c.success("Studio running"));
+      printStudioSummary(projectName, url, projectDir, {
+        footer: "Press Ctrl+C to stop",
+      });
+    }
     openStudioBrowser(url, projectName, projectDir, options);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
 
-  child.stdout.on("data", handleOutput);
-  child.stderr.on("data", handleOutput);
+  child.stdout.on("data", (data) => void handleOutput(data));
+  child.stderr.on("data", (data) => void handleOutput(data));
   child.on("error", (err) => {
-    spinner.stop(c.error("Failed to start studio"));
-    console.error(c.dim(err.message));
+    if (options?.json) {
+      reportPreviewFailure(true, "start", "preview-start-failed", err.message);
+    } else {
+      spinner.stop(c.error("Failed to start studio"));
+      console.error(c.dim(err.message));
+    }
   });
+}
+
+export function studioReadyUrl(output: string): string | null {
+  const localLine = output.split(/\r?\n/).find((line) => line.includes("Local:"));
+  return localLine?.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+/)?.[0] ?? null;
+}
+
+export function reportPreviewShutdown(json: boolean): void {
+  if (json) return;
+  console.log();
+  console.log(`  ${c.dim("Shutting down studio...")}`);
 }
 
 /**
@@ -949,17 +1437,21 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const pName = options?.projectName ?? basename(dir);
   const { symlinkPath, createdSymlink } = linkProjectIntoStudioData(dir, projectsDir, pName);
 
-  clack.intro(c.bold("hyperframes preview"));
+  if (!options?.json) clack.intro(c.bold("hyperframes preview"));
 
   const s = clack.spinner();
-  s.start("Starting studio...");
+  if (!options?.json) s.start("Starting studio...");
 
   // Run the new consolidated studio (single Vite dev server with API plugin)
   const studioPkgDir = join(repoRoot, "packages", "studio");
-  const child = spawn("bun", ["run", "dev"], {
+  const child = spawn("bun", ["run", "dev", "--", ...previewViteArgs(options?.port)], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
-    env: studioProxyEnv(options?.autoProxy ?? true),
+    env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
+      projectDir: dir,
+      projectName: pName,
+      browserGpuMode: options?.browserGpuMode,
+    }),
   });
 
   attachStudioReadyHandler(child, s, pName, dir, options);
@@ -969,20 +1461,28 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   // SIGINT to the foreground process group (covers the common case), but
   // `kill <pid>` only targets this process — the child tree (Vite + Chrome)
   // would survive without explicit cleanup.
-  // On Windows, killProcessTree is a no-op (pgrep/ps unavailable); Ctrl+C
-  // propagates via the console process group instead.
-  registerChildTreeShutdown(child);
-  return waitForChildClose(child);
+  // On Windows, killProcessTree delegates to taskkill /T so descendants are
+  // reaped even when the console signal reaches only this wrapper — and it
+  // always forces, so there is no grace period there, unlike the POSIX path.
+  return waitForStudioChildClose(child);
 }
 
 /**
- * Check if @hyperframes/studio is installed locally in the project's node_modules.
+ * Whether the project's local @hyperframes/studio can actually be SERVED.
+ *
+ * Local mode runs `vite` with the studio package as its cwd, so it needs that
+ * package's own `vite.config.ts` — which the published tarball does not carry
+ * (`files: ["src", "dist"]`). Resolving the package alone therefore is not
+ * enough: an npm-installed studio would send `preview` down a path that can
+ * never come up, and since `--background` re-execs this same CLI, it would time
+ * out after ten seconds instead of falling back. Fall back to embedded mode,
+ * which serves the same studio and does work from a published install.
  */
 function hasLocalStudio(dir: string): boolean {
   try {
     const req = createRequire(join(dir, "package.json"));
-    req.resolve("@hyperframes/studio/package.json");
-    return true;
+    const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
+    return existsSync(join(studioPkgPath, "vite.config.ts"));
   } catch {
     return false;
   }
@@ -1001,23 +1501,26 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const projectsDir = join(studioPkgPath, "data", "projects");
   const { symlinkPath, createdSymlink } = linkProjectIntoStudioData(dir, projectsDir, pName);
 
-  clack.intro(c.bold("hyperframes preview") + c.dim(" (local studio)"));
+  if (!options?.json) clack.intro(c.bold("hyperframes preview") + c.dim(" (local studio)"));
   const s = clack.spinner();
-  s.start("Starting studio...");
+  if (!options?.json) s.start("Starting studio...");
 
-  const viteCommand = buildNpxCommand(["vite"]);
+  const viteCommand = buildNpxCommand(["vite", ...previewViteArgs(options?.port)]);
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
-    env: studioProxyEnv(options?.autoProxy ?? true),
+    env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
+      projectDir: dir,
+      projectName: pName,
+      browserGpuMode: options?.browserGpuMode,
+    }),
   });
 
   attachStudioReadyHandler(child, s, pName, dir, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
-  // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
-  registerChildTreeShutdown(child);
-  return waitForChildClose(child);
+  // Same cross-platform tree-kill handler as dev mode.
+  return waitForStudioChildClose(child);
 }
 
 /**
@@ -1038,32 +1541,37 @@ async function runEmbeddedMode(
   const pName = options?.projectName ?? basename(dir);
   const studioBundle = resolveStudioBundle();
 
-  clack.intro(c.bold("hyperframes preview"));
+  if (!options?.json) clack.intro(c.bold("hyperframes preview"));
   const s = clack.spinner();
-  s.start("Starting studio...");
+  if (!options?.json) s.start("Starting studio...");
 
   if (!studioBundle.available) {
-    s.stop(c.error("Studio build missing"));
-    console.error();
-    console.error(`  ${c.dim("Could not find")} ${c.accent("index.html")} ${c.dim("in:")}`);
-    for (const checkedPath of studioBundle.checkedPaths) {
-      console.error(`  ${c.dim("-")} ${checkedPath}`);
+    if (options?.json) {
+      reportPreviewFailure(true, "start", "preview-start-failed", "Studio build missing");
+    } else {
+      s.stop(c.error("Studio build missing"));
+      console.error();
+      console.error(`  ${c.dim("Could not find")} ${c.accent("index.html")} ${c.dim("in:")}`);
+      for (const checkedPath of studioBundle.checkedPaths) {
+        console.error(`  ${c.dim("-")} ${checkedPath}`);
+      }
+      console.error();
+      console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);
+      console.error();
     }
-    console.error();
-    console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);
-    console.error();
     setCommandExitCode(1);
     return;
   }
 
-  const { app } = createStudioServer({
+  // Compute everything that may throw before acquiring the fs.watch handle.
+  // Once createStudioServer returns, every subsequent exit path must close it.
+  const serverBuildSignature = await loadPreviewServerBuildSignature();
+  const { app, watcher } = createStudioServer({
     projectDir: dir,
     projectName: pName,
     autoProxy: options?.autoProxy,
     browserGpuMode: options?.browserGpuMode,
   });
-  const serverBuildSignature = await loadPreviewServerBuildSignature();
-
   let result: FindPortResult;
   try {
     result = await findPortAndServe(
@@ -1076,38 +1584,65 @@ async function runEmbeddedMode(
       options?.browserGpuMode,
     );
   } catch (err: unknown) {
-    s.stop(c.error("Failed to start studio"));
-    console.error();
-    console.error(`  ${(err as Error).message}`);
-    console.error();
-    setCommandExitCode(1);
+    watcher.close();
+    reportPreviewFailure(
+      Boolean(options?.json),
+      "start",
+      "preview-start-failed",
+      (err as Error).message,
+    );
     return;
   }
 
   if (result.type === "already-running") {
+    // createStudioServer acquires an fs.watch handle before port discovery.
+    // Reuse owns no local server, so release that handle before returning or
+    // the otherwise-finished CLI process remains alive indefinitely.
+    watcher.close();
     const url = `http://localhost:${result.port}`;
-    s.stop(c.success("Already running"));
-    printStudioSummary(pName, url, {
-      details: ["Reusing existing server. Use --force-new to start a fresh instance."],
-    });
+    if (options?.json) {
+      const server = await activeServerOnPort(result.port);
+      writeLifecycleJson(
+        lifecyclePayload(
+          "start",
+          previewLifecycleSession({
+            state: "reused",
+            mode: "foreground",
+            projectName: pName,
+            projectDir: dir,
+            port: result.port,
+            pid: publicPreviewPid(server?.pid, null),
+          }),
+        ),
+      );
+    } else {
+      s.stop(c.success("Already running"));
+      printStudioSummary(pName, url, dir, {
+        details: ["Reusing existing server. Use --force-new to start a fresh instance."],
+      });
+    }
     openStudioBrowser(url, pName, dir, options);
     return;
   }
 
   const url = `http://localhost:${result.port}`;
-  s.stop(c.success("Studio running"));
-  console.log();
-  if (result.port !== startPort) {
-    console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
+  if (options?.json) {
+    writeLifecycleJson(foregroundPreviewReadyPayload(pName, url, dir, process.pid));
+  } else {
+    s.stop(c.success("Studio running"));
     console.log();
+    if (result.port !== startPort) {
+      console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
+      console.log();
+    }
+    printStudioSummary(pName, url, dir, {
+      details: [
+        "Edit with your AI agent — it has HyperFrames skills installed.",
+        "Changes reload automatically in the studio.",
+      ],
+      footer: "Press Ctrl+C to stop",
+    });
   }
-  printStudioSummary(pName, url, {
-    details: [
-      "Edit with your AI agent — it has HyperFrames skills installed.",
-      "Changes reload automatically in the studio.",
-    ],
-    footer: "Press Ctrl+C to stop",
-  });
   openStudioBrowser(url, pName, dir, options);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
@@ -1123,7 +1658,10 @@ async function runEmbeddedMode(
   let rl: import("node:readline").Interface | undefined;
   if (process.platform === "win32") {
     const readline = await import("node:readline");
-    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     rl.on("SIGINT", () => {
       process.emit("SIGINT", "SIGINT");
     });
@@ -1137,8 +1675,7 @@ async function runEmbeddedMode(
       process.off("SIGINT", shutdown);
       process.off("SIGTERM", shutdown);
       rl?.close();
-      console.log();
-      console.log(`  ${c.dim("Shutting down studio...")}`);
+      reportPreviewShutdown(Boolean(options?.json));
 
       // Hard deadline: if cleanup hangs (e.g. dead Chrome never responds to
       // browser.close()), force exit. Armed before awaiting cleanup so it
@@ -1157,6 +1694,7 @@ async function runEmbeddedMode(
       cleanup()
         .catch(() => {})
         .finally(() => {
+          watcher.close();
           result.server.close(() => resolveRun());
         });
     };

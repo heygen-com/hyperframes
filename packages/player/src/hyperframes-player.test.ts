@@ -1473,7 +1473,11 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     player.setAttribute("srcdoc", html);
     document.body.appendChild(player);
 
-    expect(player.iframe.getAttribute("srcdoc")).toBe(html);
+    // Not byte-identical: srcdoc now also carries the runtime, injected ahead
+    // of body scripts so a pasted component can read its variables during
+    // parse. The composition itself must still arrive intact.
+    expect(player.iframe.getAttribute("srcdoc")).toContain("<body>hello</body>");
+    expect(player.iframe.getAttribute("srcdoc")).toContain("hyperframe.runtime.iife.js");
 
     player.remove();
   });
@@ -1487,7 +1491,8 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     const html = "<!doctype html><html><body>after connect</body></html>";
     player.setAttribute("srcdoc", html);
 
-    expect(player.iframe.getAttribute("srcdoc")).toBe(html);
+    expect(player.iframe.getAttribute("srcdoc")).toContain("<body>after connect</body>");
+    expect(player.iframe.getAttribute("srcdoc")).toContain("hyperframe.runtime.iife.js");
 
     player.remove();
   });
@@ -1548,7 +1553,9 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     document.body.appendChild(player);
 
     expect(player.iframe.getAttribute("src")).toBe("/api/projects/foo/preview");
-    expect(player.iframe.getAttribute("srcdoc")).toBe("<!doctype html><html></html>");
+    // srcdoc carries the runtime now; what matters here is that both
+    // attributes are present so the browser can arbitrate.
+    expect(player.iframe.getAttribute("srcdoc")).toContain("<html>");
 
     player.remove();
   });

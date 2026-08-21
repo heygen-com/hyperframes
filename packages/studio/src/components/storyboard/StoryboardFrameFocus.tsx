@@ -224,7 +224,7 @@ export function StoryboardFrameFocus({
                 src={frame.src}
                 seconds={posterTime(frame)}
                 title={title}
-                fit="contain"
+                surface="hero"
                 posterVersion={posterVersion}
               />
             ) : (

@@ -131,9 +131,9 @@ describe("FlatMediaSection — cutout", () => {
 });
 
 describe("FlatMediaSection — volume/rate/media-start", () => {
-  it("renders volume at its stored percentage and commits a new value on drag", () => {
+  it("renders unity volume as neutral 0 dB at the slider midpoint", () => {
     const onSetAttribute = vi.fn();
-    const element = makeVideoElement({ dataAttributes: { volume: "0.5" } });
+    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -149,13 +149,16 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    expect(host.textContent).toContain("50%");
+    expect(host.textContent).toContain("0.0 dB");
+    expect(
+      host.querySelector('[data-flat-slider-track="true"]')?.getAttribute("aria-valuenow"),
+    ).toBe("0");
     act(() => root.unmount());
   });
 
-  it("commits a new volume value on slider track pointerdown", () => {
+  it("commits +12 dB of boost from the upper half of the volume fader", () => {
     const onSetAttribute = vi.fn();
-    const element = makeVideoElement({ dataAttributes: { volume: "0.2" } });
+    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -176,11 +179,13 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
     act(() => {
-      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
-      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
-    // starting volume 0.2 (draft=20); min=0, max=100, ratio=0.5 -> raw=50 -> commit(50) -> 50/100=0.5 -> "0.5"
-    expect(onSetAttribute).toHaveBeenCalledWith("volume", "0.5");
+    // Six decimals, not two: at two the bottom of the dB fader collapses onto
+    // "0" (a hard mute) and every stop below unity writes a value the knob then
+    // jumps away from.
+    expect(onSetAttribute).toHaveBeenCalledWith("volume", "3.981072");
     act(() => root.unmount());
   });
 

@@ -9,6 +9,8 @@ export interface AudioElement {
   start: number;
   end: number;
   mediaStart: number;
+  /** Constant normalized source-time multiplier (0.1..5). */
+  playbackRate?: number;
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];

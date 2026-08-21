@@ -57,6 +57,7 @@ import type {
   SubTimelineWaitOutcome,
 } from "../types.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
+import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -1296,6 +1297,9 @@ async function constructCaptureSession(
       w.__name = <T>(fn: T, _name: string): T => fn;
     }
   });
+  // Media elements are addressed by a document-unique render id, not by the
+  // per-file element id. Install the resolvers before any page script runs.
+  await installMediaRenderIdBridge(page);
   // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
   // preserveDrawingBuffer before any page script can create a context — their
   // paint records freeze at the first frame, so captureDrawElementFrame
@@ -1964,7 +1968,8 @@ async function applyVideoMetadataHints(
           continue;
         }
 
-        const video = document.getElementById(hint.id) as HTMLVideoElement | null;
+        const video = (window.__hfMediaEl?.(hint.id) ??
+          document.getElementById(hint.id)) as HTMLVideoElement | null;
         if (!video) continue;
 
         if (!video.hasAttribute("width")) video.setAttribute("width", String(hint.width));

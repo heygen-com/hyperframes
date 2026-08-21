@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "slack-notification-ad",
+  "type": "hyperframes:block",
+  "title": "Slack Notification Ad",
+  "description": "A portrait lock screen fills with escalating Slack video requests before HeyGen delivers the payoff",
+  "tags": ["showcase", "mock-ui", "notification", "vertical", "ad-template"],
+  "author": "HeyGen",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 12,
+  "files": [
+    {
+      "path": "slack-notification-ad.html",
+      "target": "compositions/slack-notification-ad.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/img/heygen-mark.svg",
+      "target": "assets/img/heygen-mark.svg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/img/slack-mark.svg",
+      "target": "assets/img/slack-mark.svg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-400-normal.woff2",
+      "target": "assets/fonts/inter-latin-400-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-500-normal.woff2",
+      "target": "assets/fonts/inter-latin-500-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-latin-600-normal.woff2",
+      "target": "assets/fonts/inter-latin-600-normal.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/inter-LICENSE.txt",
+      "target": "assets/fonts/inter-LICENSE.txt",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

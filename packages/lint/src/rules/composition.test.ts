@@ -445,7 +445,10 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html);
       const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
       expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("error");
+      // A warning, not an error: the runtime hides the element either way (see
+      // the message), so a missing marker class is an authoring-convention gap.
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).not.toContain("visible for the entire composition");
     });
 
     it("does not flag element that has class='clip'", async () => {
@@ -464,12 +467,16 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
-    it("does not flag audio or video elements", async () => {
+    it("does not flag the media primitives: audio, video, img", async () => {
+      // All three are authored without class="clip" in the canonical clip block
+      // (packages/core/docs/core.md). `img` used to be the only one of the three
+      // that errored, so the documented example failed its own linter.
       const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
     <audio data-start="0" data-duration="5" src="music.mp3"></audio>
     <video data-start="0" data-duration="5" src="clip.mp4"></video>
+    <img data-start="5" data-duration="4" src="still.png" />
   </div>
   <script>
     window.__timelines = window.__timelines || {};
@@ -479,6 +486,27 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html);
       const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
       expect(finding).toBeUndefined();
+    });
+
+    it("leaves the documented canonical clip block completely clean", async () => {
+      // Verbatim from packages/core/docs/core.md. If this ever goes red again,
+      // the docs and the linter have drifted apart and one of them is wrong.
+      const html = `
+<html><body>
+  <div id="comp-1" data-composition-id="my-video" data-width="1920" data-height="1080" data-start="0">
+    <video id="el-1" data-start="0" data-duration="10" data-track-index="0" src="a.mp4" muted></video>
+    <img id="el-3" data-start="5" data-duration="4" data-track-index="1" src="a.png" />
+    <audio id="el-4" data-start="0" data-duration="30" data-track-index="2" src="a.mp3"></audio>
+  </div>
+  <script src="gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["my-video"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const blocking = result.findings.filter((f) => f.severity !== "info");
+      expect(blocking.map((f) => `${f.severity}:${f.code}`)).toEqual([]);
     });
 
     it("does not flag element with only data-track-index (layer container, no timing)", async () => {

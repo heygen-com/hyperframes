@@ -16,7 +16,12 @@ interface UseTimelineSelectionPreviewSyncParams {
   ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
     selection: DomEditSelection | null,
-    options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
+    options?: {
+      revealPanel?: boolean;
+      additive?: boolean;
+      preserveGroup?: boolean;
+      announce?: boolean;
+    },
   ) => void;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
   onSelectionNotFound: () => void;
@@ -46,6 +51,16 @@ function selectionIdsMatch(
   // The primary/anchor must also agree, or a change of just the anchor within the
   // same set would never re-sync the preview's primary selection.
   return currentAnchor === wantedAnchor;
+}
+
+/**
+ * The invariant this file owes the Delete key, now that Delete prefers the
+ * canvas: the canvas selection never points outside the current timeline
+ * selection. A member still resolving has no anchor of its own yet, so it is
+ * not caught here — only a canvas selection that belongs to something else.
+ */
+function anchorIsOutsideSelection(anchor: string | null, selectedIds: string[]): boolean {
+  return anchor !== null && !selectedIds.includes(anchor);
 }
 
 export function useTimelineSelectionPreviewSync({
@@ -112,6 +127,12 @@ export function useTimelineSelectionPreviewSync({
     }
 
     let cancelled = false;
+    // One warning per selection, however many times the effect retries it.
+    const warnSelectionMissingOnce = () => {
+      if (missingSelectionKeyRef.current === selectedKey) return;
+      missingSelectionKeyRef.current = selectedKey;
+      onSelectionNotFound();
+    };
     const syncSelection = async () => {
       const selections: DomEditSelection[] = [];
       let resolvableCount = 0;
@@ -128,9 +149,15 @@ export function useTimelineSelectionPreviewSync({
       // Bail instead; a later effect run (on timelineElements/DOM change) applies the
       // full set once every resolvable member has a live node.
       if (selections.length < resolvableCount) {
-        if (missingSelectionKeyRef.current !== selectedKey) {
-          missingSelectionKeyRef.current = selectedKey;
-          onSelectionNotFound();
+        warnSelectionMissingOnce();
+        // Bailing keeps whatever the canvas already held, and Delete acts on the
+        // canvas first — so an anchor pointing OUTSIDE this selection is an
+        // element the user is no longer looking at, and deleting it is the
+        // damage. Only that goes: a member still resolving has no anchor of its
+        // own here and is left for the later run. Quietly, because announcing
+        // the clear would deselect the clip that was just picked.
+        if (anchorIsOutsideSelection(currentAnchor, selectedIds)) {
+          applyDomSelection(null, { revealPanel: false, announce: false });
         }
         return;
       }

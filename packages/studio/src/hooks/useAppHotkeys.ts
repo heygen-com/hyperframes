@@ -101,9 +101,12 @@ interface EditHistoryHandle {
 }
 
 interface UseAppHotkeysParams {
-  handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
-  handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
+  handleDomEditElementDelete: (
+    selection: DomEditSelection,
+    options?: { expandGroup?: boolean },
+  ) => Promise<void>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   clearDomSelectionRef: React.MutableRefObject<() => void>;
   editHistory: EditHistoryHandle;
@@ -142,9 +145,12 @@ interface UseAppHotkeysParams {
 // ── Extracted keydown dispatch (pure function, no hooks) ──
 
 interface HotkeyCallbacks {
-  handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
-  handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
+  handleDomEditElementDelete: (
+    selection: DomEditSelection,
+    options?: { expandGroup?: boolean },
+  ) => Promise<void>;
   handleUndo: () => Promise<void>;
   handleRedo: () => Promise<void>;
   handleCopy: () => boolean;
@@ -322,24 +328,29 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
         return;
       }
     }
-    // Delete acts on the primary selection OR the marquee multi-selection —
-    // the delete handler expands a clip that is part of the multi-selection
-    // into an atomic delete of the whole selection (single undo).
-    const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
-    const selectionKeys = new Set(selectedElementIds);
-    if (selectedElementId) selectionKeys.add(selectedElementId);
-    if (selectionKeys.size > 0) {
-      const el = elements.find((e) => selectionKeys.has(e.key ?? e.id));
-      if (el) {
-        event.preventDefault();
-        void cb.handleTimelineElementDelete(el);
-        return;
-      }
-    }
+    // The canvas selection is what the user actually drew a marquee around, so
+    // it owns Delete whenever it holds something. The timeline mirror of that
+    // selection is derived and lossy — a member with no timeline row of its own
+    // is dropped from it — so deleting through the timeline removed the handful
+    // of clips it knew about and left every other selected element behind,
+    // still drawn as selected. The timeline path stays as the fallback for rows
+    // with no canvas node to select (audio, a comp that is not the active one).
     const domSel = cb.domEditSelectionRef.current;
     if (domSel) {
       event.preventDefault();
-      void cb.handleDomEditElementDelete(domSel);
+      // The whole marquee group, not just the primary the ref holds.
+      void cb.handleDomEditElementDelete(domSel, { expandGroup: true });
+      return;
+    }
+    // Takes the WHOLE selection: `find` returned the first match, so selecting
+    // every clip and pressing Delete removed exactly one of them.
+    const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
+    const selectionKeys = new Set(selectedElementIds);
+    if (selectedElementId) selectionKeys.add(selectedElementId);
+    const selected = elements.filter((e) => selectionKeys.has(e.key ?? e.id));
+    if (selected.length > 0) {
+      event.preventDefault();
+      void cb.handleTimelineElementsDelete(selected);
     }
     return;
   }
@@ -353,7 +364,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
 // ── Hook ──
 
 export function useAppHotkeys({
-  handleTimelineElementDelete,
+  handleTimelineElementsDelete,
   handleTimelineElementSplit,
   handleDomEditElementDelete,
   domEditSelectionRef,
@@ -378,7 +389,6 @@ export function useAppHotkeys({
   activeCompPath,
   forceReloadSdkSession,
 }: UseAppHotkeysParams) {
-  const previewHotkeyWindowRef = useRef<Window | null>(null);
   const previewHistoryCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Undo / Redo ──
@@ -454,7 +464,7 @@ export function useAppHotkeys({
 
   const cbRef = useRef<HotkeyCallbacks>(null!);
   cbRef.current = {
-    handleTimelineElementDelete,
+    handleTimelineElementsDelete,
     handleTimelineElementSplit,
     handleDomEditElementDelete,
     handleUndo,
@@ -492,33 +502,6 @@ export function useAppHotkeys({
 
   // ── Preview iframe forwarding ──
 
-  const syncPreviewTimelineHotkey = useCallback(
-    (iframe: HTMLIFrameElement | null) => {
-      const nextWindow = iframeContentWindow(iframe);
-      if (previewHotkeyWindowRef.current === nextWindow) return;
-      safeRemoveListener(
-        previewHotkeyWindowRef.current,
-        "keydown",
-        handleAppKeyDown as EventListener,
-      );
-      previewHotkeyWindowRef.current = nextWindow;
-      safeAddListener(nextWindow, "keydown", handleAppKeyDown as EventListener, true);
-    },
-    [handleAppKeyDown],
-  );
-
-  useEffect(
-    () => () => {
-      safeRemoveListener(
-        previewHotkeyWindowRef.current,
-        "keydown",
-        handleAppKeyDown as EventListener,
-      );
-      previewHotkeyWindowRef.current = null;
-    },
-    [handleAppKeyDown],
-  );
-
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || shouldIgnoreHistoryShortcut(event.target)) return;
     handleUndoRedoKey(
@@ -528,7 +511,18 @@ export function useAppHotkeys({
     );
   }, []);
 
-  const syncPreviewHistoryHotkey = useCallback(
+  /**
+   * Give the preview iframe the app's hotkeys, because a keypress lands in
+   * whichever document has focus and clicking the canvas puts focus in there.
+   *
+   * Must run on every iframe LOAD, not once when the element mounts: a reload
+   * keeps the same element (so no ref callback) and the same WindowProxy (so an
+   * identity check sees no change) while replacing the inner window that holds
+   * the listeners. Attaching once left Delete dead in the canvas after the first
+   * reload — press it with a selection and nothing happened, no toast, nothing
+   * to explain it — while undo/redo kept working because they re-attached here.
+   */
+  const syncPreviewHotkeys = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       previewHistoryCleanupRef.current?.();
       previewHistoryCleanupRef.current = null;
@@ -541,14 +535,19 @@ export function useAppHotkeys({
       }
       if (!win && !doc) return;
       const handler = handleHistoryHotkey as EventListener;
+      const appHandler = handleAppKeyDown as EventListener;
       safeAddListener(win, "keydown", handler, true);
+      // Window only: the history pair also listens on the document, and a
+      // capture listener on both would run the app handler twice per press.
+      safeAddListener(win, "keydown", appHandler, true);
       doc?.addEventListener("keydown", handleHistoryHotkey, true);
       previewHistoryCleanupRef.current = () => {
         safeRemoveListener(win, "keydown", handler);
+        safeRemoveListener(win, "keydown", appHandler);
         doc?.removeEventListener("keydown", handleHistoryHotkey, true);
       };
     },
-    [handleHistoryHotkey],
+    [handleAppKeyDown, handleHistoryHotkey],
   );
 
   useEffect(
@@ -562,7 +561,6 @@ export function useAppHotkeys({
   return {
     handleUndo,
     handleRedo,
-    syncPreviewTimelineHotkey,
-    syncPreviewHistoryHotkey,
+    syncPreviewHotkeys,
   };
 }

@@ -88,7 +88,14 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-transition-menu-morph">
+        <div
+          class="hf-transition-menu-morph"
+          data-composition-variables='[
+    { "id": "actions", "type": "string", "role": "content", "label": "Actions", "description": "Comma separated labels for the pills that fan out under the button. Up to six.", "default": "Text, Image, Audio" },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Colour of the round button behind the white bars.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "size", "type": "number", "role": "layout", "label": "Button size", "description": "Diameter of the round button in pixels. The bars scale with it.", "default": 68, "min": 52, "max": 112, "step": 4, "unit": "px" }
+  ]'
+        >
           <button class="hf-transition-menu-button" type="button" aria-label="Menu">
             <span></span><span></span><span></span>
           </button>
@@ -99,6 +106,70 @@
           </div>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Anything missing or invalid returns to its declared default.
+          // The button is the one accent-carrying element here, so the three
+          // chromatic options ride the composition's own tokens and fall back to ink.
+          var tones = {
+            ink: "#18181b",
+            green: "var(--brand, #18181b)",
+            blue: "var(--accent, #18181b)",
+            violet: "var(--accent-2, #18181b)",
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var labels = [];
+          if (typeof vars.actions === "string") {
+            var parts = vars.actions.split(",");
+            for (var p = 0; p < parts.length && labels.length < 6; p += 1) {
+              var label = parts[p].trim();
+              if (label) {
+                labels.push(label);
+              }
+            }
+          }
+          if (!labels.length) {
+            labels = ["Text", "Image", "Audio"];
+          }
+
+          var size =
+            typeof vars.size === "number" || typeof vars.size === "string"
+              ? Number(vars.size)
+              : NaN;
+          size = isFinite(size) && size > 0 ? Math.min(112, Math.max(52, size)) : 68;
+
+          var tone = tones[pick(tones, vars.tone, "ink")];
+
+          var roots = document.querySelectorAll(".hf-transition-menu-morph");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-menu-size", size + "px");
+            roots[i].style.setProperty("--hf-menu-bg", tone);
+            var row = roots[i].querySelector(".hf-transition-menu-actions");
+            if (!row) {
+              continue;
+            }
+            while (row.firstChild) {
+              row.removeChild(row.firstChild);
+            }
+            for (var j = 0; j < labels.length; j += 1) {
+              var pill = document.createElement("div");
+              pill.textContent = labels[j];
+              row.appendChild(pill);
+            }
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.fromTo(
@@ -133,5 +204,49 @@
         window.__timelines["menu-morph-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-menu-morph {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 360px;
+        height: 220px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-menu-button {
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        gap: 5px;
+        width: var(--hf-menu-size, 68px);
+        height: var(--hf-menu-size, 68px);
+        border: 0;
+        border-radius: 999px;
+        background: var(--hf-menu-bg, #18181b);
+        box-shadow: 0 22px 58px rgba(0, 0, 0, 0.22);
+      }
+      .hf-transition-menu-button span {
+        width: calc(var(--hf-menu-size, 68px) * 6 / 17);
+        height: 3px;
+        border-radius: 999px;
+        background: #ffffff;
+        transform-origin: center;
+      }
+      .hf-transition-menu-actions {
+        position: absolute;
+        display: flex;
+        gap: 10px;
+        bottom: 20px;
+      }
+      .hf-transition-menu-actions div {
+        padding: 9px 13px;
+        border-radius: 999px;
+        background: #ffffff;
+        color: #18181b;
+        font-size: 13px;
+        font-weight: 850;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+      }
+    </style>
   </body>
 </html>

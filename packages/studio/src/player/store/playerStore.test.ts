@@ -22,6 +22,7 @@ describe("usePlayerStore", () => {
       expectResettableDefaults(state);
       expect(state.playbackRate).toBe(1);
       expect(state.audioMuted).toBe(false);
+      expect(state.audioVolume).toBe(1);
       expect(state.loopEnabled).toBe(false);
       expect(state.zoomMode).toBe("fit");
       expect(state.manualZoomPercent).toBe(100);
@@ -173,6 +174,19 @@ describe("usePlayerStore", () => {
     it("updates audioMuted", () => {
       usePlayerStore.getState().setAudioMuted(true);
       expect(usePlayerStore.getState().audioMuted).toBe(true);
+    });
+  });
+
+  describe("setAudioVolume", () => {
+    it("updates and clamps audioVolume", () => {
+      usePlayerStore.getState().setAudioVolume(0.35);
+      expect(usePlayerStore.getState().audioVolume).toBe(0.35);
+
+      usePlayerStore.getState().setAudioVolume(2);
+      expect(usePlayerStore.getState().audioVolume).toBe(1);
+
+      usePlayerStore.getState().setAudioVolume(-1);
+      expect(usePlayerStore.getState().audioVolume).toBe(0);
     });
   });
 
@@ -572,10 +586,11 @@ describe("usePlayerStore", () => {
       expect(usePlayerStore.getState().automationSelection).toBeNull();
     });
 
-    it("does not reset playbackRate, audioMuted, loopEnabled, zoomMode, or manualZoomPercent", () => {
+    it("does not reset playbackRate, audioMuted, audioVolume, loopEnabled, zoomMode, or manualZoomPercent", () => {
       const store = usePlayerStore.getState();
       store.setPlaybackRate(2);
       store.setAudioMuted(true);
+      store.setAudioVolume(0.4);
       store.setLoopEnabled(true);
       store.setZoomMode("manual");
       store.setManualZoomPercent(200);
@@ -586,6 +601,7 @@ describe("usePlayerStore", () => {
       // reset() only resets the fields explicitly listed in the reset function
       expect(state.playbackRate).toBe(2);
       expect(state.audioMuted).toBe(true);
+      expect(state.audioVolume).toBe(0.4);
       expect(state.loopEnabled).toBe(true);
       expect(state.zoomMode).toBe("manual");
       expect(state.manualZoomPercent).toBe(200);

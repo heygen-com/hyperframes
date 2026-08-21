@@ -18,7 +18,7 @@ import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfi
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
 import { runAdd } from "./add.js";
-import { searchByWords } from "../registry/localSearch.js";
+import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   downloadOfferMessage,
   ensureLocalModel,
@@ -243,6 +243,13 @@ export default defineCommand({
     const matching = searched ? searched.items : tagged;
 
     if (matching.length === 0) {
+      // "We could not read your query" is a different answer from "the catalog
+      // has nothing like this", and only one of them is worth reporting as a
+      // gap. Word matching indexes English, so a query in another script parses
+      // to no tokens at all and used to return the same empty list as a genuine
+      // miss -- sending an author off to report a move that may well exist.
+      const unsearchable =
+        Boolean(query) && searched?.localMode === "words" && hasNoSearchableTokens(query as string);
       // An empty result is exactly when the tier matters most: nothing found on
       // the weakest tier means something different from nothing found on the
       // best one.
@@ -259,6 +266,13 @@ export default defineCommand({
               shown: 0,
               total: tagged.length,
               ...(warnings.length ? { warnings } : {}),
+              ...(unsearchable ? { unsearchable_query: true } : {}),
+              // Withheld when the query never parsed: the catalog has not been
+              // shown to be missing anything, so inviting a gap report here
+              // would file noise against a search that never ran.
+              ...(unsearchable
+                ? {}
+                : { report_gap: searchMissCommand(query, tierToken(searched)) }),
               results: [],
             },
             null,
@@ -273,9 +287,34 @@ export default defineCommand({
           query ? `query "${query}"` : null,
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
-        console.log(`No items match ${criteria.join(" and ")}.`);
+        if (unsearchable) {
+          console.error(c.error(`No searchable words in query "${query}".`));
+          console.error("");
+          console.error(
+            c.warn(
+              "  Word matching indexes the catalog in English, so a query written in another\n" +
+                "  script produces no terms to match and returns nothing. This is not a gap in\n" +
+                "  the catalog. Search in English; the on-screen copy of your video can stay\n" +
+                "  in any language.",
+            ),
+          );
+        } else {
+          console.log(`No items match ${criteria.join(" and ")}.`);
+          // Zero results is the unambiguous case: no tier judgement to make and
+          // nothing to install, so name the gap channel outright.
+          if (query) {
+            console.log("");
+            console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
+            console.log(c.dim(`  ${searchMissCommand(query, tierToken(searched))}`));
+          }
+        }
       }
       if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
+      // A query with no searchable words is bad input, not an empty shelf, so it
+      // exits non-zero like an invalid --type does. An agent that only checks the
+      // exit code would otherwise read "searched successfully, catalog has
+      // nothing" and go hand-author a move that is sitting in the registry.
+      if (unsearchable) finishCommand(1);
       return;
     }
 
@@ -307,6 +346,12 @@ export default defineCommand({
             shown: output.length,
             total: tagged.length,
             ...(warnings.length ? { warnings } : {}),
+            // Carried on hits too, not just on zero results. The gaps that
+            // actually get reported are the ones where the search returned
+            // plausible items and none of them did the thing — a judgement
+            // only the reader can make, so the command has to already be in
+            // the envelope by the time they make it.
+            report_gap: searchMissCommand(query, tierToken(searched)),
             results: output,
           },
           null,
@@ -349,6 +394,19 @@ export default defineCommand({
           reportLocalModelOption(json);
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
+      }
+      if (query) {
+        // Both tiers, deliberately. Gating this on on-device sounded right --
+        // a thin word-match result is explainable, a thin meaning-match result
+        // is a real gap -- but it silences the line in the case that produces
+        // essentially every search: the on-device tier needs a consented 33 MB
+        // download, so an agent run is on `words` unless it explicitly opted
+        // in. Every catalog gap reported to date came from the word tier. The
+        // tier rides along in the command so a vocabulary miss stays
+        // distinguishable from a meaning miss when the reports are read.
+        console.log(
+          c.dim(`  None of these do it? ${searchMissCommand(query, tierToken(searched))}`),
+        );
       }
     }
 
@@ -534,11 +592,11 @@ async function applySearch<
   // Shared vocabulary, not substring presence. A user asking to "make the
   // pace feel faster" shares no literal substring with any description, so
   // the old test returned nothing at all for exactly the phrasing people use.
-  const words = searchByWords(
-    query,
-    items,
-    (item) => `${item.name} ${item.title} ${item.description} ${(item.tags ?? []).join(" ")}`,
-  );
+  const words = searchByWords(query, items, (item) => ({
+    // Name and title are what an author types when they already know the move.
+    strong: `${item.name} ${item.title}`,
+    weak: `${item.description} ${(item.tags ?? []).join(" ")}`,
+  }));
   // Word matching ranks the items in hand, so nothing can go missing.
   return { items: words, localMode: "words", warnings, missing: 0, unindexed: 0, topScore: null };
 }
@@ -557,6 +615,31 @@ function tierToken(searched: { localMode: LocalMode } | null): "on-device" | "wo
 /** The same tier, as the sentence a person reads. */
 function tierDetail(searched: { localMode: LocalMode } | null): string {
   return searched?.localMode === "local-model" ? "on-device meaning search" : "local word match";
+}
+
+/**
+ * The command that turns a fruitless search into a catalog gap report.
+ *
+ * A search that returns nothing usable is the only moment anyone knows what
+ * the catalog is missing, and it was also the one moment we said nothing:
+ * `feedback --search-miss` was documented in the skill and printed by
+ * `feedback --help`, neither of which is open when a query comes back wrong.
+ * Handing back the exact line, with the query already in it, is the whole
+ * difference between a gap someone reports and a gap someone works around.
+ *
+ * Only the command is built here. Sending it stays a separate deliberate act,
+ * so plain `catalog --query` keeps its promise that the query text never
+ * leaves the machine.
+ */
+export function searchMissCommand(query: string, tier: "on-device" | "words"): string {
+  // Double quotes with the shell metacharacters escaped: the queries that
+  // matter are plain-language phrases, and half the real ones so far were
+  // CJK, which single-quoting renders no more safely and reads worse.
+  const quoted = query.replace(/(["\\$`])/g, "\\$1");
+  return (
+    `npx hyperframes feedback --search-miss "${quoted}" ` +
+    `--wanted "<the move you needed>" --tier ${tier}`
+  );
 }
 
 type LocalMode = "local-model" | "words";

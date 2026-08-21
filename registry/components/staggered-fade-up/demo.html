@@ -75,11 +75,70 @@
     >
       <div class="demo-frame">
         <div class="demo-label">staggered fade up</div>
-        <div class="hf-catalog-staggered-fade-up">
+        <div
+          class="hf-catalog-staggered-fade-up"
+          data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Where the offset the timeline drives points.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }, { "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }] },
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the travel offset, so the words cover a shorter or longer run in the same time.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] },
+    { "id": "words", "type": "string", "role": "content", "label": "Words", "description": "The words themselves, split on spaces, one span and one stagger step each.", "default": "Staggered fade up" }
+  ]'
+        >
           <span>Motion</span><span>that</span><span>tells</span><span>a</span><span>story</span
           ><span>one</span><span>word</span><span>at</span><span>a</span><span>time</span>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var axes = {
+            up: { x: 0, y: 1 },
+            down: { x: 0, y: -1 },
+            left: { x: -1, y: 0 },
+            right: { x: 1, y: 0 },
+          };
+          var reaches = { close: 0.5, standard: 1, far: 1.85 };
+          var tones = {
+            ink: "var(--fg, #18181b)",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var axis = axes[pick(axes, vars.direction, "up")];
+          var reach = reaches[pick(reaches, vars.distance, "standard")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+          var words =
+            typeof vars.words === "string" && vars.words.trim()
+              ? vars.words.trim().split(/\s+/)
+              : null;
+
+          var roots = document.querySelectorAll(".hf-catalog-staggered-fade-up");
+          for (var i = 0; i < roots.length; i += 1) {
+            roots[i].style.setProperty("--hf-word-axis-x", String(axis.x * reach));
+            roots[i].style.setProperty("--hf-word-axis-y", String(axis.y * reach));
+            roots[i].style.setProperty("--hf-fade-word-color", tone);
+            if (words) {
+              roots[i].textContent = "";
+              for (var j = 0; j < words.length; j += 1) {
+                var span = document.createElement("span");
+                span.textContent = words[j];
+                roots[i].appendChild(span);
+              }
+            }
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.4;
@@ -102,5 +161,29 @@
         window.__timelines["staggered-fade-up-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-catalog-staggered-fade-up {
+        color: var(--hf-fade-word-color, var(--fg, #18181b));
+        font-family: var(--font-display, Inter, system-ui, sans-serif);
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-catalog-staggered-fade-up {
+        display: inline-flex;
+        gap: var(--space-1, 12px);
+        font-size: 56px;
+        line-height: 1;
+      }
+      .hf-catalog-staggered-fade-up span {
+        display: inline-block;
+        transform: translate(
+            calc(var(--hf-word-x, 0px) + var(--hf-word-y, 0px) * var(--hf-word-axis-x, 0)),
+            calc(var(--hf-word-y, 0px) * var(--hf-word-axis-y, 1))
+          )
+          scale(var(--hf-word-scale, 1));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
   </body>
 </html>

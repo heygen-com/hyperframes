@@ -61,11 +61,51 @@
       data-width="1920"
       data-height="1080"
       data-duration="4"
+      data-composition-variables='[
+    { "id": "tracking", "type": "enum", "role": "style", "label": "Tracking", "description": "Multiplies the letter-spacing the timeline drives, so the reveal starts and settles proportionally wider or tighter.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "rise", "type": "enum", "role": "motion", "label": "Rise", "description": "Vertical offset the text starts from, which the timeline reads as the start of its travel and eases to zero.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Text colour: inherit keeps the surrounding page colour, ink suits light frames, paper dark ones, accent rides --brand.", "default": "inherit", "options": [{ "value": "inherit", "label": "Inherit" }, { "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
     >
       <div class="panel">
         <div class="label hf-tracking-in">Editorial motion</div>
         <div class="headline hf-tracking-in">TRACKING IN</div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var reaches = { tight: 0.6, standard: 1, wide: 1.8 };
+          var rises = { subtle: "4px", standard: "8px", bold: "18px" };
+          var tones = {
+            inherit: "inherit",
+            ink: "#18181b",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var reach = reaches[pick(reaches, vars.tracking, "standard")];
+          var rise = rises[pick(rises, vars.rise, "standard")];
+          var tone = tones[pick(tones, vars.tone, "inherit")];
+
+          // The class is applied to arbitrary host elements, so the resolved values
+          // ride the document root and inherit down to every one of them.
+          var host = document.documentElement;
+          host.style.setProperty("--hf-tracking-reach", String(reach));
+          host.style.setProperty("--hf-tracking-y", rise);
+          host.style.setProperty("--hf-tracking-color", tone);
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.to(
@@ -84,5 +124,20 @@
         window.__timelines["tracking-in-demo"] = tl;
       </script>
     </div>
+    <style
+      data-composition-variables='[
+    { "id": "tracking", "type": "enum", "role": "style", "label": "Tracking", "description": "Multiplies the letter-spacing the timeline drives, so the reveal starts and settles proportionally wider or tighter.", "default": "standard", "options": [{ "value": "tight", "label": "Tight" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "rise", "type": "enum", "role": "motion", "label": "Rise", "description": "Vertical offset the text starts from, which the timeline reads as the start of its travel and eases to zero.", "default": "standard", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "standard", "label": "Standard" }, { "value": "bold", "label": "Bold" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Text colour: inherit keeps the surrounding page colour, ink suits light frames, paper dark ones, accent rides --brand.", "default": "inherit", "options": [{ "value": "inherit", "label": "Inherit" }, { "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+    >
+      .hf-tracking-in {
+        opacity: 0;
+        color: var(--hf-tracking-color, inherit);
+        letter-spacing: calc(var(--hf-tracking-value, 0.28em) * var(--hf-tracking-reach, 1));
+        transform: translateY(var(--hf-tracking-y, 8px));
+        will-change: opacity, letter-spacing, transform;
+      }
+    </style>
   </body>
 </html>

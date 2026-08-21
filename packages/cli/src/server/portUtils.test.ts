@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import {
   PORT_PROBE_HOSTS,
+  activeServerOnPort,
   detectHyperframesServer,
   findPortAndServe,
   testPortOnAllHosts,
@@ -158,6 +160,72 @@ describe("findPortAndServe — bind host (security: F-001)", () => {
     if (result.type !== "started") return;
     openAdaptorServers.push(result.server);
     expect(boundAddress(result.server)).toBe("0.0.0.0");
+  });
+});
+
+describe("activeServerOnPort — PID provenance (security)", () => {
+  it("does not signal a server whose PID the OS could not confirm", async () => {
+    // Fail closed: the only evidence for a blind port-range sweep is an
+    // unauthenticated config response, so an unconfirmed PID is skipped and
+    // reported rather than signalled.
+    const alive = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+      stdio: "ignore",
+    });
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir: "/tmp/demo-project",
+      serverBuildSignature: null,
+      version: "0.6.42",
+      pid: alive.pid,
+    });
+
+    const server = await activeServerOnPort(port, async () => null);
+    expect(server?.pidSource).toBe("self-reported");
+
+    // The victim survives, because nothing verified it owns the socket.
+    expect(alive.killed).toBe(false);
+    alive.kill();
+  });
+
+  it("tags a self-reported PID and refuses to signal it", async () => {
+    // The branch with the security consequence. `getProcessOnPort` returns null
+    // for more than "unsupported platform" — lsof absent, timed out, or unable
+    // to see another user's socket — and on those machines every scanned port
+    // used to fall back to the self-report with nothing said.
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir: "/tmp/demo-project",
+      serverBuildSignature: null,
+      version: "0.6.42",
+      pid: 999_999,
+    });
+
+    const server = await activeServerOnPort(port, async () => null);
+
+    expect(server?.pid).toBe("999999");
+    expect(server?.pidSource).toBe("self-reported");
+  });
+
+  it("reports the PID that owns the socket, not the one the response claims", async () => {
+    // `/__hyperframes_config` is unauthenticated and `--stop` / `--kill-all`
+    // send signals to this field. Trusting the response let any local process
+    // on a scanned port name an arbitrary PID and have the CLI kill it.
+    if (process.platform === "win32") return;
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir: "/tmp/demo-project",
+      serverBuildSignature: null,
+      version: "0.6.42",
+      pid: 999_999,
+    });
+
+    const server = await activeServerOnPort(port);
+
+    expect(server?.pid).toBe(String(process.pid));
+    expect(server?.pidSource).toBe("os");
   });
 });
 

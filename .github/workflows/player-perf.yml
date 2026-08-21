@@ -105,10 +105,7 @@ jobs:
       # to just install it here so the shard never trips on infra.
       - name: Install ffmpeg (parity shard only)
         if: matrix.shard == 'parity'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffmpeg -version | head -n 1
+        uses: ./.github/actions/install-ffmpeg-linux
 
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player

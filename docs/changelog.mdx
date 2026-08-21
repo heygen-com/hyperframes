@@ -9,6 +9,222 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.6"
+  description="Released - 2026-08-21"
+  tags={["Release", "Audio", "Core", "Skills", "Lint"]}
+>
+Audio now replays reliably after backward seeks, and rendered mixes keep every clip at its authored time.
+Studio keeps nested timelines open, skill updates require confirmation, and a brittle lint error is gone.
+
+## Fixes
+
+- **Audio:** Keep delayed clips at their authored times in rendered mixes, preventing late clips from jumping to the start or disappearing ([c056289d8](https://github.com/heygen-com/hyperframes/commit/c056289d832351dc35256bda8b36188a77bc557a), [#3380](https://github.com/heygen-com/hyperframes/pull/3380)).
+- **Core:** Replay ended audio after backward timeline seeks without repeating tails during ordinary playback ([477e09642](https://github.com/heygen-com/hyperframes/commit/477e09642b6db735866316301d924d0dfdc3cf38), [#3383](https://github.com/heygen-com/hyperframes/pull/3383)).
+- **Skills:** Ask for confirmation before updating installed skills ([efc2e1964](https://github.com/heygen-com/hyperframes/commit/efc2e1964a1c837f748a1c319896998a0e9da211), [#3295](https://github.com/heygen-com/hyperframes/pull/3295)).
+- **Studio:** Keep subcomposition timelines open during playback ([a340ed382](https://github.com/heygen-com/hyperframes/commit/a340ed382aa5d335a3b7e40b6cfb4dfae1870569), [#3382](https://github.com/heygen-com/hyperframes/pull/3382)).
+- **Lint:** Remove the fragile `head_leaked_text` rule that could block correct compositions ([a89780679](https://github.com/heygen-com/hyperframes/commit/a8978067981805bdae72b8f16ca1c57153ec207a), [#3385](https://github.com/heygen-com/hyperframes/pull/3385)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.5...v0.8.6).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.5"
+  description="Released - 2026-08-20"
+  tags={["Release", "Studio", "Lint", "Telemetry"]}
+>
+Lint is quieter and more accurate. Seven rules that fired on correct compositions are gone, so you waste fewer edits chasing errors that were never real.
+The clip example in the docs also stopped failing its own linter.
+
+## Features
+
+- **Telemetry:** Measure which lint rules fire, cost, and fail to converge ([f822200fb8](https://github.com/heygen-com/hyperframes/commit/f822200fb8f437b73985f43837c195f5e7312289), [#3367](https://github.com/heygen-com/hyperframes/pull/3367)).
+- **Skills:** Anchored-connector rule + source-traceable visuals doctrine ([a6a9e2f89e](https://github.com/heygen-com/hyperframes/commit/a6a9e2f89e509424a64a1dcd976aabfd54b60d02), [#3354](https://github.com/heygen-com/hyperframes/pull/3354)).
+
+## Fixes
+
+- **Studio:** Capture storyboard tiles at review density ([b4d5abd7b2](https://github.com/heygen-com/hyperframes/commit/b4d5abd7b2cdc419906153ca75d99bd813adf614), [#3371](https://github.com/heygen-com/hyperframes/pull/3371)).
+- **Lint:** Stop erroring on the documented canonical clip block ([2be5a03b80](https://github.com/heygen-com/hyperframes/commit/2be5a03b800e0b17ee36e99167c99edc383065ce), [#3374](https://github.com/heygen-com/hyperframes/pull/3374)).
+- **Skills:** Resolve the blueprint id from a qualified `blueprint:` field ([d1482b0129](https://github.com/heygen-com/hyperframes/commit/d1482b012926d7118fa39e53ef8974328e84cc9e), [#3337](https://github.com/heygen-com/hyperframes/pull/3337)).
+- **Skills:** Stage SVGs that capture wrote into capture/assets/svgs/ ([c66c9a4c76](https://github.com/heygen-com/hyperframes/commit/c66c9a4c76ff0681cadc8007a8e02744bbcdab10), [#3336](https://github.com/heygen-com/hyperframes/pull/3336)).
+- **Core:** Keep authored gain above unity off el.volume in the sandbox bridge ([9140c0eaa1](https://github.com/heygen-com/hyperframes/commit/9140c0eaa1b332de7ca061af040611f5b1c64419), [#3349](https://github.com/heygen-com/hyperframes/pull/3349)).
+- **Producer:** Seek once per step when discovering video visibility ([d09145faab](https://github.com/heygen-com/hyperframes/commit/d09145faabfd3078c29969fbcf293067d50275ac), [#3233](https://github.com/heygen-com/hyperframes/pull/3233)).
+- **Studio:** Capture the storyboard frame hero at full resolution ([f0e637375f](https://github.com/heygen-com/hyperframes/commit/f0e637375f2c43b22192f1ad8c3aef1b5d010e8a), [#3338](https://github.com/heygen-com/hyperframes/pull/3338)).
+
+## Internal
+
+- **Lint:** Drop seven rules that fire on correct compositions ([83ceaeb902](https://github.com/heygen-com/hyperframes/commit/83ceaeb902f07ffc4bed976ca3bdd501eb60aa55), [#3366](https://github.com/heygen-com/hyperframes/pull/3366)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.4...v0.8.5).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.4"
+  description="Released - 2026-08-19"
+  tags={["Release", "CLI", "Studio", "Producer"]}
+>
+A new `normalize-audio` command matches one clip's loudness to another, and the volume fader now tells the truth about the gain it writes.
+Previews keep running in the background in every launch mode, and pressing Delete in Studio now removes the whole selection.
+
+## Features
+
+- **CLI:** Add normalize-audio to match one clip's loudness to another ([b3c43e248](https://github.com/heygen-com/hyperframes/commit/b3c43e24804e632ef2437e2ebd6789094ced2569), [#3306](https://github.com/heygen-com/hyperframes/pull/3306)).
+- **CLI:** Run a managed background preview in every launch mode ([9da422fd7](https://github.com/heygen-com/hyperframes/commit/9da422fd7f75b0d5fe7f7f2defd889239bb82fe6), [#3310](https://github.com/heygen-com/hyperframes/pull/3310)).
+- **CLI:** Give every preview lifecycle op one JSON document ([0e3c5f6be](https://github.com/heygen-com/hyperframes/commit/0e3c5f6bef4760d863309e997619bb1db99f5530), [#3309](https://github.com/heygen-com/hyperframes/pull/3309)).
+
+## Fixes
+
+- **CLI:** Zip the publish archive to the same bytes every time ([d464f60b9](https://github.com/heygen-com/hyperframes/commit/d464f60b9600485cd97c537338e25b7f77f9ca90), [#3358](https://github.com/heygen-com/hyperframes/pull/3358)).
+- **Studio:** Make the volume fader tell the truth about the gain it writes ([228eabd43](https://github.com/heygen-com/hyperframes/commit/228eabd43fa6164dc1296e4615bae33dcca98696), [#3305](https://github.com/heygen-com/hyperframes/pull/3305)).
+- **Producer:** Give inlined media a document-unique render id ([634df5a5a](https://github.com/heygen-com/hyperframes/commit/634df5a5af7aad3e529035d62d324aca1512df35), [#3342](https://github.com/heygen-com/hyperframes/pull/3342)).
+- **Studio:** Make Delete remove the whole canvas selection ([ec0b23f3c](https://github.com/heygen-com/hyperframes/commit/ec0b23f3cec98ea9bb4b61d54ad18bb48ee1c721), [#3339](https://github.com/heygen-com/hyperframes/pull/3339)).
+- **Audio:** Raise the authoring gain ceiling and carry it through the probes ([e282ff15c](https://github.com/heygen-com/hyperframes/commit/e282ff15cc8b8ef519d514c7741e6b27cfd92aae), [#3333](https://github.com/heygen-com/hyperframes/pull/3333)).
+- **CLI:** Keep a live preview's ownership record and stop past a bad one ([74149e249](https://github.com/heygen-com/hyperframes/commit/74149e249ac5a2e7a88d15f241d12ec58db01283), [#3308](https://github.com/heygen-com/hyperframes/pull/3308)).
+- **Producer:** Clamp embedded video/audio windows to the scene ([b31dde35b](https://github.com/heygen-com/hyperframes/commit/b31dde35b13a3c23c677ba3b648d01a7d735f5be), [#3332](https://github.com/heygen-com/hyperframes/pull/3332)).
+- **CLI:** Signal only processes the OS says own the port ([c1c70f44b](https://github.com/heygen-com/hyperframes/commit/c1c70f44bd9d43e22e80449d1b084d6e4d8ae034), [#3307](https://github.com/heygen-com/hyperframes/pull/3307)).
+
+## Internal
+
+- Bound the ffmpeg apt fetch so a stalled mirror costs a retry, not the job ([7e96e60fe](https://github.com/heygen-com/hyperframes/commit/7e96e60fe228548fe4813aa5e9917bbde9a50feb), [#3356](https://github.com/heygen-com/hyperframes/pull/3356)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.3...v0.8.4).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.3"
+  description="Released - 2026-08-18"
+  tags={["Release"]}
+>
+Studio now keeps voices natural at every preview speed and applies authored track gain and user volume exactly once.
+Creator skills also add copyable recipes for cuts, trims, zooms, masks, transitions, and placed audio.
+
+## Features
+
+- Make creator media edits render-safe ([afafca4b9](https://github.com/heygen-com/hyperframes/commit/afafca4b9670cad60afd66475207ef6a016a759b), [#3322](https://github.com/heygen-com/hyperframes/pull/3322)).
+
+## Fixes
+
+- Separate Studio author and user audio gain ([995c9e346](https://github.com/heygen-com/hyperframes/commit/995c9e346e5b1bfff015db3979896ec576cff12c), [#3328](https://github.com/heygen-com/hyperframes/pull/3328)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.2...v0.8.3).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.2"
+  description="Released - 2026-08-18"
+  tags={["Release", "Catalog", "Skills"]}
+>
+The variables panel on a component's catalog page now changes its preview. Pick an accent or a size and the preview answers, so what you see is what the copied snippet installs.
+
+## Fixes
+
+- **Skills:** Count proxy-driver tweens in the animation map ([0d874adc6](https://github.com/heygen-com/hyperframes/commit/0d874adc685a94a519311cf9ed9e4107bb0347c9), [#3301](https://github.com/heygen-com/hyperframes/pull/3301)).
+- **Skills:** Declare the caption brand font's style axis, not just its weight ([a41da8651](https://github.com/heygen-com/hyperframes/commit/a41da8651768942adf588a959d9dc062c90c6a13), [#3300](https://github.com/heygen-com/hyperframes/pull/3300)).
+- **Skills:** Pin UTF-8 in Python scripts instead of the platform code page ([f8a1e2d31](https://github.com/heygen-com/hyperframes/commit/f8a1e2d315e51856491af003958914152371c29d), [#3298](https://github.com/heygen-com/hyperframes/pull/3298)).
+
+## Catalog
+
+- **Catalog:** Make component previews answer their variables panel ([406bf316a](https://github.com/heygen-com/hyperframes/commit/406bf316a38d8a6ff24c00696d9e537ee85997d4), [#3323](https://github.com/heygen-com/hyperframes/pull/3323)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.1...v0.8.2).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.1"
+  description="Released - 2026-08-18"
+  tags={["Release", "Docs", "Studio", "Add"]}
+>
+Variables you pass to `hyperframes add` now reach the file it installs, instead of being dropped without a word. Studio also asks for FFmpeg before an export starts, rather than after one fails.
+
+## Features
+
+- **Studio:** Prompt to install FFmpeg before Export, not after ([5058236ed](https://github.com/heygen-com/hyperframes/commit/5058236eda13cc31536e39bd37cf7eb4f9a99025), [#3314](https://github.com/heygen-com/hyperframes/pull/3314)).
+
+## Fixes
+
+- **Docs:** Load the player from latest, not a pinned minor ([d7688f994](https://github.com/heygen-com/hyperframes/commit/d7688f9943814b44ab20b7d4b079ab50f7ca36df), [#3320](https://github.com/heygen-com/hyperframes/pull/3320)).
+- **Add:** Make chosen variables actually take effect, in the CLI and the preview ([ea7c48f37](https://github.com/heygen-com/hyperframes/commit/ea7c48f37249aff26211913562c74e29b85e8ddb), [#3316](https://github.com/heygen-com/hyperframes/pull/3316)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.0...v0.8.1).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.0"
+  description="Released - 2026-08-17"
+  tags={["Release", "Cloud", "Migration", "Catalog"]}
+>
+HyperFrames 0.8 establishes the supported version boundary for Plan v2 as the default distributed cloud transport.
+
+Version 0.7.111 already contained this behavior. Version 0.8.0 adds no further cloud runtime changes beyond that release.
+
+## Migration
+
+- Redeploy AWS Lambda, SAM, or CDK infrastructure from version 0.8.0 before upgrading SDK callers to 0.8.0.
+- Redeploy GCP Cloud Run services and workflows from version 0.8.0 before upgrading SDK callers to 0.8.0.
+- Omitting `planProtocol` selects Plan v2. Explicit `"v1"` remains available for compatibility while older work drains.
+- Keep the producer, SDK, and cloud adapter packages on the same version during the upgrade.
+
+## Catalog
+
+- **Catalog:** Remove two AI UI items ([ed18f1ea9](https://github.com/heygen-com/hyperframes/commit/ed18f1ea9aae00c26fdb712b231ac123e9170086), [#3317](https://github.com/heygen-com/hyperframes/pull/3317)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.111...v0.8.0).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.111"
+  description="Released - 2026-08-17"
+  tags={["Release", "Cloud", "Catalog", "Studio"]}
+>
+Distributed cloud renders now use the content-addressed Plan v2 transport by default, with explicit Plan v1 compatibility during upgrades.
+
+Catalog search now ranks names and rarer words more accurately, while new text-measurement hooks give custom tools better layout data.
+
+## Features
+
+- **Cloud:** Default distributed plans to v2 ([17a2a00ed](https://github.com/heygen-com/hyperframes/commit/17a2a00ed5248bfc1b5f4efee1267610b0610727), [#3311](https://github.com/heygen-com/hyperframes/pull/3311)).
+- **Core:** Expose pretext text measurement on window.__hyperframes ([0285a711e](https://github.com/heygen-com/hyperframes/commit/0285a711e926a592bd189d647474b50de474581c), [#3302](https://github.com/heygen-com/hyperframes/pull/3302)).
+
+## Catalog
+
+- **Catalog:** Rank on where a word appears and how rare it is ([6b17c24f9](https://github.com/heygen-com/hyperframes/commit/6b17c24f980f9514345c8c882b00477328dbc3e6), [#3312](https://github.com/heygen-com/hyperframes/pull/3312)).
+
+## Internal
+
+- **Studio:** Split the two files over the 600-line cap ([35eb6d290](https://github.com/heygen-com/hyperframes/commit/35eb6d290698fd6aac90a63fd03b70a8cd2f2b07), [#3313](https://github.com/heygen-com/hyperframes/pull/3313)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.110...v0.7.111).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.110"
+  description="Released - 2026-08-17"
+  tags={["Release", "Catalog", "Skills", "Studio"]}
+>
+A registry the CLI cannot reach no longer empties the catalog. Search and browse now fall back to the last copy on disk, so one network timeout cannot send you off to hand-write a move you already have. When a search finds nothing that fits, the CLI hands you the command to report the gap.
+
+Studio also gains a preview volume control.
+
+## Features
+
+- **Studio:** Add a preview volume control ([fecaf72d1](https://github.com/heygen-com/hyperframes/commit/fecaf72d1f6de66224b3857efb78a2f2c44c41bc), [#3282](https://github.com/heygen-com/hyperframes/pull/3282)).
+
+## Fixes
+
+- Create temp dirs with mkdtemp, not a name built from Date.now() ([de4062a93](https://github.com/heygen-com/hyperframes/commit/de4062a93300cbe1826edfbd8d71fbc44be25cb7), [#3241](https://github.com/heygen-com/hyperframes/pull/3241)).
+
+## Docs & Examples
+
+- **Skills:** Fix anime.js v3 syntax in v4 adapter guidance ([67edb01bf](https://github.com/heygen-com/hyperframes/commit/67edb01bf4aa2f5931e838e46e14e0f51a5809ee), [#3064](https://github.com/heygen-com/hyperframes/pull/3064)).
+
+## Catalog
+
+- **Catalog:** Survive an unreachable registry, and ask for the gap ([37f8c4844](https://github.com/heygen-com/hyperframes/commit/37f8c48449d6c846788a76edf055bf2a888b7be5), [#3299](https://github.com/heygen-com/hyperframes/pull/3299)).
+- **Registry:** Add avatar promo and Slack notification templates ([b9a4dfcbe](https://github.com/heygen-com/hyperframes/commit/b9a4dfcbe56de5141b9a379ff30605cf23984d1e), [#3279](https://github.com/heygen-com/hyperframes/pull/3279)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.109...v0.7.110).
+</Update>
+
+<Update
   label="HyperFrames v0.7.109"
   description="Released - 2026-08-14"
   tags={["Release", "Engine", "Producer", "Studio"]}

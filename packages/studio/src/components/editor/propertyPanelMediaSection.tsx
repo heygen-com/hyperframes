@@ -13,6 +13,14 @@ import {
 } from "./propertyPanelHelpers";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import {
+  AUDIO_GAIN_FADER_MAX,
+  AUDIO_GAIN_FADER_MIN,
+  audioFaderPositionToGain,
+  formatAudioGain,
+  audioGainToFaderPosition,
+  audioGainToText,
+} from "@hyperframes/core/audio-gain";
 
 // fallow-ignore-next-line complexity
 export function MediaSection({
@@ -47,7 +55,7 @@ export function MediaSection({
   const el = element.element;
 
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
-  const volumePercent = Math.round(volume * 100);
+  const volumeFaderPosition = audioGainToFaderPosition(volume);
 
   const mediaStart =
     Number.parseFloat(
@@ -250,14 +258,14 @@ export function MediaSection({
               <span className={LABEL}>Volume</span>
               <SliderControl
                 trackName="Volume"
-                value={volumePercent}
-                min={0}
-                max={100}
+                value={volumeFaderPosition}
+                min={AUDIO_GAIN_FADER_MIN}
+                max={AUDIO_GAIN_FADER_MAX}
                 step={1}
-                displayValue={`${volumePercent}%`}
-                formatDisplayValue={(next) => `${Math.round(next)}%`}
+                displayValue={audioGainToText(volume)}
+                formatDisplayValue={(next) => audioGainToText(audioFaderPositionToGain(next))}
                 onCommit={(next) => {
-                  void onSetAttribute("volume", formatNumericValue(next / 100));
+                  void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)));
                 }}
               />
             </div>

@@ -93,7 +93,15 @@
           <div class="button">Generate video</div>
         </div>
       </div>
-      <div class="hf-simulated-cursor" aria-hidden="true">
+      <div
+        class="hf-simulated-cursor"
+        aria-hidden="true"
+        data-composition-variables='[
+    {"id": "size", "type": "number", "role": "layout", "label": "Size", "description": "Height and width of the pointer in pixels. The click ring scales with it. Values outside the range clamp to the nearest end and anything that is not a number falls back to 44.", "default": 44, "min": 20, "max": 120, "step": 2, "unit": "px"},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Pointer fill and click ring colour: light reads on dark screens, dark reads on light ones, accent rides --hf-ui-accent.", "default": "light", "options": [{"value": "light", "label": "Light"}, {"value": "dark", "label": "Dark"}, {"value": "accent", "label": "Accent"}]},
+    {"id": "pulse", "type": "enum", "role": "style", "label": "Click ring", "description": "Weight of the ring the click animation expands: subtle is a thin small ring, bold a thick wide one, none removes the ring entirely.", "default": "standard", "options": [{"value": "subtle", "label": "Subtle"}, {"value": "standard", "label": "Standard"}, {"value": "bold", "label": "Bold"}, {"value": "none", "label": "None"}]}
+  ]'
+      >
         <div class="hf-simulated-cursor-pulse"></div>
         <svg
           viewBox="0 0 24 24"
@@ -110,6 +118,64 @@
           />
         </svg>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised or out-of-range overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var tones = {
+            light: {
+              fill: "#ffffff",
+              edge: "rgba(0, 0, 0, 0.45)",
+              ring: "rgba(255, 255, 255, 0.85)",
+            },
+            dark: {
+              fill: "#18181b",
+              edge: "rgba(255, 255, 255, 0.75)",
+              ring: "rgba(24, 24, 27, 0.75)",
+            },
+            accent: {
+              fill: "var(--hf-ui-accent, #3ce6ac)",
+              edge: "rgba(0, 0, 0, 0.45)",
+              ring: "var(--hf-ui-accent, #3ce6ac)",
+            },
+          };
+          var pulses = {
+            subtle: { size: "18px", width: "1px", display: "block" },
+            standard: { size: "22px", width: "2px", display: "block" },
+            bold: { size: "28px", width: "3px", display: "block" },
+            none: { size: "22px", width: "2px", display: "none" },
+          };
+
+          var size = typeof vars.size === "number" ? vars.size : parseFloat(vars.size);
+          if (!isFinite(size)) size = 44;
+          size = Math.min(120, Math.max(20, size));
+
+          var tone = tones[pick(tones, vars.tone, "light")];
+          var pulse = pulses[pick(pulses, vars.pulse, "standard")];
+
+          var roots = document.querySelectorAll(".hf-simulated-cursor");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-cursor-scale", String(size / 44));
+            root.style.setProperty("--hf-cursor-fill", tone.fill);
+            root.style.setProperty("--hf-cursor-edge", tone.edge);
+            root.style.setProperty("--hf-cursor-ring", tone.ring);
+            root.style.setProperty("--hf-cursor-ring-size", pulse.size);
+            root.style.setProperty("--hf-cursor-ring-width", pulse.width);
+            root.style.setProperty("--hf-cursor-ring-display", pulse.display);
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.from(".card", { opacity: 0, y: 30, duration: 0.6, ease: "power3.out" }, 0.2);
@@ -133,5 +199,39 @@
         window.__timelines["simulated-cursor-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-simulated-cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: calc(44px * var(--hf-cursor-scale, 1));
+        height: calc(44px * var(--hf-cursor-scale, 1));
+        transform: translate3d(var(--hf-cursor-x, 0px), var(--hf-cursor-y, 0px), 0);
+        pointer-events: none;
+        z-index: 999;
+        filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.24));
+      }
+      .hf-simulated-cursor svg {
+        width: 100%;
+        height: 100%;
+      }
+      .hf-simulated-cursor svg path {
+        fill: var(--hf-cursor-fill, #ffffff);
+        stroke: var(--hf-cursor-edge, rgba(0, 0, 0, 0.45));
+      }
+      .hf-simulated-cursor-pulse {
+        display: var(--hf-cursor-ring-display, block);
+        position: absolute;
+        left: calc((20px - var(--hf-cursor-ring-size, 22px) / 2) * var(--hf-cursor-scale, 1));
+        top: calc((20px - var(--hf-cursor-ring-size, 22px) / 2) * var(--hf-cursor-scale, 1));
+        width: calc(var(--hf-cursor-ring-size, 22px) * var(--hf-cursor-scale, 1));
+        height: calc(var(--hf-cursor-ring-size, 22px) * var(--hf-cursor-scale, 1));
+        border: calc(var(--hf-cursor-ring-width, 2px) * var(--hf-cursor-scale, 1)) solid
+          var(--hf-cursor-ring, rgba(255, 255, 255, 0.85));
+        border-radius: 999px;
+        opacity: 0;
+        transform: scale(0.2);
+      }
+    </style>
   </body>
 </html>

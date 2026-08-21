@@ -11,25 +11,26 @@ This skill is the **technical contract** — how to build one hyperframes projec
 
 ## References
 
-| File                                 | Read it to…                                                                                                                                                                        |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                                                                                                            |
-| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                                          |
-| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                                            |
-| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                                                                                      |
-| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                                         |
-| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                                     |
-| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                                                                                  |
-| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                                                                                                   |
-| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                                                                              |
-| `references/review-loop.md`          | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow                                                                         |
-| `references/production-loop.md`      | take an approved plan to a delivered video — the stage dependencies (audio, frames, assembly, transitions, captions, verify, deliver) a freeform build follows directly            |
-| `references/brief-contract.md`       | the brief's ground rules — mode derivation (collaborative / autonomous), shared field registry, question invariants (the asking itself lives in `/hyperframes` → the intent layer) |
-| `references/brief-format.md`         | author `BRIEF.md` — the confirmed intent document a workflow's Setup writes and every later step reads                                                                             |
-| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                                                                                   |
-| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                                                                                 |
-| `references/frame-worker-core.md`    | the shared frame-worker role contract — each narrative workflow's packet builder prepends it to that workflow's `sub-agents/frame-worker.md` delta                                 |
-| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                                       |
+| File                                    | Read it to…                                                                                                                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                                                                                            |
+| `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                                          |
+| `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                                            |
+| `references/tracks-and-clips.md`        | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                                                                                      |
+| `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits                                                                          |
+| `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                                         |
+| `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                                     |
+| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                                                                                  |
+| `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                                                                                                   |
+| `references/storyboard-format.md`       | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                                                                              |
+| `references/review-loop.md`             | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow                                                                         |
+| `references/production-loop.md`         | take an approved plan to a delivered video — the stage dependencies (audio, frames, assembly, transitions, captions, verify, deliver) a freeform build follows directly            |
+| `references/brief-contract.md`          | the brief's ground rules — mode derivation (collaborative / autonomous), shared field registry, question invariants (the asking itself lives in `/hyperframes` → the intent layer) |
+| `references/brief-format.md`            | author `BRIEF.md` — the confirmed intent document a workflow's Setup writes and every later step reads                                                                             |
+| `references/script-format.md`           | author the optional `SCRIPT.md` locked narration                                                                                                                                   |
+| `references/subagent-dispatch.md`       | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                                                                                 |
+| `references/frame-worker-core.md`       | the shared frame-worker role contract — each narrative workflow's packet builder prepends it to that workflow's `sub-agents/frame-worker.md` delta                                 |
+| `references/tailwind.md`                | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                                       |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 
@@ -85,5 +86,5 @@ Use `hyperframes-cli` for command details
 
 - [ ] `npx hyperframes check` passes (0 findings across lint, runtime, layout, motion, and contrast)
 - [ ] Projects with sub-compositions: `npx hyperframes snapshot --at <midpoints>` and eyeball each frame
-- [ ] `npx hyperframes preview` for review (the user can edit anything in Studio's timeline)
+- [ ] `npx hyperframes preview --background` for review (the user can edit anything in Studio's timeline, and the server survives the invoking command)
 - [ ] `npx hyperframes render` only after the user approves

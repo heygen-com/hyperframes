@@ -57,6 +57,11 @@ const GET_RESPONSES = new Map([
   ["/api/fonts", json({ fonts: [] })],
   ["/api/fonts/google", json({ fonts: [] })],
   ["/api/assets/global", json({ assets: [] })],
+  // Studio asks this on load so it can warn before Export instead of failing
+  // at encode time. A usable encoder is the case this smoke run wants: the
+  // interesting assertion is that the shell mounts clean, not that a blocking
+  // notice renders. The notice has its own tests.
+  ["/api/environment/ffmpeg", json({ ok: true })],
 ]);
 const MUTATION_RESPONSES = new Map([
   [`${PROJECT_PATH}/selection`, json({ ok: true, selection: null, updatedAt: null })],

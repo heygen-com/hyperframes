@@ -163,50 +163,25 @@ function collectGoogleFontFamilies(
 }
 
 export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
-  // google_fonts_import
-  ({ styles, source, rawSource, options }) => {
-    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
-    const findings: HyperframeLintFinding[] = [];
-    const googleFontsInLink = /<link\b[^>]*fonts\.googleapis\.com[^>]*>/i.test(source);
-    const googleFontsInImport = styles.some((s) =>
-      /@import\s+url\s*\(\s*['"]?[^)]*fonts\.googleapis\.com/i.test(s.content),
-    );
-
-    if (googleFontsInLink || googleFontsInImport) {
-      findings.push({
-        code: "google_fonts_import",
-        severity: "warning",
-        message:
-          "Composition loads fonts from fonts.googleapis.com. The producer resolves Google Fonts " +
-          "during compile/render, but raw external font requests add latency and can fail before " +
-          "canonicalization. Prefer mapped family names or local @font-face declarations when possible.",
-        fixHint:
-          "For bundled fonts, remove the Google Fonts <link> or @import and keep the font-family " +
-          "declaration. For custom fonts, use @font-face { font-family: '...'; src: url('...woff2'); }.",
-      });
-    }
-    return findings;
-  },
-
-  // system_font_will_alias — inform when a font will be silently substituted
+  // system_font_will_alias — only for distributed / Lambda renders, where
+  // system-font capture is disabled and the alias substitution does NOT happen,
+  // so the font silently falls back to whatever the OS provides. Under a local
+  // render the substitution is the renderer working as designed, not a defect,
+  // so there is nothing for the author to act on.
   ({ styles, options }) => {
+    if (!options.distributed) return [];
     const declared = extractFontFaceFamilies(styles);
     const used = extractUsedFontFamilies(styles);
     const aliased = collectAliasedFonts(used, declared);
     if (aliased.length === 0) return [];
-    // In distributed / Lambda renders system-font capture is disabled, so
-    // the alias substitution does NOT happen — elevate to a warning.
-    const severity = options.distributed ? ("warning" as const) : ("info" as const);
     return [
       {
         code: "system_font_will_alias",
-        severity,
+        severity: "warning",
         message:
           `Font ${aliased.length === 1 ? "family" : "families"} will be substituted at render time: ${aliased.join(", ")}. ` +
-          (options.distributed
-            ? "In distributed/Lambda rendering system-font capture is disabled — these fonts will fall back to OS defaults. Embed explicit @font-face declarations instead."
-            : "The renderer maps these to bundled fonts for cross-platform consistency. " +
-              "Use the target font name directly for consistent preview and render results."),
+          "In distributed/Lambda rendering system-font capture is disabled — these fonts will fall " +
+          "back to OS defaults. Embed explicit @font-face declarations instead.",
       },
     ];
   },

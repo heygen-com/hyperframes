@@ -4,6 +4,8 @@ import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
 import { browserTelemetryAllowed } from "../../telemetry/policy";
 import { generateId } from "../../utils/generateId";
+import { readServerError } from "./serverError";
+import { ffmpegInstallMessage, useFfmpegStatus } from "./useFfmpegStatus";
 import { requestStudioFeedback, type FeedbackContext } from "../feedback/feedbackTrigger";
 
 export interface RenderJob {
@@ -71,6 +73,17 @@ export function useRenderQueue(projectId: string | null) {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Failure of a user action (delete/cancel), surfaced inline in the panel.
   const [actionError, setActionError] = useState<string | null>(null);
+  // Owned here rather than in the panel: Studio renders from three places —
+  // the panel's Export button, the header's, and each composition card in the
+  // left sidebar — and a check living in one of them leaves the rest free to
+  // start a render this machine cannot finish. Every caller routes through
+  // `startRender`, so that is where the refusal belongs. Call sites still
+  // read `ffmpegMissing` to put the prompt on screen, because a refusal the
+  // user cannot see reads as a broken button.
+  const { status: ffmpeg, checking: ffmpegChecking, recheck: recheckFfmpeg } = useFfmpegStatus();
+  // A null status means the probe gave no answer (older server, failed
+  // request), which is not evidence of a missing encoder. Unknown fails open.
+  const ffmpegMissing = ffmpeg !== null && !ffmpeg.ok;
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeJobRef = useRef<string | null>(null);
   // Renders started in THIS tab, mapped to the settings they ran with.
@@ -150,6 +163,23 @@ export function useRenderQueue(projectId: string | null) {
     // fallow-ignore-next-line complexity
     async (opts: StartRenderOptions = {}) => {
       if (!projectId) return;
+      // The server would answer this with a 503 anyway. Refusing here keeps
+      // the reason and the fix in the message, and keeps a control that
+      // forgot to disable itself from producing a mystery failure.
+      if (ffmpegMissing) {
+        addSessionJob(
+          {
+            id: generateId(),
+            status: "failed",
+            progress: 0,
+            error: ffmpegInstallMessage(ffmpeg),
+            filename: "Export blocked",
+            createdAt: Date.now(),
+          },
+          {},
+        );
+        return;
+      }
 
       const fps = opts.fps ?? 30;
       const quality = opts.quality ?? "standard";
@@ -237,7 +267,7 @@ export function useRenderQueue(projectId: string | null) {
           id: generateId(),
           status: "failed",
           progress: 0,
-          error: `Server error (${res.status}). Check the terminal for details.`,
+          error: await readServerError(res),
           filename: "Export failed",
           createdAt: startTime,
         };
@@ -307,7 +337,7 @@ export function useRenderQueue(projectId: string | null) {
 
       return jobId;
     },
-    [projectId, closeActiveEventSource, addSessionJob],
+    [projectId, closeActiveEventSource, addSessionJob, ffmpeg, ffmpegMissing],
   );
 
   // Cancel an in-flight render. The job row stays (as "cancelled") so the
@@ -431,6 +461,12 @@ export function useRenderQueue(projectId: string | null) {
       cancelRender,
       clearCompleted,
       startRender: startRender as (options: unknown) => Promise<void>,
+      // Every Export control reads these, so no caller has to decide for
+      // itself whether this machine can encode.
+      ffmpeg,
+      ffmpegMissing,
+      ffmpegChecking,
+      recheckFfmpeg,
     }),
     [
       jobs,
@@ -443,6 +479,10 @@ export function useRenderQueue(projectId: string | null) {
       cancelRender,
       clearCompleted,
       startRender,
+      ffmpeg,
+      ffmpegMissing,
+      ffmpegChecking,
+      recheckFfmpeg,
     ],
   );
 }

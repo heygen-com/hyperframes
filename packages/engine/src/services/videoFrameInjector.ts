@@ -13,7 +13,12 @@ import { type FrameLookupTable } from "./videoFrameExtractor.js";
 import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotService.js";
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { HF_COLOR_GRADING_CANVAS_ID_PREFIX } from "@hyperframes/core";
+import {
+  HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+  RENDER_FRAME_ID_PREFIX,
+  RENDER_FRAME_ID_SUFFIX,
+  renderFrameIdForRenderId,
+} from "@hyperframes/core";
 
 export interface VideoFrameInjectorOptions extends Partial<
   Pick<EngineConfig, "frameDataUriCacheLimit" | "frameDataUriCacheBytesLimitMb">
@@ -274,7 +279,11 @@ async function setVideoElementsVisibility(
 ): Promise<void> {
   if (videoIds.length === 0) return;
   await page.evaluate(
-    (ids: string[], canvasIdPrefix: string, shouldShow: boolean) => {
+    (
+      entries: Array<{ id: string; frameId: string }>,
+      canvasIdPrefix: string,
+      shouldShow: boolean,
+    ) => {
       const apply = (node: Element | null) => {
         if (!(node instanceof HTMLElement)) return;
         if (shouldShow) {
@@ -283,15 +292,17 @@ async function setVideoElementsVisibility(
           node.style.setProperty("visibility", "hidden", "important");
         }
       };
-      for (const id of ids) {
-        const video = document.getElementById(id);
+      for (const { id, frameId } of entries) {
+        const video = window.__hfMediaEl?.(id) ?? document.getElementById(id);
         if (!video) continue;
         apply(video);
-        apply(document.getElementById(`__render_frame_${id}__`));
+        apply(document.getElementById(frameId));
         apply(document.getElementById(`${canvasIdPrefix}${id}`));
       }
     },
-    videoIds,
+    // Sibling ids come from core's function, never a template here, so the
+    // format has one definition across the engine and the runtime readers.
+    videoIds.map((id) => ({ id, frameId: renderFrameIdForRenderId(id) })),
     HF_COLOR_GRADING_CANVAS_ID_PREFIX,
     visible,
   );
@@ -307,8 +318,10 @@ export async function queryVideoElementBounds(
 ): Promise<VideoElementBounds[]> {
   if (videoIds.length === 0) return [];
   return page.evaluate((ids: string[]): VideoElementBounds[] => {
+    const resolveVideo = (id: string): HTMLVideoElement | null =>
+      (window.__hfMediaEl?.(id) ?? document.getElementById(id)) as HTMLVideoElement | null;
     return ids.map((id) => {
-      const el = document.getElementById(id) as HTMLVideoElement | null;
+      const el = resolveVideo(id);
       if (!el) {
         return {
           videoId: id,
@@ -409,293 +422,300 @@ export async function queryElementStacking(
   nativeHdrIds: Set<string>,
 ): Promise<ElementStackingInfo[]> {
   const hdrIds = Array.from(nativeHdrIds);
-  // fallow-ignore-next-line complexity
-  return page.evaluate((hdrIdList: string[]): ElementStackingInfo[] => {
-    const hdrSet = new Set(hdrIdList);
-    const elements = document.querySelectorAll("[data-start]");
-    const results: ElementStackingInfo[] = [];
-
-    // Walk up the DOM to find the effective z-index from the nearest
-    // positioned ancestor with a z-index. CSS z-index only applies to
-    // positioned elements; video elements inside positioned wrappers
-    // inherit the wrapper's stacking context.
-    //
-    // ## Supported subset
-    //
-    // This implementation looks for explicit `z-index` on positioned
-    // (non-static) ancestors. It does NOT detect the CSS stacking contexts
-    // created implicitly by other properties — including `opacity < 1`,
-    // `transform`, `filter`, `will-change`, `isolation: isolate`, and
-    // `mix-blend-mode`. GSAP routinely sets `transform` on wrappers, which
-    // creates an implicit stacking context with auto z-index; an HDR video
-    // inside such a wrapper with no explicit z-index will return the
-    // wrapper-of-the-wrapper's z-index here, potentially reordering layers
-    // incorrectly relative to sibling stacking contexts.
-    //
-    // The workaround is to set explicit `z-index` on the positioned wrapper
-    // when you want it treated as a compositing layer root. This matches
-    // what compositions need to do anyway for deterministic z-ordering.
-    function getEffectiveZIndex(node: Element): number {
-      let current: Element | null = node;
-      while (current) {
-        const cs = window.getComputedStyle(current);
-        const pos = cs.position;
-        const z = parseInt(cs.zIndex);
-        if (!Number.isNaN(z) && pos !== "static") return z;
-        current = current.parentElement;
-      }
-      return 0;
-    }
-
-    // Find border-radius that clips the element. Replaced elements like <video>
-    // clip to their own border-radius; ancestors need overflow !== visible.
+  return page.evaluate(
     // fallow-ignore-next-line complexity
-    function getEffectiveBorderRadius(node: Element): [number, number, number, number] {
-      // Resolve a CSS border-radius value to pixels. Chrome's getComputedStyle
-      // returns percentages as-is (e.g. "50%"), not resolved to px.
-      // Uses offsetWidth/offsetHeight (layout dimensions before CSS transforms)
-      // because CSS resolves percentages against the padding box, not the
-      // transformed bounding box.
-      function resolveRadius(value: string, el: Element): number {
-        if (value.includes("%")) {
-          const pct = parseFloat(value) / 100;
-          const w = el instanceof HTMLElement ? el.offsetWidth : 0;
-          const h = el instanceof HTMLElement ? el.offsetHeight : 0;
-          return pct * Math.min(w, h);
+    (hdrIdList: string[], prefix: string, suffix: string): ElementStackingInfo[] => {
+      const hdrSet = new Set(hdrIdList);
+      const elements = document.querySelectorAll("[data-start]");
+      const results: ElementStackingInfo[] = [];
+
+      // Walk up the DOM to find the effective z-index from the nearest
+      // positioned ancestor with a z-index. CSS z-index only applies to
+      // positioned elements; video elements inside positioned wrappers
+      // inherit the wrapper's stacking context.
+      //
+      // ## Supported subset
+      //
+      // This implementation looks for explicit `z-index` on positioned
+      // (non-static) ancestors. It does NOT detect the CSS stacking contexts
+      // created implicitly by other properties — including `opacity < 1`,
+      // `transform`, `filter`, `will-change`, `isolation: isolate`, and
+      // `mix-blend-mode`. GSAP routinely sets `transform` on wrappers, which
+      // creates an implicit stacking context with auto z-index; an HDR video
+      // inside such a wrapper with no explicit z-index will return the
+      // wrapper-of-the-wrapper's z-index here, potentially reordering layers
+      // incorrectly relative to sibling stacking contexts.
+      //
+      // The workaround is to set explicit `z-index` on the positioned wrapper
+      // when you want it treated as a compositing layer root. This matches
+      // what compositions need to do anyway for deterministic z-ordering.
+      function getEffectiveZIndex(node: Element): number {
+        let current: Element | null = node;
+        while (current) {
+          const cs = window.getComputedStyle(current);
+          const pos = cs.position;
+          const z = parseInt(cs.zIndex);
+          if (!Number.isNaN(z) && pos !== "static") return z;
+          current = current.parentElement;
         }
-        const parsed = parseFloat(value);
-        return Number.isNaN(parsed) ? 0 : parsed;
+        return 0;
       }
 
-      // Check element itself (replaced elements clip to own border-radius)
-      const selfCs = window.getComputedStyle(node);
-      const selfRadii: [number, number, number, number] = [
-        resolveRadius(selfCs.borderTopLeftRadius, node),
-        resolveRadius(selfCs.borderTopRightRadius, node),
-        resolveRadius(selfCs.borderBottomRightRadius, node),
-        resolveRadius(selfCs.borderBottomLeftRadius, node),
-      ];
-      if (selfRadii[0] > 0 || selfRadii[1] > 0 || selfRadii[2] > 0 || selfRadii[3] > 0) {
-        return selfRadii;
-      }
-
-      // Walk ancestors looking for clipping container
-      let current: Element | null = node.parentElement;
-      while (current) {
-        const cs = window.getComputedStyle(current);
-        if (cs.overflow !== "visible") {
-          const tl = resolveRadius(cs.borderTopLeftRadius, current);
-          const tr = resolveRadius(cs.borderTopRightRadius, current);
-          const brr = resolveRadius(cs.borderBottomRightRadius, current);
-          const bl = resolveRadius(cs.borderBottomLeftRadius, current);
-          if (tl > 0 || tr > 0 || brr > 0 || bl > 0) {
-            return [tl, tr, brr, bl];
+      // Find border-radius that clips the element. Replaced elements like <video>
+      // clip to their own border-radius; ancestors need overflow !== visible.
+      // fallow-ignore-next-line complexity
+      function getEffectiveBorderRadius(node: Element): [number, number, number, number] {
+        // Resolve a CSS border-radius value to pixels. Chrome's getComputedStyle
+        // returns percentages as-is (e.g. "50%"), not resolved to px.
+        // Uses offsetWidth/offsetHeight (layout dimensions before CSS transforms)
+        // because CSS resolves percentages against the padding box, not the
+        // transformed bounding box.
+        function resolveRadius(value: string, el: Element): number {
+          if (value.includes("%")) {
+            const pct = parseFloat(value) / 100;
+            const w = el instanceof HTMLElement ? el.offsetWidth : 0;
+            const h = el instanceof HTMLElement ? el.offsetHeight : 0;
+            return pct * Math.min(w, h);
           }
+          const parsed = parseFloat(value);
+          return Number.isNaN(parsed) ? 0 : parsed;
         }
-        current = current.parentElement;
-      }
-      return [0, 0, 0, 0];
-    }
 
-    // Walk ancestors to find the tightest overflow:hidden clip rect.
-    // Returns null if no clipping ancestor exists.
-    function getClipRect(
-      node: Element,
-    ): { x: number; y: number; width: number; height: number } | null {
-      let current: Element | null = node.parentElement;
-      let clip: { x: number; y: number; width: number; height: number } | null = null;
-      while (current) {
-        const cs = window.getComputedStyle(current);
-        if (cs.overflow === "hidden" || cs.overflow === "clip") {
-          const r = current.getBoundingClientRect();
-          const ancestor = {
-            x: Math.round(r.x),
-            y: Math.round(r.y),
-            width: Math.round(r.width),
-            height: Math.round(r.height),
-          };
-          if (!clip) {
-            clip = ancestor;
-          } else {
-            // Intersect with existing clip
-            const x1 = Math.max(clip.x, ancestor.x);
-            const y1 = Math.max(clip.y, ancestor.y);
-            const x2 = Math.min(clip.x + clip.width, ancestor.x + ancestor.width);
-            const y2 = Math.min(clip.y + clip.height, ancestor.y + ancestor.height);
-            clip = { x: x1, y: y1, width: Math.max(0, x2 - x1), height: Math.max(0, y2 - y1) };
-          }
+        // Check element itself (replaced elements clip to own border-radius)
+        const selfCs = window.getComputedStyle(node);
+        const selfRadii: [number, number, number, number] = [
+          resolveRadius(selfCs.borderTopLeftRadius, node),
+          resolveRadius(selfCs.borderTopRightRadius, node),
+          resolveRadius(selfCs.borderBottomRightRadius, node),
+          resolveRadius(selfCs.borderBottomLeftRadius, node),
+        ];
+        if (selfRadii[0] > 0 || selfRadii[1] > 0 || selfRadii[2] > 0 || selfRadii[3] > 0) {
+          return selfRadii;
         }
-        current = current.parentElement;
-      }
-      return clip;
-    }
 
-    // Walk up the DOM multiplying each ancestor's opacity. GSAP animates
-    // opacity on wrapper divs, not directly on the video element, so the
-    // element's own opacity is often 1.0. Multiplying ancestors gives the
-    // true effective opacity.
-    function getEffectiveOpacity(node: Element): number {
-      let opacity = 1;
-      let current: Element | null = node;
-      while (current) {
-        const cs = window.getComputedStyle(current);
-        const val = parseFloat(cs.opacity);
-        // Note: `val || 1` would turn opacity:0 into 1 (0 is falsy)
-        opacity *= Number.isNaN(val) ? 1 : val;
-        current = current.parentElement;
-      }
-      return opacity;
-    }
-
-    // Compute the full CSS transform matrix from element-local coords to
-    // viewport coords by walking the offsetParent chain and accumulating
-    // position offsets + CSS transforms. This correctly handles GSAP
-    // animations on wrapper divs (rotation, scale) that getBoundingClientRect
-    // conflates into an axis-aligned bounding box.
-    // fallow-ignore-next-line complexity
-    function getViewportMatrix(node: Element): string {
-      const chain: HTMLElement[] = [];
-      let current: Element | null = node;
-      while (current instanceof HTMLElement) {
-        chain.push(current);
-        const next: Element | null =
-          (current.offsetParent as Element | null) ?? current.parentElement;
-        if (next === current) break;
-        current = next;
-      }
-      let mat = new DOMMatrix();
-      for (let i = chain.length - 1; i >= 0; i--) {
-        const htmlEl = chain[i];
-        if (!htmlEl) continue;
-        mat = mat.translate(htmlEl.offsetLeft, htmlEl.offsetTop);
-        const cs = window.getComputedStyle(htmlEl);
-        const origin = cs.transformOrigin.split(" ");
-        const ox = resolveLength(origin[0] ?? "0", htmlEl.offsetWidth);
-        const oy = resolveLength(origin[1] ?? "0", htmlEl.offsetHeight);
-        const individualTransform = composeIndividualTransforms(cs);
-        const hasIndividual = individualTransform !== null;
-        const hasTransform = cs.transform && cs.transform !== "none";
-        if (hasIndividual || hasTransform) {
-          mat = mat.translate(ox, oy);
-          if (hasIndividual) mat = mat.multiply(individualTransform);
-          if (hasTransform) {
-            try {
-              const t = new DOMMatrix(cs.transform);
-              if (
-                Number.isFinite(t.a) &&
-                Number.isFinite(t.b) &&
-                Number.isFinite(t.c) &&
-                Number.isFinite(t.d) &&
-                Number.isFinite(t.e) &&
-                Number.isFinite(t.f)
-              ) {
-                mat = mat.multiply(t);
-              }
-            } catch {
-              // DOMMatrix constructor throws on malformed input — skip.
+        // Walk ancestors looking for clipping container
+        let current: Element | null = node.parentElement;
+        while (current) {
+          const cs = window.getComputedStyle(current);
+          if (cs.overflow !== "visible") {
+            const tl = resolveRadius(cs.borderTopLeftRadius, current);
+            const tr = resolveRadius(cs.borderTopRightRadius, current);
+            const brr = resolveRadius(cs.borderBottomRightRadius, current);
+            const bl = resolveRadius(cs.borderBottomLeftRadius, current);
+            if (tl > 0 || tr > 0 || brr > 0 || bl > 0) {
+              return [tl, tr, brr, bl];
             }
           }
-          mat = mat.translate(-ox, -oy);
+          current = current.parentElement;
         }
+        return [0, 0, 0, 0];
       }
-      return mat.toString();
-    }
 
-    // fallow-ignore-next-line complexity
-    function composeIndividualTransforms(cs: CSSStyleDeclaration): DOMMatrix | null {
-      const translate = cs.getPropertyValue("translate").trim();
-      const rotate = cs.getPropertyValue("rotate").trim();
-      const scale = cs.getPropertyValue("scale").trim();
-      const hasTranslate = translate && translate !== "none";
-      const hasRotate = rotate && rotate !== "none";
-      const hasScale = scale && scale !== "none";
-      if (!hasTranslate && !hasRotate && !hasScale) return null;
-      let m = new DOMMatrix();
-      if (hasTranslate) {
-        const parts = translate.split(/\s+/);
-        const tx = parseFloat(parts[0] ?? "0") || 0;
-        const ty = parseFloat(parts[1] ?? "0") || 0;
-        if (tx !== 0 || ty !== 0) m = m.translate(tx, ty);
+      // Walk ancestors to find the tightest overflow:hidden clip rect.
+      // Returns null if no clipping ancestor exists.
+      function getClipRect(
+        node: Element,
+      ): { x: number; y: number; width: number; height: number } | null {
+        let current: Element | null = node.parentElement;
+        let clip: { x: number; y: number; width: number; height: number } | null = null;
+        while (current) {
+          const cs = window.getComputedStyle(current);
+          if (cs.overflow === "hidden" || cs.overflow === "clip") {
+            const r = current.getBoundingClientRect();
+            const ancestor = {
+              x: Math.round(r.x),
+              y: Math.round(r.y),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+            };
+            if (!clip) {
+              clip = ancestor;
+            } else {
+              // Intersect with existing clip
+              const x1 = Math.max(clip.x, ancestor.x);
+              const y1 = Math.max(clip.y, ancestor.y);
+              const x2 = Math.min(clip.x + clip.width, ancestor.x + ancestor.width);
+              const y2 = Math.min(clip.y + clip.height, ancestor.y + ancestor.height);
+              clip = { x: x1, y: y1, width: Math.max(0, x2 - x1), height: Math.max(0, y2 - y1) };
+            }
+          }
+          current = current.parentElement;
+        }
+        return clip;
       }
-      if (hasRotate) {
-        const deg = parseFloat(rotate) || 0;
-        if (deg !== 0) m = m.rotate(deg);
-      }
-      if (hasScale) {
-        const parts = scale.split(/\s+/);
-        const sx = parseFloat(parts[0] ?? "1") || 1;
-        const sy = parseFloat(parts[1] ?? String(sx)) || sx;
-        if (sx !== 1 || sy !== 1) m = m.scale(sx, sy);
-      }
-      return m;
-    }
 
-    function resolveLength(value: string, basis: number): number {
-      if (value.endsWith("%")) {
-        const pct = parseFloat(value) / 100;
-        return Number.isFinite(pct) ? pct * basis : 0;
+      // Walk up the DOM multiplying each ancestor's opacity. GSAP animates
+      // opacity on wrapper divs, not directly on the video element, so the
+      // element's own opacity is often 1.0. Multiplying ancestors gives the
+      // true effective opacity.
+      function getEffectiveOpacity(node: Element): number {
+        let opacity = 1;
+        let current: Element | null = node;
+        while (current) {
+          const cs = window.getComputedStyle(current);
+          const val = parseFloat(cs.opacity);
+          // Note: `val || 1` would turn opacity:0 into 1 (0 is falsy)
+          opacity *= Number.isNaN(val) ? 1 : val;
+          current = current.parentElement;
+        }
+        return opacity;
       }
-      const n = parseFloat(value);
-      return Number.isFinite(n) ? n : 0;
-    }
 
-    function isElementPaintable(node: Element): boolean {
-      const rect = node.getBoundingClientRect();
-      const style = window.getComputedStyle(node);
-      return (
-        style.visibility !== "hidden" &&
-        style.display !== "none" &&
-        rect.width > 0 &&
-        rect.height > 0
-      );
-    }
+      // Compute the full CSS transform matrix from element-local coords to
+      // viewport coords by walking the offsetParent chain and accumulating
+      // position offsets + CSS transforms. This correctly handles GSAP
+      // animations on wrapper divs (rotation, scale) that getBoundingClientRect
+      // conflates into an axis-aligned bounding box.
+      // fallow-ignore-next-line complexity
+      function getViewportMatrix(node: Element): string {
+        const chain: HTMLElement[] = [];
+        let current: Element | null = node;
+        while (current instanceof HTMLElement) {
+          chain.push(current);
+          const next: Element | null =
+            (current.offsetParent as Element | null) ?? current.parentElement;
+          if (next === current) break;
+          current = next;
+        }
+        let mat = new DOMMatrix();
+        for (let i = chain.length - 1; i >= 0; i--) {
+          const htmlEl = chain[i];
+          if (!htmlEl) continue;
+          mat = mat.translate(htmlEl.offsetLeft, htmlEl.offsetTop);
+          const cs = window.getComputedStyle(htmlEl);
+          const origin = cs.transformOrigin.split(" ");
+          const ox = resolveLength(origin[0] ?? "0", htmlEl.offsetWidth);
+          const oy = resolveLength(origin[1] ?? "0", htmlEl.offsetHeight);
+          const individualTransform = composeIndividualTransforms(cs);
+          const hasIndividual = individualTransform !== null;
+          const hasTransform = cs.transform && cs.transform !== "none";
+          if (hasIndividual || hasTransform) {
+            mat = mat.translate(ox, oy);
+            if (hasIndividual) mat = mat.multiply(individualTransform);
+            if (hasTransform) {
+              try {
+                const t = new DOMMatrix(cs.transform);
+                if (
+                  Number.isFinite(t.a) &&
+                  Number.isFinite(t.b) &&
+                  Number.isFinite(t.c) &&
+                  Number.isFinite(t.d) &&
+                  Number.isFinite(t.e) &&
+                  Number.isFinite(t.f)
+                ) {
+                  mat = mat.multiply(t);
+                }
+              } catch {
+                // DOMMatrix constructor throws on malformed input — skip.
+              }
+            }
+            mat = mat.translate(-ox, -oy);
+          }
+        }
+        return mat.toString();
+      }
 
-    for (const el of elements) {
-      const id = el.id;
-      if (!id) continue;
-      const rect = el.getBoundingClientRect();
-      const style = window.getComputedStyle(el);
-      const zIndex = getEffectiveZIndex(el);
-      const isHdrEl = hdrSet.has(id);
-      // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
-      // to hide native <video> elements, so the element's own computed opacity
-      // remains the GSAP-controlled value. Walk from the element itself to
-      // multiply through any ancestor opacity stacks.
-      const opacity = getEffectiveOpacity(el);
-      const visible = isElementPaintable(el);
-      const renderFrame = document.getElementById(`__render_frame_${id}__`);
-      const renderFrameVisible = renderFrame ? isElementPaintable(renderFrame) : false;
-      // offsetWidth/offsetHeight only exist on HTMLElement (not on
-      // SVGElement, MathMLElement, etc.). Fall back to the bounding rect
-      // dimensions for non-HTML elements so callers always get sensible
-      // layout numbers.
-      const htmlEl = el instanceof HTMLElement ? el : null;
-      results.push({
-        id,
-        zIndex,
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-        layoutWidth: htmlEl?.offsetWidth || Math.round(rect.width),
-        layoutHeight: htmlEl?.offsetHeight || Math.round(rect.height),
-        opacity,
-        visible,
-        renderFrameVisible,
-        isHdr: hdrSet.has(id),
-        // For HDR elements, use the full accumulated viewport matrix so the
-        // affine blit can apply rotation/scale/translate properly. For DOM
-        // elements, the element-level transform is sufficient for reference.
-        transform: isHdrEl ? getViewportMatrix(el) : style.transform || "none",
-        borderRadius: isHdrEl ? getEffectiveBorderRadius(el) : [0, 0, 0, 0],
-        // `getComputedStyle` returns "" when the property doesn't apply (e.g.
-        // for non-replaced elements); normalize to the CSS defaults so callers
-        // can rely on a populated value.
-        objectFit: style.objectFit || "fill",
-        objectPosition: style.objectPosition || "50% 50%",
-        clipRect: isHdrEl ? getClipRect(el) : null,
-      });
-    }
-    return results;
-  }, hdrIds);
+      // fallow-ignore-next-line complexity
+      function composeIndividualTransforms(cs: CSSStyleDeclaration): DOMMatrix | null {
+        const translate = cs.getPropertyValue("translate").trim();
+        const rotate = cs.getPropertyValue("rotate").trim();
+        const scale = cs.getPropertyValue("scale").trim();
+        const hasTranslate = translate && translate !== "none";
+        const hasRotate = rotate && rotate !== "none";
+        const hasScale = scale && scale !== "none";
+        if (!hasTranslate && !hasRotate && !hasScale) return null;
+        let m = new DOMMatrix();
+        if (hasTranslate) {
+          const parts = translate.split(/\s+/);
+          const tx = parseFloat(parts[0] ?? "0") || 0;
+          const ty = parseFloat(parts[1] ?? "0") || 0;
+          if (tx !== 0 || ty !== 0) m = m.translate(tx, ty);
+        }
+        if (hasRotate) {
+          const deg = parseFloat(rotate) || 0;
+          if (deg !== 0) m = m.rotate(deg);
+        }
+        if (hasScale) {
+          const parts = scale.split(/\s+/);
+          const sx = parseFloat(parts[0] ?? "1") || 1;
+          const sy = parseFloat(parts[1] ?? String(sx)) || sx;
+          if (sx !== 1 || sy !== 1) m = m.scale(sx, sy);
+        }
+        return m;
+      }
+
+      function resolveLength(value: string, basis: number): number {
+        if (value.endsWith("%")) {
+          const pct = parseFloat(value) / 100;
+          return Number.isFinite(pct) ? pct * basis : 0;
+        }
+        const n = parseFloat(value);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function isElementPaintable(node: Element): boolean {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      }
+
+      for (const el of elements) {
+        // Report the render id so callers can match these back to the media list.
+        // `||`, not `??`: `__hfMediaId` yields "" for an element with neither id.
+        const id = window.__hfMediaId?.(el) || el.id;
+        if (!id) continue;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const zIndex = getEffectiveZIndex(el);
+        const isHdrEl = hdrSet.has(id);
+        // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
+        // to hide native <video> elements, so the element's own computed opacity
+        // remains the GSAP-controlled value. Walk from the element itself to
+        // multiply through any ancestor opacity stacks.
+        const opacity = getEffectiveOpacity(el);
+        const visible = isElementPaintable(el);
+        const renderFrame = document.getElementById(`${prefix}${id}${suffix}`);
+        const renderFrameVisible = renderFrame ? isElementPaintable(renderFrame) : false;
+        // offsetWidth/offsetHeight only exist on HTMLElement (not on
+        // SVGElement, MathMLElement, etc.). Fall back to the bounding rect
+        // dimensions for non-HTML elements so callers always get sensible
+        // layout numbers.
+        const htmlEl = el instanceof HTMLElement ? el : null;
+        results.push({
+          id,
+          zIndex,
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          layoutWidth: htmlEl?.offsetWidth || Math.round(rect.width),
+          layoutHeight: htmlEl?.offsetHeight || Math.round(rect.height),
+          opacity,
+          visible,
+          renderFrameVisible,
+          isHdr: hdrSet.has(id),
+          // For HDR elements, use the full accumulated viewport matrix so the
+          // affine blit can apply rotation/scale/translate properly. For DOM
+          // elements, the element-level transform is sufficient for reference.
+          transform: isHdrEl ? getViewportMatrix(el) : style.transform || "none",
+          borderRadius: isHdrEl ? getEffectiveBorderRadius(el) : [0, 0, 0, 0],
+          // `getComputedStyle` returns "" when the property doesn't apply (e.g.
+          // for non-replaced elements); normalize to the CSS defaults so callers
+          // can rely on a populated value.
+          objectFit: style.objectFit || "fill",
+          objectPosition: style.objectPosition || "50% 50%",
+          clipRect: isHdrEl ? getClipRect(el) : null,
+        });
+      }
+      return results;
+    },
+    hdrIds,
+    RENDER_FRAME_ID_PREFIX,
+    RENDER_FRAME_ID_SUFFIX,
+  );
 }

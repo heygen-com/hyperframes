@@ -23,6 +23,9 @@ import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMir
 import { runZLaneGesture } from "../nle/zLaneGesture";
 import { useLayerRevealOverride } from "./useLayerRevealOverride";
 
+// Rows this panel renders before it stops. A display budget, not a document limit.
+const LAYERS_PANEL_MAX_ROWS = 80;
+
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
   audio: "Au",
@@ -137,11 +140,13 @@ export const LayersPanel = memo(function LayersPanel() {
     // A preview reload detaches the drilled-into wrapper; exit drill-in if so.
     if (activeGroupElement && !activeGroupElement.isConnected) setActiveGroupElement(null);
 
-    const items = collectDomEditLayerItems(root, {
-      activeCompositionPath: activeCompPath,
-      isMasterView,
-      activeGroupElement,
-    });
+    const items = collectDomEditLayerItems(
+      root,
+      { activeCompositionPath: activeCompPath, isMasterView, activeGroupElement },
+      // How many rows this panel is willing to render, nothing more. Hit-testing
+      // callers deliberately take the whole document instead.
+      LAYERS_PANEL_MAX_ROWS,
+    );
     setLayers(sortLayersByZIndex(items));
   }, [previewIframeRef, activeCompPath, isMasterView, activeGroupElement, setActiveGroupElement]);
 

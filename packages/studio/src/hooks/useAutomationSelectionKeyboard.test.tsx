@@ -261,9 +261,10 @@ describe("useAutomationSelectionKeyboard", () => {
       t0: 5,
       t1: 7,
       // Full height: everything the paste landed is selected, so Delete straight
-      // after undoes it in one press.
+      // after undoes it in one press. The volume axis tops out at the authoring
+      // ceiling, not at unity.
       v0: 0,
-      v1: 1,
+      v1: VOLUME_RANGE.max,
     });
   });
 
@@ -300,9 +301,10 @@ describe("useAutomationSelectionKeyboard", () => {
       t0: 4,
       t1: 6,
       // Full height: everything the paste landed is selected, so Delete straight
-      // after undoes it in one press.
+      // after undoes it in one press. The volume axis tops out at the authoring
+      // ceiling, not at unity.
       v0: 0,
-      v1: 1,
+      v1: VOLUME_RANGE.max,
     });
   });
 
@@ -338,9 +340,10 @@ describe("useAutomationSelectionKeyboard", () => {
       t0: 4,
       t1: 6,
       // Full height: everything the paste landed is selected, so Delete straight
-      // after undoes it in one press.
+      // after undoes it in one press. The volume axis tops out at the authoring
+      // ceiling, not at unity.
       v0: 0,
-      v1: 1,
+      v1: VOLUME_RANGE.max,
     });
   });
 

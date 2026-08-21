@@ -43,11 +43,29 @@ function observeDoc(doc: Document, markDirty: () => void): MutationObserver | nu
   return observer;
 }
 
+/**
+ * How often the indicator geometry may be rebuilt.
+ *
+ * A rebuild walks every element in the preview and reads layout for each —
+ * 6.5ms on an 825-element captured page, against a 16.7ms frame. What marks it
+ * dirty is a MutationObserver on inline style, which is exactly how animation
+ * writes, so playback would pay that on close to every frame. The indicators
+ * are a passive affordance: refreshing them a few times a second is
+ * indistinguishable on screen and keeps the cost off the frame budget.
+ */
+export const RECOMPUTE_INTERVAL_MS = 100;
+
+/** Dirty, and far enough past the last rebuild to be worth paying for another. */
+export function rebuildDue(dirty: boolean, lastAt: number, now: number): boolean {
+  return dirty && now - lastAt >= RECOMPUTE_INTERVAL_MS;
+}
+
 export function startOffCanvasIndicatorRefresh(
   options: OffCanvasIndicatorRefreshOptions,
 ): () => void {
   let frame = 0;
   let lastCompSig = "";
+  let lastRecomputeAt = Number.NEGATIVE_INFINITY;
   const markDirty = () => {
     options.dirtyRef.current = true;
   };
@@ -76,7 +94,10 @@ export function startOffCanvasIndicatorRefresh(
       if (options.dirtyRef.current) clearIndicators(options);
       return;
     }
-    if (!options.dirtyRef.current) return;
+    // Staying dirty while throttled is what makes the next eligible frame rebuild.
+    const now = performance.now();
+    if (!rebuildDue(options.dirtyRef.current, lastRecomputeAt, now)) return;
+    lastRecomputeAt = now;
     options.dirtyRef.current = false;
     recomputeOffCanvasIndicators(
       iframe,

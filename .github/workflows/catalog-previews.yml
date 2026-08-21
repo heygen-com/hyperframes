@@ -66,7 +66,7 @@ jobs:
       # file copy), so the job never needed it and ubuntu-latest does not ship
       # it.
       - name: Install ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+        uses: ./.github/actions/install-ffmpeg-linux
 
       - name: Render changed block/component previews
         env:

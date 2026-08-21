@@ -416,36 +416,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
-  // timed_element_missing_visibility_hidden
-  // fallow-ignore-next-line complexity
-  ({ tags }) => {
-    const findings: HyperframeLintFinding[] = [];
-    for (const tag of tags) {
-      if (tag.name === "audio" || tag.name === "script" || tag.name === "style") continue;
-      if (!readAttr(tag.raw, "data-start")) continue;
-      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
-      if (readAttr(tag.raw, "data-composition-src")) continue;
-      const classAttr = readAttr(tag.raw, "class") || "";
-      const styleAttr = readAttr(tag.raw, "style") || "";
-      const hasClip = classAttr.split(/\s+/).includes("clip");
-      const hasHiddenStyle =
-        /visibility\s*:\s*hidden/i.test(styleAttr) || /opacity\s*:\s*0/i.test(styleAttr);
-      if (!hasClip && !hasHiddenStyle) {
-        const elementId = readAttr(tag.raw, "id") || undefined;
-        findings.push({
-          code: "timed_element_missing_visibility_hidden",
-          severity: "info",
-          message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has data-start but no class="clip", visibility:hidden, or opacity:0. Consider adding initial hidden state if the element should not be visible before its start time.`,
-          elementId,
-          fixHint:
-            'Add class="clip" (with CSS: .clip { visibility: hidden; }) or style="opacity:0" if the element should start hidden.',
-          snippet: truncateSnippet(tag.raw),
-        });
-      }
-    }
-    return findings;
-  },
-
   // deprecated_data_layer + deprecated_data_end
   // fallow-ignore-next-line complexity
   ({ tags }) => {
@@ -545,7 +515,12 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // fallow-ignore-next-line complexity
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
-    const skipTags = new Set(["audio", "video", "script", "style", "template"]);
+    // `img` sits here for the same reason `video` and `audio` already did: the
+    // three media primitives are authored without `class="clip"` in the
+    // canonical clip block (packages/core/docs/core.md), so requiring it on the
+    // `<img>` alone errored on the documented pattern while its two siblings on
+    // the adjacent lines passed.
+    const skipTags = new Set(["audio", "img", "video", "script", "style", "template"]);
     for (const tag of tags) {
       if (skipTags.has(tag.name)) continue;
       // Skip composition hosts
@@ -564,11 +539,18 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       const elementId = readAttr(tag.raw, "id") || undefined;
       findings.push({
         code: "timed_element_missing_clip_class",
-        severity: "error",
-        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has timing attributes but no class="clip". The element will be visible for the entire composition instead of only during its scheduled time range.`,
+        // Not an error: the runtime drives timed visibility off the `data-start`
+        // ATTRIBUTE, not this class — `syncTimedElementVisibility` walks
+        // `querySelectorAll("[data-start]")` and toggles `style.visibility`
+        // regardless of class (pinned by the runtime's own init test, which
+        // uses a bare `<div data-start data-duration>` with no `class="clip"`).
+        // The class is an authoring convention the tooling reads, so a missing
+        // one is worth flagging but does not break the render.
+        severity: "warning",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has timing attributes but no class="clip". The runtime still hides it outside its time range, but Studio and the GSAP clip-ownership rules use .clip to recognise a clip, so leaving it off makes the element harder to edit and to lint.`,
         elementId,
         fixHint:
-          'Add class="clip" to the element. The HyperFrames runtime uses .clip to control visibility based on data-start/data-duration.',
+          'Add class="clip" to the element so Studio and the linter can recognise it as a clip.',
         snippet: truncateSnippet(tag.raw),
       });
     }

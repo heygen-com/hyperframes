@@ -132,12 +132,61 @@
             <div class="demo-card-line w-half"></div>
           </div>
           <div class="demo-card-footer">
-            <div class="hf-transition-text-state-swap">
+            <div
+              class="hf-transition-text-state-swap"
+              data-composition-variables='[
+    {"id": "from-text", "type": "string", "role": "content", "label": "From text", "description": "The outgoing label, on screen before the swap.", "default": "Saving draft"},
+    {"id": "to-text", "type": "string", "role": "content", "label": "To text", "description": "The incoming label, on screen after the swap. It rests hidden until the timeline reveals it.", "default": "Saved"},
+    {"id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.", "default": "standard", "options": [{"value": "close", "label": "Close"}, {"value": "standard", "label": "Standard"}, {"value": "far", "label": "Far"}]},
+    {"id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Label colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{"value": "ink", "label": "Ink"}, {"value": "paper", "label": "Paper"}, {"value": "accent", "label": "Accent"}]}
+  ]'
+            >
               <span class="from">Saving draft…</span><span class="to">Saved</span>
             </div>
           </div>
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          var reaches = { close: 0.5, standard: 1, far: 1.85 };
+          var tones = {
+            ink: "#18181b",
+            paper: "#fafafa",
+            accent: "var(--brand, #34d399)",
+          };
+
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          function text(value, fallback) {
+            var resolved = value == null ? "" : String(value).trim();
+            return resolved.length > 0 ? resolved : fallback;
+          }
+
+          var fromText = text(vars["from-text"], "Saving draft");
+          var toText = text(vars["to-text"], "Saved");
+          var reach = reaches[pick(reaches, vars.distance, "standard")];
+          var tone = tones[pick(tones, vars.tone, "ink")];
+
+          var roots = document.querySelectorAll(".hf-transition-text-state-swap");
+          for (var i = 0; i < roots.length; i += 1) {
+            var root = roots[i];
+            root.style.setProperty("--hf-text-reach", String(reach));
+            root.style.setProperty("--hf-text-color", tone);
+            root.querySelector(".from").textContent = fromText;
+            root.querySelector(".to").textContent = toText;
+          }
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
@@ -169,5 +218,28 @@
         window.__timelines["text-state-swap-demo"] = tl;
       </script>
     </div>
+    <style>
+      .hf-transition-text-state-swap {
+        position: relative;
+        width: 250px;
+        height: 36px;
+        color: var(--hf-text-color, #18181b);
+        font:
+          900 28px/1 Inter,
+          system-ui,
+          sans-serif;
+      }
+      .hf-transition-text-state-swap span {
+        position: absolute;
+        left: 0;
+        top: 0;
+        filter: blur(var(--hf-text-blur, 0px));
+        transform: translateY(calc(var(--hf-text-y, 0px) * var(--hf-text-reach, 1)));
+        will-change: transform, filter, opacity;
+      }
+      .hf-transition-text-state-swap .to {
+        opacity: 0;
+      }
+    </style>
   </body>
 </html>

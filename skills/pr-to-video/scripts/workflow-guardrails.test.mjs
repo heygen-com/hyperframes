@@ -83,7 +83,7 @@ test("#1092 packets contain selected excerpts but never the full diff", () => {
   write(join(project, "frame.md"), "# compact frame tokens\n");
   write(
     join(project, "STORYBOARD.md"),
-    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Diff\n\n- duration: 4s\n- src: compositions/frames/01-diff.html\n- focal: code-diff\n- blueprint: compose\n- rules: text-reveal\n\n### Source excerpt\n\n\`\`\`diff\n-oldCall()\n+newCall({ attested: true })\n\`\`\`\n\n## Frame 2 — Impact\n\n- duration: 3s\n- src: compositions/frames/02-impact.html\n- blueprint: number-lockup\n- rules: counting-dynamic-scale\n`,
+    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Diff\n\n- duration: 4s\n- src: compositions/frames/01-diff.html\n- focal: code-diff\n- blueprint: compose\n- rules: text-reveal\n\n### Source excerpt\n\n\`\`\`diff\n-oldCall()\n+newCall({ attested: true })\n\`\`\`\n\n## Frame 2 — Impact\n\n- duration: 3s\n- src: compositions/frames/02-impact.html\n- blueprint: dataviz-countup\n- rules: counting-dynamic-scale\n`,
   );
 
   const result = buildFramePackets({

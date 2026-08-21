@@ -77,8 +77,8 @@ describe("Cloud Workflows plan protocol routing", () => {
     expect(source.match(/max_retries: 4/g)).toHaveLength(4);
   });
 
-  it("keeps v1 as the default and rejects unknown protocols before plan", () => {
-    expect(source).toContain('default(map.get(args, "PlanProtocol"), "v1")');
+  it("defaults omitted protocol to v2 and rejects unknown protocols before plan", () => {
+    expect(source).toContain('default(map.get(args, "PlanProtocol"), "v2")');
     expect(namedStep("selectPlanProtocol")).toMatchObject({
       next: "unsupportedPlanProtocol",
     });

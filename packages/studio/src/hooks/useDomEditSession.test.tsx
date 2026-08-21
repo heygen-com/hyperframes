@@ -93,7 +93,7 @@ function createSessionParams(
     previewDocumentVersion: 0,
     rightPanelTab: "design",
     applyStudioManualEditsToPreviewRef: { current: async () => {} },
-    syncPreviewHistoryHotkey: vi.fn(),
+    syncPreviewHotkeys: vi.fn(),
     reloadPreview: vi.fn(),
     setRefreshKey: vi.fn(),
     ...overrides,

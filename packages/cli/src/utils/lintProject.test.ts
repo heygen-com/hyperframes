@@ -142,17 +142,19 @@ describe("lintProject", () => {
     });
     writeFileSync(
       join(project, "compositions", "scene.css"),
-      '[data-composition-id="scene"] .title { opacity: 0; }',
+      '[data-composition-id="no-such-comp"] .title { opacity: 0; }',
     );
 
     const { results } = await lintProject(project);
     const subResult = results.find((result) => result.file === "compositions/scene.html");
+    // The linked stylesheet scopes CSS to a composition id that has no wrapper
+    // here, so this finding can only come from the linked file being read.
     const finding = subResult?.result.findings.find(
-      (item) => item.code === "composition_self_attribute_selector",
+      (item) => item.code === "scoped_css_missing_wrapper",
     );
 
     expect(finding).toBeDefined();
-    expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
+    expect(finding?.selector).toBe('[data-composition-id="no-such-comp"]');
   });
 
   it("lints percent-encoded linked CSS filenames that exist decoded on disk", async () => {
@@ -165,17 +167,19 @@ describe("lintProject", () => {
     });
     writeFileSync(
       join(project, "compositions", decodeURIComponent(encodedFilename)),
-      '[data-composition-id="scene"] .title { opacity: 0; }',
+      '[data-composition-id="no-such-comp"] .title { opacity: 0; }',
     );
 
     const { results } = await lintProject(project);
     const subResult = results.find((result) => result.file === "compositions/scene.html");
+    // The linked stylesheet scopes CSS to a composition id that has no wrapper
+    // here, so this finding can only come from the linked file being read.
     const finding = subResult?.result.findings.find(
-      (item) => item.code === "composition_self_attribute_selector",
+      (item) => item.code === "scoped_css_missing_wrapper",
     );
 
     expect(finding).toBeDefined();
-    expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
+    expect(finding?.selector).toBe('[data-composition-id="no-such-comp"]');
   });
 
   it("aggregates errors across index.html and sub-compositions", async () => {

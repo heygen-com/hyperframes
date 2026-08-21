@@ -389,44 +389,59 @@ export function useTimelineEditing({
   });
 
   // fallow-ignore-next-line complexity
-  const handleTimelineElementDelete = useCallback(
+  const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (element: TimelineElement) => {
+    async (selection: TimelineElement[]) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-      const label = getTimelineElementLabel(element);
+      const [element] = selection;
+      if (!element) return;
+      const label =
+        selection.length === 1 ? getTimelineElementLabel(element) : `${selection.length} clips`;
 
+      // One file per delete pass. Every element in a marquee selection lives in
+      // the composition being edited, so they share a target; anything that
+      // does not is dropped rather than written to the wrong file.
       const targetPath = element.sourceFile || activeCompPath || "index.html";
+      const sameFile = selection.filter(
+        (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
+      );
       try {
         const originalContent = await readFileContent(pid, targetPath);
 
-        const patchTarget = buildPatchTarget(element);
-        if (!patchTarget) {
-          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
-        }
+        // Remove every selected element before saving once. The server rewrites
+        // the file per call, so `removedContent` after the last one holds them
+        // all — which is what makes this a single history entry, and a single
+        // undo, rather than one per clip.
+        let removedContent = originalContent;
+        for (const target of sameFile) {
+          const patchTarget = buildPatchTarget(target);
+          if (!patchTarget) {
+            throw new Error(`Timeline element ${target.id} is missing a patchable target`);
+          }
 
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-            body: JSON.stringify({ target: patchTarget }),
-          },
-        );
-        if (!removeResponse.ok) {
-          throw new Error(`Failed to delete ${element.id} from ${targetPath}`);
-        }
+          const removeResponse = await fetch(
+            `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+              body: JSON.stringify({ target: patchTarget }),
+            },
+          );
+          if (!removeResponse.ok) {
+            throw new Error(`Failed to delete ${target.id} from ${targetPath}`);
+          }
 
-        const removeData = (await removeResponse.json()) as {
-          changed?: boolean;
-          content?: string;
-        };
-        const removedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
+          const removeData = (await removeResponse.json()) as {
+            changed?: boolean;
+            content?: string;
+          };
+          if (typeof removeData.content === "string") removedContent = removeData.content;
+        }
         // Content-driven duration: shrink the composition to the furthest
         // remaining clip end, read from the post-removal SOURCE (raw
         // data-duration), so deleting the last/longest clip removes trailing
@@ -460,15 +475,18 @@ export function useTimelineEditing({
           throw error;
         }
 
+        const deletedKeys = new Set(sameFile.map((te) => te.key ?? te.id));
         usePlayerStore
           .getState()
-          .setElements(
-            timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
-          );
+          .setElements(timelineElements.filter((te) => !deletedKeys.has(te.key ?? te.id)));
         usePlayerStore.getState().setSelectedElementId(null);
+        usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();
         reloadPreview();
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        showToast(
+          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
+          "info",
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
         showToast(message);
@@ -486,6 +504,14 @@ export function useTimelineEditing({
       forceReloadSdkSession,
       previewIframeRef,
     ],
+  );
+
+  /** Single-clip delete — the context menu and clip chrome path. */
+  const handleTimelineElementDelete = useCallback(
+    async (element: TimelineElement) => {
+      await handleTimelineElementsDelete([element]);
+    },
+    [handleTimelineElementsDelete],
   );
 
   const { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop } =
@@ -533,6 +559,7 @@ export function useTimelineEditing({
     handleToggleTrackHidden,
     handleToggleElementHidden,
     handleTimelineElementDelete,
+    handleTimelineElementsDelete,
     handleTimelineElementSplit: handleRazorSplit,
     handleRazorSplit,
     handleRazorSplitAll,

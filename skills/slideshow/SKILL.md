@@ -9,7 +9,7 @@ description: >
   Unclear → /hyperframes.
 ---
 
-> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 > **figma source**: If the deck's content or storyboard comes from a figma.com URL, run `/figma` first — asset export, brand tokens, and storyboard reconstruction if the source is a strip of scene frames — then build from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
 
@@ -494,7 +494,7 @@ Studio/`preview` is useful for editing a composition, but it is not a clear fina
 {
   "scripts": {
     "dev": "npx hyperframes present ./composition",
-    "studio": "npx hyperframes preview ./composition"
+    "studio": "npx hyperframes preview ./composition --background"
   }
 }
 ```

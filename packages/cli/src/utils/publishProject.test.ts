@@ -304,6 +304,33 @@ describe("createPublishArchive (U6 cloud-render regression guard)", () => {
   // `createPublishArchive` is exactly the thin composition of
   // `buildPublishFileMap` + `zipPublishFileMap` with no baking hook, and that
   // a local video asset's original bytes/HTML pass through unmodified.
+  it("zips the same files to the same bytes across a two-second boundary", () => {
+    // The flake this pins: adm-zip stamps each entry with `new Date()` as it is
+    // constructed, and a ZIP timestamp resolves to two seconds — so two runs
+    // either side of a boundary produced different bytes for identical content.
+    // The byte-identity assertion below could only ever fail this way, and did,
+    // rarely enough to survive since July.
+    //
+    // Moving the clock is what reproduces it: back-to-back builds land in the
+    // same bucket almost always, which is exactly why it hid.
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+        const first = createPublishArchive(dir);
+        vi.setSystemTime(new Date("2026-01-01T00:00:03.000Z"));
+        const second = createPublishArchive(dir);
+        expect(first.buffer.equals(second.buffer)).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a source video byte-identical and excludes proxies from the cloud-render archive", () => {
     const dir = makeProjectDir();
     try {

@@ -772,6 +772,42 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     });
   });
 
+  // ── Encoder availability, asked before Export is offered ────────────────
+  // The render route below already refuses without FFmpeg, but discovering at
+  // export time that the encoder was never installed is the worst possible
+  // moment: the user has already built the whole composition. Studio asks here
+  // when the Render panel opens so it can say so up front, with the same
+  // per-platform install command `doctor` prints.
+  //
+  // Only a passing result is cached. A user who reads the prompt, installs
+  // FFmpeg and hits Recheck has to get a fresh answer, or the fix they just
+  // applied is invisible until they restart Studio.
+  let ffmpegReady = false;
+  app.get("/api/environment/ffmpeg", async (c) => {
+    if (ffmpegReady) return c.json({ ok: true });
+    const [{ runEnvironmentChecks }, { getFFmpegInstallCommand }] = await Promise.all([
+      import("../browser/preflight.js"),
+      import("../browser/ffmpeg.js"),
+    ]);
+    // With every optional check off this is exactly the FFmpeg and ffprobe
+    // pair — the same two `doctor` runs. ffprobe matters on its own: it ships
+    // with FFmpeg but is a separate binary, and a project with any media asset
+    // fails at probe time without it.
+    const { outcomes } = await runEnvironmentChecks();
+    const failed = outcomes.find((outcome) => !outcome.ok);
+    if (!failed) {
+      ffmpegReady = true;
+      return c.json({ ok: true });
+    }
+    return c.json({
+      ok: false,
+      title: failed.title ?? `${failed.name} not found`,
+      detail: failed.detail,
+      hint: failed.hint,
+      command: getFFmpegInstallCommand(),
+    });
+  });
+
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
   // fail fast with an actionable hint instead of burning through the entire

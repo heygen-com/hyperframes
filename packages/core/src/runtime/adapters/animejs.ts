@@ -8,14 +8,18 @@ import { swallow } from "../diagnostics";
  *
  * ## Usage in a composition
  *
+ * The v4 global `anime` is a namespace object, not a callable — `anime.animate()`,
+ * `anime.createTimeline()`. v3's `anime({ targets })` form does not exist in v4.
+ * (4.1+ also moved the bundles from `lib/` to `dist/bundles/`.)
+ *
  * ```html
- * <script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
+ * <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
  * <script>
- *   const anim = anime({
- *     targets: '.box',
- *     translateX: 250,
+ *   const anim = anime.animate('.box', {
+ *     x: 250,
  *     rotate: '1turn',
  *     duration: 2000,
+ *     ease: 'outExpo',
  *     autoplay: false,
  *   });
  *   window.__hfAnime = window.__hfAnime || [];
@@ -23,13 +27,13 @@ import { swallow } from "../diagnostics";
  * </script>
  * ```
  *
- * Timelines work the same way:
+ * Timelines work the same way — note `add(targets, params, position)`:
  *
  * ```html
  * <script>
- *   const tl = anime.timeline({ autoplay: false });
- *   tl.add({ targets: '.a', opacity: [0, 1], duration: 500 })
- *     .add({ targets: '.b', translateY: [-40, 0], duration: 400 });
+ *   const tl = anime.createTimeline({ autoplay: false });
+ *   tl.add('.a', { opacity: [0, 1], duration: 500 })
+ *     .add('.b', { y: [-40, 0], duration: 400 });
  *   window.__hfAnime = window.__hfAnime || [];
  *   window.__hfAnime.push(tl);
  * </script>
@@ -37,10 +41,11 @@ import { swallow } from "../diagnostics";
  *
  * Multiple instances are supported — all are seeked in sync.
  *
- * ## Auto-discovery
+ * ## Auto-discovery (v3 only — inert on v4)
  *
- * The adapter also checks `anime.running` for active instances
- * (useful for compositions that forget to register manually).
+ * `discover()` checks `anime.running`, which v4 no longer exports, so it always
+ * returns empty against a v4 build. Compositions MUST push every instance onto
+ * `window.__hfAnime` themselves; an unregistered instance is never seeked.
  */
 export function createAnimeJsAdapter(): RuntimeDeterministicAdapter {
   return {
@@ -133,9 +138,10 @@ interface AnimeInstance {
 }
 
 interface AnimeGlobal {
-  (params: unknown): AnimeInstance;
-  timeline?: (params?: unknown) => AnimeInstance;
-  running: AnimeInstance[];
+  animate?: (targets: unknown, params?: unknown) => AnimeInstance;
+  createTimeline?: (params?: unknown) => AnimeInstance;
+  /** Legacy v3 registry retained for backward-compatible discovery. */
+  running?: AnimeInstance[];
 }
 
 interface AnimeWindow extends Window {

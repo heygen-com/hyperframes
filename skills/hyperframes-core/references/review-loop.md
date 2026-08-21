@@ -6,7 +6,7 @@ This is the shared process for any workflow that plans on a storyboard. The cont
 
 ## § 1 — The plan, on a live board
 
-Open the **storyboard board** before presenting the plan: run `npx hyperframes preview` from the project directory in the background, confirm it is serving, and open `http://localhost:<port>/?view=storyboard#project/<project-name>`. This is an early planning surface, not the final composition preview; it may open before composition checks. The plan appears as frame cards and refreshes as work lands.
+Open the **storyboard board** before presenting the plan: run `npx hyperframes preview --background` from the project directory, confirm it is serving, and open `http://localhost:<port>/?view=storyboard#project/<project-name>`. This is an early planning surface, not the final composition preview; it may open before composition checks. The plan appears as frame cards and refreshes as work lands.
 
 Present the plan as a proposal (shape: `hyperframes-creative/references/story-spine.md` § 3): open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). Hand the board URL with it, noting feedback lands in both places — comment on the board or reply here, one revision loop — and that a board submit still needs one reply here (anything) to get picked up.
 

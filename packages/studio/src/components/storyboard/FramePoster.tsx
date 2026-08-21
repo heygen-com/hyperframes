@@ -8,8 +8,13 @@ export interface FramePosterProps {
   /** Time (seconds) to seek to for the poster. */
   seconds: number;
   title: string;
-  /** `cover` fills+crops (contact-sheet tile); `contain` letterboxes (focus hero). */
-  fit?: "cover" | "contain";
+  /**
+   * Where this poster is rendered. A contact-sheet tile is ~300px wide and there
+   * are many of them; the focus hero is up to 900px wide and there is exactly
+   * one. Tiles use a bounded high-density capture; the hero uses source density.
+   * The surface also decides whether the result fills or letterboxes its cell.
+   */
+  surface?: "tile" | "hero";
   /**
    * Project content signature to key the poster URL on. The thumbnail route
    * regenerates when the frame's source changes, but the browser only refetches
@@ -30,14 +35,14 @@ export function FramePoster({
   src,
   seconds,
   title,
-  fit = "cover",
+  surface = "tile",
   posterVersion,
 }: FramePosterProps) {
   const [failed, setFailed] = useState(false);
   // The <img> is reused (no key) when a tile/hero swaps to a different frame, so a
   // prior load error would stick. Reset when the poster target changes — including
   // a new posterVersion, so a frame that failed mid-write retries once it settles.
-  useEffect(() => setFailed(false), [src, seconds, posterVersion]);
+  useEffect(() => setFailed(false), [src, seconds, posterVersion, surface]);
   if (failed) {
     return (
       <div className="flex h-full w-full items-center justify-center text-[11px] text-neutral-600">
@@ -50,6 +55,10 @@ export function FramePoster({
     seekTime: seconds,
     duration: 0,
     origin: window.location.origin,
+    // The normal 240x135 preview is unreadable in the contact sheet, while source
+    // density is unbounded across all tiles. Give tiles a capped review density
+    // and reserve true source output for the single focus hero.
+    output: surface === "hero" ? "source" : "storyboard",
   });
   if (posterVersion) {
     const withVersion = new URL(url, window.location.origin);
@@ -63,7 +72,7 @@ export function FramePoster({
       draggable={false}
       loading="lazy"
       onError={() => setFailed(true)}
-      className={`h-full w-full ${fit === "contain" ? "object-contain" : "object-cover"}`}
+      className={`h-full w-full ${surface === "hero" ? "object-contain" : "object-cover"}`}
     />
   );
 }

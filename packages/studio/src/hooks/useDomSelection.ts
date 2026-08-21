@@ -29,6 +29,9 @@ export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
   preserveGroup?: boolean;
+  // A clear that came FROM the timeline must not be echoed back, or picking a
+  // clip with no canvas node would deselect the clip you just picked.
+  announce?: boolean;
 }
 
 export interface ResolveDomSelectionOptions {
@@ -170,21 +173,14 @@ export function useDomSelection({
 
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
-    (
-      selection: DomEditSelection | null,
-      options?: {
-        revealPanel?: boolean;
-        additive?: boolean;
-        preserveGroup?: boolean;
-      },
-    ) => {
+    (selection: DomEditSelection | null, options?: ApplyDomSelectionOptions) => {
       if (!selection) {
         logSelect("clear", { hadGroup: domEditGroupSelectionsRef.current.length });
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
-        announceTimelineSelection([], null);
+        if (options?.announce !== false) announceTimelineSelection([], null);
         return;
       }
 
@@ -393,7 +389,14 @@ export function useDomSelection({
       const selection = await buildDomSelectionForTimelineElement(element);
       // A newer selection superseded this one while we were resolving — drop the stale result.
       if (seq !== timelineSelectSeqRef.current) return;
-      if (selection) applyDomSelection(selection);
+      if (selection) {
+        applyDomSelection(selection);
+        return;
+      }
+      // No canvas node (audio, a comp that is not the active one). Leaving the
+      // previous selection pointed the canvas at something the user did not pick,
+      // and Delete acts on the canvas first — so it removed that, not the clip.
+      applyDomSelection(null, { revealPanel: false, announce: false });
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
   );

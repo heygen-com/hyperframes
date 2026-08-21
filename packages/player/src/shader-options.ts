@@ -4,6 +4,9 @@
  * URLs and srcdoc HTML.
  */
 
+import { ensureRuntimeBeforeBodyScripts } from "./runtime-in-srcdoc.js";
+import { RUNTIME_CDN_URL } from "./runtime-url.js";
+
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
 export const SHADER_LOADING_ATTR = "shader-loading";
 const SHADER_CAPTURE_SCALE_PARAM = "__hf_shader_capture_scale";
@@ -141,9 +144,15 @@ export function prepareSrcForElement(el: Element, src: string): string {
 }
 
 export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
-  return injectShaderOptionsIntoSrcdoc(
-    srcdoc,
-    normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
-    getShaderModeFromElement(el),
+  // Runtime first, and in the head: a component's inline script reads its
+  // variables while the body is parsing, long before the probe's own injection
+  // could land. See runtime-in-srcdoc.ts.
+  return ensureRuntimeBeforeBodyScripts(
+    injectShaderOptionsIntoSrcdoc(
+      srcdoc,
+      normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
+      getShaderModeFromElement(el),
+    ),
+    RUNTIME_CDN_URL,
   );
 }

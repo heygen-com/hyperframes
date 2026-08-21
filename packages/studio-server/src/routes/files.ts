@@ -2496,6 +2496,37 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     );
   });
 
+  // Removing a marquee selection one element at a time meant one request and
+  // one rewrite of the whole file per element. A canvas selection runs to
+  // hundreds of members, so a single Delete press became hundreds of serial
+  // round trips: the file ended up correct, but only after long enough that the
+  // key looked like it had done nothing at all.
+  api.post("/projects/:id/file-mutations/remove-elements/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "remove-elements");
+    if ("error" in ctx) return ctx.error;
+
+    if (!existsSync(ctx.absPath)) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const body = (await c.req.json().catch(() => null)) as { targets?: MutationTarget[] } | null;
+    const targets = body?.targets;
+    if (!Array.isArray(targets) || targets.length === 0) {
+      return c.json({ error: "targets required" }, 400);
+    }
+
+    const originalContent = readFileSync(ctx.absPath, "utf-8");
+    // A member nested inside one already removed simply no longer matches, which
+    // is a normal outcome here rather than a failure. The response says whether
+    // the file changed, not how many of the targets landed — so a caller can
+    // tell a no-op from a write, but not a partial pass from a complete one.
+    let next = originalContent;
+    for (const target of targets) {
+      next = removeElementFromHtml(next, target);
+    }
+    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, next);
+  });
+
   api.post("/projects/:id/file-mutations/split-batch", async (c) => {
     const body = (await c.req.json().catch(() => null)) as {
       files?: unknown;

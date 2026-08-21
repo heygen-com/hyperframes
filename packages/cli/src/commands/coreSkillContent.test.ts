@@ -125,4 +125,15 @@ describe("media treatment routing documentation", () => {
       expect(template).toContain("do not improvise equivalent CSS/SVG filters or overlays");
     }
   });
+
+  it("gives agents a process-owned preview lifecycle in new project instructions", () => {
+    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+      const template = read("packages", "cli", "src", "templates", "_shared", file);
+      expect(template).toContain("npx hyperframes preview --background");
+      expect(template).toContain("npx hyperframes preview --status");
+      expect(template).toContain("npx hyperframes preview --stop");
+      expect(template).toContain("leaving refreshes at `ERR_CONNECTION_TIMED_OUT`");
+      expect(template).not.toContain("run_in_background: true");
+    }
+  });
 });

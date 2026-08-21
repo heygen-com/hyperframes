@@ -72,6 +72,11 @@
       data-width="1920"
       data-height="1080"
       data-duration="5"
+      data-composition-variables='[
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "How far the element is offset before it slides home: 14px, 28px or 52px.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "up starts the element below its resting place so it rises in, down starts it above so it drops in.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "blur", "type": "enum", "role": "style", "label": "Blur", "description": "Starting blur radius, from a light haze to a full smear.", "default": "standard", "options": [{ "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
     >
       <div class="wrap">
         <div class="eyebrow hf-soft-blur-in">Motion Primitive</div>
@@ -80,6 +85,35 @@
           Use it for titles, labels, stats, and scene intros without adding a framework.
         </div>
       </div>
+      <script>
+        (function () {
+          "use strict";
+
+          var vars =
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {};
+
+          // Unrecognised overrides return to their declared defaults.
+          function pick(table, value, fallback) {
+            return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+          }
+
+          var distances = { close: 14, standard: 28, far: 52 };
+          var directions = { up: 1, down: -1 };
+          var blurs = { soft: 8, standard: 18, heavy: 34 };
+
+          var distance = distances[pick(distances, vars.distance, "standard")];
+          var direction = directions[pick(directions, vars.direction, "up")];
+          var blur = blurs[pick(blurs, vars.blur, "standard")];
+
+          // Set on the root so every element carrying the class inherits the values,
+          // whether it exists yet or not.
+          var root = document.documentElement;
+          root.style.setProperty("--hf-soft-blur-y", distance * direction + "px");
+          root.style.setProperty("--hf-soft-blur-radius", blur + "px");
+        })();
+      </script>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.to(
@@ -98,5 +132,19 @@
         window.__timelines["soft-blur-in-demo"] = tl;
       </script>
     </div>
+    <style
+      data-composition-variables='[
+    { "id": "distance", "type": "enum", "role": "motion", "label": "Distance", "description": "How far the element is offset before it slides home: 14px, 28px or 52px.", "default": "standard", "options": [{ "value": "close", "label": "Close" }, { "value": "standard", "label": "Standard" }, { "value": "far", "label": "Far" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "up starts the element below its resting place so it rises in, down starts it above so it drops in.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "blur", "type": "enum", "role": "style", "label": "Blur", "description": "Starting blur radius, from a light haze to a full smear.", "default": "standard", "options": [{ "value": "soft", "label": "Soft" }, { "value": "standard", "label": "Standard" }, { "value": "heavy", "label": "Heavy" }] }
+  ]'
+    >
+      .hf-soft-blur-in {
+        opacity: 0;
+        transform: translate3d(0, var(--hf-soft-blur-y, 28px), 0);
+        filter: blur(var(--hf-soft-blur-radius, 18px));
+        will-change: transform, opacity, filter;
+      }
+    </style>
   </body>
 </html>

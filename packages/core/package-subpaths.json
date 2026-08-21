@@ -158,6 +158,12 @@
       "types": "./dist/audioAutomation.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-gain": {
+      "source": "./src/audioGain.ts",
+      "runtime": "./dist/audioGain.js",
+      "types": "./dist/audioGain.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",
