@@ -75,7 +75,7 @@
     "@sparticuz/chromium": "148.0.0",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
-    "puppeteer-core": "^25.2.1",
+    "puppeteer-core": "^25.8.0",
     "tar": "^7.4.3"
   },
   "devDependencies": {
