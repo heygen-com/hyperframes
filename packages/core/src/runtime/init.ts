@@ -137,6 +137,34 @@ function unpauseNestedTimelines(timeline: RuntimeTimelineLike | null): void {
   }
 }
 
+/**
+ * Warn when a registered timeline has children but no duration.
+ *
+ * There is no legitimate composition where children span time and the total is
+ * zero, so this has no false-positive case. Emitted to the console because the
+ * capture session forwards browser console output into the producer's
+ * diagnostics, which is the channel a render actually surfaces.
+ */
+function reportZeroDurationWithChildren(
+  compositionId: string,
+  timeline: RuntimeTimelineLike | null,
+): void {
+  if (!timeline || typeof timeline.getChildren !== "function") return;
+  try {
+    const childCount = timeline.getChildren(false).length;
+    if (childCount === 0) return;
+    console.warn(
+      `[hyperframes] Composition "${compositionId}" registered a timeline with ` +
+        `${childCount} child timeline(s) but a duration of 0. Every frame will render ` +
+        `the t=0 state, producing a blank video that lint/check/validate cannot see. ` +
+        `A child left paused is the usual cause: only the timeline registered on ` +
+        `window.__timelines should be paused.`,
+    );
+  } catch (err) {
+    swallow("runtime.init.zeroDurationReport", err);
+  }
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   // Own the analytics bridge before any best-effort runtime installation so
@@ -1152,6 +1180,15 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       const rootDurationSeconds = getTimelineDurationSeconds(rootTimeline);
+      // Backstop for the class of bug the unpause above fixes: a registered
+      // timeline that owns children yet reports no duration cannot be right,
+      // and the symptom is an entirely black render that lint, check and
+      // validate all pass because none of them looks at pixels. Anything
+      // reaching here has a cause the unpause did not cover, so say so rather
+      // than capturing frozen frames in silence.
+      if (!isUsableTimelineDuration(rootDurationSeconds)) {
+        reportZeroDurationWithChildren(rootCompositionId, rootTimeline);
+      }
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length > 0) {
         const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
         const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
