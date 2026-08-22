@@ -77,7 +77,10 @@ export function TimelineGroupHeader({
         aria-expanded={isExpanded}
         aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
         title={`${isExpanded ? "Hide" : "Show"} tracks`}
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+        // Mono and a size up, matching the property panel's disclosure carets
+        // (`hf-fx-preset-run-caret`, `propertyPanelFxNodeOpenBody`) — the same
+        // affordance should not be smaller here than it is there.
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
           isExpanded ? "text-white" : "text-white/55 hover:text-white"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
@@ -86,9 +89,9 @@ export function TimelineGroupHeader({
           onToggleExpanded();
         }}
       >
-        <span aria-hidden="true" style={{ transform: isExpanded ? "rotate(90deg)" : undefined }}>
-          ▸
-        </span>
+        {/* Swapped, not rotated: both panel carets swap, and a rotated ▸ sits
+            off-centre in its box because the glyph is not square. */}
+        <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
       </button>
       <span aria-hidden="true" className="shrink-0 text-[12px] leading-none text-white/50">
         ▤
