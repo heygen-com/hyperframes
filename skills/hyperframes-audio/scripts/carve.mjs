@@ -171,7 +171,7 @@ export async function loadCore(fromDir) {
  * (`audioGroupOf`), so `data-audio-group` on a `<video>` bed is ignored by core
  * and expanding a group can never pull it in.
  */
-export function carveSources(voices, bed, members = []) {
+export function carveSources(voices, bed, members) {
   const group = sharedVoiceGroup(voices);
   return group && !groupSourceRefusal(voices, bed, members) ? [group] : voices.map((v) => v.id);
 }
@@ -190,6 +190,13 @@ function sharedVoiceGroup(voices) {
  * `members` is every `<audio>` in the composition as `{id, group, nameKind}`,
  * with `nameKind` from core's `classifyAudioName`, so this and Studio's picker
  * classify the same way.
+ *
+ * Required, deliberately not defaulting to `[]`. With an empty list the `mixed`
+ * refusal below cannot fire, so a call that forgot the argument would return the
+ * group form and restore the exact behaviour this function exists to prevent —
+ * silently, because the first CLI pass is correct either way and only a later
+ * Studio re-analysis is wrong. A missing argument throws on `members.filter`
+ * instead.
  *
  * Two refusals, and both exist because the group form resolves LATER and WIDER
  * than the analysis: `resolveCarveSourceIds` expands a group id to every current
@@ -210,7 +217,7 @@ function sharedVoiceGroup(voices) {
  * the group. Refusing there would collapse the group form into clip ids for
  * every ordinary narration sequence.
  */
-export function groupSourceRefusal(voices, bed, members = []) {
+export function groupSourceRefusal(voices, bed, members) {
   const group = sharedVoiceGroup(voices);
   if (!group) return null;
   if (bed?.kind === "audio" && attrOf(bed.tag, "data-audio-group") === group) {

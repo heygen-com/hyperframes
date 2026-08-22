@@ -40,34 +40,43 @@ test("voices sharing one group carve against the group, not their ids", () => {
   // Group the clips and carve against the group." Naming the group lets
   // membership resolve at analysis time, so a voice added later is covered.
   const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover"), voice("vo3", "voiceover")];
-  assert.deepEqual(carveSources(voices), ["voiceover"]);
+  assert.deepEqual(carveSources(voices, undefined, []), ["voiceover"]);
 });
 
 test("a single grouped voice still records the group", () => {
-  assert.deepEqual(carveSources([voice("vo1", "voiceover")]), ["voiceover"]);
+  assert.deepEqual(carveSources([voice("vo1", "voiceover")], undefined, []), ["voiceover"]);
 });
 
 test("ungrouped voices keep their ids, so the lint rule can still say so", () => {
   // Not silently inventing a group: `audio_carve_ungrouped_sources` is the
   // right signal here, and it needs the ids to fire on.
-  assert.deepEqual(carveSources([voice("vo1"), voice("vo2")]), ["vo1", "vo2"]);
+  assert.deepEqual(carveSources([voice("vo1"), voice("vo2")], undefined, []), ["vo1", "vo2"]);
 });
 
 test("voices in DIFFERENT groups keep their ids", () => {
   // One carve cannot name two groups, and picking either would silently drop
   // the other's members from the analysis.
   const voices = [voice("vo1", "narration"), voice("vo2", "interview")];
-  assert.deepEqual(carveSources(voices), ["vo1", "vo2"]);
+  assert.deepEqual(carveSources(voices, undefined, []), ["vo1", "vo2"]);
 });
 
 test("a partially grouped set keeps its ids", () => {
   const voices = [voice("vo1", "voiceover"), voice("vo2")];
-  assert.deepEqual(carveSources(voices), ["vo1", "vo2"]);
+  assert.deepEqual(carveSources(voices, undefined, []), ["vo1", "vo2"]);
 });
 
 test("an empty group attribute is not a group", () => {
-  assert.deepEqual(carveSources([voice("vo1", ""), voice("vo2", "")]), ["vo1", "vo2"]);
+  assert.deepEqual(carveSources([voice("vo1", ""), voice("vo2", "")], undefined, []), [
+    "vo1",
+    "vo2",
+  ]);
 });
+
+// The nine cases above pass `[]` explicitly because they predate the membership
+// check and are about the bed and the group attributes alone. `members` is a
+// required argument: with `[]` the `mixed` refusal cannot fire, so a default
+// would let a call that forgot it return the group form and silently undo the
+// widening fix — see the wiring test at the bottom of this file.
 
 test("a bed inside the voices' group keeps clip ids, so it is never its own source", () => {
   // `resolveCarveSourceIds` expands a group to every CURRENT member, and it gets
@@ -76,23 +85,23 @@ test("a bed inside the voices' group keeps clip ids, so it is never its own sour
   // itself. This run cannot see it (main sums the detected voices directly), so
   // the check has to happen here.
   const voices = [voice("vo1", "mix"), voice("vo2", "mix")];
-  assert.deepEqual(carveSources(voices, bed("bgm", "mix")), ["vo1", "vo2"]);
+  assert.deepEqual(carveSources(voices, bed("bgm", "mix"), []), ["vo1", "vo2"]);
 });
 
 test("a bed in a DIFFERENT group leaves the group form alone", () => {
   const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
-  assert.deepEqual(carveSources(voices, bed("bgm", "music")), ["voiceover"]);
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), []), ["voiceover"]);
 });
 
 test("an ungrouped bed leaves the group form alone", () => {
-  assert.deepEqual(carveSources([voice("vo1", "voiceover")], bed("bgm")), ["voiceover"]);
+  assert.deepEqual(carveSources([voice("vo1", "voiceover")], bed("bgm"), []), ["voiceover"]);
 });
 
 test("a VIDEO bed is immune — group membership is audio-only", () => {
   // `data-audio-group` on a <video> is ignored by core, so expanding the group
   // can never pull this bed in and declining would be a false positive.
   const voices = [voice("vo1", "mix"), voice("vo2", "mix")];
-  assert.deepEqual(carveSources(voices, bed("clip", "mix", "video")), ["mix"]);
+  assert.deepEqual(carveSources(voices, bed("clip", "mix", "video"), []), ["mix"]);
 });
 
 test("an sfx member of the voices' group blocks the group form", () => {
@@ -215,4 +224,16 @@ test("loadCore honours an import-only export map, as the published core has", ()
     assert.equal(core.carve.marker, "carve");
     assert.equal(core.fx.marker, "fx");
   });
+});
+
+test("members is required, so dropping it cannot silently restore the group form", () => {
+  // The gap this closes: `main()` is the only code that BUILDS `members`, and no
+  // test runs `main()` (the symlink test stops at the usage error, a real run
+  // needs ffmpeg). With `members = []` defaulted, a refactor that dropped the
+  // third argument would return the group form again with the whole suite green
+  // — the same signature as the bug itself: first pass correct, persisted
+  // attribute wrong, nothing red. Omitting it now throws instead.
+  const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
+  assert.throws(() => carveSources(voices, bed("bgm", "music")), TypeError);
+  assert.throws(() => groupSourceRefusal(voices, bed("bgm", "music")), TypeError);
 });
