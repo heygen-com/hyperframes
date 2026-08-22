@@ -27,7 +27,8 @@ Work directly on the lane:
 
 - **Add a point** on the lane at the time you want it.
 - **Drag a point** to move it in time or value.
-- **Type an exact value** rather than dragging, when the number matters.
+- **Type an exact value** rather than dragging, when the number matters. A volume
+  lane can go above unity — the ceiling is +12 dB, not 1.
 - **Bend a segment** by dragging its curve, so the value holds and then moves late
   rather than travelling evenly.
 - **Select a time range** to work on several points at once.
@@ -47,9 +48,12 @@ with it.
 
 ## Two things that surprise people
 
-**Lane times are relative to the clip, not the composition.** A bed starting at
-8 s has its first point at composition time 8. Move the clip and its envelope
-moves with it.
+**A track lane's times are relative to its clip.** A bed starting at 8 s has its
+first point at composition time 8. Move the clip and its envelope moves with it.
+
+**A group lane's times are composition time.** A group has no start of its own,
+so its lanes are measured from the beginning of the video. If you are automating
+a group bus, read the times as absolute.
 
 **A lane holds its first value backwards** to the start of the clip, and its last
 value forward to the end. So a bed that begins before the voice needs an explicit
