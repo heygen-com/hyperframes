@@ -12,6 +12,11 @@ import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
 const CAPTURE_SETTLE_MS = 1500;
+// Floor for the post-ready settle. Kept well above a couple of frames so that
+// work which lands after __renderReady but signals nothing observable (image
+// decode, late layout) still gets a margin — the early exit below only trims
+// the tail of the old flat 1500ms wait, it never removes the margin entirely.
+const CAPTURE_SETTLE_FLOOR_MS = 400;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
 const DEFAULT_POST_SEEK_FONT_WAIT_MS = 500;
 
@@ -28,6 +33,19 @@ export const AUDIT_SEEK_OPTIONS = {
 export const DENSE_GEOMETRY_SEEK_OPTIONS = {
   ...AUDIT_SEEK_OPTIONS,
   animationFrameSettle: "none",
+  waitForFontsMs: 0,
+  settleMs: 0,
+} as const;
+
+// Motion-sampling seek for times that carry no layout/contrast/geometry work.
+// __hyperframesMotionSample reads computed transforms and opacity, which the
+// ordered double-rAF already guarantees are committed — so the paint-flush
+// sleep (only needed before a screenshot) and the glyph-subset font wait (only
+// needed when something measures or photographs text) are both dead weight
+// here. At 20fps this profile is applied to the overwhelming majority of the
+// grid, so the per-seek sleep is the single largest cost in a motion-spec run.
+export const MOTION_SAMPLE_SEEK_OPTIONS = {
+  ...AUDIT_SEEK_OPTIONS,
   waitForFontsMs: 0,
   settleMs: 0,
 } as const;
@@ -144,8 +162,51 @@ async function waitForCompositionSettle(
     });
 
   await page.evaluate(() => document.fonts.ready).catch(() => {});
-  await new Promise((resolveSettle) => setTimeout(resolveSettle, CAPTURE_SETTLE_MS));
+  await waitForVisualSettle(page, CAPTURE_SETTLE_FLOOR_MS, CAPTURE_SETTLE_MS);
   return runtimeReady;
+}
+
+// Replaces what used to be an unconditional `sleep(CAPTURE_SETTLE_MS)` on every
+// page open. By this point the runtime has signaled __renderReady, shader
+// transitions have pre-rendered, and document.fonts.ready has resolved — the
+// flat wait existed only to absorb whatever paints after that. Poll instead:
+// hold for `floorMs`, then exit on the first pair of consecutive frames with no
+// font subset in flight, and never exceed `budgetMs`. Worst case is identical
+// to the old behavior; the common case returns roughly a second sooner.
+async function waitForVisualSettle(page: Page, floorMs: number, budgetMs: number): Promise<void> {
+  await page
+    .evaluate(
+      (floor: number, budget: number) =>
+        new Promise<void>((resolveSettle) => {
+          const deadline = setTimeout(resolveSettle, budget);
+          const finish = (): void => {
+            clearTimeout(deadline);
+            resolveSettle();
+          };
+          const fonts = Reflect.get(document, "fonts");
+          const fontsIdle = (): boolean =>
+            typeof fonts !== "object" ||
+            fonts === null ||
+            Reflect.get(fonts, "status") !== "loading";
+          let floorElapsed = false;
+          setTimeout(() => {
+            floorElapsed = true;
+          }, floor);
+          let stableFrames = 0;
+          const tick = (): void => {
+            stableFrames = fontsIdle() ? stableFrames + 1 : 0;
+            if (floorElapsed && stableFrames >= 2) {
+              finish();
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }),
+      floorMs,
+      budgetMs,
+    )
+    .catch(() => {});
 }
 
 // tsx/esbuild-style dev transpilers run with keepNames, which rewrites named

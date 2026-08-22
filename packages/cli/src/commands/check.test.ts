@@ -150,6 +150,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
     seek: vi.fn(async (_time: number) => undefined),
     seekGeometry: vi.fn(async (_time: number) => undefined),
+    seekMotion: vi.fn(async (_time: number) => undefined),
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
     collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
@@ -774,6 +775,36 @@ it("keeps contrast and snapshot sampling on the pre-gate layout grid", async () 
   expect(report.contrast.samples).toEqual([5]);
   expect(collectContrast).toHaveBeenCalledTimes(1);
   expect(collectContrast).toHaveBeenCalledWith(5);
+});
+
+it("seeks motion-only grid times without the full audit settle", async () => {
+  const motion: MotionSpecResolution = {
+    kind: "valid",
+    path: "/project/index.motion.json",
+    spec: { assertions: [{ kind: "appearsBy", selector: "#hero", bySec: 0.2 }] },
+  };
+  const driver = fakeDriver({
+    getDuration: vi.fn(async () => 1),
+    collectMotionFrame: vi.fn(async (time: number) => heroMotionFrame(time, () => true)),
+  });
+  await runScenario(driver, { samples: 1, contrast: false }, { motion });
+
+  const fullSettleTimes = vi.mocked(driver.seek).mock.calls.map(([time]) => time);
+  const motionOnlyTimes = vi.mocked(driver.seekMotion).mock.calls.map(([time]) => time);
+
+  // The single layout sample measures text, so it keeps the full settle; the
+  // rest of the 20fps motion grid only feeds collectMotionFrame.
+  expect(fullSettleTimes).toEqual([0.5]);
+  expect(motionOnlyTimes.length).toBeGreaterThan(10);
+  expect(motionOnlyTimes).not.toContain(0.5);
+});
+
+it("keeps the full audit settle on contrast times so the screenshot is painted", async () => {
+  const driver = fakeDriver({ getDuration: vi.fn(async () => 10) });
+  await runScenario(driver, { samples: 1, contrast: true });
+
+  expect(vi.mocked(driver.seek).mock.calls.map(([time]) => time)).toContain(5);
+  expect(vi.mocked(driver.seekMotion)).not.toHaveBeenCalled();
 });
 
 function layoutFindingOf(
