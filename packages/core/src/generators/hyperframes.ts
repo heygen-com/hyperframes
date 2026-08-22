@@ -739,7 +739,8 @@ function generateDefaultGsapAnimations(
       const time = tl.time();
       document.querySelectorAll("video[data-start], audio[data-start]").forEach(function(media) {
         const start = parseFloat(media.dataset.start);
-        const end = parseFloat(media.dataset.end) || Infinity;
+        const parsedEnd = parseFloat(media.dataset.end);
+        const end = Number.isFinite(parsedEnd) ? parsedEnd : Infinity;
         const mediaTime = time - start;
         if (time >= start && time < end) {
           if (Math.abs(media.currentTime - mediaTime) > 0.1) {
