@@ -90,11 +90,15 @@ Fix all errors before presenting the result. Warnings should be reviewed before 
 
 1. Every timed element needs `data-start`, `data-duration`, and `data-track-index`
 2. Elements with timing **MUST** have `class="clip"` — the framework uses this for visibility control
-3. Timelines must be paused and registered on `window.__timelines`:
+3. Register **exactly one** paused timeline per composition on `window.__timelines`:
    ```js
    window.__timelines = window.__timelines || {};
    window.__timelines["composition-id"] = gsap.timeline({ paused: true });
    ```
+   Only that registered timeline is paused. Don't build scene timelines as
+   `gsap.timeline({ paused: true })` and `.add()` them into it — a paused child
+   never advances when the root is seeked, so every frame renders the t=0 state
+   and the video comes out blank with no warning from lint, check or validate.
 4. Videos use `muted` with a separate `<audio>` element for the audio track
 5. Sub-compositions use `data-composition-src="compositions/file.html"` to reference other HTML files
 6. Only deterministic logic — no `Date.now()`, no `Math.random()`, no network fetches
