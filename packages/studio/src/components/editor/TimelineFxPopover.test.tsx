@@ -160,7 +160,7 @@ describe("TimelineFxPopover", () => {
     const dialog = withViewportHeight(200, () =>
       dialogOf(mount({ anchorRect: rect(100, 120) }).host),
     );
-    // bottom:32 + maxHeight:160 puts the box at y = 8..40 — a margin on each side.
+    // bottom:32 + maxHeight:160 puts the box at y = 8..168 — a margin on each side.
     expect(dialog.style.bottom).toBe("32px");
     const bottom = Number.parseFloat(dialog.style.bottom);
     const height = Number.parseFloat(dialog.style.maxHeight);
