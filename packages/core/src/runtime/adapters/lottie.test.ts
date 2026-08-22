@@ -121,6 +121,27 @@ describe("lottie adapter", () => {
       adapter.seek({ time: -5 });
       expect(anim.goToAndStop).toHaveBeenCalledWith(0, false);
     });
+
+    it("seeks a v1 dotlottie player by percentage when duration is known", () => {
+      // v1 player: has seek() but no setCurrentRawFrameValue.
+      const seek = vi.fn();
+      const player = { play: vi.fn(), pause: vi.fn(), duration: 4, seek };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 1 }); // 1 / 4 * 100 = 25
+      expect(seek).toHaveBeenCalledWith(25);
+    });
+
+    it("does not seek a v1 dotlottie player whose duration is 0 (not yet loaded)", () => {
+      // duration 0 before load: an unguarded (time / 0) * 100 = NaN used to
+      // reach seek() and blank the first frame at composition time 0.
+      const seek = vi.fn();
+      const player = { play: vi.fn(), pause: vi.fn(), duration: 0, seek };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 0 });
+      expect(seek).not.toHaveBeenCalled();
+    });
   });
 
   describe("pause", () => {
