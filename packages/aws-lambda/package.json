@@ -90,7 +90,7 @@
     "yaml": "^2.9.0"
   },
   "peerDependencies": {
-    "aws-cdk-lib": "^2.130.0",
+    "aws-cdk-lib": "^2.266.0",
     "constructs": "^10.3.0"
   },
   "peerDependenciesMeta": {
