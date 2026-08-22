@@ -68,6 +68,37 @@ describe("TimelineFxButton", () => {
     expect(document.querySelector('[role="dialog"]')).toBeTruthy();
   });
 
+  // The reported symptom was "the grouping button did nothing". The dialog WAS
+  // opening — it positioned at `anchorRect.bottom + 4` with no flip and no
+  // clamp, and this button lives in a track header at the bottom of the studio
+  // window, so it opened past the viewport edge. The test below it passed
+  // throughout: happy-dom reports an all-zero rect for an unlaid-out button,
+  // which lands the dialog at top:4 — on screen, and nothing like the app.
+  it("flips the group dialog above the anchor when there is no room below", () => {
+    const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={vi.fn()} />);
+    const fx = byTextButton(host, "FX");
+    // A track header near the bottom edge of the (1024x768) window.
+    fx!.getBoundingClientRect = () =>
+      ({ left: 300, top: 760, right: 320, bottom: 776, width: 20, height: 16 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    // Above the anchor, and fully inside the viewport: 644 + 112 === 756.
+    expect(dialog.style.top).toBe("644px");
+  });
+
+  it("keeps the group dialog inside the right edge of the window", () => {
+    const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={vi.fn()} />);
+    const fx = byTextButton(host, "FX");
+    // Hard against the right edge: 224px wide + a 12px margin has to fit.
+    fx!.getBoundingClientRect = () =>
+      ({ left: 1010, top: 100, right: 1024, bottom: 116, width: 14, height: 16 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.style.left).toBe("788px");
+    expect(dialog.style.top).toBe("120px");
+  });
+
   it("group-pointer variant offers Group instead of a popover", () => {
     const onGroupClips = vi.fn();
     const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={onGroupClips} />);

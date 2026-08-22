@@ -18,6 +18,24 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
+import { resolveFloatingPanelPosition } from "../../components/editor/floatingPanel.js";
+
+// Estimated, like FORMAT_PANEL_SIZE in RenderQueue: `w-56` is exact, and only
+// the flip decision uses the height — the clamp keeps the dialog on screen
+// either way.
+const GROUP_DIALOG_SIZE = { width: 224, height: 112 };
+
+/** Where the grouping dialog goes: flipped above the anchor when there is no
+ *  room below, and clamped so neither edge leaves the viewport. */
+function groupDialogPosition(anchorRect: DOMRect): { left: number; top: number } {
+  const { left, top } = resolveFloatingPanelPosition(
+    anchorRect,
+    { width: window.innerWidth, height: window.innerHeight },
+    GROUP_DIALOG_SIZE,
+    { offset: 4 },
+  );
+  return { left, top };
+}
 
 function parseFxChainOrEmpty(raw: string | undefined): HfAudioFxChain {
   if (!raw) return { version: 1, nodes: [] };
@@ -80,7 +98,12 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
               role="dialog"
               aria-label="Group these clips to add effects"
               className="z-[200] w-56 rounded-md border border-white/10 bg-[#1b1b1f] p-2.5 text-[11px] text-white/75 shadow-xl"
-              style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+              // Was `top: anchorRect.bottom + 4` with no flip and no clamp. This
+              // button lives in a track header at the BOTTOM of the studio
+              // window, so the dialog opened past the viewport edge and the
+              // click read as doing nothing at all. Same helper the other body
+              // portals position with.
+              style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <p>Group these clips to add effects to all of them.</p>
