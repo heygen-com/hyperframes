@@ -126,7 +126,8 @@
               {
                 "group": "Level 5 — Voice and sound",
                 "pages": [
-                  "prompting/media-and-audio"
+                  "prompting/media-and-audio",
+                  "prompting/audio-effects"
                 ]
               },
               {
@@ -212,7 +213,8 @@
               "studio/canvas",
               "studio/timeline",
               "studio/animation",
-              "studio/captions"
+              "studio/captions",
+              "studio/audio-effects"
             ]
           },
           {
@@ -812,7 +814,8 @@
             "group": "Composition reference",
             "pages": [
               "reference/html-schema",
-              "reference/color-grading"
+              "reference/color-grading",
+              "reference/audio-effects"
             ]
           },
           {
