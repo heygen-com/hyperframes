@@ -219,12 +219,37 @@ describe("layout-audit.browser", () => {
         .map((issue) => issue.code)
         .filter((code) => code === "clipped_text" || code === "text_box_overflow");
 
-    expect(textOverflowCodes()).toEqual(["clipped_text", "text_box_overflow"]);
+    // One code: a clipping box that is its own nearest constraint is `clipped_text`, and billing the
+    // same defect as `text_box_overflow` too counted it twice.
+    expect(textOverflowCodes()).toEqual(["clipped_text"]);
     document.querySelector("#overflow-optout")?.setAttribute("data-layout-allow-overflow", "");
     expect(textOverflowCodes()).toEqual([]);
     document.querySelector("#overflow-optout")?.removeAttribute("data-layout-allow-overflow");
     headline.setAttribute("data-layout-bleed", "true");
     expect(textOverflowCodes()).toEqual([]);
+  });
+
+  it("still flags a painted, NON-clipping box that is its own nearest constraint", () => {
+    // `container === element` does not imply the element clips: a painted, sized box is a
+    // constraint candidate too. `clipped_text` cannot speak for it (nothing is clipped), so the
+    // de-duplication guard must not swallow this — it would leave the defect with no code at all.
+    // `#bubble` is the harness's painted, radiused box — here it carries the text itself, so it is
+    // its own nearest constraint while clipping nothing.
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="bubble">Enterprise plan includes unlimited renders</div>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      bubble: rect({ left: 40, top: 60, width: 200, height: 40 }),
+      text: rect({ left: 40, top: 65, width: 520, height: 30 }),
+    });
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#bubble");
   });
 
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
