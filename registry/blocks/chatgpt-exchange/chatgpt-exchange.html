@@ -846,6 +846,7 @@
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
+        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
         return n;
       };

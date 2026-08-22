@@ -8,20 +8,16 @@ import { describe, expect, it } from "vitest";
 const blocksDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../registry/blocks");
 
 interface RegistryManifest {
+  name: string;
+  tags?: string[];
   files: Array<{ path: string; target: string; type: string }>;
 }
 
-const promotedTemplateIds = [
-  "notification-cascade",
-  "share-sheet-carousel",
-  "ai-chat-reveal",
-  "message-thread-reveal",
-  "notes-reveal",
-  "chatgpt-exchange",
-  "claude-exchange",
-  "heygen-avatar-promo-card",
-  "slack-notification-ad",
-] as const;
+const promotedTemplateTag = "ad-template";
+
+function loadRegistryManifest(itemDir: string): RegistryManifest {
+  return JSON.parse(readFileSync(join(itemDir, "registry-item.json"), "utf8")) as RegistryManifest;
+}
 
 function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): string[] {
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
@@ -45,11 +41,17 @@ function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): s
 
 describe("registry blocks", () => {
   it("ships an editing contract and declared variables for every promoted template", () => {
-    for (const templateId of promotedTemplateIds) {
-      const itemDir = join(blocksDir, templateId);
-      const manifest = JSON.parse(
-        readFileSync(join(itemDir, "registry-item.json"), "utf8"),
-      ) as RegistryManifest;
+    const promotedManifests = readdirSync(blocksDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => ({
+        itemDir: join(blocksDir, entry.name),
+        manifest: loadRegistryManifest(join(blocksDir, entry.name)),
+      }))
+      .filter(({ manifest }) => manifest.tags?.includes(promotedTemplateTag));
+
+    expect(promotedManifests.length).toBeGreaterThan(0);
+    for (const { itemDir, manifest } of promotedManifests) {
+      const templateId = manifest.name;
       const contractFiles = manifest.files.filter(
         (file) =>
           file.path === "TEMPLATE.md" &&
@@ -76,9 +78,7 @@ describe("registry blocks", () => {
       if (!entry.isDirectory()) continue;
 
       const itemDir = join(blocksDir, entry.name);
-      const manifest = JSON.parse(
-        readFileSync(join(itemDir, "registry-item.json"), "utf8"),
-      ) as RegistryManifest;
+      const manifest = loadRegistryManifest(itemDir);
 
       for (const src of findMissingLocalScripts(itemDir, manifest)) {
         missing.push(`${entry.name}: ${src}`);
