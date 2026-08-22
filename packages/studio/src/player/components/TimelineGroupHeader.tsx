@@ -77,9 +77,10 @@ export function TimelineGroupHeader({
         aria-expanded={isExpanded}
         aria-label={`${isExpanded ? "Hide" : "Show"} ${label} tracks`}
         title={`${isExpanded ? "Hide" : "Show"} tracks`}
-        // Mono and a size up, matching the property panel's disclosure carets
-        // (`hf-fx-preset-run-caret`, `propertyPanelFxNodeOpenBody`) — the same
-        // affordance should not be smaller here than it is there.
+        // Mono, like both of the property panel's disclosure carets. The size is
+        // this row's own call and not a match to either of them: the node-body
+        // caret sits under `text-[9px]`, and `hf-fx-preset-run-caret` has no
+        // size rule at all, so there is no measured target to match.
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 font-mono text-[13px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
           isExpanded ? "text-white" : "text-white/55 hover:text-white"
         }`}
