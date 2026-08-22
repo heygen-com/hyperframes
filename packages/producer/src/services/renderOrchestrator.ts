@@ -3943,7 +3943,15 @@ async function executeRenderPipeline(input: {
       observability.checkpoint("assemble", `skipped for ${outputFormat}`);
     }
 
-    artifactTransaction.validate();
+    await artifactTransaction.validate(
+      !isPngSequence && !isGif && Number.isFinite(job.duration) && job.duration > 0
+        ? {
+            expectedDurationSeconds: job.duration,
+            fps: fpsToNumber(job.config.fps),
+            expectedFrames: captureTotalFrames,
+          }
+        : undefined,
+    );
 
     const totalElapsed = Date.now() - pipelineStart;
 
@@ -4026,7 +4034,7 @@ async function executeRenderPipeline(input: {
       }
     }
 
-    artifactTransaction.commit();
+    await artifactTransaction.commit();
     job.outputPath = outputPath;
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
     await eventPublisher.flush();
