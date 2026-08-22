@@ -782,6 +782,17 @@ export interface CompositionMetadata {
   variables: CompositionVariable[];
 }
 
+function findCompositionMetadataCarrier(doc: Document): Element {
+  const htmlEl = doc.documentElement;
+  if (htmlEl.hasAttribute("data-composition-id")) return htmlEl;
+
+  let carrier: Element | null = null;
+  walkCompositionDescendants(doc, (el) => {
+    if (!carrier && el.hasAttribute("data-composition-id")) carrier = el;
+  });
+  return carrier ?? htmlEl;
+}
+
 export function extractCompositionMetadata(html: string): CompositionMetadata {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
@@ -792,15 +803,12 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
     );
   }
 
-  const compositionId = htmlEl.getAttribute("data-composition-id");
-  const durationStr = htmlEl.getAttribute("data-composition-duration");
+  const metadataCarrier = findCompositionMetadataCarrier(doc);
+  const compositionId = metadataCarrier.getAttribute("data-composition-id");
+  const durationStr = metadataCarrier.getAttribute("data-composition-duration");
   const compositionDuration = durationStr ? parseFloat(durationStr) : null;
 
-  // TODO(template-var-carriers): reads `<html>` only. A template/fragment comp
-  // that declares variables on its `[data-composition-id]` root div (the
-  // dual-carrier contract from #2081) reports no variables when its metadata is
-  // extracted standalone (e.g. CLI --variables validation of a sub-comp file).
-  const variables = parseCompositionVariables(htmlEl);
+  const variables = parseCompositionVariables(metadataCarrier);
 
   return {
     compositionId,
