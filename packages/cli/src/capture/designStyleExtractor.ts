@@ -372,18 +372,29 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
     .map(function(e) { return e[0]; });
 
   // ── 7. Box shadows ──
+  // Sample by COMPUTED STYLE across a broad structural sweep — NOT class-name selectors. Sites with
+  // obfuscated / utility class names (Stripe, Vercel) carry their card elevation on plain divs the
+  // old [class*='card'] selector never matched, so shadows came back empty and the renderer faked a
+  // heavy off-brand drop shadow. Collect every visible, card-sized box's real box-shadow; the shadow
+  // that recurs on the most boxes is the brand's card-elevation signature. Skip tiny (icon/inline)
+  // and full-bleed page wrappers (a body/section shadow is not card elevation).
   var shadowCounts = {};
+  var shVW = window.innerWidth || 1280, shVH = window.innerHeight || 800;
   var shadowSamples = Array.from(document.querySelectorAll(
-    "[class*='card'], [class*='Card'], button, [class*='btn'], " +
-    "[class*='dropdown'], [class*='modal'], [class*='popover'], " +
-    "nav, header, [class*='panel'], article"
-  )).slice(0, 100);
+    "div, section, article, aside, li, button, a, nav, header, figure, main"
+  )).slice(0, 800);
 
   for (var shi = 0; shi < shadowSamples.length; shi++) {
-    if (!isVisible(shadowSamples[shi])) continue;
-    var shVal = getComputedStyle(shadowSamples[shi]).boxShadow;
+    var shEl = shadowSamples[shi];
+    if (!isVisible(shEl)) continue;
+    var shRect = shEl.getBoundingClientRect();
+    var shArea = shRect.width * shRect.height;
+    if (shArea < 1600) continue; // tiny (icon / inline) — not a card
+    if (shRect.width > shVW * 0.95 && shRect.height > shVH * 0.9) continue; // full-bleed wrapper
+    var shVal = getComputedStyle(shEl).boxShadow;
     if (shVal && shVal !== "none") {
-      shadowCounts[shVal] = (shadowCounts[shVal] || 0) + 1;
+      var shNorm = shVal.replace(/\\s+/g, " ").trim();
+      shadowCounts[shNorm] = (shadowCounts[shNorm] || 0) + 1;
     }
   }
 
