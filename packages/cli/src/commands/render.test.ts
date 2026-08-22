@@ -1492,4 +1492,41 @@ describe("render command explicit composition", () => {
   }, 60_000);
 });
 
+describe("render command batch options", () => {
+  it("forwards gif loop and video frame format to batch row renders", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-batch-options-"));
+    const rowsPath = join(projectDir, "rows.json");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
+      "utf8",
+    );
+    writeFileSync(rowsPath, "[{}]", "utf8");
+
+    try {
+      await renderModule.default.run?.({
+        args: {
+          dir: projectDir,
+          batch: rowsPath,
+          output: join(projectDir, "renders", "{index}.gif"),
+          fps: "15",
+          quality: "standard",
+          format: "gif",
+          "gif-loop": "3",
+          "video-frame-format": "png",
+          quiet: true,
+        },
+      } as never);
+
+      expect(producerState.createdJobs.at(-1)).toMatchObject({
+        format: "gif",
+        gifLoop: 3,
+        videoFrameFormat: "png",
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
 // Variables-helper tests live in `../utils/variables.test.ts`.
