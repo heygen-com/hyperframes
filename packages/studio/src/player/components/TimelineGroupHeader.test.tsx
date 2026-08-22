@@ -65,7 +65,9 @@ describe("TimelineGroupHeader disclosure caret", () => {
     expect(glyph?.getAttribute("style") ?? "").not.toContain("rotate");
   });
 
-  it("matches the property panel's carets: mono, and not the smaller 11px", () => {
+  it("keeps the caret mono at 13px, not back down at the 11px the row inherits", () => {
+    // Only this component's own className — the panel carets are not read here,
+    // and this does not claim to pin a match against them.
     const className = caret(renderHeader()).className;
     expect(className).toContain("font-mono");
     expect(className).toContain("text-[13px]");
