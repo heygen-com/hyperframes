@@ -118,6 +118,53 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
   };
 }
 
+/**
+ * Clear `paused` on a timeline's directly nested children.
+ *
+ * Non-timeline children (tweens) have no `paused` of their own worth clearing
+ * here, and nested:false keeps this to one level: a grandchild belongs to its
+ * own parent's playhead, which this same pass fixes when that parent is reached.
+ */
+function unpauseNestedTimelines(timeline: RuntimeTimelineLike | null): void {
+  if (!timeline || typeof timeline.getChildren !== "function") return;
+  try {
+    for (const child of timeline.getChildren(false)) {
+      const pausable = child as { paused?: (value?: boolean) => unknown };
+      if (typeof pausable.paused === "function") pausable.paused(false);
+    }
+  } catch (err) {
+    swallow("runtime.init.unpauseNested", err);
+  }
+}
+
+/**
+ * Warn when a registered timeline has children but no duration.
+ *
+ * There is no legitimate composition where children span time and the total is
+ * zero, so this has no false-positive case. Emitted to the console because the
+ * capture session forwards browser console output into the producer's
+ * diagnostics, which is the channel a render actually surfaces.
+ */
+function reportZeroDurationWithChildren(
+  compositionId: string,
+  timeline: RuntimeTimelineLike | null,
+): void {
+  if (!timeline || typeof timeline.getChildren !== "function") return;
+  try {
+    const childCount = timeline.getChildren(false).length;
+    if (childCount === 0) return;
+    console.warn(
+      `[hyperframes] Composition "${compositionId}" registered a timeline with ` +
+        `${childCount} child timeline(s) but a duration of 0. Every frame will render ` +
+        `the t=0 state, producing a blank video that lint/check/validate cannot see. ` +
+        `A child left paused is the usual cause: only the timeline registered on ` +
+        `window.__timelines should be paused.`,
+    );
+  } catch (err) {
+    swallow("runtime.init.zeroDurationReport", err);
+  }
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   // Own the analytics bridge before any best-effort runtime installation so
@@ -1030,6 +1077,24 @@ export function initSandboxRuntimeModular(): void {
       return resolveSoleTimelineFallback("root_missing_composition_id");
     }
     const rootTimeline = timelines[rootCompositionId] ?? null;
+    // A scene timeline authored as `gsap.timeline({ paused: true })` and nested
+    // with `.add()` keeps its OWN playhead frozen, so seeking the root never
+    // advances it. The parent also reads `duration()` as 0, and every captured
+    // frame renders the t=0 state — a black video that lint, check and validate
+    // all pass, because none of them looks at pixels.
+    //
+    // The contract asks for the *registered root* to be paused so the renderer
+    // owns the playhead. Applying that to scene timelines too is the natural
+    // misreading, and nothing told the author otherwise.
+    //
+    // `ensureChildCandidatesActive` below already does this for sub-composition
+    // children, but it finds them via `[data-composition-id]`, so timelines
+    // combined by hand are invisible to it. Same fix, the other path.
+    //
+    // Placement is load-bearing: reading `duration()` while a child is paused
+    // caches 0 on the parent permanently — `invalidate()` does not clear it —
+    // so this has to run before anything reads the root's duration.
+    unpauseNestedTimelines(rootTimeline);
     const collectRootChildCandidates = (): Array<{
       compositionId: string;
       timeline: RuntimeTimelineLike;
@@ -1115,6 +1180,15 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       const rootDurationSeconds = getTimelineDurationSeconds(rootTimeline);
+      // Backstop for the class of bug the unpause above fixes: a registered
+      // timeline that owns children yet reports no duration cannot be right,
+      // and the symptom is an entirely black render that lint, check and
+      // validate all pass because none of them looks at pixels. Anything
+      // reaching here has a cause the unpause did not cover, so say so rather
+      // than capturing frozen frames in silence.
+      if (!isUsableTimelineDuration(rootDurationSeconds)) {
+        reportZeroDurationWithChildren(rootCompositionId, rootTimeline);
+      }
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length > 0) {
         const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
         const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
