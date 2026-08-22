@@ -10,6 +10,16 @@ import { TimelineFxPopover } from "./TimelineFxPopover.js";
 const EMPTY_CHAIN: HfAudioFxChain = { version: 1, nodes: [] };
 const RECT = { left: 0, top: 0, right: 0, bottom: 0 } as DOMRect;
 
+function rect(top: number, bottom: number): DOMRect {
+  return { left: 0, top, right: 0, bottom } as DOMRect;
+}
+
+function dialogOf(host: HTMLElement): HTMLElement {
+  const el = host.querySelector('[role="dialog"]');
+  if (!el) throw new Error("no dialog");
+  return el as HTMLElement;
+}
+
 function byTextButton(host: HTMLElement, text: string): HTMLButtonElement | undefined {
   return Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
 }
@@ -100,6 +110,50 @@ describe("TimelineFxPopover", () => {
       dialog?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // These four guard the regression that shipped once already: an uncapped
+  // popover grew past the gap it opened into, ran under the timeline chrome and
+  // took its footer with it, and nothing scrolled.
+  it("caps its height to the space below when it opens downward", () => {
+    // spaceBelow 738 > spaceAbove 10, so it opens down: 738 - margin(8) - gap(4).
+    const { host } = mount({ anchorRect: rect(10, 30) });
+    const dialog = dialogOf(host);
+    expect(dialog.style.top).toBe("34px");
+    expect(dialog.style.maxHeight).toBe("726px");
+  });
+
+  it("caps its height to the space above when it flips upward", () => {
+    // spaceBelow 48 < 260 and spaceAbove 700 is larger, so it flips up.
+    const { host } = mount({ anchorRect: rect(700, 720) });
+    const dialog = dialogOf(host);
+    expect(dialog.style.bottom).toBe("72px");
+    expect(dialog.style.maxHeight).toBe("688px");
+  });
+
+  it("never caps below a usable minimum, however tight the gap", () => {
+    const innerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { value: 200, configurable: true });
+    try {
+      // Both gaps are tiny (80 below / 100 above); the cap must not collapse.
+      const { host } = mount({ anchorRect: rect(100, 120) });
+      expect(dialogOf(host).style.maxHeight).toBe("160px");
+    } finally {
+      Object.defineProperty(window, "innerHeight", { value: innerHeight, configurable: true });
+    }
+  });
+
+  it("scrolls the preset list and leaves the footer outside the scroller", () => {
+    const { host } = mount();
+    const dialog = dialogOf(host);
+    const scroller = dialog.querySelector(".overflow-y-auto");
+    expect(scroller).toBeTruthy();
+    // The footer must be a SIBLING of the scroller, not inside it — otherwise it
+    // scrolls away instead of staying put, which is the original bug.
+    const footer = byTextButton(host, "Open rack");
+    expect(footer).toBeDefined();
+    expect(scroller?.contains(footer as Node)).toBe(false);
+    expect(dialog.contains(footer as Node)).toBe(true);
   });
 
   it("the footer opens the rack and closes the popover", () => {
