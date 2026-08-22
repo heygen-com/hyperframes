@@ -223,6 +223,31 @@ describe("initSandboxRuntimeModular", () => {
     expect(originalParseEase).not.toHaveBeenCalledWith("hold");
   });
 
+  it("unpauses timelines nested into the registered root", () => {
+    // A scene timeline authored as `gsap.timeline({ paused: true })` and nested
+    // with `.add()` keeps its own playhead frozen, so seeking the root never
+    // advances it and every captured frame renders the t=0 state — a black
+    // video that lint, check and validate all pass, none of them seeing pixels.
+    const child = createMockTimeline(3);
+    child.paused(true);
+    const root = createMockTimeline(6);
+    (root as RuntimeTimelineLike & { getChildren?: () => unknown[] }).getChildren = () => [child];
+
+    const node = document.createElement("div");
+    node.setAttribute("data-composition-id", "main");
+    node.setAttribute("data-root", "true");
+    node.setAttribute("data-start", "0");
+    node.setAttribute("data-duration", "6");
+    node.setAttribute("data-width", "1920");
+    node.setAttribute("data-height", "1080");
+    document.body.appendChild(node);
+    window.__timelines = { main: root };
+
+    initSandboxRuntimeModular();
+
+    expect(child.paused()).toBe(false);
+  });
+
   it("repairs a keyframes tween's inner-timeline ease baked to undefined before custom-ease registration", () => {
     // The composition inline script builds keyframes tweens BEFORE this runtime
     // registers the custom eases, so a `{keyframes, ease:"hold"}` tween's inner
