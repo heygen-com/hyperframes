@@ -746,12 +746,44 @@ function fontSlug(familyName: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * A cache that cannot be created must not end a render. This directory only
+ * holds Google Fonts downloads between runs — the bytes are still fetchable, so
+ * losing the place to keep them is a slower render, not a failed one. Before
+ * this fallback existed an unwritable cache root threw straight out of compile:
+ * a first-time user lost their very first render to
+ * `EPERM: operation not permitted, mkdir '<home>/.cache/hyperframes/fonts/inter'`.
+ *
+ * Same shape as the Lambda root above: one temp directory per process, so a run
+ * still de-duplicates its own downloads, it just cannot reuse them next time.
+ */
+let fallbackFontCacheRoot: string | null = null;
+let warnedFontCacheFallback = false;
+
 function fontCacheDir(slug: string): string {
   const dir = join(resolveFontCacheRoot(), slug);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+  try {
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  } catch (err) {
+    fallbackFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
+    if (!warnedFontCacheFallback) {
+      warnedFontCacheFallback = true;
+      const reason = err instanceof Error ? err.message : String(err);
+      defaultLogger.warn(
+        `[Compiler] Font cache is not writable (${reason}). Caching to a temporary ` +
+          `directory for this run instead; fonts will be re-downloaded next time. Set ` +
+          `HYPERFRAMES_FONT_CACHE_DIR to a writable path to keep them.`,
+      );
+    }
+    const fallback = join(fallbackFontCacheRoot, slug);
+    if (!existsSync(fallback)) {
+      mkdirSync(fallback, { recursive: true });
+    }
+    return fallback;
   }
-  return dir;
 }
 
 // A short, stable discriminator for a single subset's woff2. Google Fonts'
