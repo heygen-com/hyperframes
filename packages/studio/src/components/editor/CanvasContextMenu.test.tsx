@@ -92,7 +92,7 @@ describe("CanvasContextMenu — handler gating", () => {
 
     // No menu opened at all — no buttons, no dead-end items, no DOM mutation.
     expect(menuButtons()).toHaveLength(0);
-    expect(document.body.querySelector(".fixed.z-50")).toBeNull();
+    expect(document.body.querySelector(".fixed.z-\\[200\\]")).toBeNull();
     expect(el.style.zIndex).toBe("3");
   });
 

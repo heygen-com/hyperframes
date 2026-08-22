@@ -48,7 +48,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ref={menuRef}
       role="menu"
       aria-label="Clip actions"
-      className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
