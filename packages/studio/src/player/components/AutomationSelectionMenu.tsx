@@ -41,7 +41,7 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="hf-automation-menu fixed z-50 min-w-[140px] rounded border border-panel-border-input bg-panel-bg-2 py-1 shadow-lg"
+      className="hf-automation-menu fixed z-[200] min-w-[140px] rounded border border-panel-border-input bg-panel-bg-2 py-1 shadow-lg"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {AUTOMATION_SHAPES.map((shape) => (

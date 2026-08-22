@@ -79,7 +79,7 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
             <div
               role="dialog"
               aria-label="Group these clips to add effects"
-              className="z-50 w-56 rounded-md border border-white/10 bg-[#1b1b1f] p-2.5 text-[11px] text-white/75 shadow-xl"
+              className="z-[200] w-56 rounded-md border border-white/10 bg-[#1b1b1f] p-2.5 text-[11px] text-white/75 shadow-xl"
               style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
               onPointerDown={(event) => event.stopPropagation()}
             >
