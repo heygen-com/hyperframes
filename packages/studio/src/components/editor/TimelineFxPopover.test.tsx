@@ -14,6 +14,18 @@ function rect(top: number, bottom: number): DOMRect {
   return { left: 0, top, right: 0, bottom } as DOMRect;
 }
 
+/** Pin the viewport height: every expected number below is derived from it, and
+ *  happy-dom's 768 default is not something this file should silently inherit. */
+function withViewportHeight<T>(value: number, run: () => T): T {
+  const previous = window.innerHeight;
+  Object.defineProperty(window, "innerHeight", { value, configurable: true });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(window, "innerHeight", { value: previous, configurable: true });
+  }
+}
+
 function dialogOf(host: HTMLElement): HTMLElement {
   const el = host.querySelector('[role="dialog"]');
   if (!el) throw new Error("no dialog");
@@ -112,35 +124,58 @@ describe("TimelineFxPopover", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  // These four guard the regression that shipped once already: an uncapped
+  // These guard the regression that shipped once already: an uncapped
   // popover grew past the gap it opened into, ran under the timeline chrome and
   // took its footer with it, and nothing scrolled.
   it("caps its height to the space below when it opens downward", () => {
     // spaceBelow 738 > spaceAbove 10, so it opens down: 738 - margin(8) - gap(4).
-    const { host } = mount({ anchorRect: rect(10, 30) });
-    const dialog = dialogOf(host);
+    const dialog = withViewportHeight(768, () =>
+      dialogOf(mount({ anchorRect: rect(10, 30) }).host),
+    );
     expect(dialog.style.top).toBe("34px");
     expect(dialog.style.maxHeight).toBe("726px");
   });
 
   it("caps its height to the space above when it flips upward", () => {
     // spaceBelow 48 < 260 and spaceAbove 700 is larger, so it flips up.
-    const { host } = mount({ anchorRect: rect(700, 720) });
-    const dialog = dialogOf(host);
+    const dialog = withViewportHeight(768, () =>
+      dialogOf(mount({ anchorRect: rect(700, 720) }).host),
+    );
     expect(dialog.style.bottom).toBe("72px");
     expect(dialog.style.maxHeight).toBe("688px");
   });
 
   it("never caps below a usable minimum, however tight the gap", () => {
-    const innerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerHeight", { value: 200, configurable: true });
-    try {
-      // Both gaps are tiny (80 below / 100 above); the cap must not collapse.
-      const { host } = mount({ anchorRect: rect(100, 120) });
-      expect(dialogOf(host).style.maxHeight).toBe("160px");
-    } finally {
-      Object.defineProperty(window, "innerHeight", { value: innerHeight, configurable: true });
-    }
+    // Both gaps are tiny (80 below / 100 above); the cap must not collapse.
+    const dialog = withViewportHeight(200, () =>
+      dialogOf(mount({ anchorRect: rect(100, 120) }).host),
+    );
+    expect(dialog.style.maxHeight).toBe("160px");
+  });
+
+  it("keeps both edges in the viewport when the minimum exceeds the gap", () => {
+    // The case the minimum used to lose: at 200px of viewport (roughly 400% zoom
+    // on a laptop) neither gap can hold 160px, so honouring the floor has to
+    // slide the box in rather than hang its top edge off-screen.
+    const dialog = withViewportHeight(200, () =>
+      dialogOf(mount({ anchorRect: rect(100, 120) }).host),
+    );
+    // bottom:32 + maxHeight:160 puts the box at y = 8..40 — a margin on each side.
+    expect(dialog.style.bottom).toBe("32px");
+    const bottom = Number.parseFloat(dialog.style.bottom);
+    const height = Number.parseFloat(dialog.style.maxHeight);
+    expect(bottom).toBeGreaterThanOrEqual(8);
+    expect(200 - bottom - height).toBeGreaterThanOrEqual(8);
+  });
+
+  it("shrinks below the minimum only when the whole window is shorter", () => {
+    // A floor against a tight gap is not a floor against a tight window: 120px of
+    // viewport cannot hold 160px, and hanging off the edge is worse than short.
+    const dialog = withViewportHeight(120, () =>
+      dialogOf(mount({ anchorRect: rect(60, 80) }).host),
+    );
+    expect(dialog.style.maxHeight).toBe("104px");
+    expect(dialog.style.bottom).toBe("8px");
   });
 
   it("scrolls the preset list and leaves the footer outside the scroller", () => {
