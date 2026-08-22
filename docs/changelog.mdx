@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.8"
+  description="Released - 2026-08-22"
+  tags={["Release", "Audio", "CLI", "Engine"]}
+>
+The audio effects rack, track groups, mute and solo are on for everyone.
+They shipped across twelve releases behind a flag at zero percent, so this is
+the first release where you can reach them.
+
+## Features
+
+- **Audio:** Open the audio FX, group and mute features to everyone ([0e9a4f371](https://github.com/heygen-com/hyperframes/commit/0e9a4f371d4cff4e853640ea87caf76814af5278), [#3401](https://github.com/heygen-com/hyperframes/pull/3401)).
+
+## Fixes
+
+- **CLI:** Stop a caught post-render throw reporting a valid render as failed ([ea95b7d44](https://github.com/heygen-com/hyperframes/commit/ea95b7d44e6de95a514931026d6c01be7f9c01a0), [#3409](https://github.com/heygen-com/hyperframes/pull/3409)).
+- **Lint:** Surface unloadable media variable defaults, stop reading data-var-src ids as paths ([41edbfb2c](https://github.com/heygen-com/hyperframes/commit/41edbfb2ce5a8beb1c9d9de2a3eb09195a369a4b), [#3406](https://github.com/heygen-com/hyperframes/pull/3406)).
+- **Studio:** Invalidate the preview signature off the watcher that sees project writes ([5842dd8df](https://github.com/heygen-com/hyperframes/commit/5842dd8df4c7fca3ed895e4bc047299c9274ed14), [#3364](https://github.com/heygen-com/hyperframes/pull/3364)).
+- **Lint:** Stop duplicate_composition_id firing on repeated sub-composition mounts ([09a5ef709](https://github.com/heygen-com/hyperframes/commit/09a5ef70925f8a67276df0166ff1e1a6eca5db6f), [#3404](https://github.com/heygen-com/hyperframes/pull/3404)).
+- **Producer:** Anchor local-font embedding to its url() occurrence ([e1191edba](https://github.com/heygen-com/hyperframes/commit/e1191edba6d8ec44e3d79624cc92ef32fe99805d), [#3405](https://github.com/heygen-com/hyperframes/pull/3405)).
+
+## Internal
+
+- **Engine:** Give the audio grouping mixes room, and make a stall say why ([9c73e64a0](https://github.com/heygen-com/hyperframes/commit/9c73e64a07635fe02922ec2f0f3bc0b37ef6483d), [#3408](https://github.com/heygen-com/hyperframes/pull/3408)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.7...v0.8.8).
+</Update>
+
+<Update
   label="HyperFrames v0.8.7"
   description="Released - 2026-08-21"
   tags={["Release", "Lint", "Catalog", "Core"]}
