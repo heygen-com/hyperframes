@@ -16,12 +16,13 @@ import {
   type LayoutRect,
 } from "./layoutAudit.js";
 import {
+  assertionTargets,
   collectSamplingTargets,
   evaluateMotion,
   type Canvas,
   type MotionFrame,
 } from "./motionAudit.js";
-import { findMotionSpec, readMotionSpec } from "./motionSpec.js";
+import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -169,6 +170,8 @@ interface MotionPlan {
   selectors: string[];
   livenessScopes: string[];
   preflightIssues: AnchoredLayoutIssue[];
+  /** Assertions naming no ambiguous selector; a zero-match selector survives and reports as missing. */
+  assertions: MotionAssertion[];
 }
 
 async function planMotionSampling(
@@ -177,13 +180,30 @@ async function planMotionSampling(
   duration: number,
 ): Promise<MotionPlan> {
   if (motion.kind !== "valid") {
-    return { times: [], selectors: [], livenessScopes: [], preflightIssues: [] };
+    return { times: [], selectors: [], livenessScopes: [], preflightIssues: [], assertions: [] };
   }
-  const targets = collectSamplingTargets(motion.spec.assertions);
-  const preflightIssues = await driver.findAmbiguousSelectors(targets.selectors);
+  const preflightIssues = await driver.findAmbiguousSelectors(
+    collectSamplingTargets(motion.spec.assertions).selectors,
+  );
+  // One ambiguous selector used to zero the grid, so every other assertion went unevaluated in
+  // silence. Drop only the assertions that name it; the rest still run.
+  const ambiguous = new Set(preflightIssues.map((issue) => issue.selector));
+  const assertions = motion.spec.assertions.filter(
+    (assertion) =>
+      !assertionTargets(assertion).selectors.some((selector) => ambiguous.has(selector)),
+  );
+  noteSkippedAssertions(preflightIssues, motion.spec.assertions.length - assertions.length);
+  const targets = collectSamplingTargets(assertions);
   const times =
-    preflightIssues.length === 0 ? buildMotionSampleTimes(motion.spec.duration ?? duration) : [];
-  return { times, ...targets, preflightIssues };
+    assertions.length > 0 ? buildMotionSampleTimes(motion.spec.duration ?? duration) : [];
+  return { times, ...targets, preflightIssues, assertions };
+}
+
+/** Filtering a spec down must not be silent: a sampled grid no longer says on its own that part of the spec went unevaluated. */
+function noteSkippedAssertions(issues: AnchoredLayoutIssue[], skipped: number): void {
+  if (skipped <= 0) return;
+  const suffix = ` ${skipped} assertion(s) naming it were not evaluated.`;
+  for (const issue of issues) issue.message += suffix;
 }
 
 interface GridSamples {
@@ -1059,13 +1079,13 @@ export async function runAuditGrid(
   const seekLoopMs = Date.now() - seekLoopStart;
 
   let motionIssues = plan.preflightIssues;
-  if (motion.kind === "valid" && motionIssues.length === 0 && collected.motionFrames.length > 0) {
+  if (motion.kind === "valid" && plan.assertions.length > 0 && collected.motionFrames.length > 0) {
     const evaluated = evaluateMotion(
       collected.motionFrames,
-      motion.spec.assertions,
+      plan.assertions,
       await driver.getCanvas(),
     );
-    motionIssues = await driver.anchorMotionIssues(evaluated);
+    motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
   }
   const sweepFindings = detectSweepStatic(
     grid.duration,
