@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { carveSources, loadCore } from "./carve.mjs";
+import { carveSources, groupSourceRefusal, loadCore } from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -13,6 +13,11 @@ const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 function voice(id, group) {
   const attr = group === undefined ? "" : ` data-audio-group="${group}"`;
   return { id, tag: `<audio id="${id}"${attr} src="${id}.wav"></audio>` };
+}
+
+/** An audio member as `main` describes it for the source decision. */
+function member(id, group, nameKind) {
+  return { id, group, nameKind };
 }
 
 /** A bed as `mediaElements` yields it: `kind` is what decides group membership. */
@@ -88,6 +93,75 @@ test("a VIDEO bed is immune — group membership is audio-only", () => {
   // can never pull this bed in and declining would be a false positive.
   const voices = [voice("vo1", "mix"), voice("vo2", "mix")];
   assert.deepEqual(carveSources(voices, bed("clip", "mix", "video")), ["mix"]);
+});
+
+test("an sfx member of the voices' group blocks the group form", () => {
+  // The group resolves wider than the analysis: `resolveCarveSourceIds` expands
+  // it to every current member and `resolveCarveVoices` keeps any audio with a
+  // src, so an sfx clip sharing the voice group enters the sidechain on the next
+  // analysis and ducks the bed under a whoosh. This run cannot see it — it sums
+  // the voices `detectTracks` returned, which correctly excluded the sfx.
+  const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
+  const members = [
+    member("vo1", "voiceover", "voice"),
+    member("vo2", "voiceover", "voice"),
+    member("whoosh", "voiceover", "sfx"),
+    member("bgm", "music", "music"),
+  ];
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), members), ["vo1", "vo2"]);
+});
+
+test("a music member of the voices' group blocks it too", () => {
+  const voices = [voice("vo1", "voiceover")];
+  const members = [member("vo1", "voiceover", "voice"), member("pad", "voiceover", "music")];
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), members), ["vo1"]);
+});
+
+test("a voice member this run did NOT analyse keeps the group form", () => {
+  // The designed case, and the one a membership check must not break: a voice
+  // that does not overlap the bed is left out of the analysis on purpose, and
+  // covering it on a later analysis without editing `sources` is the entire
+  // reason SKILL.md says to name the group. Refusing here would collapse the
+  // group form into clip ids for every ordinary narration sequence.
+  const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
+  const members = [
+    member("vo1", "voiceover", "voice"),
+    member("vo2", "voiceover", "voice"),
+    member("vo-outro", "voiceover", "voice"),
+  ];
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), members), ["voiceover"]);
+});
+
+test("an unclassifiable member keeps the group form", () => {
+  // `unknown` is what `detectTracks` itself treats as a possible voice, so it is
+  // not evidence of a non-voice member — loose in the safe direction, same as
+  // detection.
+  const voices = [voice("vo1", "voiceover")];
+  const members = [member("vo1", "voiceover", "voice"), member("track7", "voiceover", "unknown")];
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), members), ["voiceover"]);
+});
+
+test("an sfx member of a DIFFERENT group is irrelevant", () => {
+  const voices = [voice("vo1", "voiceover")];
+  const members = [member("vo1", "voiceover", "voice"), member("whoosh", "sfx", "sfx")];
+  assert.deepEqual(carveSources(voices, bed("bgm", "music"), members), ["voiceover"]);
+});
+
+test("groupSourceRefusal names which member blocked the group, and why", () => {
+  // The stderr note is built from this, so it has to carry the ids: "sources are
+  // clip ids" plus `audio_carve_ungrouped_sources` reads as nonsense to an author
+  // who did group their clips.
+  const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
+  assert.deepEqual(
+    groupSourceRefusal(voices, bed("bgm", "music"), [member("whoosh", "voiceover", "sfx")]),
+    { group: "voiceover", reason: "mixed", ids: ["whoosh"] },
+  );
+  assert.deepEqual(groupSourceRefusal(voices, bed("bgm", "voiceover"), []), {
+    group: "voiceover",
+    reason: "bed",
+    ids: ["bgm"],
+  });
+  assert.equal(groupSourceRefusal(voices, bed("bgm", "music"), []), null);
 });
 
 test("the CLI still runs when invoked through a symlinked path", () => {

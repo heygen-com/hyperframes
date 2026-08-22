@@ -171,9 +171,9 @@ export async function loadCore(fromDir) {
  * (`audioGroupOf`), so `data-audio-group` on a `<video>` bed is ignored by core
  * and expanding a group can never pull it in.
  */
-export function carveSources(voices, bed) {
+export function carveSources(voices, bed, members = []) {
   const group = sharedVoiceGroup(voices);
-  return group && !bedInVoiceGroup(voices, bed) ? [group] : voices.map((v) => v.id);
+  return group && !groupSourceRefusal(voices, bed, members) ? [group] : voices.map((v) => v.id);
 }
 
 /** The one group every voice belongs to, or null if they do not share exactly one. */
@@ -183,10 +183,49 @@ function sharedVoiceGroup(voices) {
   return Boolean(first) && groups.every((g) => g === first) ? first : null;
 }
 
-/** The case above: naming this group would put the bed in its own source list. */
-export function bedInVoiceGroup(voices, bed) {
+/**
+ * Why naming the voices' shared group would persist something this run did not
+ * analyse — or null when the group is safe to name.
+ *
+ * `members` is every `<audio>` in the composition as `{id, group, nameKind}`,
+ * with `nameKind` from core's `classifyAudioName`, so this and Studio's picker
+ * classify the same way.
+ *
+ * Two refusals, and both exist because the group form resolves LATER and WIDER
+ * than the analysis: `resolveCarveSourceIds` expands a group id to every current
+ * member on every analysis, and `resolveCarveVoices` keeps any audio member with
+ * a src. `main()` meanwhile sums the voice list `detectTracks` returned, so the
+ * first pass looks correct however wrong the persisted attribute is.
+ *
+ *   `bed`   — the bed is a member, so it would be handed to itself as a voice
+ *             and carved against its own content.
+ *   `mixed` — a member classified music or sfx is not a voice this run measured,
+ *             so it would enter the sidechain on the next analysis and duck the
+ *             bed under a whoosh.
+ *
+ * Deliberately NOT a refusal: a member classified `voice` or `unknown` that this
+ * run left out. That is the group form working as designed — `detectTracks` only
+ * takes voices that overlap the bed, and picking up a clip that starts playing
+ * later without an edit to `sources` is the whole reason SKILL.md says to name
+ * the group. Refusing there would collapse the group form into clip ids for
+ * every ordinary narration sequence.
+ */
+export function groupSourceRefusal(voices, bed, members = []) {
   const group = sharedVoiceGroup(voices);
-  return Boolean(group) && bed?.kind === "audio" && attrOf(bed.tag, "data-audio-group") === group;
+  if (!group) return null;
+  if (bed?.kind === "audio" && attrOf(bed.tag, "data-audio-group") === group) {
+    return { group, reason: "bed", ids: [bed.id] };
+  }
+  const analysed = new Set(voices.map((v) => v.id));
+  const strays = members
+    .filter(
+      (m) =>
+        m.group === group &&
+        !analysed.has(m.id) &&
+        (m.nameKind === "music" || m.nameKind === "sfx"),
+    )
+    .map((m) => m.id);
+  return strays.length > 0 ? { group, reason: "mixed", ids: strays } : null;
 }
 
 /** Mono float PCM for one media file, via ffmpeg. */
@@ -320,7 +359,7 @@ function detectTracks(html, given, classify, overlaps) {
         `  name one with --voice`,
     );
   }
-  return { bed, voices: usable };
+  return { bed, voices: usable, all };
 }
 
 const startOf = (tag) => {
@@ -335,12 +374,21 @@ async function main() {
   const { carve: carveApi, fx: fxApi } = await loadCore(args.core ? resolve(args.core) : compDir);
 
   const html = readFileSync(compPath, "utf-8");
-  const { bed: bedEl, voices } = detectTracks(
-    html,
-    args,
-    carveApi.classifyAudioName,
-    carveApi.clipsOverlap,
-  );
+  const {
+    bed: bedEl,
+    voices,
+    all: media,
+  } = detectTracks(html, args, carveApi.classifyAudioName, carveApi.clipsOverlap);
+  // Group membership + name classification for every audio track, so the source
+  // decision can see what the group will resolve to later and not just what this
+  // run analysed.
+  const members = media
+    .filter((el) => el.kind === "audio")
+    .map((el) => ({
+      id: el.id,
+      group: attrOf(el.tag, "data-audio-group"),
+      nameKind: carveApi.classifyAudioName(el.id, unescapeAttr(attrOf(el.tag, "src") ?? "")),
+    }));
   const bedTag = bedEl.tag;
   const bedSrc = attrOf(bedTag, "src");
   process.stdout.write(
@@ -440,14 +488,24 @@ async function main() {
     : [];
   const lanes = [...carriedLanes, ...carvedLanes];
 
-  const settings = { enabled: true, sources: carveSources(voices, bedEl), strength: args.strength };
+  const settings = {
+    enabled: true,
+    sources: carveSources(voices, bedEl, members),
+    strength: args.strength,
+  };
   // Say why the group form was declined, or the lint rule tells the author to
   // group clips they have already grouped.
-  if (bedInVoiceGroup(voices, bedEl)) {
+  const refusal = groupSourceRefusal(voices, bedEl, members);
+  if (refusal) {
     process.stderr.write(
-      `note   bed ${bedEl.id} is in group "${attrOf(bedTag, "data-audio-group")}" with the voices,\n` +
-        `       so sources are clip ids: naming that group would carve the bed\n` +
-        `       against itself on the next analysis. Move the bed to its own group.\n`,
+      refusal.reason === "bed"
+        ? `note   bed ${bedEl.id} is in group "${refusal.group}" with the voices, so\n` +
+            `       sources are clip ids: naming that group would carve the bed\n` +
+            `       against itself on the next analysis. Move the bed to its own group.\n`
+        : `note   group "${refusal.group}" also holds ${refusal.ids.join(", ")}, which this run\n` +
+            `       did not analyse (music/sfx by name), so sources are clip ids: naming\n` +
+            `       the group would pull them into the sidechain on the next analysis.\n` +
+            `       Move them out of the voice group.\n`,
     );
   }
   const written =
