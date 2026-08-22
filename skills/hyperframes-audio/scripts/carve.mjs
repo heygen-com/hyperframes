@@ -83,10 +83,49 @@ function fail(message, code = 1) {
  */
 async function loadCore(fromDir) {
   const require = createRequire(pathToFileURL(resolve(fromDir, "package.json")));
-  const load = (subpath) => {
-    const file = require.resolve(`@hyperframes/core/${subpath}`);
-    return import(pathToFileURL(file).href);
+
+  /*
+   * Two constraints at once, and satisfying either alone is broken:
+   *
+   *   1. Anchored at the PROJECT, not at this script. This file lives wherever
+   *      the skill was installed, which has no @hyperframes/core; the
+   *      composition's project is what holds the dependency. So a bare
+   *      `import("@hyperframes/core/audio-carve")` from here cannot work — bare
+   *      specifiers resolve relative to the importing module.
+   *   2. Honouring the package's export CONDITIONS. `require.resolve` asks for
+   *      "require"/"node". The workspace manifest declares `node`, so this
+   *      resolved fine inside the monorepo — but the PUBLISHED manifest carries
+   *      only `import` + `types`, so every consumer of the released package got
+   *      ERR_PACKAGE_PATH_NOT_EXPORTED for a package that ships the file. That
+   *      is the audience this skill is shipped to, so the script was broken
+   *      everywhere except where it was developed.
+   *
+   * Keep the project anchor; fall back to the package's declared `import`
+   * target when no require-resolvable condition exists.
+   */
+  const load = async (subpath) => {
+    const spec = `@hyperframes/core/${subpath}`;
+    try {
+      return await import(pathToFileURL(require.resolve(spec)).href);
+    } catch (error) {
+      if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+      // `./package.json` is exported by every manifest, so this always resolves
+      // and gives us the package root without guessing at node_modules layout.
+      const pkgPath = require.resolve("@hyperframes/core/package.json");
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      const entry = pkg.exports?.[`./${subpath}`];
+      const target = typeof entry === "string" ? entry : (entry?.import ?? entry?.default ?? null);
+      if (!target) {
+        fail(
+          `@hyperframes/core does not export ./${subpath}\n` +
+            `  found at: ${pkgPath} (version ${pkg.version})\n` +
+            `  update it:  npm i -D @hyperframes/core`,
+        );
+      }
+      return import(pathToFileURL(resolve(dirname(pkgPath), target)).href);
+    }
   };
+
   try {
     return {
       carve: await load("audio-carve"),
@@ -94,13 +133,34 @@ async function loadCore(fromDir) {
     };
   } catch (error) {
     fail(
-      `cannot resolve @hyperframes/core from ${fromDir}\n` +
-        `  install or update it:  npm i -D @hyperframes/core\n` +
-        `  (the audio-carve export needs a version that ships the carve analysis)\n` +
+      `cannot load @hyperframes/core from ${fromDir}\n` +
+        `  is it installed there?  npm i -D @hyperframes/core\n` +
         `  or point at one:   --core <dir containing node_modules/@hyperframes/core>\n` +
-        `  (${error.message})`,
+        `  (${error.code ?? "error"}: ${error.message.split("\n")[0]})`,
     );
   }
+}
+
+/**
+ * The `sources` a carve should record for these voices.
+ *
+ * SKILL.md states the invariant: "A carve against more than one clip id is
+ * wrong. Group the clips and carve against the group." Naming the group lets
+ * `resolveCarveSourceIds` resolve membership at analysis time, so a voice added
+ * later is covered without editing `sources` — whereas a list of clip ids rots
+ * silently the moment a fourth narration clip appears. The lint rule
+ * `audio_carve_ungrouped_sources` enforces exactly this.
+ *
+ * This script was writing clip ids unconditionally, so it violated its own
+ * skill's invariant and tripped its own lint rule on every run. When every
+ * voice shares one group, record the group. Mixed or ungrouped voices keep
+ * their ids, and the lint rule then correctly tells the author to group them.
+ */
+export function carveSources(voices) {
+  const groups = voices.map((v) => attrOf(v.tag, "data-audio-group"));
+  const first = groups[0];
+  const allShareOneGroup = Boolean(first) && groups.every((g) => g === first);
+  return allShareOneGroup ? [first] : voices.map((v) => v.id);
 }
 
 /** Mono float PCM for one media file, via ffmpeg. */
@@ -354,7 +414,7 @@ async function main() {
     : [];
   const lanes = [...carriedLanes, ...carvedLanes];
 
-  const settings = { enabled: true, sources: voices.map((v) => v.id), strength: args.strength };
+  const settings = { enabled: true, sources: carveSources(voices), strength: args.strength };
   const written =
     ` data-fx-carve="${escapeAttr(JSON.stringify(settings))}"` +
     ` data-fx-chain="${escapeAttr(fxApi.serializeAudioFxChain(chain))}"` +
@@ -389,4 +449,8 @@ async function main() {
   process.stdout.write(`wrote ${args.comp} (id="${bedEl.id}")\n`);
 }
 
-await main();
+// Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
+// importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  await main();
+}
