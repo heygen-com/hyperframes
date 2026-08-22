@@ -992,6 +992,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "kinetic-center-build",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "kinetic-type-swap",
       "type": "hyperframes:component"
     },
