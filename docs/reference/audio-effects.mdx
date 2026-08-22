@@ -23,8 +23,9 @@ nothing to load beside the markup.
 | `data-audio-group` | The id of the group this clip belongs to | A plain id, not JSON | `<audio>` only | Yes |
 
 `data-audio-group` is the odd one: a bare string, and **ignored on `<video>`**.
-The other three are JSON, and on a group they live on the `<hf-audio-group>`
-element rather than on a clip.
+The other three are JSON. Of those, only `data-fx-chain` and `data-automation`
+can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus;
+`data-fx-carve` belongs to a clip.
 
 **Write the JSON attributes double-quoted, escaping the JSON's own quotes as
 `&quot;` and `&` as `&amp;`** — as every example on this page does. The browser
@@ -223,7 +224,7 @@ room, and a chain that could add 40 dB would clip long before that was useful.
 costs more CPU and keeps aliasing down. `samples` repeats each sample N times — a
 crude downsample, which is where the lo-fi character comes from.
 
-### Time — space and width
+### Time — where a track sits, and how it moves
 
 | Effect | Parameters |
 | --- | --- |

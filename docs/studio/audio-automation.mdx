@@ -67,13 +67,15 @@ Three kinds cannot:
 
 | These | Cannot be automated because |
 | --- | --- |
-| Compressor, limiter, gate, bitcrush | They are configured whole rather than knob-by-knob — **no parameter on any of them can move** |
+| Compressor, limiter, gate, bitcrush, pitch shift | They are configured whole rather than knob-by-knob — **no parameter on any of them can move** |
 | Saturation's type, threshold, and oversample | They rebuild the distortion curve; only its output stage can move |
 | Reverb's size and damping | They regenerate the room; its wet and dry levels can move |
 
 **A lane on one of those is silently inert** — it stores fine and never does
-anything. To make a compressor's behaviour change over time, automate a `gain`
-stage *before* it instead: that changes how hard the compressor is driven, which
+anything. Pitch shift is the one that catches people out, because a rising pitch
+sounds like something a lane should do: it cannot, and the lane will not report
+it. To make a compressor's behaviour change over time, automate a `gain` stage
+*before* it instead: that changes how hard the compressor is driven, which
 is most of what automating its threshold would have done.
 
 To fade a whole preset in or out, automate the preset itself rather than its
