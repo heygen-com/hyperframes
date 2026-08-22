@@ -66,6 +66,13 @@ export interface CreateCapturePlanInput {
 export type CapturePlanFailure =
   | Readonly<{ kind: "streaming_unavailable" }>
   | Readonly<{ kind: "draw_element_verification" }>
+  /**
+   * drawElement wedged the renderer and blew the per-frame deadline
+   * (PRINFRA-488). Distinct from `draw_element_verification` — nothing was
+   * verified and no score exists — but the recovery is identical: stay on this
+   * plan's path, force the screenshot baseline.
+   */
+  | Readonly<{ kind: "renderer_stall" }>
   | Readonly<{ kind: "capture_failure"; memoryExhaustion: boolean }>;
 
 function assertWorkerCount(workerCount: number): void {
@@ -126,8 +133,12 @@ function revertedRouting(routing: CaptureRouting): CaptureRouting {
 export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailure): CapturePlan {
   // Disk-path drawElement self-verification (parallel disk workers under the
   // explicit fast-capture opt-in) can also trip — the retry stays on the disk
-  // path but forces the screenshot baseline.
-  if (plan.kind === "sdr_disk" && failure.kind === "draw_element_verification") {
+  // path but forces the screenshot baseline. A wedged renderer takes the same
+  // route: different diagnosis, same recovery.
+  if (
+    plan.kind === "sdr_disk" &&
+    (failure.kind === "draw_element_verification" || failure.kind === "renderer_stall")
+  ) {
     return createCapturePlan({
       ...plan,
       forceScreenshot: true,

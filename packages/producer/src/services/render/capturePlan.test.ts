@@ -162,6 +162,28 @@ describe("CapturePlan", () => {
     });
   });
 
+  // A wedged renderer (PRINFRA-488) on the disk path recovers the same way. It
+  // needs its own failure kind because `sdr_disk` accepts no other, and the
+  // stall verified nothing — reusing the verification label would put a
+  // fabricated diagnosis in the retry telemetry.
+  it("forces the screenshot baseline on a disk plan after a renderer stall", () => {
+    const disk = createCapturePlan({
+      workerCount: 2,
+      forceScreenshot: false,
+      useStreamingEncode: false,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    });
+    expect(replanAfterFailure(disk, { kind: "renderer_stall" })).toMatchObject({
+      kind: "sdr_disk",
+      forceScreenshot: true,
+      forceParallelStream: false,
+      workerCount: 2,
+    });
+  });
+
   it("rejects a streaming transition from a non-streaming plan", () => {
     const disk = createCapturePlan({
       workerCount: 2,

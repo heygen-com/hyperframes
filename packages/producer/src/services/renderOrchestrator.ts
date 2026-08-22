@@ -529,9 +529,9 @@ export interface RenderPerfSummary {
      * `fallbackReason` being set is the "any fallback fired" signal.
      */
     selfVerifyFallback: boolean;
-    /** What tripped the fallback retry: psnr | blank | oom | capture_error. */
+    /** What tripped the fallback retry: psnr | blank | oom | de_renderer_stall | capture_error. */
     fallbackReason?: string;
-    /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for blank/oom/capture_error (no score exists). */
+    /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for every other reason (no score exists). */
     fallbackFailedDb?: number;
     /** Frame index the verification failure was detected at; set for both "psnr" and "blank" fallback reasons. */
     fallbackFrameIndex?: number;
@@ -545,6 +545,13 @@ export interface RenderPerfSummary {
     boundaryFrames: number;
     /** Per-frame "No cached paint record" screenshot fallbacks. */
     ncprFallbacks: number;
+    /**
+     * Frames that blew `HF_DE_FRAME_TIMEOUT_MS` — a wedged renderer
+     * (PRINFRA-488). Distinct from the other fallback counters: this one always
+     * costs a whole-render re-run via screenshot, so its rate is worth graphing
+     * on its own rather than inside `capture_error`.
+     */
+    frameTimeouts: number;
   };
   /**
    * Render-host facts, captured from the orchestrator process. Lets fleet-wide
@@ -1829,10 +1836,32 @@ export function shouldRetryViaPinnedFallback(args: {
   isCancellation: boolean;
   deWorkerInversion: "inverted" | "reverted" | undefined;
   deParallelRouter: "routed" | "reverted" | undefined;
+  /**
+   * The drawElement capture wedged the renderer (PRINFRA-488). Retryable on ANY
+   * routing, not just a pinned one: the failure is a property of drawElement
+   * itself, and the retry re-renders on a fresh page via screenshot — the only
+   * recovery that works once the renderer stops scheduling. Without this a comp
+   * that engaged drawElement on the ordinary single-worker path (neither
+   * inverted nor routed) had NO whole-render fallback, so one wedged frame
+   * failed the entire render.
+   */
+  isDeRendererStall?: boolean;
 }): boolean {
   if (args.isCancellation) return false;
   if (args.isVerifyError) return true;
+  if (args.isDeRendererStall === true) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
+}
+
+/**
+ * True for the drawElement per-frame deadline breach raised by the engine when
+ * the renderer stops scheduling after `drawElementImage` returns (PRINFRA-488).
+ * Matched on name+message rather than by class because the error crosses the
+ * engine/producer package boundary.
+ */
+export function isDeRendererStallError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === "DeFrameTimeoutError" || err.message.includes("renderer stopped scheduling");
 }
 
 /**
@@ -3580,6 +3609,7 @@ async function executeRenderPipeline(input: {
           // spawns on retry. See shouldRetryViaPinnedFallback for exactly
           // which errors qualify.
           const isVerifyError = isDrawElementVerificationError(err);
+          const isDeStall = isDeRendererStallError(err);
           const isCancellation =
             err instanceof RenderCancelledError || executionSignal?.aborted === true;
           if (
@@ -3588,6 +3618,7 @@ async function executeRenderPipeline(input: {
               isCancellation,
               deWorkerInversion,
               deParallelRouter,
+              isDeRendererStall: isDeStall,
             })
           )
             throw err;
@@ -3600,7 +3631,11 @@ async function executeRenderPipeline(input: {
             deFallbackFrameIndex = t.frameIndex;
             deFallbackThresholdDb = t.thresholdDb;
           } else {
-            deFallbackReason = isMemoryExhaustion ? "oom" : "capture_error";
+            deFallbackReason = isMemoryExhaustion
+              ? "oom"
+              : isDeStall
+                ? "de_renderer_stall"
+                : "capture_error";
           }
           log.warn(
             isVerifyError
@@ -3761,32 +3796,50 @@ async function executeRenderPipeline(input: {
         try {
           captureRes = await invokeDiskCapture(capturePlan);
         } catch (err) {
-          // Disk-path drawElement self-verification tripped (a parallel disk
-          // worker's sampled frame diverged from its pre-injection ground
-          // truth — reachable only under the explicit fast-capture opt-in).
-          // Same recovery contract as the streaming drain: re-render on the
-          // screenshot baseline. Anything else keeps its existing semantics.
+          // Two disk-path failures re-render on the screenshot baseline, and
+          // they are NOT the same failure:
+          //  - self-verification tripped (a parallel disk worker's sampled frame
+          //    diverged from its pre-injection ground truth — reachable only
+          //    under the explicit fast-capture opt-in);
+          //  - the renderer wedged and blew the per-frame deadline
+          //    (PRINFRA-488). The streaming drain already routed this; without
+          //    it here, the same stall on the disk path threw straight out and
+          //    failed the whole render, which is the behaviour the deadline was
+          //    added to remove.
+          // Anything else keeps its existing semantics.
+          const isDiskDeStall = isDeRendererStallError(err);
           if (
-            !isDrawElementVerificationError(err) ||
+            (!isDrawElementVerificationError(err) && !isDiskDeStall) ||
             err instanceof RenderCancelledError ||
             executionSignal?.aborted === true
           ) {
             throw err;
           }
-          deSelfVerifyFallback = true;
-          const t = deVerifyFallbackTelemetry(err);
-          deFallbackReason = t.reason;
-          deFallbackFailedDb = t.failedDb;
-          deFallbackFrameIndex = t.frameIndex;
-          deFallbackThresholdDb = t.thresholdDb;
+          deSelfVerifyFallback = !isDiskDeStall;
+          if (isDiskDeStall) {
+            // No score exists for a stall, so only the reason is set — same
+            // shape the streaming catch uses for this reason.
+            deFallbackReason = "de_renderer_stall";
+          } else {
+            const t = deVerifyFallbackTelemetry(err);
+            deFallbackReason = t.reason;
+            deFallbackFailedDb = t.failedDb;
+            deFallbackFrameIndex = t.frameIndex;
+            deFallbackThresholdDb = t.thresholdDb;
+          }
           log.warn(
-            "[Render] drawElement self-verification failed on the parallel disk path; " +
-              "re-rendering via screenshot",
+            isDiskDeStall
+              ? "[Render] drawElement wedged the renderer on the parallel disk path; " +
+                  "re-rendering via screenshot"
+              : "[Render] drawElement self-verification failed on the parallel disk path; " +
+                  "re-rendering via screenshot",
             { error: err instanceof Error ? err.message : String(err) },
           );
           observability.checkpoint(
             "capture_disk",
-            "drawElement self-verify failed; retrying with forceScreenshot",
+            isDiskDeStall
+              ? "drawElement renderer stall; retrying with forceScreenshot"
+              : "drawElement self-verify failed; retrying with forceScreenshot",
           );
           // The failed attempt's frames are untrusted BUT satisfy the
           // completeness check — wipe them so the retry re-captures everything
@@ -3807,7 +3860,10 @@ async function executeRenderPipeline(input: {
             probeSession = null;
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "disk verify");
           }
-          capturePlan = replanAfterFailure(capturePlan, { kind: "draw_element_verification" });
+          capturePlan = replanAfterFailure(
+            capturePlan,
+            isDiskDeStall ? { kind: "renderer_stall" } : { kind: "draw_element_verification" },
+          );
           syncCapturePlan();
           updateCaptureObservability({
             forceScreenshot: capturePlan.forceScreenshot,
