@@ -68,6 +68,36 @@ describe("TimelineFxButton", () => {
     expect(document.querySelector('[role="dialog"]')).toBeTruthy();
   });
 
+  // The reported symptom: clicking FX on an ungrouped audio track "did
+  // nothing". The dialog WAS opening — it was positioned at
+  // `anchorRect.bottom + 4` with no flip, and the timeline lives at the bottom
+  // of the studio window, so it opened past the viewport edge. The old test
+  // passed because happy-dom reports an all-zero rect for an unlaid-out button,
+  // which lands the dialog at top:4 — on screen, and nothing like the real app.
+  it("flips the group dialog above the anchor when it sits at the bottom of the window", () => {
+    const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={vi.fn()} />);
+    const fx = byTextButton(host, "FX");
+    // A track header near the bottom edge of the (1024x768) window.
+    fx!.getBoundingClientRect = () => ({ left: 300, top: 760, right: 320, bottom: 776 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    // Anchored from the bottom, not pushed off the edge with `top`.
+    expect(dialog.style.bottom).toBe("12px");
+    expect(dialog.style.top).toBe("");
+  });
+
+  it("keeps the group dialog inside the right edge of the window", () => {
+    const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={vi.fn()} />);
+    const fx = byTextButton(host, "FX");
+    // Anchor hard against the right edge: 224px wide + 8px margin must fit.
+    fx!.getBoundingClientRect = () =>
+      ({ left: 1010, top: 100, right: 1024, bottom: 116 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.style.left).toBe("792px");
+  });
+
   it("group-pointer variant offers Group instead of a popover", () => {
     const onGroupClips = vi.fn();
     const host = mount(<TimelineFxButton variant="group-pointer" onGroupClips={onGroupClips} />);

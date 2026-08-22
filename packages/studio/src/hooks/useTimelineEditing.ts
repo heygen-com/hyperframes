@@ -25,10 +25,10 @@ import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useTimelineDeleteOps } from "./useTimelineDeleteOps";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import {
-  useAudioGroupCarveAssignment,
   useTimelineElementVisibilityEditing,
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
+import { useAudioGroupCarveAssignment } from "./useAudioGroupCarveAssignment";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";

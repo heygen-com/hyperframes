@@ -18,6 +18,11 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
+import { floatingPanelStyle } from "../../components/editor/floatingPanelPosition.js";
+
+/** `w-56`, and roughly the height of its one paragraph plus the button. */
+const GROUP_DIALOG_WIDTH = 224;
+const GROUP_DIALOG_HEIGHT = 120;
 
 function parseFxChainOrEmpty(raw: string | undefined): HfAudioFxChain {
   if (!raw) return { version: 1, nodes: [] };
@@ -80,7 +85,14 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
               role="dialog"
               aria-label="Group these clips to add effects"
               className="z-[200] w-56 rounded-md border border-white/10 bg-[#1b1b1f] p-2.5 text-[11px] text-white/75 shadow-xl"
-              style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+              // Was positioning raw at `anchorRect.bottom + 4`. The timeline
+              // sits at the BOTTOM of the window, so this dialog opened past
+              // the viewport edge and the click read as doing nothing at all.
+              style={floatingPanelStyle(anchorRect, {
+                width: GROUP_DIALOG_WIDTH,
+                preferredHeight: GROUP_DIALOG_HEIGHT,
+                minHeight: GROUP_DIALOG_HEIGHT,
+              })}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <p>Group these clips to add effects to all of them.</p>

@@ -8,61 +8,19 @@
  * clip) — nothing here serializes a chain of its own.
  */
 
-import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { applyPresetToChain } from "./useApplyAudioFxPreset.js";
 import { useFxAudition } from "./useFxAudition.js";
+import { floatingPanelStyle } from "./floatingPanelPosition.js";
 
 const POPOVER_WIDTH = 260;
-const VIEWPORT_MARGIN = 8;
+/** Below this much room underneath, the popover flips above the anchor. */
+const POPOVER_PREFERRED_HEIGHT = 260;
 /** Below this the popover is useless anyway; it scrolls instead of vanishing. */
 const MIN_POPOVER_HEIGHT = 160;
-
-function clampedStyle(anchorRect: DOMRect): CSSProperties {
-  const left = Math.min(
-    Math.max(anchorRect.left, VIEWPORT_MARGIN),
-    Math.max(VIEWPORT_MARGIN, window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN),
-  );
-  const spaceBelow = window.innerHeight - anchorRect.bottom;
-  // Named, because the height cap below needs the same quantity the flip does.
-  // (`spaceAbove === anchorRect.top` for a viewport-relative rect, so the flip
-  // condition itself is unchanged — this is a rename, not a behaviour fix.)
-  const spaceAbove = anchorRect.top;
-  const openUpward = spaceBelow < 260 && spaceAbove > spaceBelow;
-  // Flipping direction alone is not enough: the preset list is taller than either
-  // gap on a short window, so the popover ran off the top or the bottom and its
-  // footer ("+ effect" / "Open rack") went with it. Cap to whatever the chosen
-  // side actually has and let the list scroll inside that.
-  const available = (openUpward ? spaceAbove : spaceBelow) - VIEWPORT_MARGIN - 4;
-  // The minimum is a floor against a tight GAP, not against a tight window: keep
-  // a usable list when the gap is smaller than 160px, but never ask for more
-  // height than the viewport itself can hold.
-  const height = Math.min(
-    Math.max(MIN_POPOVER_HEIGHT, available),
-    window.innerHeight - VIEWPORT_MARGIN * 2,
-  );
-  // A floor larger than the gap would hang the box off the edge it opened away
-  // from — reachable at high browser zoom, where both gaps fall under ~172px.
-  // Slide it back in-bounds the way `left` is already clamped, rather than
-  // shrinking below the floor: the offset that keeps BOTH edges inside is
-  // `innerHeight - height - VIEWPORT_MARGIN`, from either side.
-  const inset = (desired: number) =>
-    Math.max(
-      VIEWPORT_MARGIN,
-      Math.min(desired, Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN)),
-    );
-  return {
-    position: "fixed",
-    left,
-    width: POPOVER_WIDTH,
-    maxHeight: height,
-    ...(openUpward
-      ? { bottom: inset(window.innerHeight - anchorRect.top + 4) }
-      : { top: inset(anchorRect.bottom + 4) }),
-  };
-}
 
 export interface TimelineFxPopoverProps {
   anchorRect: DOMRect;
@@ -126,7 +84,11 @@ export function TimelineFxPopover({
       role="dialog"
       aria-label="Effects"
       className="z-[200] flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
-      style={clampedStyle(anchorRect)}
+      style={floatingPanelStyle(anchorRect, {
+        width: POPOVER_WIDTH,
+        preferredHeight: POPOVER_PREFERRED_HEIGHT,
+        minHeight: MIN_POPOVER_HEIGHT,
+      })}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
     >
