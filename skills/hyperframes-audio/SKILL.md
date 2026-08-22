@@ -261,6 +261,16 @@ A `sources` list naming two or more plain clip ids instead of a group is caught
 by the `audio_carve_ungrouped_sources` lint rule — it still works, but it is the
 version that silently rots when a clip is added.
 
+**The bed must not be a member of the group it carves against.** A group id in
+`sources` resolves to every current member on every analysis, so a bed inside
+that group is handed itself as a voice and carved against its own content —
+which is the "never carve a track against itself" rule arriving one re-analysis
+later, after a first pass that looked correct. Give the bed its own group
+(`music`) and the narration its own (`voiceover`). `carve.mjs` refuses to write
+the group form when it detects this and records clip ids instead, so the lint
+rule points at the arrangement rather than the CLI quietly producing a
+self-carve.
+
 **One knob.** `strength` is 0..1 and derives everything: how deep to cut, how
 many bands, how wide, how far to favour intelligibility over raw voice energy,
 how far the level may drop, how far under the voice to aim. Those six move

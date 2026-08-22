@@ -26,7 +26,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -81,7 +81,7 @@ function fail(message, code = 1) {
  * the skill was installed — a sibling of the composition is what has the
  * dependency.
  */
-async function loadCore(fromDir) {
+export async function loadCore(fromDir) {
   const require = createRequire(pathToFileURL(resolve(fromDir, "package.json")));
 
   /*
@@ -142,7 +142,7 @@ async function loadCore(fromDir) {
 }
 
 /**
- * The `sources` a carve should record for these voices.
+ * The `sources` a carve should record for these voices, on this bed.
  *
  * SKILL.md states the invariant: "A carve against more than one clip id is
  * wrong. Group the clips and carve against the group." Naming the group lets
@@ -155,12 +155,38 @@ async function loadCore(fromDir) {
  * skill's invariant and tripped its own lint rule on every run. When every
  * voice shares one group, record the group. Mixed or ungrouped voices keep
  * their ids, and the lint rule then correctly tells the author to group them.
+ *
+ * The bed has to be part of the decision, because the group form resolves
+ * LATER and wider than it looks. If the bed is itself a member of the voices'
+ * group, `resolveCarveSourceIds` expands that id to every current member on the
+ * next analysis — including the bed — and the bed ends up carved against
+ * itself, which SKILL.md calls a bug rather than a mix choice. This run cannot
+ * see it: `main()` sums the voice list it detected and never round-trips
+ * through group resolution, so the first pass is correct and only the next
+ * re-analysis in Studio is wrong. So decline the group form there and fall back
+ * to clip ids, which is exactly the case `audio_carve_ungrouped_sources` exists
+ * to put in front of the author.
+ *
+ * Only an `<audio>` bed can trip it: group membership is audio-only
+ * (`audioGroupOf`), so `data-audio-group` on a `<video>` bed is ignored by core
+ * and expanding a group can never pull it in.
  */
-export function carveSources(voices) {
+export function carveSources(voices, bed) {
+  const group = sharedVoiceGroup(voices);
+  return group && !bedInVoiceGroup(voices, bed) ? [group] : voices.map((v) => v.id);
+}
+
+/** The one group every voice belongs to, or null if they do not share exactly one. */
+function sharedVoiceGroup(voices) {
   const groups = voices.map((v) => attrOf(v.tag, "data-audio-group"));
   const first = groups[0];
-  const allShareOneGroup = Boolean(first) && groups.every((g) => g === first);
-  return allShareOneGroup ? [first] : voices.map((v) => v.id);
+  return Boolean(first) && groups.every((g) => g === first) ? first : null;
+}
+
+/** The case above: naming this group would put the bed in its own source list. */
+export function bedInVoiceGroup(voices, bed) {
+  const group = sharedVoiceGroup(voices);
+  return Boolean(group) && bed?.kind === "audio" && attrOf(bed.tag, "data-audio-group") === group;
 }
 
 /** Mono float PCM for one media file, via ffmpeg. */
@@ -414,7 +440,16 @@ async function main() {
     : [];
   const lanes = [...carriedLanes, ...carvedLanes];
 
-  const settings = { enabled: true, sources: carveSources(voices), strength: args.strength };
+  const settings = { enabled: true, sources: carveSources(voices, bedEl), strength: args.strength };
+  // Say why the group form was declined, or the lint rule tells the author to
+  // group clips they have already grouped.
+  if (bedInVoiceGroup(voices, bedEl)) {
+    process.stderr.write(
+      `note   bed ${bedEl.id} is in group "${attrOf(bedTag, "data-audio-group")}" with the voices,\n` +
+        `       so sources are clip ids: naming that group would carve the bed\n` +
+        `       against itself on the next analysis. Move the bed to its own group.\n`,
+    );
+  }
   const written =
     ` data-fx-carve="${escapeAttr(JSON.stringify(settings))}"` +
     ` data-fx-chain="${escapeAttr(fxApi.serializeAudioFxChain(chain))}"` +
@@ -451,6 +486,19 @@ async function main() {
 
 // Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
 // importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
-if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+//
+// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
+// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
+// a raw compare silently skips main() when invoked through any symlinked path.
+function isMainModule(importMetaUrl) {
+  if (!process.argv[1]) return false;
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href === importMetaUrl;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   await main();
 }
