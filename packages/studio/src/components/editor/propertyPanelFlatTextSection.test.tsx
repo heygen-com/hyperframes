@@ -1,28 +1,14 @@
 // @vitest-environment happy-dom
 
-import React, { act, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { act, useState } from "react";
 import postcss from "postcss";
 import tailwindcss from "tailwindcss";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FlatTextLayerList, FlatTextSection } from "./propertyPanelFlatTextSection";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(() => {
-  document.body.innerHTML = "";
-});
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
-}
+setupReactActEnvironment();
 
 const FIELDS = [
   {
@@ -365,12 +351,7 @@ describe("FlatTextSection — multi-field", () => {
       );
     }
 
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(<Harness />);
-    });
+    const { host, root } = renderInto(<Harness />);
 
     let rows = host.querySelectorAll('[data-flat-text-layer-row="true"]');
     expect(rows).toHaveLength(2);
@@ -461,12 +442,7 @@ describe("FlatTextSection — multi-field", () => {
       );
     }
 
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(<Harness />);
-    });
+    const { host, root } = renderInto(<Harness />);
 
     const addButton = host.querySelector<HTMLButtonElement>('[data-flat-text-layer-add="true"]');
     // Wait for onAddTextField's promise to resolve (adds field "c" and makes it
@@ -489,22 +465,17 @@ describe("FlatTextSection — multi-field", () => {
     const element = makeMultiFieldElement();
     element.textFields[0].value = "First line\nSecond line\nThird line";
 
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(
-        <FlatTextSection
-          element={element}
-          styles={{}}
-          fontAssets={[]}
-          onSetText={vi.fn()}
-          onSetTextFieldStyle={vi.fn()}
-          onAddTextField={vi.fn()}
-          onRemoveTextField={vi.fn()}
-        />,
-      );
-    });
+    const { host, root } = renderInto(
+      <FlatTextSection
+        element={element}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={vi.fn()}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
 
     const contentTextarea = host.querySelector<HTMLTextAreaElement>("textarea");
     expect(contentTextarea?.value).toBe("First line\nSecond line\nThird line");

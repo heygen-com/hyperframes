@@ -8,11 +8,11 @@ import {
   getCssFilterFunctionPx,
   inferBoxShadowPreset,
   inferClipPathPreset,
+  isSelectedElementHidden,
   normalizePanelPxValue,
   parseInsetClipPathSides,
   setCssFilterFunctionPx,
-} from "./PropertyPanel";
-import { isSelectedElementHidden } from "./propertyPanelHelpers";
+} from "./propertyPanelHelpers";
 
 describe("PropertyPanel style helpers", () => {
   it("normalizes bounded pixel values without accepting incompatible units", () => {
