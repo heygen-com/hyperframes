@@ -46,6 +46,7 @@ import {
   produceDrawElementFrameBatch,
 } from "./drawElementService.js";
 import { initThreeDProjection, detectCssEffectRisk } from "./threeDProjection.js";
+import { isPsnrFilterAvailable } from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, applyConcreteGpuScreenshotClamp, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
@@ -898,6 +899,28 @@ async function initDrawElementOrTransparentBackground(
           "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
           "feature, ~151+); run `hyperframes browser ensure --force` to fetch a supported " +
           "build, or set HYPERFRAMES_BROWSER_PATH to one.",
+      );
+      await routeToFallback();
+      return;
+    }
+    // ffmpeg-psnr preflight: the disk-sample self-verify path
+    // (parallelCoordinator's psnrForDiskSample → psnrDb) shells to
+    // `ffmpeg -lavfi psnr`. When the resident ffmpeg is missing or was built
+    // without libpostproc, every per-sample compare throws and
+    // psnrForDiskSample swallows the error — the safety net silently fails
+    // open. Force-fallback to the reliable capture path so the safety net
+    // for drawElement isn't the one thing standing between a compositor bug
+    // and a shipped video. Skipped under HF_FORCE_DRAWELEMENT (matches the
+    // policy of every other gate below).
+    if (!forceDE && !(await isPsnrFilterAvailable())) {
+      session.deGateReason = "ffmpeg_no_psnr_filter";
+      session.deFallbackTrigger = "ffmpeg_no_psnr_filter";
+      console.warn(
+        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+          "host ffmpeg is missing or was built without the `psnr` filter " +
+          "(libpostproc), so drawElement self-verification cannot run. Install " +
+          "an ffmpeg build that includes libpostproc (or set HYPERFRAMES_FFMPEG_PATH " +
+          "to one) to re-enable fast capture.",
       );
       await routeToFallback();
       return;

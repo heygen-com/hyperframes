@@ -620,10 +620,36 @@ function assertDiskSampleAboveFloor(
 }
 
 /**
+ * Distinguishes infrastructure-class ffmpeg failures (spawn ENOENT, missing
+ * `psnr` filter) from per-sample noise (readFile races, transient tmpdir
+ * EPERM). Only the infrastructure class should terminate the render — the
+ * ffmpeg preflight in `initDrawElementOrTransparentBackground` catches these
+ * at bootstrap, so surfacing them here means the preflight was bypassed or
+ * the host ffmpeg changed mid-render.
+ *
+ * Exported for testing; the discriminator is a pure error-shape read.
+ */
+export function isFfmpegInfrastructureFailure(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const record = err as { code?: unknown; message?: unknown; stderr?: unknown };
+  if (record.code === "ENOENT") return true;
+  const message = typeof record.message === "string" ? record.message : "";
+  const stderr = typeof record.stderr === "string" ? record.stderr : "";
+  const text = `${message}\n${stderr}`;
+  // Spawn-side failures ("spawn ffmpeg ENOENT") and filter-side failures
+  // ("No such filter: 'psnr'", ffmpeg <=5 emits "Unknown filter 'psnr'").
+  return /\bENOENT\b|No such filter|Unknown filter/i.test(text);
+}
+
+/**
  * Compare one captured frame file against its ground truth. Returns the
- * PSNR, or null on infrastructure failure (missing file already surfaces
- * via the frame completeness check; ffmpeg spawn/tmpdir here) — a skipped
- * sample is not damage evidence and must not fail the capture.
+ * PSNR, or null on per-sample noise (readFile races, transient EPERM,
+ * unparseable ffmpeg output on a single sample) — a skipped sample is not
+ * damage evidence and must not fail the capture. Re-throws when the error
+ * shape indicates the ffmpeg install itself is broken (missing binary or
+ * missing `psnr` filter): the drawElement self-verify safety net cannot
+ * possibly run in that state, and continuing would silently ship every
+ * remaining frame unverified.
  */
 async function psnrForDiskSample(
   framePath: string,
@@ -634,6 +660,17 @@ async function psnrForDiskSample(
   try {
     return await psnrDb(await readFile(framePath), truth);
   } catch (err) {
+    if (isFfmpegInfrastructureFailure(err)) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `[Parallel] drawElement disk self-verify aborted (worker ${workerId}, frame ${idx}): ` +
+          `ffmpeg or the \`psnr\` filter is unavailable — ${detail}. The preflight in ` +
+          "initDrawElementOrTransparentBackground normally catches this at bootstrap; if you " +
+          "hit this after a successful preflight, ffmpeg was replaced mid-render or " +
+          "HYPERFRAMES_FFMPEG_PATH now points at a different binary.",
+        { cause: err },
+      );
+    }
     console.warn(
       `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
         `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
