@@ -1,0 +1,124 @@
+---
+title: "Make music sit under narration"
+sidebarTitle: "Voiceover carve"
+description: "Take only the frequencies a voice occupies out of a music bed, so the music keeps its character while speech stays intelligible."
+---
+
+Music under narration is the most common audio problem in a video, and the
+obvious fix is the wrong one.
+
+Turning the whole music track down works, and it costs the music all of its
+presence for as long as anyone is talking — the bed goes limp through the entire
+voiceover. But a voice does not need the whole spectrum. It needs the few bands it
+actually occupies. A **carve** takes only those out of the music, so the bed keeps
+its low end and its top: still music, while the voice stays intelligible.
+
+## When to use it
+
+Whenever a music bed plays under speech. It is not a polish step to reach if
+there is time — place both tracks, carve, and listen.
+
+Skip it only when there is no narration for the music to sit under: a music video,
+a title card, a montage cut to the track.
+
+## Carve a bed
+
+The carve is a module at the top of the **music** track's rack, not a separate
+tool. Select the music clip, open its **Audio FX** section, and the module asks
+you to pick the voices this bed should make room for.
+
+A bed with exactly one candidate voice above it is **already carved**, at the
+default strength, because that is what a bed under narration wants. Several
+candidates leaves the picker waiting rather than guessing which one is the voice.
+
+<Warning>
+  The carve belongs on the **music**, never on the voice. It names the tracks it
+  makes room for, the same way a sidechain compressor does — you select the track
+  that gets quieter and pick what makes it quieter. A voice carved against itself
+  is a bug, not a subtle mix choice.
+</Warning>
+
+## Set the strength
+
+One control does the whole job. It derives how deep to cut, how many bands, how
+wide they are, how far the level may drop, and how far under the voice to aim —
+because those move together in any real mix.
+
+| Strength | What you get |
+| --- | --- |
+| Default (0.25) | A 6 dB dip in three bands — audible without sounding like a hole |
+| Around 0.5 | The dip reaches 10 dB, where a carve starts being heard as an effect |
+| Higher | Deliberate territory for a loud bed under a quiet voice |
+| 0 | Spectral only — one band, no level matching at all |
+
+**Switch the carve off** keeps the settings and stops the carve, which is
+different from clearing it: a bed with one candidate voice would otherwise be
+carved again by default the moment it was re-evaluated.
+
+## What it writes
+
+Ordinary effects. Open the rack after carving and you will find a few `peaking`
+filters and a `gain` stage — nothing hidden, nothing proprietary.
+
+Two things follow from that:
+
+- **The envelopes are editable.** The carve always follows the speech, so every
+  value becomes an automation lane you can adjust by hand afterwards. Silence
+  leaves the music alone; a loud passage pushes the carve to full depth. There is
+  no fixed-depth mode, because a fixed dip thins the bed through every pause.
+- **Re-carving is safe.** The nodes a carve writes are tagged as its own, so
+  running it again at a new strength replaces exactly those and leaves every
+  effect and lane you built by hand where it was.
+
+Inside a carved bed the signal runs through the dips first, then the level match,
+then anything you added yourself — which is why a limiter you place stays the last
+ceiling.
+
+## Point it at a group, not at clips
+
+If narration arrives as several clips, [group them](/studio/audio-groups) and
+carve against the group.
+
+A carve pointed at individual clips has to list every one of them, and it stays
+right only until the next edit: add a fourth narration clip and it plays outside
+the carve's awareness, so the music silently fails to duck under it. A carve
+pointed at a group resolves membership every time the analysis runs, so a clip
+added later is covered without touching the carve.
+
+Studio does this for you when you pick a second ungrouped voice — it creates a
+group behind them and points the carve at that instead.
+
+## What should happen
+
+- The voice is legible without the bed sounding hollowed out.
+- The music comes **back up between phrases** rather than staying flat.
+- The bed keeps its bass and its top end. A carve that removed those would just
+  be a filter.
+
+## Common problems
+
+**The music sounds notched or hollow.** Strength is too high. Come back toward
+the default. This is the one failure mode with an obvious sound.
+
+**The voice is still buried.** A carve cannot fix a bed that is simply louder than
+the voice — spectral room does not solve a level problem. Compare the two tracks'
+actual loudness first. Machine-generated speech commonly arrives far below a
+mastered music track, and that gap is arithmetic rather than taste.
+
+**The bed starts out already ducked.** A lane holds its first value backwards to
+the start of its clip. A bed that begins before the voice needs an explicit "no
+cut" point at its start.
+
+**The music pumps.** The level envelope releases slowly on purpose, because music
+that snaps back the instant a word ends sounds like a machine doing it. If it
+still pumps, the gaps between phrases are shorter than the release — lower the
+strength rather than fighting the envelope.
+
+**Nothing was carved.** The picker leaves itself alone when several tracks could
+be the voice. Name the voice explicitly.
+
+## Related topics
+
+- [Mix audio and apply effects](/studio/audio-effects)
+- [Group tracks, mute, and solo](/studio/audio-groups)
+- [Audio effects implementation](/reference/audio-effects#voiceover-carve)

@@ -213,8 +213,16 @@
               "studio/canvas",
               "studio/timeline",
               "studio/animation",
-              "studio/captions",
-              "studio/audio-effects"
+              "studio/captions"
+            ]
+          },
+          {
+            "group": "Audio",
+            "pages": [
+              "studio/audio-effects",
+              "studio/voiceover-carve",
+              "studio/audio-groups",
+              "studio/audio-automation"
             ]
           },
           {
