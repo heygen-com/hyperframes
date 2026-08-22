@@ -229,12 +229,53 @@ export async function extractVisibleText(page: Page): Promise<string> {
   return visibleTextContent;
 }
 
+interface VertexCaptionConfig {
+  project?: string;
+  location: string;
+  googleAuthOptions?: { credentials: Record<string, unknown>; scopes: string[] };
+}
+
+/**
+ * Vertex AI is the opt-in for Google Cloud tenants whose Gemini access is
+ * service-account based — the Vertex endpoint rejects plain API keys, so the
+ * GEMINI_API_KEY path can never reach it. Enable with
+ * GOOGLE_GENAI_USE_VERTEXAI=true (the @google/genai SDK's own convention).
+ * Credentials come from GOOGLE_SERVICE_ACCOUNT_INFO (inline SA JSON) when set,
+ * else the SDK falls through to Application Default Credentials. Project falls
+ * back to the SA's own project_id; location defaults to "global".
+ */
+export function resolveVertexCaptionConfig(): VertexCaptionConfig | null {
+  if ((process.env.GOOGLE_GENAI_USE_VERTEXAI || "").toLowerCase() !== "true") return null;
+  let project = process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_PROJECT_ID;
+  let googleAuthOptions: VertexCaptionConfig["googleAuthOptions"];
+  const saRaw = process.env.GOOGLE_SERVICE_ACCOUNT_INFO;
+  if (saRaw) {
+    let sa: Record<string, unknown>;
+    try {
+      sa = JSON.parse(saRaw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+    googleAuthOptions = {
+      credentials: sa,
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    };
+    project = project || (typeof sa.project_id === "string" ? sa.project_id : undefined);
+  }
+  const location = process.env.GOOGLE_CLOUD_LOCATION || process.env.GOOGLE_LOCATION || "global";
+  return { project, location, googleAuthOptions };
+}
+
 /**
  * Caption downloaded images using a vision model.
  *
- * Provider is chosen by which API key is present: OPENROUTER_API_KEY → OpenRouter
- * (any vision model via its OpenAI-style API), else GEMINI_API_KEY/GOOGLE_API_KEY
- * → Google Gemini, else no captioning. OpenRouter wins if both are set.
+ * Provider is chosen by which credentials are present: OPENROUTER_API_KEY →
+ * OpenRouter (any vision model via its OpenAI-style API), else
+ * GOOGLE_GENAI_USE_VERTEXAI=true → Gemini on Vertex AI (service-account/ADC
+ * auth — see resolveVertexCaptionConfig), else GEMINI_API_KEY/GOOGLE_API_KEY →
+ * Google Gemini API, else no captioning. OpenRouter wins if several are set;
+ * the Vertex flag wins over a bare Gemini key because a tenant that sets it is
+ * saying its key material is Vertex-side.
  *
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
@@ -266,22 +307,28 @@ export async function captionImagesWithGemini(
   }
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!openRouterKey && !geminiKey) {
+  const vertexConfig = resolveVertexCaptionConfig();
+  if (!openRouterKey && !geminiKey && !vertexConfig) {
     reportOutcome();
     return geminiCaptions;
   }
 
-  // OpenRouter takes priority when both keys are set — it's the explicit opt-in
-  // for users without Google access. Both providers satisfy the same
-  // single-image → one-line-caption contract (`captionOne`), so the batching and
-  // SVG-rasterization loops below stay provider-agnostic.
+  // OpenRouter takes priority when several credentials are set — it's the
+  // explicit opt-in for users without Google access. All providers satisfy the
+  // same single-image → one-line-caption contract (`captionOne`), so the
+  // batching and SVG-rasterization loops below stay provider-agnostic.
   const useOpenRouter = Boolean(openRouterKey);
-  const providerName = useOpenRouter ? "OpenRouter" : "Gemini";
-  // Default mirrors the Gemini path's tier (3.x flash-lite). Override per
-  // provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_GEMINI_MODEL.
+  const useVertex = !useOpenRouter && Boolean(vertexConfig);
+  const providerName = useOpenRouter ? "OpenRouter" : useVertex ? "Vertex Gemini" : "Gemini";
+  // Defaults are the same 3.1 flash-lite tier on every surface; the two Google
+  // surfaces publish it under different names (Vertex serves the GA
+  // "gemini-3.1-flash-lite", the Gemini API only its "-preview" alias).
+  // Override per provider via HYPERFRAMES_OPENROUTER_MODEL /
+  // HYPERFRAMES_GEMINI_MODEL.
   const model = useOpenRouter
     ? process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite"
-    : process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+    : process.env.HYPERFRAMES_GEMINI_MODEL ||
+      (useVertex ? "gemini-3.1-flash-lite" : "gemini-3.1-flash-lite-preview");
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
 
   progress("design", `Captioning images with ${providerName} vision...`);
@@ -335,10 +382,18 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
-      // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
-      if (!geminiKey) return geminiCaptions;
+      // Unreachable when neither Vertex nor a key is configured (guarded above); re-narrow for TS.
+      if (!geminiKey && !vertexConfig) return geminiCaptions;
       const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const ai =
+        useVertex && vertexConfig
+          ? new GoogleGenAI({
+              vertexai: true,
+              project: vertexConfig.project,
+              location: vertexConfig.location,
+              googleAuthOptions: vertexConfig.googleAuthOptions,
+            })
+          : new GoogleGenAI({ apiKey: geminiKey });
       captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
         const response = await runBoundedVisionRequest(
           (signal) =>
