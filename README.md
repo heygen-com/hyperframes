@@ -17,6 +17,10 @@
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
 <p align="center">
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <a href="https://hyperframes.heygen.com/quickstart">Quickstart</a> |
   <a href="https://hyperframes.heygen.com/showcase">Showcase</a> |
   <a href="https://www.hyperframes.dev/">Playground</a> |
