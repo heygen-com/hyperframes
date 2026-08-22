@@ -7,8 +7,10 @@
 //        in the same call, so no separate transcribe pass.
 //   2. ElevenLabs         — $ELEVENLABS_API_KEY + `pip install elevenlabs`. No
 //        word timings → caller chains transcribeWav().
-//   3. Kokoro-82M (local) — always available, via the published `hyperframes tts`
-//        CLI. No word timings → caller chains transcribeWav().
+//   3. Kokoro-82M (local) — via the published `hyperframes tts` CLI. No word
+//        timings → caller chains transcribeWav().
+//   4. Edge TTS (CLI)     — no key or ML deps. Native WordBoundary timings
+//        from --write-subtitles, so no transcribe pass.
 //
 // "HeyGen available" is decided by CREDENTIAL presence (heygenCredential), never
 // by the CLI — see the note above.
@@ -32,21 +34,44 @@ export function elevenlabsAvailable() {
   });
   return r.status === 0;
 }
+export function kokoroAvailable(spawnSyncFn = spawnSync) {
+  const { cmd, args } = pythonInvocation(["-c", "import kokoro_onnx, soundfile"]);
+  const r = spawnSyncFn(cmd, args, { stdio: "ignore" });
+  return r.status === 0;
+}
+export function edgeAvailable(spawnSyncFn = spawnSync) {
+  const r = spawnSyncFn("edge-tts", ["--version"], { stdio: "ignore" });
+  return r.status === 0;
+}
 
 // First available provider wins; an explicit choice is honored (and validated).
-export function pickProvider(userProvider) {
+export function pickProvider(userProvider, deps = {}) {
+  const hasHeygen = deps.heygenAvailable ?? heygenAvailable;
+  const hasElevenlabs = deps.elevenlabsAvailable ?? elevenlabsAvailable;
+  const hasKokoro = deps.kokoroAvailable ?? kokoroAvailable;
+  const hasEdge = deps.edgeAvailable ?? edgeAvailable;
   if (userProvider) {
-    if (!["heygen", "elevenlabs", "kokoro"].includes(userProvider))
-      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro)`);
-    if (userProvider === "heygen" && !heygenAvailable())
+    if (!["heygen", "elevenlabs", "kokoro", "edge"].includes(userProvider))
+      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro | edge)`);
+    if (userProvider === "heygen" && !hasHeygen())
       throw new Error(
         "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
       );
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
+    if (userProvider === "edge" && !hasEdge())
+      throw new Error(
+        "provider=edge but edge-tts is not installed (install with `pipx install edge-tts` or `pip install edge-tts`)",
+      );
     return userProvider;
   }
-  return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
+  if (hasHeygen()) return "heygen";
+  if (hasElevenlabs()) return "elevenlabs";
+  if (hasKokoro()) return "kokoro";
+  if (hasEdge()) return "edge";
+  // Preserve the existing terminal behavior when no provider can be proven
+  // available: Kokoro will surface its established install diagnostic.
+  return "kokoro";
 }
 
 // ── voice resolution ──────────────────────────────────────────────────────────
@@ -56,6 +81,7 @@ export function pickProvider(userProvider) {
 export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (userVoice) return userVoice;
   if (provider === "elevenlabs") return "21m00Tcm4TlvDq8ikWAM"; // Rachel
+  if (provider === "edge") return "en-US-AndrewNeural";
   if (provider === "kokoro") {
     if (lang === "en") return "am_michael";
     throw new Error("Kokoro non-English needs an explicit --voice (see references/tts.md)");
@@ -82,6 +108,54 @@ export function withWordIds(words) {
     start: w.start,
     end: w.end,
   }));
+}
+
+function parseVttTimestampMs(value) {
+  const parts = String(value).replace(",", ".").split(":");
+  if (parts.length < 2 || parts.length > 3) return NaN;
+  const seconds = Number(parts.pop());
+  const minutes = Number(parts.pop());
+  const hours = parts.length ? Number(parts.pop()) : 0;
+  if (![hours, minutes, seconds].every(Number.isFinite)) return NaN;
+  return Math.round((hours * 3600 + minutes * 60 + seconds) * 1000);
+}
+
+// edge-tts emits one WordBoundary cue per VTT block. The engine's public timing
+// contract is seconds, so parse at millisecond precision and normalize here.
+export function parseEdgeVtt(vttText) {
+  const words = [];
+  for (const block of String(vttText ?? "")
+    .replace(/\r/g, "")
+    .split(/\n{2,}/)) {
+    const lines = block.split("\n").map((line) => line.trim());
+    const timingIndex = lines.findIndex((line) => line.includes("-->"));
+    if (timingIndex < 0) continue;
+    const match =
+      /^(\d{2}:\d{2}(?::\d{2})?[.,]\d{3})\s+-->\s+(\d{2}:\d{2}(?::\d{2})?[.,]\d{3})(?:\s+.*)?$/.exec(
+        lines[timingIndex],
+      );
+    if (!match) continue;
+    const startMs = parseVttTimestampMs(match[1]);
+    const endMs = parseVttTimestampMs(match[2]);
+    const text = lines
+      .slice(timingIndex + 1)
+      .filter(Boolean)
+      .join(" ");
+    if (!text || !Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    words.push({ text, start: startMs / 1000, end: endMs / 1000 });
+  }
+  return words;
+}
+
+export function edgeRate(speed) {
+  if (typeof speed === "string" && /^[+-]?\d+(?:\.\d+)?%$/.test(speed.trim())) {
+    const rate = speed.trim();
+    return /^[+-]/.test(rate) ? rate : `+${rate}`;
+  }
+  const numeric = Number(speed);
+  if (!Number.isFinite(numeric) || numeric === 1) return "-2%";
+  const percent = Math.round((numeric - 1) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}%`;
 }
 
 // `ffmpeg -i <file>` prints a `Duration: HH:MM:SS.ms` line to stderr even
@@ -238,8 +312,8 @@ save(audio, sys.argv[3])
 
 // ── synthesize one line ───────────────────────────────────────────────────────
 // Writes wav at wavAbs. Returns { ok, words, error } — words is the raw
-// [{text,start,end}] array for HeyGen (native), or null for ElevenLabs/Kokoro
-// (caller must transcribeWav). Never throws; failures return { ok:false, error }
+// [{text,start,end}] array for HeyGen/Edge (native), or null for ElevenLabs/
+// Kokoro (caller must transcribeWav). Never throws; failures return { ok:false, error }
 // where `error` states WHY (so the caller can surface it, not a bare "TTS failed").
 export async function synthesizeOne({
   provider,
@@ -251,6 +325,7 @@ export async function synthesizeOne({
   hyperframesDir,
 }) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
+  if (provider === "edge") return synthesizeEdge({ text, voiceId, speed, wavAbs });
   if (provider === "elevenlabs") {
     // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
     // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
@@ -289,6 +364,46 @@ export function synthResult(r, wavAbs, label) {
   const why =
     r.status !== 0 ? `${label} exited with status ${r.status}` : `${label} produced no wav file`;
   return { ok: false, words: null, error: why };
+}
+
+export async function synthesizeEdge({ text, voiceId, speed, wavAbs }, deps = {}) {
+  const run = deps.spawnP ?? spawnP;
+  const transcode = deps.transcodeToWav ?? transcodeToWav;
+  const probeDuration = deps.ffprobeDuration ?? ffprobeDuration;
+  const td = mkdtempSync(join(tmpdir(), "hf-edge-tts-"));
+  const mp3 = join(td, "voice.mp3");
+  const vtt = join(td, "words.vtt");
+  try {
+    const r = await run("edge-tts", [
+      "--voice",
+      voiceId,
+      `--rate=${edgeRate(speed)}`,
+      "--text",
+      text,
+      "--write-media",
+      mp3,
+      "--write-subtitles",
+      vtt,
+    ]);
+    if (r.status !== 0) {
+      return { ok: false, words: null, error: `edge-tts exited with status ${r.status}` };
+    }
+    if (!existsSync(mp3) || !existsSync(vtt)) {
+      return { ok: false, words: null, error: "edge-tts produced no media or subtitles" };
+    }
+    if (!transcode(readFileSync(mp3), wavAbs)) {
+      return { ok: false, words: null, error: "edge-tts wav transcode failed (ffmpeg)" };
+    }
+    const duration = probeDuration(wavAbs);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return { ok: false, words: null, error: "edge-tts produced unreadable audio duration" };
+    }
+    return { ok: true, words: parseEdgeVtt(readFileSync(vtt, "utf8")) };
+  } catch (e) {
+    return { ok: false, words: null, error: e?.message ? String(e.message) : String(e) };
+  } finally {
+    rmSync(td, { recursive: true, force: true });
+  }
 }
 
 // `deps` is injectable for tests; production uses the real network/ffmpeg impls.
