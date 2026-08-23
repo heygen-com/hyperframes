@@ -20,13 +20,18 @@ function parseNum(value: string | null | undefined): number | null {
 }
 
 function parseElementDurationAttr(element: Element): number | null {
-  return (
-    resolveAuthoredTimingWindow({
-      start: 0,
-      duration: element.getAttribute("data-duration"),
-      authoredDuration: element.getAttribute("data-hf-authored-duration"),
-    })?.duration ?? null
-  );
+  const publicDuration = element.getAttribute("data-duration");
+  const authoredDuration = element.getAttribute("data-hf-authored-duration");
+  const resolved = resolveAuthoredTimingWindow({
+    start: 0,
+    duration: publicDuration,
+    authoredDuration,
+  })?.duration;
+  if (resolved != null) return resolved;
+  const hasExplicitNonpositive = [publicDuration, authoredDuration]
+    .map(parseNum)
+    .some((duration) => duration != null && duration <= 0);
+  return hasExplicitNonpositive ? 0 : null;
 }
 
 function parseElementEndAttr(element: Element): number | null {
