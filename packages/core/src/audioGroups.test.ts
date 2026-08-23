@@ -113,6 +113,18 @@ describe("audioGroupOf", () => {
     document.body.innerHTML = `<audio id="vo-1"></audio>`;
     expect(audioGroupOf(document.getElementById("vo-1") as Element)).toBeNull();
   });
+
+  it("ignores video membership so preview matches the audio-only render", () => {
+    document.body.innerHTML = `<video id="v-1" data-audio-group="voiceover"></video>`;
+    const el = document.getElementById("v-1") as Element;
+    expect(audioGroupOf(el)).toBeNull();
+    expect(resolveAudioGroups(document)).toEqual([]);
+  });
+
+  it("normalizes an empty membership attribute to null", () => {
+    document.body.innerHTML = `<audio id="vo-1" data-audio-group=""></audio>`;
+    expect(audioGroupOf(document.getElementById("vo-1") as Element)).toBeNull();
+  });
 });
 
 describe("resolveCarveSourceIds", () => {

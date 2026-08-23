@@ -101,6 +101,37 @@ function mount(dataAttributes: Record<string, string>, alone = false, voices = 2
   return { host, onSetAttributeQuiet, onSetAttributeLive };
 }
 
+function mountGroup(memberStart: number) {
+  const bus = document.createElement("hf-audio-group");
+  bus.id = "voiceover";
+  document.body.append(bus);
+  const member = document.createElement("audio");
+  member.id = "vo-1";
+  member.setAttribute("data-audio-group", "voiceover");
+  member.setAttribute("data-start", String(memberStart));
+  member.setAttribute("data-duration", "5");
+  document.body.append(member);
+
+  const host = document.createElement("div");
+  document.body.append(host);
+  const selection = {
+    dataAttributes: { "fx-chain": CHAIN },
+    id: "voiceover",
+    element: bus,
+    tagName: "hf-audio-group",
+  } as unknown as DomEditSelection;
+  act(() => {
+    createRoot(host).render(
+      <AudioFxGroup
+        element={selection}
+        onSetAttributeQuiet={vi.fn()}
+        onSetAttributeLive={vi.fn()}
+      />,
+    );
+  });
+  return host;
+}
+
 const rowFor = (host: HTMLElement, label: string): HTMLElement | null => {
   for (const row of Array.from(host.querySelectorAll<HTMLElement>(".hf-fx-row"))) {
     if (row.querySelector(".hf-fx-label")?.textContent === label) return row;
@@ -563,6 +594,20 @@ describe("AudioFxGroup dynamic carve", () => {
       leaveShelf(host);
       expect(store().playbackRequest?.playing).toBe(false);
       expect(store().playbackRequest?.returnTo).toBe(42);
+    });
+
+    it("seeks a group audition to the next member span", () => {
+      act(() =>
+        usePlayerStore.setState({
+          isPlaying: false,
+          currentTime: 2,
+          requestedSeekTime: null,
+        }),
+      );
+      const host = mountGroup(10);
+      hoverPreset(host);
+      expect(store().requestedSeekTime).toBe(10);
+      leaveShelf(host);
     });
 
     it("leaves a transport the author started alone", () => {

@@ -615,6 +615,16 @@ describe("audio_group_no_members", () => {
     expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
   });
 
+  it("stays quiet for an unmatched bus when another group has local members", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`<hf-audio-group id="local"></hf-audio-group>
+        <audio id="local-1" src="local.wav" data-start="0" data-duration="5" data-audio-group="local"></audio>
+        ${BUS}
+        <div id="host" data-composition-src="compositions/voices.html" data-start="0" data-duration="10"></div>`),
+    );
+    expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
+  });
+
   it("stays quiet for a bus with no id", async () => {
     const res = await lintHyperframeHtml(
       doc(`<hf-audio-group data-label="Nameless"></hf-audio-group>`),

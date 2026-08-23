@@ -54,7 +54,6 @@ interface MediaElementLike {
 /** A bus or member, which additionally needs subtree scoping to be paired up. */
 interface ScopedElementLike extends MediaElementLike {
   closest?(selector: string): ScopedElementLike | null;
-  querySelectorAll?(selector: string): Iterable<MediaElementLike>;
 }
 
 interface DocumentLike {
@@ -176,7 +175,16 @@ function busForMember(
 ): MediaElementLike | undefined {
   if (buses.length === 1) return buses[0];
   const scope = member.closest?.("[data-composition-id]");
-  if (!scope?.querySelectorAll) return buses[0];
-  const inScope = [...(scope.querySelectorAll(AUDIO_GROUP_SELECTOR) as Iterable<MediaElementLike>)];
-  return inScope.find((candidate) => candidate.getAttribute("id") === groupId) ?? buses[0];
+  if (!scope) return buses[0];
+  // `scope.querySelectorAll()` also sees buses owned by nested compositions.
+  // Compare each bus's own nearest composition instead, so a root member does
+  // not bind to a same-named bus inside a child merely because the child comes
+  // first in document order.
+  return (
+    buses.find(
+      (candidate) =>
+        candidate.getAttribute("id") === groupId &&
+        candidate.closest?.("[data-composition-id]") === scope,
+    ) ?? buses[0]
+  );
 }

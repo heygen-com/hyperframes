@@ -811,6 +811,9 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
   // own output as an error, and said "No clip carries `data-audio-group` at all"
   // about clips it simply could not see.
   if (memberGroupIds.size === 0) return [];
+  const mayHaveCrossFileMembers = ctx.tags.some((tag) =>
+    Boolean(readAttr(tag.raw, "data-composition-src")),
+  );
 
   const findings: HyperframeLintFinding[] = [];
   for (const tag of ctx.tags) {
@@ -820,6 +823,11 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
     const elementId = readAttr(tag.raw, "id");
     if (!elementId) continue;
     if (memberGroupIds.has(elementId)) continue;
+    // A mixed file is still not closed-world: one bus may have local members
+    // while another serves clips inside a referenced composition. The linter
+    // cannot inspect that file here, so an unmatched bus is only provably empty
+    // when this source has no cross-file composition hosts at all.
+    if (mayHaveCrossFileMembers) continue;
 
     // Naming the near-misses is the whole value: the fix is almost always a
     // typo on one member, and the author is looking at the bus, not the clip.

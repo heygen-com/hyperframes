@@ -130,4 +130,23 @@ describe("audio group render ids", () => {
     // name, so resolution falls back to the author id as it always did.
     expect(d.querySelector("audio")?.hasAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe(false);
   });
+
+  it("does not bind a root member to a same-named bus in a nested composition", () => {
+    const d = doc(`<div data-composition-id="root">
+      <div data-composition-id="child">
+        <hf-audio-group id="bed"></hf-audio-group>
+        <audio id="child-member" src="child.wav" data-audio-group="bed"></audio>
+      </div>
+      <audio id="root-member" src="root.wav" data-audio-group="bed"></audio>
+      <hf-audio-group id="bed"></hf-audio-group>
+    </div>`);
+    assignMediaRenderIds(d);
+
+    const buses = [...d.querySelectorAll("hf-audio-group")];
+    expect(buses.map((bus) => bus.getAttribute(MEDIA_RENDER_ID_ATTR))).toEqual(["bed", "bed__hf2"]);
+    expect(d.getElementById("child-member")?.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe("bed");
+    expect(d.getElementById("root-member")?.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe(
+      "bed__hf2",
+    );
+  });
 });

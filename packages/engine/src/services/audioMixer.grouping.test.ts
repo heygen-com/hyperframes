@@ -463,6 +463,40 @@ describe.skipIf(!HAS_FFMPEG)("group sub-mix failure contract", () => {
     // it: an escaped  would survive there. Only the project remains.
     expect(readdirSync(parent).sort()).toEqual(["project"]);
   });
+
+  it("keeps distinct groups isolated when their sanitized ids collide", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-grp-collision-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-grp-collision-work-"));
+    tempDirs.push(projectDir, workDir);
+    writeTone(join(projectDir, "a.wav"), 440, 2, 0.4);
+    writeTone(join(projectDir, "b.wav"), 880, 2, 0.4);
+
+    const groupedOut = join(projectDir, `grouped-${MIXED_AUDIO_FILENAME}`);
+    const flatOut = join(projectDir, `flat-${MIXED_AUDIO_FILENAME}`);
+    const grouped = await processCompositionAudio(
+      [
+        { ...track("a", 2), groupId: "bed/a" },
+        { ...track("b", 2), groupId: "bed?a" },
+      ],
+      projectDir,
+      workDir,
+      groupedOut,
+      2,
+    );
+    const flat = await processCompositionAudio(
+      [track("a", 2), track("b", 2)],
+      projectDir,
+      workDir,
+      flatOut,
+      2,
+    );
+
+    expect(grouped.success).toBe(true);
+    expect(flat.success).toBe(true);
+    // If both ids map to `group-bed_a.wav`, the second submix overwrites the
+    // first and the outer mix reads the 880 Hz group twice, roughly 3 dB hot.
+    expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.5);
+  });
 });
 
 describe("duplicate bus instances", () => {

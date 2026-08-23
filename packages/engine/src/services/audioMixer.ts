@@ -96,13 +96,16 @@ function clampVolume(volume: number): number {
  * hand-authored or agent-written one is unvalidated. Interpolated raw it could
  * carry `/` or `..`, and `mkdirSync(recursive)` inside ffmpeg's own path
  * handling would then write outside `workDir`, where `bail()`'s `rmSync` never
- * cleans it up. Everything outside [A-Za-z0-9_-] collapses to `_`, and an id
- * that sanitizes to nothing gets a stable positional fallback rather than an
- * empty segment that two groups would share.
+ * cleans it up. Everything outside [A-Za-z0-9_-] collapses to `_`, and every
+ * result gets a stable positional suffix so distinct ids that sanitize alike
+ * cannot share one intermediate file.
  */
 function safePathSegment(id: string, fallbackIndex: number): string {
   const cleaned = id.replace(/[^A-Za-z0-9_-]/g, "_");
-  return cleaned.length > 0 ? cleaned : `group-${fallbackIndex}`;
+  // Sanitisation is many-to-one (`bed/a` and `bed?a` both become `bed_a`).
+  // The stable position keeps every authored group on a distinct temp path
+  // even when their readable portions collide.
+  return `${cleaned || "group"}-${fallbackIndex}`;
 }
 
 function formatFilterNumber(value: number): string {

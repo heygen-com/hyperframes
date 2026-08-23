@@ -48,8 +48,38 @@ import { useFxChainObserved } from "./useFxChainObserved.js";
 import { useFxCarve } from "./useFxCarve.js";
 import { audioFxSignalPath } from "./audioFxSignalPath.js";
 import type { AuditionSpan } from "./useAuditionTransport.js";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import {
+  HF_AUDIO_GROUP_ATTR,
+  HF_AUDIO_GROUP_TAG,
+  resolveAudioGroups,
+} from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
+
+function auditionSpan(startRaw: string | undefined, durationRaw: string | undefined) {
+  const start = Number.parseFloat(startRaw ?? "");
+  const duration = Number.parseFloat(durationRaw ?? "");
+  return Number.isFinite(start) && Number.isFinite(duration) && duration > 0
+    ? { start, duration }
+    : null;
+}
+
+/** The selected clip, or every current member when the selected rack is a bus. */
+function auditionSpansFor(element: DomEditSelection): AuditionSpan[] {
+  const own = auditionSpan(element.dataAttributes?.["start"], element.dataAttributes?.["duration"]);
+  if (own) return [own];
+  if (element.tagName?.toLowerCase() !== HF_AUDIO_GROUP_TAG || !element.id) return [];
+  const doc = element.element?.ownerDocument;
+  if (!doc) return [];
+  return [...doc.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)]
+    .filter((member) => member.getAttribute(HF_AUDIO_GROUP_ATTR) === element.id)
+    .flatMap((member) => {
+      const span = auditionSpan(
+        member.getAttribute("data-start") ?? undefined,
+        member.getAttribute("data-duration") ?? undefined,
+      );
+      return span ? [span] : [];
+    });
+}
 
 /**
  * Bridges the FX panel to the element/attribute world. Chain and carve are
@@ -254,18 +284,10 @@ export function AudioFxGroup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element, storeElements]);
 
-  /**
-   * The clip this rack belongs to, so hovering a preset auditions where it
-   * sounds. A group's rack reaches this file too, but a group has no span of
-   * its own — its members carry the audio, and this panel does not see them,
-   * so it passes none and the transport plays from the playhead as before.
-   */
-  const auditionSpans = useMemo((): AuditionSpan[] => {
-    const start = Number.parseFloat(element.dataAttributes?.["start"] ?? "");
-    const duration = Number.parseFloat(element.dataAttributes?.["duration"] ?? "");
-    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return [];
-    return [{ start, duration }];
-  }, [element]);
+  // A bus has no span of its own, so resolve the live members. The
+  // `storeElements` subscription above rerenders this panel when membership
+  // changes without changing the selection.
+  const auditionSpans = auditionSpansFor(element);
 
   const { carvedAgainstBy, sourceOptions, setCarve } = useFxCarve(
     element,

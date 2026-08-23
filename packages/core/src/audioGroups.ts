@@ -187,17 +187,18 @@ export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): st
   return out;
 }
 
-/** The group a member belongs to, or null. Groups do not nest — this ignores
- * `data-audio-group` on an `<hf-audio-group>` element itself.
+/** The group an audio member belongs to, or null. Membership is audio-only in
+ * v1, matching `resolveAudioGroups` and the render mixer; video and group-bus
+ * attributes are inert.
  *
  * Tolerant of objects that only partially implement `Element` (test doubles
  * for `HTMLMediaElement` commonly do) — anything missing `tagName` or
  * `getAttribute` simply has no group, mirroring `readChain`'s style in
  * `runtime/audioFx.ts`. */
 export function audioGroupOf(el: Element): string | null {
-  if (typeof el.tagName !== "string") return null;
-  if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return null;
-  return typeof el.getAttribute === "function" ? el.getAttribute(HF_AUDIO_GROUP_ATTR) : null;
+  if (typeof el.tagName !== "string" || el.tagName.toLowerCase() !== "audio") return null;
+  if (typeof el.getAttribute !== "function") return null;
+  return el.getAttribute(HF_AUDIO_GROUP_ATTR) || null;
 }
 
 /**
