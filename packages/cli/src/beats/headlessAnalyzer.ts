@@ -140,6 +140,8 @@ export async function analyzeBeatsHeadless(audioBytes: Buffer): Promise<Headless
   const browser = await ensureBrowser();
   const chrome: Browser = await puppeteer.default.launch({
     headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
     executablePath: browser.executablePath,
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--autoplay-policy=no-user-gesture-required"],
   });

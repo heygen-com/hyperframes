@@ -428,6 +428,8 @@ async function validateInBrowser(
     assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
         { ...viewport, captureMode: "screenshot" },

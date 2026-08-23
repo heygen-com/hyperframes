@@ -128,6 +128,8 @@ export async function captureWebsite(
   const puppeteer = await import("puppeteer-core");
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
     executablePath: browser.executablePath,
     protocolTimeout: captureProtocolTimeoutMs(timeout, budgetMs),
     args: [

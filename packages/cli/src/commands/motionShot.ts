@@ -293,6 +293,8 @@ async function openCompositionPage(
   assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
   const browser = await puppeteer.default.launch({
     headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
     executablePath,
     args: buildChromeArgs(
       { ...size, captureMode: "screenshot" },

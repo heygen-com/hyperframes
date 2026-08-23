@@ -77,7 +77,11 @@ async function probeHardwareWebGlInfo(
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
       timeout: options.browserTimeout,
-    });
+      // Prevent visible console window on Windows for console-subsystem
+      // chrome-headless-shell.exe (see #3430).
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
+    } as any);
     const page = await probeBrowser.newPage();
     return await page.evaluate(() => {
       const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
@@ -701,7 +705,11 @@ async function launchBrowser(
       executablePath: fingerprint.executablePath,
       timeout: fingerprint.browserTimeoutMs,
       protocolTimeout: fingerprint.protocolTimeoutMs,
-    });
+      // Prevent visible console window on Windows for console-subsystem
+      // chrome-headless-shell.exe (see #3430).
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
+    } as any);
 
     const browserVersion = await browser.version().catch(() => "unknown");
     const gpuFlags = fingerprint.args.filter(

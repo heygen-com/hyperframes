@@ -314,6 +314,8 @@ async function run(): Promise<void> {
   const browser = await puppeteer.launch({
     ...browserTarget,
     headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
     defaultViewport: {
       width: options.width,
       height: options.height,

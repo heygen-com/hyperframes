@@ -223,6 +223,8 @@ async function runLayoutAudit(
     assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
     chromeBrowser = await puppeteer.default.launch({
       headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
         { width: 1920, height: 1080, captureMode: "screenshot" },

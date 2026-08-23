@@ -103,6 +103,8 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
     if (!executablePath) return null;
     browser = await puppeteer.default.launch({
       headless: true,
+      // @ts-ignore -- windowsHide not in PuppeteerLaunchOptions but forwarded to spawn on Windows (see #3430)
+      windowsHide: true,
       executablePath,
       args: [
         "--no-sandbox",
