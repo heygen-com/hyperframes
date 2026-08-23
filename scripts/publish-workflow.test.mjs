@@ -14,6 +14,8 @@ const checkoutGuard = publish.steps.find(
   (step) => step.name === "Verify immutable release checkout",
 );
 const createReleaseTag = publish.steps.find((step) => step.name === "Create release tag");
+const stableGuard = publish.steps.find((step) => step.name === "Guard stable release");
+const publishPackages = publish.steps.find((step) => step.name === "Publish packages");
 
 const normalizeExpression = (expression) => expression.replace(/\s+/g, " ").trim();
 
@@ -97,6 +99,25 @@ test("stable release tag recovery is idempotent and immutable", () => {
       "fi",
     ].join("\n"),
   );
+});
+
+test("the stable guard precedes every irreversible release side effect", () => {
+  assert.ok(stableGuard);
+  assert.equal(stableGuard.if, "github.event_name == 'pull_request'");
+  assert.equal(stableGuard["continue-on-error"], undefined);
+  assert.match(stableGuard.run, /stable-release-guard\.mjs/);
+  assert.ok(publish.steps.indexOf(stableGuard) < publish.steps.indexOf(createReleaseTag));
+  assert.ok(publish.steps.indexOf(stableGuard) < publish.steps.indexOf(publishPackages));
+  assert.equal(publish.permissions.actions, "read");
+  assert.equal(publish.permissions.checks, "read");
+  assert.equal(publish.permissions["pull-requests"], "read");
+});
+
+test("the workflow invokes one shared publisher and owns no package roster", () => {
+  assert.ok(publishPackages);
+  assert.equal(publishPackages.run.trim(), "node --import tsx scripts/publish-packages.ts");
+  assert.doesNotMatch(workflow, /@hyperframes\//);
+  assert.doesNotMatch(workflow, /publish_pkg|packages\/cli/);
 });
 
 test("stable release tag creation survives retries and rejects a mismatched commit", () => {

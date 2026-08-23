@@ -19,8 +19,11 @@ jobs:
     timeout-minutes: 10
     environment: npm-publish
     permissions:
+      actions: read
+      checks: read
       contents: write
       id-token: write
+      pull-requests: read
     env:
       EXPECTED_RELEASE_SHA: >-
         ${{ github.event_name == 'pull_request'
@@ -82,6 +85,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: node scripts/validate-release-channel.mjs
+
+      - name: Guard stable release
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/stable-release-guard.mjs
 
       - name: Create release tag
         if: github.event_name == 'pull_request'
