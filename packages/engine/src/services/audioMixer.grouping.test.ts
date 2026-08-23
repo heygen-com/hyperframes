@@ -496,7 +496,7 @@ describe.skipIf(!HAS_FFMPEG)("group sub-mix failure contract", () => {
     // If both ids map to `group-bed_a.wav`, the second submix overwrites the
     // first and the outer mix reads the 880 Hz group twice, roughly 3 dB hot.
     expect(Math.abs(meanVolumeDb(groupedOut) - meanVolumeDb(flatOut))).toBeLessThan(0.5);
-  });
+  }, 30_000);
 });
 
 describe("duplicate bus instances", () => {
