@@ -10,27 +10,39 @@
 import { HF_AUDIO_FX_DATA_KEY, parseAudioFxChain } from "@hyperframes/core/audio-fx";
 import type { DomEditSelection } from "./domEditingTypes";
 
-export function audioFxSummary(element: DomEditSelection): string {
-  const raw = element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY];
-  const carveAttr = element.dataAttributes?.["fx-carve"];
-  let handBuilt = 0;
-  let carveNodes = 0;
-  if (raw) {
-    try {
-      for (const node of parseAudioFxChain(raw).nodes) {
-        if (node.enabled === false) continue;
-        if (node.fromCarve) carveNodes += 1;
-        else handBuilt += 1;
-      }
-    } catch {
-      return "unreadable";
+/** Enabled nodes split by who authored them, or null when the chain won't parse. */
+function countEnabledNodes(raw: string | undefined): { handBuilt: number; carve: number } | null {
+  if (!raw) return { handBuilt: 0, carve: 0 };
+  try {
+    let handBuilt = 0;
+    let carve = 0;
+    for (const node of parseAudioFxChain(raw).nodes) {
+      if (node.enabled === false) continue;
+      if (node.fromCarve) carve += 1;
+      else handBuilt += 1;
     }
+    return { handBuilt, carve };
+  } catch {
+    return null;
   }
+}
+
+export function audioFxSummary(element: DomEditSelection, groupLabel?: string): string {
+  // A clip inside a group reads "in Voiceover" — the designs use this line to
+  // answer "where does this go?" before the author opens anything, which is
+  // the same job the rack's OUT does from the other end. It outranks the effect
+  // count: a member with no effects of its own is still IN the group, and that
+  // is the more useful thing to say about it.
+  if (groupLabel) return `in ${groupLabel}`;
+  const counts = countEnabledNodes(element.dataAttributes?.[HF_AUDIO_FX_DATA_KEY]);
+  if (!counts) return "unreadable";
   const parts: string[] = [];
-  if (handBuilt > 0) parts.push(`${handBuilt} effect${handBuilt === 1 ? "" : "s"}`);
+  if (counts.handBuilt > 0) {
+    parts.push(`${counts.handBuilt} effect${counts.handBuilt === 1 ? "" : "s"}`);
+  }
   // One name for the module however many filters are behind it. Named when the
   // carve is switched on at all, because the control is in this section whether or
   // not it has compiled to anything yet.
-  if (carveNodes > 0 || carveAttr) parts.push("carve");
+  if (counts.carve > 0 || element.dataAttributes?.["fx-carve"]) parts.push("carve");
   return parts.length > 0 ? parts.join(" + ") : "none";
 }

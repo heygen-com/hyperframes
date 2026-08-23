@@ -8,6 +8,14 @@ const el = (dataAttributes: Record<string, string>): DomEditSelection =>
 const chain = (nodes: unknown[]) => JSON.stringify({ version: 1, nodes });
 
 describe("audioFxSummary", () => {
+  // The designs give a member's rack the summary "in Voiceover" — it answers
+  // "where does this go?" before anything is opened, the same job the rack's
+  // OUT does from the other end, and it outranks the effect count because a
+  // member with no effects of its own is still in the group.
+  it("names the group a clip belongs to, ahead of any effect count", () => {
+    expect(audioFxSummary(el({}), "Voiceover")).toBe("in Voiceover");
+  });
+
   it("counts a carve as one module, not as the filters behind it", () => {
     // Six bands and a level stage reading "7 effects" is the misreading the
     // grouping exists to prevent.

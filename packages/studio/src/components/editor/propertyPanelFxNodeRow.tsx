@@ -184,6 +184,9 @@ function FxNodeHeader({
       <button
         type="button"
         className={`hf-fx-node-name flex-1 truncate text-left text-[11px] text-panel-text-1 hover:text-panel-text-0 ${family}`}
+        // Truncated in the same narrow column as the param labels below, so it
+        // needs the same fallback to the full text on hover.
+        title={label}
         aria-expanded={open}
         onClick={onToggleOpen}
       >
@@ -277,6 +280,10 @@ export function FxNodeRow({
       className={`hf-fx-node rounded-[4px] border border-l-2 border-panel-border-input${bypassed ? " opacity-50" : ""}`}
       data-fx-node={node.type}
       data-fx-family={fxFamilyOf(node)}
+      // The scroll anchor a revealed automation lane lands on. Keyed by node id
+      // rather than by parameter: every param of one effect lives in this row,
+      // so the row is the smallest thing worth scrolling to.
+      data-fx-node-id={node.id}
       // The tint is on the edge rather than the text: the name already carries
       // the family in its lettering, and colouring it too would fight the
       // panel's own tokens for automated and bypassed.
@@ -304,7 +311,10 @@ export function FxNodeRow({
         onRemove={() => onRemove(index)}
       />
       {summary ? (
-        <p className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-2">
+        <p
+          className="hf-fx-node-summary truncate px-1.5 pb-1 text-[10px] text-panel-text-2"
+          title={summary}
+        >
           {summary}
         </p>
       ) : null}

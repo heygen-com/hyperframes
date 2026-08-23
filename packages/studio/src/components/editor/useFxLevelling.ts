@@ -23,7 +23,7 @@ import {
 } from "./propertyPanelAutomation";
 import { trackLeveller } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
-import { usePlayerStore } from "../../player";
+import { useAuditionTransport } from "./useAuditionTransport.js";
 
 /**
  * Rate the track is decoded at. Analysis is self-consistent because it reads
@@ -125,39 +125,10 @@ export function useFxLevelling(
     }
   };
 
-  /**
-   * Where the playhead was when an audition started the transport, so leaving
-   * can put it back. Null means this audition did not start playback — the
-   * transport was already running and must be left alone.
-   */
-  const auditionReturn = useRef<number | null>(null);
-
-  /**
-   * Start playback for an audition, and stop it again on the way out.
-   *
-   * An audition writes the preset to the running graph, which is silent while
-   * the transport is paused — so a paused author hovering a preset heard
-   * nothing at all, and the whole affordance only worked mid-playback. Hovering
-   * now plays from the playhead, and leaving stops and rewinds to exactly where
-   * it started: browsing the shelf must not cost the author their place.
-   *
-   * Already playing, this does nothing in either direction. The author started
-   * that, and stopping their transport because they passed over a preset would
-   * be the panel taking a decision that was not offered to it.
-   */
-  const auditionTransport = (on: boolean): void => {
-    const store = usePlayerStore.getState();
-    if (on) {
-      if (store.isPlaying || auditionReturn.current !== null) return;
-      auditionReturn.current = store.currentTime;
-      store.requestPlayback(true);
-      return;
-    }
-    const returnTo = auditionReturn.current;
-    if (returnTo === null) return;
-    auditionReturn.current = null;
-    store.requestPlayback(false, returnTo);
-  };
+  // Hovering plays from the playhead and leaving rewinds to exactly where it
+  // started: browsing the shelf must not cost the author their place. Shared
+  // with the timeline's FX popover — see `useAuditionTransport`.
+  const auditionTransport = useAuditionTransport();
 
   const [auditioningLevel, setAuditioningLevel] = useState(false);
   /**
