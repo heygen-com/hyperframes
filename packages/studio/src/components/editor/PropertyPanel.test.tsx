@@ -177,6 +177,39 @@ function sixGroupElement() {
   };
 }
 
+/** An `<audio>` clip: placed on the timeline, but nothing a tween could move. */
+function audioClipElement() {
+  return {
+    ...baseElement(),
+    id: "vo-1",
+    selector: "#vo-1",
+    label: "Vo 1",
+    tagName: "audio",
+    textFields: [],
+    dataAttributes: { start: "1", duration: "3" },
+  };
+}
+
+/**
+ * A mixer bus: no clip range at all, and no box either.
+ *
+ * Carries a `data-start` on purpose. A real bus has none — its automation clock
+ * is composition time — but the timing gate has to refuse the TAG rather than
+ * merely fall out of a missing attribute, or something writing one would put
+ * Start/Duration back on a thing that has no range.
+ */
+function audioBusElement() {
+  return {
+    ...baseElement(),
+    id: "voiceover",
+    selector: "#voiceover",
+    label: "Voiceover",
+    tagName: "hf-audio-group",
+    textFields: [],
+    dataAttributes: { start: "0", duration: "8" },
+  };
+}
+
 const INFERRED_TIMING_ANIMATION = {
   id: "a1",
   targetSelector: "#inferred-anim",
@@ -946,6 +979,42 @@ describe("PropertyPanel — flat group entrance animation scoping (fix round)", 
       if (!openWrapper) throw new Error("expected the open-group wrapper");
       expect(openWrapper.querySelector(".hf-flat-group-enter")).not.toBeNull();
 
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+describe("PropertyPanel — Motion is for things that move", () => {
+  it(
+    "calls the section Timing on an audio clip, and offers no tween editor",
+    async () => {
+      const { host, root } = await renderPanel(true, audioClipElement());
+      const titles = Array.from(
+        host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+      ).map((el) => el.textContent ?? "");
+      // The clip's placement survives — it is still a clip on a track.
+      expect(titles.some((t) => t.includes("Timing"))).toBe(true);
+      // "Motion" named the tween editor, which an <audio> element has no
+      // transform, opacity or box for. Showing it was the panel gating on
+      // handler presence rather than on the element.
+      expect(titles.some((t) => t.includes("Motion"))).toBe(false);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "offers a bus neither — it has no clip range to edit",
+    async () => {
+      const { host, root } = await renderPanel(true, audioBusElement());
+      const titles = Array.from(
+        host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+      ).map((el) => el.textContent ?? "");
+      expect(titles.some((t) => t.includes("Motion"))).toBe(false);
+      expect(titles.some((t) => t.includes("Timing"))).toBe(false);
+      // It is still a mixer bus: the reason to select one at all.
+      expect(titles.some((t) => t.includes("Audio FX"))).toBe(true);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

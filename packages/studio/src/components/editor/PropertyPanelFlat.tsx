@@ -15,7 +15,7 @@ import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
-import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
+import { FlatMotionSection, motionSectionLabel } from "./propertyPanelFlatMotionSection";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import { useVolumeAutomation } from "./useVolumeAutomation";
 import { useAudioFxRevealSection } from "./useAudioFxRevealSection";
@@ -282,7 +282,16 @@ export function PropertyPanelFlat({
           onSetAllKeyframeEases,
         }
       : null;
-  const showMotionEffects = gsapEffectHandlers !== null;
+  const selectedTag = element.tagName?.toLowerCase();
+  const audioSelection = selectedTag === "audio" || selectedTag === HF_AUDIO_GROUP_TAG;
+  // Handlers being wired is necessary but not sufficient: App.tsx always passes
+  // them, so this alone showed the tween editor for every selection — including
+  // an `<audio>` clip and an `<hf-audio-group>` bus, neither of which has a
+  // transform, an opacity or a box for a tween to move. Gated on the TAG, not on
+  // `sections.animation` (`animationCount > 0`): a div with no tweens yet must
+  // still offer "+ Add", so "has none" and "can have none" are different
+  // questions and only the second one belongs here.
+  const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
   const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
@@ -297,9 +306,6 @@ export function PropertyPanelFlat({
     if (!doc || !id) return undefined;
     return resolveAudioGroups(doc).find((g) => g.memberIds.includes(id))?.label;
   })();
-
-  const selectedTag = element.tagName?.toLowerCase();
-  const audioSelection = selectedTag === "audio" || selectedTag === HF_AUDIO_GROUP_TAG;
 
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
@@ -388,8 +394,12 @@ export function PropertyPanelFlat({
   if (showMotionGroup) {
     groups.push({
       id: "motion",
-      title: "Motion",
-      summary: `${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`,
+      ...motionSectionLabel({
+        timingOnly: audioSelection,
+        start: elStart,
+        duration: elDuration,
+        effectCount: gsapAnimations.length,
+      }),
       content: (
         <FlatMotionSection
           element={element}

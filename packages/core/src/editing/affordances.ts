@@ -220,8 +220,17 @@ export function resolveEditingSections(facts: EditableElementFacts): EditingSect
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
     audioFx: facts.tag === "audio" || isAudioBus,
     colorGrading: facts.tag === "video" || facts.tag === "img",
-    timing: facts.hasTimingStart || facts.animationCount > 0,
-    animation: facts.animationCount > 0,
+    // A bus has no clip range at all — no `data-start`, no duration, and its
+    // automation clock is composition time — so Start/Duration/End would be
+    // editing nothing. Audio keeps its timing: an `<audio>` clip is placed on
+    // the timeline like any other, it just cannot be tweened (see `animation`).
+    timing: !isAudioBus && (facts.hasTimingStart || facts.animationCount > 0),
+    // Has tweens AND could meaningfully have them. Neither an `<audio>` clip nor
+    // a bus has a transform, opacity or box, so a tween on one moves nothing —
+    // the flat panel gates its editor on the same two tags, and does it by tag
+    // rather than by this flag because a div with no tweens yet must still
+    // offer "+ Add".
+    animation: facts.animationCount > 0 && facts.tag !== "audio" && !isAudioBus,
     layout: hasVisualBox,
     style: hasVisualBox,
   };
