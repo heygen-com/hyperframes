@@ -38,7 +38,6 @@ import { useToast } from "./hooks/useToast";
 import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import { useEffectiveTimelineDuration } from "./hooks/useEffectiveTimelineDuration";
-import { useAudioSoloBridge } from "./hooks/useAudioSoloBridge";
 import {
   buildStudioContextValue,
   useGlobalFileDrop,
@@ -82,7 +81,6 @@ export function StudioApp() {
   const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
-  useAudioSoloBridge(previewIframeRef);
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);

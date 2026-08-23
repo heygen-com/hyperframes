@@ -55,6 +55,17 @@ export type RevealedAudioFxTargetRequest = Omit<
   "projectId" | "sessionEpoch" | "nonce"
 >;
 
+/** Whether a reveal request still belongs to what is on screen. */
+export function isRevealedAudioFxRequestCurrent(
+  request: RevealedAudioFxTarget,
+  state: TimelineSessionIdentity,
+): boolean {
+  return (
+    request.projectId === state.timelineProjectId &&
+    request.sessionEpoch === state.timelineSessionEpoch
+  );
+}
+
 interface TimelineSessionIdentity {
   timelineProjectId: string | null;
   timelineSessionEpoch: number;

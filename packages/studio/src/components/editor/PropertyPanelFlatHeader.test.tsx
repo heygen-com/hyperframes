@@ -76,4 +76,25 @@ describe("PropertyPanelFlatHeader", () => {
     const { host: withUngroup } = renderHeader({ showUngroup: true, onUngroup: vi.fn() });
     expect(withUngroup.querySelector('[aria-label="Ungroup"]')).not.toBeNull();
   });
+
+  // The panel's hide control is withheld for audio by its caller — on an audio
+  // track "hidden" and "muted" are the same operation with two names (groups
+  // doc §2.1), and the timeline already carries it, correctly labelled. This
+  // pins the header's half of that contract: no handler, no button.
+  it("renders no visibility control when its caller withholds the handler", () => {
+    const { host } = renderHeader({ onToggleHidden: undefined });
+    const labels = Array.from(host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels).not.toContain("Hide element");
+    expect(labels).not.toContain("Show element");
+  });
+
+  it("renders it when the handler is supplied", () => {
+    const { host } = renderHeader({ onToggleHidden: vi.fn() });
+    const labels = Array.from(host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels).toContain("Hide element");
+  });
 });

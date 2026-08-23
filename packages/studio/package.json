@@ -45,7 +45,7 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "bun --bun ./node_modules/.bin/vite --host 127.0.0.1",
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -7,7 +7,7 @@
  * budget, and self-contained enough to test on its own.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   HF_AUDIO_FX_ATTR,
   HF_AUDIO_FX_DATA_KEY,
@@ -40,11 +40,46 @@ import {
 } from "./propertyPanelAutomation";
 import type { DomEditSelection } from "./domEditingTypes";
 import { useLivePlayheadTime } from "../../hooks/useLivePlayheadTime";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { isRevealedAudioFxRequestCurrent } from "../../player/store/keyframeSlice";
 import { FxSection } from "./propertyPanelFxSection.js";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { useFxChainObserved } from "./useFxChainObserved.js";
 import { useFxCarve } from "./useFxCarve.js";
+import { audioFxSignalPath } from "./audioFxSignalPath.js";
+import type { AuditionSpan } from "./useAuditionTransport.js";
+import {
+  HF_AUDIO_GROUP_ATTR,
+  HF_AUDIO_GROUP_TAG,
+  resolveAudioGroups,
+} from "@hyperframes/core/audio-groups";
 import { useFxLevelling } from "./useFxLevelling.js";
+
+function auditionSpan(startRaw: string | undefined, durationRaw: string | undefined) {
+  const start = Number.parseFloat(startRaw ?? "");
+  const duration = Number.parseFloat(durationRaw ?? "");
+  return Number.isFinite(start) && Number.isFinite(duration) && duration > 0
+    ? { start, duration }
+    : null;
+}
+
+/** The selected clip, or every current member when the selected rack is a bus. */
+function auditionSpansFor(element: DomEditSelection): AuditionSpan[] {
+  const own = auditionSpan(element.dataAttributes?.["start"], element.dataAttributes?.["duration"]);
+  if (own) return [own];
+  if (element.tagName?.toLowerCase() !== HF_AUDIO_GROUP_TAG || !element.id) return [];
+  const doc = element.element?.ownerDocument;
+  if (!doc) return [];
+  return [...doc.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)]
+    .filter((member) => member.getAttribute(HF_AUDIO_GROUP_ATTR) === element.id)
+    .flatMap((member) => {
+      const span = auditionSpan(
+        member.getAttribute("data-start") ?? undefined,
+        member.getAttribute("data-duration") ?? undefined,
+      );
+      return span ? [span] : [];
+    });
+}
 
 /**
  * Bridges the FX panel to the element/attribute world. Chain and carve are
@@ -112,6 +147,9 @@ export function AudioFxGroup({
    * came under the playhead.
    */
   const playhead = useLivePlayheadTime();
+  const revealRequest = usePlayerStore((s) => s.revealedAudioFxTarget);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const localTime = playhead - clipStart(element.dataAttributes?.["start"]);
   const liveAutomationValues = ((): Map<string, number> => {
     const values = new Map<string, number>();
@@ -226,6 +264,31 @@ export function AudioFxGroup({
 
   const [analysing, setAnalysing] = useState(false);
 
+  // The rack's In/Out lines. Resolved from the live document because a group's
+  // membership lives on the members, so neither end of the routing can be read
+  // off the selected element alone.
+  // Keyed on the store's element array as well as the selection: membership is
+  // held by the MEMBERS, so a clip joining or leaving this group changes neither
+  // `element` nor its attributes, and the path went stale — "OUT to mix" on a
+  // clip that had just been grouped. `syncStoredGroupAttribute` and
+  // `updateElement` both replace the array, so its identity is the cheap signal
+  // that membership may have moved.
+  const storeElements = usePlayerStore((s) => s.elements);
+  const signalPath = useMemo(() => {
+    const doc = element.element?.ownerDocument;
+    return audioFxSignalPath(
+      element.tagName?.toLowerCase(),
+      element.id ?? undefined,
+      doc ? resolveAudioGroups(doc) : [],
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element, storeElements]);
+
+  // A bus has no span of its own, so resolve the live members. The
+  // `storeElements` subscription above rerenders this panel when membership
+  // changes without changing the selection.
+  const auditionSpans = auditionSpansFor(element);
+
   const { carvedAgainstBy, sourceOptions, setCarve } = useFxCarve(
     element,
     chain,
@@ -249,6 +312,32 @@ export function AudioFxGroup({
 
   return (
     <FxSection
+      // A lane's reveal request, but only when it names THIS element: the rack
+      // shows one element, and a request aimed at another must not reopen
+      // whatever happens to be mounted. Stale requests (other project, pre-
+      // reload session) are refused by the same check.
+      revealTarget={
+        revealRequest &&
+        revealRequest.elementKey === element.id &&
+        isRevealedAudioFxRequestCurrent(revealRequest, {
+          timelineProjectId,
+          timelineSessionEpoch,
+        })
+          ? revealRequest.automationTarget
+          : null
+      }
+      // Forwarded, not dropped: the section consumes by nonce, so without it a
+      // request never fires and a second click on the same lane is inert.
+      revealNonce={
+        revealRequest &&
+        revealRequest.elementKey === element.id &&
+        isRevealedAudioFxRequestCurrent(revealRequest, {
+          timelineProjectId,
+          timelineSessionEpoch,
+        })
+          ? revealRequest.nonce
+          : null
+      }
       // Locked while the carve is measuring. `analyse` captures the chain and
       // the automation BEFORE its fetch and decode, then rewrites the whole
       // attribute from that snapshot — so an effect added, or a knob committed,
@@ -273,7 +362,8 @@ export function AudioFxGroup({
           next.nodes.length ? serializeAudioFxChain(next) : null,
         )
       }
-      onAuditionTransport={auditionTransport}
+      signalPath={signalPath}
+      onAuditionTransport={(on) => auditionTransport(on, auditionSpans)}
       onChainPreview={(next) =>
         // Live writes skip the preview refresh entirely, so dragging a knob no
         // longer reloads the composition and restarts playback on every pixel.
