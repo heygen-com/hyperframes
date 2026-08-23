@@ -769,9 +769,6 @@ describe("TimelineTrackHeader", () => {
       domId: "voice-2",
     };
 
-    // The set is pushed straight into the runtime, which compares it against
-    // `el.id`. A store key here matches nothing, `isAudibleUnderSolo` returns
-    // false for every element, and soloing silences the whole preview.
     // A member row is `aria-level="2"`, and without this it looked identical to
     // every top-level row — the nesting existed for a screen reader and not for
     // an eye. B2's design called for the accent rail; only the semantics shipped.
