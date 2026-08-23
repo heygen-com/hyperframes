@@ -21,6 +21,13 @@ const TERMINAL_FAILURE_CONCLUSIONS = new Set([
 ]);
 const DECISIVE_REVIEW_STATES = new Set(["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]);
 const REVIEW_STATES = new Set([...DECISIVE_REVIEW_STATES, "COMMENTED"]);
+const HTTP_FAILURE_CLASSIFICATIONS = new Map([
+  [401, "authentication failure"],
+  [403, "authorization or scope failure"],
+  [404, "endpoint unavailable"],
+  [429, "rate limit"],
+]);
+const HEADER_FAILURE_CLASSIFICATIONS = new Map([["403:0", "rate limit"]]);
 const NON_CHECK_RULES = new Set([
   "creation",
   "update",
@@ -34,6 +41,21 @@ const NON_CHECK_RULES = new Set([
   "branch_name_pattern",
   "tag_name_pattern",
 ]);
+
+function classifyHttpFailure(response) {
+  const headerKey = `${response.status}:${response.headers.get("x-ratelimit-remaining")}`;
+  return (
+    HEADER_FAILURE_CLASSIFICATIONS.get(headerKey) ??
+    HTTP_FAILURE_CLASSIFICATIONS.get(response.status) ??
+    "HTTP failure"
+  );
+}
+
+function assertCapabilityArray(value, endpoint) {
+  if (!Array.isArray(value)) {
+    throw new Error(`GitHub policy-read capability ${endpoint}: malformed response.`);
+  }
+}
 
 // One parser owns syntax and both policy bounds so configuration cannot bypass either limit.
 // fallow-ignore-next-line complexity
@@ -56,6 +78,15 @@ export function parseGuardTimeoutMs(value) {
 function requiredString(value, label) {
   if (typeof value !== "string" || value.length === 0) throw new Error(`Missing ${label}.`);
   return value;
+}
+
+function requiredCredential(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      "Missing RELEASE_GUARD_TOKEN. Provision the documented read-only policy credential before merging.",
+    );
+  }
+  return value.trim();
 }
 
 function requiredNumber(value, label) {
@@ -329,6 +360,12 @@ export async function runStableReleaseGuard({
     if (remaining <= 0) throw new Error(`Timed out during stable release guard (${phase}).`);
     return remaining;
   };
+  await client.verifyPolicyReadCapabilities(
+    "main",
+    requiredNumber(event?.pull_request?.number, "event pull request number"),
+    requiredString(event?.pull_request?.merge_commit_sha, "event pull request merge SHA"),
+    remainingBudget("policy-read capability"),
+  );
   const apiPull = await client.getPull(event.pull_request.number, remainingBudget("pull request"));
   const identity = assertImmutableRelease({
     event,
@@ -385,7 +422,13 @@ export async function runStableReleaseGuard({
 }
 
 export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
-  const request = async (path, requestBudgetMs) => {
+  const requestIdClassification = (response) =>
+    response.headers.get("x-github-request-id") ? "present" : "absent";
+  const capabilityFailure = (endpoint, classification, response) =>
+    new Error(
+      `GitHub policy-read capability ${endpoint}: ${classification} (status ${response.status}, request-id ${requestIdClassification(response)}).`,
+    );
+  const request = async (path, requestBudgetMs, endpoint) => {
     const response = await fetchImpl(`https://api.github.com${path}`, {
       headers: {
         Accept: "application/vnd.github+json",
@@ -394,35 +437,89 @@ export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
       },
       signal: AbortSignal.timeout(Math.max(1, requestBudgetMs)),
     });
-    if (!response.ok) throw new Error(`GitHub API ${response.status} for ${path}.`);
-    return response.json();
+    if (!response.ok) {
+      throw capabilityFailure(endpoint, classifyHttpFailure(response), response);
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw capabilityFailure(endpoint, "malformed response", response);
+    }
   };
   // fallow-ignore-next-line complexity
-  const paginate = async (path, itemKey, requestBudgetMs) => {
+  const paginate = async (path, itemKey, requestBudgetMs, endpoint) => {
     const items = [];
     const deadline = Date.now() + requestBudgetMs;
     for (let page = 1; ; page += 1) {
       const separator = path.includes("?") ? "&" : "?";
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error(`GitHub API pagination timed out for ${path}.`);
-      const response = await request(`${path}${separator}per_page=100&page=${page}`, remaining);
+      const response = await request(
+        `${path}${separator}per_page=100&page=${page}`,
+        remaining,
+        endpoint,
+      );
       const pageItems = itemKey ? response?.[itemKey] : response;
       if (!Array.isArray(pageItems))
-        throw new Error(`GitHub API pagination response is malformed for ${path}.`);
+        throw new Error(`GitHub policy-read capability ${endpoint}: malformed response.`);
       items.push(...pageItems);
       if (pageItems.length < 100) return items;
     }
   };
   return {
+    verifyPolicyReadCapabilities: async (branch, pullNumber, sha, requestBudgetMs) => {
+      const deadline = Date.now() + requestBudgetMs;
+      const remaining = () => {
+        const budget = deadline - Date.now();
+        if (budget <= 0) throw new Error("GitHub policy-read capability check timed out.");
+        return budget;
+      };
+      const rules = await request(
+        `/repos/${repository}/rules/branches/${encodeURIComponent(branch)}`,
+        remaining(),
+        "effective branch rules",
+      );
+      assertCapabilityArray(rules, "effective branch rules");
+      const suites = await request(
+        `/repos/${repository}/rulesets/rule-suites?ref=${encodeURIComponent("refs/heads/main")}&time_period=month&per_page=1`,
+        remaining(),
+        "rule suites",
+      );
+      assertCapabilityArray(suites, "rule suites");
+      const reviews = await request(
+        `/repos/${repository}/pulls/${pullNumber}/reviews?per_page=1`,
+        remaining(),
+        "pull request reviews",
+      );
+      assertCapabilityArray(reviews, "pull request reviews");
+      const checkRuns = await request(
+        `/repos/${repository}/commits/${sha}/check-runs?filter=all&per_page=1`,
+        remaining(),
+        "check runs",
+      );
+      assertCapabilityArray(checkRuns?.check_runs, "check runs");
+      const statuses = await request(
+        `/repos/${repository}/commits/${sha}/status?per_page=1`,
+        remaining(),
+        "commit statuses",
+      );
+      assertCapabilityArray(statuses?.statuses, "commit statuses");
+    },
     getPull: (number, requestBudgetMs) =>
-      request(`/repos/${repository}/pulls/${number}`, requestBudgetMs),
+      request(`/repos/${repository}/pulls/${number}`, requestBudgetMs, "pull request"),
     listReviews: (number, requestBudgetMs) =>
-      paginate(`/repos/${repository}/pulls/${number}/reviews`, null, requestBudgetMs),
+      paginate(
+        `/repos/${repository}/pulls/${number}/reviews`,
+        null,
+        requestBudgetMs,
+        "pull request reviews",
+      ),
     getRuleSuite: async (sha, requestBudgetMs) => {
       const suites = await paginate(
         `/repos/${repository}/rulesets/rule-suites?ref=${encodeURIComponent("refs/heads/main")}&time_period=month`,
         null,
         requestBudgetMs,
+        "rule suites",
       );
       const matching = suites.filter((suite) => suite?.after_sha === sha);
       if (matching.length !== 1) {
@@ -441,6 +538,7 @@ export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
         await request(
           `/repos/${repository}/rules/branches/${encodeURIComponent(branch)}`,
           requestBudgetMs,
+          "effective branch rules",
         ),
       ),
     listCheckRuns: (sha, requestBudgetMs) =>
@@ -448,14 +546,31 @@ export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
         `/repos/${repository}/commits/${sha}/check-runs?filter=all`,
         "check_runs",
         requestBudgetMs,
+        "check runs",
       ),
   };
 }
 
 async function main() {
-  const eventPath = requiredString(process.env.GITHUB_EVENT_PATH, "GITHUB_EVENT_PATH");
+  const token = requiredCredential(process.env.RELEASE_GUARD_TOKEN);
   const repository = requiredString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
-  const token = requiredString(process.env.GH_TOKEN, "GH_TOKEN");
+  const timeoutMs = parseGuardTimeoutMs(process.env.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES);
+  const client = createGitHubClient({ repository, token });
+  if (process.argv.includes("--preflight")) {
+    const probePullNumber = Number(
+      requiredString(process.env.RELEASE_GUARD_PROBE_PR, "RELEASE_GUARD_PROBE_PR"),
+    );
+    if (!Number.isInteger(probePullNumber) || probePullNumber <= 0) {
+      throw new Error("RELEASE_GUARD_PROBE_PR must be a positive integer.");
+    }
+    const probeSha = requiredString(process.env.RELEASE_GUARD_PROBE_SHA, "RELEASE_GUARD_PROBE_SHA");
+    await client.verifyPolicyReadCapabilities("main", probePullNumber, probeSha, timeoutMs);
+    console.log(
+      "Policy-read capability verified: effective branch rules, rule suites, pull request reviews, check runs, and commit statuses.",
+    );
+    return;
+  }
+  const eventPath = requiredString(process.env.GITHUB_EVENT_PATH, "GITHUB_EVENT_PATH");
   const expectedSha = requiredString(process.env.EXPECTED_RELEASE_SHA, "EXPECTED_RELEASE_SHA");
   const githubSha = requiredString(process.env.GITHUB_SHA, "GITHUB_SHA");
   const version = requiredString(process.env.VERSION, "VERSION");
@@ -469,10 +584,10 @@ async function main() {
     checkoutSha,
     version,
     currentRunId,
-    client: createGitHubClient({ repository, token }),
+    client,
     now: Date.now,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    timeoutMs: parseGuardTimeoutMs(process.env.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES),
+    timeoutMs,
     initialBackoffMs: INITIAL_BACKOFF_MS,
     maxBackoffMs: MAX_BACKOFF_MS,
     log: console.log,

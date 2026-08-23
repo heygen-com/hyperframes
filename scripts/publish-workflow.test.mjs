@@ -21,6 +21,7 @@ const checkoutGuard = publish.steps.find(
 const createReleaseTag = publish.steps.find((step) => step.name === "Create release tag");
 const stableGuard = publish.steps.find((step) => step.name === "Guard stable release");
 const publishPackages = publish.steps.find((step) => step.name === "Publish packages");
+const createGitHubRelease = publish.steps.find((step) => step.name === "Create GitHub Release");
 
 const normalizeExpression = (expression) => expression.replace(/\s+/g, " ").trim();
 
@@ -119,6 +120,16 @@ test("the stable guard precedes every irreversible release side effect", () => {
   assert.equal(publish["timeout-minutes"], 60);
 });
 
+test("the stable guard alone receives the dedicated policy-read credential", () => {
+  assert.equal(stableGuard.env.RELEASE_GUARD_TOKEN, "${{ secrets.RELEASE_GUARD_TOKEN }}");
+  assert.equal(stableGuard.env.GH_TOKEN, undefined);
+  assert.equal(createGitHubRelease.env.GH_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
+  for (const step of publish.steps.filter((candidate) => candidate !== stableGuard)) {
+    assert.equal(step.env?.RELEASE_GUARD_TOKEN, undefined);
+  }
+  assert.equal(workflow.match(/secrets\.RELEASE_GUARD_TOKEN/g)?.length, 1);
+});
+
 test("effective non-check rule enforcement and maintenance are explicit", () => {
   assert.match(
     guardSource,
@@ -130,6 +141,15 @@ test("effective non-check rule enforcement and maintenance are explicit", () => 
   assert.match(releaseRunbook, /rerun the original merged-PR workflow/i);
   assert.match(releaseRunbook, /bypass rejection is intentional/i);
   assert.match(releaseRunbook, /merge.*normally/i);
+  assert.match(releaseRunbook, /fine-grained personal access token/i);
+  assert.match(releaseRunbook, /Administration.*read/i);
+  assert.match(releaseRunbook, /Pull requests.*read/i);
+  assert.match(releaseRunbook, /Commit\s+statuses\s*\(read-only\)/i);
+  assert.match(releaseRunbook, /Metadata.*automatically/is);
+  assert.doesNotMatch(releaseRunbook, /Checks\s*\(read/i);
+  assert.match(releaseRunbook, /owner.*rotat|rotat.*owner/is);
+  assert.match(releaseRunbook, /read-only capability check/i);
+  assert.match(releaseRunbook, /must not merge/i);
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {

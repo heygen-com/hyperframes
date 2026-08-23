@@ -89,7 +89,7 @@ jobs:
       - name: Guard stable release
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_GUARD_TOKEN: ${{ secrets.RELEASE_GUARD_TOKEN }}
           STABLE_RELEASE_GUARD_TIMEOUT_MINUTES: >-
             ${{ vars.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES || '25' }}
           VERSION: ${{ steps.version.outputs.version }}

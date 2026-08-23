@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import {
   assertImmutableRelease,
@@ -12,6 +13,7 @@ import {
 
 const headSha = "1".repeat(40);
 const mergeSha = "2".repeat(40);
+const capabilityArgs = ["main", 42, mergeSha, 1_000];
 
 function releaseEvent(overrides = {}) {
   return {
@@ -311,6 +313,7 @@ describe("effective repository rules", () => {
 function fakeClient(checkResponses, overrides = {}) {
   let index = 0;
   return {
+    verifyPolicyReadCapabilities: async () => undefined,
     getPull: async () => pull(),
     getRuleSuite: async () => ({ afterSha: mergeSha, ref: "refs/heads/main", result: "pass" }),
     listReviews: async () => [review()],
@@ -322,6 +325,36 @@ function fakeClient(checkResponses, overrides = {}) {
 
 // fallow-ignore-next-line unit-size
 describe("stable release polling guard", () => {
+  it("checks policy-read capability before immutable policy evaluation", async () => {
+    const order = [];
+    await runStableReleaseGuard({
+      event: releaseEvent(),
+      expectedSha: mergeSha,
+      githubSha: mergeSha,
+      checkoutSha: mergeSha,
+      version: "1.2.3",
+      currentRunId: "777",
+      client: fakeClient([[check("Build"), check("Test")]], {
+        verifyPolicyReadCapabilities: async () => order.push("capability"),
+        getPull: async () => {
+          order.push("pull");
+          return pull();
+        },
+        getRuleSuite: async () => {
+          order.push("rule-suite");
+          return { afterSha: mergeSha, ref: "refs/heads/main", result: "pass" };
+        },
+      }),
+      now: () => 0,
+      sleep: async () => undefined,
+      timeoutMs: 100,
+      initialBackoffMs: 10,
+      maxBackoffMs: 20,
+      log: () => undefined,
+    });
+    assert.deepEqual(order.slice(0, 3), ["capability", "pull", "rule-suite"]);
+  });
+
   it("passes all-green and pending-then-green cases", async () => {
     for (const responses of [
       [[check("Build"), check("Test")]],
@@ -526,6 +559,143 @@ describe("rule-suite recovery lookback", () => {
         clientForSuites(suites, []).getRuleSuite(mergeSha, 1_000),
         /Expected one rule suite/,
       );
+    }
+  });
+});
+
+describe("policy-read credential boundary", () => {
+  it("fails closed on a missing or blank dedicated credential before API work", () => {
+    for (const token of [undefined, "   "]) {
+      const env = {
+        ...process.env,
+        GITHUB_REPOSITORY: "heygen-com/hyperframes",
+      };
+      delete env.GH_TOKEN;
+      if (token === undefined) delete env.RELEASE_GUARD_TOKEN;
+      else env.RELEASE_GUARD_TOKEN = token;
+      const result = spawnSync(process.execPath, ["scripts/stable-release-guard.mjs"], {
+        cwd: new URL("..", import.meta.url),
+        env,
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Missing RELEASE_GUARD_TOKEN/);
+      assert.doesNotMatch(result.stderr, /Authorization:|Bearer /i);
+    }
+  });
+
+  it("classifies capability failures without exposing bodies, credentials, or request IDs", async () => {
+    const cases = [
+      [401, {}, "authentication failure"],
+      [403, {}, "authorization or scope failure"],
+      [404, {}, "endpoint unavailable"],
+      [429, {}, "rate limit"],
+      [403, { "x-ratelimit-remaining": "0" }, "rate limit"],
+    ];
+    for (const [status, headers, expected] of cases) {
+      const client = createGitHubClient({
+        repository: "heygen-com/hyperframes",
+        token: "never-print-this-token",
+        fetchImpl: async () =>
+          new Response('{"secret":"never-print-this-body"}', {
+            status,
+            headers: { ...headers, "x-github-request-id": "never-print-this-request-id" },
+          }),
+      });
+      await assert.rejects(client.verifyPolicyReadCapabilities(...capabilityArgs), (error) => {
+        assert.match(error.message, new RegExp(expected, "i"));
+        assert.match(error.message, /request-id present/i);
+        assert.doesNotMatch(error.message, /never-print-this/);
+        return true;
+      });
+    }
+  });
+
+  it("rejects malformed capability responses and accepts all read-only endpoints", async () => {
+    const malformed = createGitHubClient({
+      repository: "heygen-com/hyperframes",
+      token: "never-print-this-token",
+      fetchImpl: async () => new Response("never-print-this-body", { status: 200 }),
+    });
+    await assert.rejects(malformed.verifyPolicyReadCapabilities(...capabilityArgs), (error) => {
+      assert.match(error.message, /effective branch rules.*malformed/i);
+      assert.doesNotMatch(error.message, /never-print-this/);
+      return true;
+    });
+
+    let requestCount = 0;
+    const malformedSuites = createGitHubClient({
+      repository: "heygen-com/hyperframes",
+      token: "never-print-this-token",
+      fetchImpl: async () =>
+        new Response(requestCount++ === 0 ? "[]" : "never-print-this-body", { status: 200 }),
+    });
+    await assert.rejects(
+      malformedSuites.verifyPolicyReadCapabilities(...capabilityArgs),
+      (error) => {
+        assert.match(error.message, /rule suites.*malformed/i);
+        assert.doesNotMatch(error.message, /never-print-this/);
+        return true;
+      },
+    );
+
+    const endpoints = [];
+    const capable = createGitHubClient({
+      repository: "heygen-com/hyperframes",
+      token: "never-print-this-token",
+      fetchImpl: async (url) => {
+        endpoints.push(String(url));
+        const body = String(url).includes("/check-runs")
+          ? '{"check_runs":[]}'
+          : String(url).includes(`/commits/${mergeSha}/status`)
+            ? '{"state":"success","statuses":[]}'
+            : "[]";
+        return new Response(body, { status: 200 });
+      },
+    });
+    await assert.doesNotReject(() => capable.verifyPolicyReadCapabilities(...capabilityArgs));
+    assert.equal(endpoints.length, 5);
+    assert.match(endpoints[0], /\/rules\/branches\/main/);
+    assert.match(endpoints[1], /\/rulesets\/rule-suites/);
+    assert.match(endpoints[2], /\/pulls\/42\/reviews/);
+    assert.match(endpoints[3], new RegExp(`/commits/${mergeSha}/check-runs`));
+    assert.match(endpoints[4], new RegExp(`/commits/${mergeSha}/status`));
+  });
+
+  it("sanitizes a denied capability at each authoritative read endpoint", async () => {
+    const endpointCases = [
+      ["effective branch rules", "/rules/branches/main"],
+      ["rule suites", "/rulesets/rule-suites"],
+      ["pull request reviews", "/pulls/42/reviews"],
+      ["check runs", `/commits/${mergeSha}/check-runs`],
+      ["commit statuses", `/commits/${mergeSha}/status`],
+    ];
+    for (const [label, target] of endpointCases) {
+      const client = createGitHubClient({
+        repository: "heygen-com/hyperframes",
+        token: "never-print-this-token",
+        fetchImpl: async (url) => {
+          const value = String(url);
+          if (value.includes(target)) {
+            return new Response("never-print-this-body", {
+              status: 403,
+              headers: { "x-github-request-id": "never-print-this-request-id" },
+            });
+          }
+          const body = value.includes("/check-runs")
+            ? '{"check_runs":[]}'
+            : value.includes(`/commits/${mergeSha}/status`)
+              ? '{"state":"success","statuses":[]}'
+              : "[]";
+          return new Response(body, { status: 200 });
+        },
+      });
+      await assert.rejects(client.verifyPolicyReadCapabilities(...capabilityArgs), (error) => {
+        assert.match(error.message, new RegExp(label, "i"));
+        assert.match(error.message, /authorization or scope failure/i);
+        assert.doesNotMatch(error.message, /never-print-this/);
+        return true;
+      });
     }
   });
 });
