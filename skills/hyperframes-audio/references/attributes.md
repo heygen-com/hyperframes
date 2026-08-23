@@ -2,6 +2,10 @@
 
 All three go on the `<audio>` / `<video>` element itself, JSON-encoded, so a
 composition carries its whole mix in the HTML with nothing to load beside it.
+`data-fx-chain` and `data-automation` also go on an `<hf-audio-group>` bus,
+where they mean the same thing over the summed members — with one difference
+worth knowing: a group's automation runs on COMPOSITION time, since a bus has no
+`data-start` of its own. `data-fx-carve` is clip-only; a bus has no carve.
 Nothing static validates them: preview plays an unreadable chain dry to stay
 workable, and the render refuses the whole mix rather than shipping a dry track
 that sounds plausible and is wrong.
