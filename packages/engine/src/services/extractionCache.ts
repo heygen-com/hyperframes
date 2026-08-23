@@ -171,15 +171,37 @@ export function cacheEntryDirName(keyHash: string): string {
 }
 
 /**
+ * Whether a sentineled entry directory still holds at least one frame file.
+ *
+ * The sentinel records that extraction finished, not that the frames survived.
+ * Any per-file cleanup that empties the directory leaves the sentinel behind,
+ * and the entry then rehydrates as a hit with zero frames. Deliberately
+ * format-agnostic: a hit must be usable whatever extension the frames carry.
+ */
+function hasFrameFiles(dir: string): boolean {
+  try {
+    return readdirSync(dir).some((file) => file.startsWith(FRAME_FILENAME_PREFIX));
+  } catch {
+    // Unreadable entry directory: treat as a miss and re-extract.
+    return false;
+  }
+}
+
+/**
  * Look up a cache entry by key input. Returns the resolved entry path plus a
  * `hit` flag. On miss, callers should extract frames into a
  * `partialCacheEntryDir(entry)` directory and publish it with
  * `publishCacheEntry` once extraction succeeds.
+ *
+ * An entry only counts as a hit when it carries the completion sentinel AND
+ * still has frames to serve. Without the second condition an emptied entry
+ * keeps rehydrating with zero frames, so every later render of that project
+ * fails identically at the coverage gate with no user-discoverable fix.
  */
 export function lookupCacheEntry(rootDir: string, input: CacheKeyInput): CacheLookup {
   const keyHash = computeCacheKey(input);
   const dir = join(rootDir, cacheEntryDirName(keyHash));
-  const complete = existsSync(join(dir, COMPLETE_SENTINEL));
+  const complete = existsSync(join(dir, COMPLETE_SENTINEL)) && hasFrameFiles(dir);
   return { entry: { dir, keyHash }, hit: complete };
 }
 

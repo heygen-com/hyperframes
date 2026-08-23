@@ -227,11 +227,36 @@ describe("lookupCacheEntry / markCacheEntryComplete", () => {
   it("hits after ensureCacheEntryDir + markCacheEntryComplete", () => {
     const first = lookupCacheEntry(tmpRoot, base(sourceFile));
     ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.jpg"), "x", "utf-8");
     markCacheEntryComplete(first.entry);
 
     const second = lookupCacheEntry(tmpRoot, base(sourceFile));
     expect(second.hit).toBe(true);
     expect(second.entry.dir).toBe(first.entry.dir);
+  });
+
+  it("treats a sentineled entry with no frames as a miss", () => {
+    const first = lookupCacheEntry(tmpRoot, base(sourceFile));
+    ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.jpg"), "x", "utf-8");
+    markCacheEntryComplete(first.entry);
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(true);
+
+    // Any per-file cleanup can empty the directory while leaving the sentinel.
+    // Serving that as a hit rehydrates zero frames, so every later render of
+    // the project fails identically at the coverage gate.
+    rmSync(join(first.entry.dir, "frame_00001.jpg"));
+
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(false);
+  });
+
+  it("counts frames of any format when deciding a hit", () => {
+    const first = lookupCacheEntry(tmpRoot, base(sourceFile));
+    ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.png"), "x", "utf-8");
+    markCacheEntryComplete(first.entry);
+
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(true);
   });
 
   it("treats an in-progress dir without the sentinel as a miss", () => {
