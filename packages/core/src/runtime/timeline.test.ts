@@ -664,6 +664,24 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.durationInFrames).toBe(42 * 30);
   });
 
+  it("uses preserved duration when a normalized timeline clip retains public zero", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "normalized-zero";
+    clip.setAttribute("data-composition-id", "normalized-zero");
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "0");
+    clip.setAttribute("data-hf-authored-duration", "3.5");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips.find((candidate) => candidate.id === clip.id)?.duration).toBe(3.5);
+  });
+
   it("discovers GSAP-animated scene elements via timeline introspection", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

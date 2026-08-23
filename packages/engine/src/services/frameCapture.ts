@@ -11,7 +11,7 @@
 import { type Browser, type Page, type Viewport, type ConsoleMessage } from "puppeteer-core";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { quantizeTimeToFrame, fpsToNumber } from "@hyperframes/core";
+import { quantizeTimeToFrame, fpsToNumber, resolveAuthoredTimingWindow } from "@hyperframes/core";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
 import {
@@ -2574,18 +2574,22 @@ async function prepareFrameForCapture(
  * cut changes content with no tween; treat those frames as animated so the post-cut
  * frame is captured fresh and later static frames reuse the correct scene.
  */
-async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
+export async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
   const schedule = await page.evaluate(() =>
     Array.from(document.querySelectorAll("[data-start]")).map((el) => ({
-      start: parseFloat((el as HTMLElement).dataset.start || ""),
-      dur: parseFloat((el as HTMLElement).dataset.duration || ""),
+      start: el.getAttribute("data-start"),
+      duration: el.getAttribute("data-duration"),
+      authoredDuration: el.getAttribute("data-hf-authored-duration"),
+      end: el.getAttribute("data-end"),
+      authoredEnd: el.getAttribute("data-hf-authored-end"),
     })),
   );
   const frames = new Set<number>();
-  for (const { start, dur } of schedule) {
-    if (Number.isNaN(start)) continue;
-    const edges = [Math.round(start * fps)];
-    if (!Number.isNaN(dur)) edges.push(Math.round((start + dur) * fps));
+  for (const rawTiming of schedule) {
+    const timing = resolveAuthoredTimingWindow(rawTiming);
+    if (!timing) continue;
+    const edges = [Math.round(timing.start * fps)];
+    if (timing.end != null) edges.push(Math.round(timing.end * fps));
     for (const e of edges) {
       for (const f of [e - 1, e, e + 1]) {
         if (f >= 0) frames.add(f);

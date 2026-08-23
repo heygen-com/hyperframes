@@ -1,27 +1,9 @@
 import type { RuntimeTimelineLike } from "./types";
 import { swallow } from "./diagnostics";
+import { resolveAuthoredTimingWindow } from "./authoredTiming";
 import { readElementPlaybackRate } from "./media";
 import { readMediaStart } from "./playbackRate";
-import { parseNumeric, parseStartExpression } from "./startExpression";
-
-const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
-const AUTHORED_END_ATTR = "data-hf-authored-end";
-
-function parseDurationAttr(element: Element): number | null {
-  return parseNumeric(element.getAttribute("data-duration"));
-}
-
-function parseEndAttr(element: Element): number | null {
-  return parseNumeric(element.getAttribute("data-end"));
-}
-
-function parseAuthoredDurationAttr(element: Element): number | null {
-  return parseNumeric(element.getAttribute(AUTHORED_DURATION_ATTR));
-}
-
-function parseAuthoredEndAttr(element: Element): number | null {
-  return parseNumeric(element.getAttribute(AUTHORED_END_ATTR));
-}
+import { parseStartExpression } from "./startExpression";
 
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
@@ -64,22 +46,27 @@ export function createRuntimeStartTimeResolver(params: {
     const cached = durationCache.get(element);
     if (cached !== undefined) return cached;
     let resolved: number | null = null;
-    const durationAttr =
-      parseDurationAttr(element) ??
-      (includeAuthoredTimingAttrs ? parseAuthoredDurationAttr(element) : null);
-    if (durationAttr != null && durationAttr > 0) {
-      resolved = durationAttr;
+    const durationTiming = resolveAuthoredTimingWindow({
+      start: 0,
+      duration: element.getAttribute("data-duration"),
+      authoredDuration: includeAuthoredTimingAttrs
+        ? element.getAttribute("data-hf-authored-duration")
+        : null,
+    });
+    if (durationTiming?.duration != null && durationTiming.duration > 0) {
+      resolved = durationTiming.duration;
     }
     if (resolved == null || resolved <= 0) {
-      const endAttr =
-        parseEndAttr(element) ??
-        (includeAuthoredTimingAttrs ? parseAuthoredEndAttr(element) : null);
-      if (endAttr != null) {
-        const start = resolveStartForElementInternal(element, 0);
-        const delta = endAttr - start;
-        if (Number.isFinite(delta) && delta > 0) {
-          resolved = delta;
-        }
+      const start = resolveStartForElementInternal(element, 0);
+      const endTiming = resolveAuthoredTimingWindow({
+        start,
+        end: element.getAttribute("data-end"),
+        authoredEnd: includeAuthoredTimingAttrs
+          ? element.getAttribute("data-hf-authored-end")
+          : null,
+      });
+      if (endTiming?.duration != null && endTiming.duration > 0) {
+        resolved = endTiming.duration;
       }
     }
     if ((resolved == null || resolved <= 0) && isMediaElement(element)) {

@@ -5,6 +5,7 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import { stableClipId } from "./clipTree";
+import { resolveAuthoredTimingWindow } from "./authoredTiming";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
 import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
@@ -14,23 +15,27 @@ import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 
-const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
-const AUTHORED_END_ATTR = "data-hf-authored-end";
-
 function parseNum(value: string | null | undefined): number | null {
   return parseStrictFiniteTimingNumber(value);
 }
 
 function parseElementDurationAttr(element: Element): number | null {
   return (
-    parseNum(element.getAttribute("data-duration")) ??
-    parseNum(element.getAttribute(AUTHORED_DURATION_ATTR))
+    resolveAuthoredTimingWindow({
+      start: 0,
+      duration: element.getAttribute("data-duration"),
+      authoredDuration: element.getAttribute("data-hf-authored-duration"),
+    })?.duration ?? null
   );
 }
 
 function parseElementEndAttr(element: Element): number | null {
   return (
-    parseNum(element.getAttribute("data-end")) ?? parseNum(element.getAttribute(AUTHORED_END_ATTR))
+    resolveAuthoredTimingWindow({
+      start: 0,
+      end: element.getAttribute("data-end"),
+      authoredEnd: element.getAttribute("data-hf-authored-end"),
+    })?.end ?? null
   );
 }
 

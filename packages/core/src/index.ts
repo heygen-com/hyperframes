@@ -51,6 +51,13 @@ export type {
 
 export { parseSlideshowManifest, resolveSlideshow } from "./slideshow/index.js";
 
+export type {
+  AuthoredTimingValue,
+  RawAuthoredTiming,
+  AuthoredTimingWindow,
+} from "./runtime/authoredTiming.js";
+export { resolveAuthoredTimingWindow } from "./runtime/authoredTiming.js";
+
 export {
   CANVAS_DIMENSIONS,
   VALID_CANVAS_RESOLUTIONS,
