@@ -9,6 +9,25 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.11"
+  description="Released - 2026-08-23"
+  tags={["Release", "Engine", "Studio", "Sdk"]}
+>
+Caption-heavy transparent renders can now reuse unchanged frames without missing mounted clip boundaries. Studio's grouping dialog also stays within the window on short screens.
+
+## Fixes
+
+- **Engine:** Keep static-frame dedup active across dense caption changes while preserving mounted clip boundaries and safe verification fallbacks ([65b2299db](https://github.com/heygen-com/hyperframes/commit/65b2299db284ece3232de26ed7afbe0360e097bd), [#3438](https://github.com/heygen-com/hyperframes/pull/3438)).
+- **Studio:** Stop the grouping dialog opening off the bottom of the window ([dd0626a55](https://github.com/heygen-com/hyperframes/commit/dd0626a55a0d0f24cae1b00bd2c95c0ebfa7a573), [#3421](https://github.com/heygen-com/hyperframes/pull/3421)).
+
+## Internal
+
+- **Sdk:** Render-faithfulness test for serialize() bake contract (WS-F) ([f11b60854](https://github.com/heygen-com/hyperframes/commit/f11b60854a3ab1490bee8aef14086c8b245a3376), [#1575](https://github.com/heygen-com/hyperframes/pull/1575)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.10...v0.8.11).
+</Update>
+
+<Update
   label="HyperFrames v0.8.10"
   description="Released - 2026-08-22"
   tags={["Release", "Studio"]}
