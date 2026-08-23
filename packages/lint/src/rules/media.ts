@@ -814,6 +814,13 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
   const mayHaveCrossFileMembers = ctx.tags.some((tag) =>
     Boolean(readAttr(tag.raw, "data-composition-src")),
   );
+  const declaredGroupIds = new Set(
+    ctx.tags
+      .filter((tag) => tag.name === "hf-audio-group")
+      .map((tag) => readAttr(tag.raw, "id"))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const unmatchedMemberGroupIds = [...memberGroupIds].filter((id) => !declaredGroupIds.has(id));
 
   const findings: HyperframeLintFinding[] = [];
   for (const tag of ctx.tags) {
@@ -831,7 +838,9 @@ function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFindin
 
     // Naming the near-misses is the whole value: the fix is almost always a
     // typo on one member, and the author is looking at the bus, not the clip.
-    const nearby = [...memberGroupIds].filter((id) => id !== elementId);
+    // Do not offer a correctly matched sibling bus as the fix for this one.
+    // Only member ids with no declared bus are plausible typos.
+    const nearby = unmatchedMemberGroupIds.filter((id) => id !== elementId);
     const suffix =
       nearby.length > 0
         ? ` Clips in this file name ${nearby.map((id) => `"${id}"`).join(", ")} instead.`

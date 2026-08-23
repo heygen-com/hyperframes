@@ -590,6 +590,29 @@ describe("audio_group_no_members", () => {
     expect(finding?.message).toContain("voiceovr");
   });
 
+  it("suggests only unmatched member ids, not a healthy sibling group", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`${BUS}<hf-audio-group id="music"></hf-audio-group>
+        <audio id="bgm" src="music.wav" data-start="0" data-duration="5" data-audio-group="music"></audio>
+        <audio id="vo-1" src="vo.wav" data-start="0" data-duration="5" data-audio-group="voiceovr"></audio>`),
+    );
+    const finding = res.findings.find((item) => item.code === "audio_group_no_members");
+    expect(finding?.message).toContain('"voiceovr"');
+    expect(finding?.message).not.toContain('"music"');
+  });
+
+  it("does not count video as group membership", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-audio-group="voiceover"></video>
+        <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
+    );
+    expect(
+      res.findings.some(
+        (finding) => finding.code === "audio_group_no_members" && finding.elementId === "voiceover",
+      ),
+    ).toBe(true);
+  });
+
   it("stays quiet when a clip belongs to it", async () => {
     const res = await lintHyperframeHtml(
       doc(
@@ -607,11 +630,7 @@ describe("audio_group_no_members", () => {
   // file (timelineAudioGroupCreate) — so a file holding a bus and no members at
   // all is the normal cross-file shape, not a mistake.
   it("stays quiet in a file that declares no members at all", async () => {
-    const res = await lintHyperframeHtml(
-      doc(
-        `${BUS}<div id="host" data-composition-src="compositions/voices.html" data-start="0" data-duration="10"></div>`,
-      ),
-    );
+    const res = await lintHyperframeHtml(doc(BUS));
     expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
   });
 
@@ -627,7 +646,8 @@ describe("audio_group_no_members", () => {
 
   it("stays quiet for a bus with no id", async () => {
     const res = await lintHyperframeHtml(
-      doc(`<hf-audio-group data-label="Nameless"></hf-audio-group>`),
+      doc(`<hf-audio-group data-label="Nameless"></hf-audio-group>
+        <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
     );
     expect(res.findings.some((f) => f.code === "audio_group_no_members")).toBe(false);
   });
