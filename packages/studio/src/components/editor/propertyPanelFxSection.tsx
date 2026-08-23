@@ -323,16 +323,12 @@ export function FxSection({
   }, [handBuilt, eqIds.length, showCarve]);
   const [openEq, setOpenEq] = useState<string | null>(null);
 
-  /**
-   * The parameter a reveal request asked for, held until its row is on screen.
-   *
-   * Set during render rather than in an effect, the way the Motion panel
-   * consumes its own focus request: the surface must open on the SAME commit
-   * the request lands on, or the scroll below runs against a row that has not
-   * mounted yet.
-   */
+  /** The reveal request held until its row is mounted and scrolled. */
   const [consumedRevealNonce, setConsumedRevealNonce] = useState<number | null>(null);
-  const pendingRevealRef = useRef<string | null>(null);
+  const [pendingReveal, setPendingReveal] = useState<{
+    nonce: number;
+    target: string;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   if (revealNonce != null && revealNonce !== consumedRevealNonce) {
     setConsumedRevealNonce(revealNonce);
@@ -351,27 +347,26 @@ export function FxSection({
           return next;
         });
       }
-      pendingRevealRef.current = revealTarget ?? null;
     }
+    setPendingReveal(where && revealTarget ? { nonce: revealNonce, target: revealTarget } : null);
   }
 
   /**
    * Scroll the revealed parameter into view once its row has actually mounted.
    *
-   * Keyed on the surfaces the block above opens, not on the request: the row
-   * appears on the commit AFTER they change, so scrolling in the same pass would
-   * miss it. Cleared once used, so a later re-render does not yank the panel
-   * back to a parameter the author has since scrolled away from.
+   * The request itself is a dependency so a second click on an already-open
+   * surface still scrolls. It is cleared once used, so a later unrelated
+   * re-render does not yank the panel back to an old parameter.
    */
   useEffect(() => {
-    const target = pendingRevealRef.current;
+    const target = pendingReveal?.target;
     if (target && scrollRevealedRowIntoView(rootRef.current, target, chain)) {
-      pendingRevealRef.current = null;
+      setPendingReveal(null);
     }
     // `chain` is deliberately not a dependency: it changes on every knob edit,
     // and re-running then would scroll the panel while the author is dragging.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openNode, openEq, carveOpen, collapsedRuns]);
+  }, [openNode, openEq, carveOpen, collapsedRuns, pendingReveal]);
 
   const addEq = useCallback(() => {
     clearAudition();

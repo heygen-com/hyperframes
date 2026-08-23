@@ -38,11 +38,6 @@ import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 
 /**
- * Rate the carve source is decoded at. Analysis is self-consistent because it
- * reads the decoded buffer's own rate, so this only has to be a sane audio rate.
- */
-
-/**
  * Which carve setting actually moved, by comparing the two snapshots.
  *
  * On/off is checked before the rest: switching a carve off also strands its
