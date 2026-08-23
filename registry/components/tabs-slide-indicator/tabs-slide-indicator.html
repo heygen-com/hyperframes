@@ -39,7 +39,12 @@
     { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "The tab names, separated by commas. Two or more names rebuild the row.", "default": "Plan,Debug,Ask" }
   ]'
 >
-  <span class="indicator"></span><button>Plan</button><button>Debug</button><button>Ask</button>
+  <span class="indicator"
+    ><span class="indicator-labels" aria-hidden="true"
+      ><button tabindex="-1">Plan</button><button tabindex="-1">Debug</button
+      ><button tabindex="-1">Ask</button></span
+    ></span
+  ><button>Plan</button><button>Debug</button><button>Ask</button>
 </div>
 
 <style>
@@ -64,6 +69,8 @@
     background: var(--hf-tab-fill, #18181b);
     transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1)));
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+    z-index: 2;
   }
   .hf-transition-tabs-slide-indicator button {
     position: relative;
@@ -71,10 +78,23 @@
     height: 36px;
     border: 0;
     background: transparent;
-    color: #71717a;
+    color: #6b6b73;
     font-weight: 850;
   }
-  .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
+  /* The pill carries a clipped copy of the label row. Countering the pill's
+     own translate keeps that copy aligned with the buttons underneath at
+     every frame, so the white label is exactly the part of the row the pill
+     covers - it follows the indicator instead of being pinned to one tab. */
+  .hf-transition-tabs-slide-indicator .indicator-labels {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--hf-tab-count, 3), var(--hf-tab-width, 86px));
+    transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1) * -1));
+    pointer-events: none;
+  }
+  .hf-transition-tabs-slide-indicator .indicator-labels button {
     color: #fff;
   }
 </style>
@@ -104,6 +124,17 @@
       return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
     }
 
+    // The mirrored copy is decorative: it repeats a label the row already
+    // carries, so it stays out of the tab order.
+    function makeTab(text, mirrored) {
+      var button = document.createElement("button");
+      button.textContent = text;
+      if (mirrored) {
+        button.tabIndex = -1;
+      }
+      return button;
+    }
+
     var accent = accents[pick(accents, vars.accent, "ink")];
     var width = widths[pick(widths, vars.width, "standard")];
     var radius = shapes[pick(shapes, vars.shape, "pill")];
@@ -127,14 +158,18 @@
       roots[i].style.setProperty("--hf-tab-radius", radius);
       // A single tab has nowhere to slide to, so it is left as authored.
       if (labels.length > 1) {
+        // Every label exists twice: once in the row and once in the clipped
+        // copy the pill carries, so both have to be rebuilt together.
+        var mirror = roots[i].querySelector(".indicator-labels");
         var old = roots[i].querySelectorAll("button");
         for (var j = 0; j < old.length; j += 1) {
           old[j].parentNode.removeChild(old[j]);
         }
         for (var k = 0; k < labels.length; k += 1) {
-          var button = document.createElement("button");
-          button.textContent = labels[k];
-          roots[i].appendChild(button);
+          roots[i].appendChild(makeTab(labels[k], false));
+          if (mirror) {
+            mirror.appendChild(makeTab(labels[k], true));
+          }
         }
         roots[i].style.setProperty("--hf-tab-count", String(labels.length));
       }
