@@ -123,25 +123,22 @@ export function TimelineTrackHeader({
   // order. `target` is the ACTIVE clip's lane in that row, which is the only one
   // the remove button can write to; null when the row belongs to its siblings.
   const activeKey = keyframeClip ? (keyframeClip.key ?? keyframeClip.id) : null;
-  const { groupOwner, groupLabelForNote, groupAutomationRaw, groupFxChainRaw } = useMemo(() => {
-    let owner: string | undefined;
-    let label: string | undefined;
-    let automation: string | undefined;
-    let fxChain: string | undefined;
-    for (const element of trackElements) {
-      owner ??= element.audioGroup;
-      label ??= element.audioGroupLabel;
-      automation ??= element.audioGroupAutomation;
-      fxChain ??= element.audioGroupFxChain;
-      if (owner && label && automation && fxChain) break;
-    }
-    return {
-      groupOwner: owner,
-      groupLabelForNote: label,
-      groupAutomationRaw: automation,
-      groupFxChainRaw: fxChain,
-    };
-  }, [trackElements]);
+  const groupOwner = useMemo(
+    () => trackElements.find((element) => element.audioGroup)?.audioGroup,
+    [trackElements],
+  );
+  const groupLabelForNote = useMemo(
+    () => trackElements.find((element) => element.audioGroupLabel)?.audioGroupLabel,
+    [trackElements],
+  );
+  const groupAutomationRaw = useMemo(
+    () => trackElements.find((element) => element.audioGroupAutomation)?.audioGroupAutomation,
+    [trackElements],
+  );
+  const groupFxChainRaw = useMemo(
+    () => trackElements.find((element) => element.audioGroupFxChain)?.audioGroupFxChain,
+    [trackElements],
+  );
   // Which parameters this track's GROUP also automates. Gain stages multiply,
   // and §5 asks for the explanation rather than leaving the author to wonder
   // why two curves they drew sound quieter than either.
