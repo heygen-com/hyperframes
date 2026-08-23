@@ -55,28 +55,9 @@ function firstAudibleSeconds(path: string): number {
   throw new Error(`No audible sample found in ${path}`);
 }
 
-/**
- * These two tests drive real ffmpeg, and the file ran on vitest's 5s default:
- * `places a delayed track on its authored start` takes ~137ms locally and still
- * hit that cap on the windows runner, failing an unrelated PR. 60s is what the
- * rest of the ffmpeg-driven engine tests use. Applied to the suite rather than
- * each test so the budget has one home.
- *
- * Headroom alone would only delay an undiagnosable failure, so the ffmpeg
- * process timeout is capped well under it too. Its production default is 5
- * minutes — far above any test budget — so a stalled mix could only ever
- * surface as a bare "Test timed out", with no stderr and no failing stage.
- */
-const FFMPEG_TEST_TIMEOUT_MS = 60_000;
-const TEST_FFMPEG_TIMEOUT_MS = 20_000;
-
-/** Assert the mix succeeded, reporting `failures` rather than a bare `false`. */
-function expectMixed(result: { success: boolean; failures?: unknown }): void {
-  if (!result.success) {
-    throw new Error(`mix failed: ${JSON.stringify(result.failures ?? result, null, 2)}`);
-  }
-}
-
+// Same real-ffmpeg exposure as audioMixer.grouping.test.ts, which timed out on a
+// Windows runner at vitest's default 5s. This one has not failed yet; it is one
+// spawn slower away from it.
 describe.skipIf(!HAS_FFMPEG)(
   "processCompositionAudio levels",
   () => {
@@ -127,11 +108,9 @@ describe.skipIf(!HAS_FFMPEG)(
         workDir,
         outputPath,
         1,
-        undefined,
-        { ffmpegProcessTimeout: TEST_FFMPEG_TIMEOUT_MS },
       );
 
-      expectMixed(result);
+      expect(result.success).toBe(true);
       expect(meanVolumeDb(outputPath) - meanVolumeDb(sourcePath)).toBeGreaterThan(-0.3);
     });
 
@@ -182,13 +161,11 @@ describe.skipIf(!HAS_FFMPEG)(
         workDir,
         outputPath,
         4,
-        undefined,
-        { ffmpegProcessTimeout: TEST_FFMPEG_TIMEOUT_MS },
       );
 
-      expectMixed(result);
+      expect(result.success).toBe(true);
       expect(firstAudibleSeconds(outputPath)).toBeCloseTo(2, 2);
     });
   },
-  FFMPEG_TEST_TIMEOUT_MS,
+  60_000,
 );

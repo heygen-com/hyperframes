@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 
 /** Build a PCM s16le stereo WAV whose every sample equals `value`. */
 function writeConstantWav(path: string, frames: number, value: number): void {
@@ -172,5 +175,146 @@ describe("applyVolumeEnvelopeToWav", () => {
         0,
       ),
     ).toBe(false);
+  });
+
+  // The group sub-mix writes float precisely so an over-unity member sum keeps
+  // its headroom until the group's own fader and FX act on it. If the baker
+  // could not read that file it returned false, and the group's automation was
+  // dropped on the floor by the caller.
+  describe("32-bit float input", () => {
+    /** Stereo float32 WAV, every sample `value` — over 1.0 on purpose. */
+    function writeConstantFloatWav(path: string, frames: number, value: number): void {
+      const dataSize = frames * CHANNELS * 4;
+      const buffer = Buffer.alloc(44 + dataSize);
+      buffer.write("RIFF", 0, "ascii");
+      buffer.writeUInt32LE(36 + dataSize, 4);
+      buffer.write("WAVE", 8, "ascii");
+      buffer.write("fmt ", 12, "ascii");
+      buffer.writeUInt32LE(16, 16);
+      buffer.writeUInt16LE(3, 20); // WAVE_FORMAT_IEEE_FLOAT
+      buffer.writeUInt16LE(CHANNELS, 22);
+      buffer.writeUInt32LE(SAMPLE_RATE, 24);
+      buffer.writeUInt32LE(SAMPLE_RATE * CHANNELS * 4, 28);
+      buffer.writeUInt16LE(CHANNELS * 4, 32);
+      buffer.writeUInt16LE(32, 34);
+      buffer.write("data", 36, "ascii");
+      buffer.writeUInt32LE(dataSize, 40);
+      for (let i = 0; i < frames * CHANNELS; i += 1) buffer.writeFloatLE(value, 44 + i * 4);
+      writeFileSync(path, buffer);
+    }
+
+    const floatSampleAt = (path: string, frame: number, channel = 0): number =>
+      readFileSync(path).readFloatLE(44 + (frame * CHANNELS + channel) * 4);
+
+    it("scales float samples and keeps them above 1.0 unclamped", () => {
+      const path = join(tmp(), "float.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 1 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Unity envelope: unchanged, and NOT clamped down to 1.0.
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(1.4, 5);
+    });
+
+    it("applies the envelope across the file", () => {
+      const path = join(tmp(), "float-fade.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, Math.floor(SAMPLE_RATE / 2))).toBeCloseTo(0.7, 2);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(0, 3);
+    });
+
+    /**
+     * The fixtures above are hand-built canonical 44-byte headers, which is NOT
+     * what the group sub-mix actually hands this function: ffmpeg's `pcm_f32le`
+     * writes an 18-byte `fmt ` chunk plus a `fact` chunk, putting `data` at
+     * offset 92. Every assertion above would still pass if this function could
+     * not read a real one — and an unreadable file returns false, which the
+     * caller reads as "no automation here" and drops the group's envelope.
+     */
+    it.skipIf(!HAS_FFMPEG)("reads what ffmpeg actually writes, not just a canonical header", () => {
+      const path = join(tmp(), "ffmpeg-f32.wav");
+      const made = spawnSync(
+        getFfmpegBinary(),
+        [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.5*sin(2*PI*440*t)|0.5*sin(2*PI*440*t):d=1:s=48000",
+          "-acodec",
+          "pcm_f32le",
+          "-ar",
+          "48000",
+          path,
+        ],
+        { encoding: "utf-8" },
+      );
+      expect(made.status).toBe(0);
+
+      const before = readFileSync(path);
+      // The format tag is the load-bearing part; the chunk LAYOUT is this
+      // build's quirk, so it is logged as context rather than required — a
+      // build emitting a canonical 16-byte fmt with data at 44 is legal and
+      // handled, and pinning 18/92 would fail on the good case.
+      expect(before.readUInt16LE(20)).toBe(3); // WAVE_FORMAT_IEEE_FLOAT
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Locate `data` the way the parser does, then check the fade landed.
+      let at = 12;
+      let dataOffset = -1;
+      const after = readFileSync(path);
+      while (at + 8 <= after.length) {
+        const id = after.toString("ascii", at, at + 4);
+        const size = after.readUInt32LE(at + 4);
+        if (id === "data") {
+          dataOffset = at + 8;
+          break;
+        }
+        at += 8 + size + (size % 2);
+      }
+      expect(dataOffset).toBeGreaterThan(0);
+      // Faded to silence by the end (stereo float = 8 bytes per frame). This is
+      // the assertion that matters: the parser read a real file and the bake
+      // landed, whatever chunk layout the build chose.
+      expect(Math.abs(after.readFloatLE(dataOffset + (SAMPLE_RATE - 2) * 8))).toBeLessThan(0.02);
+    });
   });
 });

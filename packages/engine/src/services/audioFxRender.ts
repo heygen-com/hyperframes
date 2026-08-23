@@ -35,6 +35,9 @@ interface WavData {
   samples: Float32Array;
   sampleRate: number;
   channels: number;
+  /** True when the source was 32-bit float rather than 16-bit PCM. Carried so
+   *  the output can be written back in the same format — see `writeWav`. */
+  float: boolean;
 }
 
 /**
@@ -77,7 +80,12 @@ export function readWav(path: string): WavData {
   }
   const { format, channels, sampleRate, bits, data } = readWavChunks(buf);
   if (!data) throw new AudioFxRenderError(`WAV has no data chunk: ${path}`);
-  return { samples: decodeSamples(data, format, bits, path), sampleRate, channels };
+  return {
+    samples: decodeSamples(data, format, bits, path),
+    sampleRate,
+    channels,
+    float: format === 3 && bits === 32,
+  };
 }
 
 /** Interleaved samples as floats, for the two formats the mixer emits upstream. */
@@ -102,38 +110,51 @@ function decodeSamples(data: Buffer, format: number, bits: number, path: string)
 }
 
 /**
- * Write 16-bit PCM, interleaved, preserving the channel count.
+ * Write interleaved samples, preserving the channel count.
  *
- * 16-bit rather than the float32 this used to emit: the very next step in the
- * mixer bakes the volume envelope into the samples, and that baker accepts only
- * 16-bit PCM. Emitting float meant enabling any effect silently downgraded a
- * track's volume automation to the ffmpeg expression path, which is capped at 32
- * straight segments — so a curved envelope was quantised and a dense one could
- * fall back to rendering at base volume.
+ * 16-bit by default rather than the float32 this used to emit: the very next
+ * step in the mixer bakes the volume envelope into the samples, and that baker
+ * accepted only 16-bit PCM. Emitting float meant enabling any effect silently
+ * downgraded a track's volume automation to the ffmpeg expression path, which is
+ * capped at 32 straight segments — so a curved envelope was quantised and a
+ * dense one could fall back to rendering at base volume.
+ *
+ * `float` opts back out, for the ONE input that needs it: a group sub-mix. Its
+ * members sum at unity, so the sum can legitimately exceed full scale, and the
+ * group's fader is applied downstream — clamping here handed that headroom back
+ * one step before the thing that was going to reduce it, which is the same bug
+ * the float intermediate exists to avoid. Safe now only because the envelope
+ * baker reads float too; before that it was not.
  */
 export function writeWav(
   path: string,
   samples: Float32Array,
   sampleRate: number,
   channels = 1,
+  float = false,
 ): void {
   const n = samples.length;
-  const bytes = n * 2;
+  const bytesPerSample = float ? 4 : 2;
+  const bytes = n * bytesPerSample;
   const buf = Buffer.alloc(44 + bytes);
   buf.write("RIFF", 0, "ascii");
   buf.writeUInt32LE(36 + bytes, 4);
   buf.write("WAVE", 8, "ascii");
   buf.write("fmt ", 12, "ascii");
   buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20); // WAVE_FORMAT_PCM
+  buf.writeUInt16LE(float ? 3 : 1, 20); // IEEE_FLOAT / PCM
   buf.writeUInt16LE(channels, 22);
   buf.writeUInt32LE(sampleRate, 24);
-  buf.writeUInt32LE(sampleRate * channels * 2, 28);
-  buf.writeUInt16LE(channels * 2, 32);
-  buf.writeUInt16LE(16, 34);
+  buf.writeUInt32LE(sampleRate * channels * bytesPerSample, 28);
+  buf.writeUInt16LE(channels * bytesPerSample, 32);
+  buf.writeUInt16LE(float ? 32 : 16, 34);
   buf.write("data", 36, "ascii");
   buf.writeUInt32LE(bytes, 40);
   for (let i = 0; i < n; i++) {
+    if (float) {
+      buf.writeFloatLE(samples[i] ?? 0, 44 + i * 4);
+      continue;
+    }
     // Clamp before scaling: a limiter set to 0 dB or a resonant filter can push
     // past full scale, and wrapping would turn that into a click.
     const v = Math.max(-1, Math.min(1, samples[i] ?? 0));
@@ -267,7 +288,7 @@ export async function applyAudioFxChain(
     throw new AudioFxRenderError(`Audio FX input is missing: ${inputWav}`);
   }
 
-  const { samples, sampleRate, channels } = readWav(inputWav);
+  const { samples, sampleRate, channels, float } = readWav(inputWav);
   const planes = deinterleave(samples, channels);
   // An empty track has nothing to process — and an OfflineAudioContext of zero
   // length throws, which is fatal for the WHOLE render rather than this track:
@@ -303,118 +324,26 @@ export async function applyAudioFxChain(
       await page.goto(pathToFileURL(hostPage).href, { waitUntil: "domcontentloaded" });
       await page.addScriptTag({ content: getAudioFxRuntimeScript() });
 
-      // Hand the input over a chunk at a time. The chunks stay separate byte
-      // arrays page-side rather than being concatenated into one string, so
-      // neither the frame cap nor V8's string limit sees the whole track.
-      await page.evaluate((count: number) => {
-        (window as unknown as AudioFxWindow).__HF_FX_IO = {
-          in: Array.from({ length: count }, (): Uint8Array[] => []),
-          out: [],
-        };
-      }, planes.length);
+      await sendPlanesToPage(page, planes);
 
-      for (let p = 0; p < planes.length; p += 1) {
-        const plane = planes[p];
-        if (!plane) continue;
-        const bytes = Buffer.from(plane.buffer, plane.byteOffset, plane.length * 4);
-        for (let at = 0; at < bytes.length; at += TRANSFER_BYTES) {
-          await page.evaluate(
-            ([index, b64]: [number, string]) => {
-              const bin = atob(b64);
-              const chunk = new Uint8Array(bin.length);
-              for (let i = 0; i < bin.length; i++) chunk[i] = bin.charCodeAt(i);
-              (window as unknown as AudioFxWindow).__HF_FX_IO?.in[index]?.push(chunk);
-            },
-            [p, bytes.subarray(at, at + TRANSFER_BYTES).toString("base64")] as [number, string],
-          );
-        }
-      }
-
-      const outLengths = (await page.evaluate(
-        async ([rate, chainJson, automationJson]: [number, string, string]) => {
-          const w = window as unknown as AudioFxWindow;
-          const io = w.__HF_FX_IO;
-          if (!w.__HF_AUDIO_FX || !io) throw new Error("audio FX runtime failed to load");
-          const inPlanes = io.in.map((chunks) => {
-            const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-            let at = 0;
-            for (const chunk of chunks) {
-              bytes.set(chunk, at);
-              at += chunk.length;
-            }
-            return new Float32Array(bytes.buffer);
-          });
-          // Dropped before the render allocates its own buffers, so the page
-          // does not hold two copies of the track at once.
-          io.in = [];
-          io.out = await w.__HF_AUDIO_FX.render(
-            inPlanes,
-            rate,
-            chainJson,
-            automationJson || undefined,
-          );
-          return io.out.map((plane) => plane.length);
-        },
-        [
-          sampleRate,
-          JSON.stringify(chain),
-          options.automation ? serializeAutomation(options.automation) : "",
-        ] as [number, string, string],
-      )) as number[];
-
-      const outPlanes: Float32Array[] = [];
-      for (let p = 0; p < outLengths.length; p += 1) {
-        const byteLength = (outLengths[p] ?? 0) * 4;
-        const parts: Buffer[] = [];
-        for (let at = 0; at < byteLength; at += TRANSFER_BYTES) {
-          const b64 = (await page.evaluate(
-            ([index, offset, limit]: [number, number, number]) => {
-              const plane = (window as unknown as AudioFxWindow).__HF_FX_IO?.out[index];
-              if (!plane) return "";
-              const u8 = new Uint8Array(
-                plane.buffer,
-                plane.byteOffset + offset,
-                Math.min(limit, plane.length * 4 - offset),
-              );
-              let s = "";
-              const CHUNK = 0x8000;
-              for (let i = 0; i < u8.length; i += CHUNK) {
-                // `apply` takes array-likes, so the subarray goes in as it is;
-                // Array.from boxed every byte of a 32 KiB window for nothing.
-                s += String.fromCharCode.apply(
-                  null,
-                  u8.subarray(i, i + CHUNK) as unknown as number[],
-                );
-              }
-              return btoa(s);
-            },
-            [p, at, TRANSFER_BYTES] as [number, number, number],
-          )) as string;
-          parts.push(Buffer.from(b64, "base64"));
-        }
-        // byteOffset and byteLength matter: Node pools small allocations, so a
-        // short payload decodes into an 8 KiB pool and a view over the whole
-        // ArrayBuffer would read kilobytes of unrelated memory at the wrong length.
-        const buf = Buffer.concat(parts);
-        outPlanes.push(
-          new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)),
-        );
-      }
+      const outLengths = await renderPlanesInPage(
+        page,
+        sampleRate,
+        chain,
+        options.automation ? serializeAutomation(options.automation) : "",
+      );
+      const outPlanes = await readPlanesFromPage(page, outLengths);
       if (outPlanes.length === 0 || (outPlanes[0]?.length ?? 0) === 0) {
         throw new AudioFxRenderError(`Audio FX produced no samples for track ${options.trackId}`);
       }
       // Null when the keyframes normalise away to nothing — then the mixer's
       // own paths still own this track's gain, so say so rather than claiming
       // a bake that never happened.
-      const gainAt = options.envelope
-        ? createEnvelopeWalker(
-            options.envelope.keyframes,
-            options.envelope.trackStart,
-            options.envelope.baseVolume,
-          )
-        : null;
+      const gainAt = envelopeWalkerFor(options.envelope);
       if (gainAt) applyEnvelopeToPlanes(outPlanes, sampleRate, gainAt);
-      writeWav(outputWav, interleave(outPlanes), sampleRate, outPlanes.length);
+      // Same format in as out: a float input is a group sub-mix whose headroom
+      // must survive to its fader (see writeWav).
+      writeWav(outputWav, interleave(outPlanes), sampleRate, outPlanes.length, float);
       return { path: outputWav, envelopeBaked: gainAt !== null };
     } finally {
       await page.close().catch(() => undefined);
@@ -428,6 +357,129 @@ export async function applyAudioFxChain(
     rmSync(hostDir, { recursive: true, force: true });
     await lease?.release().catch(() => undefined);
   }
+}
+
+/** The page handle `acquireBrowser().browser.newPage()` returns. */
+type FxPage = Awaited<ReturnType<Awaited<ReturnType<typeof acquireBrowser>>["browser"]["newPage"]>>;
+
+/**
+ * Hand the input planes to the page a chunk at a time.
+ *
+ * The chunks stay separate byte arrays page-side rather than being concatenated
+ * into one string, so neither the CDP frame cap nor V8's string limit ever sees
+ * the whole track.
+ */
+async function sendPlanesToPage(page: FxPage, planes: readonly Float32Array[]): Promise<void> {
+  await page.evaluate((count: number) => {
+    (window as unknown as AudioFxWindow).__HF_FX_IO = {
+      in: Array.from({ length: count }, (): Uint8Array[] => []),
+      out: [],
+    };
+  }, planes.length);
+
+  for (let p = 0; p < planes.length; p += 1) {
+    const plane = planes[p];
+    if (!plane) continue;
+    const bytes = Buffer.from(plane.buffer, plane.byteOffset, plane.length * 4);
+    for (let at = 0; at < bytes.length; at += TRANSFER_BYTES) {
+      await page.evaluate(
+        ([index, b64]: [number, string]) => {
+          const bin = atob(b64);
+          const chunk = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) chunk[i] = bin.charCodeAt(i);
+          (window as unknown as AudioFxWindow).__HF_FX_IO?.in[index]?.push(chunk);
+        },
+        [p, bytes.subarray(at, at + TRANSFER_BYTES).toString("base64")] as [number, string],
+      );
+    }
+  }
+}
+
+/** Run the chain in the page and return each output plane's sample count. The
+ *  samples themselves stay page-side until `readPlanesFromPage` pulls them. */
+async function renderPlanesInPage(
+  page: FxPage,
+  sampleRate: number,
+  chain: HfAudioFxChain,
+  automationJson: string,
+): Promise<number[]> {
+  return (await page.evaluate(
+    async ([rate, chainJson, automation]: [number, string, string]) => {
+      const w = window as unknown as AudioFxWindow;
+      const io = w.__HF_FX_IO;
+      if (!w.__HF_AUDIO_FX || !io) throw new Error("audio FX runtime failed to load");
+      const inPlanes = io.in.map((chunks) => {
+        const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+        let at = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, at);
+          at += chunk.length;
+        }
+        return new Float32Array(bytes.buffer);
+      });
+      // Dropped before the render allocates its own buffers, so the page does
+      // not hold two copies of the track at once.
+      io.in = [];
+      io.out = await w.__HF_AUDIO_FX.render(inPlanes, rate, chainJson, automation || undefined);
+      return io.out.map((plane) => plane.length);
+    },
+    [sampleRate, JSON.stringify(chain), automationJson] as [number, string, string],
+  )) as number[];
+}
+
+/** Pull one output plane back over CDP, `TRANSFER_BYTES` at a time. */
+async function readPlaneFromPage(
+  page: FxPage,
+  index: number,
+  byteLength: number,
+): Promise<Float32Array> {
+  const parts: Buffer[] = [];
+  for (let at = 0; at < byteLength; at += TRANSFER_BYTES) {
+    const b64 = (await page.evaluate(
+      ([plane_index, offset, limit]: [number, number, number]) => {
+        const plane = (window as unknown as AudioFxWindow).__HF_FX_IO?.out[plane_index];
+        if (!plane) return "";
+        const u8 = new Uint8Array(
+          plane.buffer,
+          plane.byteOffset + offset,
+          Math.min(limit, plane.length * 4 - offset),
+        );
+        let s = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < u8.length; i += CHUNK) {
+          // `apply` takes array-likes, so the subarray goes in as it is;
+          // Array.from boxed every byte of a 32 KiB window for nothing.
+          s += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK) as unknown as number[]);
+        }
+        return btoa(s);
+      },
+      [index, at, TRANSFER_BYTES] as [number, number, number],
+    )) as string;
+    parts.push(Buffer.from(b64, "base64"));
+  }
+  // byteOffset and byteLength matter: Node pools small allocations, so a short
+  // payload decodes into an 8 KiB pool and a view over the whole ArrayBuffer
+  // would read kilobytes of unrelated memory at the wrong length.
+  const buf = Buffer.concat(parts);
+  return new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+}
+
+async function readPlanesFromPage(page: FxPage, outLengths: number[]): Promise<Float32Array[]> {
+  const outPlanes: Float32Array[] = [];
+  for (let p = 0; p < outLengths.length; p += 1) {
+    outPlanes.push(await readPlaneFromPage(page, p, (outLengths[p] ?? 0) * 4));
+  }
+  return outPlanes;
+}
+
+/** The envelope walker for a track that has keyframes, or null when it has none. */
+function envelopeWalkerFor(
+  envelope:
+    | { keyframes: AudioVolumeKeyframe[]; trackStart: number; baseVolume: number }
+    | undefined,
+): ReturnType<typeof createEnvelopeWalker> | null {
+  if (!envelope) return null;
+  return createEnvelopeWalker(envelope.keyframes, envelope.trackStart, envelope.baseVolume);
 }
 
 export type { HfAudioFxChain, HfAutomation };
