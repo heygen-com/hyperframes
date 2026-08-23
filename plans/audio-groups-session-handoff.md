@@ -1,11 +1,11 @@
 # Audio groups / carve / timeline-gutter session — handoff
 
 > **HISTORICAL, 2026-08-20.** Everything below describes the branch BEFORE it was
-> rebased and opened. The branch is now 81 commits on top of `main` and open as
-> **PR #3363**; §1's "nothing is pushed, no PR exists" and §8's open-items list are
-> superseded by that PR's description. §2 (the id-space boundary, a carve owning its
-> own lanes) and §9 (environment + process notes) still hold — except the studio dev
-> server, which now works via plain `bun run studio`.
+> rebased and opened. That branch was later replaced by the 12-PR stack
+> **#3444–#3455**; §1's "nothing is pushed, no PR exists" and §8's open-items list
+> are superseded by #3455 and its linked predecessors. §2 (the id-space boundary,
+> a carve owning its own lanes) and §9 (environment + process notes) still hold —
+> except the studio dev server, which now works via plain `bun run studio`.
 
 Written 2026-08-20. Worktree `~/src/wt/hyperframes/webaudio-fx`, branch
 `wa-25-review-fixes`, tip `baede8292`. **Nothing is pushed. No PR exists.**
