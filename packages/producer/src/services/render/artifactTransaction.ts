@@ -56,7 +56,17 @@ export type ArtifactDurationProbe = (path: string) => Promise<ArtifactDurationPr
 
 async function defaultArtifactDurationProbe(path: string): Promise<ArtifactDurationProbeResult> {
   const meta = await extractMediaMetadata(path);
-  return { durationSeconds: meta.durationSeconds };
+  // Forward the probed frame count when ffprobe reported one. The frame
+  // count check (#3395) catches the multi-worker encode mode where the
+  // container duration is reported correctly but the decoded stream is
+  // shorter; without forwarding frames here, the caller's `expectedFrames`
+  // is silently dropped (the assertion short-circuits on `undefined`). A
+  // probe that cannot determine frames returns `undefined` — the caller
+  // treats that as "no answer" and does not throw.
+  return {
+    durationSeconds: meta.durationSeconds,
+    frames: meta.frames,
+  };
 }
 
 /**
