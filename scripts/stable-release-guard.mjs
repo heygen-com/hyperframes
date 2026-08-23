@@ -2,7 +2,10 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-export const DEFAULT_TIMEOUT_MS = 8 * 60 * 1_000;
+const MIN_TIMEOUT_MINUTES = 10;
+const MAX_TIMEOUT_MINUTES = 40;
+const DEFAULT_TIMEOUT_MINUTES = 25;
+export const DEFAULT_TIMEOUT_MS = DEFAULT_TIMEOUT_MINUTES * 60 * 1_000;
 export const INITIAL_BACKOFF_MS = 5_000;
 export const MAX_BACKOFF_MS = 30_000;
 
@@ -31,6 +34,24 @@ const NON_CHECK_RULES = new Set([
   "branch_name_pattern",
   "tag_name_pattern",
 ]);
+
+// One parser owns syntax and both policy bounds so configuration cannot bypass either limit.
+// fallow-ignore-next-line complexity
+export function parseGuardTimeoutMs(value) {
+  if (value === undefined) return DEFAULT_TIMEOUT_MS;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      `Stable release guard timeout must be an integer from ${MIN_TIMEOUT_MINUTES} to ${MAX_TIMEOUT_MINUTES} minutes.`,
+    );
+  }
+  const minutes = Number(value);
+  if (minutes < MIN_TIMEOUT_MINUTES || minutes > MAX_TIMEOUT_MINUTES) {
+    throw new Error(
+      `Stable release guard timeout must be an integer from ${MIN_TIMEOUT_MINUTES} to ${MAX_TIMEOUT_MINUTES} minutes.`,
+    );
+  }
+  return minutes * 60 * 1_000;
+}
 
 function requiredString(value, label) {
   if (typeof value !== "string" || value.length === 0) throw new Error(`Missing ${label}.`);
@@ -331,6 +352,9 @@ export async function runStableReleaseGuard({
     `Stable release identity verified: PR #${identity.number} head=${identity.headSha} merge=${identity.mergeSha}.`,
   );
   log(`Valid final-head approvals: ${approvals.join(", ")}.`);
+  // Last-push approval, extra unattributed-change approval, and signed commits are enforced indirectly
+  // by requiring the exact main-update rule-suite result to be pass; check contexts and the final-head
+  // non-author review count are additionally revalidated explicitly here.
   log(
     `Effective PR rules: last-push=${rules.requireLastPushApproval === true} unattributed=${rules.requireExtraApprovalForUnattributedChanges === true} signatures=${rules.requireSignedCommits === true}; exact update rule suite passed.`,
   );
@@ -448,7 +472,7 @@ async function main() {
     client: createGitHubClient({ repository, token }),
     now: Date.now,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: parseGuardTimeoutMs(process.env.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES),
     initialBackoffMs: INITIAL_BACKOFF_MS,
     maxBackoffMs: MAX_BACKOFF_MS,
     log: console.log,

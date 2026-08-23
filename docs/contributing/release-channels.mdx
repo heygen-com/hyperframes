@@ -69,3 +69,14 @@ The publish workflow validates release channel boundaries before publishing:
 - Every publish job verifies that its checkout matches the immutable event SHA.
 
 This prevents an alpha-only feature from being included in a stable hotfix by accident.
+
+### Stable guard maintenance
+
+The stable guard intentionally fails closed when GitHub adds a rule type it does not recognize.
+If a release reports `Unsupported effective repository rule`, inspect the effective rules for
+`main` and decide whether the new rule needs an explicit check or is already enforced by the
+exact update rule-suite result. Add a rule to `NON_CHECK_RULES` only when a `pass` rule suite
+fully covers it; never soften the unknown-rule failure into a warning.
+
+After updating and reviewing the guard, rerun the original merged-PR workflow for recovery.
+Do not push a stable tag, select a different SHA, or introduce a manual publish path.

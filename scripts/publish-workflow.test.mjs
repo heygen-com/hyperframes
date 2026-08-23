@@ -7,6 +7,11 @@ import test from "node:test";
 import { parse } from "yaml";
 
 const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8");
+const guardSource = readFileSync(new URL("./stable-release-guard.mjs", import.meta.url), "utf8");
+const releaseRunbook = readFileSync(
+  new URL("../docs/contributing/release-channels.mdx", import.meta.url),
+  "utf8",
+);
 const config = parse(workflow);
 const publish = config.jobs.publish;
 const checkout = publish.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -111,6 +116,18 @@ test("the stable guard precedes every irreversible release side effect", () => {
   assert.equal(publish.permissions.actions, "read");
   assert.equal(publish.permissions.checks, "read");
   assert.equal(publish.permissions["pull-requests"], "read");
+  assert.equal(publish["timeout-minutes"], 60);
+});
+
+test("effective non-check rule enforcement and maintenance are explicit", () => {
+  assert.match(
+    guardSource,
+    /last-push.*unattributed.*signed.*enforced indirectly.*exact.*rule-suite.*pass/is,
+  );
+  assert.match(releaseRunbook, /Unsupported effective repository rule/);
+  assert.match(releaseRunbook, /NON_CHECK_RULES/);
+  assert.match(releaseRunbook, /GitHub adds.*rule type/i);
+  assert.match(releaseRunbook, /rerun the original merged-PR workflow/i);
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {

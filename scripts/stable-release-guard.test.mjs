@@ -5,6 +5,7 @@ import {
   collectEffectiveApprovals,
   evaluateRequiredChecks,
   extractEffectiveRules,
+  parseGuardTimeoutMs,
   runStableReleaseGuard,
 } from "./stable-release-guard.mjs";
 
@@ -458,5 +459,19 @@ describe("stable release polling guard", () => {
     );
     assert.deepEqual(sleeps, [20, 5]);
     assert.ok(requestBudgets.every((budget) => budget > 0 && budget <= 25));
+  });
+});
+
+describe("stable release guard timeout configuration", () => {
+  it("uses a safe 25-minute default and accepts a bounded minute override", () => {
+    assert.equal(parseGuardTimeoutMs(undefined), 25 * 60 * 1_000);
+    assert.equal(parseGuardTimeoutMs("20"), 20 * 60 * 1_000);
+    assert.equal(parseGuardTimeoutMs("40"), 40 * 60 * 1_000);
+  });
+
+  it("rejects malformed, fractional, lower, and upper out-of-bound values", () => {
+    for (const value of ["", "abc", "20.5", "9", "41"]) {
+      assert.throws(() => parseGuardTimeoutMs(value), /10.*40.*minutes/i);
+    }
   });
 });

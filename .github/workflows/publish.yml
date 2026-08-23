@@ -16,7 +16,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     environment: npm-publish
     permissions:
       actions: read
@@ -90,6 +90,8 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STABLE_RELEASE_GUARD_TIMEOUT_MINUTES: >-
+            ${{ vars.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES || '25' }}
           VERSION: ${{ steps.version.outputs.version }}
         run: node scripts/stable-release-guard.mjs
 
