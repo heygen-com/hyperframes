@@ -188,6 +188,11 @@ export interface VideoMetadata {
   hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
+  /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
+   * container does not surface a reliable count (still images, malformed
+   * streams, or muxes that require `-count_packets` to populate). Callers
+   * that gate on a frame count must treat `undefined` as "no answer". */
+  frames?: number;
 }
 
 export interface AudioMetadata {
@@ -731,6 +736,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
           isVFR: false,
           hasAlpha: false,
           colorSpace: stillImageMeta.colorSpace,
+          frames: 1,
         };
       }
       throw new Error("[FFmpeg] No video stream found");
@@ -775,6 +781,14 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
     const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
     const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
+    // `nb_frames` is populated by the container demuxer; a muxer that requires
+    // `-count_packets` to enumerate frames will leave it undefined, in which
+    // case the caller must treat the frame-count check as "no answer". This
+    // path is hit by, for example, fragmented MP4 where the moov box lacks a
+    // frame count — the captured duration is still correct.
+    const parsedNbFrames = videoStream.nb_frames ? parseInt(videoStream.nb_frames, 10) : NaN;
+    const frames =
+      Number.isFinite(parsedNbFrames) && parsedNbFrames > 0 ? parsedNbFrames : undefined;
 
     return {
       durationSeconds: containerDuration,
@@ -788,6 +802,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       isVFR,
       hasAlpha,
       colorSpace,
+      frames,
     };
   })();
 
