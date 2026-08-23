@@ -756,11 +756,11 @@ describe("WebAudioTransport", () => {
     // it auditioned.
     it("previews an over-unity bus fader at the render's ceiling, not unity", async () => {
       const { transport, mock, gen } = setupGroupTransport();
-      document.body.innerHTML = `<hf-audio-group id="vo" data-volume="2"></hf-audio-group>`;
+      document.body.innerHTML = `<hf-audio-group id="vo" data-volume="10"></hf-audio-group>`;
       await scheduleGrouped(transport, gen, "a", "vo");
 
       // Creation order: a-gain(0), groupInput(1), groupOutput(2), muteGain(3), fader(4).
-      expect(mock.gainNodes[4]!.gain.value).toBeCloseTo(2, 6);
+      expect(mock.gainNodes[4]!.gain.value).toBeCloseTo(3.9811, 3);
     });
 
     it("still floors a negative bus fader at zero", async () => {
