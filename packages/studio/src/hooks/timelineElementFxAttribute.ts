@@ -75,9 +75,6 @@ async function setElementAttribute({
     domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
     patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
-    readLive: () =>
-      findTimelineElementInIframe(previewIframe, element, activeCompPath)?.getAttribute(attr) ??
-      null,
   });
 }
 

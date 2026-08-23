@@ -2,11 +2,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
-import {
-  createAudioGroupAndAssignMembers,
-  toggleTimelineElementHidden,
-  toggleTimelineTrackHidden,
-} from "./timelineTrackVisibility";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { readTagSnippetByTarget } from "../utils/sourcePatcher";
+import { createAudioGroupAndAssignMembers } from "./timelineAudioGroupCreate";
+import { toggleTimelineElementHidden, toggleTimelineTrackHidden } from "./timelineTrackVisibility";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -513,21 +512,104 @@ describe("createAudioGroupAndAssignMembers", () => {
     ).toBe("voiceover");
   });
 
-  it("does nothing for fewer than two elements — grouping is a plural concept", async () => {
-    const recordEdit = vi.fn();
-    const changedPaths = await createAudioGroupAndAssignMembers({
+  // The group element is what every LATER group write addresses — mute, the bus
+  // fader's data-volume, an FX preset all go through
+  // `buildPatchTarget({ domId: groupId })`. Membership alone parses, but leaves
+  // a group nothing can edit.
+  it("emits the group's own <hf-audio-group> element, patchable by its DOM id", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    if (iframe.contentDocument) {
+      iframe.contentDocument.body.innerHTML = `
+        <audio id="narration"></audio>
+        <audio id="interview-guest"></audio>
+      `;
+    }
+    const files = new Map([
+      [
+        "index.html",
+        `<html><body>
+<audio id="narration" data-start="0" data-duration="5"></audio>
+<audio id="interview-guest" data-start="10" data-duration="5"></audio>
+</body></html>`,
+      ],
+    ]);
+    stubProjectFiles(files);
+
+    const narration = element({ id: "narration", domId: "narration", track: 0 });
+    const guest = element({ id: "interview-guest", domId: "interview-guest", track: 1 });
+    usePlayerStore.getState().setElements([narration, guest]);
+
+    const writes = new Map<string, string>();
+    await createAudioGroupAndAssignMembers({
       projectId: "project-1",
       activeCompPath: "index.html",
-      elements: [element({ id: "narration", domId: "narration" })],
+      elements: [narration, guest],
       groupId: "voiceover",
-      previewIframe: null,
-      writeProjectFile: async () => {},
-      recordEdit,
+      previewIframe: iframe,
+      writeProjectFile: async (path, content) => {
+        writes.set(path, content);
+      },
+      recordEdit: vi.fn(),
       domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
-    expect(changedPaths).toEqual([]);
+
+    const written = writes.get("index.html") ?? "";
+    expect(written).toContain('<hf-audio-group id="voiceover"></hf-audio-group>');
+    // The actual contract: the group-attribute writer can now find a target.
+    // This is the read that threw "Unable to patch element in index.html".
+    expect(readTagSnippetByTarget(written, { id: "voiceover" })).toBeDefined();
+    // ...and in the live preview, which is what patchLiveGroupAttribute reads
+    // before the next reload.
+    expect(iframe.contentDocument?.getElementById("voiceover")?.tagName.toLowerCase()).toBe(
+      "hf-audio-group",
+    );
+    // Both members still resolve into it.
+    expect(resolveAudioGroups(iframe.contentDocument as Document)[0]).toMatchObject({
+      id: "voiceover",
+      memberIds: ["narration", "interview-guest"],
+    });
+  });
+
+  // Rejects rather than resolving empty: the carve's auto-group persists
+  // `sources: [groupId]` once this resolves, so a silent no-op leaves the carve
+  // pointing at a group that was never written — and stops ducking.
+  it("rejects for fewer than two elements — grouping is a plural concept", async () => {
+    const recordEdit = vi.fn();
+    await expect(
+      createAudioGroupAndAssignMembers({
+        projectId: "project-1",
+        activeCompPath: "index.html",
+        elements: [element({ id: "narration", domId: "narration" })],
+        groupId: "voiceover",
+        previewIframe: null,
+        writeProjectFile: async () => {},
+        recordEdit,
+        domEditSaveTimestampRef: { current: 0 },
+        pendingTimelineEditPathRef: { current: new Set() },
+      }),
+    ).rejects.toThrow("a group needs at least two");
     expect(recordEdit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a group id that is not safe to interpolate into markup or a path", async () => {
+    await expect(
+      createAudioGroupAndAssignMembers({
+        projectId: "project-1",
+        activeCompPath: "index.html",
+        elements: [
+          element({ id: "narration", domId: "narration" }),
+          element({ id: "guest", domId: "guest" }),
+        ],
+        groupId: '../x"><script>',
+        previewIframe: null,
+        writeProjectFile: async () => {},
+        recordEdit: vi.fn(),
+        domEditSaveTimestampRef: { current: 0 },
+        pendingTimelineEditPathRef: { current: new Set() },
+      }),
+    ).rejects.toThrow("Invalid audio group id");
   });
 
   it("reverts the optimistic live patch when the save fails", async () => {
