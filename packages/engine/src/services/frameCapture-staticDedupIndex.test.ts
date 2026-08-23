@@ -39,6 +39,7 @@ function makeSession(staticFrames: Set<number>, fps: { num: number; den: number 
     isInitialized: false,
     staticFrames,
     lastFrameBuffer: SENTINEL,
+    lastFrameAbsoluteIndex: Math.min(...staticFrames) - 1,
     staticDedupCount: 0,
   } as unknown as CaptureSession;
 }
@@ -72,5 +73,21 @@ describe("static-dedup reuse keys on absolute frame index (time), not relative f
   it("no reuse when the absolute frame is not in the static set", async () => {
     const session = makeSession(new Set([10, 11, 12]), fps30);
     await expect(captureFrameToBuffer(session, 0, 50 / 30)).rejects.toThrow();
+  });
+
+  it("does not reuse an unrelated cached frame from an interleaved worker", async () => {
+    const session = makeSession(new Set([90]), fps30);
+    session.lastFrameAbsoluteIndex = 87;
+    await expect(captureFrameToBuffer(session, 0, 90 / 30)).rejects.toThrow();
+    expect(session.staticDedupCount).toBe(0);
+  });
+
+  it("advances the cached absolute index across consecutive reuse hits", async () => {
+    const session = makeSession(new Set([90, 91]), fps30);
+    await captureFrameToBuffer(session, 0, 90 / 30);
+    const second = await captureFrameToBuffer(session, 1, 91 / 30);
+    expect(second.buffer).toBe(SENTINEL);
+    expect(session.lastFrameAbsoluteIndex).toBe(91);
+    expect(session.staticDedupCount).toBe(2);
   });
 });

@@ -11,7 +11,12 @@
 import { type Browser, type Page, type Viewport, type ConsoleMessage } from "puppeteer-core";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { quantizeTimeToFrame, fpsToNumber, resolveAuthoredTimingWindow } from "@hyperframes/core";
+import {
+  quantizeTimeToFrame,
+  fpsToNumber,
+  resolveAuthoredTimingWindow,
+  type RawAuthoredTiming,
+} from "@hyperframes/core";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
 import {
@@ -84,19 +89,25 @@ export interface CaptureSession {
   staticFrames?: Set<number>;
   /** Last non-deduped frame buffer, reused for every `staticFrames` index in its run. */
   lastFrameBuffer?: Buffer;
+  /** Absolute index represented by lastFrameBuffer; reuse requires direct adjacency. */
+  lastFrameAbsoluteIndex?: number;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
   // ── Static-dedup observability (set by armStaticDedup; surfaced via
   // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
-  // NOTE: `armed` and `predicted` are NOT stored — they derive from
-  // `staticFrames` (armed ⟺ non-empty set; predicted === size) in
-  // getCapturePerfSummary, so they can't desync from the actual reuse set.
+  // `armed` derives from the verified staticFrames set. Predicted count is stored
+  // separately because partial budget arming intentionally makes them diverge.
   /** Dedup was enabled for this render (default-on; opt out with `HF_STATIC_DEDUP=false`). */
   staticDedupEnabled?: boolean;
+  /** Original predicted-static count, before profitability or partial verification. */
+  staticDedupPredictedCount?: number;
+  /** Bounded verifier taxonomy and counters for debug/perf reporting. */
+  staticDedupVerification?: StaticVerificationResult;
   /**
    * Short machine code for WHY dedup did not arm, for a low-cardinality breakdown.
    * One of: `capture_mode` | `video_injection` | `page_composite` |
-   * `ineligible` | `verification_failed` | `verification_budget`. Undefined when armed or disabled.
+   * `ineligible` | `unprofitable` | `verification_failed` | `verification_budget`.
+   * Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
   // Tracks whether the page/browser handles have already been released by
@@ -2574,16 +2585,10 @@ async function prepareFrameForCapture(
  * cut changes content with no tween; treat those frames as animated so the post-cut
  * frame is captured fresh and later static frames reuse the correct scene.
  */
-export async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
-  const schedule = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("[data-start]")).map((el) => ({
-      start: el.getAttribute("data-start"),
-      duration: el.getAttribute("data-duration"),
-      authoredDuration: el.getAttribute("data-hf-authored-duration"),
-      end: el.getAttribute("data-end"),
-      authoredEnd: el.getAttribute("data-hf-authored-end"),
-    })),
-  );
+export function computeAuthoredClipBoundaryFrames(
+  schedule: RawAuthoredTiming[],
+  fps: number,
+): Set<number> {
   const frames = new Set<number>();
   for (const rawTiming of schedule) {
     const timing = resolveAuthoredTimingWindow(rawTiming);
@@ -2597,6 +2602,19 @@ export async function computeClipBoundaryFrames(page: Page, fps: number): Promis
     }
   }
   return frames;
+}
+
+async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
+  const schedule = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("[data-start]")).map((el) => ({
+      start: el.getAttribute("data-start"),
+      duration: el.getAttribute("data-duration"),
+      authoredDuration: el.getAttribute("data-hf-authored-duration"),
+      end: el.getAttribute("data-end"),
+      authoredEnd: el.getAttribute("data-hf-authored-end"),
+    })),
+  );
+  return computeAuthoredClipBoundaryFrames(schedule, fps);
 }
 
 // Static dedup is an optional optimization. Building frame-index Sets scales with the
@@ -2818,42 +2836,163 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 // optimization before the real render starts. Exhaustion fails closed: dedup is
 // disabled and normal capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
+// Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
+// therefore permits 200 fully verified runs while bounding pathological schedules.
+const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
+// Preserve the legacy tuning headroom: raising the composition-wide sample floor may
+// raise the cap proportionally, but never changes the fixed wall deadline.
+const STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER = 8;
+// Keep sample-driven work within the 400-screenshot base cap: 50 comparisons × 8
+// legacy headroom. Mandatory <=24-gap points may still raise the independent cap.
+const STATIC_VERIFY_MAX_GLOBAL_SAMPLE_FLOOR =
+  STATIC_VERIFY_MIN_SCREENSHOT_CAP / STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER;
 
-/**
- * Interior verification points for a run [a..b], plus the always-included end `b`.
- * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
- * stride grew with its span — on a long run (many merged static frames), two
- * checks could land hundreds of frames apart. A genuine content change in
- * between (e.g. text swapped by a mechanism computeStaticFrameSet's GSAP-only
- * tween walk can't see) then hides between samples and the whole run gets
- * wrongly trusted as static.
- *
- * `sampleCount` (HF_STATIC_DEDUP_SAMPLES) is a per-run point-count FLOOR, not a
- * stride cap — raising it always increases density, never decreases it. (An
- * earlier revision of this fix bounded the stride BY sampleCount directly, which
- * inverted that: raising sampleCount widened the allowed gap instead of shrinking
- * it, and the "raise HF_STATIC_DEDUP_SAMPLES to verify more" log guidance became
- * backwards for exactly the long runs it's meant to help.) The length-scaling
- * fix itself comes from STATIC_VERIFY_REFERENCE_STRIDE, which is independent of
- * sampleCount, so density scales with run length regardless of how that knob is
- * set; sampleCount only ever raises density further above that floor.
- *
- * Pure and exported so its scaling behavior is unit-testable without a real
- * page/browser.
- */
-export function computeStaticVerificationPoints(
-  a: number,
-  b: number,
-  sampleCount: number,
-): number[] {
-  const span = b - a;
-  const lengthScaledPoints = span > 0 ? Math.ceil(span / STATIC_VERIFY_REFERENCE_STRIDE) + 1 : 1;
-  const perRun = Math.max(3, sampleCount, lengthScaledPoints);
-  const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
-  const pts = new Set<number>();
-  for (let f = a; f <= b; f += stride) pts.add(f);
-  pts.add(b);
-  return [...pts].sort((x, y) => x - y);
+export interface StaticVerificationRun {
+  a: number;
+  b: number;
+  anchor: number;
+  comparisons: number[];
+  frameCount: number;
+  netSavings: number;
+}
+
+export interface StaticVerificationPlan {
+  runs: StaticVerificationRun[];
+  skippedRuns: Array<{ a: number; b: number; reason: "unprofitable" }>;
+  effectiveSampleFloor: number;
+  predictedFrames: number;
+  verifiedCandidateFrames: number;
+  plannedAnchors: number;
+  plannedComparisons: number;
+  plannedScreenshots: number;
+}
+
+function contiguousStaticRuns(frames: number[]): Array<{ a: number; b: number }> {
+  const runs: Array<{ a: number; b: number }> = [];
+  for (const frame of frames) {
+    const last = runs.at(-1);
+    if (last && frame === last.b + 1) last.b = frame;
+    else runs.push({ a: frame, b: frame });
+  }
+  return runs;
+}
+
+function mandatoryRunComparisons(anchor: number, end: number): number[] {
+  const points = new Set<number>();
+  for (
+    let frame = anchor + STATIC_VERIFY_REFERENCE_STRIDE;
+    frame < end;
+    frame += STATIC_VERIFY_REFERENCE_STRIDE
+  ) {
+    points.add(frame);
+  }
+  points.add(end);
+  return [...points].sort((left, right) => left - right);
+}
+
+/** Pure composition-wide planner. Every retained run is profitable and has gaps <=24 frames. */
+export function planStaticVerification(
+  staticFrames: Set<number>,
+  sampleFloor: number,
+): StaticVerificationPlan {
+  const frames = [...staticFrames].sort((left, right) => left - right);
+  const allRuns = contiguousStaticRuns(frames).map(({ a, b }): StaticVerificationRun => {
+    const comparisons = mandatoryRunComparisons(a - 1, b);
+    const frameCount = b - a + 1;
+    return {
+      a,
+      b,
+      anchor: a - 1,
+      comparisons,
+      frameCount,
+      netSavings: frameCount - comparisons.length - 1,
+    };
+  });
+  const runs = allRuns.filter((run) => run.anchor >= 0 && run.netSavings > 0);
+  const skippedRuns = allRuns
+    .filter((run) => run.anchor < 0 || run.netSavings <= 0)
+    .map((run) => ({ a: run.a, b: run.b, reason: "unprofitable" as const }));
+
+  const normalizedSampleFloor = Number.isFinite(sampleFloor)
+    ? Math.max(1, Math.floor(sampleFloor))
+    : 1;
+  const effectiveSampleFloor = Math.min(
+    normalizedSampleFloor,
+    STATIC_VERIFY_MAX_GLOBAL_SAMPLE_FLOOR,
+  );
+  const comparisonCount = () => runs.reduce((sum, run) => sum + run.comparisons.length, 0);
+  while (comparisonCount() < effectiveSampleFloor) {
+    const candidates = runs
+      .filter((run) => run.frameCount > run.comparisons.length + 2)
+      .flatMap((run) => {
+        const points = [run.anchor, ...run.comparisons];
+        return points.slice(1).map((right, index) => ({
+          run,
+          left: points[index]!,
+          right,
+          width: right - points[index]!,
+        }));
+      })
+      .filter((gap) => gap.width > 1)
+      .sort(
+        (left, right) =>
+          right.width - left.width || left.run.a - right.run.a || left.left - right.left,
+      );
+    const selected = candidates[0];
+    if (!selected) break;
+    selected.run.comparisons.push(Math.floor((selected.left + selected.right) / 2));
+    selected.run.comparisons.sort((left, right) => left - right);
+    selected.run.netSavings = selected.run.frameCount - selected.run.comparisons.length - 1;
+  }
+
+  runs.sort((left, right) => right.netSavings - left.netSavings || left.a - right.a);
+  const plannedComparisons = comparisonCount();
+  return {
+    runs,
+    skippedRuns,
+    effectiveSampleFloor,
+    predictedFrames: frames.length,
+    verifiedCandidateFrames: runs.reduce((sum, run) => sum + run.frameCount, 0),
+    plannedAnchors: runs.length,
+    plannedComparisons,
+    plannedScreenshots: runs.length + plannedComparisons,
+  };
+}
+
+export type StaticVerificationOutcome =
+  | "verified"
+  | "unprofitable"
+  | "time_budget"
+  | "count_budget"
+  | "mismatch"
+  | "infrastructure";
+
+export interface StaticVerificationStats {
+  plannedRuns: number;
+  completedRuns: number;
+  plannedAnchors: number;
+  completedAnchors: number;
+  plannedComparisons: number;
+  completedComparisons: number;
+  seeks: number;
+  screenshots: number;
+  byteComparisons: number;
+  elapsedMs: number;
+  predictedFrames: number;
+  verifiedFrames: number;
+  unverifiedFrames: number;
+}
+
+export interface StaticVerificationResult {
+  outcome: StaticVerificationOutcome;
+  verifiedFrames: Set<number>;
+  badFrame?: number;
+  stats: StaticVerificationStats;
+}
+
+interface StaticVerificationDependencies {
+  now?: () => number;
+  capture?: typeof pageScreenshotCapture;
 }
 
 /**
@@ -2861,9 +3000,11 @@ export function computeStaticVerificationPoints(
  * into runs; each run [a..b] reuses anchor a-1. CRITICAL: compare against the ANCHOR,
  * not the predecessor — a slow drift with sub-quantization per-frame deltas is byte-
  * identical frame-to-frame yet drifts far from the anchor by the run's end (the real
- * frozen error). Capture each run's anchor once, compare END + a midpoint to it; any
- * mismatch ⇒ the run isn't truly static ⇒ disable dedup whole-comp. Capture-mode-
- * independent (seeks + screenshots in normal DOM). Returns the first bad frame, or null.
+ * frozen error). Capture each run's anchor once, compare its end plus deterministic
+ * composition-wide points that preserve a 24-frame maximum gap; any mismatch ⇒ the
+ * run isn't truly static ⇒ disable dedup whole-comp. Capture-mode-
+ * independent (seeks + screenshots in normal DOM). Budget exhaustion may retain only
+ * runs whose anchor and every planned comparison completed successfully.
  */
 export async function verifyStaticFramesSafe(
   session: CaptureSession,
@@ -2871,19 +3012,41 @@ export async function verifyStaticFramesSafe(
   staticFrames: Set<number>,
   fps: number,
   sampleCount: number,
-): Promise<{ badFrame: number; budgetExhausted: boolean } | null> {
-  const frames = [...staticFrames].sort((a, b) => a - b);
-  if (frames.length === 0) return null;
-  const deadline = Date.now() + STATIC_VERIFY_MAX_MS;
-  // Runs are maximal-contiguous (adjacent frames merge), so a run's anchor a-1 is
-  // guaranteed NOT static — always a freshly-captured frame.
-  const runs: Array<{ a: number; b: number }> = [];
-  for (const f of frames) {
-    const last = runs[runs.length - 1];
-    if (last && f === last.b + 1) last.b = f;
-    else runs.push({ a: f, b: f });
-  }
+  dependencies: StaticVerificationDependencies = {},
+): Promise<StaticVerificationResult> {
+  const plan = planStaticVerification(staticFrames, sampleCount);
+  const now = dependencies.now ?? Date.now;
+  const capture = dependencies.capture ?? pageScreenshotCapture;
+  const startedAt = now();
+  const deadline = startedAt + STATIC_VERIFY_MAX_MS;
+  const verifiedFrames = new Set<number>();
+  const stats: StaticVerificationStats = {
+    plannedRuns: plan.runs.length,
+    completedRuns: 0,
+    plannedAnchors: plan.plannedAnchors,
+    completedAnchors: 0,
+    plannedComparisons: plan.plannedComparisons,
+    completedComparisons: 0,
+    seeks: 0,
+    screenshots: 0,
+    byteComparisons: 0,
+    elapsedMs: 0,
+    predictedFrames: plan.predictedFrames,
+    verifiedFrames: 0,
+    unverifiedFrames: plan.predictedFrames,
+  };
+  const finish = (
+    outcome: StaticVerificationOutcome,
+    badFrame?: number,
+  ): StaticVerificationResult => ({
+    outcome,
+    verifiedFrames,
+    ...(badFrame == null ? {} : { badFrame }),
+    stats,
+  });
+  if (plan.runs.length === 0) return finish("unprofitable");
   const seekToFrame = async (frameIdx: number): Promise<void> => {
+    stats.seeks++;
     const t = quantizeTimeToFrame(frameIdx / fps, fps);
     await page.evaluate((tt: number) => {
       const hf = (
@@ -2894,50 +3057,54 @@ export async function verifyStaticFramesSafe(
       if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
     }, t);
   };
-  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
-    await seekToFrame(frameIdx);
-    return pageScreenshotCapture(page, session.options);
-  };
-  // Verify EVERY run in order (no longest-first truncation that would leave runs armed
-  // but unverified). Per run, compare the FIRST reused frame `a`, the END `b` (max
-  // accumulated drift), and interior points at a stride (see computeStaticVerificationPoints)
-  // — against the anchor the run actually reuses.
-  //
-  // hardCap bounds pathological cases and hitting it DISABLES dedup (conservative:
-  // never trust an unverified set). It must scale with the new density model:
-  // each run now costs roughly span/STATIC_VERIFY_REFERENCE_STRIDE + 1 checks (plus
-  // one anchor), not the ~8 the old flat point cap cost — sizing the budget only off
-  // sampleCount (which no longer drives density for long runs) would make a
-  // genuinely-static long composition spuriously disarm under the new, more
-  // thorough checking. `frames.length` approximates total interior checks; a 3x
-  // margin absorbs per-run anchor overhead and the 3-point floor on short runs.
   const hardCap = Math.max(
-    sampleCount * 8,
-    400,
-    Math.ceil(frames.length / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + runs.length,
+    STATIC_VERIFY_MIN_SCREENSHOT_CAP,
+    plan.effectiveSampleFloor * STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER,
+    Math.ceil(plan.predictedFrames / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + plan.runs.length,
   );
+  const seekCapture = async (
+    frameIdx: number,
+  ): Promise<Buffer | "time_budget" | "count_budget"> => {
+    if (now() >= deadline) return "time_budget";
+    if (stats.screenshots >= hardCap) return "count_budget";
+    await seekToFrame(frameIdx);
+    stats.screenshots++;
+    return capture(page, session.options);
+  };
+  // Verify profitable runs in deterministic savings order. A run is added to the armed
+  // set only after its anchor and every planner-selected comparison match. Budget exits
+  // retain completed runs; mismatch or infrastructure failure clears all verified frames.
   try {
-    let spent = 0;
-    for (const { a, b } of runs) {
-      const anchor = a - 1;
-      if (anchor < 0) continue;
-      if (Date.now() >= deadline) return { badFrame: a, budgetExhausted: true };
-      const anchorBuf = await seekCapture(anchor);
-      spent++;
-      for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
-        if (Date.now() >= deadline) return { badFrame: f, budgetExhausted: true };
+    for (const run of plan.runs) {
+      const anchorBuf = await seekCapture(run.anchor);
+      if (typeof anchorBuf === "string") return finish(anchorBuf, run.a);
+      stats.completedAnchors++;
+      for (const f of run.comparisons) {
         const cur = await seekCapture(f);
-        spent++;
-        if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
+        if (typeof cur === "string") return finish(cur, f);
+        stats.completedComparisons++;
+        stats.byteComparisons++;
+        if (!anchorBuf.equals(cur)) {
+          verifiedFrames.clear();
+          stats.verifiedFrames = 0;
+          stats.unverifiedFrames = plan.predictedFrames;
+          return finish("mismatch", f);
+        }
       }
-      // Budget exhausted → can't fully verify → disarm, distinct from real drift so a
-      // `verification_budget` spike in telemetry reads as "this composition has a lot
-      // of static material to verify," not "compositions are non-static."
-      if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
+      stats.completedRuns++;
+      for (let frame = run.a; frame <= run.b; frame++) verifiedFrames.add(frame);
+      stats.verifiedFrames = verifiedFrames.size;
+      stats.unverifiedFrames = plan.predictedFrames - verifiedFrames.size;
     }
-    return null;
+    return finish("verified");
+  } catch {
+    verifiedFrames.clear();
+    stats.verifiedFrames = 0;
+    stats.unverifiedFrames = plan.predictedFrames;
+    return finish("infrastructure");
   } finally {
     await seekToFrame(0).catch(() => {});
+    stats.elapsedMs = Math.max(0, now() - startedAt);
   }
 }
 
@@ -3010,28 +3177,43 @@ async function armStaticDedup(
   }
   const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
   const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
-  const verdict =
-    process.env.HF_STATIC_DEDUP_VERIFY === "false"
-      ? null
-      : await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
-  if (verdict !== null) {
-    session.staticDedupSkipReason = verdict.budgetExhausted
-      ? "verification_budget"
-      : "verification_failed";
+  session.staticDedupPredictedCount = stats.staticFrameSet.size;
+  if (process.env.HF_STATIC_DEDUP_VERIFY === "false") {
+    session.staticFrames = stats.staticFrameSet;
     logInitPhase(
-      verdict.budgetExhausted
-        ? `static-frame dedup: disabled (verification budget exhausted before frame ${verdict.badFrame}; ` +
-            `too much predicted-static material to fully verify — this is the safe fallback, not an error)`
-        : `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
-            `predicted-static frame ${verdict.badFrame})`,
+      `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
+        `(verification explicitly disabled)`,
     );
     return;
   }
-  // armed + predicted are derived from staticFrames in getCapturePerfSummary.
-  session.staticFrames = stats.staticFrameSet;
+  const verdict = await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
+  session.staticDedupVerification = verdict;
+  if (verdict.outcome === "mismatch" || verdict.outcome === "infrastructure") {
+    session.staticDedupSkipReason = "verification_failed";
+    logInitPhase(
+      verdict.outcome === "mismatch"
+        ? `static-frame dedup: disabled (verification mismatch at predicted-static frame ${verdict.badFrame})`
+        : "static-frame dedup: disabled (verification infrastructure failure)",
+    );
+    return;
+  }
+  if (verdict.outcome === "unprofitable") {
+    session.staticDedupSkipReason = "unprofitable";
+    logInitPhase("static-frame dedup: disabled (verification cost cannot save captures)");
+    return;
+  }
+  if (verdict.verifiedFrames.size === 0) {
+    session.staticDedupSkipReason = "verification_budget";
+    logInitPhase(
+      `static-frame dedup: disabled (${verdict.outcome} before frame ${verdict.badFrame}; no run fully verified)`,
+    );
+    return;
+  }
+  session.staticFrames = verdict.verifiedFrames;
   logInitPhase(
-    `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
-      `(${Math.round((stats.staticFrameSet.size / stats.totalFrames) * 100)}%, verified)`,
+    `static-frame dedup: ${verdict.verifiedFrames.size}/${stats.staticFrameSet.size} predicted frame(s) reusable ` +
+      `(outcome=${verdict.outcome}, runs=${verdict.stats.completedRuns}/${verdict.stats.plannedRuns}, ` +
+      `screenshots=${verdict.stats.screenshots}, seeks=${verdict.stats.seeks}, elapsedMs=${verdict.stats.elapsedMs})`,
   );
 }
 
@@ -3165,8 +3347,13 @@ async function captureFrameCore(
   // Use the SAME floor+epsilon idiom as quantizeTimeToFrame so the dedup lookup agrees
   // with the frame the seek actually lands on, even if `time` ever isn't exactly i/fps.
   const absFrameIndex = Math.floor(time * fpsToNumber(options.fps) + 1e-9);
-  if (session.staticFrames?.has(absFrameIndex) && session.lastFrameBuffer) {
+  if (
+    session.staticFrames?.has(absFrameIndex) &&
+    session.lastFrameBuffer &&
+    session.lastFrameAbsoluteIndex === absFrameIndex - 1
+  ) {
     session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
+    session.lastFrameAbsoluteIndex = absFrameIndex;
     return {
       buffer: session.lastFrameBuffer,
       quantizedTime: quantizeTimeToFrame(time, fpsToNumber(options.fps)),
@@ -3295,7 +3482,10 @@ async function captureFrameCore(
     session.capturePerf.frameMs.push(captureTimeMs);
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
-    if (session.staticFrames) session.lastFrameBuffer = screenshotBuffer;
+    if (session.staticFrames) {
+      session.lastFrameBuffer = screenshotBuffer;
+      session.lastFrameAbsoluteIndex = absFrameIndex;
+    }
 
     return { buffer: screenshotBuffer, quantizedTime, captureTimeMs };
   } catch (captureError) {
@@ -3664,6 +3854,7 @@ export async function discardWarmupCapture(
   const noDamageBefore = session.beginFrameNoDamageCount;
   const dedupCountBefore = session.staticDedupCount;
   const lastFrameBufferBefore = session.lastFrameBuffer;
+  const lastFrameAbsoluteIndexBefore = session.lastFrameAbsoluteIndex;
   try {
     await innerCapture(session, frameIndex, time);
   } finally {
@@ -3675,6 +3866,7 @@ export async function discardWarmupCapture(
     session.beginFrameNoDamageCount = noDamageBefore;
     session.staticDedupCount = dedupCountBefore;
     session.lastFrameBuffer = lastFrameBufferBefore;
+    session.lastFrameAbsoluteIndex = lastFrameAbsoluteIndexBefore;
   }
 }
 
@@ -3763,6 +3955,7 @@ export function prepareCaptureSessionForReuse(
   // intact: it's keyed in absolute frames and stays valid for a same-composition reuse;
   // lastFrameBuffer must be re-seeded by this render's first fresh capture.
   session.lastFrameBuffer = undefined;
+  session.lastFrameAbsoluteIndex = undefined;
   session.staticDedupCount = 0;
 }
 
@@ -3945,9 +4138,17 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     warnings: cloneCaptureWarnings(session.warnings),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
-    // armed ⟺ a non-empty static set survived verification; predicted === its size.
+    // armed ⟺ a non-empty static set survived verification.
     staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
-    staticDedupPredicted: session.staticFrames?.size ?? 0,
+    staticDedupPredicted: session.staticDedupPredictedCount ?? 0,
+    staticDedupVerified: session.staticFrames?.size ?? 0,
+    staticDedupVerificationOutcome: session.staticDedupVerification?.outcome,
+    staticDedupVerificationPlannedRuns: session.staticDedupVerification?.stats.plannedRuns,
+    staticDedupVerificationCompletedRuns: session.staticDedupVerification?.stats.completedRuns,
+    staticDedupVerificationScreenshots: session.staticDedupVerification?.stats.screenshots,
+    staticDedupVerificationSeeks: session.staticDedupVerification?.stats.seeks,
+    staticDedupVerificationComparisons: session.staticDedupVerification?.stats.byteComparisons,
+    staticDedupVerificationElapsedMs: session.staticDedupVerification?.stats.elapsedMs,
     staticDedupSkipReason: session.staticDedupSkipReason,
     beginFrameNoDamage: session.beginFrameNoDamageCount,
     beginFrameHasDamage: session.beginFrameHasDamageCount,

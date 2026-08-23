@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
-import { computeClipBoundaryFrames } from "./frameCapture.js";
+import { describe, expect, it } from "vitest";
+import { computeAuthoredClipBoundaryFrames } from "./frameCapture.js";
 
 describe("computeClipBoundaryFrames", () => {
   it("protects the normalized authored-duration disappearance neighborhood", async () => {
-    const page = {
-      evaluate: vi.fn().mockResolvedValue([
+    const frames = computeAuthoredClipBoundaryFrames(
+      [
         {
           start: "0",
           duration: null,
@@ -12,11 +12,7 @@ describe("computeClipBoundaryFrames", () => {
           end: null,
           authoredEnd: null,
         },
-      ]),
-    };
-
-    const frames = await computeClipBoundaryFrames(
-      page as unknown as Parameters<typeof computeClipBoundaryFrames>[0],
+      ],
       25,
     );
 
@@ -24,8 +20,8 @@ describe("computeClipBoundaryFrames", () => {
   });
 
   it("rounds fractional-fps start and end edges and applies precedence", async () => {
-    const page = {
-      evaluate: vi.fn().mockResolvedValue([
+    const frames = computeAuthoredClipBoundaryFrames(
+      [
         {
           start: "0.1",
           duration: "0",
@@ -33,11 +29,7 @@ describe("computeClipBoundaryFrames", () => {
           end: "9",
           authoredEnd: "10",
         },
-      ]),
-    };
-
-    const frames = await computeClipBoundaryFrames(
-      page as unknown as Parameters<typeof computeClipBoundaryFrames>[0],
+      ],
       23.976,
     );
 

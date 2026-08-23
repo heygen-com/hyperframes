@@ -77,6 +77,7 @@ import {
   type CaptureWarning,
   type SubTimelineWaitOutcome,
   type WorkerSizing,
+  type StaticVerificationOutcome,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   applyConcreteGpuScreenshotClamp,
@@ -461,8 +462,16 @@ export interface RenderPerfSummary {
     enabled: boolean;
     armed: boolean;
     predictedFrames: number;
+    verifiedFrames?: number;
     reusedFrames: number;
     skipReason?: string;
+    verificationOutcomes?: StaticVerificationOutcome[];
+    plannedRuns?: number;
+    completedRuns?: number;
+    screenshots?: number;
+    seeks?: number;
+    comparisons?: number;
+    verificationElapsedMs?: number;
   };
   /**
    * BeginFrame no-damage reuse outcome for this render (Linux/Docker),

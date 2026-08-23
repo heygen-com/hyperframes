@@ -82,6 +82,52 @@ describe("buildRenderPerfSummary static-dedup aggregation", () => {
     });
   });
 
+  it("keeps predicted and verified counts distinct and aggregates bounded verifier telemetry", () => {
+    const s = buildRenderPerfSummary(
+      baseInput([
+        perf({
+          staticDedupEnabled: true,
+          staticDedupArmed: true,
+          staticDedupPredicted: 300,
+          staticDedupVerified: 240,
+          staticDedupVerificationOutcome: "time_budget",
+          staticDedupVerificationPlannedRuns: 60,
+          staticDedupVerificationCompletedRuns: 48,
+          staticDedupVerificationScreenshots: 96,
+          staticDedupVerificationSeeks: 97,
+          staticDedupVerificationComparisons: 48,
+          staticDedupVerificationElapsedMs: 15_000,
+        }),
+        perf({
+          staticDedupEnabled: true,
+          staticDedupArmed: true,
+          staticDedupPredicted: 200,
+          staticDedupVerified: 200,
+          staticDedupVerificationOutcome: "verified",
+          staticDedupVerificationPlannedRuns: 40,
+          staticDedupVerificationCompletedRuns: 40,
+          staticDedupVerificationScreenshots: 80,
+          staticDedupVerificationSeeks: 81,
+          staticDedupVerificationComparisons: 40,
+          staticDedupVerificationElapsedMs: 8_000,
+        }),
+      ]),
+    ).staticDedup;
+    expect(s).toMatchObject({
+      armed: true,
+      predictedFrames: 500,
+      verifiedFrames: 440,
+      verificationOutcomes: ["time_budget", "verified"],
+      plannedRuns: 100,
+      completedRuns: 88,
+      screenshots: 176,
+      seeks: 178,
+      comparisons: 88,
+      verificationElapsedMs: 23_000,
+      skipReason: undefined,
+    });
+  });
+
   it("reports skipReason when no worker armed", () => {
     const s = buildRenderPerfSummary(
       baseInput([

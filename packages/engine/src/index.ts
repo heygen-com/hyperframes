@@ -127,6 +127,7 @@ export {
   isMemoryExhaustionError,
   type BeforeCaptureHook,
   type DiscardWarmupInnerCapture,
+  type StaticVerificationOutcome,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,
