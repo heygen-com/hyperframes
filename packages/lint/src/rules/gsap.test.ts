@@ -480,6 +480,32 @@ describe("GSAP rules", () => {
     expect(finding?.selector).toBe("#hero");
   });
 
+  it("quotes a combined scale+translate declaration once", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="scene-1"></div>
+  </div>
+  <style>
+    .scene-1 { transform: scale(1.08) translate3d(1.5%, 0, 0); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".scene-1", { duration: 1, x: 100, scale: 1.2 });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(finding).toBeDefined();
+    // One declaration matches both the translate and the scale selector map,
+    // so the two lookups return the same text and it must not be repeated.
+    const transform = "scale(1.08) translate3d(1.5%, 0, 0)";
+    expect(finding?.message.split(transform)).toHaveLength(2);
+    expect(finding?.fixHint?.split(transform)).toHaveLength(2);
+  });
+
   it("does NOT warn when tl.to targets element without CSS transform", async () => {
     const html = `
 <html><body>
