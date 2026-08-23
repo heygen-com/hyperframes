@@ -22,6 +22,7 @@ import { LABEL_COL_W, TRACK_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 import { AutomationLaneHeaderRow, PropertyGroupHeaderRow } from "./trackHeaderLabelRows";
+import { useMemo } from "react";
 
 /** Accent rail + inset marking a row as a group MEMBER, matching the level-2
  *  nesting its `aria-level` already reports. */
@@ -122,31 +123,48 @@ export function TimelineTrackHeader({
   // order. `target` is the ACTIVE clip's lane in that row, which is the only one
   // the remove button can write to; null when the row belongs to its siblings.
   const activeKey = keyframeClip ? (keyframeClip.key ?? keyframeClip.id) : null;
-  const groupOwner = trackElements.find((el) => el.audioGroup)?.audioGroup;
-  const groupLabelForNote = trackElements.find((el) => el.audioGroupLabel)?.audioGroupLabel;
-  const groupAutomationRaw = trackElements.find(
-    (el) => el.audioGroupAutomation,
-  )?.audioGroupAutomation;
-  const groupFxChainRaw = trackElements.find((el) => el.audioGroupFxChain)?.audioGroupFxChain;
+  const { groupOwner, groupLabelForNote, groupAutomationRaw, groupFxChainRaw } = useMemo(() => {
+    let owner: string | undefined;
+    let label: string | undefined;
+    let automation: string | undefined;
+    let fxChain: string | undefined;
+    for (const element of trackElements) {
+      owner ??= element.audioGroup;
+      label ??= element.audioGroupLabel;
+      automation ??= element.audioGroupAutomation;
+      fxChain ??= element.audioGroupFxChain;
+      if (owner && label && automation && fxChain) break;
+    }
+    return {
+      groupOwner: owner,
+      groupLabelForNote: label,
+      groupAutomationRaw: automation,
+      groupFxChainRaw: fxChain,
+    };
+  }, [trackElements]);
   // Which parameters this track's GROUP also automates. Gain stages multiply,
   // and §5 asks for the explanation rather than leaving the author to wonder
   // why two curves they drew sound quieter than either.
-  const groupAutomatedTargets = new Set(
-    groupAutomationLanes(
-      groupOwner
-        ? [
-            {
-              id: groupOwner,
-              tag: "audio",
-              start: 0,
-              duration: 0,
-              track: 0,
-              ...(groupAutomationRaw ? { automation: groupAutomationRaw } : {}),
-              ...(groupFxChainRaw ? { fxChain: groupFxChainRaw } : {}),
-            },
-          ]
-        : [],
-    ).map((lane) => lane.key),
+  const groupAutomatedTargets = useMemo(
+    () =>
+      new Set(
+        groupAutomationLanes(
+          groupOwner
+            ? [
+                {
+                  id: groupOwner,
+                  tag: "audio",
+                  start: 0,
+                  duration: 0,
+                  track: 0,
+                  ...(groupAutomationRaw ? { automation: groupAutomationRaw } : {}),
+                  ...(groupFxChainRaw ? { fxChain: groupFxChainRaw } : {}),
+                },
+              ]
+            : [],
+        ).map((lane) => lane.key),
+      ),
+    [groupAutomationRaw, groupFxChainRaw, groupOwner],
   );
   const revealAudioFx = usePlayerStore((s) => s.setRevealedAudioFxTarget);
   /**
@@ -157,24 +175,28 @@ export function TimelineTrackHeader({
    * never match — the same boundary `runtimeAudioId` exists for.
    */
   const revealElementId = keyframeClip ? runtimeAudioId(keyframeClip) : null;
-  const automationRows = groupAutomationLanes(trackElements).map((group) => {
-    const active = group.entries.find(
-      (entry) => (entry.element.key ?? entry.element.id) === activeKey,
-    );
-    return {
-      key: group.key,
-      label: group.key,
-      name: group.name,
-      param: group.param,
-      target: active?.lane.target ?? null,
-      // Every entry in a row is the same parameter, so the first answers for the
-      // row when the active clip is absent from it.
-      isCarve: (() => {
-        const entry = active ?? group.entries[0];
-        return entry ? isCarveLane(entry.lane.target, elementFxChain(entry.element)) : false;
-      })(),
-    };
-  });
+  const automationRows = useMemo(
+    () =>
+      groupAutomationLanes(trackElements).map((group) => {
+        const active = group.entries.find(
+          (entry) => (entry.element.key ?? entry.element.id) === activeKey,
+        );
+        return {
+          key: group.key,
+          label: group.key,
+          name: group.name,
+          param: group.param,
+          target: active?.lane.target ?? null,
+          // Every entry in a row is the same parameter, so the first answers for the
+          // row when the active clip is absent from it.
+          isCarve: (() => {
+            const entry = active ?? group.entries[0];
+            return entry ? isCarveLane(entry.lane.target, elementFxChain(entry.element)) : false;
+          })(),
+        };
+      }),
+    [activeKey, trackElements],
+  );
   // Automation counts as something to disclose: gating the caret on tweens alone
   // left an audio clip's envelopes unreachable, since the track could not expand.
   const disclosable = lanes.length > 0 || automationRows.length > 0;
@@ -225,13 +247,15 @@ export function TimelineTrackHeader({
   // a subset, which is also why the carve path's loud guard cannot catch this:
   // the unresolvable ids were filtered out before the call.
   const groupableClipIds = trackElements.map(runtimeAudioId);
-  const canGroupWholeTrack =
-    groupableClipIds.length >= 2 && groupableClipIds.every((id) => id !== null);
+  const allGroupableClipIds = groupableClipIds.every((id): id is string => id !== null)
+    ? groupableClipIds
+    : null;
+  const canGroupWholeTrack = (allGroupableClipIds?.length ?? 0) >= 2;
   const groupUngroupedClips = (label: string) => {
     const doc = domEditActions?.previewIframeRef.current?.contentDocument;
     if (!doc || !onGroupClips) return;
-    if (!canGroupWholeTrack) return;
-    void onGroupClips(groupableClipIds as string[], mintGroupId(doc), label);
+    if (!allGroupableClipIds || allGroupableClipIds.length < 2) return;
+    void onGroupClips(allGroupableClipIds, mintGroupId(doc), label);
   };
 
   return (

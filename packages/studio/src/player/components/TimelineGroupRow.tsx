@@ -12,16 +12,15 @@ import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
-import { TRACK_H } from "./timelineLayout";
+import { LABEL_COL_W, TRACK_H } from "./timelineLayout";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
 const GROUP_LANE_ACCENT = "#3CE6AC";
-import { LABEL_COL_W } from "./timelineLayout";
-import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 
 interface TimelineGroupRowProps {
   index: number;
