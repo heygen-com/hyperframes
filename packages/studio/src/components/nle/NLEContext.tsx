@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  type ReactNode,
-} from "react";
+import { useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
@@ -16,6 +8,7 @@ import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { createStableContext } from "../../utils/hmrStableContext";
 
 // Timeline gets a generous default height so the preview isn't oversized and the
 // tracks have room to breathe (CapCut-style). Users can still drag the divider.
@@ -55,7 +48,7 @@ export interface NLEContextValue {
   setPreviewCompositionSize: (size: { width: number; height: number } | null) => void;
 }
 
-const NLEContext = createContext<NLEContextValue | null>(null);
+const NLEContext = createStableContext<NLEContextValue | null>("NLEContext", null);
 
 export function useNLEContext(): NLEContextValue {
   const ctx = useContext(NLEContext);

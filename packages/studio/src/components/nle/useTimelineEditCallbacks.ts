@@ -47,7 +47,11 @@ export interface TimelineEditCallbackDeps {
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplitAll: (splitTime: number) => Promise<void> | void;
   /** C1's ungrouped-track FX pointer — same auto-grouping write B6's carve uses. */
-  handleGroupClips?: (clipIds: readonly string[], groupId: string) => Promise<void>;
+  handleGroupClips?: (
+    clipIds: readonly string[],
+    groupId: string,
+    groupLabel?: string,
+  ) => Promise<void>;
   /** C1's single-clip FX write, addressed by the clip itself. */
   setElementFxAttribute?: {
     setLive: (element: TimelineElement, attr: string, value: string | null) => void;

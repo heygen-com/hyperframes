@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
-import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
+import { useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 
 type DomEditValue = ReturnType<typeof useDomEditSession>;
 
@@ -93,8 +94,14 @@ export interface DomEditSelectionValue extends Pick<
   | "agentPromptSelectionContext"
 > {}
 
-const DomEditActionsContext = createContext<DomEditActionsValue | null>(null);
-const DomEditSelectionContext = createContext<DomEditSelectionValue | null>(null);
+const DomEditActionsContext = createStableContext<DomEditActionsValue | null>(
+  "DomEditActionsContext",
+  null,
+);
+const DomEditSelectionContext = createStableContext<DomEditSelectionValue | null>(
+  "DomEditSelectionContext",
+  null,
+);
 
 export function useDomEditActionsContext(): DomEditActionsValue {
   const ctx = useContext(DomEditActionsContext);

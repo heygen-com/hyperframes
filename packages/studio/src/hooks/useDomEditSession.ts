@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { isAudioDomElement } from "../utils/timelineInspector";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
@@ -21,13 +21,11 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
+import { membersForDelete } from "./domEditDeleteMembers";
+import type { RecordEditInput } from "./domEditDeleteMembers";
+// Re-exported: the delete rule lives in its own module now, and callers (and its
+// own test) have always imported it from here.
+export { membersForDelete };
 
 export interface UseDomEditSessionParams {
   projectId: string | null;
@@ -71,22 +69,6 @@ export interface UseDomEditSessionParams {
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
-}
-
-/**
- * Which elements a delete acts on. `expandGroup` widens the primary to the
- * whole marquee group, which is what the Delete key means.
- *
- * The caller chooses rather than the delete deciding for everyone: Cut copies
- * the primary alone, so expanding for it put one element on the clipboard and
- * removed every other member of the group with it.
- */
-export function membersForDelete(
-  selection: DomEditSelection,
-  group: DomEditSelection[],
-  options?: { expandGroup?: boolean },
-): DomEditSelection[] {
-  return options?.expandGroup && group.length > 0 ? group : [selection];
 }
 
 export function useDomEditSession({
@@ -372,6 +354,23 @@ export function useDomEditSession({
     const members = group.length > 0 ? group : single ? [single] : [];
     if (members.length < 2) {
       showToast("Select at least 2 elements to group", "info");
+      return;
+    }
+    // A layout group is a positioned wrapper: it takes the members' bounding
+    // box, rebases each child's left/top against it, and adopts the topmost
+    // z-index. An <audio> clip has no box — offsetWidth/Height are 0 — so
+    // grouping audio produced a 0x0 div with inline left/top written onto
+    // elements that have never been laid out, and the timeline gained a
+    // wrapper standing for nothing audible. The audio answer to "these clips
+    // belong together" is an <hf-audio-group> bus, which the timeline's own FX
+    // pointer creates, so the refusal names it rather than just declining.
+    if (members.some((m) => isAudioDomElement(m.element))) {
+      showToast(
+        members.every((m) => isAudioDomElement(m.element))
+          ? "Audio clips group into a bus — use FX on the track header"
+          : "Can't group audio clips with layout elements",
+        "info",
+      );
       return;
     }
     trackStudioEvent("group", { action: "create", count: members.length });

@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -8,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 
 /**
  * Top-level Studio view mode.
@@ -123,7 +123,7 @@ export function useViewModeState(): ViewModeValue {
   );
 }
 
-const ViewModeContext = createContext<ViewModeValue | null>(null);
+const ViewModeContext = createStableContext<ViewModeValue | null>("ViewModeContext", null);
 
 export function useViewMode(): ViewModeValue {
   const ctx = useContext(ViewModeContext);

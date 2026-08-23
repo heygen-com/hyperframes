@@ -37,11 +37,7 @@ import {
   mergeTimelineElementsPreservingDowngrades,
 } from "../lib/timelineDOM";
 import { normalizeToZones } from "../components/timelineZones";
-import {
-  setPreviewMediaMuted,
-  setPreviewMediaVolume,
-  setPreviewPlaybackRate,
-} from "../lib/timelineIframeHelpers";
+import { applyPreviewAudioFlags, setPreviewPlaybackRate } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
@@ -235,8 +231,7 @@ export function useTimelinePlayer() {
   }, []);
   const applyPreviewAudioState = useCallback(() => {
     const { audioMuted, audioVolume } = usePlayerStore.getState();
-    setPreviewMediaMuted(iframeRef.current, audioMuted);
-    setPreviewMediaVolume(iframeRef.current, audioVolume);
+    applyPreviewAudioFlags(iframeRef.current, audioMuted, audioVolume);
   }, []);
   const play = useCallback(() => {
     stopRAFLoop();
