@@ -8,6 +8,7 @@ import {
   resolveCarveSourceIds,
   resolveGroupElement,
 } from "./audioGroups.js";
+import { AUDIO_GROUP_RENDER_ID_ATTR, MEDIA_RENDER_ID_ATTR } from "./compiler/mediaRenderIds.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -124,6 +125,13 @@ describe("audioGroupOf", () => {
   it("normalizes an empty membership attribute to null", () => {
     document.body.innerHTML = `<audio id="vo-1" data-audio-group=""></audio>`;
     expect(audioGroupOf(document.getElementById("vo-1") as Element)).toBeNull();
+    expect(resolveAudioGroups(document)).toEqual([]);
+  });
+
+  // Groups do not nest, and the group element is not a member of itself.
+  it("returns null for the group element even when it carries the attribute", () => {
+    document.body.innerHTML = `<hf-audio-group id="bus" data-audio-group="other"></hf-audio-group>`;
+    expect(audioGroupOf(document.getElementById("bus") as Element)).toBeNull();
   });
 });
 
@@ -197,6 +205,15 @@ describe("resolveGroupElement", () => {
     const d = doc(`<div id="bg" data-hidden></div>`);
     expect(resolveGroupElement(d, "bg")).toBeNull();
   });
+
+  it("matches a stamped id containing selector syntax without throwing", () => {
+    const d = doc("");
+    const bus = d.createElement("hf-audio-group");
+    bus.setAttribute(MEDIA_RENDER_ID_ATTR, 'vo"\\instance');
+    d.body.append(bus);
+
+    expect(resolveGroupElement(d, 'vo"\\instance')).toBe(bus);
+  });
 });
 
 describe("isMemberGroupHidden", () => {
@@ -226,6 +243,18 @@ describe("isMemberGroupHidden", () => {
     );
     expect(isMemberGroupHidden(d, d.getElementById("vo-1"))).toBe(false);
     expect(isMemberGroupHidden(d, d.getElementById("lone"))).toBe(false);
+  });
+
+  it("uses the stamped bus instance when repeated compositions disagree on mute", () => {
+    const d = doc(`
+      <hf-audio-group id="bed" ${MEDIA_RENDER_ID_ATTR}="bed"></hf-audio-group>
+      <audio id="m1" data-audio-group="bed" ${AUDIO_GROUP_RENDER_ID_ATTR}="bed"></audio>
+      <hf-audio-group id="bed" ${MEDIA_RENDER_ID_ATTR}="bed__hf2" data-hidden></hf-audio-group>
+      <audio id="m2" data-audio-group="bed" ${AUDIO_GROUP_RENDER_ID_ATTR}="bed__hf2"></audio>
+    `);
+
+    expect(isMemberGroupHidden(d, d.getElementById("m1"))).toBe(false);
+    expect(isMemberGroupHidden(d, d.getElementById("m2"))).toBe(true);
   });
 });
 

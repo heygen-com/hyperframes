@@ -86,7 +86,7 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
  */
 export function resolveGroupElement(
   doc:
-    | (Pick<Document, "getElementById"> & Partial<Pick<Document, "querySelector">>)
+    | (Pick<Document, "getElementById"> & Partial<Pick<Document, "querySelectorAll">>)
     | null
     | undefined,
   groupId: string,
@@ -94,8 +94,12 @@ export function resolveGroupElement(
   // A render-stamped key names an INSTANCE, and `getElementById` cannot find it
   // — the author id is what is on the element's `id`. Tried first so a compiled
   // document resolves the right one of two identically-named buses.
-  const stamped =
-    doc?.querySelector?.(`${HF_AUDIO_GROUP_TAG}[${MEDIA_RENDER_ID_ATTR}="${groupId}"]`) ?? null;
+  // Compare the raw attribute value instead of interpolating an author-provided
+  // id into a selector. Quotes and backslashes are valid attribute values, and
+  // turning one into selector syntax made this otherwise tolerant reader throw.
+  const stamped = Array.from(
+    doc?.querySelectorAll?.(`${HF_AUDIO_GROUP_TAG}[${MEDIA_RENDER_ID_ATTR}]`) ?? [],
+  ).find((candidate) => candidate.getAttribute(MEDIA_RENDER_ID_ATTR) === groupId);
   if (stamped) return stamped;
   const el = doc?.getElementById(groupId) ?? null;
   if (!el) return null;
@@ -114,7 +118,11 @@ export function isMemberGroupHidden(
   doc: Pick<Document, "getElementById"> | null | undefined,
   el: Element | null | undefined,
 ): boolean {
-  const groupId = el?.getAttribute?.(HF_AUDIO_GROUP_ATTR);
+  // A compiler stamp identifies the bus INSTANCE. The author id is only unique
+  // within one composition file, so resolving by it in an inlined document made
+  // every repeated sub-composition consult the first instance's mute state.
+  const groupId =
+    el?.getAttribute?.(AUDIO_GROUP_RENDER_ID_ATTR) ?? el?.getAttribute?.(HF_AUDIO_GROUP_ATTR);
   if (!groupId) return false;
   return resolveGroupElement(doc, groupId)?.hasAttribute("data-hidden") ?? false;
 }
