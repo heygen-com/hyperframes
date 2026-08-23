@@ -306,10 +306,21 @@ clip. A lane on a clip is clip-local; the same numbers mean different instants o
 the two, which is the one thing to get right when moving an envelope from a clip
 up onto its bus.
 
-**A carve stays on the clip.** `data-fx-carve` is not a group attribute: the bus
-has no carve, and putting one there does nothing. The bed being carved is a
-single track, and it is that track which carries `data-fx-carve` — pointed AT a
-group, per the rule above. Group and carve meet in `sources`, not on one element.
+**A carve stays on the clip.** `data-fx-carve` is not a group attribute. The bed
+being carved is a single track, and it is that track which carries
+`data-fx-carve` — pointed AT a group, per the rule above. Group and carve meet in
+`sources`, not on one element. A carve written onto a bus is half an effect
+applied twice: the level half measures the bed's own audio, which a bus has none
+of, so only the filters survive — and a bus and its members are one signal path,
+so the bed then runs through the bus's filters AND its own. The
+`audio_group_carve_attr` lint rule catches it.
+
+**One clip is not a bus.** A group exists to give several tracks one chain, one
+fader and one clock. Wrapping a single clip in a bus buys nothing the clip's own
+`data-fx-chain` does not already do, and it doubles the places a later edit has
+to land. The one reason to do it anyway: a bus's automation clock is composition
+time, so a single-member bus is how a lane on that clip gets composition-time
+timing.
 
 Nothing here needs a feature flag: the Studio UI for building groups is behind
 the `audio-groups` canary, but a hand-authored `<hf-audio-group>` parses, plays

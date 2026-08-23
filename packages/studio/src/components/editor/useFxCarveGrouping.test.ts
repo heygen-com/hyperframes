@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { carverAgainst, collectCarveCandidates } from "./useFxCarveGrouping";
+import { carveBedRoles, carverAgainst, collectCarveCandidates } from "./useFxCarveGrouping";
 
 function previewDoc(html: string): Document {
   const doc = document.implementation.createHTMLDocument("preview");
@@ -80,5 +80,39 @@ describe("carverAgainst", () => {
   it("is null for a track nobody carves against", () => {
     const doc = previewDoc(GROUPED_VOICES);
     expect(carverAgainst(doc, "vo-1")).toBeNull();
+  });
+});
+
+describe("carveBedRoles", () => {
+  const roles = (html: string, id: string) => {
+    const doc = previewDoc(html);
+    return carveBedRoles(id, doc.getElementById(id));
+  };
+
+  // The observed bug: the bus labelled "Music bed" classified as music, so it
+  // auto-carved against the same voiceover its own member clip had already
+  // carved against — the bed ran through both chains. A bus is never a bed, and
+  // `autoBed` matters as much as `couldBeBed`: that is the half that wrote one
+  // without being asked.
+  it("never makes a bus a bed, however it is labelled", () => {
+    expect(
+      roles(`<hf-audio-group id="music" data-label="Music bed"></hf-audio-group>`, "music"),
+    ).toEqual({ couldBeBed: false, autoBed: false });
+    expect(
+      roles(`<hf-audio-group id="sfx" data-label="Sound FX"></hf-audio-group>`, "sfx"),
+    ).toEqual({ couldBeBed: false, autoBed: false });
+  });
+
+  it("still reads a clip's label, id and src", () => {
+    expect(roles(`<audio id="a1" data-label="Music bed"></audio>`, "a1")).toEqual({
+      couldBeBed: true,
+      autoBed: true,
+    });
+    // A name that says nothing may be offered the control but never carves itself.
+    expect(roles(`<audio id="a1"></audio>`, "a1")).toEqual({ couldBeBed: true, autoBed: false });
+    expect(roles(`<audio id="vo-2"></audio>`, "vo-2")).toEqual({
+      couldBeBed: false,
+      autoBed: false,
+    });
   });
 });

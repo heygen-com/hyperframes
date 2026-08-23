@@ -640,6 +640,9 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_group_timing_attrs
   findAudioGroupTimingAttrFindings,
+
+  // audio_group_carve_attr
+  findAudioGroupCarveAttrFindings,
 ];
 
 /**
@@ -861,6 +864,38 @@ function findAudioGroupTimingAttrFindings(ctx: LintContext): HyperframeLintFindi
       message: `${elementId ? `#${elementId}` : "This audio group"} carries ${present.map((attr) => `\`${attr}\``).join(", ")}, which a bus has no use for — its members carry the timing and its automation clock is composition time.`,
       elementId,
       fixHint: `Remove ${present.map((attr) => `\`${attr}\``).join(", ")} from the group element.`,
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/**
+ * A carve on a bus is half an effect, applied twice.
+ *
+ * `data-fx-carve` is a CLIP attribute. The bed being carved is one track, and
+ * the level half of the analysis measures that track's own audio against the
+ * voice — a bus has no `src`, so a carve there can only ever produce the
+ * spectral half: filters with no level match.
+ *
+ * Worse, it stacks. A bus and a member clip are the same signal path, so a
+ * carve on each puts the bed through both sets of filters — which is exactly
+ * what happened when a bus labelled "Music bed" classified as one and carved
+ * itself (fixed in Studio; this catches what was already written down).
+ */
+function findAudioGroupCarveAttrFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    if (tag.name !== "hf-audio-group") continue;
+    if (!hasAttrName(tag.raw, "data-fx-carve")) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    findings.push({
+      code: "audio_group_carve_attr",
+      severity: "warning",
+      message: `${elementId ? `#${elementId}` : "This audio group"} carries \`data-fx-carve\`, which belongs on the clip being carved — a bus has no audio of its own to level-match against, and a carve here stacks with any its members already have.`,
+      elementId,
+      fixHint:
+        "Remove `data-fx-carve` and the `fromCarve` nodes it wrote into this bus's `data-fx-chain`, and carve the bed clip instead.",
       snippet: truncateSnippet(tag.raw),
     });
   }

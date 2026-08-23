@@ -651,6 +651,43 @@ describe("audio_group_timing_attrs", () => {
   });
 });
 
+describe("audio_group_carve_attr", () => {
+  const doc = (busAttrs: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <hf-audio-group id="music" data-label="Music bed" ${busAttrs}></hf-audio-group>
+      <audio id="bgm" src="bgm.mp3" data-start="0" data-duration="10" data-audio-group="music"></audio>
+    </div>
+  </body></html>`;
+
+  // The observed bug: the bus and its one member each carried a carve against
+  // the same voiceover, so the bed ran through both sets of filters.
+  it("warns on a carve written onto a bus", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.25}'`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_group_carve_attr");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("music");
+    expect(finding?.message).toContain("data-fx-carve");
+  });
+
+  it("stays quiet on a bus carrying only its own attributes", async () => {
+    const res = await lintHyperframeHtml(doc(`data-volume="0.4"`));
+    expect(res.findings.some((f) => f.code === "audio_group_carve_attr")).toBe(false);
+  });
+
+  it("leaves a carve on the clip alone", async () => {
+    const res = await lintHyperframeHtml(`<!DOCTYPE html><html><body>
+      <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+        <hf-audio-group id="music" data-label="Music bed"></hf-audio-group>
+        <audio id="bgm" src="bgm.mp3" data-start="0" data-duration="10" data-audio-group="music"
+          data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.25}'></audio>
+      </div>
+    </body></html>`);
+    expect(res.findings.some((f) => f.code === "audio_group_carve_attr")).toBe(false);
+  });
+});
+
 describe("audio_carve_ungrouped_sources", () => {
   const withCarve = (carveJson: string, extra = "") => `<!DOCTYPE html><html><body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">

@@ -15,7 +15,11 @@ import {
   isNamedCarveBed,
   type HfCarveSettings,
 } from "@hyperframes/core/audio-carve";
-import { resolveAudioGroups, resolveCarveSourceIds } from "@hyperframes/core/audio-groups";
+import {
+  HF_AUDIO_GROUP_TAG,
+  resolveAudioGroups,
+  resolveCarveSourceIds,
+} from "@hyperframes/core/audio-groups";
 
 /**
  * An id for a new voiceover group, de-duped against every id already in the
@@ -189,13 +193,33 @@ export function collectCarveCandidates(
  * source side already makes between what the picker may show (`sourceOptions`)
  * and what it may choose unprompted (`autoSourceIds`).
  *
- * Reads the element's `data-label` as well as its id and `src`: a group carries
- * its name there rather than in a filename, and a group can be a bed.
+ * Reads the element's `data-label` as well as its id and `src`, because a clip's
+ * display name is a hint its filename may not carry. A BUS is excluded outright
+ * — see the first branch.
  */
 export function carveBedRoles(
   id: string | null | undefined,
   node: Element | null | undefined,
 ): { couldBeBed: boolean; autoBed: boolean } {
+  // A BUS is never a bed, whatever it is called. Its rack reaches `useFxCarve`
+  // too, and reading `data-label` — which is what lets a group be classified at
+  // all — made a bus labelled "Music bed" read as music: it then auto-carved
+  // against the same voice its own member clip had already auto-carved against,
+  // and the bed ran through both sets of filters. Nothing caught that, because
+  // the only guard (`carverAgainst`) asks "is somebody naming ME as a source",
+  // never "is my own bus, or my own member, already carved".
+  //
+  // A bus could not do the whole job anyway: the level half of the carve reads
+  // the bed's own `src` to measure how far over the voice it sits, and a bus has
+  // no `src` — so a bus carve was always the spectral half alone, filters with
+  // no level match. `data-fx-carve` is a clip attribute; the skill has said so
+  // ("A carve stays on the clip") since the bus was documented.
+  //
+  // Not `couldBeBed: false` alone: that leaves `autoBed` free to fire from a
+  // name, which is the half that wrote these unasked.
+  if (node?.tagName?.toLowerCase() === HF_AUDIO_GROUP_TAG) {
+    return { couldBeBed: false, autoBed: false };
+  }
   const parts = [id, node?.getAttribute("src"), node?.getAttribute("data-label")];
   return { couldBeBed: couldBeCarveBed(...parts), autoBed: isNamedCarveBed(...parts) };
 }
