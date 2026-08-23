@@ -105,6 +105,7 @@ import type { ArgsDef, CommandDef } from "citty";
 import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
 import { isRenderSucceeded } from "./utils/render-success-state.js";
+import { isServerMode } from "./utils/server-mode.js";
 import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
 import {
   CliResultSignal,
@@ -422,6 +423,16 @@ function exitAfterCliFailure(
   process.exit(1);
 }
 
+// Report an uncaught error without exiting, for a process hosting a
+// long-running server. Telemetry still records it, and the message goes to
+// stderr so the crash is visible for diagnosis rather than silently absorbed.
+function reportServerUncaughtException(error: Error): void {
+  emitCliErrorEvent("uncaught_exception", error);
+  process.stderr.write(
+    `  [hyperframes] Uncaught exception in the preview server (server kept running): ${error.stack ?? error.message}\n`,
+  );
+}
+
 process.on("uncaughtException", (error) => {
   if ((error as NodeJS.ErrnoException).code === "EPIPE") {
     handleStreamEpipe();
@@ -432,6 +443,14 @@ process.on("uncaughtException", (error) => {
   // artifact is committed.
   if (isRenderSucceeded()) {
     exitAfterPostRenderTermination("uncaughtException", "uncaught_exception", error);
+  }
+  // A one-shot command exiting here loses nothing. A long-running server
+  // loses every concurrent job and every connected client, and Studio then
+  // reports the dropped SSE stream as "Connection lost. Is the render server
+  // running?" — blaming the user's setup for a crash inside this process.
+  if (isServerMode()) {
+    reportServerUncaughtException(error);
+    return;
   }
   exitAfterCliFailure("uncaught_exception", error);
 });

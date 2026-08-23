@@ -68,6 +68,49 @@ describe("CLI lifecycle", () => {
     expect(order).toEqual(["cli_error", "flush"]);
   });
 
+  it("exits on an uncaught exception for a one-shot command", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      mockInitCommand(vi.fn());
+      mockTelemetry({});
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      emitUncaught(new Error("boom"));
+
+      // A one-shot command is over anyway, so the exit code is the result.
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("keeps a long-running server alive on an uncaught exception", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      mockInitCommand(vi.fn());
+      mockTelemetry({});
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      const serverMode = await import("./utils/server-mode.js");
+      serverMode.markServerMode();
+
+      emitUncaught(new Error("boom"));
+
+      // Exiting would drop every open SSE connection at once, which Studio
+      // reports to every client as "Connection lost. Is the render server
+      // running?" — so the server stays up and the error is reported instead.
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining("server kept running"));
+      serverMode._resetServerModeForTests();
+    } finally {
+      stderr.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
   it("hands queued events to flushSync even after finalizeCli has run", async () => {
     const flushSync = vi.fn();
     const trackCommandResult = vi.fn();
@@ -182,6 +225,15 @@ describe("CLI lifecycle", () => {
     }
   });
 });
+
+function emitUncaught(error: Error): void {
+  // Invoke the CLI's own listener directly. Emitting on `process` would also
+  // reach vitest's handler and fail the run.
+  const listeners = process.listeners("uncaughtException");
+  const handler = listeners[listeners.length - 1];
+  if (!handler) throw new Error("no uncaughtException listener registered");
+  handler(error, "uncaughtException");
+}
 
 function mockInitCommand(run: () => void): void {
   vi.doMock("./commands/init.js", () => ({

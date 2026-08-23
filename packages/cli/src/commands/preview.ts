@@ -46,6 +46,7 @@ import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
+import { markServerMode } from "../utils/server-mode.js";
 import type { StudioSelectionSnapshot } from "@hyperframes/studio-server";
 import {
   openBrowser,
@@ -351,6 +352,11 @@ export default defineCommand({
     // Resolve once so embedded, monorepo-dev, and locally installed Studio
     // modes all receive identical --proxy/--no-proxy + config semantics.
     const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
+
+    // Past this point every mode hosts a long-running server, so an uncaught
+    // error must not take the process (and every connected client) down.
+    // The short-lived branches above (--status, --stop, --list) have returned.
+    markServerMode();
 
     if (isDevMode()) {
       if (args.background) {
