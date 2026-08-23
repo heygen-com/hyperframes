@@ -121,6 +121,10 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/core/scripts/build-inline-artifact.ts",
     "a later branch in this stack (wa-20b2-lfo-fixes) independently deduped the same two build scripts a different way — buildInjectedArtifact.ts plus two thin per-target files — before this consolidation and that one had merged; this branch's tree keeps that shape instead, so build-inline-artifact.ts is the one that goes.",
   ],
+  [
+    "packages/studio/src/hooks/useAudioSoloBridge.ts",
+    "#3453 removes the obsolete solo bridge after its last consumer leaves",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
