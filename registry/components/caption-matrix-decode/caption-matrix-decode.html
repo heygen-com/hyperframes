@@ -71,13 +71,17 @@
         position: relative;
       }
       .sc-real {
-        display: none;
+        opacity: 0;
+        visibility: hidden;
       }
-      .sc-scr0 {
-        display: none;
-      }
+      .sc-scr0,
       .sc-scr1 {
-        display: none;
+        position: absolute;
+        left: 0;
+        top: 0;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
       }
     </style>
   </head>
@@ -125,10 +129,10 @@
 
         var ALPHANUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-        function scrambleChars(seed) {
+        function scrambleChars(seed, length) {
           var rng = mulberry32(seed);
           var result = "";
-          for (var i = 0; i < 4; i++) {
+          for (var i = 0; i < length; i++) {
             result += ALPHANUM[Math.floor(rng() * ALPHANUM.length)];
           }
           return result;
@@ -209,13 +213,13 @@
             var scr0 = document.createElement("span");
             scr0.className = "sc-scr0";
             scr0.id = "sc-scr0-" + wi;
-            scr0.textContent = scrambleChars(wi * 1000 + 0);
+            scr0.textContent = scrambleChars(wi * 1000 + 0, w.text.length);
             wordWrap.appendChild(scr0);
 
             var scr1 = document.createElement("span");
             scr1.className = "sc-scr1";
             scr1.id = "sc-scr1-" + wi;
-            scr1.textContent = scrambleChars(wi * 1000 + 1);
+            scr1.textContent = scrambleChars(wi * 1000 + 1, w.text.length);
             wordWrap.appendChild(scr1);
 
             grp.appendChild(wordWrap);
@@ -232,11 +236,11 @@
             var scr0El = document.getElementById("sc-scr0-" + wi);
             var scr1El = document.getElementById("sc-scr1-" + wi);
 
-            tl.set(scr0El, { display: "inline" }, w.start);
-            tl.set(scr1El, { display: "inline" }, w.start + 0.1);
-            tl.set(scr0El, { display: "none" }, w.start + 0.1);
-            tl.set(realEl, { display: "inline" }, w.start + 0.2);
-            tl.set(scr1El, { display: "none" }, w.start + 0.2);
+            tl.set(scr0El, { autoAlpha: 1 }, w.start);
+            tl.set(scr1El, { autoAlpha: 1 }, w.start + 0.1);
+            tl.set(scr0El, { autoAlpha: 0 }, w.start + 0.1);
+            tl.set(realEl, { autoAlpha: 1 }, w.start + 0.2);
+            tl.set(scr1El, { autoAlpha: 0 }, w.start + 0.2);
           });
 
           tl.to(grp, { opacity: 0, duration: 0.12 }, g.end - 0.12);

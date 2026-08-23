@@ -55,6 +55,7 @@ export function MotionPathNode(props: {
           onPointerDown={props.onPointerDown}
           onPointerMove={props.onPointerMove}
           onPointerUp={props.onPointerUp}
+          onPointerCancel={props.onPointerUp}
           onContextMenu={props.onContextMenu}
         />
       )}

@@ -100,6 +100,11 @@
       "path": "assets/hyperframes-logo-white.svg",
       "target": "assets/hyperframes-logo-white.svg",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }

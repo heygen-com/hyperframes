@@ -1,5 +1,32 @@
 <!doctype html>
-<html lang="en" data-resolution="portrait">
+<html
+  lang="en"
+  data-resolution="portrait"
+  data-composition-variables='[
+    { "id": "prompt", "type": "string", "role": "content", "label": "User prompt", "description": "Prompt typed into ChatGPT; keep close to the original length.", "default": "Hey what&#39;s the best tool for ai avatars" },
+    { "id": "intro1", "type": "string", "role": "content", "label": "Answer introduction 1", "description": "First streamed answer paragraph.", "default": "It really depends on what you&#39;re trying to do, because “AI avatars” has split into a few different categories." },
+    { "id": "intro2", "type": "string", "role": "content", "label": "Answer introduction 2", "description": "Second streamed answer paragraph.", "default": "For **most creators and marketers**, here&#39;s how I&#39;d rank them today:" },
+    { "id": "tableHeadUse", "type": "string", "role": "content", "label": "Table heading 1", "description": "Use-case column heading.", "default": "Use case" },
+    { "id": "tableHeadTool", "type": "string", "role": "content", "label": "Table heading 2", "description": "Tool column heading.", "default": "Best tool" },
+    { "id": "tableHeadWhy", "type": "string", "role": "content", "label": "Table heading 3", "description": "Explanation column heading.", "default": "Why" },
+    { "id": "row1Use", "type": "string", "role": "content", "label": "Row 1 use case", "description": "First comparison use case.", "default": "Overall realism" },
+    { "id": "row1Tool", "type": "string", "role": "content", "label": "Row 1 tool", "description": "First recommended product.", "default": "HeyGen" },
+    { "id": "row1Why", "type": "string", "role": "content", "label": "Row 1 explanation", "description": "First recommendation explanation.", "default": "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos." },
+    { "id": "row1Chip", "type": "string", "role": "content", "label": "Row 1 source", "description": "First source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row2Use", "type": "string", "role": "content", "label": "Row 2 use case", "description": "Second comparison use case.", "default": "Enterprise/training" },
+    { "id": "row2Tool", "type": "string", "role": "content", "label": "Row 2 tool", "description": "Second recommended product.", "default": "Synthesia" },
+    { "id": "row2Why", "type": "string", "role": "content", "label": "Row 2 explanation", "description": "Second recommendation explanation.", "default": "Better collaboration, SCORM, compliance, team workflows; less creator-focused." },
+    { "id": "row2Chip", "type": "string", "role": "content", "label": "Row 2 source", "description": "Second source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row3Use", "type": "string", "role": "content", "label": "Row 3 use case", "description": "Third comparison use case.", "default": "Mobile UGC" },
+    { "id": "row3Tool", "type": "string", "role": "content", "label": "Row 3 tool", "description": "Third recommended product.", "default": "Captions" },
+    { "id": "row3Why", "type": "string", "role": "content", "label": "Row 3 explanation", "description": "Third recommendation explanation.", "default": "Extremely fast mobile workflow and social editing. Great for Reels creators." },
+    { "id": "row3Chip", "type": "string", "role": "content", "label": "Row 3 source", "description": "Third source-chip label.", "default": "Creator Stack" },
+    { "id": "row4Use", "type": "string", "role": "content", "label": "Row 4 use case", "description": "Fourth comparison use case.", "default": "Real-time conversations" },
+    { "id": "row4Tool", "type": "string", "role": "content", "label": "Row 4 tool", "description": "Fourth recommended product.", "default": "Tavus" },
+    { "id": "row4Why", "type": "string", "role": "content", "label": "Row 4 explanation", "description": "Fourth recommendation explanation.", "default": "Interactive avatars that can hold live conversations." },
+    { "id": "row4Chip", "type": "string", "role": "content", "label": "Row 4 source", "description": "Fourth source-chip label.", "default": "Creator Stack" }
+  ]'
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
@@ -626,12 +653,16 @@
     </div>
 
     <script>
-      /* ==================================================================
-         TEMPLATE CONFIG — edit only this block to re-skin the exchange.
-         ================================================================== */
+      const variables =
+        window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {};
+      const content = (id, fallback) =>
+        typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+
       const CONFIG = {
         status: { clock: "1:29", clockLate: "1:30", net: "5G+", battery: 89, batteryLate: 88 },
-        prompt: "Hey what's the best tool for ai avatars",
+        prompt: content("prompt", "Hey what's the best tool for ai avatars"),
         suggestions: [
           { icon: "slack", label: "Summarize my to-dos" },
           { icon: "gmail", label: "Draft follow-up emails" },
@@ -643,39 +674,55 @@
           end: ['"avatars"', "avatar sick", "avatar stressed"],
         },
         paragraphs: [
-          "It really depends on what you're trying to do, because “AI avatars” has split into a few different categories.",
-          "For **most creators and marketers**, here's how I'd rank them today:",
+          content(
+            "intro1",
+            "It really depends on what you're trying to do, because “AI avatars” has split into a few different categories.",
+          ),
+          content("intro2", "For **most creators and marketers**, here's how I'd rank them today:"),
         ],
         table: {
-          head: ["Use case", "Best tool", "Why"],
+          head: [
+            content("tableHeadUse", "Use case"),
+            content("tableHeadTool", "Best tool"),
+            content("tableHeadWhy", "Why"),
+          ],
           rows: [
             {
               emoji: "🥇",
-              use: "Overall realism",
-              tool: "HeyGen",
-              why: "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos.",
-              chip: "Official A.I Ranking",
+              use: content("row1Use", "Overall realism"),
+              tool: content("row1Tool", "HeyGen"),
+              why: content(
+                "row1Why",
+                "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos.",
+              ),
+              chip: content("row1Chip", "Official A.I Ranking"),
             },
             {
               emoji: "🏢",
-              use: "Enterprise/training",
-              tool: "Synthesia",
-              why: "Better collaboration, SCORM, compliance, team workflows; less creator-focused.",
-              chip: "Official A.I Ranking",
+              use: content("row2Use", "Enterprise/training"),
+              tool: content("row2Tool", "Synthesia"),
+              why: content(
+                "row2Why",
+                "Better collaboration, SCORM, compliance, team workflows; less creator-focused.",
+              ),
+              chip: content("row2Chip", "Official A.I Ranking"),
             },
             {
               emoji: "📱",
-              use: "Mobile UGC",
-              tool: "Captions",
-              why: "Extremely fast mobile workflow and social editing. Great for Reels creators.",
-              chip: "Creator Stack",
+              use: content("row3Use", "Mobile UGC"),
+              tool: content("row3Tool", "Captions"),
+              why: content(
+                "row3Why",
+                "Extremely fast mobile workflow and social editing. Great for Reels creators.",
+              ),
+              chip: content("row3Chip", "Creator Stack"),
             },
             {
               emoji: "💬",
-              use: "Real-time conversations",
-              tool: "Tavus",
-              why: "Interactive avatars that can hold live conversations.",
-              chip: "Creator Stack",
+              use: content("row4Use", "Real-time conversations"),
+              tool: content("row4Tool", "Tavus"),
+              why: content("row4Why", "Interactive avatars that can hold live conversations."),
+              chip: content("row4Chip", "Creator Stack"),
             },
           ],
         },
@@ -799,6 +846,7 @@
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
+        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
         return n;
       };

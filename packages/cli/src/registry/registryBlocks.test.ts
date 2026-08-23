@@ -8,7 +8,15 @@ import { describe, expect, it } from "vitest";
 const blocksDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../registry/blocks");
 
 interface RegistryManifest {
-  files: Array<{ path: string; type: string }>;
+  name: string;
+  tags?: string[];
+  files: Array<{ path: string; target: string; type: string }>;
+}
+
+const promotedTemplateTag = "ad-template";
+
+function loadRegistryManifest(itemDir: string): RegistryManifest {
+  return JSON.parse(readFileSync(join(itemDir, "registry-item.json"), "utf8")) as RegistryManifest;
 }
 
 function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): string[] {
@@ -32,6 +40,37 @@ function findMissingLocalScripts(itemDir: string, manifest: RegistryManifest): s
 }
 
 describe("registry blocks", () => {
+  it("ships an editing contract and declared variables for every promoted template", () => {
+    const promotedManifests = readdirSync(blocksDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => ({
+        itemDir: join(blocksDir, entry.name),
+        manifest: loadRegistryManifest(join(blocksDir, entry.name)),
+      }))
+      .filter(({ manifest }) => manifest.tags?.includes(promotedTemplateTag));
+
+    expect(promotedManifests.length).toBeGreaterThan(0);
+    for (const { itemDir, manifest } of promotedManifests) {
+      const templateId = manifest.name;
+      const contractFiles = manifest.files.filter(
+        (file) =>
+          file.path === "TEMPLATE.md" &&
+          file.target === "TEMPLATE.md" &&
+          file.type === "hyperframes:asset",
+      );
+      const composition = manifest.files.find((file) => file.type === "hyperframes:composition");
+
+      expect(contractFiles, templateId).toHaveLength(1);
+      expect(composition, templateId).toBeDefined();
+      const html = readFileSync(join(itemDir, composition?.path ?? ""), "utf8");
+      const { document } = parseHTML(html);
+      const declarations = JSON.parse(
+        document.documentElement.getAttribute("data-composition-variables") ?? "[]",
+      ) as unknown[];
+      expect(declarations.length, templateId).toBeGreaterThan(0);
+    }
+  });
+
   it("installs every local script referenced by a block composition", () => {
     const missing: string[] = [];
 
@@ -39,9 +78,7 @@ describe("registry blocks", () => {
       if (!entry.isDirectory()) continue;
 
       const itemDir = join(blocksDir, entry.name);
-      const manifest = JSON.parse(
-        readFileSync(join(itemDir, "registry-item.json"), "utf8"),
-      ) as RegistryManifest;
+      const manifest = loadRegistryManifest(itemDir);
 
       for (const src of findMissingLocalScripts(itemDir, manifest)) {
         missing.push(`${entry.name}: ${src}`);

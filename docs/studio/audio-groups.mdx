@@ -1,0 +1,105 @@
+---
+title: "Group tracks, mute, and solo"
+sidebarTitle: "Groups, mute, and solo"
+description: "Give several audio clips one set of effects, one fader, and one mute — and know which of mute and solo reaches the export."
+---
+
+Five narration clips usually want one set of effects, one fader, and one mute —
+not five copies that drift apart as you edit. A group gives them that: its members
+sum through a single bus, and the bus carries the group's own volume, effects, and
+automation.
+
+## When to use a group
+
+- **Narration in several clips.** One rack for the whole voice, and one thing for
+  a [carve](/studio/voiceover-carve) to point at.
+- **More than a couple of sound effects.** One place to turn all of them down is
+  worth more than precise individual levels you will never revisit.
+- **Anything you want to mute as a unit** — an ambience layer, a music stem.
+
+A single clip does not need a group. Its own rack is already one place.
+
+## Create a group
+
+On an audio track holding more than one ungrouped clip, the **FX** button offers
+to group them first: it reads "Group these clips to add effects to all of them".
+Choose **Group**.
+
+Studio creates a group behind those clips and points anything that needed it — a
+carve, for instance — at the group rather than at the individual clip ids.
+
+## Read a group row
+
+A group gets its own timeline row, carrying:
+
+| Control | Does |
+| --- | --- |
+| Caret | Shows or hides the member rows beneath it |
+| `▤` and name | The group glyph and its label |
+| Count | How many members it holds |
+| Mute | Silences every member at once |
+| **Hear only this** | Solo — listens to this group while you work |
+| **FX** | Opens the group's own rack, applying to the summed bus |
+| `∿` | Shows or hides [the group's own automation lanes](/studio/audio-automation) |
+
+The caret and the `∿` toggle are independent: showing a group's members does not
+open their automation lanes, and opening the group's lanes does not expand its
+members.
+
+A group-level effect hears the **sum** of its members, not each one separately.
+That is the point of a bus — one compressor across a whole voiceover behaves
+differently from five compressors on five clips, and usually better.
+
+## Mute and solo are not symmetric
+
+This is the part worth remembering:
+
+| Control | What it does | In the export |
+| --- | --- | --- |
+| Mute | Silences a clip or a whole group | **Included** — muted audio is dropped from the render |
+| **Hear only this** | Listens to one thing while you work | **Ignored** — solo never reaches the render |
+
+So **mute is a mix decision and solo is a listening tool**. You can leave a solo
+active, render, and get the full mix — which is deliberate, because a forgotten
+solo silently shipping a one-track export would be much worse.
+
+A group that is not soloed while one of its members is appears **half-lit**: the
+display-only signal that some of what is under it still plays.
+
+## Membership lives on the member
+
+Worth knowing because it explains most surprises: each clip records which group it
+belongs to, rather than the group listing its members. Delete a clip and it simply
+disappears from the group; nothing dangles.
+
+Groups are **audio only** and do not nest. A group marker on a video clip is
+ignored.
+
+## What should happen
+
+- The group row appears with the members collapsed beneath it, and the
+  grouping offer disappears from that track's **FX** button.
+- Effects added to the group apply to everything under it at once.
+- Muting the group silences all members, in preview and in the render.
+
+## Common problems
+
+**The group's effects do nothing.** Check that the members actually carry the
+group, rather than that the group appears to list them.
+
+**Nothing happened when I grouped clips.** Grouping resolves the clips it was
+given against the timeline's current rows. If the track is collapsed, or its clips
+live inside a nested composition, expand it and try again.
+
+**Clips inside a nested composition are not offered grouping.** They arrive as
+separate rows rather than as one track holding several clips, so the grouping
+offer does not appear. Group them in the composition that owns them.
+
+**A soloed track was missing from the export.** It was not — solo cannot affect a
+render. Look for a mute.
+
+## Related topics
+
+- [Make music sit under narration](/studio/voiceover-carve)
+- [Automate a parameter over time](/studio/audio-automation)
+- [Audio effects implementation](/reference/audio-effects#groups-mute-and-solo)

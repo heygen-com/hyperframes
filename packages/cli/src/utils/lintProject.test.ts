@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "@hyperframes/core/lint";
-import { lintProject, shouldBlockRender } from "./lintProject.js";
+import { hasDefinitiveEntryMismatch, lintProject, shouldBlockRender } from "./lintProject.js";
 
 function tmpProject(name: string): string {
   return mkdtempSync(join(tmpdir(), `hf-test-${name}-`));
@@ -246,6 +246,51 @@ describe("lintProject", () => {
     const { results } = await lintProject(project);
 
     expect(results).toHaveLength(2); // index.html + captions.html, not readme.txt
+  });
+});
+
+describe("hasDefinitiveEntryMismatch", () => {
+  it("distinguishes the blank-default-entry failure from ordinary lint errors", () => {
+    const result = {
+      results: [
+        {
+          file: "index.html",
+          contentHash: "abc",
+          result: {
+            ok: false,
+            errorCount: 1,
+            warningCount: 0,
+            infoCount: 0,
+            findings: [
+              {
+                code: "blank_root_with_standalone_composition",
+                severity: "error" as const,
+                message: "wrong entry",
+              },
+            ],
+          },
+        },
+      ],
+      totalErrors: 1,
+      totalWarnings: 0,
+      totalInfos: 0,
+    };
+
+    expect(hasDefinitiveEntryMismatch(result)).toBe(true);
+    expect(
+      hasDefinitiveEntryMismatch({
+        ...result,
+        results: [
+          {
+            ...result.results[0]!,
+            result: {
+              ...result.results[0]!.result,
+              findings: [{ code: "media_missing_id", severity: "error", message: "missing" }],
+            },
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 });
 

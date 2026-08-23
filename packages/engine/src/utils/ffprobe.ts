@@ -69,6 +69,8 @@ async function runFfprobe(
     // Nothing is ever written to the child's stdin; leaving it as a pipe is
     // what lets a stdin-reading invocation block indefinitely.
     stdio: ["ignore", "pipe", "pipe"],
+    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+    windowsHide: true,
   });
   trackChildProcess(proc);
   // Decoded through StringDecoder rather than per-chunk toString(): a

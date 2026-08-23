@@ -747,19 +747,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png"
   },
   {
-    "name": "checkout-flow",
-    "type": "component",
-    "title": "Checkout Flow",
-    "description": "A composed checkout flow with plan summary, payment field rows, total, and purchase action",
-    "tags": [
-      "ui-flow",
-      "checkout",
-      "commerce"
-    ],
-    "href": "/catalog/components/checkout-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/checkout-flow.png"
-  },
-  {
     "name": "chromatic-aberration-wipe",
     "type": "component",
     "title": "Chromatic Aberration Wipe",

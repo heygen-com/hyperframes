@@ -26,7 +26,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -81,12 +81,51 @@ function fail(message, code = 1) {
  * the skill was installed — a sibling of the composition is what has the
  * dependency.
  */
-async function loadCore(fromDir) {
+export async function loadCore(fromDir) {
   const require = createRequire(pathToFileURL(resolve(fromDir, "package.json")));
-  const load = (subpath) => {
-    const file = require.resolve(`@hyperframes/core/${subpath}`);
-    return import(pathToFileURL(file).href);
+
+  /*
+   * Two constraints at once, and satisfying either alone is broken:
+   *
+   *   1. Anchored at the PROJECT, not at this script. This file lives wherever
+   *      the skill was installed, which has no @hyperframes/core; the
+   *      composition's project is what holds the dependency. So a bare
+   *      `import("@hyperframes/core/audio-carve")` from here cannot work — bare
+   *      specifiers resolve relative to the importing module.
+   *   2. Honouring the package's export CONDITIONS. `require.resolve` asks for
+   *      "require"/"node". The workspace manifest declares `node`, so this
+   *      resolved fine inside the monorepo — but the PUBLISHED manifest carries
+   *      only `import` + `types`, so every consumer of the released package got
+   *      ERR_PACKAGE_PATH_NOT_EXPORTED for a package that ships the file. That
+   *      is the audience this skill is shipped to, so the script was broken
+   *      everywhere except where it was developed.
+   *
+   * Keep the project anchor; fall back to the package's declared `import`
+   * target when no require-resolvable condition exists.
+   */
+  const load = async (subpath) => {
+    const spec = `@hyperframes/core/${subpath}`;
+    try {
+      return await import(pathToFileURL(require.resolve(spec)).href);
+    } catch (error) {
+      if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+      // `./package.json` is exported by every manifest, so this always resolves
+      // and gives us the package root without guessing at node_modules layout.
+      const pkgPath = require.resolve("@hyperframes/core/package.json");
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      const entry = pkg.exports?.[`./${subpath}`];
+      const target = typeof entry === "string" ? entry : (entry?.import ?? entry?.default ?? null);
+      if (!target) {
+        fail(
+          `@hyperframes/core does not export ./${subpath}\n` +
+            `  found at: ${pkgPath} (version ${pkg.version})\n` +
+            `  update it:  npm i -D @hyperframes/core`,
+        );
+      }
+      return import(pathToFileURL(resolve(dirname(pkgPath), target)).href);
+    }
   };
+
   try {
     return {
       carve: await load("audio-carve"),
@@ -94,13 +133,106 @@ async function loadCore(fromDir) {
     };
   } catch (error) {
     fail(
-      `cannot resolve @hyperframes/core from ${fromDir}\n` +
-        `  install or update it:  npm i -D @hyperframes/core\n` +
-        `  (the audio-carve export needs a version that ships the carve analysis)\n` +
+      `cannot load @hyperframes/core from ${fromDir}\n` +
+        `  is it installed there?  npm i -D @hyperframes/core\n` +
         `  or point at one:   --core <dir containing node_modules/@hyperframes/core>\n` +
-        `  (${error.message})`,
+        `  (${error.code ?? "error"}: ${error.message.split("\n")[0]})`,
     );
   }
+}
+
+/**
+ * The `sources` a carve should record for these voices, on this bed.
+ *
+ * SKILL.md states the invariant: "A carve against more than one clip id is
+ * wrong. Group the clips and carve against the group." Naming the group lets
+ * `resolveCarveSourceIds` resolve membership at analysis time, so a voice added
+ * later is covered without editing `sources` — whereas a list of clip ids rots
+ * silently the moment a fourth narration clip appears. The lint rule
+ * `audio_carve_ungrouped_sources` enforces exactly this.
+ *
+ * This script was writing clip ids unconditionally, so it violated its own
+ * skill's invariant and tripped its own lint rule on every run. When every
+ * voice shares one group, record the group. Mixed or ungrouped voices keep
+ * their ids, and the lint rule then correctly tells the author to group them.
+ *
+ * The bed has to be part of the decision, because the group form resolves
+ * LATER and wider than it looks. If the bed is itself a member of the voices'
+ * group, `resolveCarveSourceIds` expands that id to every current member on the
+ * next analysis — including the bed — and the bed ends up carved against
+ * itself, which SKILL.md calls a bug rather than a mix choice. This run cannot
+ * see it: `main()` sums the voice list it detected and never round-trips
+ * through group resolution, so the first pass is correct and only the next
+ * re-analysis in Studio is wrong. So decline the group form there and fall back
+ * to clip ids, which is exactly the case `audio_carve_ungrouped_sources` exists
+ * to put in front of the author.
+ *
+ * Only an `<audio>` bed can trip it: group membership is audio-only
+ * (`audioGroupOf`), so `data-audio-group` on a `<video>` bed is ignored by core
+ * and expanding a group can never pull it in.
+ */
+export function carveSources(voices, bed, members) {
+  const group = sharedVoiceGroup(voices);
+  return group && !groupSourceRefusal(voices, bed, members) ? [group] : voices.map((v) => v.id);
+}
+
+/** The one group every voice belongs to, or null if they do not share exactly one. */
+function sharedVoiceGroup(voices) {
+  const groups = voices.map((v) => attrOf(v.tag, "data-audio-group"));
+  const first = groups[0];
+  return Boolean(first) && groups.every((g) => g === first) ? first : null;
+}
+
+/**
+ * Why naming the voices' shared group would persist something this run did not
+ * analyse — or null when the group is safe to name.
+ *
+ * `members` is every `<audio>` in the composition as `{id, group, nameKind}`,
+ * with `nameKind` from core's `classifyAudioName`, so this and Studio's picker
+ * classify the same way.
+ *
+ * Required, deliberately not defaulting to `[]`. With an empty list the `mixed`
+ * refusal below cannot fire, so a call that forgot the argument would return the
+ * group form and restore the exact behaviour this function exists to prevent —
+ * silently, because the first CLI pass is correct either way and only a later
+ * Studio re-analysis is wrong. A missing argument throws on `members.filter`
+ * instead.
+ *
+ * Two refusals, and both exist because the group form resolves LATER and WIDER
+ * than the analysis: `resolveCarveSourceIds` expands a group id to every current
+ * member on every analysis, and `resolveCarveVoices` keeps any audio member with
+ * a src. `main()` meanwhile sums the voice list `detectTracks` returned, so the
+ * first pass looks correct however wrong the persisted attribute is.
+ *
+ *   `bed`   — the bed is a member, so it would be handed to itself as a voice
+ *             and carved against its own content.
+ *   `mixed` — a member classified music or sfx is not a voice this run measured,
+ *             so it would enter the sidechain on the next analysis and duck the
+ *             bed under a whoosh.
+ *
+ * Deliberately NOT a refusal: a member classified `voice` or `unknown` that this
+ * run left out. That is the group form working as designed — `detectTracks` only
+ * takes voices that overlap the bed, and picking up a clip that starts playing
+ * later without an edit to `sources` is the whole reason SKILL.md says to name
+ * the group. Refusing there would collapse the group form into clip ids for
+ * every ordinary narration sequence.
+ */
+export function groupSourceRefusal(voices, bed, members) {
+  const group = sharedVoiceGroup(voices);
+  if (!group) return null;
+  if (bed?.kind === "audio" && attrOf(bed.tag, "data-audio-group") === group) {
+    return { group, reason: "bed", ids: [bed.id] };
+  }
+  const analysed = new Set(voices.map((v) => v.id));
+  const strays = members
+    .filter(
+      (m) =>
+        m.group === group &&
+        !analysed.has(m.id) &&
+        (m.nameKind === "music" || m.nameKind === "sfx"),
+    )
+    .map((m) => m.id);
+  return strays.length > 0 ? { group, reason: "mixed", ids: strays } : null;
 }
 
 /** Mono float PCM for one media file, via ffmpeg. */
@@ -234,7 +366,7 @@ function detectTracks(html, given, classify, overlaps) {
         `  name one with --voice`,
     );
   }
-  return { bed, voices: usable };
+  return { bed, voices: usable, all };
 }
 
 const startOf = (tag) => {
@@ -249,12 +381,21 @@ async function main() {
   const { carve: carveApi, fx: fxApi } = await loadCore(args.core ? resolve(args.core) : compDir);
 
   const html = readFileSync(compPath, "utf-8");
-  const { bed: bedEl, voices } = detectTracks(
-    html,
-    args,
-    carveApi.classifyAudioName,
-    carveApi.clipsOverlap,
-  );
+  const {
+    bed: bedEl,
+    voices,
+    all: media,
+  } = detectTracks(html, args, carveApi.classifyAudioName, carveApi.clipsOverlap);
+  // Group membership + name classification for every audio track, so the source
+  // decision can see what the group will resolve to later and not just what this
+  // run analysed.
+  const members = media
+    .filter((el) => el.kind === "audio")
+    .map((el) => ({
+      id: el.id,
+      group: attrOf(el.tag, "data-audio-group"),
+      nameKind: carveApi.classifyAudioName(el.id, unescapeAttr(attrOf(el.tag, "src") ?? "")),
+    }));
   const bedTag = bedEl.tag;
   const bedSrc = attrOf(bedTag, "src");
   process.stdout.write(
@@ -354,7 +495,26 @@ async function main() {
     : [];
   const lanes = [...carriedLanes, ...carvedLanes];
 
-  const settings = { enabled: true, sources: voices.map((v) => v.id), strength: args.strength };
+  const settings = {
+    enabled: true,
+    sources: carveSources(voices, bedEl, members),
+    strength: args.strength,
+  };
+  // Say why the group form was declined, or the lint rule tells the author to
+  // group clips they have already grouped.
+  const refusal = groupSourceRefusal(voices, bedEl, members);
+  if (refusal) {
+    process.stderr.write(
+      refusal.reason === "bed"
+        ? `note   bed ${bedEl.id} is in group "${refusal.group}" with the voices, so\n` +
+            `       sources are clip ids: naming that group would carve the bed\n` +
+            `       against itself on the next analysis. Move the bed to its own group.\n`
+        : `note   group "${refusal.group}" also holds ${refusal.ids.join(", ")}, which this run\n` +
+            `       did not analyse (music/sfx by name), so sources are clip ids: naming\n` +
+            `       the group would pull them into the sidechain on the next analysis.\n` +
+            `       Move them out of the voice group.\n`,
+    );
+  }
   const written =
     ` data-fx-carve="${escapeAttr(JSON.stringify(settings))}"` +
     ` data-fx-chain="${escapeAttr(fxApi.serializeAudioFxChain(chain))}"` +
@@ -389,4 +549,21 @@ async function main() {
   process.stdout.write(`wrote ${args.comp} (id="${bedEl.id}")\n`);
 }
 
-await main();
+// Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
+// importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
+//
+// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
+// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
+// a raw compare silently skips main() when invoked through any symlinked path.
+function isMainModule(importMetaUrl) {
+  if (!process.argv[1]) return false;
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href === importMetaUrl;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
+  await main();
+}

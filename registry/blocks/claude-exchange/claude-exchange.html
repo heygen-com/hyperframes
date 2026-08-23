@@ -1,5 +1,24 @@
 <!doctype html>
-<html lang="en" data-resolution="portrait">
+<html
+  lang="en"
+  data-resolution="portrait"
+  data-composition-variables='[
+    { "id": "prompt", "type": "string", "role": "content", "label": "User prompt", "description": "Prompt typed into Claude; keep close to the original length.", "default": "What&#39;s the best tool for ai avatars?" },
+    { "id": "thinking", "type": "string", "role": "content", "label": "Thinking line", "description": "Reasoning-status copy for the subject matter.", "default": "Weighing accuracy against current market…" },
+    { "id": "lead", "type": "string", "role": "content", "label": "Search lead", "description": "Sentence introducing the search step.", "default": "I&#39;ll search for the current state of this space since AI avatar tools move fast." },
+    { "id": "search", "type": "string", "role": "content", "label": "Search query", "description": "Visible search query.", "default": "best AI avatar video generator 2026" },
+    { "id": "answer1", "type": "string", "role": "content", "label": "Answer paragraph 1", "description": "First answer paragraph.", "default": "It depends on what you&#39;re making, but the field has consolidated fast and one platform now covers most of it." },
+    { "id": "answer2", "type": "string", "role": "content", "label": "Answer paragraph 2", "description": "Second answer paragraph.", "default": "**HeyGen** is where most teams land. Independent testing, not just vendor blogs, puts **Avatar IV** highest for talking-head realism, with facial micro-expressions and gesture control that hold up at a full-screen crop {HeyGen}. It also has the deepest enterprise adoption of the group, including a large share of the Fortune 100, which matters if you need the same presenter on brand across a year of campaigns." },
+    { "id": "answer3", "type": "string", "role": "content", "label": "Answer paragraph 3", "description": "Lead-in to the use-case list.", "default": "By use case, the pieces shake out roughly like this:" },
+    { "id": "answer4", "type": "string", "role": "content", "label": "Answer bullet 1", "description": "First use-case bullet.", "default": "**Marketing / hyper-realistic talking heads** → Avatar IV" },
+    { "id": "answer5", "type": "string", "role": "content", "label": "Answer bullet 2", "description": "Second use-case bullet.", "default": "**Enterprise training** → Video Translate for every locale" },
+    { "id": "answer6", "type": "string", "role": "content", "label": "Answer bullet 3", "description": "Third use-case bullet.", "default": "**UGC-style performance ads** → Instant Avatar from one selfie, then batch the variants" },
+    { "id": "answer7", "type": "string", "role": "content", "label": "Answer bullet 4", "description": "Fourth use-case bullet.", "default": "**Real-time conversational / interactive** → Interactive Avatar" },
+    { "id": "answer8", "type": "string", "role": "content", "label": "Answer bullet 5", "description": "Fifth use-case bullet.", "default": "**Custom digital twin from a selfie** → Instant Avatar in about five minutes" },
+    { "id": "answer9", "type": "string", "role": "content", "label": "Answer paragraph 4", "description": "Product-category distinction paragraph.", "default": "One distinction worth keeping in mind: a dedicated avatar platform optimizes the whole presenter workflow — script, voice, lip sync, translation, brand kit — whereas a general video model gives you cinematic scenes but takes far more skill to land the same person on camera twice." },
+    { "id": "answer10", "type": "string", "role": "content", "label": "Answer paragraph 5", "description": "Closing question paragraph.", "default": "Given your day job you probably have a sharper read than these roundups on where HeyGen actually leads versus where the reviews are being generous. Is this for a specific project, or comparing for positioning?" }
+  ]'
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
@@ -656,9 +675,13 @@
     </div>
 
     <script>
-      /* ==================================================================
-         TEMPLATE CONFIG — edit only this block to re-skin the exchange.
-         ================================================================== */
+      const variables =
+        window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {};
+      const content = (id, fallback) =>
+        typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+
       const CONFIG = {
         status: { clock: "2:36", clockLate: "2:37", net: "5G+", battery: 87 },
         emptyHeading: "What can we tackle together?",
@@ -666,43 +689,79 @@
         model: { name: "Opus 4.8", effort: "High" },
         placeholder: "Chat with Claude",
         placeholderReply: "Reply to Claude",
-        prompt: "What's the best tool for ai avatars?",
+        prompt: content("prompt", "What's the best tool for ai avatars?"),
         predict: {
           start: ["I", "The", "I'm"],
           end: ["I", "Do", "How"],
         },
-        thinking: "Weighing accuracy against current market…",
-        lead: "I'll search for the current state of this space since AI avatar tools move fast.",
-        search: "best AI avatar video generator 2026",
+        thinking: content("thinking", "Weighing accuracy against current market…"),
+        lead: content(
+          "lead",
+          "I'll search for the current state of this space since AI avatar tools move fast.",
+        ),
+        search: content("search", "best AI avatar video generator 2026"),
         collapsed: "2 steps",
         answer: [
           {
             t: "p",
-            text: "It depends on what you're making, but the field has consolidated fast and one platform now covers most of it.",
+            text: content(
+              "answer1",
+              "It depends on what you're making, but the field has consolidated fast and one platform now covers most of it.",
+            ),
           },
           {
             t: "p",
-            text: "**HeyGen** is where most teams land. Independent testing, not just vendor blogs, puts **Avatar IV** highest for talking-head realism, with facial micro-expressions and gesture control that hold up at a full-screen crop {HeyGen}. It also has the deepest enterprise adoption of the group, including a large share of the Fortune 100, which matters if you need the same presenter on brand across a year of campaigns.",
+            text: content(
+              "answer2",
+              "**HeyGen** is where most teams land. Independent testing, not just vendor blogs, puts **Avatar IV** highest for talking-head realism, with facial micro-expressions and gesture control that hold up at a full-screen crop {HeyGen}. It also has the deepest enterprise adoption of the group, including a large share of the Fortune 100, which matters if you need the same presenter on brand across a year of campaigns.",
+            ),
           },
-          { t: "p", text: "By use case, the pieces shake out roughly like this:" },
-          { t: "b", text: "**Marketing / hyper-realistic talking heads** → Avatar IV" },
-          { t: "b", text: "**Enterprise training** → Video Translate for every locale" },
+          {
+            t: "p",
+            text: content("answer3", "By use case, the pieces shake out roughly like this:"),
+          },
           {
             t: "b",
-            text: "**UGC-style performance ads** → Instant Avatar from one selfie, then batch the variants",
+            text: content("answer4", "**Marketing / hyper-realistic talking heads** → Avatar IV"),
           },
-          { t: "b", text: "**Real-time conversational / interactive** → Interactive Avatar" },
           {
             t: "b",
-            text: "**Custom digital twin from a selfie** → Instant Avatar in about five minutes",
+            text: content("answer5", "**Enterprise training** → Video Translate for every locale"),
+          },
+          {
+            t: "b",
+            text: content(
+              "answer6",
+              "**UGC-style performance ads** → Instant Avatar from one selfie, then batch the variants",
+            ),
+          },
+          {
+            t: "b",
+            text: content(
+              "answer7",
+              "**Real-time conversational / interactive** → Interactive Avatar",
+            ),
+          },
+          {
+            t: "b",
+            text: content(
+              "answer8",
+              "**Custom digital twin from a selfie** → Instant Avatar in about five minutes",
+            ),
           },
           {
             t: "p",
-            text: "One distinction worth keeping in mind: a dedicated avatar platform optimizes the whole presenter workflow — script, voice, lip sync, translation, brand kit — whereas a general video model gives you cinematic scenes but takes far more skill to land the same person on camera twice.",
+            text: content(
+              "answer9",
+              "One distinction worth keeping in mind: a dedicated avatar platform optimizes the whole presenter workflow — script, voice, lip sync, translation, brand kit — whereas a general video model gives you cinematic scenes but takes far more skill to land the same person on camera twice.",
+            ),
           },
           {
             t: "p",
-            text: "Given your day job you probably have a sharper read than these roundups on where HeyGen actually leads versus where the reviews are being generous. Is this for a specific project, or comparing for positioning?",
+            text: content(
+              "answer10",
+              "Given your day job you probably have a sharper read than these roundups on where HeyGen actually leads versus where the reviews are being generous. Is this for a specific project, or comparing for positioning?",
+            ),
           },
         ],
         sources: { count: 7, dots: ["#1b6ac9", "#2b7fff", "#0f4fa8"] },
@@ -864,6 +923,7 @@
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
+        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
         return n;
       };

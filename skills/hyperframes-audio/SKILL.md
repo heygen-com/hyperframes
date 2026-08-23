@@ -263,6 +263,34 @@ A `sources` list naming two or more plain clip ids instead of a group is caught
 by the `audio_carve_ungrouped_sources` lint rule — it still works, but it is the
 version that silently rots when a clip is added.
 
+**Keep the carve group a voice group: no bed, no SFX, no music.** A group id in
+`sources` resolves to every _current_ member on _every_ analysis, so the group
+you name is the group you get later — not the tracks that were measured when it
+was written. Two ways that bites:
+
+- **The bed in its own source group.** It is handed to itself as a voice and
+  carved against its own content — the "never carve a track against itself" rule
+  arriving one re-analysis later.
+- **An SFX or music clip in the voice group.** It enters the sidechain on the
+  next analysis and the bed starts ducking under a whoosh, even though the run
+  that wrote the attribute never measured it.
+
+Both are invisible at the moment the carve is written: the analysis sums the
+voices it detected and never round-trips through group resolution, so the first
+pass is genuinely correct and only the next one is wrong. So give each role its
+own group — `music` for the bed, `voiceover` for the narration, `sfx` for the
+hits — and keep the group named in `sources` holding nothing but voices.
+
+`carve.mjs` refuses to write the group form when it sees either case, records
+clip ids, and says on stderr which member blocked it. The
+`audio_carve_ungrouped_sources` rule then points at the arrangement instead of
+the CLI quietly persisting a wider carve than it measured.
+
+A voice that this run left out is **not** one of these cases and does not block
+the group form: `carve.mjs` only analyses voices that overlap the bed, and
+picking up a clip that plays later without an edit to `sources` is the whole
+reason to name the group.
+
 ### One bus for many tracks
 
 Membership alone is enough to carve against, as above — but add an
@@ -321,10 +349,6 @@ fader and one clock. Wrapping a single clip in a bus buys nothing the clip's own
 to land. The one reason to do it anyway: a bus's automation clock is composition
 time, so a single-member bus is how a lane on that clip gets composition-time
 timing.
-
-Nothing here needs a feature flag: the Studio UI for building groups is behind
-the `audio-groups` canary, but a hand-authored `<hf-audio-group>` parses, plays
-and renders for everyone.
 
 **One knob.** `strength` is 0..1 and derives everything: how deep to cut, how
 many bands, how wide, how far to favour intelligibility over raw voice energy,

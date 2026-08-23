@@ -46,8 +46,9 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title: string }
     <button
       type="button"
       onClick={onClick}
-      className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
+      className="relative flex-shrink-0 rounded p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400 active:scale-[0.95]"
       title={title}
+      aria-label={title}
     >
       <svg
         width="12"
@@ -87,13 +88,15 @@ export function PropertyRow({
           </span>
           <button
             type="button"
+            role="switch"
+            aria-checked={isVisible}
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
-            className="flex-shrink-0 rounded-full transition-all duration-150 relative"
+            className="flex-shrink-0 rounded-full transition-colors duration-200 relative"
             style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
             title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
           >
             <span
-              className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
+              className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"
               style={{
                 width: 12,
                 height: 12,

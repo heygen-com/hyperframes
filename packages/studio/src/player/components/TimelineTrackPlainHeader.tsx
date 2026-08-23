@@ -45,7 +45,9 @@ export function VisibilityButton({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
-        void onToggle?.(trackNumber, !hidden);
+        // Display number alongside the real key: the undo-history label must
+        // announce the same row this button just did (see `onToggleTrackHidden`).
+        void onToggle?.(trackNumber, !hidden, trackDisplayNumber);
       }}
     >
       {visibilityButtonIcon(hidden)}

@@ -1,0 +1,168 @@
+---
+title: "Mix audio and apply effects"
+sidebarTitle: "Effects and presets"
+description: "Open a track's effect rack, fix a voice with one preset, and add individual effects in an order that works."
+---
+
+Studio carries a full mixer. Every audio track has an effect rack: filters that
+decide which frequencies it may occupy, dynamics that decide how its level
+behaves, character effects that change the shape of the waveform, and space
+effects that put it somewhere.
+
+Everything you do here is written into the composition's HTML. There is no
+separate session file, so a mix survives being handed to someone else, committed,
+or rendered on another machine.
+
+## Open a track's effect rack
+
+Select an audio clip on the timeline. The right panel shows an **Audio FX**
+section for it, listing the chain from top to bottom in signal order and ending
+in **Out to mix**. An empty track reads "No effects on this track."
+
+Do not confuse it with the **Effects** section on the same panel — that one is
+visual effects for pictures, and has nothing to do with sound.
+
+You can also reach it without the panel: the **FX** button on an audio track's
+timeline header opens a shelf of presets, with **Open rack ›** at the bottom. The
+button shows a count when the track already has effects.
+
+## Fix a voice with one preset
+
+Presets are the fastest honest answer to "this voice sounds wrong". Each one is
+an ordinary chain you could have built by hand — open it and the individual
+effects are all showing.
+
+Start from the symptom rather than the effect list:
+
+| It sounds like | Reach for |
+| --- | --- |
+| Hum or thump underneath | `rumble-cut`, or a high-pass at 80 Hz |
+| Boomy, chesty, too close to the mic | **Tame Boominess** |
+| Muffled, like it is behind cardboard | **Reduce Mud** |
+| Words hard to make out | **Add Clarity**, or [carve the music](/studio/voiceover-carve) |
+| Harsh and tiring over a whole listen | **Soften Harshness** |
+| Some words much louder than others | **Evenness** on a compressor, or **Even Out Levels** |
+| Room tone audible between sentences | `room-gate` |
+| Voice and music fighting each other | [A carve on the music](/studio/voiceover-carve) — not an EQ on either |
+| Dry, recorded nowhere | `room-tight` or `room-natural` |
+| Just "amateur" | `voice-clean` |
+
+`voice-clean` is the default answer to "fix this voiceover": it removes rumble,
+reduces mud, evens the level, adds clarity, and ends in a peak ceiling.
+`voice-broadcast` is the same idea denser and more forward; `voice-warm` adds
+body instead of cutting it.
+
+Applying a preset **appends** to the chain, so cleaning a voice and then adding
+character is a real thing to do. Re-applying the same preset replaces its own
+nodes where they already sit.
+
+Every named job also ships inside a preset at identical settings, so check what a
+preset already contains before adding a job on top of it — `voice-clean` plus a
+Reduce Mud job is −6 dB at 250 Hz where −3 was meant. Expanding the preset in the
+rack shows its nodes by name, which is the fastest way to see it.
+
+Beyond the corrective families there are **Character** presets — `telephone`,
+`radio-am`, `megaphone`, `lofi-tape`, `pa-system`, `intercom`, `doofus-worble`,
+`chipmunk`, `giant`, `monster` — and **Space** presets — `room-tight`, `room-natural`, `hall`, `slap-echo`,
+`dub-throw`. Character presets are costumes rather than corrections, and they are
+tuned to be distinguishable from one another, so do not stack two. `chipmunk`,
+`giant`, and `monster` shift pitch, so they change who is speaking rather than
+what they are speaking through.
+
+## Add a single effect
+
+Use **+ effect** in the rack. The menu groups effects the way you would reach for
+them, in four families:
+
+| Family | Decides |
+| --- | --- |
+| **Filters** | Which frequencies the track may occupy |
+| **Dynamics** | How its level behaves over time |
+| **Non-linear** | The shape of the waveform — character and grit |
+| **Time** | Where it sits and how it moves: delay, reverb, chorus, phaser, and pitch shift |
+
+The menu offers the [named jobs](#fix-a-voice-with-one-preset) in place of a bare
+`peaking` filter, because picking `peaking` is picking a machine and leaving the
+real decision — which frequency range — for afterwards.
+
+Order matters, because each effect processes what the one before produced. Work in
+this order and each step hears a cleaner signal than it otherwise would:
+
+1. **Subtract before you add.** Cut rumble and mud first. A voice that sounds dull
+   often has too much low-mid rather than too little top.
+2. **Level after you filter.** A compressor reacts to whatever is loudest, and a
+   rumble it can no longer see is a rumble it stops chasing.
+3. **Relationships after level.** Carve the music once the voice itself is
+   settled.
+4. **Character, then ceiling.** Saturation and space go late; a limiter goes last,
+   where it can actually act as a ceiling. Anything after it is not bounded by it.
+
+Rename any node so the rack says what it is doing. Two `peaking` rows otherwise
+look identical and you cannot tell the mud cut from the clarity lift.
+
+Bypass a node instead of deleting it while you are deciding — it stays in the
+chain, out of the signal path, so you can compare without losing the settings.
+
+## Use the one-knob controls
+
+Five effects have no single parameter that could honestly be their face — a
+compressor's threshold means nothing without its ratio. Those show one derived
+knob instead:
+
+| Effect | Knob | 0 → 1 |
+| --- | --- | --- |
+| Compressor | **Evenness** | Barely touched → very even, quite squashed |
+| Gate | **Tightness** | Only true silence → cuts quiet words too |
+| Saturation | **Warmth** | Just a sheen → openly distorted |
+| Reverb | **Space** | A small tight room → a big open hall |
+| Bitcrush | **Crush** | Slightly gritty → destroyed |
+
+Evenness, Warmth, and Space are level-matched: the make-up gain, output trim, and
+dry leg move with the drive, so turning the knob up does not also turn the track
+up. Tightness and Crush are not, because neither has a trim to move.
+
+Editing a parameter underneath one of these knobs is allowed and simply moves the
+knob — the chain stores the mechanism, not the knob position.
+
+## Even out a drifting take
+
+**Even Out Levels** measures the track's own speaking passages and writes a gain
+envelope. Its target is that track's own 80th percentile rather than an absolute
+level, so an already-even track is left alone. Use it when passages drift over a
+whole take; use a compressor's **Evenness** when the problem is word-to-word
+dynamics. **Remove levelling** takes it back off.
+
+## What should happen
+
+- Preview is what the render will sound like: both build the same graph from the
+  same attributes.
+- A chain Studio cannot read plays **dry** in preview so the composition stays
+  workable — but it **fails the render** rather than shipping a track that sounds
+  plausible and is wrong. If preview sounds unprocessed, suspect the chain.
+- Reverb and delay make a track **longer** than its source. A bed with reverb no
+  longer ends exactly at its clip length; that is expected.
+
+## Common problems
+
+**Nothing sounds different.** Check the node is not bypassed, then check you are
+looking at **Audio FX** rather than the visual **Effects** section.
+
+**The voice got louder as well as cleaner.** A preset ending in a peak ceiling
+raises perceived loudness. Trim the track's own level rather than removing the
+ceiling.
+
+**A cut landed twice.** A preset already contained the job you added on top.
+Expand the preset and read its nodes by name.
+
+**It sounds worse after adding top end.** A muddy voice needs the low-mid cut
+first; lifting the top of a muddy voice makes it muddy *and* harsh.
+
+**There is hiss under the words.** Nothing here removes it. A gate closes the gaps
+between phrases and leaves the noise beneath speech untouched — a source with
+audible hiss needs a better source.
+
+## Related topics
+
+- [Make music sit under narration](/studio/voiceover-carve)
+- [Automate a parameter over time](/studio/audio-automation)
+- [Audio effects implementation](/reference/audio-effects)

@@ -1,0 +1,177 @@
+---
+title: Audio effects and mixing
+description: "Ask for a mix in symptoms rather than in filters — make music step out of the way of narration, clean a voice, and know which requests have no honest answer."
+---
+
+The last chapter gave your video a voice. This one makes the voice and everything
+around it *listenable*.
+
+Audio work is where prompts go wrong in a specific way: it is tempting to name
+the machine. "Add a high-pass at 80 Hz with a Q of 0.7" is a real instruction, and
+it is worse than the request that produced it, because it commits you to a fix
+before anyone has established the problem. The mix is stored as effects on each
+track — filters, dynamics, character, space, and envelopes that move any of them
+over time — and the agent reaches into that toolbox for you. Your job is to
+describe the symptom accurately.
+
+## Say what it sounds like, not what to add
+
+Every effect in the rack exists to answer a complaint. Name the complaint.
+
+```text
+The narration sounds muffled, like it's behind cardboard. Fix it.
+```
+
+```text
+The voice sounds amateur — clean it up but don't make it sound processed.
+```
+
+```text
+There's a hum under the interview audio the whole way through.
+```
+
+Each of those lands on a specific, small change: a cut at 250 Hz, the
+`voice-clean` chain, a high-pass under the voice. You do not have to know which —
+and if you name the wrong mechanism, you get the wrong mechanism applied
+confidently.
+
+This matters more than it does for picture work, because **you can hear a mix and
+the agent cannot**. A prompt describing a sound is evidence. A prompt naming a
+filter is a guess wearing evidence's clothes.
+
+## The one request worth learning by name
+
+Music under narration is the single most common audio problem, and the reflex fix
+is wrong.
+
+Ducking the whole music track works and costs the music all of its presence for
+the entire voiceover — it goes limp for as long as anyone is talking. The voice
+does not need the whole spectrum, though. It needs the few bands it actually
+occupies. Taking only those out of the music is called a **carve**, and it keeps
+the low end and the top, so the bed is still music while the voice stays
+intelligible.
+
+Ask for it in those terms:
+
+```text
+Put the music under the narration properly — carve it so the voice stays clear
+without the track going limp.
+```
+
+```text
+The music is fighting the voiceover. Make room for the voice in the music
+rather than just turning the music down.
+```
+
+Two things are worth knowing so you can judge the result:
+
+- **It follows the speech.** Silence leaves the music alone; a loud passage pushes
+  it to full depth. It is not a fixed dip held through every pause.
+- **It lives on the music**, and names the voices it makes room for. If someone
+  tells you they carved the voice track, that is a bug rather than a taste
+  decision.
+
+If it comes back and the music sounds *hollow* rather than simply quieter, say so
+in exactly that word — it means the depth is too high, and it is the one failure
+mode with an obvious sound:
+
+```text
+Too far — the music sounds notched now. Back it off.
+```
+
+## Ask for levels before asking for more depth
+
+A carve cannot fix music that is simply louder than the voice. When narration is
+buried, the useful instruction is about **level**, not about spectrum:
+
+```text
+Check the actual loudness of the voiceover against the music before touching
+the carve — the voice may just be quieter than the bed.
+```
+
+Machine-generated speech commonly arrives far below a mastered music track. That
+gap is arithmetic, not taste, and no amount of carving closes it. Asking for the
+measurement first turns one round of guessing into a number.
+
+## Group the things that belong together
+
+Five narration clips want one set of effects, one fader, and one mute — not five
+copies that drift apart as you edit. Say so:
+
+```text
+Group all the narration clips as one voiceover group, then carve the music
+against that group.
+```
+
+That phrasing is worth the extra clause. A carve pointed at individual clips has
+to list every one of them, and it stays right only until you add another — the
+sixth clip plays outside the carve's awareness and the music silently fails to
+duck under it. A carve pointed at a *group* picks up whatever is in the group at
+the time it runs.
+
+Use groups for sound effects too, when there are more than a couple. One place to
+turn all of them down is worth more than precise individual levels you will never
+revisit.
+
+## Ask for movement when a static setting will not do
+
+Anything that should change over the video's length is an envelope, and you ask
+for it by describing the shape in time:
+
+```text
+Fade the music out over the last three seconds.
+```
+
+```text
+Bring the ambience up while the wide shot is on screen, then pull it back
+under the interview.
+```
+
+One caveat worth carrying: a few effects cannot move over time at all — the
+compressor, limiter, gate, bitcrush, and pitch shift are configured whole rather
+than knob-by-knob. If you ask for a compressor that tightens as a scene builds, the
+honest answer is a level stage moving in front of it instead. An agent that
+quietly writes an envelope on one of those has written something inert, so if a
+requested change does nothing audible, that is the first thing to suspect.
+
+## Three requests with no honest answer
+
+Naming a gap is more useful than accepting the nearest preset and calling it the
+thing.
+
+**De-essing.** Sharp `s` sounds need a detector faster than anything in the
+toolbox. The nearest fix is a narrow cut in the 5–9 kHz range, swept to find
+where that particular voice spits. It is always on, so it costs a little air on
+every word. That trade is usually worth it — but ask for it knowing it is a
+trade:
+
+```text
+The s sounds are spitting. I know there's no real de-esser — put a narrow cut
+where this voice actually sibilates and tell me what it cost.
+```
+
+**Noise removal.** A gate closes the gaps between phrases; the hiss *underneath*
+the words is untouched by anything available. A source with audible hiss needs a
+better source, and an agent telling you so is being accurate rather than lazy.
+
+**Matching one voice to another.** There is no match-curve tool. Two takes can be
+brought closer by hand with an EQ, which is predictable in a way a derived curve
+would not be — but it is hand work, and worth asking for as such.
+
+## Describe the whole mix once, at the end
+
+Individual fixes accumulate into something nobody has judged as a whole. One
+closing instruction is worth more than three more adjustments:
+
+```text
+Render an audio-only pass and check the mix end to end: voice clear through
+the loudest musical moment, effects where the action is, nothing surprising
+at the open, and the music finishing on purpose rather than at the file edge.
+```
+
+Audio problems are easier to notice when the picture is not competing for
+attention. Listening once without watching catches things twenty prompt rounds
+will not.
+
+*Next: [Design systems and brand](/prompting/design-systems) — pointing the agent
+at a source of brand truth instead of describing a vibe.*

@@ -57,7 +57,11 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
             selector: (selector ?? "").trim(),
             message: `Caption selector "${(selector ?? "").trim()}" has white-space: nowrap but no max-width. Long phrases will clip off-screen.`,
             fixHint:
-              "Add max-width: 1600px (landscape) or max-width: 900px (portrait) and overflow: hidden.",
+              // Deliberately does NOT say `overflow: hidden`: caption words are scaled
+              // above 1.0x, and clipping them is exactly what caption_overflow_clips_scaled_words
+              // errors on. Recommending it here made this warning's own fix produce an error.
+              "Add max-width: 1600px (landscape) or max-width: 900px (portrait). Keep " +
+              "overflow visible so scaled emphasis words are not clipped.",
           });
         }
       }

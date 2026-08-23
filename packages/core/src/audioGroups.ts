@@ -199,3 +199,27 @@ export function audioGroupOf(el: Element): string | null {
   if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return null;
   return typeof el.getAttribute === "function" ? el.getAttribute(HF_AUDIO_GROUP_ATTR) : null;
 }
+
+/**
+ * Make `<hf-audio-group>` inert, once per document.
+ *
+ * The element is metadata — an id, a label, a chain, an automation lane — and
+ * carries no content, but "no content" is not "no box": it is still an unknown
+ * custom element, so in a flex or grid composition root it counts as an item
+ * (taking a `gap`, shifting `justify-content`, moving every `:nth-child` after
+ * it), and in inline formatting it can still open a line box. Authored layout
+ * would shift by adding a group, which is not something a mixing decision is
+ * allowed to do.
+ *
+ * `!important` because an author rule can outrank a bare type selector on
+ * specificity — inertness here is a contract, not a default. Emitted from the
+ * runtime rather than the compiler so preview and render share one source.
+ */
+export function ensureAudioGroupInertStyle(doc: Document): void {
+  const styleId = "__hf-audio-group-inert";
+  if (!doc?.head || doc.getElementById(styleId)) return;
+  const style = doc.createElement("style");
+  style.id = styleId;
+  style.textContent = `${HF_AUDIO_GROUP_TAG}{display:none!important}`;
+  doc.head.appendChild(style);
+}

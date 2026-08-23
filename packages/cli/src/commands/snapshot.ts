@@ -3,7 +3,7 @@ import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve, join, relative, isAbsolute, basename } from "node:path";
+import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
   DEFAULT_ZOOM_SCALE,
   captureRegionCrop,
@@ -15,6 +15,12 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  definitiveEntryMismatchComposition,
+  hasDefinitiveEntryMismatch,
+  lintProject,
+} from "../utils/lintProject.js";
+import { formatLintFindings } from "../utils/lintFormat.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -650,6 +656,33 @@ export default defineCommand({
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
+    const lintResult = await lintProject(project.dir);
+    if (hasDefinitiveEntryMismatch(lintResult)) {
+      const candidate = definitiveEntryMismatchComposition(lintResult);
+      console.log("");
+      for (const line of formatLintFindings(lintResult, { errorsFirst: true })) {
+        console.log(line);
+      }
+      console.log("");
+      console.log(c.error("  Aborting snapshot because the default index.html entry is blank."));
+      if (candidate && posix.basename(candidate) === "index.html") {
+        const candidateDir = posix.dirname(candidate);
+        const target = `<project>/${candidateDir}`;
+        console.log(
+          c.dim(
+            `  Move or mount the authored file, or snapshot its directory directly: hyperframes snapshot ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
+          ),
+        );
+      } else if (candidate) {
+        console.log(
+          c.dim(
+            `  Move or mount ${candidate} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
+          ),
+        );
+      }
+      console.log("");
+      failCommand();
+    }
     const frames = parseInt(args.frames as string, 10) || 5;
     const timeout = parseInt(args.timeout as string, 10) || 5000;
     const atTimestamps = args.at

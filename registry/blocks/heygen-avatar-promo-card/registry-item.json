@@ -86,6 +86,11 @@
       "path": "assets/fonts/eb-garamond-LICENSE.txt",
       "target": "assets/fonts/eb-garamond-LICENSE.txt",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }

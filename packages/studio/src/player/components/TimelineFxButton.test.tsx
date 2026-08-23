@@ -194,6 +194,41 @@ describe("TimelineFxButton", () => {
     ).toBe(false);
   });
 
+  // #3421: the dialog positioned itself at `anchorRect.bottom + 4` with no flip
+  // and no clamp, and this button lives in a track header at the bottom of the
+  // studio window — so it opened past the viewport edge and was reported as
+  // "the grouping button did nothing". Numbers derive from GROUP_DIALOG_SIZE
+  // (256x160) against happy-dom's 1024x768 window and a 12px margin.
+  it("flips the group dialog above the anchor when there is no room below", () => {
+    const host = mount(
+      <TimelineFxButton variant="group-pointer" clipCount={2} onGroupClips={vi.fn()} />,
+    );
+    const fx = byTextButton(host, "FX");
+    fx!.getBoundingClientRect = () =>
+      ({ left: 300, top: 760, right: 320, bottom: 776, width: 20, height: 16 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    const top = Number.parseFloat(dialog.style.top);
+    // Fully inside the viewport on both edges, which the unclamped form was not.
+    expect(top).toBeGreaterThanOrEqual(12);
+    expect(top + 160).toBeLessThanOrEqual(768 - 12);
+  });
+
+  it("keeps the group dialog inside the right edge of the window", () => {
+    const host = mount(
+      <TimelineFxButton variant="group-pointer" clipCount={2} onGroupClips={vi.fn()} />,
+    );
+    const fx = byTextButton(host, "FX");
+    fx!.getBoundingClientRect = () =>
+      ({ left: 1010, top: 100, right: 1024, bottom: 116, width: 14, height: 16 }) as DOMRect;
+    act(() => fx?.click());
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    const left = Number.parseFloat(dialog.style.left);
+    expect(left).toBeGreaterThanOrEqual(12);
+    expect(left + 256).toBeLessThanOrEqual(1024 - 12);
+  });
+
   it("carries the typed name into the group it creates", () => {
     const onGroupClips = vi.fn();
     const host = mount(

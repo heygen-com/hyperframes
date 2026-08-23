@@ -1,0 +1,119 @@
+---
+title: "Automate a parameter over time"
+sidebarTitle: "Automation lanes"
+description: "Draw an envelope on a track's volume or an effect's knob, shape a selection, and know which parameters can move at all."
+---
+
+A static setting cannot say "quieter while the interview is on screen" or "fade
+out over the last three seconds". An automation lane can: it is a set of points on
+one parameter, and the value moves between them.
+
+Lanes work on a track's own **volume** and on any supported effect parameter, and
+a [group](/studio/audio-groups) has lanes of its own that apply to its whole bus.
+
+## Show a track's lanes
+
+Use the `∿` toggle on the track or group row. It shows a count when lanes already
+exist, and it is independent of the row's expand caret — showing a group's members
+does not open its lanes.
+
+To start automating an effect parameter, automate it from the parameter's own
+control in the rack. A parameter with a lane shows as **Automated**, and its
+static control is disabled: the lane owns the value from then on.
+
+## Draw and edit an envelope
+
+Work directly on the lane:
+
+- **Add a point** on the lane at the time you want it.
+- **Drag a point** to move it in time or value.
+- **Type an exact value** rather than dragging, when the number matters. A volume
+  lane can go above unity — the ceiling is +12 dB, not 1.
+- **Bend a segment** by dragging its curve, so the value holds and then moves late
+  rather than travelling evenly.
+- **Select a time range** to work on several points at once.
+
+With a range selected, right-click it for the shape and cleanup menu:
+
+| Item | Does |
+| --- | --- |
+| **Ramp up** / **Ramp down** | Replaces the selection with a single move in one direction |
+| **Swell** | Rises and returns |
+| **Dip** | Falls and returns — the shape most ducking wants |
+| **Simplify** | Removes redundant points while keeping the shape. Needs at least three points in the selection |
+
+A selection can also be **copied and pasted** onto another lane, and **retimed** by
+stretching its edges — useful when narration moves and its ducking should move
+with it.
+
+## Two things that surprise people
+
+**A track lane's times are relative to its clip.** A bed starting at 8 s has its
+first point at composition time 8. Move the clip and its envelope moves with it.
+
+**A group lane's times are composition time.** A group has no start of its own,
+so its lanes are measured from the beginning of the video. If you are automating
+a group bus, read the times as absolute.
+
+**A lane holds its first value backwards** to the start of the clip, and its last
+value forward to the end. So a bed that begins before the voice needs an explicit
+"no cut" point at the start, or it begins already ducked. This is the single most
+common automation mistake.
+
+## Not every knob can move
+
+A parameter can only be automated if the audio engine can schedule it directly.
+Three kinds cannot:
+
+| These | Cannot be automated because |
+| --- | --- |
+| Compressor, limiter, gate, bitcrush, pitch shift | They are configured whole rather than knob-by-knob — **no parameter on any of them can move** |
+| Saturation's type, threshold, and oversample | They rebuild the distortion curve; only its output stage can move |
+| Reverb's size and damping | They regenerate the room; its wet and dry levels can move |
+
+**A lane on one of those is silently inert** — it stores fine and never does
+anything. Pitch shift is the one that catches people out, because a rising pitch
+sounds like something a lane should do: it cannot, and the lane will not report
+it. To make a compressor's behaviour change over time, automate a `gain` stage
+*before* it instead: that changes how hard the compressor is driven, which
+is most of what automating its threshold would have done.
+
+To fade a whole preset in or out, automate the preset itself rather than its
+parts — its nodes share no single parameter, so the preset as a unit is the only
+handle that works.
+
+The [effect registry](/reference/audio-effects#effect-registry) marks every
+parameter that can move.
+
+## What should happen
+
+- The value moves between your points, in preview and in the render identically.
+- A parameter with a lane reads **Automated** and its static control is disabled.
+- A [carve](/studio/voiceover-carve) writes lanes of its own, and they are
+  ordinary lanes: you can edit them afterwards like any others.
+
+## Common problems
+
+**The lane does nothing.** Either the parameter is one of those above, or the
+effect it pointed at is gone. A lane whose effect was deleted is dropped silently
+rather than reported.
+
+**A newly added effect arrives already "Automated".** A lane left behind by a
+deleted effect can be inherited by the next effect that takes the same internal
+id. Remove the stale lane.
+
+**The volume lane is ignored.** A `volume` lane and a timeline tween on the same
+track's volume conflict; the lane wins. Pick one.
+
+**The envelope is right but the level is wrong.** A tween's values are absolute
+and replace a track's own gain rather than scaling it. Check whether the track
+also carries a static level.
+
+**The bed ducks before anyone speaks.** The first point is holding backwards. Add
+a point at the clip's start.
+
+## Related topics
+
+- [Mix audio and apply effects](/studio/audio-effects)
+- [Make music sit under narration](/studio/voiceover-carve)
+- [Audio effects implementation](/reference/audio-effects#data-automation)

@@ -1,5 +1,27 @@
 <!doctype html>
-<html lang="en" data-resolution="portrait">
+<html
+  lang="en"
+  data-resolution="portrait"
+  data-composition-variables='[
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Horizontal transparent wordmark used in the header and belt.", "default": "assets/heygen-logo.svg" },
+    { "id": "titleLine1", "type": "string", "role": "content", "label": "Headline line 1", "description": "First headline line.", "default": "Your avatar," },
+    { "id": "titleLine2", "type": "string", "role": "content", "label": "Headline line 2", "description": "Second headline line.", "default": "by HeyGen." },
+    { "id": "subhead", "type": "string", "role": "content", "label": "Subhead", "description": "Supporting line under the headline.", "default": "AI video, camera-free." },
+    { "id": "pill1", "type": "string", "role": "content", "label": "Pill 1", "description": "First feature pill.", "default": "4K AVATARS" },
+    { "id": "pill2", "type": "string", "role": "content", "label": "Pill 2", "description": "Second feature pill.", "default": "NO CAMERA NEEDED" },
+    { "id": "offerValue", "type": "string", "role": "content", "label": "Offer value", "description": "Large offer value in the light tile.", "default": "25%" },
+    { "id": "offerSuffix", "type": "string", "role": "content", "label": "Offer suffix", "description": "Large offer suffix in the adjacent light tile.", "default": "OFF" },
+    { "id": "codeLabel", "type": "string", "role": "content", "label": "Promo code label", "description": "Small label above the promo code.", "default": "CODE" },
+    { "id": "promoPrefix", "type": "string", "role": "content", "label": "Promo code prefix", "description": "Accent-colored promo-code prefix.", "default": "GEN" },
+    { "id": "promoSuffix", "type": "string", "role": "content", "label": "Promo code suffix", "description": "Light promo-code suffix.", "default": "25" },
+    { "id": "canvasColor", "type": "color", "role": "style", "label": "Canvas color", "description": "Main card background.", "default": "#eaf6fa" },
+    { "id": "inkColor", "type": "color", "role": "style", "label": "Ink color", "description": "Primary headline, pill, and offer ink.", "default": "#0a1418" },
+    { "id": "mutedInkColor", "type": "color", "role": "style", "label": "Muted ink color", "description": "Subhead ink.", "default": "#47545b" },
+    { "id": "accentColor", "type": "color", "role": "style", "label": "Accent color", "description": "Brand accent used by tiles and promo-code prefix.", "default": "#00c3ff" },
+    { "id": "lightTileColor", "type": "color", "role": "style", "label": "Light tile color", "description": "Light belt-tile surface.", "default": "#f7fcfe" },
+    { "id": "darkTileColor", "type": "color", "role": "style", "label": "Dark tile color", "description": "Dark belt-tile surface.", "default": "#0b1215" }
+  ]'
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1080, height=1920" />
@@ -52,11 +74,17 @@
         width: 1080px;
         height: 1920px;
         overflow: hidden;
+        --apc-canvas: #eaf6fa;
+        --apc-ink: #0a1418;
+        --apc-muted: #47545b;
+        --apc-accent: #00c3ff;
+        --apc-light-tile: #f7fcfe;
+        --apc-dark-tile: #0b1215;
       }
       .bgfill {
         position: absolute;
         inset: 0;
-        background: #eaf6fa;
+        background: var(--apc-canvas);
       }
 
       .hdr {
@@ -64,7 +92,7 @@
         left: 0;
         width: 1080px;
         text-align: center;
-        color: #0a1418;
+        color: var(--apc-ink);
       }
       #apc-hdr-logo {
         top: 118px;
@@ -86,7 +114,7 @@
         font-family: "AvatarSans", sans-serif;
         font-weight: 500;
         font-size: 37px;
-        color: #47545b;
+        color: var(--apc-muted);
         letter-spacing: -0.01em;
       }
       #apc-hdr-pills {
@@ -96,7 +124,7 @@
         gap: 28px;
       }
       .pill {
-        border: 2px solid #0a1418;
+        border: 2px solid var(--apc-ink);
         border-radius: 999px;
         padding: 0 42px;
         height: 92px;
@@ -105,7 +133,7 @@
         font-weight: 600;
         font-size: 27px;
         letter-spacing: 0.12em;
-        color: #0a1418;
+        color: var(--apc-ink);
       }
 
       #apc-belt-linear {
@@ -140,13 +168,13 @@
         display: block;
       }
       .light {
-        background: #f7fcfe;
+        background: var(--apc-light-tile);
       }
       .dark {
-        background: #0b1215;
+        background: var(--apc-dark-tile);
       }
       .cyan {
-        background: #00c3ff;
+        background: var(--apc-accent);
       }
       .serif-tile {
         display: flex;
@@ -155,7 +183,7 @@
         font-family: "AvatarDisplay", serif;
         font-weight: 500;
         font-size: 165px;
-        color: #0a1418;
+        color: var(--apc-ink);
       }
       .brand-tile {
         display: flex;
@@ -187,7 +215,7 @@
         letter-spacing: -0.01em;
       }
       .code-tile .promo .gen {
-        color: #00c3ff;
+        color: var(--apc-accent);
       }
       .code-tile .promo .n25 {
         color: #fbfcfc;
@@ -224,7 +252,9 @@
             muted
             playsinline
           ></video>
-          <div class="tile row1 light serif-tile" style="left: 907.7px">25%</div>
+          <div id="apc-offer-value" class="tile row1 light serif-tile" style="left: 907.7px">
+            25%
+          </div>
           <video
             class="tile row1 clip"
             id="apc-v-r1k3"
@@ -260,7 +290,13 @@
             muted
             playsinline
           ></video>
-          <div class="tile row2 light serif-tile" style="left: 523.4px; font-size: 146px">OFF</div>
+          <div
+            id="apc-offer-suffix"
+            class="tile row2 light serif-tile"
+            style="left: 523.4px; font-size: 146px"
+          >
+            OFF
+          </div>
           <video
             class="tile row2 clip"
             id="apc-v-r2k2"
@@ -273,8 +309,11 @@
             playsinline
           ></video>
           <div class="tile row2 dark code-tile" style="left: 1292px">
-            <div class="code">CODE</div>
-            <div class="promo"><span class="gen">GEN</span><span class="n25">25</span></div>
+            <div id="apc-code-label" class="code">CODE</div>
+            <div class="promo">
+              <span id="apc-promo-prefix" class="gen">GEN</span
+              ><span id="apc-promo-suffix" class="n25">25</span>
+            </div>
           </div>
           <div class="tile row2 light brand-tile" style="left: 1676.3px">
             <img src="assets/heygen-logo.svg?t=2" alt="" />
@@ -287,12 +326,12 @@
       <div class="hdr" id="apc-hdr-logo"><img src="assets/heygen-logo.svg" alt="HeyGen" /></div>
       <div class="hdr" id="apc-hdr-title">
         Your avatar,
-        <div>by HeyGen.</div>
+        <div id="apc-title-line-2">by HeyGen.</div>
       </div>
       <div class="hdr" id="apc-hdr-subhead">AI video, camera-free.</div>
       <div class="hdr" id="apc-hdr-pills">
-        <div class="pill">4K AVATARS</div>
-        <div class="pill">NO CAMERA NEEDED</div>
+        <div id="apc-pill-1" class="pill">4K AVATARS</div>
+        <div id="apc-pill-2" class="pill">NO CAMERA NEEDED</div>
       </div>
 
       <audio
@@ -306,6 +345,41 @@
     </div>
 
     <script>
+      const variables =
+        window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {};
+      const root = document.getElementById("heygen-avatar-promo-card");
+      const text = (id, fallback) =>
+        typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+      const color = (id, fallback) => text(id, fallback);
+
+      root.style.setProperty("--apc-canvas", color("canvasColor", "#eaf6fa"));
+      root.style.setProperty("--apc-ink", color("inkColor", "#0a1418"));
+      root.style.setProperty("--apc-muted", color("mutedInkColor", "#47545b"));
+      root.style.setProperty("--apc-accent", color("accentColor", "#00c3ff"));
+      root.style.setProperty("--apc-light-tile", color("lightTileColor", "#f7fcfe"));
+      root.style.setProperty("--apc-dark-tile", color("darkTileColor", "#0b1215"));
+      document.querySelectorAll(".brand-tile img, #apc-hdr-logo img").forEach((image) => {
+        image.src = text("brandLogo", "assets/heygen-logo.svg");
+      });
+      document.getElementById("apc-hdr-title").firstChild.nodeValue = text(
+        "titleLine1",
+        "Your avatar,",
+      );
+      document.getElementById("apc-title-line-2").textContent = text("titleLine2", "by HeyGen.");
+      document.getElementById("apc-hdr-subhead").textContent = text(
+        "subhead",
+        "AI video, camera-free.",
+      );
+      document.getElementById("apc-pill-1").textContent = text("pill1", "4K AVATARS");
+      document.getElementById("apc-pill-2").textContent = text("pill2", "NO CAMERA NEEDED");
+      document.getElementById("apc-offer-value").textContent = text("offerValue", "25%");
+      document.getElementById("apc-offer-suffix").textContent = text("offerSuffix", "OFF");
+      document.getElementById("apc-code-label").textContent = text("codeLabel", "CODE");
+      document.getElementById("apc-promo-prefix").textContent = text("promoPrefix", "GEN");
+      document.getElementById("apc-promo-suffix").textContent = text("promoSuffix", "25");
+
       const tl = gsap.timeline({ paused: true });
 
       // Belt conveyor — measured from reference: 93.601 px/s constant, leftward

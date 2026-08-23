@@ -74,6 +74,8 @@ export function MetricField({
           onPointerDown: handleScrubPointerDown,
           onPointerMove: handleScrubPointerMove,
           onPointerUp: handleScrubPointerUp,
+          onPointerCancel: handleScrubPointerUp,
+          onLostPointerCapture: handleScrubPointerUp,
         } as const)
       : ({ className: "flex-shrink-0 text-[11px] font-medium text-neutral-500" } as const);
 
@@ -180,6 +182,7 @@ export function SliderControl({
         step={step}
         value={draft}
         disabled={disabled}
+        aria-label={trackName}
         onChange={(e) => {
           const n = Number(e.target.value);
           setDraft(n);
@@ -228,6 +231,7 @@ export function SegmentedControl({
             if (option.value !== value) track("segmented", trackName);
             onChange(option.value);
           }}
+          aria-pressed={option.value === value}
           className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
             option.value === value
               ? "bg-panel-hover text-white"
@@ -292,23 +296,15 @@ export function Section({
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const collapseIcon = collapsed ? (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      className="flex-shrink-0 text-panel-text-5"
-    >
-      <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  ) : (
+  const collapseIcon = (
     <svg
       width="10"
       height="10"
       viewBox="0 0 10 10"
       fill="currentColor"
-      className="flex-shrink-0 text-panel-text-5"
+      className={`flex-shrink-0 text-panel-text-5 transition-transform duration-150 ${
+        collapsed ? "-rotate-90" : ""
+      }`}
     >
       <path d="M2 3l3 4 3-4z" />
     </svg>
@@ -322,6 +318,7 @@ export function Section({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
             className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
           >
             <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>

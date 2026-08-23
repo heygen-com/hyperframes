@@ -46,12 +46,20 @@ export const ALLOWED_DELETIONS = new Map([
     "owner-directed removal of the AI Prompt Flow catalog item and its generated documentation",
   ],
   [
+    "docs/catalog/components/checkout-flow.mdx",
+    "owner-directed removal of the Checkout Flow catalog item and its generated documentation",
+  ],
+  [
     "docs/public/catalog/components/ai-generation-canvas.json",
     "owner-directed removal of the AI Generation Canvas catalog item and its generated public payload",
   ],
   [
     "docs/public/catalog/components/ai-prompt-flow.json",
     "owner-directed removal of the AI Prompt Flow catalog item and its generated public payload",
+  ],
+  [
+    "docs/public/catalog/components/checkout-flow.json",
+    "owner-directed removal of the Checkout Flow catalog item and its generated public payload",
   ],
   [
     "registry/components/ai-generation-canvas/ai-generation-canvas.html",
@@ -76,6 +84,18 @@ export const ALLOWED_DELETIONS = new Map([
   [
     "registry/components/ai-prompt-flow/registry-item.json",
     "owner-directed removal of the AI Prompt Flow catalog registry entry",
+  ],
+  [
+    "registry/components/checkout-flow/checkout-flow.html",
+    "owner-directed removal of the Checkout Flow catalog source component",
+  ],
+  [
+    "registry/components/checkout-flow/demo.html",
+    "owner-directed removal of the Checkout Flow catalog preview source",
+  ],
+  [
+    "registry/components/checkout-flow/registry-item.json",
+    "owner-directed removal of the Checkout Flow catalog registry entry",
   ],
   [
     "packages/studio/src/components/StudioFeedbackBar.tsx",

@@ -6,6 +6,7 @@ import {
   readDecodedAttr,
   truncateSnippet,
   stripJsComments,
+  stripStringLiterals,
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
@@ -130,17 +131,6 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
   return parts.join("");
 }
 
-const HEAD_BLOCKS_TO_IGNORE_PATTERN =
-  /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)(?:\s[^>]*)?>/gi;
-const HTML_TAG_PATTERN = /<[^>]+>/g;
-const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
-const AFTER_HEAD_BEFORE_BODY_PATTERN = /<\/head(?:\s[^>]*)?>([\s\S]*?)(?=<body\b|$)/gi;
-const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)(?:\s[^>]*)?>/i;
-const MARKDOWN_CODE_FENCE_PATTERN = /```[^\r\n`]*(?:\r?\n|$)[\s\S]*?```/i;
-const ORPHAN_CSS_AT_RULE_PATTERN =
-  /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
-const ORPHAN_CSS_RULE_PATTERN =
-  /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
 const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
 const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
   /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
@@ -148,64 +138,6 @@ const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
 interface SourceRange {
   start: number;
   end: number;
-}
-
-function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
-  return MARKDOWN_CODE_FENCE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
-}
-
-function findOrphanCssLeak(headContent: string): string | null {
-  const residualText = headContent
-    .replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ")
-    .replace(HTML_TAG_PATTERN, " ");
-  return (
-    ORPHAN_CSS_AT_RULE_PATTERN.exec(residualText)?.[0] ??
-    ORPHAN_CSS_RULE_PATTERN.exec(residualText)?.[0] ??
-    null
-  );
-}
-
-function findStrayCloseLeak(headWithoutValidBlocks: string): string | null {
-  return STRAY_HEAD_CLOSE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
-}
-
-function findLeakedTextInHeadContent(headContent: string): string | null {
-  const withoutValidBlocks = headContent.replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ");
-  return (
-    findCodeFenceLeak(withoutValidBlocks) ??
-    findOrphanCssLeak(headContent) ??
-    findStrayCloseLeak(withoutValidBlocks)
-  );
-}
-
-function findLeakedTextInHead(rawSource: string): string | null {
-  const headMatches = [...rawSource.matchAll(HEAD_CONTENT_PATTERN)];
-  for (const match of headMatches) {
-    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
-    if (leakedText) return leakedText;
-  }
-  return null;
-}
-
-function findLeakedTextBetweenHeadAndBody(rawSource: string): string | null {
-  const boundaryMatches = [...rawSource.matchAll(AFTER_HEAD_BEFORE_BODY_PATTERN)];
-  for (const match of boundaryMatches) {
-    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
-    if (leakedText) return leakedText;
-  }
-  return null;
-}
-
-function findLeakedTextBeforeCompositionRoot(
-  source: string,
-  rootTag: LintContext["rootTag"],
-): string | null {
-  if (!rootTag || rootTag.name === "body") return null;
-  const bodyOpenMatch = /<body\b[^>]*>/i.exec(source);
-  const prefixStart = bodyOpenMatch ? bodyOpenMatch.index + bodyOpenMatch[0].length : 0;
-  const prefixEnd = rootTag.index;
-  if (prefixEnd <= prefixStart) return null;
-  return findLeakedTextInHeadContent(source.slice(prefixStart, prefixEnd));
 }
 
 function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
@@ -273,6 +205,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // root_missing_composition_id + root_missing_dimensions
+  // fallow-ignore-next-line complexity
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
     if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
@@ -298,26 +231,6 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // head_leaked_text
-  ({ source, rootTag }) => {
-    const snippet =
-      findLeakedTextInHead(source) ??
-      findLeakedTextBetweenHeadAndBody(source) ??
-      findLeakedTextBeforeCompositionRoot(source, rootTag);
-    if (!snippet) return [];
-    return [
-      {
-        code: "head_leaked_text",
-        severity: "error",
-        message:
-          "Detected leaked code or CSS text around the document `<head>` or before the composition root. Browsers render this as visible text in the video.",
-        fixHint:
-          "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`, the `</head>`/`<body>` boundary, or the pre-root body prefix.",
-        snippet: truncateSnippet(snippet),
-      },
-    ];
-  },
-
   // visible_markup_comment
   ({ source }) => {
     const snippet = findVisibleMarkupCommentLeak(source);
@@ -336,6 +249,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
+  // fallow-ignore-next-line complexity
   ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
@@ -528,7 +442,13 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // non_deterministic_code
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
-    const patterns: Array<{ pattern: RegExp; label: string; hint: string }> = [
+    const patterns: Array<{
+      pattern: RegExp;
+      label: string;
+      hint: string;
+      /** Match against raw source, because the value being matched is a string GSAP parses. */
+      scansStrings?: boolean;
+    }> = [
       {
         pattern: /Math\.random\s*\(/,
         label: "Math.random()",
@@ -540,7 +460,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
       },
       {
-        pattern: /new\s+Date\s*\(/,
+        // Zero-arg only. `new Date(<fixed timestamp>)` is fully deterministic and is how
+        // a composition labels a fixed date on an axis or card; the hint ("remove
+        // time-dependent code") cannot be applied to it without deleting the label.
+        pattern: /new\s+Date\s*\(\s*\)/,
         label: "new Date()",
         hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
       },
@@ -561,16 +484,25 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       },
       {
         // GSAP string form: "random(...)" / "+=random(...)" — re-rolls at tween init.
+        // `scansStrings` because here the string IS the executed value: GSAP parses it.
+        // Every other pattern above matches executable code, so a match inside a string
+        // literal is inert text and must not be reported.
         pattern: /["'`](?:[+-]=)?random\(\s*[-\d[]/,
+        scansStrings: true,
         label: '"random(...)" tween value',
         hint: "GSAP random string values re-roll at tween init and each render worker initializes independently. Use fixed values or precompute with a seeded PRNG.",
       },
     ];
 
     for (const script of scripts) {
-      const stripped = stripJsComments(script.content);
-      for (const { pattern, label, hint } of patterns) {
-        if (pattern.test(stripped)) {
+      const withoutComments = stripJsComments(script.content);
+      // Strings are content, not code. A composition that DISPLAYS source (the
+      // code-snippet blocks, /pr-to-video) carries `Math.random()` inside a string
+      // literal it never executes, and reported itself non-deterministic with no
+      // way to clear the error while still rendering the snippet.
+      const executable = stripStringLiterals(withoutComments);
+      for (const { pattern, label, hint, scansStrings } of patterns) {
+        if (pattern.test(scansStrings ? withoutComments : executable)) {
           findings.push({
             code: "non_deterministic_code",
             severity: "error",

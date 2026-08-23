@@ -1,4 +1,4 @@
-import { useState, useCallback, useId, memo } from "react";
+import { useState, useCallback, useEffect, useId, useRef, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
@@ -19,7 +19,7 @@ const SHORTCUT_SECTIONS = [
     ],
   },
   {
-    title: "Keyframes",
+    title: "Keyframes (when an element is selected)",
     hints: [
       { key: "K", label: "Add keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
@@ -37,9 +37,10 @@ const SHORTCUT_SECTIONS = [
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
       { key: "S", label: "Split clip at playhead" },
+      { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
-      { key: "Del", label: "Delete selected element" },
+      { key: "Del", label: "Delete selected element (no keyframe selected)" },
     ],
   },
   {
@@ -112,6 +113,20 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   const shortcutsPanelId = useId();
   const closeShortcuts = useCallback(() => setShowShortcuts(false), []);
   const shortcutsPanelRef = useContextMenuDismiss(closeShortcuts);
+  const panelBodyRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Move focus into the panel on open so keyboard users can scroll and read
+  // it; hand focus back to the trigger on close.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!showShortcuts) return;
+    const trigger = triggerRef.current;
+    panelBodyRef.current?.focus();
+    return () => {
+      trigger?.focus();
+    };
+  }, [showShortcuts]);
 
   const commitJumpFrame = useCallback(() => {
     if (disabled) return;
@@ -141,6 +156,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     <div ref={shortcutsPanelRef} className="relative flex-shrink-0">
       <Tooltip label="Shortcuts and tools">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
           className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
@@ -169,11 +185,14 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       {showShortcuts && (
         <div
           id={shortcutsPanelId}
+          ref={panelBodyRef}
+          tabIndex={-1}
           role="dialog"
+          aria-label="Keyboard shortcuts and tools"
           // Deliberately NOT aria-modal. This is a non-modal disclosure: focus is
           // not trapped and the rest of the editor stays operable, so claiming
           // modality would make assistive tech treat the whole app as inert.
-          className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
+          className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto outline-none"
           style={{
             background: "#161618",
             border: "1px solid rgba(255,255,255,0.08)",

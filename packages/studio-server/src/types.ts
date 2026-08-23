@@ -45,11 +45,16 @@ export interface MediaProcessingJobState {
 /** Lint result from the core linter. */
 export interface LintResult {
   findings: Array<{
+    code?: string;
     severity: string;
     message: string;
     file?: string;
     fixHint?: string;
   }>;
+}
+
+export interface ProjectLintResult {
+  results: Array<{ file: string; result: LintResult }>;
 }
 
 export interface StudioSelectionTextField {
@@ -109,6 +114,13 @@ export interface StudioApiAdapter {
 
   /** Lint a single HTML string. */
   lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
+
+  /**
+   * Lint the complete project, including relationships between files. Official
+   * adapters provide this; the single-file method remains as a compatibility
+   * fallback for third-party adapters compiled against older releases.
+   */
+  lintProject?: (projectDir: string) => Promise<ProjectLintResult> | ProjectLintResult;
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;

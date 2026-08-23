@@ -1,0 +1,472 @@
+---
+title: "Audio effects implementation"
+sidebarTitle: "Audio effects"
+description: "The four audio attributes, every effect and parameter, automation targets, the voiceover carve, audio groups, and how preview and render stay identical."
+---
+
+Use this reference when Studio controls are not enough: you need to write a mix
+into HTML, know a parameter's exact range, automate a knob, or understand why
+something behaves differently in the render than in preview. For everyday use
+start with [Mix audio and apply effects](/studio/audio-effects), and for what to
+ask an agent for, [Audio effects and mixing](/prompting/audio-effects).
+
+A composition carries its whole mix in the HTML. There is no session file and
+nothing to load beside the markup.
+
+## The four attributes
+
+| Attribute | Holds | Shape | Goes on | Read at playback |
+| --- | --- | --- | --- | --- |
+| `data-fx-chain` | The effects, in signal order | JSON | `<audio>`, `<video>`, `<hf-audio-group>` | Yes |
+| `data-automation` | Envelopes on volume or an effect parameter | JSON | `<audio>`, `<video>`, `<hf-audio-group>` | Yes |
+| `data-fx-carve` | A voiceover carve's own settings | JSON | `<audio>`, `<video>` | No — see [below](#data-fx-carve) |
+| `data-audio-group` | The id of the group this clip belongs to | A plain id, not JSON | `<audio>` only | Yes |
+
+`data-audio-group` is the odd one: a bare string, and **ignored on `<video>`**.
+The other three are JSON. Of those, only `data-fx-chain` and `data-automation`
+can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus;
+`data-fx-carve` belongs to a clip.
+
+**Write the JSON attributes double-quoted, escaping the JSON's own quotes as
+`&quot;` and `&` as `&amp;`** — as every example on this page does. The browser
+reads them through `getAttribute` and does not mind either way, but
+`scripts/carve.mjs` finds them with a `name="..."` regex, so a single-quoted
+attribute is invisible to it: a carve reports no existing chain and overwrites
+work it could not see.
+
+Nothing static validates a chain. Preview plays an unreadable chain **dry** so
+the composition stays workable; the render **fails the whole mix** rather than
+shipping a dry track that sounds plausible and is wrong.
+
+### `data-fx-chain`
+
+```html
+<audio
+  id="narration"
+  src="assets/vo.wav"
+  data-start="0"
+  data-duration="12"
+  data-fx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[
+    {&quot;type&quot;:&quot;highpass&quot;,&quot;id&quot;:&quot;n1&quot;,&quot;label&quot;:&quot;Remove Rumble&quot;,
+     &quot;params&quot;:{&quot;frequency&quot;:120,&quot;q&quot;:0.707,&quot;poles&quot;:&quot;2&quot;}},
+    {&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n2&quot;,&quot;label&quot;:&quot;Reduce Mud&quot;,
+     &quot;params&quot;:{&quot;frequency&quot;:250,&quot;gain&quot;:-3,&quot;q&quot;:1.2}},
+    {&quot;type&quot;:&quot;limiter&quot;,&quot;id&quot;:&quot;n3&quot;,&quot;enabled&quot;:false,
+     &quot;params&quot;:{&quot;limit&quot;:-1,&quot;attack&quot;:5,&quot;release&quot;:50,&quot;level_out&quot;:0}}
+  ]}"
+></audio>
+```
+
+Unescaped, that chain reads: a high-pass labelled Remove Rumble, a peaking cut
+labelled Reduce Mud, and a bypassed limiter.
+
+- **Order is signal order.** Each node processes what the one before produced.
+- `type` is an effect id from [the registry](#effect-registry). `params` are in
+  the units a person thinks in — dB, ms, Hz. Out-of-range values are clamped on
+  read, so a chain that parses is always safe to realise.
+- `id` is a stable handle. Automation addresses nodes by id, never by position,
+  so reordering a chain cannot re-point a lane at a different effect. A node
+  with no id loads fine but cannot be automated. Studio hands out the first free
+  `n1`, `n2`, …
+- `label` replaces the effect's own name in the rack. Write one whenever a node
+  is doing a named job — two `peaking` nodes otherwise show the same row twice
+  and you cannot tell the mud cut from the clarity lift.
+- `enabled: false` is bypass: the node stays in the chain, out of the signal
+  path. Absent means enabled.
+- `fromCarve: true` marks a node the carve analysis generated. `fromPreset`
+  carries the id of the preset that wrote the node, which is how re-applying a
+  preset replaces its own nodes in place. **Do not set `fromCarve` by hand** —
+  the next carve deletes exactly those nodes.
+
+### `data-automation`
+
+```html
+data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[
+  {&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:1},{&quot;t&quot;:2.5,&quot;v&quot;:0.4}]},
+  {&quot;target&quot;:&quot;fx.n2.gain&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:1,&quot;v&quot;:-6,&quot;curve&quot;:0.4}]}
+]}"
+```
+
+That is two lanes: the track's volume dropping to 0.4 by 2.5 s, and node `n2`'s
+gain moving to −6 dB by 1 s along a bent segment.
+
+| Field | Meaning |
+| --- | --- |
+| `target` | `volume` for the track's own level, or `fx.<nodeId>.<param>` |
+| `t` | Seconds — on **which clock depends on where the lane lives**, see below |
+| `v` | The parameter's own unit — dB for a gain, Hz for a frequency, a linear multiplier for volume |
+| `curve` | −1 to 1, bends the segment *leaving* a point; positive holds low then rises late |
+| `viaX` / `viaY` | An interior point the segment passes through (progress 0–1, value travelled 0–1); supersedes `curve` when both are present |
+
+### Two clocks
+
+| Lane on | `t: 0` means |
+| --- | --- |
+| A clip (`<audio>` / `<video>`) | The start of **that clip**. A bed with `data-start="8"` has `t: 0` at composition time 8 |
+| A group (`<hf-audio-group>`) | **Composition time.** A group has no `data-start`, so its clock starts at zero |
+
+Getting this backwards is the most expensive mistake on the page: a group lane
+written in clip-relative time lands wherever the first member happens to start.
+Preview and render agree on both clocks.
+
+### Volume is not capped at 1
+
+`v` on a `volume` lane is a linear gain multiplier with a ceiling of **+12 dB**,
+which is about `3.981` — the same ceiling `data-volume` uses. A lane that boosts
+above unity is valid and will play; `1` is unity, not the maximum.
+
+A lane holds its first value backwards to the start of its clip and its last
+value forward to the end. **A bed that begins before the voice therefore needs an
+explicit "no cut" point at `t: 0`, or it starts out already ducked.** Maximum 512
+points per lane. A lane whose node is gone is pruned on read rather than
+erroring — so a mistyped `nodeId` costs you the envelope silently. Read ids back
+out of the chain rather than assuming what was minted.
+
+A `volume` lane and a GSAP tween on `volume` conflict: the lane wins and the
+tween is ignored. The linter reports that as `audio_volume_double_automation`.
+
+### `data-fx-carve`
+
+```html
+data-fx-carve="{&quot;enabled&quot;:true,&quot;sources&quot;:[&quot;voiceover&quot;],&quot;strength&quot;:0.25}"
+```
+
+Unescaped: `{"enabled":true,"sources":["voiceover"],"strength":0.25}`.
+
+- `sources` names **what this bed makes room for** — element ids, or a group id,
+  which expands to its current members on every analysis.
+- `strength` is 0–1 and derives the whole mechanism.
+- `enabled: false` keeps the settings and stops the carve. It exists because a
+  bed with exactly one candidate voice is carved by default; with "off" as an
+  absent attribute, switching it off would read as never-configured and the
+  default would put it back.
+
+This attribute is **not read at playback** — the chain and lanes it produced are
+what play. It exists so strength can be changed on an existing carve instead of
+being guessed back out of the filters.
+
+Older projects may carry six mechanism numbers (`maxCutDb`, `bands`, `q`,
+`intelligibilityBias`, `duckDb`, `headroomDb`) instead of `strength`. They still
+load: the depth maps back onto a strength and the rest is re-derived. A stored
+carve with no `enabled` reads as on, a single `source` reads as a one-voice
+`sources` list, and a stored `dynamic` is ignored — every carve follows the
+speech now.
+
+### `data-audio-group`
+
+```html
+<style>hf-audio-group { display: none !important; }</style>
+
+<hf-audio-group id="voiceover" data-label="Voiceover" data-volume="1"></hf-audio-group>
+
+<audio id="vo-intro"  data-audio-group="voiceover" src="assets/vo1.wav" …></audio>
+<audio id="vo-middle" data-audio-group="voiceover" src="assets/vo2.wav" …></audio>
+```
+
+Membership is held by the **member**, not by the group nesting its members, so a
+deleted clip simply disappears from the group on the next resolve and nothing
+dangles.
+
+- `<hf-audio-group>` is optional metadata: `data-label`, `data-volume`,
+  `data-hidden`, and its own `data-fx-chain` / `data-automation`. A group with
+  members but no element still resolves, using its id as the label.
+- **Audio only.** `data-audio-group` on a `<video>` is ignored, and groups do
+  not nest.
+- `data-audio-group=""` is no group at all.
+- The element must be inert. The runtime injects
+  `hf-audio-group{display:none!important}` so an unknown custom element cannot
+  take a flex gap or shift `:nth-child` — but author the rule yourself so a bare
+  preview never lays it out.
+- Group ids and element ids share one namespace.
+
+## Effect registry
+
+Sixteen effects. Values outside a range are clamped on read. **AUTO** marks a
+parameter an automation lane can drive; anything unmarked cannot move over time.
+`HF_AUDIO_FX` in `@hyperframes/core/audio-fx` is the source of truth.
+
+### Filter — which frequencies a track may occupy
+
+| Effect | Parameters |
+| --- | --- |
+| `highpass` | `frequency` 20–20000 Hz (300, log) **AUTO** · `q` 0.1–20 (0.707, log) **AUTO** · `poles` `1`\|`2` (2) |
+| `lowpass` | `frequency` 100–20000 Hz (8000, log) **AUTO** · `q` 0.1–20 (0.707, log) **AUTO** · `poles` `1`\|`2` (2) |
+| `peaking` | `frequency` 20–20000 Hz (1000, log) **AUTO** · `gain` −40–40 dB (0) **AUTO** · `q` 0.1–20 (1, log) **AUTO** |
+| `lowshelf` | `frequency` 20–2000 Hz (200, log) **AUTO** · `gain` −40–40 dB (0) **AUTO** |
+| `highshelf` | `frequency` 500–20000 Hz (4000, log) **AUTO** · `gain` −40–40 dB (0) **AUTO** |
+
+`q` is bandwidth — higher is narrower. `poles` is the slope: `2` is the usual
+biquad (12 dB/oct), `1` is gentler (6 dB/oct). Shelving filters have no `q`; the
+Web Audio spec leaves it unused for them.
+
+### Dynamics — how level behaves over time
+
+| Effect | Parameters |
+| --- | --- |
+| `gain` | `gain` −60–12 dB (0) **AUTO** |
+| `compressor` | `threshold` −60–0 dB (−24) · `ratio` 1–20 (4) · `attack` 0.01–2000 ms (20, log) · `release` 0.01–9000 ms (250, log) · `knee` 1–8 (2.83) · `makeup` 0–36 dB (0) · `mix` 0–1 (1) |
+| `limiter` | `limit` −24–0 dB (−1) · `attack` 0.1–80 ms (5) · `release` 1–8000 ms (50, log) · `level_out` −24–24 dB (0) |
+| `gate` | `threshold` −80–0 dB (−35) · `range` −80–0 dB (−24) · `ratio` 1–20 (10) · `attack` 0.01–9000 ms (1, log) · `release` 0.01–9000 ms (100, log) · `knee` 1–8 (2.83) |
+
+Cuts on `gain` reach −60 dB, boosts stop at +12: it is a level stage for making
+room, and a chain that could add 40 dB would clip long before that was useful.
+`knee` of 1 is a hard corner. `mix` below 1 blends the dry signal back in
+(parallel compression). `range` is how far down the gate pulls when closed.
+
+### Nonlinear — changes the waveform's shape
+
+| Effect | Parameters |
+| --- | --- |
+| `saturate` | `type` `tanh`\|`atan`\|`cubic`\|`exp`\|`alg`\|`quintic`\|`sin`\|`erf`\|`hard` (tanh) · `threshold` −40–0 dB (−6) · `output` −24–24 dB (0) **AUTO** · `oversample` 1–8× (4) |
+| `bitcrush` | `bits` 1–32 (8) · `samples` 1–250× (1) · `mix` 0–1 (1) |
+
+`tanh` is the gentlest curve, `hard` is outright clipping. Higher `oversample`
+costs more CPU and keeps aliasing down. `samples` repeats each sample N times — a
+crude downsample, which is where the lo-fi character comes from.
+
+### Time — where a track sits, and how it moves
+
+| Effect | Parameters |
+| --- | --- |
+| `delay` | `time` 1–5000 ms (250, log) **AUTO** · `feedback` 0.01–0.95 (0.35) **AUTO** · `mix` 0–1 (0.4) **AUTO** |
+| `reverb` | `size` 0.05–1 (0.7) · `damping` 0–1 (0.5) · `wet` 0–1 (0.35) **AUTO** · `dry` 0–1 (0.7) **AUTO** |
+| `chorus` | `delay` 1–100 ms (7) **AUTO** · `depth` 0–10 ms (2) **AUTO** · `speed` 0.01–10 Hz (1) **AUTO** · `mix` 0–1 (0.5) **AUTO** |
+| `phaser` | `in_gain` 0–1 (0.4) **AUTO** · `out_gain` 0–2 (0.74) **AUTO** · `delay` 0.1–5 ms (3) · `decay` 0–0.99 (0.4) · `speed` 0.1–2 Hz (0.5) **AUTO** · `type` `0`\|`1` (0) |
+| `pitchshift` | `semitones` −12–12 st (0, whole steps) · `mix` 0–1 (1) |
+
+`pitchshift` moves pitch without changing playback speed, which is what
+separates it from a playback-rate change. Neither of its parameters can be
+automated — it is a worklet.
+
+Reverb convolves a *generated* impulse and both preview and render generate the
+same one, so a room is reproducible without shipping an impulse file. Higher
+`damping` rolls the top off the tail faster. `feedback` is bounded below 1
+because at 1 it never decays.
+
+## Why some parameters cannot be automated
+
+Automation is handed to the audio thread once, as native `AudioParam` ramps and
+curves — that is what keeps it sample-accurate and identical between preview and
+render. A parameter can therefore only be automated if an `AudioParam` backs it.
+Three kinds do not:
+
+| Kind | Effects | Consequence |
+| --- | --- | --- |
+| Worklet processor options | `compressor`, `limiter`, `gate`, `bitcrush`, `pitchshift` | **No parameter is automatable at all** |
+| A WaveShaper curve | `saturate`'s `type`, `threshold`, `oversample` | Only its `output` stage is a real param |
+| A convolution impulse | `reverb`'s `size`, `damping` | `wet` / `dry` are gain stages and automate fine |
+
+**A lane on a non-automatable parameter is silently inert.** To make one of those
+behave differently over time, automate a `gain` stage around it instead: a lane
+on a `gain` before a compressor changes how hard the compressor is driven, which
+is most of what automating its threshold would have done.
+
+## Presets, jobs, and one-knob profiles
+
+Every one of these is a shortcut to a chain you could have built by hand. Open
+any of them and you find ordinary effects with their parameters showing.
+
+### Presets
+
+Twenty-two, in four families. Applying one **appends**; re-applying one already
+present replaces its own nodes in place, because position is signal order.
+
+| Family | Ids |
+| --- | --- |
+| Voice | `voice-clean`, `voice-broadcast`, `voice-warm` |
+| Repair | `rumble-cut`, `room-gate`, `boom-tame`, `harsh-tame` |
+| Character | `telephone`, `radio-am`, `megaphone`, `lofi-tape`, `pa-system`, `intercom`, `doofus-worble`, `chipmunk`, `giant`, `monster` |
+| Space | `room-tight`, `room-natural`, `hall`, `slap-echo`, `dub-throw` |
+
+`chipmunk`, `giant`, and `monster` are built on `pitchshift`, so they change the
+speaker rather than the channel.
+
+`voice-clean` is Remove Rumble → Reduce Mud → Even Out Loudness → Add Clarity →
+Peak Ceiling. `voice-broadcast` is denser and more forward; `voice-warm` adds
+body rather than cutting it.
+
+A preset's nodes are wrapped in a wet/dry blend, so `presetAmount` (0–1) fades
+the whole thing, and `fx.preset.<id>` is an automation target that ramps it over
+time. That is the only way to automate a preset as a unit — its nodes share no
+common parameter.
+
+### Jobs
+
+Five named `peaking` filters with the frequency already chosen. Picking the job
+is picking the range, which is what makes a single "how much" knob honest.
+
+| Job | Symptom | Sets |
+| --- | --- | --- |
+| Tame Boominess | Too much chest — it booms | 200 Hz, −4 dB, Q 1.4 |
+| Reduce Mud | Muffled, like it is behind cardboard | 250 Hz, −3 dB, Q 1.2 |
+| Reduce Boxiness | Sounds like a small room, or a box | 400 Hz, −3 dB, Q 1.4 |
+| Add Clarity | Words are hard to make out | 3 kHz, +2.5 dB, Q 1 |
+| Soften Harshness | Harsh and tiring to listen to | 3.2 kHz, −3 dB, Q 1.6 |
+
+Writing one by hand, carry the name in `label` — the parameters alone are not
+the job.
+
+**Every job also ships inside a preset at identical settings**, which is where
+the five came from. So check what a preset already contains before adding a job
+on top: `voice-clean` plus a Reduce Mud job is −6 dB at 250 Hz where −3 was
+meant.
+
+### One-knob profiles
+
+Five effects have no single parameter that can honestly be their face — a
+compressor's threshold means nothing without its ratio. They get a derived
+control instead, 0–1, setting several parameters together.
+
+| Effect | Knob | 0 → 1 | Sets |
+| --- | --- | --- | --- |
+| `compressor` | Evenness | Barely touched → very even, quite squashed | threshold, ratio, attack, release, makeup |
+| `gate` | Tightness | Only true silence → cuts quiet words too | threshold, range, release |
+| `saturate` | Warmth | Just a sheen → openly distorted | threshold, output |
+| `reverb` | Space | A small tight room → a big open hall | size, wet, dry |
+| `bitcrush` | Crush | Slightly gritty → destroyed | bits, samples, mix |
+
+Evenness, Warmth, and Space are **level-matched**: the make-up gain, output trim,
+and dry leg move with the drive, so turning the knob up does not also turn the
+track up. Tightness and Crush are not, because neither has a trim to move.
+
+The chain stores the mechanism values, not the knob position — the knob is read
+back by inverting the curve, so hand-editing a parameter under a profile is
+allowed and simply moves the knob.
+
+## Voiceover carve
+
+A carve is a **relationship, not an effect**. The settings live on the *bed* —
+the track that gets processed — and name the voices to listen to, exactly as a
+sidechain compressor does. Never put a carve on a voice track.
+
+`strength` derives six numbers that move together in any real mix: how deep to
+cut, how many bands, how wide, how far to favour intelligibility over raw voice
+energy, how far the level may drop, and how far under the voice to aim.
+
+| Strength | Result |
+| --- | --- |
+| `0` | Spectral only — one band, no level match at all |
+| `0.25` (default) | A 6 dB dip in three bands with 6 dB of level room |
+| `0.5` | The dip reaches 10 dB — where a carve starts being heard as an effect |
+| Above `0.5` | Deliberate territory for a loud bed under a quiet voice |
+
+Every value becomes an envelope of the speech's own level: silence leaves the bed
+alone, a loud passage pushes the carve to full depth. There is no static mode.
+
+Inside a carved bed the signal runs through the dips first, then the level match,
+then anything you built yourself — which is why a limiter you add still acts as
+the last ceiling.
+
+Voices are summed onto the bed's clock before anything is measured, so one
+analysis covers all of them. Voices that never play while the bed does are left
+out; they cannot mask it.
+
+**Name a group, not a run of clip ids.** A list of ids has to be exhaustively
+right and stays right only until the next edit — a fourth narration clip added
+later plays outside the carve's awareness and the bed silently fails to duck
+under it. A `sources` list naming two or more plain clip ids is reported as
+`audio_carve_ungrouped_sources`.
+
+There are two arrangements where naming the group is **worse** than naming ids,
+and both come from the group form resolving later and wider than the analysis
+that wrote it:
+
+| Arrangement | What would happen |
+| --- | --- |
+| The bed is itself a member of the voice group | The bed is handed to itself as a voice and carved against its own content |
+| The group also holds a member classified music or SFX | That member enters the sidechain on a later analysis, ducking the bed under a whoosh |
+
+Neither shows up on the run that writes it — the analysis sums the voices it
+detected, so the first pass is correct however wrong the stored attribute is. It
+surfaces on the next re-analysis, against a file the previous run declared good.
+Keep the bed in its own group.
+
+What a carve writes is an ordinary chain of `peaking` filters plus a `gain`
+stage, tagged `fromCarve`, and one automation lane per carved parameter. That
+tagging is the whole trick: a re-run replaces the previous carve and leaves every
+effect and lane you built by hand exactly where it was.
+
+### From the command line
+
+```bash
+node <SKILL_DIR>/scripts/carve.mjs --comp index.html
+```
+
+That is the whole command — it finds the voice and the bed itself and prints what
+it decided:
+
+```text
+bed    music-bed (name looks like music)
+voice  narration (only track left)
+carve  strength 0.25
+bands  400Hz -6dB q1.4, 1000Hz -3dB q1.4, 1600Hz -3.17dB q1.4
+level  216-point envelope, floor -6 dB
+```
+
+Name tracks with `--bed` / `--voice` (repeatable) when the automatic choice is
+wrong, `--strength` to push it, `--dry-run` to see the report and write nothing.
+It refuses when it cannot tell which track is the bed rather than carving the
+wrong one.
+
+**What it records in `sources`.** When every voice it analysed shares exactly one
+group, and that group is safe to name, it writes the group id. It falls back to
+the individual clip ids — and says so — when the group contains the bed or a
+member classified music or SFX, for the reasons in the table above. A group
+member classified voice or unknown that this run did not analyse is *not* a
+reason to fall back: picking up a clip that starts playing later is the whole
+point of naming the group.
+
+Track choice is by name first, using the same classifier Studio's picker uses, so
+the two cannot disagree: an id or filename that looks like music (`music`, `bgm`,
+`bed`, `score`…) is the bed, and everything else playing over it that is not
+SFX-shaped is a voice. Needs `ffmpeg` on `PATH` and `@hyperframes/core`
+installed in the project.
+
+## Groups, mute, and solo
+
+A group sums its members through one bus, and the bus carries the group's own
+volume, FX chain, and automation. In the render each group is sub-mixed into a
+single track at full composition length before entering the main mix, so a
+group-level effect hears the sum rather than each member separately.
+
+**Mute and solo are not symmetric, on purpose.**
+
+| Control | Where it lives | Reaches the export |
+| --- | --- | --- |
+| Mute | `data-hidden` on the group element or the clip | **Yes** — muted members are dropped from the rendered mix |
+| Solo ("hear only this") | Studio session state | **No** — it never reaches the engine |
+
+Solo is a listening tool. An element is audible while any solo is active only if
+it is itself soloed or its own group is soloed; a group bus is never itself
+attenuated by solo, so a soloed member's path out stays open. A group that is not
+soloed while one of its members is shows as half-lit — the display-only signal
+that some of what is under it still plays.
+
+## Preview and render
+
+Both read the same two attributes through the same builders, which is why
+preview predicts the render:
+
+| | Preview | Render |
+| --- | --- | --- |
+| Context | Live `AudioContext` | `OfflineAudioContext` in the headless browser |
+| Unreadable chain | Plays **dry**, so the composition stays workable | **Fails the whole mix** |
+| Volume lane | Scheduled on the graph | Baked into the PCM by the mixer |
+| Editing an attribute mid-playback | Picked up by a `MutationObserver` | n/a |
+
+Effects with a tail — `reverb`, `delay` — make the rendered track **longer** than
+its source, and the mix is told how much. A bed with reverb therefore no longer
+ends exactly at its `data-duration`. That is expected.
+
+## What the linter checks
+
+Almost no static gate covers a mix. Three rules exist:
+
+| Rule | Reports |
+| --- | --- |
+| `audio_carve_ungrouped_sources` | A carve naming two or more plain clip ids instead of a group |
+| `audio_volume_double_automation` | A `volume` lane on a track that also has a GSAP tween on `volume` — the lane wins, the tween is ignored |
+| `audio_volume_tween_overrides_gain` | An authored `data-volume` on a track whose `volume` is tweened — the tween's values are absolute and replace that gain rather than scaling it |
+
+Nothing validates the chain or the effect lanes at all. What enforces those is
+the render. Beyond that, a mix is verified by rendering and listening.

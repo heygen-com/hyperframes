@@ -197,7 +197,8 @@ export const AnimationCard = memo(function AnimationCard({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 py-1.5"
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
       >
         <span
           className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"

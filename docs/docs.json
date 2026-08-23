@@ -126,7 +126,8 @@
               {
                 "group": "Level 5 — Voice and sound",
                 "pages": [
-                  "prompting/media-and-audio"
+                  "prompting/media-and-audio",
+                  "prompting/audio-effects"
                 ]
               },
               {
@@ -213,6 +214,15 @@
               "studio/timeline",
               "studio/animation",
               "studio/captions"
+            ]
+          },
+          {
+            "group": "Audio",
+            "pages": [
+              "studio/audio-effects",
+              "studio/voiceover-carve",
+              "studio/audio-groups",
+              "studio/audio-automation"
             ]
           },
           {
@@ -625,7 +635,6 @@
                   "catalog/components/beat-timeline",
                   "catalog/components/before-after-wipe",
                   "catalog/components/camera-rig-depth-stack",
-                  "catalog/components/checkout-flow",
                   "catalog/components/comparison-split",
                   "catalog/components/confetti",
                   "catalog/components/cut-the-curve",
@@ -813,7 +822,8 @@
             "group": "Composition reference",
             "pages": [
               "reference/html-schema",
-              "reference/color-grading"
+              "reference/color-grading",
+              "reference/audio-effects"
             ]
           },
           {

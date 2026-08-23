@@ -177,7 +177,9 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         type="button"
         disabled={!prevKf}
         onClick={() => prevKf && onSeek(prevKf.percentage)}
-        className="flex h-5 w-3 items-center justify-center disabled:cursor-default"
+        title="Previous keyframe"
+        aria-label={`Previous ${property} keyframe`}
+        className="relative flex h-5 w-3 items-center justify-center disabled:cursor-default before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowLeft disabled={!prevKf} />
       </button>
@@ -197,7 +199,9 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         type="button"
         disabled={!nextKf}
         onClick={() => nextKf && onSeek(nextKf.percentage)}
-        className="flex h-5 w-3 items-center justify-center disabled:cursor-default"
+        title="Next keyframe"
+        aria-label={`Next ${property} keyframe`}
+        className="relative flex h-5 w-3 items-center justify-center disabled:cursor-default before:absolute before:-inset-1.5 before:content-['']"
       >
         <ArrowRight disabled={!nextKf} />
       </button>

@@ -165,6 +165,57 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  it("does not let a post-validation throw doom a render whose artifact is on disk", async () => {
+    // The gap the field reports land in: a teardown step throws AFTER the
+    // artifact validated, the command wrapper catches it, and the result
+    // carries exitCode 1. The uncaughtException / unhandledRejection handlers
+    // both consult isRenderSucceeded(), but a caught throw never reaches them,
+    // so nothing sanitized the code and a valid MP4 was reported as a failure.
+    const trackCommandResult = vi.fn();
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      const successState = await import("./utils/render-success-state.js");
+      mockInitCommand(() => {
+        successState.markRenderSucceeded();
+        throw new Error("post-render teardown blew up");
+      });
+      mockTelemetry({ trackCommandResult });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      expect(process.exitCode).toBe(0);
+      expect(trackCommandResult).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, exitCode: 0 }),
+      );
+      successState._resetRenderSuccessForTests();
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("still exits non-zero when a command throws and no render ever validated", async () => {
+    // The guard on the sanitizer above: it must key off a validated artifact,
+    // not merely off the command having finished. Without this, every caught
+    // throw would silently become exit 0.
+    const trackCommandResult = vi.fn();
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      mockInitCommand(() => {
+        throw new Error("genuine failure");
+      });
+      mockTelemetry({ trackCommandResult });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+
+      expect(process.exitCode).not.toBe(0);
+      expect(trackCommandResult).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it("still scores an EPIPE before the artifact is validated as a failure", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);

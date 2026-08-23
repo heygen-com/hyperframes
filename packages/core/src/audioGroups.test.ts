@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   audioGroupOf,
+  ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_ATTR,
   isMemberGroupHidden,
   resolveAudioGroups,
@@ -223,5 +224,39 @@ describe("resolveCarveSourceIds — empty group", () => {
     // No members, so the group resolves to nothing; its element must not pass
     // the existence check as if it were a clip the analysis could read.
     expect(resolveCarveSourceIds(d, ["voiceover"])).toEqual([]);
+  });
+});
+
+describe("ensureAudioGroupInertStyle", () => {
+  it("takes the group element out of layout", () => {
+    document.body.innerHTML = `<hf-audio-group id="voiceover"></hf-audio-group>`;
+    const el = document.getElementById("voiceover") as HTMLElement;
+    ensureAudioGroupInertStyle(document);
+    expect(getComputedStyle(el).display).toBe("none");
+  });
+
+  // An unknown custom element is an ordinary inline box, so in a flex or grid
+  // root it takes a slot: a gap, a justify-content share, and every
+  // :nth-child after it shifts. An author rule must not be able to put it
+  // back — and an id selector outranks this rule's type selector no matter
+  // which stylesheet came last, so `!important` is the only thing holding the
+  // contract. Dropping it makes this case fail.
+  it("beats an author rule that outranks it on specificity", () => {
+    document.head.insertAdjacentHTML(
+      "beforeend",
+      `<style id="author">#voiceover{display:flex}</style>`,
+    );
+    document.body.innerHTML = `<hf-audio-group id="voiceover"></hf-audio-group>`;
+    ensureAudioGroupInertStyle(document);
+    expect(getComputedStyle(document.getElementById("voiceover") as HTMLElement).display).toBe(
+      "none",
+    );
+    document.getElementById("author")?.remove();
+  });
+
+  it("injects once, however many times it is called", () => {
+    ensureAudioGroupInertStyle(document);
+    ensureAudioGroupInertStyle(document);
+    expect(document.querySelectorAll("#__hf-audio-group-inert")).toHaveLength(1);
   });
 });

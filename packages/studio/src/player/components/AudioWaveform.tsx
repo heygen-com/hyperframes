@@ -35,37 +35,19 @@ function extractPeaks(channelData: Float32Array, barCount: number): number[] {
   return peaks.map((peak) => peak / maxPeak);
 }
 
-function fakePeaks(url: string, count: number): number[] {
-  let seed = 0;
-  for (let index = 0; index < url.length; index++) {
-    seed = ((seed << 5) - seed + url.charCodeAt(index)) | 0;
-  }
-  seed = Math.abs(seed) || 42;
-  const random = () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed & 0x7fffffff) / 2147483647;
-  };
-  return Array.from({ length: count }, (_, index) => {
-    const time = index / count;
-    const envelope =
-      0.3 + 0.3 * Math.sin(time * Math.PI * 3.2) + 0.2 * Math.sin(time * Math.PI * 7.1);
-    return Math.max(0.05, Math.min(1, envelope * (0.4 + 0.6 * random())));
-  });
-}
-
 async function loadWaveform(
   audioUrl: string,
   waveformUrl: string | undefined,
   signal: AbortSignal,
 ): Promise<number[]> {
-  try {
-    return waveformUrl
-      ? await fetchWaveformPeaks(waveformUrl, signal)
-      : await decodeWaveformPeaks(audioUrl, signal);
-  } catch (error) {
-    if (signal.aborted) throw error;
-    return fakePeaks(waveformUrl ?? audioUrl, 4000);
-  }
+  // Failures propagate. Synthesised peaks are worse than an honest gap: an
+  // author trims and beat-aligns against this waveform, and a plausible
+  // fabrication is indistinguishable from the real thing while being wrong.
+  // The scheduler caches the failure (metadataFailureTtlMs) so the degraded
+  // state neither refetch-loops nor pins itself past a transient error.
+  return waveformUrl
+    ? await fetchWaveformPeaks(waveformUrl, signal)
+    : await decodeWaveformPeaks(audioUrl, signal);
 }
 
 async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
@@ -192,6 +174,27 @@ export const AudioWaveform = memo(function AudioWaveform({
               "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
           }}
         />
+      )}
+      {/* Degraded state — the decode failed; say so rather than paint a
+          waveform the author could edit against. */}
+      {snapshot.status === "error" && (
+        <div
+          className="absolute inset-x-0 flex items-center justify-center gap-1.5"
+          style={{ top: 16, bottom: 0 }}
+        >
+          <div
+            className="absolute inset-x-0"
+            style={{
+              bottom: "20%",
+              height: 2,
+              background:
+                "repeating-linear-gradient(90deg, rgba(75,163,210,0.35) 0 2px, transparent 2px 5px)",
+            }}
+          />
+          <span className="relative rounded bg-black/50 px-1 text-[8px] text-neutral-500">
+            waveform unavailable
+          </span>
+        </div>
       )}
       {label && (
         <div className="absolute inset-x-0 top-0 z-10 px-1.5 py-0.5">

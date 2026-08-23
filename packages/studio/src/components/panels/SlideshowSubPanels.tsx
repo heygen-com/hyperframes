@@ -23,7 +23,7 @@ export function SectionHeader({
   return (
     <button
       type="button"
-      className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-medium text-neutral-400 hover:text-neutral-200 border-b border-neutral-800 transition-colors"
+      className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-medium text-neutral-400 hover:text-neutral-200 active:bg-neutral-800/60 border-b border-neutral-800 transition-colors"
       onClick={onToggle}
       aria-expanded={expanded}
     >
@@ -64,6 +64,7 @@ export function SlideList({
       {rows.map((scene) => {
         const isSlide = slideIds.has(scene.id);
         const isSelected = selectedSceneId === scene.id;
+        const slideIndex = slides.findIndex((s) => s.sceneId === scene.id);
         return (
           <div
             key={scene.id}
@@ -98,7 +99,8 @@ export function SlideList({
                   type="button"
                   aria-label="Move slide up"
                   title="Move up"
-                  className="px-1 py-0.5 text-[10px] text-neutral-400 hover:text-white disabled:opacity-30"
+                  disabled={slideIndex <= 0}
+                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-white enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReorder(scene.id, "up");
@@ -110,7 +112,8 @@ export function SlideList({
                   type="button"
                   aria-label="Move slide down"
                   title="Move down"
-                  className="px-1 py-0.5 text-[10px] text-neutral-400 hover:text-white disabled:opacity-30"
+                  disabled={slideIndex === slides.length - 1}
+                  className="px-1 py-0.5 text-[10px] text-neutral-400 enabled:hover:text-white enabled:active:scale-[0.95] disabled:opacity-30 disabled:cursor-not-allowed"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReorder(scene.id, "down");
@@ -310,6 +313,7 @@ function BranchItem({
 }: BranchItemProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(seq.label);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const commitRename = useCallback(() => {
     const label = draft.trim();
@@ -341,7 +345,10 @@ function BranchItem({
             title="Click to rename"
             onClick={() => setEditing(true)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setEditing(true);
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setEditing(true);
+              }
             }}
           >
             {seq.label}
@@ -350,12 +357,42 @@ function BranchItem({
         <button
           type="button"
           aria-label={`Delete branch ${seq.label}`}
-          className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors px-1"
-          onClick={() => onDelete(seq.id)}
+          className="text-[10px] text-neutral-500 hover:text-red-400 active:scale-[0.95] transition-colors px-1"
+          onClick={() => setConfirmingDelete(true)}
         >
           ✕
         </button>
       </div>
+      {confirmingDelete && (
+        <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex flex-col gap-1 rounded-sm">
+          <span className="text-[10px] text-red-400">
+            Delete branch &ldquo;{seq.label}&rdquo;
+            {seq.slides.length > 0
+              ? ` and its ${seq.slides.length} slide${seq.slides.length === 1 ? "" : "s"}`
+              : ""}
+            ? Hotspots pointing to it will no longer resolve.
+          </span>
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDelete(seq.id);
+              }}
+              className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-px pl-2">
         {scenes.map((scene) => {
           const assigned = seq.slides.some((s) => s.sceneId === scene.id);
@@ -447,6 +484,16 @@ export function HotspotTool({
           Selected element:{" "}
           <span className="text-neutral-200 font-mono">{elementKey ?? "none"}</span>
         </p>
+        {!elementKey && (
+          <p className="text-[10px] text-neutral-500 italic">
+            Click an element on the canvas to choose the hotspot target.
+          </p>
+        )}
+        {sequences.length === 0 && (
+          <p className="text-[10px] text-neutral-500 italic">
+            Create a branch in the Branches section first — hotspots jump to a branch.
+          </p>
+        )}
         <label className="text-[11px] text-neutral-400">Hotspot label</label>
         <input
           type="text"
@@ -473,7 +520,14 @@ export function HotspotTool({
         <button
           type="button"
           disabled={!elementKey || !targetSequenceId}
-          className="px-3 py-1.5 rounded bg-studio-accent/80 hover:bg-studio-accent text-white text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={
+            !elementKey
+              ? "Select an element on the canvas first"
+              : !targetSequenceId
+                ? "Choose a target branch first"
+                : undefined
+          }
+          className="px-3 py-1.5 rounded bg-studio-accent/80 enabled:hover:bg-studio-accent enabled:active:scale-[0.98] text-white text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={handleMakeHotspot}
         >
           Make hotspot

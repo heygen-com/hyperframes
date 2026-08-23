@@ -110,12 +110,17 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       )}
       {snapshot.status === "loading" && urls.length === 0 && (
         <div
-          className="absolute inset-0 animate-pulse"
+          className="absolute inset-0 animate-pulse motion-reduce:animate-none"
           style={{
             background:
               "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
           }}
         />
+      )}
+      {snapshot.status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/60">
+          <span className="rounded bg-black/50 px-1 text-[8px] text-neutral-500">no preview</span>
+        </div>
       )}
       {label && (
         <div

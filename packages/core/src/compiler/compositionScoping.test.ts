@@ -169,6 +169,40 @@ body { margin: 0; }
     expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
   });
 
+  it("hands native window methods back bound to the real window", () => {
+    // Regression: the scoped `window` proxy returned natives UNBOUND, so `this`
+    // at call time was the Proxy itself and Chrome rejected it with
+    // "Illegal invocation" — breaking window.addEventListener, setTimeout,
+    // matchMedia, getComputedStyle and requestAnimationFrame in every
+    // sub-composition, including the window.addEventListener("hf-seek", ...)
+    // form the Three.js and TypeGPU adapters document. The sibling document
+    // and gsap proxies in this file always bound; this one did not.
+    const { document } = parseHTML(`<div data-composition-id="scene"></div>`);
+    const fakeWindow: Record<string, unknown> = { document, __timelines: {} };
+    let boundToWindow = false;
+    // Method shorthand, not `function () {}`: like a real native method it has
+    // no `.prototype`, which is the property the proxy uses to tell a method
+    // apart from a class. Stands in for the native brand check, which throws
+    // when the method is invoked with anything else as `this`.
+    const natives = {
+      addEventListener(this: unknown) {
+        if (this !== fakeWindow) throw new TypeError("Illegal invocation");
+        boundToWindow = true;
+      },
+    };
+    fakeWindow.addEventListener = natives.addEventListener;
+
+    const wrapped = wrapScopedCompositionScript(
+      `window.addEventListener("hf-seek", function () {});`,
+      "scene",
+    );
+    new Function("window", wrapped)(fakeWindow);
+
+    // Asserted on the call landing, not on throwing: the wrapper's error
+    // boundary swallows the TypeError, which is why this shipped unnoticed.
+    expect(boundToWindow).toBe(true);
+  });
+
   it("preserves non-getVariables members on window.__hyperframes (only getVariables is rescoped)", () => {
     const { document } = parseHTML(`<div data-composition-id="card-1"></div>`);
     let fitCalled = false;

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -51,6 +51,17 @@ function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): b
   } catch {
     return false;
   }
+}
+
+function makeSymlinkProject(
+  projectFiles: Record<string, string>,
+  secretCss: string,
+): { dir: string; outsideDir: string } {
+  const outsideDir = mkdtempSync(join(tmpdir(), "hf-outside-"));
+  writeFileSync(join(outsideDir, "secret.css"), secretCss);
+  const dir = makeTempProject(projectFiles);
+  symlinkSync(join(outsideDir, "secret.css"), join(dir, "evil.css"));
+  return { dir, outsideDir };
 }
 
 describe("bundleToSingleHtml", () => {
@@ -1388,6 +1399,41 @@ describe("bundleToSingleHtml", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  describe("symlink path traversal (security: F-005)", () => {
+    it("does not inline CSS from a symlink pointing outside projectDir", async () => {
+      const { dir, outsideDir } = makeSymlinkProject(
+        {
+          "index.html": `<!doctype html><html><head>
+<link rel="stylesheet" href="evil.css"></head>
+<body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+        },
+        ".outside-secret { color: red; }",
+      );
+      try {
+        expect(await bundleToSingleHtml(dir)).not.toContain("outside-secret");
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not inline CSS via @import through a symlink pointing outside projectDir", async () => {
+      const { dir, outsideDir } = makeSymlinkProject(
+        {
+          "index.html": `<!doctype html><html><head>
+<link rel="stylesheet" href="main.css"></head>
+<body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+          "main.css": "@import './evil.css';",
+        },
+        ".import-secret { color: blue; }",
+      );
+      try {
+        expect(await bundleToSingleHtml(dir)).not.toContain("import-secret");
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
   });
 });
 

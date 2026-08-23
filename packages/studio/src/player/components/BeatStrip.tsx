@@ -14,7 +14,7 @@ import {
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 
 export const BEAT_BAND_H = 14; // dark band height at top of track
-const BEAT_HIT_W = 12; // grab width per beat (px)
+const BEAT_HIT_W = 24; // grab width per beat (px) — ≥24px pointer target
 
 interface BeatDragActor {
   readonly pointerId: number;
@@ -355,8 +355,9 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
 
 /**
  * Green beat dots on the music track's row. Drag a dot to move its beat,
- * double-click to delete; both scrub the audio. Dot size/brightness scale with
- * beat loudness (gamma-curved for contrast).
+ * ⌥-click to delete (kept off double-click so a stuttered drag can't destroy
+ * a beat); both scrub the audio. Dot size/brightness scale with beat loudness
+ * (gamma-curved for contrast). Deletes remain undoable via ⌘Z.
  */
 export const BeatStrip = memo(function BeatStrip({
   beatTimes,
@@ -412,7 +413,7 @@ export const BeatStrip = memo(function BeatStrip({
           <div
             key={`${t}-${i}`}
             className="absolute select-none"
-            title="Drag to move · double-click to delete"
+            title="Drag to move · ⌥-click to delete"
             draggable={false}
             style={{
               left: x - BEAT_HIT_W / 2,
@@ -428,9 +429,15 @@ export const BeatStrip = memo(function BeatStrip({
               // selection (which otherwise "selects" the whole panel mid-drag).
               e.preventDefault();
               e.stopPropagation();
+              // ⌥ starts no drag: the delete lands on release below, so a
+              // slipped ⌥-drag abandons instead of destroying the beat.
+              if (e.altKey) return;
               beginBeatDrag(e, t, pps);
             }}
-            onDoubleClick={(e) => {
+            onClick={(e) => {
+              if (!e.altKey) return;
+              // ⌥-click deletes. Deliberately NOT double-click: a stuttered drag
+              // attempt reads as a double-click and would destroy the beat.
               e.stopPropagation();
               deleteBeatAtCompositionTime(t);
               usePlayerStore.getState().requestSeek(Math.max(0, t)); // park scrubber at deleted beat

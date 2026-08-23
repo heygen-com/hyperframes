@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useMenuKeyboardNav } from "./menuKeyboardNav";
 
 interface ClipContextMenuProps {
   x: number;
@@ -24,6 +25,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDelete,
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
+  useMenuKeyboardNav(menuRef);
 
   const menuWidth = 200;
   const menuHeight = 80;
@@ -44,14 +46,17 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      role="menu"
+      aria-label="Clip actions"
+      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
         <>
           <button
             type="button"
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left ${
+            role="menuitem"
+            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none focus-visible:bg-neutral-800 ${
               canSplit
                 ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
                 : "text-neutral-600 cursor-not-allowed"
@@ -73,7 +78,8 @@ export const ClipContextMenu = memo(function ClipContextMenu({
 
       <button
         type="button"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+        role="menuitem"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-none cursor-pointer text-left"
         onClick={() => {
           onDelete(element);
           onClose();

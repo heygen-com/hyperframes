@@ -5,9 +5,9 @@ import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync
 import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
 import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { presentRenderPlan } from "./render/present.js";
-import { executeRenderPlan, renderLintContinuationHint } from "./render/execute.js";
+import { executeRenderPlan, renderLintContinuationHint, runRenderLint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
-export { resolveBrowserGpuForCli, renderLintContinuationHint };
+export { resolveBrowserGpuForCli, renderLintContinuationHint, runRenderLint };
 
 export const examples: Example[] = [
   ["Render to MP4", "hyperframes render --output output.mp4"],
@@ -79,6 +79,7 @@ import { runEnvironmentChecks } from "../browser/preflight.js";
 import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
+import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
 import {
   markRenderSucceeded,
@@ -901,12 +902,15 @@ export async function renderLocal(
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
     maybeConsumeDeParallelRouterTrial(deParallelRouterActive, job, options.quiet);
+    // The render container sets `ENV CONTAINER=true`; suggesting `--docker`
+    // from inside it is a misdirection (heygen-com/hyperframes#3370).
+    const inContainer = process.env.CONTAINER === "true";
     handleRenderError(
       error,
       options,
       startTime,
       false,
-      "Try --docker for containerized rendering",
+      inContainer ? "" : "Try --docker for containerized rendering",
       job.failedStage,
       job,
     );
@@ -1431,6 +1435,20 @@ function handleRenderError(
   const macosRemediation = macosOldChromeCrashRemediation(message);
   if (macosRemediation) {
     errorBox("Render failed — Chrome could not launch", message, macosRemediation);
+    failCommand();
+  }
+  // Windows chrome-headless-shell can crash at launch with
+  // STATUS_STACK_BUFFER_OVERRUN (exit 0xC0000409 / 3221225595). Same
+  // HYPERFRAMES_BROWSER_PATH remediation as the download-time hint (#2443)
+  // and the closed-with-invite arm64 macOS sibling (#2078). Field feedback
+  // ts=1784116246.
+  const windowsRemediation = windowsChromeCrashRemediation(message);
+  if (windowsRemediation) {
+    errorBox(
+      "Render failed — chrome-headless-shell crashed at launch",
+      message,
+      windowsRemediation,
+    );
     failCommand();
   }
   errorBox("Render failed", message, hint);

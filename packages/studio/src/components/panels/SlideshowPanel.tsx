@@ -183,6 +183,13 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
   const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(
     () => new Set<SectionKey>(["slides", "inspector"]),
   );
+  // Persist failure surfacing: edits keep working in memory, but the user must
+  // know the file write failed (and be able to retry) — never silent data loss.
+  const [persistError, setPersistError] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  // In-panel undo history of manifest snapshots (discrete edits only).
+  const undoStackRef = useRef<SlideshowManifest[]>([]);
+  const [undoDepth, setUndoDepth] = useState(0);
 
   const currentTime = usePlayerStore((s) => s.currentTime);
   const { domEditSelection } = useDomEditSelectionContext();
@@ -209,25 +216,55 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
     setManifest(parsed);
     manifestRef.current = parsed;
     setSelectedSequenceId(null);
+    // History belongs to one composition — a switch starts fresh.
+    undoStackRef.current = [];
+    setUndoDepth(0);
+    setPersistError(false);
   }, [compHtml]);
 
   /** Discrete actions (toggle, reorder, add/delete, hotspot): persist immediately. */
   const applyManifest = useCallback(
-    async (next: SlideshowManifest) => {
+    async (next: SlideshowManifest, opts?: { skipUndo?: boolean }) => {
       // Fold any in-flight typed notes into the discrete manifest so they are
       // not silently dropped when the debounce timer would have fired later.
       const merged = notesCtrlRef.current.mergeIntoDiscrete(next);
+      if (!opts?.skipUndo) {
+        undoStackRef.current.push(manifestRef.current);
+        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+        setUndoDepth(undoStackRef.current.length);
+      }
       setManifest(merged);
       manifestRef.current = merged;
       // Surface persist failures instead of swallowing them at each call site.
       try {
         await onPersist(merged);
+        setPersistError(false);
       } catch (err) {
         console.error("[slideshow] failed to persist manifest edit:", err);
+        setPersistError(true);
       }
     },
     [onPersist],
   );
+
+  const handleUndo = useCallback(() => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) return;
+    setUndoDepth(undoStackRef.current.length);
+    applyManifest(prev, { skipUndo: true }).catch(() => {});
+  }, [applyManifest]);
+
+  const handleRetryPersist = useCallback(async () => {
+    setRetrying(true);
+    try {
+      await onPersist(manifestRef.current);
+      setPersistError(false);
+    } catch (err) {
+      console.error("[slideshow] retry persist failed:", err);
+    } finally {
+      setRetrying(false);
+    }
+  }, [onPersist]);
 
   /**
    * Notes path: update in-memory state immediately for a responsive UI, but
@@ -338,18 +375,10 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
     [applyManifest],
   );
 
+  // Confirmation is inline in BranchItem (consistent with the FileTree/assets
+  // delete pattern); by the time this fires the user has already confirmed.
   const handleDeleteSequence = useCallback(
     (id: string) => {
-      // Deleting a branch removes its slides and orphans any hotspot targeting it —
-      // confirm first to prevent accidental data loss.
-      const seq = (manifestRef.current.slideSequences ?? []).find((s) => s.id === id);
-      const count = seq?.slides.length ?? 0;
-      const label = seq?.label ?? id;
-      const ok = window.confirm(
-        `Delete branch "${label}"${count ? ` and its ${count} slide${count === 1 ? "" : "s"}` : ""}? ` +
-          `Hotspots pointing to it will no longer resolve.`,
-      );
-      if (!ok) return;
       applyManifest(deleteSequence(manifestRef.current, id)).catch(() => {});
     },
     [applyManifest],
@@ -383,7 +412,47 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
   );
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto text-white">
+    <div
+      className="flex flex-col h-full overflow-y-auto text-white"
+      onKeyDown={(e) => {
+        // In-panel undo — scoped so it never fights the app-level file undo.
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+          const target = e.target instanceof HTMLElement ? e.target.tagName : "";
+          if (target === "TEXTAREA" || target === "INPUT") return;
+          e.preventDefault();
+          e.stopPropagation();
+          handleUndo();
+        }
+      }}
+    >
+      {persistError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-2 px-3 py-2 bg-red-950/40 border-b border-red-500/40"
+        >
+          <span className="text-[11px] text-red-300">Changes not saved</span>
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={handleRetryPersist}
+            className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
+          >
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
+      {undoDepth > 0 && (
+        <div className="flex items-center justify-end px-3 py-1 border-b border-neutral-800/60">
+          <button
+            type="button"
+            onClick={handleUndo}
+            title="Undo last slideshow edit (⌘Z)"
+            className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
+          >
+            Undo ({undoDepth})
+          </button>
+        </div>
+      )}
       <SectionHeader
         expanded={expandedSections.has("slides")}
         onToggle={() => toggleSection("slides")}

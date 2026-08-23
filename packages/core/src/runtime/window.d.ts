@@ -37,6 +37,12 @@ declare global {
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
+      /**
+       * Studio's "Hear only this" push: the full set of soloed clip/group ids,
+       * replaced wholesale on every change. Session-only by design — never
+       * read from or written to any document attribute.
+       */
+      setAudioSolo?: (ids: readonly string[]) => void;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

@@ -16,6 +16,7 @@ import {
   createAutomationSelectionSlice,
   type AutomationSelectionSlice,
 } from "./automationSelectionSlice";
+import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 
@@ -49,7 +50,8 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice {
+interface PlayerState
+  extends KeyframeSlice, AutomationSelectionSlice, ThumbnailSlice, EditingModeSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -89,20 +91,6 @@ interface PlayerState extends KeyframeSlice, AutomationSelectionSlice, Thumbnail
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
   activeKeyframePct: number | null;
   setActiveKeyframePct: (pct: number | null) => void;
-  /** Motion-path "set destination" mode. Armed from the preview toolbar (replaces
-   *  the old double-click-on-canvas UX); while armed, one canvas click places the
-   *  new path's destination. `available` is published by MotionPathOverlay so the
-   *  toolbar shows the button only when the selected element can take a path. */
-  motionPathArmed: boolean;
-  setMotionPathArmed: (armed: boolean) => void;
-  motionPathCreateAvailable: boolean;
-  setMotionPathCreateAvailable: (available: boolean) => void;
-  /** Global toggle for the "Add keyframe" diamond in the timeline toolbar (#1808).
-   *  When false, a manual drag/resize/rotate edit on an element that already has
-   *  a live tween shifts every keyframe by the edit's delta (preserving the
-   *  animation's shape) instead of inserting/updating a keyframe at the playhead. */
-  autoKeyframeEnabled: boolean;
-  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -331,15 +319,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   ...createThumbnailSlice(set),
 
   ...createAutomationSelectionSlice(set),
+  ...createEditingModeSlice(set),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
-  motionPathArmed: false,
-  setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
-  motionPathCreateAvailable: false,
-  setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
-  autoKeyframeEnabled: true,
-  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),
   setSelection: (ids, anchor) => set(resolveElementSelection(ids, anchor)),

@@ -46,7 +46,11 @@ const TIMELINE_REGISTRY_KEY_PATTERN =
 
 // The `window.__timelines = { ... }` object-literal body (group 1), captured so its
 // `key: value` entries can be scanned for registered keys.
-const TIMELINE_REGISTRY_OBJECT_BODY_PATTERN = /window\.__timelines\s*=\s*\{([\s\S]*?)\}/i;
+// Locates the START of a `window.__timelines = { ... }` literal. Deliberately does
+// not try to match the closing brace: see readTimelineRegistryObjectBody, which walks
+// braces instead. A regex cannot tell the registry's own `}` from the `}` of an
+// inlined options object.
+const TIMELINE_REGISTRY_OBJECT_OPEN_PATTERN = /window\.__timelines\s*=\s*\{/i;
 // A single object-literal entry whose value is an identifier (real timeline registration),
 // e.g. `main: tl` or `"comp-1": tl`. Captures the key in group 1 (quoted) or 2 (bare).
 const TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN =
@@ -246,18 +250,69 @@ export function extractTimelineRegistryKeys(source: string): string[] {
     const key = match[1] ?? match[2];
     if (key) keys.add(key);
   }
-  const objectBody = TIMELINE_REGISTRY_OBJECT_BODY_PATTERN.exec(source)?.[1];
-  if (objectBody) {
-    const entryPattern = new RegExp(
-      TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.source,
-      TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.flags,
-    );
-    while ((match = entryPattern.exec(objectBody)) !== null) {
-      const key = match[1] ?? match[2];
-      if (key) keys.add(key);
-    }
-  }
+  for (const entry of readTimelineRegistryTopLevelKeys(source)) keys.add(entry);
   return [...keys];
+}
+
+/**
+ * Top-level keys of a `window.__timelines = { ... }` literal.
+ *
+ * Walks brace depth rather than regex-matching the body. The previous non-greedy
+ * body match stopped at the first `}` it saw, which for the legal one-liner
+ *
+ *   window.__timelines = { main: gsap.timeline({ paused: true }) };
+ *
+ * was the brace of the INLINED OPTIONS OBJECT. The entry scanner then harvested
+ * `paused` as a composition id and timeline_id_mismatch reported a timeline
+ * "registered as paused" — a registration that does not exist, so its fixHint
+ * could never be applied. Hoisting the timeline to a variable was the only escape,
+ * and nothing said so.
+ */
+/** Index of the brace that closes the group opened just before `bodyStart`. */
+function findMatchingBrace(source: string, bodyStart: number): number {
+  let depth = 1;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}" && (depth -= 1) === 0) return i;
+  }
+  return source.length;
+}
+
+/** Replace every nested brace group with spaces so only depth-0 text remains. */
+function blankNestedBraceGroups(body: string): string {
+  let out = "";
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      out += ch;
+      continue;
+    }
+    out += " ";
+  }
+  return out;
+}
+
+function readTimelineRegistryTopLevelKeys(source: string): string[] {
+  const open = TIMELINE_REGISTRY_OBJECT_OPEN_PATTERN.exec(source);
+  if (!open) return [];
+
+  const bodyStart = open.index + open[0].length;
+  const body = source.slice(bodyStart, findMatchingBrace(source, bodyStart));
+  const flattened = blankNestedBraceGroups(body);
+
+  const keys: string[] = [];
+  const entryPattern = new RegExp(
+    TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.source,
+    TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.flags,
+  );
+  let entry: RegExpExecArray | null;
+  while ((entry = entryPattern.exec(flattened)) !== null) {
+    const key = entry[1] ?? entry[2];
+    if (key) keys.push(key);
+  }
+  return keys;
 }
 
 export function getInlineScriptSyntaxError(source: string): string | null {
@@ -270,6 +325,27 @@ export function getInlineScriptSyntaxError(source: string): string | null {
     if (error instanceof Error) return error.message;
     return String(error);
   }
+}
+
+// fallow-ignore-next-line complexity
+/**
+ * Blank the contents of every `'...'` and `"..."` literal, keeping the quotes so
+ * the source stays the same shape.
+ *
+ * Needed because a composition that *displays* source code carries things like
+ * `Math.random()` inside a string it never executes. Scanning raw script text for
+ * non-determinism reported those compositions as non-deterministic, and no edit
+ * could clear it while keeping the displayed snippet intact.
+ *
+ * Template literals are deliberately left alone: `${Math.random()}` inside one IS
+ * executed, and blanking it would hide real non-determinism. A snippet stored in a
+ * backtick string therefore still reports — a narrower gap than the one this closes.
+ */
+export function stripStringLiterals(source: string): string {
+  return source.replace(
+    /(['"])(?:\\.|(?!\1)[^\\\n])*\1?/g,
+    (literal) => literal[0] + " ".repeat(Math.max(0, literal.length - 1)),
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -392,4 +468,18 @@ export function truncateSnippet(value: string, maxLength = 220): string | undefi
   if (!normalized) return undefined;
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+/**
+ * Matches a media tag carrying a real `src` attribute, capturing the tag name in
+ * group 1 and the src value in group 2.
+ *
+ * The leading whitespace before `src` is load-bearing: `\bsrc\s*=` also matches
+ * the tail of `data-var-src="bg"` (a hyphen/`s` boundary is a word boundary), and
+ * since `[^>]*` is greedy it wins over a real `src` earlier in the same tag. Every
+ * element using a variable binding was therefore reported as referencing a missing
+ * file named after the variable id.
+ */
+export function mediaSrcTagRe(tagAlternation: string): RegExp {
+  return new RegExp(`<(${tagAlternation})\\b[^>]*\\ssrc\\s*=\\s*["']([^"']+)["'][^>]*>`, "gi");
 }

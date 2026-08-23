@@ -7,13 +7,13 @@ Open-source video rendering framework: write HTML, render video.
 This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 20 only when the user explicitly asks for the full set.
 
 ```bash
-npx hyperframes skills update                                   # default: installs/refreshes the core set — workflows install on demand
-npx skills add heygen-com/hyperframes --full-depth              # interactive picker (terminal only — non-interactive without --skill installs all 20)
-npx skills add heygen-com/hyperframes --all --full-depth        # all 20 at once — only on explicit request
-npx skills add heygen-com/hyperframes --skill <name> --full-depth  # just one (bare name, no leading slash)
+npx hyperframes skills update                         # default: installs/refreshes the core set — workflows install on demand
+npx skills add heygen-com/hyperframes                 # interactive picker (terminal only — non-interactive without --skill installs all 20)
+npx skills add heygen-com/hyperframes --all           # all 20 at once — only on explicit request
+npx skills add heygen-com/hyperframes --skill <name>  # just one (bare name, no leading slash)
 ```
 
-Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours (you'd get a stale skill). `hyperframes skills update` already uses full-depth.
+`skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs from the current `main`; prefer it when freshness matters.
 
 **`/hyperframes` is the entry skill — read it first.** It's the capability map for the domain skills below, the intent layer that confirms every creation brief up front, AND the intent router for the creation workflows. The full README skills section mirrors this list; keep them in sync (see "Skill catalog maintenance" below).
 

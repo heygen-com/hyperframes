@@ -105,6 +105,11 @@
       "path": "assets/courier-prime-700.woff2",
       "target": "assets/courier-prime-700.woff2",
       "type": "hyperframes:asset"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }

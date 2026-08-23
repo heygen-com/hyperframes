@@ -315,6 +315,50 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not flag one sub-composition mounted repeatedly with per-instance values", async () => {
+      // Regression: sub-compositions.md "Per-Instance Variables" documents
+      // mounting one source several times with different data-variable-values.
+      // That necessarily repeats the id, and the runtime rewrites repeated
+      // mounts to `id__hf1`/`id__hf2` so they coexist. Flagging it made the
+      // documented pattern an error with no correct way to satisfy it.
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="6" data-no-timeline>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"one"}' data-start="0" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"two"}' data-start="2" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-variable-values='{"text":"three"}' data-start="4" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "duplicate_composition_id")).toBeUndefined();
+    });
+
+    it("still flags a real collision between a root and a non-mount element", async () => {
+      // The guard that keeps the exemption honest: skipping mounts must not
+      // blind the rule to the meta-versus-root collision it exists for, even
+      // when a legitimately repeated mount is present in the same file.
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="composition-id" data-composition-id="main">
+</head>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="4" data-no-timeline>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="word" data-composition-src="compositions/word-caption.html" data-start="2" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("main");
+    });
+
     it("ignores composition ids inside inert template content", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
@@ -524,78 +568,6 @@ describe("composition rules", () => {
 </body></html>`;
       const result = await lintHyperframeHtml(html);
       const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
-      expect(finding).toBeUndefined();
-    });
-  });
-
-  describe("overlapping_clips_same_track", () => {
-    it("flags overlapping clips on the same track", async () => {
-      const html = `
-<html><body>
-  <div data-composition-id="c1" data-width="1920" data-height="1080">
-    <div class="clip" data-start="0" data-duration="3" data-track-index="0">A</div>
-    <div class="clip" data-start="2" data-duration="3" data-track-index="0">B</div>
-  </div>
-  <script>
-    window.__timelines = window.__timelines || {};
-    window.__timelines["c1"] = gsap.timeline({ paused: true });
-  </script>
-</body></html>`;
-      const result = await lintHyperframeHtml(html);
-      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
-      expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("error");
-    });
-
-    it("does not flag clips on different tracks", async () => {
-      const html = `
-<html><body>
-  <div data-composition-id="c1" data-width="1920" data-height="1080">
-    <div class="clip" data-start="0" data-duration="3" data-track-index="0">A</div>
-    <div class="clip" data-start="1" data-duration="3" data-track-index="1">B</div>
-  </div>
-  <script>
-    window.__timelines = window.__timelines || {};
-    window.__timelines["c1"] = gsap.timeline({ paused: true });
-  </script>
-</body></html>`;
-      const result = await lintHyperframeHtml(html);
-      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
-      expect(finding).toBeUndefined();
-    });
-
-    it("does not flag sequential clips on the same track", async () => {
-      const html = `
-<html><body>
-  <div data-composition-id="c1" data-width="1920" data-height="1080">
-    <div class="clip" data-start="0" data-duration="2" data-track-index="0">A</div>
-    <div class="clip" data-start="2" data-duration="2" data-track-index="0">B</div>
-  </div>
-  <script>
-    window.__timelines = window.__timelines || {};
-    window.__timelines["c1"] = gsap.timeline({ paused: true });
-  </script>
-</body></html>`;
-      const result = await lintHyperframeHtml(html);
-      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
-      expect(finding).toBeUndefined();
-    });
-
-    it("does not flag adjacencies where parseFloat + add drifts by a few ulps", async () => {
-      // parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004
-      const html = `
-<html><body>
-  <div data-composition-id="c1" data-width="1920" data-height="1080">
-    <div class="clip" data-start="0.1" data-duration="0.2" data-track-index="0">A</div>
-    <div class="clip" data-start="0.3" data-duration="0.2" data-track-index="0">B</div>
-  </div>
-  <script>
-    window.__timelines = window.__timelines || {};
-    window.__timelines["c1"] = gsap.timeline({ paused: true });
-  </script>
-</body></html>`;
-      const result = await lintHyperframeHtml(html);
-      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
       expect(finding).toBeUndefined();
     });
   });
@@ -1084,6 +1056,38 @@ describe("composition rules", () => {
         (f) => f.code === "invalid_composition_variables_declaration",
       );
       expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("unloadable_media_variable_default", () => {
+    const CODE = "unloadable_media_variable_default";
+    const find = (r: { findings: { code: string }[] }) => r.findings.find((f) => f.code === CODE);
+
+    it("errors on an image variable defaulting to a file:// URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"bg","type":"image","label":"BG","default":"file:///abs/assets/blue.png"}]'><body><img data-composition-id="x" src="assets/red.png" data-var-src="bg"></body></html>`;
+      const finding = find(await lintHyperframeHtml(html));
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toMatch(/authored fallback/);
+    });
+
+    it("errors on a non-image variable that a data-var-src binding consumes as a URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"clip","type":"string","label":"Clip","default":"file:///abs/a.mp4"}]'><body><video data-composition-id="x" src="a.mp4" data-var-src="clip"></video></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeDefined();
+    });
+
+    it("stays quiet for relative, http(s) and data:image defaults", async () => {
+      const html = `<html data-composition-variables='[
+        {"id":"a","type":"image","label":"A","default":"assets/blue.png"},
+        {"id":"b","type":"image","label":"B","default":"https://example.com/b.png"},
+        {"id":"c","type":"image","label":"C","default":"data:image/png;base64,iVBORw0KGgo="}
+      ]'><body><img data-composition-id="x" src="r.png" data-var-src="a"></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeUndefined();
+    });
+
+    it("does not treat an unbound scalar variable as a URL", async () => {
+      const html = `<html data-composition-variables='[{"id":"note","type":"string","label":"Note","default":"mailto:hi@example.com"}]'><body><div data-composition-id="x"></div></body></html>`;
+      expect(find(await lintHyperframeHtml(html))).toBeUndefined();
     });
   });
 

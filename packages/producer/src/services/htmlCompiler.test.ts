@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
+import { redactTelemetryString } from "@hyperframes/core";
 import { defaultLogger } from "../logger.js";
 import { NotMediaPayloadError } from "@hyperframes/engine";
 import {
@@ -2761,5 +2762,72 @@ describe("duplicate media ids across nested compositions", () => {
     expect(compiled.audios).toHaveLength(2);
     expect(compiled.audios[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
     expect(compiled.audios[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+});
+
+describe("STUDIO-5433 — ffprobe failure includes src URL for attribution", () => {
+  function writeCorruptVideoProject(videoSrc: string, assetBytes: Buffer): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-studio-5433-"));
+    mkdirSync(join(projectDir, "assets"), { recursive: true });
+    writeFileSync(join(projectDir, "assets", "clip.mp4"), assetBytes);
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="root" data-start="0" data-duration="4" data-width="640" data-height="360">
+      <video
+        id="clip"
+        src="${videoSrc}"
+        data-start="0"
+        data-duration="4"
+        data-width="640"
+        data-height="360"
+      ></video>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("wraps the ffprobe error with [src=<relative-path>] when the local video is corrupt", async () => {
+    // 0-byte mp4 — ffprobe reports "Invalid data found when processing input",
+    // the same class as the STUDIO-5433 moov failure. Fail-fast semantics remain
+    // (video branch throws, unlike audio's graceful-degrade to duration=0).
+    const projectDir = writeCorruptVideoProject("assets/clip.mp4", Buffer.alloc(0));
+
+    let thrown: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    // A bare relative path IS the redactor's `BARE_RELATIVE_PATH` shape (one
+    // separator + a media extension), so it lands as `[path]`. The attribution
+    // that matters is the remote-URL case below; a local relative src carries
+    // no host to attribute and the redactor is right to drop it.
+    expect(message).toContain("[src=[path]]");
+    // Original ffprobe diagnostic must still be present so failure classifiers
+    // downstream (e.g. hyperframes_render_metrics.py) continue to match.
+    expect(message).toMatch(/ffprobe|Invalid data|No video stream/i);
+  });
+
+  // The STUDIO-5433 case is a remote src, and that is the shape whose
+  // attribution has to survive redaction: host + path kept, query dropped so a
+  // pre-signed signature never reaches telemetry. Pinned on the redactor
+  // directly — driving a remote src through `compileForRender` would need a
+  // download stub, and the wrapper's only transform IS this call.
+  it("keeps host and path but drops the query when redacting a remote src", () => {
+    expect(redactTelemetryString("https://cdn.example.com/renders/clip.mp4?sig=abc123&exp=1")).toBe(
+      "https://cdn.example.com/renders/clip.mp4?\u2026",
+    );
   });
 });

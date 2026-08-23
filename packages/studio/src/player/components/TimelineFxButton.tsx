@@ -18,6 +18,7 @@ import {
 } from "@hyperframes/core/audio-fx";
 import type { HfAudioNameKind } from "@hyperframes/core/audio-carve";
 import { TimelineFxPopover } from "../../components/editor/TimelineFxPopover.js";
+import { resolveFloatingPanelPosition } from "../../components/editor/floatingPanel.js";
 import {
   useAuditionTransport,
   type AuditionSpan,
@@ -33,6 +34,26 @@ import {
  * auto-named group on one click and said only "Group these clips to add effects
  * to all of them", which leaves out the shared volume entirely.
  */
+// Estimated, like FORMAT_PANEL_SIZE in RenderQueue: `w-64` is exact, and only
+// the flip decision uses the height — the clamp keeps the dialog on screen
+// either way.
+const GROUP_DIALOG_SIZE = { width: 256, height: 160 };
+
+/** Where the grouping dialog goes: flipped above the anchor when there is no
+ *  room below, and clamped so neither edge leaves the viewport. This button
+ *  lives in a track header at the BOTTOM of the studio window, so an unclamped
+ *  `anchorRect.bottom + 4` opened it past the viewport edge and read as "the
+ *  grouping button did nothing". */
+function groupDialogPosition(anchorRect: DOMRect): { left: number; top: number } {
+  const { left, top } = resolveFloatingPanelPosition(
+    anchorRect,
+    { width: window.innerWidth, height: window.innerHeight },
+    GROUP_DIALOG_SIZE,
+    { offset: 4 },
+  );
+  return { left, top };
+}
+
 function GroupNameDialog({
   anchorRect,
   clipCount,
@@ -59,7 +80,7 @@ function GroupNameDialog({
         role="dialog"
         aria-label="This track cannot be grouped"
         className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] leading-snug text-white/75 shadow-xl"
-        style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+        style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
@@ -77,7 +98,7 @@ function GroupNameDialog({
       role="dialog"
       aria-label="Name this group"
       className="z-[200] w-64 rounded-md border border-white/10 bg-[#1b1b1f] p-3 text-[11px] text-white/75 shadow-xl"
-      style={{ position: "fixed", left: anchorRect.left, top: anchorRect.bottom + 4 }}
+      style={{ position: "fixed", ...groupDialogPosition(anchorRect) }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         if (event.key === "Escape") {

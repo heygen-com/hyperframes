@@ -250,12 +250,19 @@ export function useRenderQueue(projectId: string | null) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-      } catch {
+      } catch (err) {
+        // The cause used to be discarded. Every failure — a dead server, an
+        // aborted request, a DNS error, a mid-render crash — surfaced as the
+        // same sentence, and this string is what travels into the feedback
+        // report too, so field reports of a render that fails *every time*
+        // still carried nothing to act on. Keep the CLI guidance, name the
+        // cause after it.
+        const cause = err instanceof Error ? err.message : String(err);
         const failedJob: RenderJob = {
           id: generateId(),
           status: "failed",
           progress: 0,
-          error: "Could not reach render server. Use `hyperframes render` from the CLI instead.",
+          error: `Could not reach render server: ${cause}. Use \`hyperframes render\` from the CLI instead.`,
           filename: "Export failed",
           createdAt: startTime,
         };
