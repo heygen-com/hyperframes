@@ -125,6 +125,34 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/hooks/useAudioSoloBridge.ts",
     "#3453 removes the obsolete solo bridge after its last consumer leaves",
   ],
+  [
+    "packages/studio/src/hooks/useGroupLevel.ts",
+    "#3454 deliberately removes the group level meter with the group volume strip",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineGroupBusStrip.test.tsx",
+    "#3454 deliberately removes the group volume and level-meter strip and its tests",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineGroupBusStrip.tsx",
+    "#3454 deliberately removes the group volume and level-meter strip",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineSoloButton.tsx",
+    "#3454 deliberately removes track and group solo controls",
+  ],
+  [
+    "packages/studio/src/player/store/audioSoloSlice.test.ts",
+    "#3454 deliberately removes session solo state and its tests",
+  ],
+  [
+    "packages/studio/src/player/store/audioSoloSlice.ts",
+    "#3454 deliberately removes session solo state",
+  ],
+  [
+    "packages/studio/src/player/store/groupLevels.ts",
+    "#3454 deliberately removes group level-meter state",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

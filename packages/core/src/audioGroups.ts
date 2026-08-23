@@ -232,24 +232,3 @@ export function ensureAudioGroupInertStyle(doc: Document): void {
   style.textContent = `${HF_AUDIO_GROUP_TAG}{display:none!important}`;
   doc.head.appendChild(style);
 }
-
-/** Compatibility bridge until the Studio solo controls are removed later in the stack. */
-export function isAudibleUnderSolo(
-  soloed: ReadonlySet<string>,
-  id: string,
-  groupId?: string | null,
-): boolean {
-  if (soloed.size === 0) return true;
-  if (soloed.has(id)) return true;
-  return Boolean(groupId && soloed.has(groupId));
-}
-
-/** Compatibility bridge until the Studio solo controls are removed later in the stack. */
-export function isGroupHalfLitUnderSolo(
-  soloed: ReadonlySet<string>,
-  groupId: string,
-  memberIds: readonly string[],
-): boolean {
-  if (soloed.size === 0 || soloed.has(groupId)) return false;
-  return memberIds.some((id) => soloed.has(id));
-}
