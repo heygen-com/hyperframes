@@ -6,6 +6,8 @@ import {
   createImplicitTimelineLayersFromDOM,
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
+import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import { invalidateGroupInfoCache } from "./timelineGroupInfo";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
@@ -110,6 +112,92 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   });
 });
 
+describe("group info cache", () => {
+  const parseMember = (doc: Document) =>
+    createTimelineElementFromManifestClip({
+      clip: {
+        id: "voice-1",
+        label: "voice-1",
+        kind: "element",
+        tagName: "audio",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("voice-1"),
+    });
+
+  // Group edits are applied as LIVE patches so the preview iframe never
+  // reloads, which means the document identity this cache is keyed on never
+  // changes either. Without an explicit drop, a muted group could never be
+  // unmuted: the header kept reading the cached `hidden: false` and re-wrote
+  // `data-hidden` forever.
+  it("re-reads group state after an invalidation", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
+
+    doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
+    expect(parseMember(doc).audioGroupHidden).toBe(false); // still the cached scan
+
+    invalidateGroupInfoCache(doc);
+    expect(parseMember(doc).audioGroupHidden).toBe(true);
+
+    doc.getElementById("voiceover")?.removeAttribute("data-hidden");
+    invalidateGroupInfoCache(doc);
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
+  });
+
+  // The explicit invalidator is a convenience, not the contract. A cache whose
+  // only defence is "every writer must remember to call this" rots the first
+  // time a writer does not know it exists — which is precisely what happened
+  // with the FX rack, whose group writes go through the DOM editor rather than
+  // the timeline's own writers. The scan carries the DOM revision it was taken
+  // at, so a forgotten call costs a re-scan rather than a wrong answer.
+  it("expires itself on a group edit nobody announced", async () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+
+    expect(parseMember(doc).audioGroupHidden).toBe(false);
+
+    // No invalidateGroupInfoCache call anywhere in this test.
+    doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
+    await new Promise((resolve) => setTimeout(resolve, 0)); // observer microtask
+
+    expect(parseMember(doc).audioGroupHidden).toBe(true);
+  });
+
+  it("notices a member joining the group, not just an attribute edit", async () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voices"></hf-audio-group>
+      </div>
+    `);
+    expect(parseMember(doc).audioGroupLabel).toBe("Voices");
+
+    doc.getElementById("voiceover")?.setAttribute("data-label", "Narration");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(parseMember(doc).audioGroupLabel).toBe("Narration");
+  });
+});
+
 describe("parseTimelineFromDOM — canonical playback rate", () => {
   it.each([
     ["10", 5],
@@ -204,6 +292,33 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
     expect(element.sourceFile).toBe("scene.html");
     expect(element.selectorIndex).toBe(1);
     expect(element.key).toBe("scene.html:.sub:1");
+  });
+});
+
+// Caught by looking at the studio, not by reading: a grouped composition drew
+// "Voiceover • 0.0s – 12.0s" as a full-duration clip row directly above its own
+// group header. `<hf-audio-group>` is a mixer bus — no timing, drawn as a group
+// row by the group derivation — but it is still a body child with an id, so the
+// implicit-layer fallback happily gave it a track. Draggable and trimmable, and
+// writing timing onto a bus means nothing.
+describe("<hf-audio-group> is not a timeline layer", () => {
+  it("gets no implicit row of its own", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <audio id="voice-1" data-start="0" data-duration="6" data-audio-group="voiceover"></audio>
+        <hf-audio-group id="voiceover" data-label="Voiceover"></hf-audio-group>
+      </div>
+    `);
+
+    const implicit = createImplicitTimelineLayersFromDOM(doc, 12, []);
+
+    expect(implicit.map((el) => el.domId)).not.toContain("voiceover");
+  });
+
+  it("is excluded by the shared ignore predicate", () => {
+    const doc = makeDoc(`<hf-audio-group id="vo"></hf-audio-group><div id="panel"></div>`);
+    expect(isTimelineIgnoredElement(doc.getElementById("vo") as Element)).toBe(true);
+    expect(isTimelineIgnoredElement(doc.getElementById("panel") as Element)).toBe(false);
   });
 });
 

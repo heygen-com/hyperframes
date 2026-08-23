@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
+import { nextSelectionSet, revealTargetsSelection } from "./playerStoreSelection";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
@@ -14,15 +16,15 @@ import {
   createAutomationSelectionSlice,
   type AutomationSelectionSlice,
 } from "./automationSelectionSlice";
+import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
 import { createAudioSoloSlice, type AudioSoloSlice } from "./audioSoloSlice";
-import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
 
-import type { TimelineElement } from "./timelineElement";
+import type { TimelineElement, TimelineElementPatch } from "./timelineElement";
 
 export type { TimelineElement };
 export type ZoomMode = "fit" | "manual";
@@ -135,22 +137,7 @@ interface PlayerState
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
-  updateElement: (
-    elementId: string,
-    updates: Partial<
-      Pick<
-        TimelineElement,
-        | "start"
-        | "duration"
-        | "track"
-        | "zIndex"
-        | "hasExplicitZIndex"
-        | "playbackStart"
-        | "hidden"
-        | "audioGroup"
-      >
-    >,
-  ) => void;
+  updateElement: (elementId: string, updates: TimelineElementPatch) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;
@@ -241,6 +228,19 @@ export interface DomClipChild {
   hostId: string;
   label: string;
   stackingContextId: string;
+  /**
+   * The child's audio-group state, read off its live element during the DOM
+   * walk — the only place that sees it. A sub-composition can declare a group
+   * and its members entirely within itself, and those members never reach the
+   * flat store, so an expanded child has no twin to inherit membership from.
+   */
+  audioGroup?: string;
+  audioGroupLabel?: string;
+  audioGroupVolume?: number;
+  audioGroupHidden?: boolean;
+  audioGroupFxChain?: string;
+  /** The group element's `data-automation`, mirrored the same way. */
+  audioGroupAutomation?: string;
 }
 
 interface BeatHistoryEntry {
@@ -274,6 +274,7 @@ export function createTimelineResetState() {
     expandedGroupIds: new Set<string>(),
     expandedLaneOwnerIds: new Set<string>(),
     focusedEaseSegment: null,
+    revealedAudioFxTarget: null,
     selectedElementIds: new Set<string>(),
     requestedSeekTime: null,
     lintFindingsByElement: new Map<string, { count: number; messages: string[] }>(),
@@ -519,18 +520,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // echoes that must preserve a group go through setSelectionAnchor instead.
   setSelectedElementId: (id, options) =>
     set((s) => {
-      const preserveSet = Boolean(options?.preserveSet && id && s.selectedElementIds.has(id));
-      const selectedElementIds = preserveSet
-        ? new Set(s.selectedElementIds)
-        : options?.preserveSet
-          ? new Set<string>()
-          : id
-            ? new Set([id])
-            : new Set<string>();
+      const selectedElementIds = nextSelectionSet(s.selectedElementIds, id, options?.preserveSet);
       // Selecting a different element drops any active keyframe selection — otherwise
       // a stale activeKeyframePct from a prior diamond click would force the next drag
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
       // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
+      // A reveal request survives the selection it is FOR. `openClipFxRack`
+      // raises the request and then selects the clip asynchronously, so the
+      // selection lands afterwards and used to clear the very request that
+      // caused it — the panel then read null and the section never opened.
+      // Any OTHER selection still drops it: a request aimed elsewhere is stale.
+      //
+      // Compared across the ID-SPACE BOUNDARY, which is why this needs saying:
+      // a request carries the BARE dom id (`runtimeAudioId`, because the panel
+      // and the runtime speak that), while this store's ids are
+      // `sourceFile#domId`. A direct `===` was silently never true — the exact
+      // shape of failure the id-space split produces.
+      const revealSurvives = revealTargetsSelection(s.revealedAudioFxTarget, id);
       return id !== s.selectedElementId
         ? {
             selectedElementId: id,
@@ -538,6 +544,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             activeKeyframePct: null,
             motionPathArmed: false,
             focusedEaseSegment: null,
+            ...(revealSurvives ? {} : { revealedAudioFxTarget: null }),
           }
         : { selectedElementId: id, selectedElementIds };
     }),
@@ -579,15 +586,4 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   reset: () => set(createTimelineResetState()),
 }));
 
-function isDevBuild(): boolean {
-  try {
-    return import.meta.env.DEV === true;
-  } catch {
-    // Turbopack and other non-Vite bundlers may not provide import.meta.env.
-    return false;
-  }
-}
-if (isDevBuild() && typeof window !== "undefined") {
-  // Console handle for dumping live Studio state during bug-bash reproduction.
-  (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
-}
+attachPlayerStoreDevHandle(usePlayerStore);

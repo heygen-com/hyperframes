@@ -1,5 +1,12 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { isAudioTimelineElement, isMusicTrack, resolveBeatSourceTrack } from "./timelineInspector";
+import {
+  canHideSelections,
+  isAudioDomElement,
+  isAudioTimelineElement,
+  isMusicTrack,
+  resolveBeatSourceTrack,
+} from "./timelineInspector";
 import type { TimelineElement } from "../player";
 
 // Minimal element factory for tests
@@ -117,5 +124,32 @@ describe("resolveBeatSourceTrack", () => {
     const clip = el({ id: "my_audio_file", domId: "my_audio_file", timelineRole: undefined });
     const result = resolveBeatSourceTrack([clip]);
     expect(result!.isFallback).toBe(true);
+  });
+});
+
+describe("isAudioDomElement / canHideSelections", () => {
+  const el = (tag: string, src?: string): Element => {
+    const node = document.createElement(tag);
+    if (src) node.setAttribute("src", src);
+    return node;
+  };
+
+  it("agrees with isAudioTimelineElement about tags and source extensions", () => {
+    expect(isAudioDomElement(el("audio"))).toBe(true);
+    expect(isAudioDomElement(el("div", "narration.mp3"))).toBe(true);
+    expect(isAudioDomElement(el("div"))).toBe(false);
+    expect(isAudioDomElement(null)).toBe(false);
+  });
+
+  it("counts a group bus as audio, the way the single-selection panel does", () => {
+    expect(isAudioDomElement(el("hf-audio-group"))).toBe(true);
+  });
+
+  // `data-hidden` on audio is what mutes it — preview silences it and the render
+  // drops it from the mix. A control labelled "Hide all" must not reach that.
+  it("refuses to hide a selection holding any audio, and allows a layout one", () => {
+    expect(canHideSelections([{ element: el("div") }, { element: el("span") }])).toBe(true);
+    expect(canHideSelections([{ element: el("div") }, { element: el("audio") }])).toBe(false);
+    expect(canHideSelections([{ element: el("hf-audio-group") }])).toBe(false);
   });
 });

@@ -142,6 +142,23 @@ export function setPreviewMediaVolume(iframe: HTMLIFrameElement | null, volume: 
   } catch {}
 }
 
+/**
+ * Everything the preview runtime has to be told about audio after it loads.
+ * Called from `applyPreviewAudioState`, which is the path that re-runs after a
+ * preview reload — the runtime comes back with the transport at its defaults
+ * and nothing else pushes them again.
+ */
+export function applyPreviewAudioFlags(
+  iframe: HTMLIFrameElement | null,
+  muted: boolean,
+  volume: number,
+): void {
+  setPreviewMediaMuted(iframe, muted);
+  // Volume too: the transport comes back at unity after a reload, so a preview
+  // the author had turned down came back loud.
+  setPreviewMediaVolume(iframe, volume);
+}
+
 export function setPreviewPlaybackRate(
   iframe: HTMLIFrameElement | null,
   playbackRate: number,

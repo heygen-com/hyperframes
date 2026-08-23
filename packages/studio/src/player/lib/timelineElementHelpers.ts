@@ -11,6 +11,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -81,6 +82,14 @@ function normalizePlaybackRate(raw: number): number {
 }
 
 export function isTimelineIgnoredElement(el: Element): boolean {
+  // An `<hf-audio-group>` is a mixer bus, not a clip: it carries the group's
+  // label, fader, mute and FX chain, has no timing of its own, and is drawn as
+  // a GROUP ROW by the group derivation. Left in, the implicit-layer fallback
+  // also gave it an ordinary full-duration track — so a grouped composition
+  // showed "Voiceover • 0.0s – 12.0s" as a phantom clip directly above the real
+  // group header. Harmless-looking, but that row is draggable and trimmable,
+  // and writing timing onto the bus is meaningless.
+  if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
   return Boolean(
     el.closest(
       [
@@ -344,6 +353,24 @@ export function buildTimelineElementIdentity(params: {
 
 export function getTimelineElementIdentity(element: { key?: string | null; id: string }): string {
   return element.key ?? element.id;
+}
+
+/**
+ * The id space the RUNTIME matches on — a bare DOM id, never a store key.
+ *
+ * Studio addresses rows by `buildTimelineElementKey`'s composite
+ * `<sourceFile>#<domId>`, but everything audio in `@hyperframes/core` keys off
+ * the live document: `resolveAudioGroups` collects `member.id`,
+ * `resolveCarveSourceIds` goes through `getElementById`. Anything crossing into
+ * that space — a group membership list, a carve source — has to be
+ * converted here first; a composite key silently matches nothing.
+ *
+ * `null` for a row with no DOM id at all (selector-addressed elements): such an
+ * element cannot be grouped, because `resolveAudioGroups` skips
+ * members without an `id` and would build a group that is half there.
+ */
+export function runtimeAudioId(element: { domId?: string | null }): string | null {
+  return element.domId || null;
 }
 
 /**
