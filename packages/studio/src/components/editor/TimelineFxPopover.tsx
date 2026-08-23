@@ -91,7 +91,11 @@ export function TimelineFxPopover({
   onOpenRack,
 }: TimelineFxPopoverProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const { audition, clearAudition } = useFxAudition(chain, onChainPreview, onAuditionTransport);
+  const { audition, clearAudition, storedChain } = useFxAudition(
+    chain,
+    onChainPreview,
+    onAuditionTransport,
+  );
 
   // Outside click dismisses like any other popover; the button itself is
   // excluded by pointerdown timing (the button's own click hasn't happened yet).
@@ -104,7 +108,7 @@ export function TimelineFxPopover({
   }, [onClose]);
 
   const applyPreset = (id: string) => {
-    const next = applyPresetToChain(chain, id, trackKind);
+    const next = applyPresetToChain(storedChain(), id, trackKind);
     if (!next) return;
     clearAudition();
     onChainChange(next);
