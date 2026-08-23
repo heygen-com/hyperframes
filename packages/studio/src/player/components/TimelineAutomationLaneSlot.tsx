@@ -105,6 +105,16 @@ function ClipAutomationLanes({
             // editable. Per LANE, not per binding: a carved bed can carry the
             // author's own volume curve beside the carve's bands.
             readOnly={bound.readOnly || isCarveLane(lane.target, bound.chain)}
+            // Two distinct reasons, so two notes. The carve one names the way
+            // out — change strength, or switch the carve off and own the chain
+            // — because "not editable" without that reads as broken.
+            readOnlyNote={
+              isCarveLane(lane.target, bound.chain)
+                ? "Owned by the voiceover carve — re-derived on every analysis. Change strength in the FX rack, or turn the carve off to edit these by hand."
+                : bound.readOnly
+                  ? "Read-only here."
+                  : undefined
+            }
             rangeSelection={
               bound.selection?.target === lane.target
                 ? {

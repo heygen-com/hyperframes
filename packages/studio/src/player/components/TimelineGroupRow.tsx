@@ -122,47 +122,60 @@ export function TimelineGroupRow({
       borderColor={theme.rowBorder}
       rovingTargetId={rovingTargetId}
     >
-      <TimelineGroupHeader
-        label={group.label}
-        memberCount={group.memberTracks.length}
-        isExpanded={!collapsedGroupIds.has(group.id)}
-        onToggleExpanded={() => toggleGroupExpanded(group.id)}
-        // The GROUP's own lanes, not its members'. `∿` is per-row (groups doc
-        // §5: "∿ is lit on vo-1 but not vo-2, the same control per row"), and
-        // counting the members' here made the group advertise curves it does
-        // not own and cannot show.
-        laneCount={groupAutomationLanes([groupElement]).length}
-        isLaneOpen={isLaneOpen}
-        onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
-        fxChain={group.fxChain}
-        onFxChainChange={(next) => writeGroupFxChain(next, false)}
-        onFxChainPreview={(next) => writeGroupFxChain(next, true)}
-        auditionSpans={memberElements}
-        onOpenFxRack={openGroupFxRack}
-        // Same width as every other row's header. The group row needs a real
-        // label column, but it gets one by turning `labelMode` on for the whole
-        // timeline (see Timeline.tsx) rather than by overhanging alone — an
-        // overhanging header paints opaquely across the rest of its row and
-        // stays pinned there through horizontal scroll.
-        columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
-        theme={theme}
-      />
-      {/* The group's OWN curves, under the strip. Selected-gated exactly like a
+      {/* Header and its lane labels in ONE sticky column — the shape
+          `TimelineTrackHeader` already uses: a fixed TRACK_H line box with the
+          lane rows absolutely positioned beneath it, the whole thing pinned.
+          The labels used to be SIBLINGS of the header, so `absolute left-0`
+          resolved against the ROW, and the row is what scrolls horizontally —
+          they slid away with the canvas. Sticky lives here rather than on the
+          header, which keeps its own box inside; a zero-width sticky wrapper
+          around the labels alone does not work either, because as a flex item
+          after the header it starts at x = columnWidth, i.e. inside the lanes. */}
+      <div
+        className="sticky left-0 z-[12] shrink-0"
+        style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}
+      >
+        <TimelineGroupHeader
+          label={group.label}
+          memberCount={group.memberTracks.length}
+          isExpanded={!collapsedGroupIds.has(group.id)}
+          onToggleExpanded={() => toggleGroupExpanded(group.id)}
+          // The GROUP's own lanes, not its members'. `∿` is per-row (groups doc
+          // §5: "∿ is lit on vo-1 but not vo-2, the same control per row"), and
+          // counting the members' here made the group advertise curves it does
+          // not own and cannot show.
+          laneCount={groupAutomationLanes([groupElement]).length}
+          isLaneOpen={isLaneOpen}
+          onToggleLanes={() => toggleLaneOwnerExpanded(group.id)}
+          fxChain={group.fxChain}
+          onFxChainChange={(next) => writeGroupFxChain(next, false)}
+          onFxChainPreview={(next) => writeGroupFxChain(next, true)}
+          auditionSpans={memberElements}
+          onOpenFxRack={openGroupFxRack}
+          // Same width as every other row's header. The group row needs a real
+          // label column, but it gets one by turning `labelMode` on for the whole
+          // timeline (see Timeline.tsx) rather than by overhanging alone — an
+          // overhanging header paints opaquely across the rest of its row and
+          // stays pinned there through horizontal scroll.
+          columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
+          theme={theme}
+        />
+        {/* The group's OWN curves, under the strip. Selected-gated exactly like a
           clip's: the binder writes through the dom-edit selection, so a lane is
           editable once the group is selected — which clicking its name does. */}
-      {/* The label column for those lanes, on the accent rail. Outside the
-          offset content cell below, because the labels belong to the sticky
-          gutter the row header occupies, not to the scrolling canvas. */}
-      {isLaneOpen && (
-        <TimelineGroupLaneLabels
-          groupElement={groupElement}
-          groupLabel={group.label}
-          top={TRACK_H}
-          columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
-          gutterBackground={theme.gutterBackground}
-          accentColor={GROUP_LANE_ACCENT}
-        />
-      )}
+        {/* The label column for those lanes, on the accent rail — inside the
+            sticky column above, so they pin with the header. */}
+        {isLaneOpen && (
+          <TimelineGroupLaneLabels
+            groupElement={groupElement}
+            groupLabel={group.label}
+            top={TRACK_H}
+            columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
+            gutterBackground={theme.gutterBackground}
+            accentColor={GROUP_LANE_ACCENT}
+          />
+        )}
+      </div>
       {isLaneOpen && (
         // The same offset content cell a track row wraps its lanes in — the
         // slot positions absolutely, so mounted straight on the row it resolved
