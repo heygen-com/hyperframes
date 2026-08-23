@@ -99,6 +99,16 @@ export function readElementAutomation(el: {
 export interface ElementFxHandle {
   dispose(): void;
   /**
+   * Re-book every envelope against a fresh reference frame.
+   *
+   * For a graph that OUTLIVES the source feeding it — a group bus, which is
+   * built once and kept for the session — a replay or a seek starts a new pass
+   * over the same chain. Without re-anchoring, the envelopes stay committed to
+   * the first pass's absolute context times: past their last point that is a
+   * stuck value, which for a fade-out is silence for the rest of the session.
+   */
+  reanchor(timing: AutomationTiming): void;
+  /**
    * Re-aim every booked envelope at a new playback rate.
    *
    * Lanes are committed to absolute context times, so a param scheduled at 1×
@@ -277,6 +287,13 @@ export function attachElementFxChain(
   }
 
   return {
+    reanchor: (next: AutomationTiming) => {
+      if (disposed) return;
+      const at = timingNow();
+      if (at) cancelParamLane(automated, at.scheduledAt);
+      frame = { ...next };
+      scheduleFor(readChain(el).chain, frame);
+    },
     setRate: (rate: number) => {
       const at = timingNow();
       if (disposed || !at || !Number.isFinite(rate) || rate <= 0 || rate === at.rate) return;

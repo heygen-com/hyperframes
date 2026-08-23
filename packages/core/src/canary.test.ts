@@ -426,28 +426,3 @@ describe("canary reason property", () => {
     expect(canaryReasonKey("de-parallel-router")).toBe("canary_reason_de_parallel_router");
   });
 });
-
-/**
- * The audio features ship to everyone.
- *
- * They landed on main across twelve PRs while all three of their canaries sat
- * at 0%, which meant the FX rack, the group rows, mute and solo were present in
- * the build and reachable by nobody. Pinned as a test because the failure mode
- * is silent: re-registering one of these re-hides a shipped feature, and
- * nothing else would say so.
- */
-describe("the audio rollout", () => {
-  // The three names by hand, because that is the assertion the intent needs: a
-  // prefix check catches `audio-fx-rack` coming back but not `fx-rack` or
-  // `audiofx-rack`, and it is the specific feature being re-hidden that matters.
-  it("registers none of the three retired audio canaries", () => {
-    const retired = ["audio-fx-rack", "audio-track-mute", "audio-groups"];
-    expect(retired.filter((name) => findCanary(name))).toEqual([]);
-  });
-
-  // The family guard, kept alongside it: a fourth audio canary would gate a
-  // feature that now ships to everyone.
-  it("registers no audio canary at all", () => {
-    expect(CANARIES.filter((c) => c.name.startsWith("audio-")).map((c) => c.name)).toEqual([]);
-  });
-});

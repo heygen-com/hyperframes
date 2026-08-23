@@ -136,23 +136,125 @@ describe("the worklet processors themselves", () => {
       return crossings / ((s.length - start) / SR);
     }
 
-    it("at semitones: 0, mix: 1 reproduces the input, delayed by exactly one grain/2", async () => {
+    // This assertion used to be that the output equalled the input DELAYED by
+    // grain/2 — the measurement was right and was written down as the contract.
+    // But the grain delay is there to shift pitch, and at semitones: 0 nothing
+    // is being shifted: the node degenerated into a pure 50 ms delay of the
+    // signal, plus a head of silence while the ring filled, under a label that
+    // reads "Unchanged pitch".
+    it("at semitones: 0, mix: 1 passes the input through untouched", async () => {
       const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
       if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
       const p = new HfPitchshift({ processorOptions: { semitones: 0, mix: 1 } });
       const input = sine(440, 0.5);
       const output = run(p, input);
-      const grain = Math.round(SR * 0.1);
-      // readTap reads from `write - 1`, i.e. one sample behind the one just
-      // written in this same iteration — so the effective delay is one sample
-      // more than the nominal grain/2.
-      const delay = grain / 2 + 1;
-      // Skip the first grain while the ring buffer is still filling.
       let maxErr = 0;
-      for (let i = grain * 2; i < input.length; i++) {
-        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i - delay] ?? 0)));
+      for (let i = 0; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
       }
       expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    it("mix: 0 passes the input through untouched too", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 0 } });
+      const input = sine(440, 0.25);
+      const output = run(p, input);
+      let maxErr = 0;
+      for (let i = 0; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
+      }
+      expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    /** Largest sample-to-sample step — a splice between the dry and the
+     *  ~50 ms-delayed wet path shows up here as a discontinuity. */
+    function maxStep(s: Float32Array, from: number, to: number): number {
+      let worst = 0;
+      for (let i = from + 1; i < to; i++) {
+        worst = Math.max(worst, Math.abs((s[i] ?? 0) - (s[i - 1] ?? 0)));
+      }
+      return worst;
+    }
+
+    // Dragging the semitones slider off zero mid-playback swaps the output from
+    // x[t] to x[t-50ms]. Switched hard that is an audible click; the wet amount
+    // is ramped instead. A 440 Hz sine steps ~0.057 per sample at its steepest,
+    // so anything near the signal's own peak is a splice, not the waveform.
+    it("does not click when the shift moves off zero mid-signal", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 0, mix: 1 } });
+      run(p, sine(440, 0.3)); // settled dry, ring warm
+      p.p = { ...p.p, semitones: 7 };
+      const output = run(p, sine(440, 0.3));
+      expect(maxStep(output, 0, output.length)).toBeLessThan(0.2);
+    });
+
+    it("does not click on the way back to zero either", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 1 } });
+      run(p, sine(440, 0.3));
+      p.p = { ...p.p, semitones: 0 };
+      const output = run(p, sine(440, 0.3));
+      expect(maxStep(output, 0, output.length)).toBeLessThan(0.2);
+    });
+
+    // ...and having ramped back down it must reach TRUE bypass, not sit on a
+    // permanently latched wet path. The render builds a fresh node from the
+    // saved attribute and bypasses at semitones 0; a preview that stayed wet
+    // would carry a 50 ms delay the export does not have.
+    it("returns to true bypass after being shifted and set back to zero", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 1 } });
+      run(p, sine(440, 0.3));
+      p.p = { ...p.p, semitones: 0 };
+      run(p, sine(440, 0.3)); // ramp down settles here
+
+      const input = sine(440, 0.3);
+      const output = run(p, input);
+      let maxErr = 0;
+      for (let i = 0; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
+      }
+      expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    // A node parked at mix 0 has shifted nothing, so it must not have spent
+    // anything that stops the zero-shift bypass engaging later.
+    it("is transparent at zero after sitting mixed fully out", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 0 } });
+      run(p, sine(440, 0.3));
+
+      p.p = { ...p.p, semitones: 0, mix: 1 };
+      const input = sine(440, 0.3);
+      const output = run(p, input);
+      let maxErr = 0;
+      for (let i = 0; i < input.length; i++) {
+        maxErr = Math.max(maxErr, Math.abs((output[i] ?? 0) - (input[i] ?? 0)));
+      }
+      expect(maxErr).toBeLessThan(1e-6);
+    });
+
+    // The ring starts empty, so the taps read zeros for the first grain. That
+    // used to come out of the head of every clip as silence; it ramps the wet
+    // path in instead, which is unshifted audio rather than no audio.
+    it("does not open with silence while the grain buffer fills", async () => {
+      const HfPitchshift = (await loadProcessors()).get("hf-pitchshift");
+      if (!HfPitchshift) throw new Error("hf-pitchshift not registered");
+      const p = new HfPitchshift({ processorOptions: { semitones: 7, mix: 1 } });
+      const input = sine(440, 0.5);
+      const output = run(p, input);
+      // Peak over the first 20 ms — well inside the old dead zone.
+      let peak = 0;
+      for (let i = 0; i < Math.round(SR * 0.02); i++)
+        peak = Math.max(peak, Math.abs(output[i] ?? 0));
+      expect(peak).toBeGreaterThan(0.5);
     });
 
     it("at semitones: 12, doubles the fundamental (one octave up)", async () => {

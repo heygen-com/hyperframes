@@ -151,7 +151,11 @@ export {
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
 } from "./compiler/timingCompiler";
 
-export { MEDIA_RENDER_ID_ATTR, assignMediaRenderIds } from "./compiler/mediaRenderIds";
+export {
+  AUDIO_GROUP_RENDER_ID_ATTR,
+  MEDIA_RENDER_ID_ATTR,
+  assignMediaRenderIds,
+} from "./compiler/mediaRenderIds";
 
 export {
   RENDER_FRAME_ID_PREFIX,

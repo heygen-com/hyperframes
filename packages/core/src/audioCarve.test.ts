@@ -10,6 +10,8 @@ import {
   clipsOverlap,
   mixCarveSources,
   couldBeCarveSource,
+  couldBeCarveBed,
+  isNamedCarveBed,
   DEFAULT_CARVE,
   normalizeCarveSettings,
 } from "./audioCarve.js";
@@ -536,6 +538,30 @@ describe("classifyAudioName", () => {
     expect(couldBeCarveSource("a1")).toBe(true);
     expect(couldBeCarveSource("music-bed")).toBe(false);
     expect(couldBeCarveSource("sfx-explosion")).toBe(false);
+  });
+
+  // The near-end rule, which nothing used to ask. `couldBeCarveSource` shipped
+  // with its own doc comment ("music and sfx are out") and no caller; the bed
+  // side had no predicate at all, so a narration clip was offered the carve and
+  // — finding one candidate — had one applied for it, against the group it was
+  // a member of.
+  it("never offers a voice track as the bed, but keeps an unnamed one eligible", () => {
+    expect(couldBeCarveBed("music-bed")).toBe(true);
+    expect(couldBeCarveBed("sfx-riser")).toBe(true);
+    expect(couldBeCarveBed("a1")).toBe(true);
+    expect(couldBeCarveBed("vo-2")).toBe(false);
+    expect(couldBeCarveBed("voiceover")).toBe(false);
+    expect(couldBeCarveBed("narration-3")).toBe(false);
+  });
+
+  // Showing the control is a suggestion; writing the attribute is a decision.
+  // A decision taken off a name that said nothing is how a carve appears that
+  // nobody remembers configuring — so `a1` may be offered but never chosen.
+  it("only self-applies to a name that positively reads as a bed", () => {
+    expect(isNamedCarveBed("music-bed")).toBe(true);
+    expect(isNamedCarveBed("sfx-riser")).toBe(true);
+    expect(isNamedCarveBed("a1")).toBe(false);
+    expect(isNamedCarveBed("vo-2")).toBe(false);
   });
 
   it("treats underscores as separators, not word characters, for short hints", () => {

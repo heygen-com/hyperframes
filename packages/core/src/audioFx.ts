@@ -509,7 +509,12 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
     id: "pitchshift",
     label: "Pitch shift",
     group: "time",
-    description: "Shifts pitch up or down without changing playback speed.",
+    // The granular algorithm reads from a 100 ms grain, so its output runs a
+    // constant ~50 ms behind its input and nothing in the graph subtracts that
+    // — there is no latency/pre-roll concept here yet. It is inaudible on its
+    // own and audible against picture or against an unshifted track, so it is
+    // stated rather than hidden. `semitones: 0` bypasses the node entirely.
+    description: "Shifts pitch up or down without changing playback speed. Adds ~50 ms of latency.",
     params: [
       {
         kind: "number",
@@ -917,50 +922,7 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
   if (!Array.isArray(obj.nodes)) {
     throw new AudioFxChainError("Chain file is missing a `nodes` array.");
   }
-  const nodes: HfAudioFxNode[] = obj.nodes.map((n, i) => {
-    if (typeof n !== "object" || n === null) {
-      throw new AudioFxChainError(`Node ${i} is not an object.`);
-    }
-    const node = n as {
-      type?: unknown;
-      id?: unknown;
-      enabled?: unknown;
-      params?: unknown;
-      fromCarve?: unknown;
-      fromPreset?: unknown;
-      label?: unknown;
-      fromEq?: unknown;
-      fromLeveller?: unknown;
-      presetAmount?: unknown;
-    };
-    if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
-      throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
-    }
-    return {
-      type: node.type,
-      ...(typeof node.id === "string" && node.id ? { id: node.id } : {}),
-      ...(node.fromCarve === true ? { fromCarve: true as const } : {}),
-      // Both survive the round trip or a preset stops being able to find its
-      // own nodes after a reload: re-applying would stack a second copy and
-      // the rack would lose the grouping it braces them with.
-      ...(typeof node.fromPreset === "string" && node.fromPreset
-        ? { fromPreset: node.fromPreset }
-        : {}),
-      ...(typeof node.label === "string" && node.label ? { label: node.label } : {}),
-      ...(typeof node.fromEq === "string" && node.fromEq ? { fromEq: node.fromEq } : {}),
-      ...(node.fromLeveller === true ? { fromLeveller: true as const } : {}),
-      // Clamped on the way in: the blend is two gains in opposition, and a value
-      // outside 0..1 makes the dry leg negative rather than simply loud.
-      ...(typeof node.presetAmount === "number" && Number.isFinite(node.presetAmount)
-        ? { presetAmount: Math.min(1, Math.max(0, node.presetAmount)) }
-        : {}),
-      enabled: node.enabled !== false,
-      params: normalizeAudioFxParams(
-        node.type,
-        (node.params ?? undefined) as HfAudioFxParamValues | undefined,
-      ),
-    };
-  });
+  const nodes = obj.nodes.map(parseAudioFxNode);
   return { version: HF_AUDIO_FX_CHAIN_VERSION, nodes };
 }
 
@@ -973,22 +935,7 @@ export function enabledAudioFxNodes(chain: HfAudioFxChain): HfAudioFxNode[] {
 export function serializeAudioFxChain(chain: HfAudioFxChain): string {
   return JSON.stringify({
     version: HF_AUDIO_FX_CHAIN_VERSION,
-    nodes: chain.nodes.map((node) => ({
-      type: node.type,
-      ...(node.id ? { id: node.id } : {}),
-      ...(node.fromCarve === true ? { fromCarve: true } : {}),
-      ...(node.fromPreset ? { fromPreset: node.fromPreset } : {}),
-      ...(node.label ? { label: node.label } : {}),
-      ...(node.fromEq ? { fromEq: node.fromEq } : {}),
-      ...(node.fromLeveller === true ? { fromLeveller: true } : {}),
-      // Omitted when fully applied, so an untouched preset does not grow a field
-      // in every chain that carries one.
-      ...(typeof node.presetAmount === "number" && node.presetAmount !== 1
-        ? { presetAmount: node.presetAmount }
-        : {}),
-      ...(node.enabled === false ? { enabled: false } : {}),
-      params: normalizeAudioFxParams(node.type, node.params),
-    })),
+    nodes: chain.nodes.map(serializeAudioFxNode),
   });
 }
 
@@ -1003,4 +950,103 @@ export function mintAudioFxNodeId(chain: HfAudioFxChain): string {
     const id = `n${i}`;
     if (!taken.has(id)) return id;
   }
+}
+
+/** The shape a node is READ as: everything unknown until checked. */
+interface RawAudioFxNode {
+  type?: unknown;
+  id?: unknown;
+  enabled?: unknown;
+  params?: unknown;
+  fromCarve?: unknown;
+  fromPreset?: unknown;
+  label?: unknown;
+  fromEq?: unknown;
+  fromLeveller?: unknown;
+  presetAmount?: unknown;
+}
+
+/**
+ * One node out of a chain file, validated. Throws rather than dropping: a chain
+ * that silently loses a node would render differently from the project the
+ * author saved.
+ */
+function parseAudioFxNode(n: unknown, i: number): HfAudioFxNode {
+  if (typeof n !== "object" || n === null) {
+    throw new AudioFxChainError(`Node ${i} is not an object.`);
+  }
+  const node = n as RawAudioFxNode;
+  if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
+    throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
+  }
+  return withoutUndefined({
+    type: node.type,
+    id: nonEmptyString(node.id),
+    fromCarve: onlyTrue(node.fromCarve),
+    // fromPreset and label both survive the round trip or a preset stops being
+    // able to find its own nodes after a reload: re-applying would stack a
+    // second copy and the rack would lose the grouping it braces them with.
+    fromPreset: nonEmptyString(node.fromPreset),
+    label: nonEmptyString(node.label),
+    fromEq: nonEmptyString(node.fromEq),
+    fromLeveller: onlyTrue(node.fromLeveller),
+    presetAmount: clampedPresetAmount(node.presetAmount),
+    enabled: node.enabled !== false,
+    params: normalizeAudioFxParams(
+      node.type,
+      (node.params ?? undefined) as HfAudioFxParamValues | undefined,
+    ),
+  });
+}
+
+/** One node as the `data-fx-chain` attribute carries it. Every optional field is
+ *  omitted when it holds its default, so a plain chain stays plain. */
+function serializeAudioFxNode(node: HfAudioFxNode) {
+  return withoutUndefined({
+    type: node.type,
+    id: nonEmptyString(node.id),
+    fromCarve: onlyTrue(node.fromCarve),
+    fromPreset: nonEmptyString(node.fromPreset),
+    label: nonEmptyString(node.label),
+    fromEq: nonEmptyString(node.fromEq),
+    fromLeveller: onlyTrue(node.fromLeveller),
+    // Omitted when fully applied, so an untouched preset does not grow a field
+    // in every chain that carries one.
+    presetAmount: node.presetAmount === 1 ? undefined : clampedPresetAmount(node.presetAmount),
+    // Only the non-default is written: a chain of enabled nodes stays plain.
+    enabled: node.enabled === false ? (false as const) : undefined,
+    params: normalizeAudioFxParams(node.type, node.params),
+  });
+}
+
+/**
+ * The field readers the two node codecs share.
+ *
+ * Written as readers rather than as conditional spreads inline: nine
+ * `...(cond ? { x } : {})` clauses in one object literal is nine branches in a
+ * function whose actual job is "copy the fields that are set", and it read as
+ * complex because it was measured as complex.
+ */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function onlyTrue(value: unknown): true | undefined {
+  return value === true ? true : undefined;
+}
+
+/** Clamped on the way in: the blend is two gains in opposition, and a value
+ *  outside 0..1 makes the dry leg negative rather than simply loud. */
+function clampedPresetAmount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Drop the keys whose reader returned undefined, so an absent field stays
+ *  absent rather than becoming an explicit `undefined` in the document. */
+function withoutUndefined<T extends object>(obj: T): T {
+  for (const key of Object.keys(obj) as Array<keyof T>) {
+    if (obj[key] === undefined) delete obj[key];
+  }
+  return obj;
 }
