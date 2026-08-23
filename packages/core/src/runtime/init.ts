@@ -39,11 +39,15 @@ import { loadExternalCompositions, loadInlineTemplateCompositions } from "./comp
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
-import { ensureAudioGroupInertStyle } from "../audioGroups.js";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
-import { HF_AUDIO_GROUP_TAG, audioGroupOf, isAudibleUnderSolo } from "../audioGroups";
+import {
+  ensureAudioGroupInertStyle,
+  HF_AUDIO_GROUP_TAG,
+  isMemberGroupHidden,
+} from "../audioGroups";
+import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
@@ -183,20 +187,12 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
-  // Studio's "Hear only this" push channel — session-only, so it rides a
-  // dedicated `__hf` field (mirrors `colorGrading`'s lazy-init pattern) rather
-  // than a DOM attribute: solo must never be written to the document (design
-  // doc §2.2 / the export-safety guarantee), so there is nothing here for
-  // `syncTimedElementVisibility`'s attribute-diffing to key off. Kept in this
-  // closure too (not just inside `webAudio`) so `syncRuntimeMedia`'s
-  // HTMLMedia-fallback path (video/non-transport audio) can apply the same
-  // predicate per tick, the same split A2 used for `data-hidden`.
-  let soloedIds: ReadonlySet<string> = new Set();
   window.__hf = window.__hf || {};
-  window.__hf.setAudioSolo = (ids) => {
-    soloedIds = new Set(ids);
-    webAudio.setSolo(soloedIds);
-  };
+  /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
+   *  never an ancestor — membership is on the member's `data-audio-group` — so
+   *  `closest()` alone could not see a muted group, which the render drops. */
+  const isSilencedByHidden = (el: Element): boolean =>
+    el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -1451,6 +1447,14 @@ export function initSandboxRuntimeModular(): void {
       // scene container we auto-stamp below (e.g. an opacity-crossfaded scene)
       // must NOT suppress its own animated children — otherwise those children
       // never become timeline clips and that scene can't inline-expand.
+      // A bus is not a clip. `<hf-audio-group>` carries a group's label, fader,
+      // mute and FX chain and has no timing of its own, so stamping it put it in
+      // `__clipManifest` as a full-duration element — which the studio drew as an
+      // ordinary clip row above the real group header. That row was draggable,
+      // trimmable and deletable, and deleting it removed the bus, taking the
+      // group's automation lanes and FX rack with it.
+      const isAudioGroupBus = (el: Element): boolean =>
+        el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG;
       const authoredTimed = new Set<Element>(document.querySelectorAll("[data-start]"));
       const hasAuthoredTimedAncestor = (element: HTMLElement): boolean => {
         let node = element.parentElement;
@@ -1469,6 +1473,7 @@ export function initSandboxRuntimeModular(): void {
             for (const target of child.targets()) {
               if (!(target instanceof HTMLElement)) continue;
               if (target === rootComp) continue;
+              if (isAudioGroupBus(target)) continue;
               if (target.hasAttribute("data-start")) continue;
               if (hasAuthoredTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
@@ -1496,6 +1501,7 @@ export function initSandboxRuntimeModular(): void {
           if (hasAuthoredTimedAncestor(el)) continue;
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
+          if (isAudioGroupBus(el)) continue;
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
@@ -1939,7 +1945,16 @@ export function initSandboxRuntimeModular(): void {
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
   // playback. Batched to one call per syncTimedElementVisibility pass, not
-  // one per toggled node (schedulePlayback replaces the whole active set).
+  // one per toggled node.
+  //
+  // The reschedule is paired with `stopAll()` below, for the reason
+  // `applyWebAudioRate` already spells out: scheduling does
+  // NOT replace the active set. It bumps a generation, which only rejects
+  // stale schedules still in flight — every source already started keeps
+  // playing, and there is no per-element dedup. This comment used to claim the
+  // opposite and the call site trusted it, so muting a track mid-playback
+  // started a second buffer source for every in-window clip on top of the ones
+  // still sounding: the whole mix audibly doubled, slightly out of phase.
   let hiddenAudioDirty = false;
   const nodeAffectsAudio = (node: HTMLElement): boolean =>
     node.matches("audio[data-start]") || node.querySelector("audio[data-start]") !== null;
@@ -1950,7 +1965,13 @@ export function initSandboxRuntimeModular(): void {
   // export time, per B4); this just keeps the live WebAudio group bus in
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
+  /** Set when a `data-hidden` mutation could have touched a BUS, so the sweep
+   *  below is not a whole-document query on every visibility pass. Same
+   *  dirty-flag shape as `hiddenAudioDirty` right above it. */
+  let groupMuteDirty = true;
   const syncAudioGroupMute = () => {
+    if (!groupMuteDirty) return;
+    groupMuteDirty = false;
     for (const groupEl of document.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
       const hidden = groupEl.hasAttribute("data-hidden");
       if (groupHiddenLast.get(groupEl) === hidden) continue;
@@ -1972,6 +1993,7 @@ export function initSandboxRuntimeModular(): void {
           dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
           dataHiddenDisplayNodes.add(rawNode);
           if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
+          groupMuteDirty = true;
         }
         rawNode.style.display = "none";
         if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
@@ -1990,6 +2012,7 @@ export function initSandboxRuntimeModular(): void {
         dataHiddenDisplayRestores.delete(rawNode);
         dataHiddenDisplayNodes.delete(rawNode);
         if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
+        groupMuteDirty = true;
       }
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
@@ -2019,7 +2042,12 @@ export function initSandboxRuntimeModular(): void {
         rawNode.style.display = "none";
       }
     }
+    // Only when a `data-hidden` mutation actually moved something: the skips
+    // this reschedule exists to re-run are what change the active set, so
+    // firing it otherwise was an audible stop-and-restart across the whole mix
+    // that rebuilt an identical set.
     if (hiddenAudioDirty && clock.isPlaying()) {
+      webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
     hiddenAudioDirty = false;
@@ -2084,7 +2112,6 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
-        isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
@@ -2175,25 +2202,6 @@ export function initSandboxRuntimeModular(): void {
 
     postRuntimeMessage(payload);
     scheduleRootStageLayoutDiagnostics();
-  };
-
-  /** One meter reading per group with an active member — polled from the
-   *  transport's analyser, not the DOM, so an idle group (never played, no
-   *  matching `<hf-audio-group>`) is simply absent rather than reported as
-   *  zero. Cheap when nothing is grouped: `groupIds()` is empty. */
-  const postGroupLevels = () => {
-    const groupIds = webAudio.groupIds();
-    if (groupIds.length === 0) return;
-    const levels = groupIds
-      .map((groupId) => {
-        const reading = webAudio.groupLevel(groupId);
-        return reading ? { groupId, ...reading } : null;
-      })
-      .filter(
-        (entry): entry is { groupId: string; level: number; clipped: boolean } => entry !== null,
-      );
-    if (levels.length === 0) return;
-    postRuntimeMessage({ source: "hf-preview", type: "group-levels", levels });
   };
 
   const finitePositiveDuration = (value: number | null | undefined): number =>
@@ -2953,9 +2961,6 @@ export function initSandboxRuntimeModular(): void {
       if (transportTickCount % 30 === 0) {
         bindMediaMetadataListeners();
       }
-      if (clock.isPlaying()) {
-        postGroupLevels();
-      }
 
       // Sync clock duration with the resolved timeline each tick (catches async
       // rebinds, live data-duration edits). Never shrink while playing — transient
@@ -2987,7 +2992,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            if (rawEl.closest("[data-hidden]")) continue;
+            if (isSilencedByHidden(rawEl)) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -3095,7 +3100,7 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      if (rawEl.closest("[data-hidden]")) continue;
+      if (isSilencedByHidden(rawEl)) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);
@@ -3238,7 +3243,11 @@ export function initSandboxRuntimeModular(): void {
         // assigning the product raw THROWS IndexSizeError and takes the rest of
         // the loop with it. The element carries the legal part; the boost above
         // unity belongs to Web Audio, which already has it from `setVolume`.
-        el.volume = Math.max(0, Math.min(1, clipVolume * volume));
+        //
+        // Through `clampNativeMediaVolume` rather than an inline clamp: that
+        // helper exists in `audioGain.ts` for exactly this bound and is what
+        // `withUnclampedVolume` uses, so the two cannot drift.
+        el.volume = clampNativeMediaVolume(clipVolume * volume);
       }
     },
     onSetMediaOutputMuted: (muted) => {

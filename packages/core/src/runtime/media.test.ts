@@ -577,14 +577,16 @@ describe("syncRuntimeMedia", () => {
   });
 
   describe("data-hidden silences preview volume", () => {
-    it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
+    const hiddenClip = () => {
       const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
       Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
       const hiddenAncestor = document.createElement("div");
       hiddenAncestor.setAttribute("data-hidden", "");
       document.body.appendChild(hiddenAncestor);
       hiddenAncestor.appendChild(clip.el);
-
+      return clip;
+    };
+    const volumeSeen = (clip: ReturnType<typeof hiddenClip>) => {
       let seen = -1;
       syncRuntimeMedia({
         clips: [clip],
@@ -595,20 +597,32 @@ describe("syncRuntimeMedia", () => {
           seen = v;
         },
       });
+      return seen;
+    };
 
-      expect(seen).toBe(0);
+    it("zeroes effective volume for a clip under a data-hidden ancestor", () => {
+      expect(volumeSeen(hiddenClip())).toBe(0);
+    });
+
+    // A visible clip is the control: the zero above has to come from the
+    // ancestor, not from the fixture reading 0 for some other reason.
+    it("leaves a visible clip at its authored volume", () => {
+      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      document.body.appendChild(clip.el);
+      expect(volumeSeen(clip)).toBe(0.8);
     });
 
     it("does not touch el.muted when silencing a hidden clip (RULES trap: transport owns el.muted)", () => {
-      const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
-      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
-      const hiddenAncestor = document.createElement("div");
-      hiddenAncestor.setAttribute("data-hidden", "");
-      document.body.appendChild(hiddenAncestor);
-      hiddenAncestor.appendChild(clip.el);
+      const clip = hiddenClip();
       clip.el.muted = false;
 
-      syncRuntimeMedia({ clips: [clip], timeSeconds: 1, playing: true, playbackRate: 1 });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 1,
+        playing: true,
+        playbackRate: 1,
+      });
 
       expect(clip.el.muted).toBe(false);
     });
