@@ -965,8 +965,11 @@ async function mixGroupMembers(
     const inputFilters = buildInputFilters(ignoreKeyframes);
     const mixFilter = useNormalize
       ? `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0:normalize=0[out]`
-      : // amix's default normalize divides by input count; compensate by THIS
-        // group's own member count — never the render's global track count.
+      : // Every member is padded and trimmed to totalDuration above, and
+        // dropout_transition=0 keeps all N inputs active for that whole span.
+        // amix's default normalize therefore divides by exactly N throughout;
+        // compensate by THIS group's own member count — never the render's
+        // global track count.
         `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0[mixed];[mixed]volume=${formatFilterNumber(memberTracks.length)}[out]`;
     const filterComplex = [...inputFilters, mixFilter].join(";");
     const scriptDir = mkdtempSync(join(outputDir, ".group-filter-complex-"));
