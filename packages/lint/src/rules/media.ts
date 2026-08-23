@@ -634,6 +634,15 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   findVolumeTweenOverridesGainFindings,
   // audio_carve_ungrouped_sources
   findCarveUngroupedSourcesFindings,
+
+  // audio_group_no_members
+  findAudioGroupNoMembersFindings,
+
+  // audio_group_timing_attrs
+  findAudioGroupTimingAttrFindings,
+
+  // audio_group_carve_attr
+  findAudioGroupCarveAttrFindings,
 ];
 
 /**
@@ -764,6 +773,137 @@ function findCarveUngroupedSourcesFindings(ctx: LintContext): HyperframeLintFind
       elementId,
       fixHint:
         "Group the voice clips and carve against the group — a hand-rolled clip list silently rots when a clip is added.",
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/** Timing attributes a bus must never carry. It has no clip window of its own:
+ *  a group's automation clock is COMPOSITION time, and its members carry the
+ *  timing. */
+const AUDIO_GROUP_TIMING_ATTRS = ["data-start", "data-duration", "data-track-index"] as const;
+
+/**
+ * A bus nobody joined does nothing, silently.
+ *
+ * `resolveAudioGroups` builds groups from the MEMBERS (`audio[data-audio-group]`)
+ * and only then looks for a matching `<hf-audio-group>` element, so a bus whose
+ * id no clip names is dropped entirely — its fader, FX chain and automation
+ * never reach preview or render, and nothing says so. One typo is enough:
+ * `data-audio-group="voiceovr"` against `id="voiceover"` loses the authored bus
+ * AND invents a phantom group at unity gain with no chain, which is what the
+ * timeline then draws.
+ */
+function findAudioGroupNoMembersFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const memberGroupIds = new Set(
+    ctx.tags
+      .filter((tag) => tag.name === "audio")
+      .map((tag) => readAttr(tag.raw, "data-audio-group"))
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  // Only a file that declares SOME membership can be judged. `lintHyperframeHtml`
+  // sees one file, and the studio's own group creation writes the bus into the
+  // active composition while patching `data-audio-group` into each member's own
+  // file (`timelineAudioGroupCreate`) — so a file carrying a bus and no members
+  // at all is the ordinary cross-file shape. Firing there reported the studio's
+  // own output as an error, and said "No clip carries `data-audio-group` at all"
+  // about clips it simply could not see.
+  if (memberGroupIds.size === 0) return [];
+  const mayHaveCrossFileMembers = ctx.tags.some((tag) =>
+    Boolean(readAttr(tag.raw, "data-composition-src")),
+  );
+
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    if (tag.name !== "hf-audio-group") continue;
+    // A bus with no id cannot be joined at all — a different mistake, and
+    // `resolveAudioGroups` skips it when building its element map.
+    const elementId = readAttr(tag.raw, "id");
+    if (!elementId) continue;
+    if (memberGroupIds.has(elementId)) continue;
+    // A mixed file is still not closed-world: one bus may have local members
+    // while another serves clips inside a referenced composition. The linter
+    // cannot inspect that file here, so an unmatched bus is only provably empty
+    // when this source has no cross-file composition hosts at all.
+    if (mayHaveCrossFileMembers) continue;
+
+    // Naming the near-misses is the whole value: the fix is almost always a
+    // typo on one member, and the author is looking at the bus, not the clip.
+    const nearby = [...memberGroupIds].filter((id) => id !== elementId);
+    const suffix =
+      nearby.length > 0
+        ? ` Clips in this file name ${nearby.map((id) => `"${id}"`).join(", ")} instead.`
+        : "";
+    findings.push({
+      code: "audio_group_no_members",
+      severity: "error",
+      message: `#${elementId} is an audio group no clip belongs to, so its fader, effect chain and automation are dropped.${suffix}`,
+      elementId,
+      fixHint: `Add \`data-audio-group="${elementId}"\` to the clips this bus is for, or delete the bus.`,
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/**
+ * Timing on a bus is meaningless — and it is how a phantom clip row appears.
+ *
+ * The preview runtime stamps `data-start`/`data-duration` on id'd children of
+ * the composition root so they show up in the timeline; a bus caught by that
+ * became a full-duration clip row above its own group header, draggable and
+ * deletable (fixed in core). Timing PERSISTED into the file is the same shape
+ * with none of the excuse: the render reads a group's `fxChain`, `automation`
+ * and `volume` only, so these attributes change nothing and mislead the next
+ * reader into thinking the bus has a window.
+ */
+function findAudioGroupTimingAttrFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    if (tag.name !== "hf-audio-group") continue;
+    const present = AUDIO_GROUP_TIMING_ATTRS.filter((attr) => hasAttrName(tag.raw, attr));
+    if (present.length === 0) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    findings.push({
+      code: "audio_group_timing_attrs",
+      severity: "warning",
+      message: `${elementId ? `#${elementId}` : "This audio group"} carries ${present.map((attr) => `\`${attr}\``).join(", ")}, which a bus has no use for — its members carry the timing and its automation clock is composition time.`,
+      elementId,
+      fixHint: `Remove ${present.map((attr) => `\`${attr}\``).join(", ")} from the group element.`,
+      snippet: truncateSnippet(tag.raw),
+    });
+  }
+  return findings;
+}
+
+/**
+ * A carve on a bus is half an effect, applied twice.
+ *
+ * `data-fx-carve` is a CLIP attribute. The bed being carved is one track, and
+ * the level half of the analysis measures that track's own audio against the
+ * voice — a bus has no `src`, so a carve there can only ever produce the
+ * spectral half: filters with no level match.
+ *
+ * Worse, it stacks. A bus and a member clip are the same signal path, so a
+ * carve on each puts the bed through both sets of filters — which is exactly
+ * what happened when a bus labelled "Music bed" classified as one and carved
+ * itself (fixed in Studio; this catches what was already written down).
+ */
+function findAudioGroupCarveAttrFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    if (tag.name !== "hf-audio-group") continue;
+    if (!hasAttrName(tag.raw, "data-fx-carve")) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    findings.push({
+      code: "audio_group_carve_attr",
+      severity: "warning",
+      message: `${elementId ? `#${elementId}` : "This audio group"} carries \`data-fx-carve\`, which belongs on the clip being carved — a bus has no audio of its own to level-match against, and a carve here stacks with any its members already have.`,
+      elementId,
+      fixHint:
+        "Remove `data-fx-carve` and the `fromCarve` nodes it wrote into this bus's `data-fx-chain`, and carve the bed clip instead.",
       snippet: truncateSnippet(tag.raw),
     });
   }
