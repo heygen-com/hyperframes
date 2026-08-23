@@ -298,9 +298,8 @@ export function PropertyPanelFlat({
   const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
 
   // The group this clip belongs to, if any — the Audio FX summary reads
-  // "in Voiceover" for a member (see `audioFxSummary`). Resolved from the live
-  // document because membership lives on the members, so the owning group's
-  // LABEL is not on the selected element.
+  // "in Voiceover" for a member (see `audioFxSummary`). Membership lives on the
+  // members, so resolve the owning label from the live document.
   const audioGroupLabel = useMemo((): string | undefined => {
     const doc = element.element?.ownerDocument;
     const id = element.id;
