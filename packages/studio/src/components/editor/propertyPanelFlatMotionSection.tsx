@@ -172,3 +172,34 @@ export function FlatMotionSection({
     </div>
   );
 }
+
+/**
+ * What the Motion section is called, and what its collapsed line says.
+ *
+ * "Motion" names the tween editor. On audio the section is Start/Duration/End
+ * and nothing else, so the label would promise what it no longer offers — and
+ * "Motion: 0 effects" on a sound is a category error, hence the span instead of
+ * a count.
+ *
+ * Keyed on the TAG by its caller, not on whether the effects half is showing:
+ * that half also disappears when a host simply has not wired the GSAP handlers,
+ * and a div in that state is still a thing that moves — renaming its section
+ * would be describing the host's wiring rather than the element.
+ */
+export function motionSectionLabel(args: {
+  timingOnly: boolean;
+  start: number;
+  duration: number;
+  effectCount: number;
+}): { title: string; summary: string } {
+  if (args.timingOnly) {
+    return {
+      title: "Timing",
+      summary: `${formatTimingValue(args.start)} – ${formatTimingValue(args.start + args.duration)}`,
+    };
+  }
+  return {
+    title: "Motion",
+    summary: `${args.effectCount} effect${args.effectCount === 1 ? "" : "s"}`,
+  };
+}

@@ -1,5 +1,6 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
+import { canHideSelections } from "../../utils/timelineInspector";
 
 function FlatEmptyState() {
   return (
@@ -67,6 +68,9 @@ function FlatMultiSelectState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  // One predicate for both actions and for the handler's own refusal, so the
+  // button and the refusal cannot disagree about what audio is.
+  const hasAudio = !canHideSelections(multiSelectedElements);
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
@@ -123,26 +127,37 @@ function FlatMultiSelectState({
           );
         })}
       </div>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          data-flat-multiselect-group="true"
-          onClick={onGroupSelection}
-          className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
-        >
-          <Layers size={13} />
-          Group selection
-        </button>
-        <button
-          type="button"
-          data-flat-multiselect-hide-all="true"
-          onClick={onHideAllSelected}
-          className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
-        >
-          <Eye size={13} />
-          Hide all
-        </button>
-      </div>
+      {/* Neither action applies to audio, so the row goes rather than showing
+          an empty frame. Grouping is the LAYOUT grouper — a positioned wrapper
+          around a bounding box, and an <audio> clip has none (grouping two
+          produced a 0x0 div with inline left/top on elements that are never
+          laid out). Hiding is visibility, which for audio doubles as mute; the
+          timeline already withholds the eye on an audio track
+          (`visible={!isAudioTrack}`) and this panel was the way back to the
+          same write. Both handlers refuse it too — they own keyboard paths no
+          hidden button can gate. */}
+      {!hasAudio && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-flat-multiselect-group="true"
+            onClick={onGroupSelection}
+            className="flex h-[34px] flex-1 items-center justify-center gap-2 rounded-lg bg-panel-hover text-[11px] font-semibold text-panel-text-0"
+          >
+            <Layers size={13} />
+            Group selection
+          </button>
+          <button
+            type="button"
+            data-flat-multiselect-hide-all="true"
+            onClick={onHideAllSelected}
+            className="flex h-[34px] items-center gap-1.5 rounded-lg border border-panel-border-input bg-panel-input px-3 text-[11px] font-medium text-panel-text-2"
+          >
+            <Eye size={13} />
+            Hide all
+          </button>
+        </div>
+      )}
       <span className="text-center text-[10px] text-panel-text-5">
         Select a single element to edit its properties
       </span>

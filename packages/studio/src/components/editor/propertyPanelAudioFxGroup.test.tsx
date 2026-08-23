@@ -101,6 +101,37 @@ function mount(dataAttributes: Record<string, string>, alone = false, voices = 2
   return { host, onSetAttributeQuiet, onSetAttributeLive };
 }
 
+function mountGroup(memberStart: number) {
+  const bus = document.createElement("hf-audio-group");
+  bus.id = "voiceover";
+  document.body.append(bus);
+  const member = document.createElement("audio");
+  member.id = "vo-1";
+  member.setAttribute("data-audio-group", "voiceover");
+  member.setAttribute("data-start", String(memberStart));
+  member.setAttribute("data-duration", "5");
+  document.body.append(member);
+
+  const host = document.createElement("div");
+  document.body.append(host);
+  const selection = {
+    dataAttributes: { "fx-chain": CHAIN },
+    id: "voiceover",
+    element: bus,
+    tagName: "hf-audio-group",
+  } as unknown as DomEditSelection;
+  act(() => {
+    createRoot(host).render(
+      <AudioFxGroup
+        element={selection}
+        onSetAttributeQuiet={vi.fn()}
+        onSetAttributeLive={vi.fn()}
+      />,
+    );
+  });
+  return host;
+}
+
 const rowFor = (host: HTMLElement, label: string): HTMLElement | null => {
   for (const row of Array.from(host.querySelectorAll<HTMLElement>(".hf-fx-row"))) {
     if (row.querySelector(".hf-fx-label")?.textContent === label) return row;
@@ -563,6 +594,20 @@ describe("AudioFxGroup dynamic carve", () => {
       leaveShelf(host);
       expect(store().playbackRequest?.playing).toBe(false);
       expect(store().playbackRequest?.returnTo).toBe(42);
+    });
+
+    it("seeks a group audition to the next member span", () => {
+      act(() =>
+        usePlayerStore.setState({
+          isPlaying: false,
+          currentTime: 2,
+          requestedSeekTime: null,
+        }),
+      );
+      const host = mountGroup(10);
+      hoverPreset(host);
+      expect(store().requestedSeekTime).toBe(10);
+      leaveShelf(host);
     });
 
     it("leaves a transport the author started alone", () => {
@@ -1340,6 +1385,62 @@ describe("AudioFxGroup carve by default", () => {
     const { host, onSetAttributeQuiet } = mount({ "fx-chain": "" }, false, 0);
     expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-carve")).toBe(false);
     expect(host.querySelector(".hf-fx-carve-module")).toBeNull();
+  });
+
+  /**
+   * Mount a track of the test's own naming as the selection, with siblings.
+   *
+   * `mount` always calls the selected track `bed`, which is what let the near-end
+   * hole go unnoticed: nothing ever selected a track whose NAME said voice.
+   */
+  const mountNamed = (id: string, siblings: string[]) => {
+    const onSetAttributeQuiet = vi.fn();
+    const selected = document.createElement("audio");
+    selected.id = id;
+    document.body.append(selected);
+    for (const other of siblings) {
+      const el = document.createElement("audio");
+      el.id = other;
+      document.body.append(el);
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => {
+      createRoot(host).render(
+        <AudioFxGroup
+          element={
+            {
+              dataAttributes: { "fx-chain": "" },
+              id,
+              element: selected,
+            } as unknown as DomEditSelection
+          }
+          onSetAttributeQuiet={onSetAttributeQuiet}
+          onSetAttributeLive={vi.fn()}
+        />,
+      );
+    });
+    return { host, onSetAttributeQuiet };
+  };
+
+  // The reported bug. A carve makes room in a bed for a voice, so a voice track
+  // is the one thing that can never be the bed — `couldBeCarveSource` has said
+  // as much since it was written, and nothing called it. Selecting a narration
+  // clip offered it the module, found one candidate, and applied a carve nobody
+  // asked for.
+  it("never offers the carve on a track whose name says voice", () => {
+    const { host, onSetAttributeQuiet } = mountNamed("vo-2", ["music-bed"]);
+    expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-carve")).toBe(false);
+    expect(host.querySelector(".hf-fx-carve-module")).toBeNull();
+  });
+
+  // Offering is a suggestion, applying is a decision. An unnamed track keeps the
+  // module — the author may know better than the name does — but nothing is
+  // written until they say so.
+  it("offers but does not apply on a track whose name says nothing", () => {
+    const { host, onSetAttributeQuiet } = mountNamed("a1", ["vo-1"]);
+    expect(host.querySelector(".hf-fx-carve-module")).not.toBeNull();
+    expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-carve")).toBe(false);
   });
 });
 
