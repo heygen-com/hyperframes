@@ -1,5 +1,5 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { slugifyDesignInput } from "../../utils/designInputTracking";
@@ -7,7 +7,7 @@ import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
-import { HF_AUDIO_GROUP_TAG, resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
@@ -43,6 +43,7 @@ import {
   EMPTY_GSAP_EFFECT_HANDLERS,
   type FlatGroupDescriptor,
 } from "./propertyPanelFlatDescriptors";
+import { isAudioDomElement } from "../../utils/timelineInspector";
 
 /** The flat inspector shell with one shared open-group state. */
 // fallow-ignore-next-line complexity
@@ -170,6 +171,7 @@ export function PropertyPanelFlat({
       timelineSessionEpoch: state.timelineSessionEpoch,
     })),
   );
+  const storeElements = usePlayerStore((state) => state.elements);
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -282,8 +284,7 @@ export function PropertyPanelFlat({
           onSetAllKeyframeEases,
         }
       : null;
-  const selectedTag = element.tagName?.toLowerCase();
-  const audioSelection = selectedTag === "audio" || selectedTag === HF_AUDIO_GROUP_TAG;
+  const audioSelection = isAudioDomElement(element.element);
   // Handlers being wired is necessary but not sufficient: App.tsx always passes
   // them, so this alone showed the tween editor for every selection — including
   // an `<audio>` clip and an `<hf-audio-group>` bus, neither of which has a
@@ -300,12 +301,13 @@ export function PropertyPanelFlat({
   // "in Voiceover" for a member (see `audioFxSummary`). Resolved from the live
   // document because membership lives on the members, so the owning group's
   // LABEL is not on the selected element.
-  const audioGroupLabel = ((): string | undefined => {
+  const audioGroupLabel = useMemo((): string | undefined => {
     const doc = element.element?.ownerDocument;
     const id = element.id;
     if (!doc || !id) return undefined;
-    return resolveAudioGroups(doc).find((g) => g.memberIds.includes(id))?.label;
-  })();
+    return resolveAudioGroups(doc).find((group) => group.memberIds.includes(id))?.label;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- store replacement signals live group membership changed
+  }, [element, storeElements]);
 
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
