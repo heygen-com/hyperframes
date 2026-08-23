@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+const REPOSITORY_ROOT = join(import.meta.dirname, "..");
+
 export type PublishMode = "workspace" | "manifest-name-override";
 
 export type PublishablePackage = {
@@ -171,4 +173,9 @@ export function validatePublishablePackages(
     }
   }
   return roster;
+}
+
+/** CI-facing contract that directly reconciles the checked-out repository tree. */
+export function validateRepositoryPublishablePackages(): readonly PublishablePackage[] {
+  return validatePublishablePackages(REPOSITORY_ROOT);
 }

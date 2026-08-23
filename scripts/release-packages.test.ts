@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import {
   PUBLISHABLE_PACKAGES,
   discoverWorkspacePackages,
+  validateRepositoryPublishablePackages,
   validatePublishablePackages,
   type PublishablePackage,
 } from "./release-packages.ts";
@@ -35,6 +36,10 @@ function fixture(): string {
 // One fixture-backed matrix documents the complete reconciliation contract.
 // fallow-ignore-next-line unit-size
 describe("publishable package roster", () => {
+  it("directly reconciles the actual repository packages tree", () => {
+    assert.deepEqual(validateRepositoryPublishablePackages(), PUBLISHABLE_PACKAGES);
+  });
+
   it("covers every public workspace exactly once and excludes private workspaces", () => {
     const root = fixture();
     try {

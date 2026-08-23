@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { runPublishPackages, type PublishCommand } from "./publish-packages.ts";
+import {
+  runPublishPackages,
+  sanitizePublishError,
+  type PublishCommand,
+} from "./publish-packages.ts";
 import { type PublishablePackage } from "./release-packages.ts";
 
 const normal: PublishablePackage = {
@@ -88,6 +92,37 @@ describe("shared package publisher", () => {
       );
       assert.equal(calls.length, 2);
       assert.equal(readFileSync(cliManifest, "utf8"), original);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves useful publish output while redacting secrets and user paths", async () => {
+    const root = fixture();
+    const logs: string[] = [];
+    const error = Object.assign(new Error("npm publish failed for /home/private-user/project"), {
+      stdout: "uploaded package metadata\n",
+      stderr:
+        "npm ERR! code E403\n//registry.npmjs.org/:_authToken=super-secret\naccess_token=also-secret\n",
+    });
+    try {
+      assert.match(sanitizePublishError(error), /E403/);
+      assert.doesNotMatch(sanitizePublishError(error), /super-secret|also-secret|private-user/);
+      await assert.rejects(
+        runPublishPackages(
+          { root, version: "1.2.3", distTag: "latest", roster: [normal, cli] },
+          {
+            packageExists: async () => false,
+            command: async () => {
+              throw error;
+            },
+            log: (message) => logs.push(message),
+          },
+        ),
+        /E403/,
+      );
+      assert.match(logs.join("\n"), /uploaded package metadata|E403/);
+      assert.doesNotMatch(logs.join("\n"), /super-secret|also-secret|private-user/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -30,6 +30,32 @@ type PublishInput = {
 };
 type PublishResult = { published: string[]; skipped: string[]; failed: string[] };
 
+function outputText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return "";
+}
+
+// Keep all credential/path redaction in one boundary before diagnostics reach logs or errors.
+// fallow-ignore-next-line complexity
+export function sanitizePublishError(error: unknown): string {
+  const record = error && typeof error === "object" ? error : {};
+  const parts = [
+    error instanceof Error ? error.message : String(error),
+    outputText("stdout" in record ? record.stdout : undefined),
+    outputText("stderr" in record ? record.stderr : undefined),
+  ];
+  return parts
+    .filter(Boolean)
+    .join("\n")
+    .replace(/(authorization:\s*bearer\s+)\S+/gi, "$1[redacted]")
+    .replace(/((?:_authToken|access_token|token|password|secret)\s*[=:]\s*)\S+/gi, "$1[redacted]")
+    .replace(/\/home\/[^/\s]+/g, "$HOME")
+    .replace(/[A-Za-z]:\\Users\\[^\\\s]+/g, "$HOME")
+    .trim()
+    .slice(0, 8_000);
+}
+
 // The two allowed publish modes converge here so CLI restoration cannot be bypassed.
 // fallow-ignore-next-line complexity
 async function publishEntry(
@@ -80,6 +106,7 @@ export async function runPublishPackages(
 ): Promise<PublishResult> {
   const roster = validatePublishablePackages(input.root, input.roster ?? PUBLISHABLE_PACKAGES);
   const result: PublishResult = { published: [], skipped: [], failed: [] };
+  const failedDetails: string[] = [];
   for (const entry of roster) {
     if (await dependencies.packageExists(entry.npmName, input.version)) {
       dependencies.log(`⏭️  ${entry.npmName}@${input.version} already published — skipping`);
@@ -91,13 +118,20 @@ export async function runPublishPackages(
       await publishEntry(input.root, entry, input.distTag, dependencies.command);
       dependencies.log(`✅ ${entry.npmName}@${input.version} published`);
       result.published.push(entry.npmName);
-    } catch {
-      dependencies.log(`❌ ${entry.npmName}@${input.version} failed to publish`);
+    } catch (error) {
+      const diagnostic = sanitizePublishError(error);
+      dependencies.log(
+        `❌ ${entry.npmName}@${input.version} failed to publish${diagnostic ? `:\n${diagnostic}` : ""}`,
+      );
       result.failed.push(entry.npmName);
+      failedDetails.push(`${entry.npmName}: ${diagnostic || "unknown publish failure"}`);
     }
   }
-  if (result.failed.length > 0)
-    throw new Error(`Packages failed to publish: ${result.failed.join(", ")}`);
+  if (result.failed.length > 0) {
+    throw new Error(
+      `Packages failed to publish: ${result.failed.join(", ")}\n${failedDetails.join("\n")}`,
+    );
+  }
   return result;
 }
 
@@ -111,7 +145,7 @@ const defaultDependencies: PublishDependencies = {
     }
   },
   command: async (executable, args, cwd) => {
-    await execFileAsync(executable, [...args], { cwd });
+    await execFileAsync(executable, [...args], { cwd, maxBuffer: 16 * 1024 * 1024 });
   },
   log: console.log,
 };

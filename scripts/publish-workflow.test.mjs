@@ -128,6 +128,8 @@ test("effective non-check rule enforcement and maintenance are explicit", () => 
   assert.match(releaseRunbook, /NON_CHECK_RULES/);
   assert.match(releaseRunbook, /GitHub adds.*rule type/i);
   assert.match(releaseRunbook, /rerun the original merged-PR workflow/i);
+  assert.match(releaseRunbook, /bypass rejection is intentional/i);
+  assert.match(releaseRunbook, /merge.*normally/i);
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {

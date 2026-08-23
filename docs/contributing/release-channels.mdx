@@ -80,3 +80,8 @@ fully covers it; never soften the unknown-rule failure into a warning.
 
 After updating and reviewing the guard, rerun the original merged-PR workflow for recovery.
 Do not push a stable tag, select a different SHA, or introduce a manual publish path.
+
+Bypass rejection is intentional: a ruleset result of `bypass` permanently blocks that merge SHA
+from publishing. Release PRs must merge normally with their required approval and checks. If a
+release PR was bypass-merged, prepare a fresh release PR and merge it normally; rerunning the
+bypassed event cannot turn its historical rule-suite result into `pass`.

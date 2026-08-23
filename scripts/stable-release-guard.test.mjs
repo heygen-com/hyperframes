@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   assertImmutableRelease,
   collectEffectiveApprovals,
+  createGitHubClient,
   evaluateRequiredChecks,
   extractEffectiveRules,
   parseGuardTimeoutMs,
@@ -472,6 +473,59 @@ describe("stable release guard timeout configuration", () => {
   it("rejects malformed, fractional, lower, and upper out-of-bound values", () => {
     for (const value of ["", "abc", "20.5", "9", "41"]) {
       assert.throws(() => parseGuardTimeoutMs(value), /10.*40.*minutes/i);
+    }
+  });
+});
+
+describe("rule-suite recovery lookback", () => {
+  function clientForSuites(suites, requests) {
+    return createGitHubClient({
+      repository: "heygen-com/hyperframes",
+      token: "test-token",
+      fetchImpl: async (url) => {
+        requests.push(String(url));
+        return new Response(JSON.stringify(suites), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+  }
+
+  it("finds an exact passing merge suite older than the default day within the month", async () => {
+    const requests = [];
+    const client = clientForSuites(
+      [
+        {
+          id: 1,
+          after_sha: mergeSha,
+          ref: "refs/heads/main",
+          result: "pass",
+          pushed_at: "2026-08-16T00:00:00Z",
+        },
+      ],
+      requests,
+    );
+    assert.deepEqual(await client.getRuleSuite(mergeSha, 1_000), {
+      afterSha: mergeSha,
+      ref: "refs/heads/main",
+      result: "pass",
+    });
+    assert.match(requests[0], /time_period=month/);
+  });
+
+  it("fails closed when the month response is absent or ambiguous", async () => {
+    for (const suites of [
+      [],
+      [
+        { after_sha: mergeSha, ref: "refs/heads/main", result: "pass" },
+        { after_sha: mergeSha, ref: "refs/heads/main", result: "pass" },
+      ],
+    ]) {
+      await assert.rejects(
+        clientForSuites(suites, []).getRuleSuite(mergeSha, 1_000),
+        /Expected one rule suite/,
+      );
     }
   });
 });

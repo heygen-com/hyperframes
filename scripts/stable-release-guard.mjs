@@ -384,9 +384,9 @@ export async function runStableReleaseGuard({
   }
 }
 
-function createGitHubClient({ repository, token }) {
+export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
   const request = async (path, requestBudgetMs) => {
-    const response = await fetch(`https://api.github.com${path}`, {
+    const response = await fetchImpl(`https://api.github.com${path}`, {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
@@ -420,7 +420,7 @@ function createGitHubClient({ repository, token }) {
       paginate(`/repos/${repository}/pulls/${number}/reviews`, null, requestBudgetMs),
     getRuleSuite: async (sha, requestBudgetMs) => {
       const suites = await paginate(
-        `/repos/${repository}/rulesets/rule-suites?ref=${encodeURIComponent("refs/heads/main")}`,
+        `/repos/${repository}/rulesets/rule-suites?ref=${encodeURIComponent("refs/heads/main")}&time_period=month`,
         null,
         requestBudgetMs,
       );
