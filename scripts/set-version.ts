@@ -19,22 +19,7 @@ import { join } from "path";
 import { execFileSync } from "child_process";
 import { pathToFileURL } from "url";
 import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
-
-const PACKAGES = [
-  "packages/parsers",
-  "packages/lint",
-  "packages/studio-server",
-  "packages/core",
-  "packages/engine",
-  "packages/player",
-  "packages/producer",
-  "packages/shader-transitions",
-  "packages/studio",
-  "packages/cli",
-  "packages/aws-lambda",
-  "packages/gcp-cloud-run",
-  "packages/sdk",
-];
+import { validatePublishablePackages } from "./release-packages.ts";
 
 const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
 
@@ -67,7 +52,7 @@ function main() {
   updatePluginVersions(options.version);
 
   console.log(
-    `\nSet ${PACKAGES.length} packages and ${PLUGINS.length} plugin manifests to v${options.version}`,
+    `\nSet ${publishablePackages().length} packages and ${PLUGINS.length} plugin manifests to v${options.version}`,
   );
 
   if (options.skipTag) {
@@ -102,8 +87,8 @@ export function parseReleaseOptions(args: string[]): ReleaseOptions {
 }
 
 function updatePackageVersions(version: string) {
-  for (const pkg of PACKAGES) {
-    const pkgPath = join(ROOT, pkg, "package.json");
+  for (const pkg of publishablePackages()) {
+    const pkgPath = join(ROOT, pkg.workspacePath, "package.json");
     const content = JSON.parse(readFileSync(pkgPath, "utf-8"));
     const oldVersion = content.version;
     content.version = version;
@@ -310,11 +295,15 @@ export function docsChangelogEntryHasGeneratedTodo(content: string, marker: stri
 
 export function releaseAllowedPaths(version: string) {
   return [
-    ...PACKAGES.map((pkg) => join(pkg, "package.json")),
+    ...publishablePackages().map((pkg) => join(pkg.workspacePath, "package.json")),
     ...PLUGINS.map((plugin) => join(plugin, "plugin.json")),
     "docs/changelog.mdx",
     join("releases", `v${version}.md`),
   ];
+}
+
+function publishablePackages() {
+  return validatePublishablePackages(ROOT);
 }
 
 // Collect every uncommitted path (modified-tracked + untracked) as clean,

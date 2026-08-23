@@ -127,67 +127,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
-        run: |
-          FAILED=0
-
-          publish_pkg() {
-            local filter="$1"
-            local name="$2"
-
-            # Check if this version is already published
-            if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
-              echo "⏭️  ${name}@${VERSION} already published — skipping"
-              return 0
-            fi
-
-            echo "📦 Publishing ${name}@${VERSION}..."
-            if pnpm --filter "$filter" publish --access public --no-git-checks --tag "$DIST_TAG"; then
-              echo "✅ ${name}@${VERSION} published"
-            else
-              echo "❌ ${name}@${VERSION} failed to publish"
-              FAILED=1
-            fi
-          }
-
-          publish_pkg "@hyperframes/parsers" "@hyperframes/parsers"
-          publish_pkg "@hyperframes/lint" "@hyperframes/lint"
-          publish_pkg "@hyperframes/studio-server" "@hyperframes/studio-server"
-          publish_pkg "@hyperframes/core" "@hyperframes/core"
-          publish_pkg "@hyperframes/sdk" "@hyperframes/sdk"
-          publish_pkg "@hyperframes/engine" "@hyperframes/engine"
-          publish_pkg "@hyperframes/player" "@hyperframes/player"
-          publish_pkg "@hyperframes/producer" "@hyperframes/producer"
-          publish_pkg "@hyperframes/shader-transitions" "@hyperframes/shader-transitions"
-          publish_pkg "@hyperframes/studio" "@hyperframes/studio"
-          publish_pkg "@hyperframes/aws-lambda" "@hyperframes/aws-lambda"
-          publish_pkg "@hyperframes/gcp-cloud-run" "@hyperframes/gcp-cloud-run"
-
-          # CLI is @hyperframes/cli in the monorepo but published as unscoped "hyperframes" on npm.
-          # Rewrite the name in package.json before publishing, then use npm publish directly
-          # since pnpm --filter won't match the rewritten name.
-          if npm view "hyperframes@${VERSION}" version >/dev/null 2>&1; then
-            echo "⏭️  hyperframes@${VERSION} already published — skipping"
-          else
-            node -e "
-              const fs = require('fs');
-              const p = 'packages/cli/package.json';
-              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-              pkg.name = 'hyperframes';
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            "
-            echo "📦 Publishing hyperframes@${VERSION}..."
-            if (cd packages/cli && npm publish --access public --tag "$DIST_TAG"); then
-              echo "✅ hyperframes@${VERSION} published"
-            else
-              echo "❌ hyperframes@${VERSION} failed to publish"
-              FAILED=1
-            fi
-          fi
-
-          if [ "$FAILED" -ne 0 ]; then
-            echo "::error::One or more packages failed to publish"
-            exit 1
-          fi
+        run: node --import tsx scripts/publish-packages.ts
 
       - name: Create GitHub Release
         env:
