@@ -19,11 +19,8 @@ jobs:
     timeout-minutes: 60
     environment: npm-publish
     permissions:
-      actions: read
-      checks: read
       contents: write
       id-token: write
-      pull-requests: read
     env:
       EXPECTED_RELEASE_SHA: >-
         ${{ github.event_name == 'pull_request'

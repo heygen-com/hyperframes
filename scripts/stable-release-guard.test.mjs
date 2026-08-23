@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
+import * as guardModule from "./stable-release-guard.mjs";
 import {
   assertImmutableRelease,
   collectEffectiveApprovals,
@@ -307,6 +308,18 @@ describe("effective repository rules", () => {
       /malformed/i,
     );
     assert.throws(() => extractEffectiveRules([{ type: "required_deployments" }]), /unsupported/i);
+    for (const integration_id of [undefined, null, 0, -1]) {
+      assert.throws(
+        () =>
+          extractEffectiveRules([
+            {
+              type: "required_status_checks",
+              parameters: { required_status_checks: [{ context: "Build", integration_id }] },
+            },
+          ]),
+        /integration|identity.*malformed/i,
+      );
+    }
   });
 });
 
@@ -499,13 +512,125 @@ describe("stable release polling guard", () => {
 describe("stable release guard timeout configuration", () => {
   it("uses a safe 25-minute default and accepts a bounded minute override", () => {
     assert.equal(parseGuardTimeoutMs(undefined), 25 * 60 * 1_000);
-    assert.equal(parseGuardTimeoutMs("20"), 20 * 60 * 1_000);
+    assert.equal(parseGuardTimeoutMs("15"), 15 * 60 * 1_000);
     assert.equal(parseGuardTimeoutMs("40"), 40 * 60 * 1_000);
   });
 
   it("rejects malformed, fractional, lower, and upper out-of-bound values", () => {
-    for (const value of ["", "abc", "20.5", "9", "41"]) {
-      assert.throws(() => parseGuardTimeoutMs(value), /10.*40.*minutes/i);
+    for (const value of ["", "abc", "20.5", "10", "14", "41"]) {
+      assert.throws(() => parseGuardTimeoutMs(value), /15.*40.*minutes/i);
+    }
+  });
+});
+
+describe("read-only credential health", () => {
+  it("discovers a merged main PR and checks every supported policy-read surface", async () => {
+    assert.equal(typeof guardModule.runCredentialHealth, "function");
+    const calls = [];
+    await guardModule.runCredentialHealth({
+      client: {
+        findRecentMergedMainPull: async () => {
+          calls.push("discover");
+          return { number: 42, mergeSha };
+        },
+        getEffectiveRules: async () => {
+          calls.push("rules");
+          return { requiredChecks };
+        },
+        getRuleSuite: async () => {
+          calls.push("rule-suite");
+          return { afterSha: mergeSha, ref: "refs/heads/main", result: "pass" };
+        },
+        listReviews: async () => {
+          calls.push("reviews");
+          return [review()];
+        },
+        listCheckRuns: async () => {
+          calls.push("check-runs");
+          return [check("Build")];
+        },
+      },
+      now: () => 0,
+      timeoutMs: 100,
+      log: () => undefined,
+    });
+    assert.deepEqual(calls, ["discover", "rules", "rule-suite", "reviews", "check-runs"]);
+  });
+
+  it("fails closed when discovery or rule-suite result visibility is missing", async () => {
+    const base = {
+      getEffectiveRules: async () => ({ requiredChecks }),
+      listReviews: async () => [],
+      listCheckRuns: async () => [],
+    };
+    await assert.rejects(
+      guardModule.runCredentialHealth({
+        client: { ...base, findRecentMergedMainPull: async () => null },
+        now: () => 0,
+        timeoutMs: 100,
+        log: () => undefined,
+      }),
+      /eligible merged main/i,
+    );
+    await assert.rejects(
+      guardModule.runCredentialHealth({
+        client: {
+          ...base,
+          findRecentMergedMainPull: async () => ({ number: 42, mergeSha }),
+          getRuleSuite: async () => ({ afterSha: mergeSha, ref: "refs/heads/main" }),
+        },
+        now: () => 0,
+        timeoutMs: 100,
+        log: () => undefined,
+      }),
+      /rule suite.*result/i,
+    );
+  });
+
+  it("discovers the newest eligible merged-main pull request through the read client", async () => {
+    const requests = [];
+    const client = createGitHubClient({
+      repository: "heygen-com/hyperframes",
+      token: "never-print-this-token",
+      fetchImpl: async (url) => {
+        requests.push(String(url));
+        return new Response(
+          JSON.stringify([
+            { number: 44, merged_at: null, merge_commit_sha: "4".repeat(40) },
+            { number: 43, merged_at: "2026-08-23T20:00:00Z", merge_commit_sha: mergeSha },
+          ]),
+          { status: 200 },
+        );
+      },
+    });
+    assert.deepEqual(await client.findRecentMergedMainPull(1_000), {
+      number: 43,
+      mergeSha,
+    });
+    assert.match(
+      requests[0],
+      /pulls\?state=closed&base=main&sort=updated&direction=desc&per_page=100/,
+    );
+  });
+
+  it("sanitizes denied or malformed merged-main discovery", async () => {
+    for (const response of [
+      new Response("never-print-this-body", {
+        status: 403,
+        headers: { "x-github-request-id": "never-print-this-request-id" },
+      }),
+      new Response('{"not":"an array"}', { status: 200 }),
+    ]) {
+      const client = createGitHubClient({
+        repository: "heygen-com/hyperframes",
+        token: "never-print-this-token",
+        fetchImpl: async () => response,
+      });
+      await assert.rejects(client.findRecentMergedMainPull(1_000), (error) => {
+        assert.match(error.message, /merged main pull request discovery/i);
+        assert.doesNotMatch(error.message, /never-print-this/);
+        return true;
+      });
     }
   });
 });
@@ -654,12 +779,12 @@ describe("policy-read credential boundary", () => {
       },
     });
     await assert.doesNotReject(() => capable.verifyPolicyReadCapabilities(...capabilityArgs));
-    assert.equal(endpoints.length, 5);
+    assert.equal(endpoints.length, 4);
     assert.match(endpoints[0], /\/rules\/branches\/main/);
     assert.match(endpoints[1], /\/rulesets\/rule-suites/);
     assert.match(endpoints[2], /\/pulls\/42\/reviews/);
     assert.match(endpoints[3], new RegExp(`/commits/${mergeSha}/check-runs`));
-    assert.match(endpoints[4], new RegExp(`/commits/${mergeSha}/status`));
+    assert.doesNotMatch(endpoints.join("\n"), new RegExp(`/commits/${mergeSha}/status`));
   });
 
   it("sanitizes a denied capability at each authoritative read endpoint", async () => {
@@ -668,7 +793,6 @@ describe("policy-read credential boundary", () => {
       ["rule suites", "/rulesets/rule-suites"],
       ["pull request reviews", "/pulls/42/reviews"],
       ["check runs", `/commits/${mergeSha}/check-runs`],
-      ["commit statuses", `/commits/${mergeSha}/status`],
     ];
     for (const [label, target] of endpointCases) {
       const client = createGitHubClient({

@@ -74,11 +74,11 @@ This prevents an alpha-only feature from being included in a stable hotfix by ac
 
 Stable publishing requires the repository secret `RELEASE_GUARD_TOKEN`. Its named owner must
 provision and rotate a dedicated fine-grained personal access token with an explicit expiry and only
-these repository permissions: Administration (read-only), Pull requests (read-only), and Commit
-statuses (read-only). Metadata read access is added automatically by GitHub. Scope the token to this
-repository only; do not grant Contents, Packages, Workflows, or organization write access. The
-workflow passes this credential only to the read-only stable guard; checkout, tag creation, npm
-provenance, and GitHub Release writes continue to use their existing credentials.
+these repository permissions: Administration (read-only) and Pull requests (read-only). Metadata read
+access is added automatically by GitHub. Scope the token to this repository only; do not grant
+Contents, Packages, Workflows, or organization write access. The publish workflow passes this
+credential only to the read-only stable guard; checkout, tag creation, npm provenance, and GitHub
+Release writes continue to use their existing credentials.
 
 After provisioning or rotation, an administrator must run the read-only capability check from a
 protected environment that injects the secret without putting its value on the command line:
@@ -91,13 +91,24 @@ GITHUB_REPOSITORY=heygen-com/hyperframes \
 ```
 
 The protected environment must supply `RELEASE_GUARD_TOKEN`. The check reads effective `main`
-rules, repository rule suites, reviews for the probe PR, and check runs plus commit statuses for the
-probe SHA. Public check-run reads may not expose a separate fine-grained permission in GitHub's PAT
-UI, so this same-client capability proof is authoritative. It reports only endpoint/status/request-ID
+rules, repository rule suites, reviews for the probe PR, and check runs for the probe SHA. Public
+check-run reads may not expose a separate fine-grained permission in GitHub's PAT UI, so this
+same-client capability proof is authoritative. It reports only endpoint/status/request-ID
 classification on failure and never prints response bodies, headers, or the credential. Record a
 successful check before merge. If the secret is missing, expired, incorrectly scoped, or the
 capability check does not pass, this PR must not merge and the stable workflow will fail before
 creating a tag.
+
+The separate release-guard credential health workflow repeats these reads every Monday and supports
+a safe manual run after provisioning or rotation. It discovers a recent merged `main` pull request
+and verifies effective rules, its exact month-window rule suite, reviews, and check runs. It has only
+`contents: read` on the built-in token, passes `RELEASE_GUARD_TOKEN` only to the health step, and has
+no release, tag, package, or publish path.
+
+Required checks remain dynamically sourced from effective rules, but each must identify a concrete
+GitHub App integration so the guard can reduce actual check runs. A new required context without a
+positive integration ID is unsupported and fails closed; the guard never falls back to legacy commit
+statuses. Configured stable-guard timeouts must be 15–40 minutes, with a 25-minute default.
 
 The stable guard intentionally fails closed when GitHub adds a rule type it does not recognize.
 If a release reports `Unsupported effective repository rule`, inspect the effective rules for

@@ -1,0 +1,24 @@
+name: Release guard credential health
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  health:
+    name: Verify release guard credential health
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Verify release guard health
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_GUARD_TOKEN: ${{ secrets.RELEASE_GUARD_TOKEN }}
+        run: node scripts/stable-release-guard.mjs --health

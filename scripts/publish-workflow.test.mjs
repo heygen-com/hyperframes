@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,6 +12,13 @@ const releaseRunbook = readFileSync(
   new URL("../docs/contributing/release-channels.mdx", import.meta.url),
   "utf8",
 );
+const healthWorkflowPath = new URL(
+  "../.github/workflows/release-guard-health.yml",
+  import.meta.url,
+);
+const healthWorkflowSource = existsSync(healthWorkflowPath)
+  ? readFileSync(healthWorkflowPath, "utf8")
+  : "";
 const config = parse(workflow);
 const publish = config.jobs.publish;
 const checkout = publish.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -114,9 +121,7 @@ test("the stable guard precedes every irreversible release side effect", () => {
   assert.match(stableGuard.run, /stable-release-guard\.mjs/);
   assert.ok(publish.steps.indexOf(stableGuard) < publish.steps.indexOf(createReleaseTag));
   assert.ok(publish.steps.indexOf(stableGuard) < publish.steps.indexOf(publishPackages));
-  assert.equal(publish.permissions.actions, "read");
-  assert.equal(publish.permissions.checks, "read");
-  assert.equal(publish.permissions["pull-requests"], "read");
+  assert.deepEqual(publish.permissions, { contents: "write", "id-token": "write" });
   assert.equal(publish["timeout-minutes"], 60);
 });
 
@@ -144,12 +149,34 @@ test("effective non-check rule enforcement and maintenance are explicit", () => 
   assert.match(releaseRunbook, /fine-grained personal access token/i);
   assert.match(releaseRunbook, /Administration.*read/i);
   assert.match(releaseRunbook, /Pull requests.*read/i);
-  assert.match(releaseRunbook, /Commit\s+statuses\s*\(read-only\)/i);
+  assert.doesNotMatch(releaseRunbook, /Commit\s+statuses\s*\(read-only\)/i);
   assert.match(releaseRunbook, /Metadata.*automatically/is);
   assert.doesNotMatch(releaseRunbook, /Checks\s*\(read/i);
   assert.match(releaseRunbook, /owner.*rotat|rotat.*owner/is);
   assert.match(releaseRunbook, /read-only capability check/i);
   assert.match(releaseRunbook, /must not merge/i);
+  assert.doesNotMatch(guardSource, /\/commits\/\$\{sha\}\/status/);
+});
+
+test("credential health is weekly, manually runnable, read-only, and incapable of publishing", () => {
+  assert.notEqual(healthWorkflowSource, "", "release-guard-health.yml must exist");
+  const healthConfig = parse(healthWorkflowSource);
+  assert.deepEqual(Object.keys(healthConfig.on).sort(), ["schedule", "workflow_dispatch"]);
+  assert.equal(healthConfig.on.schedule.length, 1);
+  assert.match(healthConfig.on.schedule[0].cron, /^\d+ \d+ \* \* \d$/);
+  const healthJob = healthConfig.jobs.health;
+  assert.deepEqual(healthJob.permissions, { contents: "read" });
+  const healthStep = healthJob.steps.find((step) => step.name === "Verify release guard health");
+  assert.ok(healthStep);
+  assert.equal(healthStep.env.RELEASE_GUARD_TOKEN, "${{ secrets.RELEASE_GUARD_TOKEN }}");
+  assert.equal(healthStep.run.trim(), "node scripts/stable-release-guard.mjs --health");
+  for (const step of healthJob.steps.filter((candidate) => candidate !== healthStep)) {
+    assert.equal(step.env?.RELEASE_GUARD_TOKEN, undefined);
+  }
+  assert.equal(healthWorkflowSource.match(/secrets\.RELEASE_GUARD_TOKEN/g)?.length, 1);
+  const commands = healthJob.steps.map((step) => step.run ?? "").join("\n");
+  assert.doesNotMatch(commands, /npm\s+publish|git\s+tag|gh\s+release|publish-packages/i);
+  assert.doesNotMatch(healthWorkflowSource, /id-token:\s*write|contents:\s*write/);
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {

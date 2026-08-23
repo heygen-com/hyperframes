@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const MIN_TIMEOUT_MINUTES = 10;
+const MIN_TIMEOUT_MINUTES = 15;
 const MAX_TIMEOUT_MINUTES = 40;
 const DEFAULT_TIMEOUT_MINUTES = 25;
 export const DEFAULT_TIMEOUT_MS = DEFAULT_TIMEOUT_MINUTES * 60 * 1_000;
@@ -55,6 +55,28 @@ function assertCapabilityArray(value, endpoint) {
   if (!Array.isArray(value)) {
     throw new Error(`GitHub policy-read capability ${endpoint}: malformed response.`);
   }
+}
+
+function assertVisibleRuleSuite(suite, sha) {
+  const record = Object(suite);
+  const visible = [
+    record.afterSha === sha,
+    record.ref === "refs/heads/main",
+    typeof record.result === "string",
+    String(record.result).length > 0,
+  ].every(Boolean);
+  if (!visible) throw new Error(`Rule suite result is not visible for merged main SHA ${sha}.`);
+}
+
+function isEligibleMergedMainPull(candidate) {
+  const record = Object(candidate);
+  return [
+    Number.isInteger(record.number),
+    typeof record.merged_at === "string",
+    String(record.merged_at).length > 0,
+    typeof record.merge_commit_sha === "string",
+    String(record.merge_commit_sha).length > 0,
+  ].every(Boolean);
 }
 
 // One parser owns syntax and both policy bounds so configuration cannot bypass either limit.
@@ -219,7 +241,11 @@ export function extractEffectiveRules(rules) {
       const checks = rule.parameters?.required_status_checks;
       if (!Array.isArray(checks)) throw new Error("Required status checks rule is malformed.");
       for (const check of checks) {
-        if (typeof check?.context !== "string" || !Number.isInteger(check.integration_id)) {
+        if (
+          typeof check?.context !== "string" ||
+          !Number.isInteger(check.integration_id) ||
+          check.integration_id <= 0
+        ) {
           throw new Error("Required status check identity is malformed.");
         }
         requiredChecks.push({ context: check.context, integrationId: check.integration_id });
@@ -421,6 +447,29 @@ export async function runStableReleaseGuard({
   }
 }
 
+export async function runCredentialHealth({ client, now, timeoutMs, log }) {
+  const deadline = now() + timeoutMs;
+  const remainingBudget = (phase) => {
+    const remaining = deadline - now();
+    if (remaining <= 0) throw new Error(`Timed out during credential health (${phase}).`);
+    return remaining;
+  };
+  const pull = await client.findRecentMergedMainPull(
+    remainingBudget("merged main pull request discovery"),
+  );
+  if (!pull) throw new Error("No eligible merged main pull request found for credential health.");
+  const rules = await client.getEffectiveRules("main", remainingBudget("effective rules"));
+  const suite = await client.getRuleSuite(pull.mergeSha, remainingBudget("rule suite"));
+  assertVisibleRuleSuite(suite, pull.mergeSha);
+  const reviews = await client.listReviews(pull.number, remainingBudget("reviews"));
+  const checkRuns = await client.listCheckRuns(pull.mergeSha, remainingBudget("check runs"));
+  log(
+    `Release guard credential health verified for PR #${pull.number} merge=${pull.mergeSha}: ` +
+      `${rules.requiredChecks.length} required check contract(s), rule-suite result visible, ` +
+      `${reviews.length} review record(s), ${checkRuns.length} check run(s).`,
+  );
+}
+
 export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
   const requestIdClassification = (response) =>
     response.headers.get("x-github-request-id") ? "present" : "absent";
@@ -498,12 +547,16 @@ export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
         "check runs",
       );
       assertCapabilityArray(checkRuns?.check_runs, "check runs");
-      const statuses = await request(
-        `/repos/${repository}/commits/${sha}/status?per_page=1`,
-        remaining(),
-        "commit statuses",
+    },
+    findRecentMergedMainPull: async (requestBudgetMs) => {
+      const pulls = await request(
+        `/repos/${repository}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100`,
+        requestBudgetMs,
+        "merged main pull request discovery",
       );
-      assertCapabilityArray(statuses?.statuses, "commit statuses");
+      assertCapabilityArray(pulls, "merged main pull request discovery");
+      const pull = pulls.find(isEligibleMergedMainPull);
+      return pull ? { number: pull.number, mergeSha: pull.merge_commit_sha } : null;
     },
     getPull: (number, requestBudgetMs) =>
       request(`/repos/${repository}/pulls/${number}`, requestBudgetMs, "pull request"),
@@ -551,25 +604,37 @@ export function createGitHubClient({ repository, token, fetchImpl = fetch }) {
   };
 }
 
+async function runPreflight({ client, timeoutMs }) {
+  const probePullNumber = Number(
+    requiredString(process.env.RELEASE_GUARD_PROBE_PR, "RELEASE_GUARD_PROBE_PR"),
+  );
+  if (!Number.isInteger(probePullNumber) || probePullNumber <= 0) {
+    throw new Error("RELEASE_GUARD_PROBE_PR must be a positive integer.");
+  }
+  const probeSha = requiredString(process.env.RELEASE_GUARD_PROBE_SHA, "RELEASE_GUARD_PROBE_SHA");
+  await client.verifyPolicyReadCapabilities("main", probePullNumber, probeSha, timeoutMs);
+  console.log(
+    "Policy-read capability verified: effective branch rules, rule suites, pull request reviews, and check runs.",
+  );
+}
+
+async function runUtilityMode({ client, timeoutMs }) {
+  const handlers = new Map([
+    ["--health", () => runCredentialHealth({ client, now: Date.now, timeoutMs, log: console.log })],
+    ["--preflight", () => runPreflight({ client, timeoutMs })],
+  ]);
+  const selected = [...handlers.keys()].find((flag) => process.argv.includes(flag));
+  if (!selected) return false;
+  await handlers.get(selected)();
+  return true;
+}
+
 async function main() {
   const token = requiredCredential(process.env.RELEASE_GUARD_TOKEN);
   const repository = requiredString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
   const timeoutMs = parseGuardTimeoutMs(process.env.STABLE_RELEASE_GUARD_TIMEOUT_MINUTES);
   const client = createGitHubClient({ repository, token });
-  if (process.argv.includes("--preflight")) {
-    const probePullNumber = Number(
-      requiredString(process.env.RELEASE_GUARD_PROBE_PR, "RELEASE_GUARD_PROBE_PR"),
-    );
-    if (!Number.isInteger(probePullNumber) || probePullNumber <= 0) {
-      throw new Error("RELEASE_GUARD_PROBE_PR must be a positive integer.");
-    }
-    const probeSha = requiredString(process.env.RELEASE_GUARD_PROBE_SHA, "RELEASE_GUARD_PROBE_SHA");
-    await client.verifyPolicyReadCapabilities("main", probePullNumber, probeSha, timeoutMs);
-    console.log(
-      "Policy-read capability verified: effective branch rules, rule suites, pull request reviews, check runs, and commit statuses.",
-    );
-    return;
-  }
+  if (await runUtilityMode({ client, timeoutMs })) return;
   const eventPath = requiredString(process.env.GITHUB_EVENT_PATH, "GITHUB_EVENT_PATH");
   const expectedSha = requiredString(process.env.EXPECTED_RELEASE_SHA, "EXPECTED_RELEASE_SHA");
   const githubSha = requiredString(process.env.GITHUB_SHA, "GITHUB_SHA");
