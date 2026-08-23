@@ -22,7 +22,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function baseElement() {
+function baseElement(): NonNullable<PropertyPanelProps["element"]> {
   return {
     element: document.createElement("div"),
     id: "mono-label",
@@ -81,7 +81,7 @@ function nonTextElement() {
 // flat multi-field layer list (FlatTextLayerList + FlatTextFieldEditor) —
 // must not double-render the "Text" heading (FlatGroup's own heading; this
 // component never renders one of its own).
-function multiFieldTextElement() {
+function multiFieldTextElement(): NonNullable<PropertyPanelProps["element"]> {
   const base = baseElement();
   return {
     ...base,
@@ -179,8 +179,10 @@ function sixGroupElement() {
 
 /** An `<audio>` clip: placed on the timeline, but nothing a tween could move. */
 function audioClipElement() {
+  const element = document.createElement("audio");
   return {
     ...baseElement(),
+    element,
     id: "vo-1",
     selector: "#vo-1",
     label: "Vo 1",
@@ -199,8 +201,10 @@ function audioClipElement() {
  * Start/Duration back on a thing that has no range.
  */
 function audioBusElement() {
+  const element = document.createElement("hf-audio-group");
   return {
     ...baseElement(),
+    element,
     id: "voiceover",
     selector: "#voiceover",
     label: "Voiceover",
@@ -229,7 +233,7 @@ const INFERRED_TIMING_ANIMATION = {
 
 async function renderPanel(
   flatEnabled: boolean,
-  elementOverride: ReturnType<typeof baseElement> = baseElement(),
+  elementOverride: NonNullable<PropertyPanelProps["element"]> = baseElement(),
   propsOverride: Partial<PropertyPanelProps> = {},
   currentTime?: number,
 ) {
@@ -987,6 +991,31 @@ describe("PropertyPanel — flat group entrance animation scoping (fix round)", 
 });
 
 describe("PropertyPanel — Motion is for things that move", () => {
+  it.each([
+    ["a custom music tag", () => document.createElement("music")],
+    [
+      "an element with an audio source",
+      () => {
+        const element = document.createElement("div");
+        element.setAttribute("src", "voiceover.mp3");
+        return element;
+      },
+    ],
+  ])("recognizes %s through the shared audio predicate", async (_label, makeElement) => {
+    const fixture = {
+      ...audioClipElement(),
+      element: makeElement(),
+      tagName: "div",
+    };
+    const { host, root } = await renderPanel(true, fixture);
+    const titles = Array.from(
+      host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+    ).map((node) => node.textContent ?? "");
+    expect(titles.some((title) => title.includes("Motion"))).toBe(false);
+    expect(titles.some((title) => title.includes("Timing"))).toBe(true);
+    act(() => root.unmount());
+  });
+
   it(
     "calls the section Timing on an audio clip, and offers no tween editor",
     async () => {

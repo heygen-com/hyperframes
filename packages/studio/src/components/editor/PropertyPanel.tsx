@@ -36,7 +36,7 @@ import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
-import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { isAudioDomElement } from "../../utils/timelineInspector";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -132,8 +132,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
    * `<hf-audio-group>` has no visual to hide at all, and its mute lives on its
    * own row.
    */
-  const selectedTag = element?.tagName?.toLowerCase();
-  const audioSelection = selectedTag === "audio" || selectedTag === HF_AUDIO_GROUP_TAG;
+  const audioSelection = isAudioDomElement(element?.element);
   // Live during playback, the store's when paused — see the hook. Shared with the
   // audio FX panel, which follows the playhead for the same reason: a value the
   // timeline drives has to be shown moving, not frozen at what the attribute says.
