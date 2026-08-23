@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
-import type { TimelineElement } from "../store/playerStore";
+import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
-import { getTimelineLaneTop, LABEL_COL_W } from "./timelineLayout";
+import { getTimelineLaneTop, LABEL_COL_W, TRACK_H } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -72,6 +72,9 @@ interface RenderHeaderOptions {
   onTogglePropertyGroupKeyframe?: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onRemoveAutomationLane?: (target: string) => void;
+  isAudioTrack?: boolean;
+  isGroupMember?: boolean;
+  isTrackHidden?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -82,7 +85,20 @@ function renderHeader(options: RenderHeaderOptions = {}): {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const render = (next: RenderHeaderOptions) => {
+  const render = (raw: RenderHeaderOptions) => {
+    // Defaults resolved once, up front, rather than as a `??` per prop in the
+    // JSX — a dozen of those is a dozen branches through one arrow.
+    const next = {
+      keyframeClip: ELEMENT,
+      clipCount: 1,
+      animations: [POSITION, OPACITY],
+      currentTime: 0,
+      isAudioTrack: false,
+      isGroupMember: false,
+      isTrackHidden: false,
+      onToggleTrackHidden: vi.fn(),
+      ...raw,
+    };
     act(() => {
       root.render(
         <TimelineTrackHeader
@@ -93,17 +109,18 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           trackLabel="Hero card"
           lanesId="timeline-lanes-track-0"
           contentOrigin={LABEL_COL_W}
-          keyframeClip={next.keyframeClip ?? ELEMENT}
-          trackElements={next.trackElements ?? [next.keyframeClip ?? ELEMENT]}
-          clipCount={next.clipCount ?? 1}
+          keyframeClip={next.keyframeClip}
+          trackElements={next.trackElements ?? [next.keyframeClip]}
+          clipCount={next.clipCount}
           isExpanded={next.expanded !== false}
-          animations={next.animations ?? [POSITION, OPACITY]}
-          currentTime={next.currentTime ?? 0}
-          isTrackHidden={false}
-          isAudioTrack={false}
+          animations={next.animations}
+          currentTime={next.currentTime}
+          isTrackHidden={next.isTrackHidden}
+          isAudioTrack={next.isAudioTrack}
+          isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
           onToggleClipExpanded={vi.fn()}
-          onToggleTrackHidden={next.onToggleTrackHidden ?? vi.fn()}
+          onToggleTrackHidden={next.onToggleTrackHidden}
           onTogglePropertyGroupKeyframe={next.onTogglePropertyGroupKeyframe}
           onRemoveAutomationLane={next.onRemoveAutomationLane}
           onSeek={next.onSeek}
@@ -122,6 +139,63 @@ function click(host: HTMLElement, label: string) {
 }
 
 describe("TimelineTrackHeader", () => {
+  // §5: gain stages multiply. A group fading to 0.42 under a clip fading to
+  // 0.80 plays at 0.34, and an author who drew both hears something quieter
+  // than either with nothing on screen to say why. Not a warning; an
+  // explanation.
+  it("says so when the clip's group is fading the same parameter", () => {
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 0.4 },
+          ],
+        },
+      ],
+    });
+    const clip: TimelineElement = {
+      ...ELEMENT,
+      tag: "audio",
+      automation,
+      audioGroup: "voiceover",
+      audioGroupLabel: "Voiceover",
+      audioGroupAutomation: automation,
+    };
+    const view = renderHeader({ keyframeClip: clip, trackElements: [clip], animations: [] });
+    expect(view.host.textContent).toContain("Voiceover is also fading this.");
+    act(() => view.root.unmount());
+  });
+
+  // The same clip with an un-automated group must stay quiet — the note is
+  // only honest when the two curves actually multiply.
+  it("stays quiet when the group automates nothing", () => {
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 0.4 },
+          ],
+        },
+      ],
+    });
+    const clip: TimelineElement = {
+      ...ELEMENT,
+      tag: "audio",
+      automation,
+      audioGroup: "voiceover",
+      audioGroupLabel: "Voiceover",
+    };
+    const view = renderHeader({ keyframeClip: clip, trackElements: [clip], animations: [] });
+    expect(view.host.textContent).not.toContain("is also fading this");
+    act(() => view.root.unmount());
+  });
+
   // An expanded sub-composition child sits on the MASTER timeline at a
   // host-absolute start, but its tweens are parsed from its own file and are
   // local to it. Feeding the raw start straight into the clip-% math put every
@@ -177,6 +251,55 @@ describe("TimelineTrackHeader", () => {
 
     view.rerender({ clipCount: 3 });
     expect(view.host.querySelector('[aria-label="3 clips"]')?.textContent).toBe("3");
+    act(() => view.root.unmount());
+  });
+
+  // The visibility control is the old hide eye. On an audio track it silences
+  // rather than hides, and the row already says so with a speaker elsewhere —
+  // so the eye's slot stays empty there. A non-audio track is untouched.
+  it("keeps the visibility control off audio track headers", () => {
+    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+    const view = renderHeader({
+      keyframeClip: audio,
+      trackElements: [audio],
+      isAudioTrack: true,
+      animations: [],
+    });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^(Hide|Show) track/.test(l))).toBe(false);
+    expect(labels).not.toContain("Mute");
+    act(() => view.root.unmount());
+  });
+
+  // The escape hatch. `data-hidden` on audio silences it in preview and drops it
+  // from the render; the panel's "Muted" is the unrelated HTML `muted`
+  // attribute, and nothing else writes it. Withholding the eye unconditionally
+  // meant a track hidden by "Hide all" (or by hand, or before that rule existed)
+  // was silent with no control anywhere to bring it back.
+  it("offers the eye on an audio track that is already hidden, so it can be restored", () => {
+    const audio: TimelineElement = { ...ELEMENT, tag: "audio" };
+    const view = renderHeader({
+      keyframeClip: audio,
+      trackElements: [audio],
+      isAudioTrack: true,
+      isTrackHidden: true,
+      animations: [],
+    });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^Show track/.test(l))).toBe(true);
+    act(() => view.root.unmount());
+  });
+
+  it("keeps it on a non-audio track", () => {
+    const view = renderHeader({ isAudioTrack: false });
+    const labels = Array.from(view.host.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels.some((l) => l && /^Hide track/.test(l))).toBe(true);
     act(() => view.root.unmount());
   });
 
@@ -614,7 +737,9 @@ describe("TimelineTrackHeader", () => {
     it("names the header for the track, not for one of the clips on it", () => {
       const view = renderHeader({ ...ROW, keyframeClip: NARRATION_2 });
       expect(view.host.textContent).not.toContain("narration-2");
-      expect(view.host.querySelector('[title="Track 1"]')?.textContent).toBe("Track 1");
+      // Asserted on the rendered text, not a `title`: the name wraps now rather
+      // than truncating, so it no longer carries a tooltip to be found by.
+      expect(view.host.textContent).toContain("Track 1");
       // Alone on the track it is still named for itself.
       view.rerender({
         ...ROW,
@@ -622,7 +747,170 @@ describe("TimelineTrackHeader", () => {
         trackElements: [NARRATION_2],
         clipCount: 1,
       });
-      expect(view.host.querySelector('[title="narration-2"]')?.textContent).toBe("narration-2");
+      expect(view.host.textContent).toContain("narration-2");
+      act(() => view.root.unmount());
+    });
+  });
+
+  describe("audio ids and canary gates", () => {
+    const VOICE: TimelineElement = {
+      id: "voice-1",
+      key: "index.html#voice-1",
+      domId: "voice-1",
+      tag: "audio",
+      start: 0,
+      duration: 5,
+      track: 0,
+    };
+    const VOICE_2: TimelineElement = {
+      ...VOICE,
+      id: "voice-2",
+      key: "index.html#voice-2",
+      domId: "voice-2",
+    };
+
+    // The set is pushed straight into the runtime, which compares it against
+    // `el.id`. A store key here matches nothing, `isAudibleUnderSolo` returns
+    // false for every element, and soloing silences the whole preview.
+    // A member row is `aria-level="2"`, and without this it looked identical to
+    // every top-level row — the nesting existed for a screen reader and not for
+    // an eye. B2's design called for the accent rail; only the semantics shipped.
+    it("indents a group member's row and gives it the accent rail", () => {
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      const header = () => view.host.querySelector<HTMLElement>('[role="rowheader"]');
+
+      expect(header()?.style.paddingLeft).toBe("");
+      expect(header()?.style.borderLeft).toBe("");
+      expect(header()?.style.background).not.toContain("linear-gradient");
+
+      view.rerender({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+        isGroupMember: true,
+      });
+      expect(header()?.style.paddingLeft).toBe("14px");
+      expect(header()?.style.borderLeft).toContain("2px");
+      // And a lighter gutter, so the row reads as sitting INSIDE its group
+      // rather than beside it. Overlaid on the theme's own fill rather than a
+      // hard-coded colour, so it follows whatever the gutter is.
+      expect(header()?.style.background).toContain("linear-gradient");
+      act(() => view.root.unmount());
+    });
+
+    it("offers the FX button on every audio track", () => {
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    // A visual track has no chain to open, so the button must not follow the
+    // header onto every row.
+    it("withholds the FX button from a non-audio track", () => {
+      const view = renderHeader({
+        keyframeClip: ELEMENT,
+        animations: [],
+        expanded: false,
+      });
+      expect(view.host.querySelector('button[aria-label="Effects"]')).toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    // A chain belongs to ONE bus, so a track carrying several ungrouped clips
+    // gets the pointer instead of the FX button — group first, then mix.
+    it("shows the group pointer on a multi-clip ungrouped audio track", () => {
+      const opts = {
+        keyframeClip: VOICE,
+        trackElements: [VOICE, VOICE_2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      };
+      const pointer = (host: HTMLElement) =>
+        host.querySelector('button[aria-label="Effects — group these clips first"]');
+      const view = renderHeader(opts);
+      expect(pointer(view.host)).not.toBeNull();
+      // One clip needs no grouping — the real FX button takes its place.
+      view.rerender({ ...opts, trackElements: [VOICE], clipCount: 1 });
+      expect(pointer(view.host)).toBeNull();
+      expect(view.host.querySelector('button[aria-label="Effects"]')).not.toBeNull();
+      act(() => view.root.unmount());
+    });
+
+    // The header is a 48px column of exactly TWO lines — what the row is, then
+    // what you can do to it. The group pointer used to render as a sibling of
+    // both, making a third: 17 + 24 + 24 + gaps in a 48px box, which
+    // `justify-center` then spilled evenly out of the top and bottom. The name
+    // rode 10px above its own row and the pointer collided with the row below.
+    // The header GROWS by AUTOMATION_LANE_H for every open lane, and the lanes
+    // are absolutely positioned from its top. `justify-center` on the header
+    // itself therefore centred the two lines in the FULL height, so opening a
+    // lane pushed the name and its controls down on top of the lane rows.
+    it("pins the two lines to the top TRACK_H, whatever the header grows to", () => {
+      const automated: TimelineElement = {
+        ...VOICE,
+        automation: JSON.stringify({
+          version: 1,
+          lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }],
+        }),
+      };
+      const view = renderHeader({
+        keyframeClip: automated,
+        trackElements: [automated],
+        clipCount: 1,
+        animations: [],
+        expanded: true,
+        isAudioTrack: true,
+      });
+      const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+      const lines = header?.children[0] as HTMLElement | undefined;
+      expect(lines?.style.height).toBe(`${TRACK_H}px`);
+      // The lane row is a sibling of the wrapper, not inside it — it stacks
+      // BELOW the two lines rather than sharing their box.
+      expect((header?.children.length ?? 0) > 1).toBe(true);
+      act(() => view.root.unmount());
+    });
+
+    // The header is ONE line: name, clip count, then every control anchored to
+    // the right edge. It was two — a name line and a control line — which is
+    // what let a stray third child overflow the 48px box; now there is a single
+    // row and the controls share one right-aligned group.
+    it("keeps the name and every control on one line, controls to the right", () => {
+      const view = renderHeader({
+        keyframeClip: VOICE,
+        trackElements: [VOICE, VOICE_2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+        isAudioTrack: true,
+      });
+      const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+      // One TRACK_H-tall wrapper holding one line.
+      const lines = header?.children[0];
+      expect(lines?.children).toHaveLength(1);
+      // The controls live in a right-anchored group at the end of that line,
+      // after the name and the clip count — `ml-auto` is what holds the edge.
+      const line = lines?.children[0];
+      const controls = line?.lastElementChild as HTMLElement | null;
+      expect(controls?.className).toContain("ml-auto");
+      expect(
+        controls?.querySelector('button[aria-label="Effects — group these clips first"]'),
+      ).not.toBeNull();
+      // And the clip count is beside the name, not out with the controls.
+      expect(controls?.querySelector('[aria-label="2 clips"]')).toBeNull();
+      expect(line?.querySelector('[aria-label="2 clips"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
   });

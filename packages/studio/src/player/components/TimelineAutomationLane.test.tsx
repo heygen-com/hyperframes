@@ -1747,3 +1747,70 @@ describe("TimelineAutomationLane stretch", () => {
     expect(svg.style.cursor).not.toBe("col-resize");
   });
 });
+
+describe("TimelineAutomationLane — a read-only lane offers nothing to grab", () => {
+  /** Hover the lane the way a pointer entering it does. */
+  function hover(container: HTMLElement): SVGSVGElement {
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, { left: 0, top: 0, width: 400, height: 48 });
+    // React implements onPointerEnter through the delegated `pointerover`
+    // event, not a native `pointerenter` — which does not bubble and so never
+    // reaches its listener.
+    fire(svg, "pointerover");
+    return svg as SVGSVGElement;
+  }
+
+  const handles = (container: HTMLElement) =>
+    [...container.querySelectorAll("circle[data-automation-point]")] as SVGCircleElement[];
+
+  // A grab handle raised on hover is an offer, and a carve lane cannot honour
+  // it: the analysis rewrites these envelopes on every run, so a point moved
+  // here is discarded rather than saved. Dimming alone did not say that — the
+  // handles still came up under the cursor and the drag silently did nothing.
+  it("keeps its point handles hidden on hover", () => {
+    const { container } = render(
+      <TimelineAutomationLane
+        {...laneProps({ automation: ramp, readOnly: true, readOnlyNote: "Owned by the carve." })}
+      />,
+    );
+    hover(container);
+    const drawn = handles(container);
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const c of drawn) {
+      expect(c.style.opacity).toBe("0");
+      expect(c.style.cursor).toBe("default");
+    }
+  });
+
+  it("still raises them on an editable lane, so the gate is readOnly and not hover", () => {
+    const { container } = render(<TimelineAutomationLane {...laneProps({ automation: ramp })} />);
+    hover(container);
+    const drawn = handles(container);
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const c of drawn) {
+      expect(c.style.opacity).toBe("1");
+      expect(c.style.cursor).toBe("grab");
+    }
+  });
+
+  it("says why, in the lane, once hovered", () => {
+    const { container } = render(
+      <TimelineAutomationLane
+        {...laneProps({ automation: ramp, readOnly: true, readOnlyNote: "Owned by the carve." })}
+      />,
+    );
+    expect(container.querySelector("[data-automation-readonly-note]")).toBeNull();
+    hover(container);
+    expect(container.querySelector("[data-automation-readonly-note]")?.textContent).toContain(
+      "Owned by the carve.",
+    );
+  });
+
+  it("says nothing when no reason was given", () => {
+    const { container } = render(
+      <TimelineAutomationLane {...laneProps({ automation: ramp, readOnly: true })} />,
+    );
+    hover(container);
+    expect(container.querySelector("[data-automation-readonly-note]")).toBeNull();
+  });
+});

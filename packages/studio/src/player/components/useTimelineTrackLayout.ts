@@ -7,7 +7,6 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
-  STRIP_H,
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
@@ -15,6 +14,13 @@ import {
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
+import { groupAutomationElement } from "./groupAutomationElement";
+import { AUTOMATION_LANE_H } from "./automationLaneHeight";
+
+/** Automation rows the GROUP itself owns — its `data-automation`, not its members'. */
+function groupOwnLaneCount(group: TimelineTrackGroupInfo): number {
+  return groupAutomationLanes([groupAutomationElement(group, 0)]).length;
+}
 
 export { getTrackStyle } from "./timelineIcons";
 
@@ -132,8 +138,8 @@ function computeLaneCounts(
 /** Group anchor rows have no elements of their own (`groupTimelineTracks`
  *  pushes them as `[anchorKey, []]`), so `trackHeights` — which only ever
  *  looks at a row's clips — always gives them TRACK_H. Override those
- *  specific rows post-hoc: TRACK_H while collapsed, +STRIP_H once the
- *  group's own `∿` (bus strip) is open. */
+ *  specific rows post-hoc: TRACK_H while collapsed, plus the group's own
+ *  automation rows once its `∿` is open. */
 function applyGroupStripHeights(
   tracks: readonly (readonly [number, readonly TimelineElement[]])[],
   rowHeights: number[],
@@ -145,7 +151,9 @@ function applyGroupStripHeights(
   return tracks.map(([track], index) => {
     const group = groupByAnchor.get(track);
     if (!group || !expandedLaneOwnerIds.has(group.id)) return rowHeights[index] ?? TRACK_H;
-    return TRACK_H + STRIP_H;
+    // The group's own automation rows, which its `∿` discloses. A row sized
+    // without them clipped every lane it had just promised in the count.
+    return TRACK_H + groupOwnLaneCount(group) * AUTOMATION_LANE_H;
   });
 }
 

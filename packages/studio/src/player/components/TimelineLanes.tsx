@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
@@ -9,6 +9,7 @@ import { useAutomationSelectionKeyboard } from "../../hooks/useAutomationSelecti
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { TimelineGroupRow } from "./TimelineGroupRow";
 import { useTimelineLaneRowIndexes, useTimelineGroupDisclosure } from "./useTimelineLaneRowIndexes";
+import { useTimelineClipDisclosure } from "./useTimelineClipDisclosure";
 import {
   isTrackRowExpanded,
   resolveTrackKeyframeClip,
@@ -22,7 +23,6 @@ import { usePlayerStore } from "../store/playerStore";
 import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMultiDragPreview";
 import { useTimelineMultiDragActorWindows } from "./useTimelineMultiDragActorWindows";
 import type { TimelineLanesProps } from "./timelineLaneProps";
-import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { createClipGestureHandlers } from "./timelineClipGestureHandlers";
 import { renderClipChildren, resolveClipRenderContext } from "./timelineClipChildren";
@@ -100,29 +100,24 @@ export function TimelineLanes({
   // from resolving into a second timeline that renders the same logical rows.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
-  const { expandedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
+  const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
+  // synthetic lane element spans the whole composition rather than a clip.
+  const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
-  const expandClips = usePlayerStore((s) => s.expandClips);
-  const setClipExpanded = usePlayerStore((s) => s.setClipExpanded);
-  const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
   const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
-  // The caret belongs to the ROW, so it opens and closes every clip on it at
-  // once. Toggling only the active clip left the row's state depending on which
-  // sibling happened to be selected: expand one, click another, and the row
-  // collapsed under a caret that still pointed down.
-  const toggleRowExpandedTracked = (keys: readonly string[]) => {
-    const willExpand = !keys.some((key) => expandedClipIds.has(key));
-    trackStudioKeyframeLaneExpand({ expanded: willExpand });
-    if (willExpand) expandClips(keys);
-    else for (const key of keys) setClipExpanded(key, false);
-  };
-  const toggleClipExpandedTracked = (key: string) => {
-    const willExpand = !expandedClipIds.has(key);
-    trackStudioKeyframeLaneExpand({ expanded: willExpand });
-    toggleClipExpanded(key);
-  };
+  // Which tracks are group MEMBERS, so their headers can render the level-2
+  // nesting their `aria-level` already reports.
+  const groupMemberTracks = useMemo(
+    () => new Set(groups.flatMap((group) => group.memberTracks)),
+    [groups],
+  );
+  const {
+    toggleRowExpanded: toggleRowExpandedTracked,
+    toggleClipExpanded: toggleClipExpandedTracked,
+  } = useTimelineClipDisclosure();
   const actorWindows = useTimelineMultiDragActorWindows(
     multiDragPreview,
     rowsVirtualized,
@@ -163,17 +158,23 @@ export function TimelineLanes({
                 rowKey={rowKey}
                 group={group}
                 logicalRow={groupLogicalRow}
-                tracks={tracks}
                 top={rowGeometry.getRowTop(row)}
                 height={rowGeometry.getRowHeight(row)}
                 virtualized={rowsVirtualized}
                 contentOrigin={contentOrigin}
                 theme={theme}
                 rovingTargetId={keyboard.rovingTargetId}
-                expandedGroupIds={expandedGroupIds}
+                collapsedGroupIds={collapsedGroupIds}
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
                 toggleGroupExpanded={toggleGroupExpanded}
                 toggleLaneOwnerExpanded={toggleLaneOwnerExpanded}
+                lanes={automationLanes}
+                pps={pps}
+                currentTime={currentTime}
+                compositionDuration={compositionDuration}
+                beatTimes={beatAnalysis?.beatTimes}
+                contentGutter={contentGutter}
+                trackContentWidth={trackContentWidth}
               />
             );
           }
@@ -290,6 +291,7 @@ export function TimelineLanes({
                 currentTime={currentTime}
                 isTrackHidden={isTrackHidden}
                 isAudioTrack={isAudioTrack}
+                isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
                 onToggleClipExpanded={() => {
                   const keys = els.map(getTimelineElementIdentity);

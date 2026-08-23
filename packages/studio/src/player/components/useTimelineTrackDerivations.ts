@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
 
 /** One resolved audio group, positioned in the row order. */
@@ -15,12 +15,26 @@ export interface TimelineTrackGroupInfo {
   anchorKey: number;
   /** Member track numbers, ascending. */
   memberTracks: number[];
+  /**
+   * Every clip under this group, in member-track order — INDEPENDENT of whether
+   * the group is expanded.
+   *
+   * Collapsing a group stops emitting its member rows into `tracks`, so anything
+   * that recovered member elements by looking them up there got an empty list in
+   * the default (collapsed) state — silently disabling the
+   * automation-lane count, and the bus strip's member labels. Membership is not
+   * a display concern, so it does not travel through the display list.
+   */
+  memberElements: TimelineElement[];
   /** The group element's `data-volume`, mirrored from a member's parse (B7's slider). */
   volume: number;
   /** The group element's `data-hidden`, mirrored from a member's parse (B5's group mute). */
   hidden: boolean;
   /** The group element's serialized `data-fx-chain`, mirrored from a member's parse (C1's FX entry). */
   fxChain?: string;
+  /** The group element's serialized `data-automation` — the group's OWN lanes,
+   *  which are what its `∿` discloses (groups doc §5). */
+  automation?: string;
 }
 
 interface GroupMembership {
@@ -30,6 +44,7 @@ interface GroupMembership {
   volumeByGroup: Map<string, number>;
   hiddenByGroup: Map<string, boolean>;
   fxChainByGroup: Map<string, string | undefined>;
+  automationByGroup: Map<string, string | undefined>;
 }
 
 /** Which track belongs to which group, and each group's label/volume/hidden/fxChain — one pass over raw tracks. */
@@ -40,6 +55,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
   const volumeByGroup = new Map<string, number>();
   const hiddenByGroup = new Map<string, boolean>();
   const fxChainByGroup = new Map<string, string | undefined>();
+  const automationByGroup = new Map<string, string | undefined>();
   for (const [trackNum, elements] of rawTracks) {
     const owner = elements.find((el) => el.audioGroup);
     if (!owner?.audioGroup) continue;
@@ -49,6 +65,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
       volumeByGroup.set(owner.audioGroup, owner.audioGroupVolume ?? 1);
       hiddenByGroup.set(owner.audioGroup, owner.audioGroupHidden ?? false);
       fxChainByGroup.set(owner.audioGroup, owner.audioGroupFxChain);
+      automationByGroup.set(owner.audioGroup, owner.audioGroupAutomation);
     }
     const members = memberTracksByGroup.get(owner.audioGroup) ?? [];
     members.push(trackNum);
@@ -61,6 +78,7 @@ function resolveGroupMembership(rawTracks: [number, TimelineElement[]][]): Group
     volumeByGroup,
     hiddenByGroup,
     fxChainByGroup,
+    automationByGroup,
   };
 }
 
@@ -69,33 +87,50 @@ function buildGroupInfo(
   groupId: string,
   fallbackTrackNum: number,
   membership: GroupMembership,
+  rawByTrack: ReadonlyMap<number, TimelineElement[]>,
 ): TimelineTrackGroupInfo {
   const memberTracks = [...(membership.memberTracksByGroup.get(groupId) ?? [])].sort(
     (a, b) => a - b,
   );
   const fxChain = membership.fxChainByGroup.get(groupId);
+  const automation = membership.automationByGroup.get(groupId);
   return {
     id: groupId,
     label: membership.labelByGroup.get(groupId) ?? groupId,
+    // Exactly x.5, which sub-composition child rows are now kept strictly below
+    // (`useExpandedTimelineElements`) — they used to be able to land here and
+    // collide, duplicating the group header.
     anchorKey: (memberTracks[0] ?? fallbackTrackNum) - 0.5,
     memberTracks,
+    memberElements: memberTracks.flatMap((track) => rawByTrack.get(track) ?? []),
     volume: membership.volumeByGroup.get(groupId) ?? 1,
     hidden: membership.hiddenByGroup.get(groupId) ?? false,
     ...(fxChain ? { fxChain } : {}),
+    ...(automation ? { automation } : {}),
   };
 }
 
-/** Push a group's synthetic anchor row plus its members' rows, contiguously. */
+/**
+ * Push a group's synthetic anchor row plus its members' rows, contiguously.
+ *
+ * A collapsed group emits its anchor and nothing else. `buildTimelineLogicalRows`
+ * already stops at the anchor when collapsed, so leaving the member rows in
+ * `tracks` left row geometry reserving a full row each for rows that then
+ * rendered as `null` — a header trailed by its members' worth of blank,
+ * unreachable dead space. Membership still lands in `trackGroupOf`: a collapsed
+ * member is hidden, not ungrouped.
+ */
 function emitGroupRows(
   info: TimelineTrackGroupInfo,
   rawByTrack: ReadonlyMap<number, TimelineElement[]>,
   trackGroupOf: Map<number, TimelineTrackGroupInfo>,
   tracks: [number, TimelineElement[]][],
+  expanded: boolean,
 ): void {
   tracks.push([info.anchorKey, []]);
   for (const member of info.memberTracks) {
     trackGroupOf.set(member, info);
-    tracks.push([member, rawByTrack.get(member) ?? []]);
+    if (expanded) tracks.push([member, rawByTrack.get(member) ?? []]);
   }
 }
 
@@ -105,7 +140,10 @@ function emitGroupRows(
  * their position; a group's members move up to sit under its anchor even when
  * other (ungrouped) tracks were interleaved between them.
  */
-function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
+function groupTimelineTracks(
+  rawTracks: [number, TimelineElement[]][],
+  collapsedGroupIds: ReadonlySet<string>,
+): {
   tracks: [number, TimelineElement[]][];
   groups: TimelineTrackGroupInfo[];
   trackGroupOf: Map<number, TimelineTrackGroupInfo>;
@@ -125,9 +163,9 @@ function groupTimelineTracks(rawTracks: [number, TimelineElement[]][]): {
     }
     if (emitted.has(groupId)) continue;
     emitted.add(groupId);
-    const info = buildGroupInfo(groupId, trackNum, membership);
+    const info = buildGroupInfo(groupId, trackNum, membership, rawByTrack);
     groups.push(info);
-    emitGroupRows(info, rawByTrack, trackGroupOf, tracks);
+    emitGroupRows(info, rawByTrack, trackGroupOf, tracks, !collapsedGroupIds.has(groupId));
   }
   return { tracks, groups, trackGroupOf };
 }
@@ -156,9 +194,10 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
     return Array.from(map.entries()).sort(([a], [b]) => a - b);
   }, [expandedElements]);
 
+  const collapsedGroupIds = usePlayerStore((s) => s.collapsedGroupIds);
   const { tracks, groups, trackGroupOf } = useMemo(
-    () => groupTimelineTracks(rawTracks),
-    [rawTracks],
+    () => groupTimelineTracks(rawTracks, collapsedGroupIds),
+    [rawTracks, collapsedGroupIds],
   );
 
   const trackStyles = useMemo(() => {

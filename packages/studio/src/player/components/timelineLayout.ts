@@ -7,7 +7,8 @@ export const GUTTER = 32;
 export const LABEL_COL_W = 232;
 export const TRACK_H = 48;
 export const LANE_H = 28;
-export const STRIP_H = 40; // group bus strip (B7) — one fixed block, not per-property like LANE_H
+/** Compatibility bridge for the bus strip removed later in the stack. */
+export const STRIP_H = 40;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;

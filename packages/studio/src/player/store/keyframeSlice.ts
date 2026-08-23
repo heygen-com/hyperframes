@@ -84,8 +84,16 @@ export interface KeyframeSlice {
   /** Union-expand clips (keyframed clips are expanded by default on load). */
   expandClips: (ids: readonly string[]) => void;
 
-  /** Groups whose member rows the caret has shown (structural, not lanes). */
-  expandedGroupIds: Set<string>;
+  /**
+   * Groups whose member rows the caret has HIDDEN (structural, not lanes).
+   *
+   * Inverted deliberately. As an expanded-set, "not in the set" could not tell
+   * never-touched from deliberately-collapsed, so every group defaulted to
+   * collapsed — and since nothing seeds the set on create, grouping three
+   * tracks made all three vanish behind a header the user had not yet learned
+   * to open. Groups are expanded until someone closes one.
+   */
+  collapsedGroupIds: Set<string>;
   toggleGroupExpanded: (id: string) => void;
 
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
@@ -161,13 +169,13 @@ export function createKeyframeSlice(
         return { expandedClipIds: next };
       }),
 
-    expandedGroupIds: new Set(),
+    collapsedGroupIds: new Set(),
     toggleGroupExpanded: (id) =>
       set((state) => {
-        const next = new Set(state.expandedGroupIds);
+        const next = new Set(state.collapsedGroupIds);
         if (next.has(id)) next.delete(id);
         else next.add(id);
-        return { expandedGroupIds: next };
+        return { collapsedGroupIds: next };
       }),
 
     expandedLaneOwnerIds: new Set(),

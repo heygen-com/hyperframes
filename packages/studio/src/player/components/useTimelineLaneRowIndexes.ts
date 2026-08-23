@@ -6,7 +6,7 @@ import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
 /** The four pieces of group-disclosure state a group row's header reads and writes. */
 export function useTimelineGroupDisclosure() {
   return {
-    expandedGroupIds: usePlayerStore((s) => s.expandedGroupIds),
+    collapsedGroupIds: usePlayerStore((s) => s.collapsedGroupIds),
     expandedLaneOwnerIds: usePlayerStore((s) => s.expandedLaneOwnerIds),
     toggleGroupExpanded: usePlayerStore((s) => s.toggleGroupExpanded),
     toggleLaneOwnerExpanded: usePlayerStore((s) => s.toggleLaneOwnerExpanded),

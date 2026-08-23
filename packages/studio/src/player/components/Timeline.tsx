@@ -33,7 +33,7 @@ import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemet
 import {
   getEffectiveTimelineDuration,
   getTimelinePreviewElement,
-  hasKeyframedTimelineClips,
+  timelineNeedsLabelColumn,
 } from "./timelineViewModel";
 import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
@@ -115,7 +115,10 @@ export const Timeline = memo(function Timeline({
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const labelMode = useMemo(() => hasKeyframedTimelineClips(gsapAnimations), [gsapAnimations]);
+  const labelMode = useMemo(
+    () => timelineNeedsLabelColumn(gsapAnimations, expandedElements),
+    [gsapAnimations, expandedElements],
+  );
   // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
   const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
   const contentGutter = labelMode ? GUTTER : 0;
