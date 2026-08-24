@@ -17,6 +17,7 @@ import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import { usePlayerStore } from "../store/playerStore";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
@@ -98,6 +99,12 @@ export function TimelineGroupRow({
     else void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
   };
   const openGroupFxRack = () => {
+    // A group is selectable in the canvas/property panel but has no clip row the
+    // timeline selection mirror can represent. Leaving the previously selected
+    // clip in the store lets its next sync reclaim the property panel as soon as
+    // the group rack writes an effect. Clear it before the async group selection
+    // resolves so the group remains the sole editing target.
+    usePlayerStore.getState().clearSelection();
     const target = domEditActions?.previewIframeRef.current?.contentDocument?.getElementById(
       group.id,
     );

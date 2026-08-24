@@ -6,7 +6,7 @@ import { TimelineGroupRow } from "./TimelineGroupRow";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { defaultTimelineTheme } from "./timelineTheme";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,6 +14,7 @@ vi.mock("../../telemetry/canary", () => ({ isCanaryEnabled: () => true }));
 
 afterEach(() => {
   document.body.innerHTML = "";
+  usePlayerStore.getState().clearSelection();
 });
 
 const member = (id: string, track: number): TimelineElement => ({
@@ -72,6 +73,20 @@ function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
 }
 
 describe("TimelineGroupRow", () => {
+  it("clears selected clips when the group title opens its effects rack", () => {
+    usePlayerStore.getState().setSelectedElementId("vo-1");
+    const { host } = renderRow();
+    const title = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.getAttribute("aria-label") === "Open Voiceover effects",
+    );
+
+    expect(title).toBeDefined();
+    act(() => title?.click());
+
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set());
+  });
+
   // C1 names this as the step's own definition of done: "opening the popover on
   // a GROUP and applying a preset results in exactly ONE `data-fx-chain` write,
   // on the group element, and zero writes on members". A group IS a bus — a
