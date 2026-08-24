@@ -60,9 +60,16 @@ export function announceTimelineSelection(
     anchor,
     anchorPublished: anchor != null && publishedMembers.has(anchor),
   });
-  // A canvas target can be editable without owning a timeline row. Preserve that
-  // canvas-only selection when the timeline has nothing truthful to represent.
-  if (!timelineAnchor) return;
+  // A canvas target can be editable without owning a timeline row. The bus title
+  // is one such target: selecting it must replace, not coexist with, a stale clip
+  // selection. Publishing the empty timeline selection is safe because the
+  // timeline-to-preview mirror only clears a canvas target that resolves back to
+  // a timeline id, so the canvas-only target remains selected.
+  if (!timelineAnchor) {
+    setTimelineSelectionSet(new Set());
+    setSelectedTimelineElementId(null);
+    return;
+  }
   // A late async primary that already belongs to the live set must preserve the
   // group. A fresh single click does not belong to it, so publish the singleton
   // first; otherwise `preserveSet` clears the set and sync wipes the canvas.

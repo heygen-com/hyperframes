@@ -130,6 +130,38 @@ describe("useDomSelection — Variables tab preservation", () => {
   });
 });
 
+describe("useDomSelection — canvas-only targets replace timeline clips", () => {
+  beforeEach(() => usePlayerStore.getState().clearSelection());
+  afterEach(() => usePlayerStore.getState().clearSelection());
+
+  it("deselects every clip when an audio bus is selected", () => {
+    const store = usePlayerStore.getState();
+    store.setSelectedElementId("voice-1");
+    store.setSelectedElementIds(new Set(["voice-1", "voice-2"]));
+
+    const bus = document.createElement("hf-audio-group");
+    bus.id = "voiceover";
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe: null,
+      timelineElements: [
+        { id: "voice-1", tag: "audio", start: 0, duration: 1, track: 0 },
+        { id: "voice-2", tag: "audio", start: 1, duration: 1, track: 1 },
+      ],
+      setSelectedTimelineElementId: usePlayerStore.getState().setSelectedElementId,
+      setTimelineSelectionSet: usePlayerStore.getState().setSelectedElementIds,
+    });
+
+    act(() => harness.current().applyDomSelection(makeSelection("Voiceover", bus)));
+
+    expect(harness.current().domEditSelection?.id).toBe("voiceover");
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set());
+    harness.cleanup();
+  });
+});
+
 describe("useDomSelection — timeline-select race guard", () => {
   beforeEach(() => deferreds.clear());
   afterEach(() => deferreds.clear());
