@@ -3139,3 +3139,117 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 });
+
+describe("gsap_fromto_flash_before_start", () => {
+  const comp = (script: string, body = "", style = "") => `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">${body}</div>
+  ${style ? `<style>${style}</style>` : ""}
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    ${script}
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+
+  it("errors when a late fromTo jumps from a non-identity from-var on a visible element", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#line", { x: "-105%" }, { x: "0%", duration: 0.8, ease: "steps(12)" }, 2);`,
+        `<div id="line">code</div>`,
+      ),
+    );
+    const finding = result.findings.find((f) => f.code === "gsap_fromto_flash_before_start");
+    expect(finding).toBeDefined();
+    expect(finding!.severity).toBe("error");
+    expect(finding!.selector).toBe("#line");
+  });
+
+  it("errors when a late fromTo fades in an element that was never hidden", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#hero", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 1.5);`,
+        `<div id="hero">Hi</div>`,
+      ),
+    );
+    const finding = result.findings.find((f) => f.code === "gsap_fromto_flash_before_start");
+    expect(finding).toBeDefined();
+  });
+
+  it("exempts a target hidden by authored CSS opacity:0", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#line", { x: "-105%" }, { x: "0%", opacity: 1, duration: 0.8 }, 2);`,
+        `<div id="line">code</div>`,
+        `#line { opacity: 0; }`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+
+  it("exempts a target pre-hidden by a timeline set at the timeline start", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.set("#line", { opacity: 0 }, 0);
+         tl.fromTo("#line", { x: "-105%" }, { x: "0%", duration: 0.8 }, 2);`,
+        `<div id="line">code</div>`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+
+  it("exempts a target pre-hidden by a standalone gsap.set", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `gsap.set("#line", { opacity: 0 });
+         tl.fromTo("#line", { x: "-105%" }, { x: "0%", duration: 0.8 }, 2);`,
+        `<div id="line">code</div>`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+
+  it("exempts identity from-vars (no jump)", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#drift", { x: 0 }, { x: 100, duration: 3 }, 5);`,
+        `<div id="drift">Hi</div>`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+
+  it("exempts immediateRender: true (from-vars hold from load)", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#line", { x: "-105%" }, { x: "0%", duration: 0.8, immediateRender: true }, 2);`,
+        `<div id="line">code</div>`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+
+  it("exempts tweens at the timeline start (zero flash window)", async () => {
+    const result = await lintHyperframeHtml(
+      comp(
+        `tl.fromTo("#line", { x: "-105%" }, { x: "0%", duration: 0.8 }, 0);`,
+        `<div id="line">code</div>`,
+      ),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_fromto_flash_before_start"),
+    ).toBeUndefined();
+  });
+});

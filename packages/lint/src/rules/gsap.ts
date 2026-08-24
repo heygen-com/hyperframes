@@ -1818,6 +1818,94 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
+  // gsap_fromto_flash_before_start — a fromTo() positioned after the timeline's start
+  // renders with GSAP's default immediateRender: false. The target therefore sits in
+  // its AUTHORED state from t=0, then jumps to the tween's from-vars when it begins:
+  // a visible flash/jump on every playback and every cold seek. (Real-world casualty:
+  // a "typewriter" whose lines were fully readable before each line "typed".)
+  // Exemptions: the authored state is already hidden (CSS opacity:0, standalone
+  // gsap.set, or a timeline set-to-hidden at the timeline start) — nothing to flash;
+  // the from-vars are the transform/opacity identity — no jump; immediateRender: true —
+  // GSAP applies the from-vars at build time and holds them; and tweens starting at
+  // the timeline start, whose flash window is zero.
+  async ({ scripts, styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const cssHiddenSelectors = collectCssOpacityZeroSelectors(styles, tags);
+    const TRANSFORM_IDENTITY: Record<string, number> = {
+      x: 0,
+      y: 0,
+      rotation: 0,
+      rotationX: 0,
+      rotationY: 0,
+      skewX: 0,
+      skewY: 0,
+      scale: 1,
+      scaleX: 1,
+      scaleY: 1,
+    };
+    for (const script of scripts) {
+      if (!/gsap\.timeline/.test(script.content)) continue;
+      const windows = await cachedExtractGsapWindows(script.content);
+      const preHidden = new Set([
+        ...cssHiddenSelectors,
+        ...extractStandaloneHiddenSelectors(script.content),
+      ]);
+      // A timeline set-to-hidden at the timeline start pre-hides the target for every
+      // seek; sets at later positions leave [0, position) visible, so they do not.
+      const initialHiddenSets = new Set(
+        windows
+          .filter(
+            (w) =>
+              w.method === "set" &&
+              w.position <= SCENE_BOUNDARY_EPSILON_SECONDS &&
+              isHiddenGsapState(w.propertyValues),
+          )
+          .map((w) => w.targetSelector),
+      );
+      for (const win of windows) {
+        if (win.method !== "fromTo") continue;
+        if (win.immediateRender) continue;
+        if (win.position <= SCENE_BOUNDARY_EPSILON_SECONDS) continue;
+        if (targetHasNoStableIdentity(win.targetSelector, win.targetIdentity)) continue;
+        const sel = win.targetSelector;
+        const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
+        if (preHidden.has(cssKey) || initialHiddenSets.has(sel)) continue;
+        const from = win.fromPropertyValues;
+        if (!from) continue;
+        const jumps = Object.entries(from).some(([prop, value]) => {
+          const identity = TRANSFORM_IDENTITY[prop];
+          if (identity !== undefined) {
+            const n = numberValue(value);
+            return n === null ? true : n !== identity;
+          }
+          if (prop === "opacity" || prop === "autoAlpha") {
+            const n = numberValue(value);
+            return n === null ? true : n !== 1;
+          }
+          return prop === "visibility" || prop === "display";
+        });
+        if (!jumps) continue;
+        findings.push({
+          code: "gsap_fromto_flash_before_start",
+          severity: "error",
+          message:
+            `"${sel}" is visible from t=0 in its authored state, then jumps to this ` +
+            `tween's from-vars at ${win.position.toFixed(2)}s (timeline fromTo defaults ` +
+            "to immediateRender: false) — a visible flash on every playback and cold seek.",
+          selector: sel,
+          fixHint:
+            `Hide the authored state until the tween starts (CSS \`opacity: 0\` on "${sel}" ` +
+            'with `opacity: 1` in the destination vars, or `tl.set("' +
+            sel +
+            '", { opacity: 0 }, 0)`), or pass `immediateRender: true` so the ' +
+            "from-vars hold from load.",
+          snippet: truncateSnippet(win.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // gsap_non_transform_motion — animating layout props (left/top/right/bottom/margin*)
   // or using roundProps snaps motion to integer device pixels. On the seek-by-frame
   // capture engine this looks smooth at high per-frame deltas (fast tweens) but visibly
