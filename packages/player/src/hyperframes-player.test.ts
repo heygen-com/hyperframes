@@ -2387,3 +2387,117 @@ describe("HyperframesPlayer composition dimension attributes", () => {
     expect(player._compositionWidth).toBe(1920);
   });
 });
+
+describe("HyperframesPlayer retained runtime data", () => {
+  interface RuntimeDataPlayer extends HTMLElement {
+    iframeElement: HTMLIFrameElement;
+    setRuntimeData: (channel: string, payload: unknown) => void;
+    clearRuntimeData: (channel: string) => void;
+    _onMessage: (event: MessageEvent) => void;
+  }
+
+  let player: RuntimeDataPlayer;
+  let postSpy: ReturnType<typeof vi.spyOn>;
+
+  const readyMessage = () =>
+    new MessageEvent("message", {
+      source: window,
+      data: { source: "hf-preview", type: "ready" },
+    });
+
+  const runtimeCalls = () =>
+    postSpy.mock.calls.filter((call) => {
+      const message = call[0] as { action?: string };
+      return message.action === "set-runtime-data" || message.action === "clear-runtime-data";
+    });
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as RuntimeDataPlayer;
+    postSpy = vi.spyOn(window, "postMessage").mockImplementation(() => undefined);
+    Object.defineProperty(player.iframeElement, "contentWindow", {
+      configurable: true,
+      get: () => window,
+    });
+    delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
+    vi.restoreAllMocks();
+  });
+
+  it("retains data set before load and replays it exactly once after runtime ready", () => {
+    player.setRuntimeData("captions", { words: ["before"] });
+    expect(runtimeCalls()).toHaveLength(0);
+
+    player._onMessage(readyMessage());
+
+    expect(runtimeCalls()).toHaveLength(1);
+    expect(runtimeCalls()[0]?.[0]).toMatchObject({
+      action: "set-runtime-data",
+      channel: "captions",
+      payload: { words: ["before"] },
+    });
+  });
+
+  it("delivers after readiness and replays only the latest value after a source swap", () => {
+    player._onMessage(readyMessage());
+    player.setRuntimeData("captions", { words: ["first"] });
+    postSpy.mockClear();
+
+    player.setAttribute("srcdoc", "<!doctype html><html><body></body></html>");
+    player.setRuntimeData("captions", { words: ["latest"] });
+    expect(runtimeCalls()).toHaveLength(0);
+    player._onMessage(readyMessage());
+
+    expect(runtimeCalls()).toHaveLength(1);
+    expect(runtimeCalls()[0]?.[0]).toMatchObject({ payload: { words: ["latest"] } });
+  });
+
+  it("clears the current channel and does not replay it", () => {
+    player._onMessage(readyMessage());
+    player.setRuntimeData("captions", { words: [] });
+    player.clearRuntimeData("captions");
+    expect(runtimeCalls().at(-1)?.[0]).toMatchObject({
+      action: "clear-runtime-data",
+      channel: "captions",
+    });
+    postSpy.mockClear();
+    player.setAttribute("srcdoc", "<!doctype html><html></html>");
+    player._onMessage(readyMessage());
+    expect(runtimeCalls()).toHaveLength(0);
+  });
+
+  it("uses the same-origin registry directly and falls back to postMessage otherwise", () => {
+    const direct = vi.fn();
+    (window as Window & { __hyperframes?: unknown }).__hyperframes = {
+      setRuntimeData: direct,
+    };
+    player._onMessage(readyMessage());
+    postSpy.mockClear();
+
+    player.setRuntimeData("captions", { words: ["direct"] });
+
+    expect(direct).toHaveBeenCalledWith("captions", { words: ["direct"] });
+    expect(runtimeCalls()).toHaveLength(0);
+  });
+
+  it("does not deliver while disconnected and preserves the standard sandbox", () => {
+    player._onMessage(readyMessage());
+    postSpy.mockClear();
+    player.remove();
+    player.setRuntimeData("captions", { words: ["offline"] });
+    expect(runtimeCalls()).toHaveLength(0);
+    expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
+    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+    expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
+    expect(player.iframeElement.referrerPolicy).toBe("no-referrer");
+  });
+
+  it("rejects payloads that structuredClone cannot transfer", () => {
+    expect(() => player.setRuntimeData("captions", () => undefined)).toThrow();
+  });
+});

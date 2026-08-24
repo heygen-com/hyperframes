@@ -30,6 +30,15 @@ declare global {
   interface Window {
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
+    __hyperframes?: {
+      registerRuntimeDataHandler?: (
+        channel: string,
+        handler: (payload: unknown) => void,
+      ) => () => void;
+      setRuntimeData?: (channel: string, payload: unknown) => void;
+      clearRuntimeData?: (channel: string) => void;
+      [key: string]: unknown;
+    };
     __clipManifest?: RuntimeTimelineMessage;
     __clipTree?: ClipTree;
     __hf?: {

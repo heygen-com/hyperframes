@@ -5,6 +5,7 @@ export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "rational-fps",
   "seek-keep-playing",
   "composition-manifest-v1",
+  "runtime-data",
 ] as const;
 
 export type RuntimeProtocolFps = {

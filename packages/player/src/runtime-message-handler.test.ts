@@ -71,6 +71,29 @@ describe("handleRuntimeMessage stage-size", () => {
   });
 });
 
+describe("handleRuntimeMessage runtime data errors", () => {
+  it("surfaces a channel-scoped player event", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+    handleRuntimeMessage(
+      {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "runtime-data-error",
+          channel: "captions",
+          message: "attach failed",
+        },
+      } as MessageEvent,
+      frameWindow,
+      callbacks,
+    );
+    expect(callbacks.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "runtimedataerror" }),
+    );
+  });
+});
+
 describe("handleRuntimeMessage media autoplay fallback", () => {
   const autoplayBlockedEvent = (source: object): MessageEvent =>
     ({

@@ -1,4 +1,5 @@
 // Types
+export type { RuntimeTimelineClipIdentity } from "./runtime/types.js";
 export type {
   ExecutionMode,
   Orientation,

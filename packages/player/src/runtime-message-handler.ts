@@ -92,6 +92,15 @@ export function handleRuntimeMessage(
     return;
   }
 
+  if (data["type"] === "runtime-data-error") {
+    callbacks.dispatchEvent(
+      new CustomEvent("runtimedataerror", {
+        detail: { channel: data["channel"], message: data["message"] },
+      }),
+    );
+    return;
+  }
+
   if (data["type"] === "state") {
     callbacks.setPlaybackState(
       applyRuntimeStateMessage(

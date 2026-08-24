@@ -62,6 +62,7 @@ import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
+import { clearRuntimeData, setRuntimeData, setRuntimeDataErrorReporter } from "./runtimeData";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -127,6 +128,14 @@ export function initSandboxRuntimeModular(): void {
   // Own the analytics bridge before any best-effort runtime installation so
   // early failures are observable instead of disappearing before player setup.
   initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
+  setRuntimeDataErrorReporter((channel, error) => {
+    postRuntimeMessage({
+      source: "hf-preview",
+      type: "runtime-data-error",
+      channel,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
   // SDK moveElement edits must render even when no usable GSAP timeline ever
   // binds (CSS/WAAPI-animated or fully static compositions) — apply at init.
   // This runs at DOMContentLoaded, after inline composition scripts have
@@ -3318,6 +3327,8 @@ export function initSandboxRuntimeModular(): void {
     },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),
+    onSetRuntimeData: setRuntimeData,
+    onClearRuntimeData: clearRuntimeData,
     getCanonicalFps: () => state.canonicalFps,
   });
 

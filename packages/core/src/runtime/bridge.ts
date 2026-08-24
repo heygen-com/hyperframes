@@ -28,6 +28,8 @@ type BridgeDeps = {
   ) => void;
   onEnablePickMode: () => void;
   onDisablePickMode: () => void;
+  onSetRuntimeData?: (channel: string, payload: unknown) => void;
+  onClearRuntimeData?: (channel: string) => void;
   getCanonicalFps: () => number;
 };
 
@@ -75,6 +77,12 @@ const CONTROL_HANDLERS: Record<string, ControlHandler> = {
   "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
   "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
   "flash-elements": (data) => handleFlashElements(data),
+  "set-runtime-data": (data, deps) => {
+    if (typeof data.channel === "string") deps.onSetRuntimeData?.(data.channel, data.payload);
+  },
+  "clear-runtime-data": (data, deps) => {
+    if (typeof data.channel === "string") deps.onClearRuntimeData?.(data.channel);
+  },
 };
 
 function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number {

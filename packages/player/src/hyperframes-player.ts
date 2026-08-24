@@ -46,6 +46,11 @@ export type ColorGradingCompareState = {
   lineWidth?: number;
 };
 
+type RuntimeDataBridge = {
+  setRuntimeData?: (channel: string, payload: unknown) => void;
+  clearRuntimeData?: (channel: string) => void;
+};
+
 function clampPlaybackRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
@@ -97,6 +102,8 @@ class HyperframesPlayer extends HTMLElement {
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
+  private _runtimeBridgeReady = false;
+  private _runtimeData = new Map<string, unknown>();
 
   constructor() {
     super();
@@ -192,6 +199,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi = null;
     this._paused = true;
     this._ready = false;
+    this._runtimeBridgeReady = false;
   }
 
   // fallow-ignore-next-line complexity
@@ -200,11 +208,13 @@ class HyperframesPlayer extends HTMLElement {
       case "src":
         if (val) {
           this._ready = false;
+          this._runtimeBridgeReady = false;
           this.iframe.src = prepareSrcForElement(this, val);
         }
         break;
       case "srcdoc":
         this._ready = false;
+        this._runtimeBridgeReady = false;
         if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         else this.iframe.removeAttribute("srcdoc");
         break;
@@ -380,6 +390,24 @@ class HyperframesPlayer extends HTMLElement {
     });
   }
 
+  /** Retain and deliver structured runtime data through the shared runtime protocol. */
+  setRuntimeData(channel: string, payload: unknown): void {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(channel)) {
+      throw new Error(`Invalid HyperFrames runtime-data channel: ${channel}`);
+    }
+    const retained = typeof structuredClone === "function" ? structuredClone(payload) : payload;
+    this._runtimeData.set(channel, retained);
+    this._deliverRuntimeData(channel, retained);
+  }
+
+  clearRuntimeData(channel: string): void {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(channel)) {
+      throw new Error(`Invalid HyperFrames runtime-data channel: ${channel}`);
+    }
+    this._runtimeData.delete(channel);
+    this._deliverRuntimeDataClear(channel);
+  }
+
   get currentTime() {
     return this._currentTime;
   }
@@ -515,6 +543,50 @@ class HyperframesPlayer extends HTMLElement {
       );
     } catch {
       /* cross-origin */
+    }
+  }
+
+  private _deliverRuntimeData(channel: string, payload: unknown): void {
+    if (!this.isConnected || !this._runtimeBridgeReady) return;
+    if (this._trySetRuntimeDataDirect(channel, payload)) return;
+    this._sendControl("set-runtime-data", { channel, payload });
+  }
+
+  private _deliverRuntimeDataClear(channel: string): void {
+    if (!this.isConnected || !this._runtimeBridgeReady) return;
+    if (this._tryClearRuntimeDataDirect(channel)) return;
+    this._sendControl("clear-runtime-data", { channel });
+  }
+
+  private _trySetRuntimeDataDirect(channel: string, payload: unknown): boolean {
+    try {
+      const bridge = (
+        this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
+      )?.__hyperframes;
+      if (typeof bridge?.setRuntimeData !== "function") return false;
+      bridge.setRuntimeData(channel, payload);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _tryClearRuntimeDataDirect(channel: string): boolean {
+    try {
+      const bridge = (
+        this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
+      )?.__hyperframes;
+      if (typeof bridge?.clearRuntimeData !== "function") return false;
+      bridge.clearRuntimeData(channel);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _replayRuntimeData(): void {
+    for (const [channel, payload] of this._runtimeData) {
+      this._deliverRuntimeData(channel, payload);
     }
   }
 
@@ -672,7 +744,11 @@ class HyperframesPlayer extends HTMLElement {
       },
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
-      onRuntimeReady: () => this._replayBridgeState(),
+      onRuntimeReady: () => {
+        this._runtimeBridgeReady = true;
+        this._replayBridgeState();
+        this._replayRuntimeData();
+      },
       onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
@@ -761,6 +837,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onIframeLoad() {
     this._ready = false;
+    this._runtimeBridgeReady = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();

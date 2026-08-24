@@ -19,6 +19,8 @@ function createMockDeps() {
     onSetRootDuration: vi.fn(),
     onEnablePickMode: vi.fn(),
     onDisablePickMode: vi.fn(),
+    onSetRuntimeData: vi.fn(),
+    onClearRuntimeData: vi.fn(),
     getCanonicalFps: vi.fn(() => 30),
   };
 }
@@ -42,6 +44,16 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("pause"));
     expect(deps.onPause).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches set and clear runtime data without global invocation", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    const payload = { version: 3, segments: [] };
+    handler(makeControlMessage("set-runtime-data", { channel: "captions", payload }));
+    handler(makeControlMessage("clear-runtime-data", { channel: "captions" }));
+    expect(deps.onSetRuntimeData).toHaveBeenCalledWith("captions", payload);
+    expect(deps.onClearRuntimeData).toHaveBeenCalledWith("captions");
   });
 
   it("dispatches stop-media command", () => {
