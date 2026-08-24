@@ -103,8 +103,8 @@ describe("loadTranscript", () => {
     const { words, format } = loadTranscript(path);
     expect(format).toBe("whisper-cpp");
     expect(words).toEqual([
-      { text: "Hello,", start: 0, end: 0.55 },
-      { text: "world.", start: 0.6, end: 1.25 },
+      { text: "Hello,", start: 0, end: 0.55, id: "w0" },
+      { text: "world.", start: 0.6, end: 1.25, id: "w1" },
     ]);
   });
 
@@ -142,8 +142,8 @@ describe("loadTranscript", () => {
     const { words, format } = loadTranscript(path);
     expect(format).toBe("openai");
     expect(words).toEqual([
-      { text: "Hello", start: 0, end: 0.5 },
-      { text: "world", start: 0.6, end: 1.2 },
+      { text: "Hello", start: 0, end: 0.5, id: "w0" },
+      { text: "world", start: 0.6, end: 1.2, id: "w1" },
     ]);
   });
 
@@ -205,7 +205,7 @@ Short format
     expect(words[0]?.text).toBe("Bold and italic");
   });
 
-  it("passes through normalized word arrays", () => {
+  it("assigns w{index} ids to normalized word arrays", () => {
     const input = [
       { text: "Hello", start: 0.0, end: 0.5 },
       { text: "world", start: 0.6, end: 1.2 },
@@ -214,9 +214,20 @@ Short format
     const { words, format } = loadTranscript(path);
     expect(format).toBe("words-json");
     expect(words).toEqual([
-      { text: "Hello", start: 0, end: 0.5, id: "" },
-      { text: "world", start: 0.6, end: 1.2, id: "" },
+      { text: "Hello", start: 0, end: 0.5, id: "w0" },
+      { text: "world", start: 0.6, end: 1.2, id: "w1" },
     ]);
+  });
+
+  it("preserves existing ids and repairs empty-string ids from legacy files", () => {
+    const input = [
+      { text: "Hello", start: 0.0, end: 0.5, id: "keep-me" },
+      { text: "world", start: 0.6, end: 1.2, id: "" },
+      { text: "again", start: 1.3, end: 1.8 },
+    ];
+    const path = tmpFile("legacy.json", JSON.stringify(input));
+    const { words } = loadTranscript(path);
+    expect(words.map((w) => w.id)).toEqual(["keep-me", "w1", "w2"]);
   });
 });
 
@@ -375,9 +386,9 @@ describe("whisper-cpp contraction merging", () => {
     );
     const { words } = loadTranscript(path);
     expect(words).toEqual([
-      { text: "I", start: 0, end: 0.2 },
-      { text: "didn't", start: 0.2, end: 0.7 },
-      { text: "know", start: 0.7, end: 1 },
+      { text: "I", start: 0, end: 0.2, id: "w0" },
+      { text: "didn't", start: 0.2, end: 0.7, id: "w1" },
+      { text: "know", start: 0.7, end: 1, id: "w2" },
     ]);
   });
 
