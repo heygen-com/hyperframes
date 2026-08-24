@@ -42,6 +42,9 @@ export function isUnresolvedAssetPlaceholder(rawSrc: string): boolean {
   return /^__[A-Z_]+__$/.test(rawSrc.trim()) || hasUnresolvedTemplatingToken(rawSrc);
 }
 
+/** `data-composition-src="..."`, matched within a single already-delimited tag. */
+const COMPOSITION_SRC_ATTR = /\bdata-composition-src\s*=\s*["']([^"']+)["']/i;
+
 /**
  * Every `data-composition-src` reference in one composition file's raw text, in
  * document order, deduped. The single owner of "which sub-compositions does
@@ -63,14 +66,33 @@ export function isUnresolvedAssetPlaceholder(rawSrc: string): boolean {
  *
  * Comments, `<style>`, and `<script>` bodies are masked first so a
  * commented-out mount is not counted as a real one.
+ *
+ * The scan walks tag by tag with `indexOf` rather than running one regex with
+ * two open-ended `[^>]*` spans across the whole file. That shape is quadratic:
+ * on input full of `<` with no `>`, every `<` starts a scan to end-of-string
+ * that then backtracks, measured at 41ms / 165ms / 660ms / 2640ms for 10k /
+ * 20k / 40k / 80k characters. This function runs on every render (via the
+ * render plan), so a truncated download or a blob full of stray `<` would hang
+ * the plan step before any video is produced. Bounding each regex to one
+ * already-delimited tag makes the whole scan linear.
  */
 export function collectSubCompositionSrcs(html: string): string[] {
-  const compositionSrcRe = /<[^>]*\bdata-composition-src\s*=\s*["']([^"']+)["'][^>]*>/gi;
   const scannable = maskNonScannableRanges(html);
   const srcs: string[] = [];
   const seen = new Set<string>();
-  let match: RegExpExecArray | null;
-  while ((match = compositionSrcRe.exec(scannable)) !== null) {
+
+  let cursor = 0;
+  while (cursor < scannable.length) {
+    const open = scannable.indexOf("<", cursor);
+    if (open === -1) break;
+    const close = scannable.indexOf(">", open + 1);
+    // An unterminated final tag is not a tag. The previous whole-file regex
+    // also required a closing `>`, so this drops nothing it used to find.
+    if (close === -1) break;
+    cursor = close + 1;
+
+    const match = COMPOSITION_SRC_ATTR.exec(scannable.slice(open, cursor));
+    if (!match) continue;
     const src = (match[1] ?? "").trim();
     if (!src || seen.has(src)) continue;
     // __UPPER__ placeholder or late-bound templating token — not a real reference.
