@@ -190,6 +190,49 @@ describe("render telemetry events", () => {
     flush.mockClear();
   });
 
+  // The catalog join. Counts must be present at zero: the no-catalog cohort is
+  // what the with-catalog cohort is compared against, and an absent property is
+  // indistinguishable from an older CLI that never sent one.
+  it("reports zero catalog counts for a project with no registry items", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: { installed: [], usedBlocks: [] },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_item_count).toBe(0);
+    expect(props.registry_blocks_used_count).toBe(0);
+    expect(props.registry_items).toBeUndefined();
+  });
+
+  it("names the installed items and the subset the render reached", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: { installed: ["bar-chart-race", "data-chart"], usedBlocks: ["data-chart"] },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_items).toBe("bar-chart-race,data-chart");
+    expect(props.registry_item_count).toBe(2);
+    expect(props.registry_blocks_used).toBe("data-chart");
+    expect(props.registry_blocks_used_count).toBe(1);
+  });
+
+  // A caller that built render options by hand makes no catalog claim, rather
+  // than claiming zero items.
+  it("omits the catalog props entirely when usage was never resolved", () => {
+    trackRenderComplete({ durationMs: 1, fps: 30, quality: "draft", docker: false, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_item_count).toBeUndefined();
+    expect(props.registry_blocks_used_count).toBeUndefined();
+  });
+
   it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
     expect(flush).toHaveBeenCalledTimes(1);

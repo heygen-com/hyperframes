@@ -25,6 +25,7 @@ import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
   projectConfigPath,
+  recordProjectRegistryItems,
   writeProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
@@ -76,6 +77,23 @@ function variableValuesAttribute(values: Record<string, unknown> | null): string
   if (!values || Object.keys(values).length === 0) return "";
   const json = JSON.stringify(values).replace(/'/g, "&#39;");
   return ` data-variable-values='${json}'`;
+}
+
+/**
+ * The file a consumer points at for this item: the snippet if it has one, else
+ * its composition, else whatever landed first. Project-relative, empty when the
+ * item installed no files.
+ *
+ * One owner for this choice. The paste snippet's `data-composition-src` and the
+ * recorded manifest target must name the same file, or a render would look for
+ * a block at a path the composition never mounts and report it as dropped.
+ */
+function primaryInstalledTarget(item: RegistryItem): string {
+  const primary =
+    item.files.find((f) => f.type === "hyperframes:snippet") ??
+    item.files.find((f) => f.type === "hyperframes:composition") ??
+    item.files[0];
+  return primary?.target ?? "";
 }
 
 export function buildSnippet(
@@ -321,13 +339,22 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     });
   }
 
+  // Persist what came from the registry. Installed files are plain composition
+  // HTML with no provenance marker, so without this a later render cannot tell
+  // a catalog block from one the user wrote — and "did the catalog item survive
+  // into the video?" stays unanswerable.
+  recordProjectRegistryItems(
+    projectDir,
+    installPlan.map((planItem) => ({
+      name: planItem.name,
+      type: planItem.type,
+      target: primaryInstalledTarget(planItem),
+    })),
+  );
+
   // 6. Build include snippet + clipboard copy for the requested item.
   const itemForInstall = installPlan[installPlan.length - 1]!;
-  const primaryFile =
-    itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
-    itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
-    itemForInstall.files[0];
-  const snippetTargetRel = primaryFile?.target ?? "";
+  const snippetTargetRel = primaryInstalledTarget(itemForInstall);
   const snippet = buildSnippet(item, snippetTargetRel, variableValues);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 

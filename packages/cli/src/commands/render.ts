@@ -4,6 +4,7 @@ import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
 import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { presentRenderPlan } from "./render/present.js";
 import { executeRenderPlan, renderLintContinuationHint, runRenderLint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
@@ -377,6 +378,12 @@ export interface RenderOptions {
   quality: "draft" | "standard" | "high";
   /** Authoring workflow skill that drove this render (telemetry attribution). */
   authoringSkill?: string;
+  /**
+   * Catalog items installed in this project and those the rendered composition
+   * reaches. Resolved once in the render plan; absent on programmatic callers
+   * that build options by hand, which simply omit the catalog properties.
+   */
+  catalogUsage?: CatalogUsage;
   format: RenderFormat;
   gifLoop?: number;
   workers?: number;
@@ -763,6 +770,7 @@ async function renderDocker(
       docker: true,
       gpu: options.gpu,
       authoringSkill: options.authoringSkill,
+      catalogUsage: options.catalogUsage,
       ...getMemorySnapshot(),
     }),
   );
@@ -1498,6 +1506,7 @@ function trackRenderMetrics(
     docker,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
+    catalogUsage: options.catalogUsage,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
