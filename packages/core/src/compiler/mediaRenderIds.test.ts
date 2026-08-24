@@ -75,8 +75,36 @@ describe("assignMediaRenderIds", () => {
     expect(ids[1]).toBe("clip__hf2");
   });
 
-  it("leaves media without a src alone", () => {
+  it("leaves media with no source at all alone", () => {
     const { document } = parseHTML('<video id="no-src"></video>');
+    assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
+    expect(document.querySelector("video")?.hasAttribute(MEDIA_RENDER_ID_ATTR)).toBe(false);
+  });
+
+  it("stamps media whose source is a <source> child rather than a src attribute", () => {
+    // The selector used to be `video[src], audio[src], img[src]`, so this shape
+    // was never stamped and two inlined scenes kept colliding ids in the render
+    // document, which is the exact failure this module exists to prevent.
+    const { document } = parseHTML(
+      '<video id="clip"><source src="a.mp4" type="video/mp4"></video>' +
+        '<video id="clip"><source src="a.mp4" type="video/mp4"></video>',
+    );
+    assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
+    expect(
+      Array.from(document.querySelectorAll("video")).map((el) =>
+        el.getAttribute(MEDIA_RENDER_ID_ATTR),
+      ),
+    ).toEqual(["clip", "clip__hf2"]);
+  });
+
+  it("stamps <audio> with a <source> child too", () => {
+    const { document } = parseHTML('<audio id="bed"><source src="bed.mp3"></audio>');
+    assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
+    expect(document.querySelector("audio")?.getAttribute(MEDIA_RENDER_ID_ATTR)).toBe("bed");
+  });
+
+  it("ignores a <source> child that carries no src", () => {
+    const { document } = parseHTML('<video id="empty"><source type="video/mp4"></video>');
     assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
     expect(document.querySelector("video")?.hasAttribute(MEDIA_RENDER_ID_ATTR)).toBe(false);
   });

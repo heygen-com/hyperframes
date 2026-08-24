@@ -44,12 +44,11 @@ The smallest renderable HyperFrames composition — a standalone (top-level) roo
       data-height="1080"
       data-duration="5"
     >
-      <section id="title-card" class="clip" data-start="0" data-duration="5" data-track-index="1">
+      <section id="title-card" class="clip" data-start="0" data-duration="5">
         <h1 id="title">Hello HyperFrames</h1>
       </section>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
       tl.from("#title", { y: 48, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.2);
       window.__timelines["main"] = tl;

@@ -40,15 +40,35 @@ export const MEDIA_RENDER_ID_ATTR = "data-hf-render-id";
  */
 export const AUDIO_GROUP_RENDER_ID_ATTR = "data-hf-group-render-id";
 
-/** Elements the render pipeline addresses by id. */
-const MEDIA_SELECTOR = "video[src], audio[src], img[src]";
+/**
+ * Elements the render pipeline addresses by id.
+ *
+ * `<video>`/`<audio>` are matched whether the source is a `src` attribute or a
+ * `<source>` child. Matching only `[src]` left the `<source>`-child shape
+ * unstamped, so two scenes each declaring `<video id="clip"><source …></video>`
+ * kept colliding ids in the render document, which is exactly the failure this
+ * module exists to prevent.
+ */
+const MEDIA_SELECTOR = "video, audio, img[src]";
+
 /** Buses, which are addressed by id in exactly the same way and collide the
  *  same way. Only an id'd bus can be joined at all. */
 const AUDIO_GROUP_SELECTOR = "hf-audio-group[id]";
 
+/** A `<source>`-bearing media element is addressable even without its own `src`. */
+function hasPlayableSource(el: MediaElementLike): boolean {
+  if (el.getAttribute("src")) return true;
+  const sources = el.querySelectorAll?.("source[src]");
+  if (!sources) return false;
+  for (const _ of sources) return true;
+  return false;
+}
+
 interface MediaElementLike {
+  readonly tagName?: string;
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
+  querySelectorAll?(selector: string): Iterable<unknown>;
 }
 
 /** A bus or member, which additionally needs subtree scoping to be paired up. */
@@ -88,6 +108,7 @@ export function assignMediaRenderIds(document: DocumentLike): void {
   const pending: MediaElementLike[] = [];
 
   for (const el of document.querySelectorAll(MEDIA_SELECTOR)) {
+    if (!hasPlayableSource(el)) continue;
     const existing = el.getAttribute(MEDIA_RENDER_ID_ATTR);
     if (existing) {
       taken.add(existing);

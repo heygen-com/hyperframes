@@ -17,19 +17,20 @@ a start, a duration, and a track:
 | ------------------ | ------------------------------------------------ |
 | `data-start`       | When the element enters the composition timeline |
 | `data-duration`    | How long its timeline slot lasts                 |
-| `data-track-index` | Which timeline lane owns that slot               |
+| `data-track-index` | Which Studio lane displays it (optional; the render ignores it) |
 
-Add `class="clip"` to timed DOM and image elements so the runtime can control
-their visibility. Video visibility is managed by the media runtime; audio has
-no visual lifecycle.
+Add `class="clip"` to timed DOM and image elements. The runtime keys visibility
+off `data-start` rather than the class, but the shared `.clip` rule is what gives
+a scene its full-frame box. Video visibility is managed by the media runtime;
+audio has no visual lifecycle.
 
 ## Tracks are not layers
 
-Tracks prevent time ranges from colliding. They do not decide which element is
-in front. Use CSS `z-index` for paint order.
+Tracks are the rows Studio draws. They do not decide which element is in front,
+and they do not schedule anything. Use CSS `z-index` for paint order.
 
-Two clips on one track cannot overlap. Put an intentional overlap, such as a
-crossfade, on separate tracks:
+Two clips on one track may overlap; the render composites both. Separate tracks
+keep an intentional overlap, such as a crossfade, readable in Studio:
 
 ```html
 <video

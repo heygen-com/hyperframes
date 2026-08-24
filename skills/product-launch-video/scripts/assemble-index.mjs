@@ -300,7 +300,7 @@ function guardFrame(html, label) {
   const media = scan.match(/<(video|audio)(?=[\s/>])/i);
   if (media) {
     errors.push(
-      `${label}: has a <${media[1].toLowerCase()}> inside the sub-composition. This workflow hoists media to index.html so the frame injector owns it; the framework itself seeks media at any depth (see packages/producer/tests/sub-composition-video), so this is an assembly convention, not a runtime limit. Move the clip to index.html as a root-level <video>/<audio> and drive any per-scene motion on the main timeline (composition-patterns.md archetype B).`,
+      `${label}: has a <${media[1].toLowerCase()}> inside the sub-composition. This workflow hoists media to index.html so the frame injector owns it; the framework itself renders media inside a sub-composition identically to media at the host root (verified by render, and pinned by packages/producer/tests/sub-composition-video), so this is an assembly convention, not a runtime limit. Move the clip to index.html as a root-level <video>/<audio> and drive any per-scene motion on the main timeline (composition-patterns.md archetype B).`,
     );
   }
 

@@ -227,7 +227,15 @@ describe("core rules", () => {
     expect(finding).toBeDefined();
   });
 
-  it("reports error when timeline registry is assigned without initializing", async () => {
+  // The runtime creates `window.__timelines` at script-evaluation time
+  // (runtime/entry.ts), before any inline composition script runs, so a bare
+  // assignment needs no `window.__timelines = window.__timelines || {}` guard.
+  // Verified by rendering a composition whose only registration is the bare
+  // assignment: it renders and animates correctly. The old
+  // `timeline_registry_missing_init` error therefore failed a working file, and
+  // because a lint ERROR also suppresses the layout and contrast audits in
+  // `check`, it cost far more than the line it asked for.
+  it("accepts a bracket registry assignment with no init guard", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -240,13 +248,13 @@ describe("core rules", () => {
   </script>
 </body></html>`;
     const result = await lintHyperframeHtml(html);
-    const finding = result.findings.find((f) => f.code === "timeline_registry_missing_init");
-    expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("error");
-    expect(finding?.message).toContain("without initializing");
+    expect(
+      result.findings.find((f) => f.code === "timeline_registry_missing_init"),
+    ).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "missing_timeline_registry")).toBeUndefined();
   });
 
-  it("reports error when dot timeline registry is assigned without initializing", async () => {
+  it("accepts a dot registry assignment with no init guard", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -259,9 +267,10 @@ describe("core rules", () => {
   </script>
 </body></html>`;
     const result = await lintHyperframeHtml(html);
-    const finding = result.findings.find((f) => f.code === "timeline_registry_missing_init");
-    expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("error");
+    expect(
+      result.findings.find((f) => f.code === "timeline_registry_missing_init"),
+    ).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "missing_timeline_registry")).toBeUndefined();
   });
 
   it("does not flag timeline assignment when init guard is present", async () => {
