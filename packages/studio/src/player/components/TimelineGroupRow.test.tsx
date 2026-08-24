@@ -6,14 +6,23 @@ import { TimelineGroupRow } from "./TimelineGroupRow";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { defaultTimelineTheme } from "./timelineTheme";
 import type { TimelineTrackGroupInfo } from "./useTimelineTrackDerivations";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("../../telemetry/canary", () => ({ isCanaryEnabled: () => true }));
+const domEditMocks = vi.hoisted(() => ({
+  handleTimelineElementSelect: vi.fn(async () => undefined),
+}));
+vi.mock("../../contexts/DomEditContext", () => ({
+  useDomEditSelectionContextOptional: () => null,
+  useDomEditActionsContextOptional: () => domEditMocks,
+}));
 
 afterEach(() => {
   document.body.innerHTML = "";
+  domEditMocks.handleTimelineElementSelect.mockClear();
+  usePlayerStore.setState({ revealedAudioFxTarget: null });
 });
 
 const member = (id: string, track: number): TimelineElement => ({
@@ -36,7 +45,10 @@ const GROUP: TimelineTrackGroupInfo = {
   hidden: false,
 };
 
-function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
+function renderRow(
+  overrides: Partial<TimelineTrackGroupInfo> = {},
+  expandedLaneOwnerIds = new Set<string>(),
+) {
   const onSetAudioGroupAttributeQuiet = vi.fn();
   const onSetElementAttributeQuiet = vi.fn();
   const host = document.createElement("div");
@@ -55,10 +67,31 @@ function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
           contentOrigin={232}
           theme={defaultTimelineTheme}
           collapsedGroupIds={new Set()}
-          expandedLaneOwnerIds={new Set()}
+          expandedLaneOwnerIds={expandedLaneOwnerIds}
           toggleGroupExpanded={vi.fn()}
           toggleLaneOwnerExpanded={vi.fn()}
-          lanes={{ bind: () => ({ lanes: [] }) } as never}
+          lanes={
+            {
+              bind: (element: TimelineElement) => {
+                const automation = element.automation
+                  ? JSON.parse(element.automation)
+                  : { version: 1, lanes: [] };
+                return {
+                  automation,
+                  lanes: automation.lanes,
+                  chain: element.fxChain ? JSON.parse(element.fxChain) : null,
+                  onPreview: vi.fn(),
+                  onCommit: vi.fn(),
+                  onSelect: vi.fn(),
+                  readOnly: true,
+                  commitTargetKey: null,
+                  selection: null,
+                  onRangeSelect: vi.fn(),
+                  onRangeClear: vi.fn(),
+                };
+              },
+            } as never
+          }
           pps={10}
           currentTime={0}
           compositionDuration={60}
@@ -72,6 +105,49 @@ function renderRow(overrides: Partial<TimelineTrackGroupInfo> = {}) {
 }
 
 describe("TimelineGroupRow", () => {
+  it("routes the group title through the guarded selection path", () => {
+    const { host } = renderRow();
+    const title = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open Voiceover effects"]',
+    );
+
+    act(() => title?.click());
+
+    expect(domEditMocks.handleTimelineElementSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "voiceover", domId: "voiceover" }),
+    );
+  });
+
+  it("opens a group automation lane on its exact rack parameter", async () => {
+    const { host } = renderRow(
+      {
+        fxChain: JSON.stringify({
+          version: 1,
+          nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
+        }),
+        automation: JSON.stringify({
+          version: 1,
+          lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
+        }),
+      },
+      new Set(["voiceover"]),
+    );
+    const laneTitle = host.querySelector<HTMLButtonElement>('[data-group-lane-label="fx.p1.gain"]');
+
+    await act(async () => {
+      laneTitle?.click();
+      await Promise.resolve();
+    });
+
+    expect(domEditMocks.handleTimelineElementSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "voiceover", domId: "voiceover" }),
+    );
+    expect(usePlayerStore.getState().revealedAudioFxTarget).toMatchObject({
+      elementKey: "voiceover",
+      automationTarget: "fx.p1.gain",
+    });
+  });
+
   // C1 names this as the step's own definition of done: "opening the popover on
   // a GROUP and applying a preset results in exactly ONE `data-fx-chain` write,
   // on the group element, and zero writes on members". A group IS a bus — a

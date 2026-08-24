@@ -1,4 +1,5 @@
 import type { SelectElementOptions, TimelineElement } from "../player";
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { findMatchingTimelineElementId, findTimelineIdByAncestor } from "../utils/studioHelpers";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { logSelect } from "../utils/selectDebug";
@@ -60,14 +61,15 @@ export function announceTimelineSelection(
     anchor,
     anchorPublished: anchor != null && publishedMembers.has(anchor),
   });
-  // A canvas target can be editable without owning a timeline row. The bus title
-  // is one such target: selecting it must replace, not coexist with, a stale clip
-  // selection. Publishing the empty timeline selection is safe because the
-  // timeline-to-preview mirror only clears a canvas target that resolves back to
-  // a timeline id, so the canvas-only target remains selected.
+  // A canvas target can be editable without owning a timeline row. Most such
+  // targets live inside a clip and must not erase its timeline context. A mixer
+  // bus is different: it is itself the editing target, so its title replaces any
+  // selected clips even though the bus has no clip row of its own.
   if (!timelineAnchor) {
-    setTimelineSelectionSet(new Set());
-    setSelectedTimelineElementId(null);
+    if (primary.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) {
+      setTimelineSelectionSet(new Set());
+      setSelectedTimelineElementId(null);
+    }
     return;
   }
   // A late async primary that already belongs to the live set must preserve the

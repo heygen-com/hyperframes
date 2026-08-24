@@ -17,6 +17,7 @@ import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import { usePlayerStore } from "../store/playerStore";
 
 /** Accent rail on a group-owned lane — the same green the member rail uses, so
  *  "this belongs to the group" reads the same in both places (groups doc §5). */
@@ -92,19 +93,27 @@ export function TimelineGroupRow({
   const { onSetAudioGroupAttributeLive, onSetAudioGroupAttributeQuiet } =
     useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
+  const revealAudioFx = usePlayerStore((state) => state.setRevealedAudioFxTarget);
   const writeGroupFxChain = (next: HfAudioFxChain, live: boolean) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
     if (live) onSetAudioGroupAttributeLive?.(group.id, HF_AUDIO_FX_ATTR, value);
     else void onSetAudioGroupAttributeQuiet?.(group.id, HF_AUDIO_FX_ATTR, value, "Apply preset");
   };
-  const openGroupFxRack = () => {
-    const target = domEditActions?.previewIframeRef.current?.contentDocument?.getElementById(
-      group.id,
+  const openGroupFxRack = (automationTarget?: string) => {
+    // Use the guarded timeline-selection path even though the bus is synthetic:
+    // it invalidates an older clip selection that may still be resolving. The
+    // old direct build/apply path let that late clip reclaim the rack.
+    const selection = domEditActions?.handleTimelineElementSelect(groupElement);
+    if (!selection || !automationTarget) return;
+    // Bus selection clears the clip selection, which intentionally retires any
+    // old reveal request. Publish this one afterwards so the newly mounted bus
+    // rack can consume it rather than losing it during that clear.
+    void selection.then(() =>
+      revealAudioFx({
+        elementKey: group.id,
+        automationTarget,
+      }),
     );
-    if (!target) return;
-    void domEditActions
-      ?.buildDomSelectionFromTarget(target)
-      .then((selection) => selection && domEditActions.applyDomSelection(selection));
   };
   return (
     <TimelineTrackRow
@@ -150,7 +159,7 @@ export function TimelineGroupRow({
           onFxChainChange={(next) => writeGroupFxChain(next, false)}
           onFxChainPreview={(next) => writeGroupFxChain(next, true)}
           auditionSpans={memberElements}
-          onOpenFxRack={openGroupFxRack}
+          onOpenFxRack={() => openGroupFxRack()}
           // Same width as every other row's header. The group row needs a real
           // label column, but it gets one by turning `labelMode` on for the whole
           // timeline (see Timeline.tsx) rather than by overhanging alone — an
@@ -172,6 +181,7 @@ export function TimelineGroupRow({
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
+            onReveal={openGroupFxRack}
           />
         )}
       </div>

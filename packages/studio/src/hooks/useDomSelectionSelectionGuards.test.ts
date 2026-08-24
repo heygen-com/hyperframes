@@ -131,8 +131,14 @@ describe("useDomSelection — Variables tab preservation", () => {
 });
 
 describe("useDomSelection — canvas-only targets replace timeline clips", () => {
-  beforeEach(() => usePlayerStore.getState().clearSelection());
-  afterEach(() => usePlayerStore.getState().clearSelection());
+  beforeEach(() => {
+    deferreds.clear();
+    usePlayerStore.getState().clearSelection();
+  });
+  afterEach(() => {
+    deferreds.clear();
+    usePlayerStore.getState().clearSelection();
+  });
 
   it("deselects every clip when an audio bus is selected", () => {
     const store = usePlayerStore.getState();
@@ -158,6 +164,83 @@ describe("useDomSelection — canvas-only targets replace timeline clips", () =>
     expect(harness.current().domEditSelection?.id).toBe("voiceover");
     expect(usePlayerStore.getState().selectedElementId).toBeNull();
     expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set());
+    harness.cleanup();
+  });
+
+  it("lets a bus supersede a clip selection that is still resolving", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    const clipNode = doc.createElement("audio");
+    clipNode.id = "voice-1";
+    const busNode = doc.createElement("hf-audio-group");
+    busNode.id = "voiceover";
+    doc.body.append(clipNode, busNode);
+
+    const clip: TimelineElement = {
+      id: "voice-1",
+      domId: "voice-1",
+      tag: "audio",
+      start: 0,
+      duration: 1,
+      track: 0,
+    };
+    const bus: TimelineElement = {
+      id: "voiceover",
+      domId: "voiceover",
+      tag: "audio",
+      start: 0,
+      duration: 10,
+      track: -0.5,
+    };
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe,
+      // The bus is a synthetic row target, not a clip in the store.
+      timelineElements: [clip],
+      setSelectedTimelineElementId: usePlayerStore.getState().setSelectedElementId,
+      setTimelineSelectionSet: usePlayerStore.getState().setSelectedElementIds,
+    });
+
+    let pendingClip = Promise.resolve();
+    let pendingBus = Promise.resolve();
+    act(() => {
+      pendingClip = harness.current().handleTimelineElementSelect(clip);
+      pendingBus = harness.current().handleTimelineElementSelect(bus);
+    });
+    await act(async () => {
+      deferreds.get("voiceover")?.resolve();
+      await pendingBus;
+      deferreds.get("voice-1")?.resolve();
+      await pendingClip;
+    });
+
+    expect(harness.current().domEditSelection?.id).toBe("voiceover");
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set());
+    harness.cleanup();
+    iframe.remove();
+  });
+
+  it("preserves clip context for a non-bus canvas-only selection", () => {
+    const store = usePlayerStore.getState();
+    store.setSelectedElementId("voice-1");
+    const decoration = document.createElement("div");
+    decoration.id = "decoration";
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe: null,
+      timelineElements: [{ id: "voice-1", tag: "audio", start: 0, duration: 1, track: 0 }],
+      setSelectedTimelineElementId: usePlayerStore.getState().setSelectedElementId,
+      setTimelineSelectionSet: usePlayerStore.getState().setSelectedElementIds,
+    });
+
+    act(() => harness.current().applyDomSelection(makeSelection("Decoration", decoration)));
+
+    expect(usePlayerStore.getState().selectedElementId).toBe("voice-1");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["voice-1"]));
     harness.cleanup();
   });
 });

@@ -25,6 +25,7 @@ export function TimelineGroupLaneLabels({
   columnWidth,
   gutterBackground,
   accentColor,
+  onReveal,
 }: {
   /** The group wearing a clip's shape — see `groupAutomationElement`. */
   groupElement: TimelineElement;
@@ -34,6 +35,8 @@ export function TimelineGroupLaneLabels({
   columnWidth: number;
   gutterBackground: string;
   accentColor: string;
+  /** Select the bus and reveal this lane's exact parameter in its rack. */
+  onReveal?: (target: string) => void;
 }) {
   // The LIVE playhead, not the row's `currentTime` prop — that one only moves
   // on seek, so the readout sat frozen while the curve was audibly working,
@@ -55,10 +58,13 @@ export function TimelineGroupLaneLabels({
         // clip-local rebase here — unlike a clip's lane.
         const value = sampleAutomationLane(lane, currentTime);
         return (
-          <div
+          <button
+            type="button"
+            tabIndex={-1}
             key={lane.target}
             data-group-lane-label={lane.target}
-            className="absolute left-0 flex items-center gap-1.5 overflow-hidden px-1.5 text-[10px] text-white/65"
+            aria-label={`Show ${groupLabel} ${parts.name}${parts.param ? ` ${parts.param}` : ""} in the effect rack`}
+            className="absolute left-0 flex items-center gap-1.5 overflow-hidden border-0 px-1.5 text-left text-[10px] text-white/65 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
             style={{
               top: top + index * AUTOMATION_LANE_H,
               width: columnWidth,
@@ -67,6 +73,11 @@ export function TimelineGroupLaneLabels({
               borderLeft: `2px solid ${accentColor}`,
             }}
             title={`${groupLabel} · ${parts.param ? `${parts.name} · ${parts.param}` : parts.name}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onReveal?.(lane.target);
+            }}
           >
             <span aria-hidden="true" className="shrink-0 text-[11px] text-white/40">
               ▤
@@ -80,7 +91,7 @@ export function TimelineGroupLaneLabels({
             <span className="shrink-0 font-mono text-[9px] tabular-nums text-white/55">
               {value.toFixed(2)}
             </span>
-          </div>
+          </button>
         );
       })}
     </>
