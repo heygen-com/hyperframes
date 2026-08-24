@@ -3053,4 +3053,236 @@ describe("initSandboxRuntimeModular", () => {
       }).not.toThrow();
     });
   });
+
+  // #3458: cross-origin media with no CORS opt-in. `createMediaElementSource`
+  // returns a node that outputs silence per the Web Audio spec rather than
+  // throwing, so the composition played through with visuals animating and no
+  // sound, and nothing was logged.
+  describe("cross-origin audio without a CORS opt-in", () => {
+    // `WebAudioTransport.init()` does `new AudioContext()`, which jsdom does not
+    // provide — without a stub it returns false, `webAudioReady` stays false,
+    // and `scheduleWebAudioForActiveClips` is never reached at all, so every
+    // assertion below would pass for the wrong reason.
+    class MockAudioContext {
+      currentTime = 0;
+      state = "running";
+      destination = {};
+      resume() {
+        return Promise.resolve();
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect() {}, disconnect() {} };
+      }
+    }
+    const originalAudioContext = (globalThis as Record<string, unknown>).AudioContext;
+
+    beforeEach(() => {
+      (globalThis as Record<string, unknown>).AudioContext = MockAudioContext;
+    });
+
+    afterEach(() => {
+      (globalThis as Record<string, unknown>).AudioContext = originalAudioContext;
+    });
+
+    /** `webAudio.init()` resolves on a microtask, so `webAudioReady` is still
+     *  false on the tick `initSandboxRuntimeModular()` returns. */
+    async function startPlayback() {
+      initSandboxRuntimeModular();
+      await Promise.resolve();
+      window.__player?.play();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    function mountAudio(src: string, attrs: Record<string, string> = {}) {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-duration", "10");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+
+      const audio = document.createElement("audio");
+      audio.setAttribute("data-start", "0");
+      audio.setAttribute("data-duration", "10");
+      audio.setAttribute("src", src);
+      for (const [name, value] of Object.entries(attrs)) audio.setAttribute(name, value);
+      audio.load = () => {};
+      audio.play = vi.fn(() => Promise.resolve());
+      root.appendChild(audio);
+
+      window.__timelines = { main: createMockTimeline(10) };
+      return audio;
+    }
+
+    it("withholds Web Audio capture but still tries decode, which keeps the FX graph", async () => {
+      // Decode is the BEST outcome here, not a consolation: a CDN that sends
+      // `Access-Control-Allow-Origin` while the author simply never wrote the
+      // `crossorigin` attribute decodes fine, and that route keeps every
+      // effect and automation lane the media-element route would have had.
+      const audio = mountAudio("https://cdn.example.com/track.mp3");
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const captureSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+      const decodeSpy = vi
+        .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+
+      expect(captureSpy).not.toHaveBeenCalled();
+      expect(decodeSpy).toHaveBeenCalledWith(audio);
+    });
+
+    it("leaves the element audible on native output when decode also fails", async () => {
+      const audio = mountAudio("https://cdn.example.com/track.mp3");
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+
+      await startPlayback();
+
+      // The three things that add up to "the user hears it".
+      expect(audio.muted).toBe(false);
+      expect(audio.volume).toBeGreaterThan(0);
+      expect(audio.play).toHaveBeenCalled();
+      expect(window.__player?.isPlaying()).toBe(true);
+    });
+
+    it("does not fail closed into silence for an FX track it deliberately withheld", async () => {
+      // The pre-existing non-unit-rate rule mutes a processed track rather than
+      // let it lose its graph. On this route capture was withheld ON PURPOSE
+      // and native output IS the fix, so muting would hand back the exact
+      // silence being fixed — now with the runtime's blessing.
+      const audio = mountAudio("https://cdn.example.com/track.mp3", {
+        "data-fx-chain": "[]",
+        "data-playback-rate": "2",
+      });
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+
+      await startPlayback();
+
+      expect(audio.muted).toBe(false);
+    });
+
+    it("reports the bypass at media discovery, without anyone calling play()", () => {
+      // `hyperframes check` seeks, it never plays. A diagnostic raised only
+      // from the schedule path would be invisible to the one gate whose job is
+      // to surface this.
+      mountAudio("https://cdn.example.com/track.mp3", { "data-fx-chain": "[]" });
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+      initSandboxRuntimeModular();
+
+      const line = info.mock.calls.find(([first]) =>
+        String(first).includes("runtime_web_audio_bypass"),
+      );
+      expect(line).toBeDefined();
+      // Names what native playback cannot carry, so the author knows the track
+      // is audible but no longer processed.
+      expect(String(line?.[0])).toContain("fx-chain");
+    });
+
+    it("says nothing about a cross-origin <video>, which never routes through Web Audio", () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      const video = document.createElement("video");
+      video.setAttribute("data-start", "0");
+      video.setAttribute("src", "https://cdn.example.com/clip.mp4");
+      video.load = () => {};
+      root.appendChild(video);
+      window.__timelines = { main: createMockTimeline(10) };
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+      initSandboxRuntimeModular();
+
+      expect(
+        info.mock.calls.some(([first]) => String(first).includes("runtime_web_audio_bypass")),
+      ).toBe(false);
+    });
+
+    it("keeps a data-native-audio track off BOTH Web Audio routes", async () => {
+      // Unlike the automatic verdict this must skip decode too — a decode
+      // success would put the element back under a buffer source and mute it,
+      // which is precisely what the escape hatch exists to prevent.
+      const audio = mountAudio("/assets/vo.mp3", { "data-native-audio": "" });
+      const captureSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+      const decodeSpy = vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement");
+
+      await startPlayback();
+
+      expect(captureSpy).not.toHaveBeenCalled();
+      expect(decodeSpy).not.toHaveBeenCalled();
+      expect(audio.muted).toBe(false);
+      expect(audio.play).toHaveBeenCalled();
+    });
+
+    it("still routes same-origin audio through Web Audio", async () => {
+      const audio = mountAudio("/assets/vo.mp3");
+      const captureSpy = vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+
+      expect(captureSpy).toHaveBeenCalledTimes(1);
+      expect(captureSpy.mock.calls[0]?.[0]).toBe(audio);
+    });
+
+    // The fail-closed rule and the bypass diagnostic answer different
+    // questions, so they deliberately test different attributes. The
+    // diagnostic lists everything native output cannot carry; the rule below
+    // only decides whether losing the FX graph is worse than silence.
+    describe("the non-unit-rate fail-closed rule keeps its original scope", () => {
+      function playWithFailedCapture() {
+        vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback").mockResolvedValue(
+          null,
+        );
+        vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+        return startPlayback();
+      }
+
+      it("still mutes an fx-chain track whose capture failed at a non-unit rate", async () => {
+        const audio = mountAudio("/assets/vo.mp3", {
+          "data-fx-chain": "[]",
+          "data-playback-rate": "2",
+        });
+
+        await playWithFailedCapture();
+
+        expect(audio.muted).toBe(true);
+      });
+
+      it("leaves a grouped track audible, as it was before #3458", async () => {
+        // Group membership is reported as unexpressible on the bypass route,
+        // but it was never part of the fail-closed pair. Folding it in here
+        // would silence a same-origin grouped clip at a non-unit rate that
+        // plays today — a behaviour change #3458 does not call for.
+        const audio = mountAudio("/assets/vo.mp3", {
+          "data-audio-group": "vo",
+          "data-playback-rate": "2",
+        });
+
+        await playWithFailedCapture();
+
+        expect(audio.muted).toBe(false);
+      });
+
+      it("leaves an above-unity data-volume track audible", async () => {
+        const audio = mountAudio("/assets/vo.mp3", {
+          "data-volume": "2",
+          "data-playback-rate": "2",
+        });
+
+        await playWithFailedCapture();
+
+        expect(audio.muted).toBe(false);
+      });
+    });
+  });
 });

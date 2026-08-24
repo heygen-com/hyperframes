@@ -126,6 +126,7 @@ Audio has no visual lifecycle.
 | `data-playback-rate` | Video, audio, nested composition | Playback multiplier from `0.1` to `5` |
 | `data-volume` | Video and audio | Static volume from `0` to `1` |
 | `data-has-audio="true"` | Video | Declares that the video contributes audio |
+| `data-native-audio` | Audio | Keeps the element on the browser's own output instead of routing it through Web Audio. The runtime already does this automatically for cross-origin media with no `crossorigin` opt-in — the Web Audio spec makes such a source silent — so this is the escape hatch for the cases a URL cannot settle, such as a same-origin path that redirects to a CDN. Native output cannot carry `data-fx-chain`, `data-automation`, `data-audio-group`, or a `data-volume` above `1`; the runtime reports what it dropped, and `hyperframes check` surfaces it as a `web_audio_bypass` finding. |
 
 Video and audio may omit `data-duration` when their intrinsic duration is known
 and the whole remaining source should play.

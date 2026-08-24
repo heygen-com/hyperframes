@@ -158,6 +158,64 @@ describe("WebAudioTransport", () => {
       expect(mockEl.volume).toBe(0.4);
       expect(transport.isActive()).toBe(false);
     });
+
+    // #3458. `createMediaElementSource` over a CORS-cross-origin resource does
+    // not throw — the Web Audio spec asks the node for SILENCE — so the
+    // `try/catch` around it never fires and the composition plays through
+    // perfectly with no sound. The node also permanently steals the element's
+    // native output, so the only possible defence is to not build it.
+    it("never builds a source node over cross-origin media with no CORS opt-in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "https://cdn.example.com/track.mp3");
+      vi.spyOn(console, "info").mockImplementation(() => {});
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).toBeNull();
+      expect(mock.ctx.createMediaElementSource).not.toHaveBeenCalled();
+      // Untouched: the caller falls back, and a muted or re-levelled element
+      // would take the fallback's audio down with it.
+      expect(el.muted).toBe(false);
+      expect(transport.routesElement(el)).toBe(false);
+    });
+
+    it("still routes cross-origin media that carries the crossorigin opt-in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "https://cdn.example.com/track.mp3");
+      el.setAttribute("crossorigin", "anonymous");
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledWith(el);
+    });
+
+    it("still routes same-origin media", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "/assets/vo.mp3");
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledWith(el);
+    });
+
+    // The guard is enforced HERE, not only in init.ts's routing, so a direct
+    // caller (studio, player) cannot reopen the one-way door.
+    it("refuses capture for a data-native-audio opt-out even when same-origin", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "/assets/vo.mp3");
+      el.setAttribute("data-native-audio", "");
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).toBeNull();
+      expect(mock.ctx.createMediaElementSource).not.toHaveBeenCalled();
+    });
   });
 
   it("tracks play generation for async race prevention", () => {

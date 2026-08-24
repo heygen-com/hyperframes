@@ -42,6 +42,7 @@ import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
+import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 import {
   ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_TAG,
@@ -1833,11 +1834,26 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  // Only `<audio>` reaches `createMediaElementSource` (see
+  // `scheduleWebAudioForActiveClips`, which queries `audio[data-start]`), so a
+  // cross-origin `<video>` is not affected and must not be reported as if it
+  // were.
+  const reportWebAudioRoute = (mediaEl: HTMLMediaElement) => {
+    if (!(mediaEl instanceof HTMLAudioElement)) return;
+    reportWebAudioMediaRoute(mediaEl, classifyWebAudioMediaRoute(mediaEl));
+  };
+
+  const onMediaLoadedMetadataForRoute = (event: Event) => {
+    const target = event.currentTarget;
+    if (target instanceof HTMLMediaElement) reportWebAudioRoute(target);
+  };
+
   const unbindMediaMetadataListeners = () => {
     for (const mediaEl of metadataBoundMedia) {
       mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
       mediaEl.removeEventListener("error", onMediaErrorForProxy);
     }
     metadataBoundMedia.clear();
@@ -1855,6 +1871,16 @@ export function initSandboxRuntimeModular(): void {
       }
       mediaEl.addEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.addEventListener("durationchange", scheduleMetadataDurationHydration);
+      // Web Audio eligibility, reported at DISCOVERY rather than only at
+      // schedule time. `hyperframes check` seeks, it never calls play(), so a
+      // diagnostic raised from the transport would be invisible to the one
+      // gate whose job is to surface exactly this class of silent failure.
+      // Bound twice on purpose: now, so a composition that never plays still
+      // reports, and again at `loadedmetadata`, when `currentSrc` is finally
+      // authoritative and the early read may have been guessing from
+      // `<source>` children. `reportWebAudioMediaRoute` latches per element.
+      mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
+      reportWebAudioRoute(mediaEl);
       // Reactive (zero-videoWidth) + tertiary (error event) proxy-fallback
       // triggers. Inert in render mode / when the codec map is absent /
       // for <audio> — all guarded inside mediaProxy.ts itself.
@@ -3122,43 +3148,71 @@ export function initSandboxRuntimeModular(): void {
           );
         }
       }
-      void webAudio
-        .scheduleMediaElementPlayback(
-          rawEl,
-          compStart,
-          mediaStart,
-          clock.now(),
-          vol,
-          gen,
-          state.playbackRate,
-        )
-        .then((scheduled) => {
-          if (scheduled || !clock.isPlaying()) return;
-          const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
-          const hasProcessing =
-            rawEl.hasAttribute("data-fx-chain") || rawEl.hasAttribute("data-automation");
-          // A decoded AudioBufferSourceNode changes pitch whenever its playback
-          // rate is non-unit. Bare tracks may safely stay on native output; a
-          // processed track must fail closed rather than silently lose its graph.
-          if (Math.abs(effectiveRate - 1) > 1e-9) {
-            if (hasProcessing) rawEl.muted = true;
-            return;
-          }
-          void webAudio.decodeAudioElement(rawEl).then((buffer) => {
-            if (!buffer || !clock.isPlaying()) return;
-            void webAudio.schedulePlayback(
+      // Decided BEFORE the transport is asked, because the three verdicts want
+      // three different fallback chains — and only one of them is the chain
+      // that existed before (#3458).
+      const route = classifyWebAudioMediaRoute(rawEl);
+      reportWebAudioMediaRoute(rawEl, route);
+      // `data-native-audio` means native output owns the track outright. It has
+      // to skip the decode path too: a successful decode would hand the element
+      // to a buffer source and mute it, which is exactly what the author used
+      // the attribute to prevent. The automatic cross-origin verdict is the
+      // opposite — decode is its BEST outcome, since a CDN that sends
+      // `Access-Control-Allow-Origin` (the author just never wrote the
+      // `crossorigin` attribute) decodes fine and keeps the whole FX graph.
+      if (route.kind === "native") continue;
+      const capture =
+        route.kind === "web-audio"
+          ? webAudio.scheduleMediaElementPlayback(
               rawEl,
-              buffer,
               compStart,
               mediaStart,
               clock.now(),
               vol,
               gen,
               state.playbackRate,
-              clipDuration,
-            );
-          });
+            )
+          : Promise.resolve(null);
+      void capture.then((scheduled) => {
+        if (scheduled || !clock.isPlaying()) return;
+        const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
+        // Deliberately the FX/automation pair and NOT
+        // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.
+        // The two answer different questions: the diagnostic lists everything
+        // native output cannot carry (group bus and above-unity gain included),
+        // while this decides whether losing the graph is worse than silence.
+        // Widening it here would newly mute tracks that play today — a grouped
+        // clip at a non-unit rate among them — which is a behaviour change
+        // #3458 does not call for.
+        const hasProcessing =
+          rawEl.hasAttribute("data-fx-chain") || rawEl.hasAttribute("data-automation");
+        // A decoded AudioBufferSourceNode changes pitch whenever its playback
+        // rate is non-unit. Bare tracks may safely stay on native output; a
+        // processed track must fail closed rather than silently lose its graph.
+        if (Math.abs(effectiveRate - 1) > 1e-9) {
+          // ...but only when the transport TRIED and failed. On the
+          // cross-origin route capture was withheld on purpose, and native
+          // output is the fix — muting here would hand back the exact
+          // silence #3458 is about, now with the runtime's own blessing. The
+          // dropped processing is reported instead (`reportWebAudioMediaRoute`).
+          if (route.kind === "web-audio" && hasProcessing) rawEl.muted = true;
+          return;
+        }
+        void webAudio.decodeAudioElement(rawEl).then((buffer) => {
+          if (!buffer || !clock.isPlaying()) return;
+          void webAudio.schedulePlayback(
+            rawEl,
+            buffer,
+            compStart,
+            mediaStart,
+            clock.now(),
+            vol,
+            gen,
+            state.playbackRate,
+            clipDuration,
+          );
         });
+      });
     }
   };
 
