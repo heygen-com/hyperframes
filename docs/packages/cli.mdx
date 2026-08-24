@@ -646,7 +646,10 @@ When the audit is wrong because the layout is deliberate, say so in the HTML and
 re-run. Put `data-layout-allow-overflow` on a planned off-canvas entrance,
 `data-layout-allow-overlap` on text you meant to stack, `data-layout-allow-occlusion`
 on text you meant to hide behind a prop, and `data-layout-ignore` on decoration
-that should not be audited at all. Each is inherited, so an ancestor works.
+that should not be audited at all. Overflow, occlusion, and ignore markers are
+inherited, so an ancestor works. The overlap marker is intentionally local: put it
+on the specific text block participating in the layering, never on a scene/root
+wrapper, so unrelated descendant collisions remain auditable.
 
 For deliberate lower-third copy under `--caption-zone`, use
 `data-layout-allow-caption-zone`. It silences `caption_zone_collision` and

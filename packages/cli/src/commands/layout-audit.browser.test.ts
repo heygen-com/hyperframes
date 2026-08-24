@@ -1195,6 +1195,16 @@ describe("layout-audit.browser content overlap", () => {
     expectExemptFromOverlap({ attrs: "data-layout-allow-overlap" });
   });
 
+  it("does not let a parent allow-overlap marker disable every descendant collision", () => {
+    const issues = auditOverlapScene({
+      rootAttrs: "data-layout-allow-overlap",
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: { textRect: rect({ left: 300, top: 120, width: 400, height: 100 }) },
+    });
+
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(true);
+  });
+
   // A typewriter span clipped to nothing (clip-path: inset(0 100% 0 0)) keeps a
   // normal box but paints zero pixels; overlapping it must not flag the visible
   // block beneath. The clipped element is unreachable by elementFromPoint, which
@@ -1609,11 +1619,12 @@ function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string })
 }
 
 function auditOverlapScene(options: {
+  rootAttrs?: string;
   a: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
   b: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
-    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080" ${options.rootAttrs ?? ""}>
       <div id="a" ${options.a.attrs ?? ""}>Block A copy</div>
       <div id="b" ${options.b.attrs ?? ""}>Block B copy</div>
     </div>
@@ -1631,6 +1642,16 @@ function auditOverlapScene(options: {
     b: normalizeTextRects(options.b.textRect),
   };
 
+  installOverlapStyles(colors, clipPaths);
+  installOverlapGeometry(textRects);
+  installAuditScript();
+  return runAudit();
+}
+
+function installOverlapStyles(
+  colors: Record<string, string>,
+  clipPaths: Record<string, string>,
+): void {
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
     const id = (element as Element).id;
     return {
@@ -1649,7 +1670,9 @@ function auditOverlapScene(options: {
     if (!isFullyClipped(clipPaths.a ?? "none")) return document.getElementById("a");
     return null;
   };
+}
 
+function installOverlapGeometry(textRects: Record<string, DOMRect[]>): void {
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
       boundingTextRect(textRects[element.id]) ??
@@ -1674,9 +1697,6 @@ function auditOverlapScene(options: {
       detach() {},
     } as unknown as Range;
   });
-
-  installAuditScript();
-  return runAudit();
 }
 
 function normalizeTextRects(value: DOMRect | DOMRect[]): DOMRect[] {

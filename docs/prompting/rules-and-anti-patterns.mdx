@@ -64,6 +64,9 @@ legitimate — a caption designed to sit behind a matted subject needs one.
 
 Two things about them are worth knowing before you reach for either:
 
+- **`data-layout-allow-overlap` is local to the marked text block.** Do not put it on a
+  scene/root wrapper to waive a whole mock slide. Mark only the text that deliberately
+  participates in the layering; every unrelated descendant collision remains auditable.
 - **`data-layout-allow-occlusion` also silences the WCAG contrast gate for that whole
   subtree.** Validating this guide's confetti example, moving the attribute onto a cluster
   root took contrast coverage from 73 checks to 13 — and a deliberately near-invisible

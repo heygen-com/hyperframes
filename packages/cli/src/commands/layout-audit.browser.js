@@ -545,7 +545,10 @@
   }
 
   function hasAllowOverlapFlag(element) {
-    return !!element.closest("[data-layout-allow-overlap]");
+    // Overlap intent belongs to the text block that participates in the
+    // layering. Inheriting this marker from a scene/root would turn one local
+    // waiver into a blanket exemption for every collision in that subtree.
+    return element.hasAttribute("data-layout-allow-overlap");
   }
 
   function isTransparentColor(color) {
