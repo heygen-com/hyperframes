@@ -19,9 +19,12 @@ describe("changelog-video layout contract", () => {
   });
 
   it("checks scene content against the caption rail while exempting the rail itself", () => {
-    expect(skill).toContain(
-      '--caption-zone "x0=0;y0=.90;x1=1;y1=1;severity=error;seek=.05,.15,.25,.35,.45,.55,.65,.75,.85,.95"',
-    );
+    const seekList = /--caption-zone "[^"]*seek=([.\d,]+)"/.exec(skill)?.[1];
+    const seeks = seekList?.split(",").map(Number) ?? [];
+    expect(seeks).toHaveLength(25);
+    expect(
+      Math.max(...seeks.slice(1).map((seek, index) => seek - seeks[index])) * 60,
+    ).toBeLessThanOrEqual(2.401);
     expect(skeleton).toMatch(/id="cap-line"[^>]*data-layout-allow-caption-zone/);
   });
 });
