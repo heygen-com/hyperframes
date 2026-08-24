@@ -58,10 +58,13 @@ The smallest renderable HyperFrames composition — a standalone (top-level) roo
 </html>
 ```
 
-Required elements:
+What the runtime actually requires:
 
-- Root `<div>` with `data-composition-id`, `data-start="0"`, `data-width`, `data-height`, `data-duration`
-- At least one clip (any element with `data-start`, `data-duration`, `data-track-index`)
-- GSAP timeline created paused, registered on `window.__timelines["<composition-id>"]`
+- Root `<div>` with `data-composition-id`, `data-width`, `data-height`. Root `data-start="0"` is written above by convention and every shipped block has it, but the runtime stamps it when absent, so it is not required.
+- A duration source: root `data-duration` (as above), or a GSAP timeline, or media, or an adapter that can infer one.
+- Timed elements carry `data-start` plus a duration. That attribute alone is what makes an element a clip: `class="clip"` is a layout and tooling convention, and `data-track-index` is a Studio display lane. Neither is required, and a composition with no clips at all renders fine.
+- A GSAP timeline created paused and registered on `window.__timelines["<composition-id>"]`.
+
+Everything else in the skeleton is ordinary HTML and CSS: the `#root` box, `.clip` positioning, and fonts are yours to choose.
 
 This pattern is **standalone** (top-level `index.html`) — no `<template>` wrapper around the root. For sub-compositions (files loaded by `data-composition-src`), see `sub-compositions.md`.

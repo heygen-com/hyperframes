@@ -9,6 +9,19 @@ Stacking opaque scene divs means every scene change has to repaint the entire fr
 ## Pattern
 
 ```html
+<style>
+  /* The runtime auto-positions root children that carry data-start. The shared
+     background deliberately has none, so it gets NO automatic layout and must
+     size itself, or #bg is 0px tall and the tween paints nothing. */
+  #bg.full-bleed {
+    position: absolute;
+    inset: 0;
+  }
+  .clip.transparent {
+    background: transparent;
+  }
+</style>
+
 <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="20">
   <!-- Shared background — NOT a clip. Always visible. Driven by the timeline. -->
   <div id="bg" class="full-bleed"></div>
@@ -51,7 +64,8 @@ Stacking opaque scene divs means every scene change has to repaint the entire fr
 
 ## Rules
 
-- **The background is not a clip.** No `data-start` / `data-duration` / `data-track-index`. It exists for the whole composition.
+- **The background is not a clip.** No `data-start` / `data-duration`. It exists for the whole composition.
+- **Because it is not a clip, it gets no automatic layout.** The runtime only positions and sizes root children that carry `data-start`. An untimed background must set its own `position: absolute; inset: 0`, or it collapses to zero height and nothing you animate on it is visible. This is the most common way this pattern is copied wrong.
 - **Content scenes have transparent backgrounds.** Whatever you put in the shared `#bg` shows through.
 - **Drive global state from the shared layer.** Hue shifts, vignettes, grain, film-look filters — animate them once on the shared layer, not per-scene.
 - **Do not animate visibility on `.clip` elements.** HyperFrames already shows/hides clips based on `data-start` and `data-duration`. Animating `display` / `visibility` on the clip itself races with the framework's own show/hide. Animate a _child wrapper_ inside the clip instead.

@@ -8,14 +8,12 @@ GSAP is the primary runtime. The core requirement is generic: animation state mu
 
 For GSAP:
 
-- Create the timeline **synchronously** during page initialization.
 - Use `gsap.timeline({ paused: true })`.
-- Register it on `window.__timelines["<composition-id>"]`.
-- The key must match `data-composition-id` on the composition root.
+- Register it on `window.__timelines["<composition-id>"]`, keyed by the composition root's `data-composition-id`. You do **not** need to write `window.__timelines = window.__timelines || {}` first: the runtime creates the registry before your inline scripts evaluate.
+- **Building inside an async callback is supported.** `document.fonts.ready(...)` and friends are the documented setup path. What you must not do is **register the key before the build finishes**. An empty timeline registered early is treated as ready and nested empty, so the animation renders blank (`lint`: `gsap_timeline_registered_before_async_build`, error). Assign `window.__timelines[id] = tl` at the **end** of the callback, after the tweens are added, and optionally call `window.__hfForceTimelineRebind()` right after.
+- If the key does not match the root's `data-composition-id`, the runtime still binds it **when it is the only registered timeline**. With two or more registered, a mismatched key leaves the render frozen at t=0.
 - **Do not** call `tl.play()` for render-critical motion.
-- **Do not** build timelines inside `async`, `Promise`, `setTimeout`, or event handlers — the renderer can sample before they finish.
 - **Do not** create empty tweens only to set duration; use `data-duration` on the clip instead.
-- **Do not** `gsap.set()` clip elements from later scenes — they are not in the DOM at page load. Use `tl.set(selector, vars, time)` inside the timeline at or after the clip's `data-start`.
 
 Use the `hyperframes-animation` skill for tween syntax, position parameters, eases, and performance rules.
 
@@ -42,7 +40,8 @@ Rendered frames must be reproducible from the requested time. Do **not** use any
 
 Also avoid:
 
-- Animating anything outside the visual-property allowlist: `opacity`, `x`, `y`, `scale`, `rotation`, `color`, `backgroundColor`, `borderRadius`, and transforms. Never tween `display` or raw `visibility`. GSAP `autoAlpha` is allowed on a registered seekable timeline because it interpolates opacity and changes visibility only at the hidden endpoint. A zero-duration `tl.set(..., { visibility: "hidden" | "visible" })` is also allowed at an explicit beat boundary for a deterministic hard kill. Both exceptions apply only to non-clip elements or wrappers inside a clip. Never target a `.clip` element: HyperFrames timing owns its lifecycle and visibility.
+- Tweening `display` or raw `visibility` **on a clip element**: HyperFrames timing owns a clip's visibility, and `lint` rejects it. Use GSAP `autoAlpha` (it interpolates opacity and flips visibility only at the hidden endpoint) or a zero-duration `tl.set(..., { visibility: "hidden" | "visible" })` at an explicit beat boundary for a deterministic hard kill. Animating a clip element's ordinary visual properties (`opacity`, transforms, `filter`, …) is fine and the shipped catalog does it constantly; what is forbidden is taking over its visibility.
+- There is no fixed allowlist of animatable properties. `lint` enforces a **denylist**, so `filter`, `clipPath`, `strokeDashoffset`, `width`, `height` and similar are all legitimate targets. Prefer transforms and opacity where you have the choice, for performance rather than correctness. The per-runtime detail lives in `hyperframes-animation/adapters/`.
 - Animating the same property on the same element from multiple timelines at the same time — GSAP's overwrite behavior is order-dependent and can flip between renders.
 
 ## Layout Contract

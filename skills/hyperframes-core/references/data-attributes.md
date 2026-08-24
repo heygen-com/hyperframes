@@ -20,41 +20,46 @@ The root should be `position: relative`, have explicit pixel dimensions, and hid
 
 ## Clip Attributes
 
-Timed child elements are clips. **`class="clip"` is required on visible timed elements** (`<div>`, `<img>`, etc.) — without it the runtime keeps the element visible for the whole composition, ignoring `data-start` / `data-duration`. Omit on `<video>` (framework manages visibility directly) and `<audio>` (no visual).
+**`data-start` is what makes an element a clip.** The runtime collects `[data-start]` and drives visibility off that attribute, so any element carrying it is timed.
 
-**Visual clips (`class="clip"`) must be DIRECT children of the composition root.** A clip nested inside a wrapper `<div>` is not registered as a clip, so its `data-start`/`data-duration` are ignored and it stays visible the whole composition. To wrap/transform a clip, put the wrapper _inside_ the clip, or animate the clip element itself; do not wrap the clip. (This is a clip-_visibility_ rule. `<video>`/`<audio>` are exempt: the framework drives their playback via a flat DOM query, so they seek/decode at any depth, including inside a sub-comp `<template>` — see `variables-and-media.md`.)
+`class="clip"` is a **convention, not a requirement**: the runtime never reads it. Keep writing it, because the scaffold's shared `.clip { position: absolute; inset: 0 }` rule is what gives a scene its full-frame box, Studio uses it as an edit hint, and `lint` warns (`timed_element_missing_clip_class`) when a timed element lacks it. If you drop the class you must supply that layout yourself. Omit it on `<video>` and `<audio>`.
+
+**Nesting is allowed.** A timed element inside a wrapper is still timed, and a timed ancestor clamps its descendants: a child cannot be visible while its timed ancestor is hidden. Direct children of the root get automatic layout (see "Root-level clips get automatic layout" below); nested ones do not, so give them their own positioning.
 
 | Attribute          | Required                                        | Meaning                                                                                                                                                                                                                                                                        |
 | ------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`               | Yes                                             | Stable DOM ID for linting, timeline targets, and debugging.                                                                                                                                                                                                                    |
-| `data-start`       | Yes                                             | Start time in seconds, or a supported clip-time reference.                                                                                                                                                                                                                     |
-| `data-duration`    | Required for `div`, `img`, and sub-compositions | Duration in seconds. Video/audio can default to media duration when known.                                                                                                                                                                                                     |
-| `data-track-index` | Yes                                             | Timeline track. Clips on the same track must not overlap.                                                                                                                                                                                                                      |
+| `id`               | Yes on `<video>`/`<audio>`, else recommended    | `lint` errors with `media_missing_id` on media without one, and an id-less `<audio>` is never mixed, so the render is **silent**. Elsewhere it is a warning (`studio_missing_editable_id`): Studio needs a stable edit target, and timeline targets reference it.              |
+| `data-start`       | Yes                                             | Start time in seconds, or a supported clip-time reference. This attribute is what marks the element as timed.                                                                                                                                                                  |
+| `data-duration`    | Required for `div`, `img`, and sub-compositions | Duration in seconds. Video/audio can default to media duration when known. Without any resolvable duration the element has no end and stays visible for the rest of the composition.                                                                                           |
+| `data-track-index` | No                                              | Studio timeline lane, display only. The render never reads it, and clips on one track may overlap in time. Absent, the parser defaults it and Studio lays out one lane per clip. Two `<audio>` elements on the same index that overlap in time raise a `lint` warning.         |
 | `data-media-start` | No                                              | Offset into the media source, in seconds.                                                                                                                                                                                                                                      |
 | `data-volume`      | No                                              | Static audio gain, default `1` (0 dB). `0` is silence and values above `1` boost, up to `3.98` (+12 dB) — Studio's fader writes this. For fades, animate `volume` on the timeline instead (see `variables-and-media.md`); a tween's own values replace this baseline entirely. |
 | `data-has-audio`   | No (`<video>` only)                             | `"true"` to declare the video carries an audio track when auto-detection would miss it.                                                                                                                                                                                        |
 
-**Visibility window is inclusive of both ends.** A clip shows while `start ≤ t ≤ start + duration` — it still renders at exactly `t = start + duration`, so the final frame holds the animation's resolved end state (the runtime does not hide it one frame early). A reveal/entrance that lands on `data-duration` is therefore visible on the last frame; you do not need to finish it _before_ `data-duration` just to guarantee the end state renders. (Climax-dwell guidance in `/hyperframes-animation` is about pacing, not this boundary.)
+**The visibility window is half-open: `[start, start + duration)`.** A clip shows while `start ≤ t < start + duration` and is hidden at exactly `t = start + duration`. Land an animation's resolved end state slightly **before** `data-duration`, not on it, or its last frame is never rendered. Two clips can therefore be authored back to back (`b.start === a.start + a.duration`) with no overlapping frame.
+
+**Root-level clips get automatic layout.** For direct children of the composition root that carry `data-start`, the runtime forces `position: absolute` and anchors them at `top: 0; left: 0`, sizing them to 100% when they have no computed size, so scenes stack in the same viewport layer. Elements **without** `data-start` are skipped entirely: an untimed full-bleed background needs its own `position: absolute; inset: 0`, or it collapses to zero height.
 
 ## Sub-Composition Host Attributes
 
 When a clip is a sub-composition host (loads another composition file):
 
-| Attribute                    | Required | Meaning                                                                                                  |
-| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `data-composition-id`        | Yes      | The internal composition ID of the loaded file.                                                          |
-| `data-composition-src`       | Yes      | Path to the sub-composition HTML file.                                                                   |
-| `data-width` / `data-height` | Yes      | Render dimensions for the sub-composition instance.                                                      |
-| `data-variable-values`       | No       | Per-instance variable overrides as JSON. See `variables-and-media.md`.                                   |
-| `data-var-src`               | No       | Binds the element's `src` to a declared variable id (media/image substitution, authored src = fallback). |
-| `data-var-text`              | No       | Binds the element's own text to a scalar variable id; children are preserved.                            |
+| Attribute                    | Required    | Meaning                                                                                                                                                     |
+| ---------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-composition-id`        | Recommended | The composition ID of the loaded file. Matching it is the convention; a host that names a different id, or none at all, is supported but resolves silently. |
+| `data-composition-src`       | Yes         | Path to the sub-composition HTML file.                                                                                                                      |
+| `data-width` / `data-height` | No          | Render dimensions for the instance. The compiler backfills them from the loaded file's root when absent.                                                    |
+| `data-variable-values`       | No          | Per-instance variable overrides as JSON. See `variables-and-media.md`.                                                                                      |
+| `data-var-src`               | No          | Binds the element's `src` to a declared variable id (media/image substitution, authored src = fallback).                                                    |
+| `data-var-text`              | No          | Binds the element's own text to a scalar variable id; children are preserved.                                                                               |
 
 See `sub-compositions.md` for the full wiring pattern.
 
 ## Authoring Hints
 
 - `id="root"` — template convention used by scaffolds and the transition catalog so CSS can target the composition root with `#root` instead of `[data-composition-id="main"]`. Not required by the runtime, but consistent with the rest of the ecosystem.
-- `class="clip"` — required runtime visibility marker on visible timed elements (`<div>`, `<img>`, …). See Clip Attributes above.
+- `class="clip"`: layout and tooling convention on visible timed elements (`<div>`, `<img>`, …), not a runtime requirement. See Clip Attributes above.
+- `data-root="true"`: names the composition root explicitly. Without it the runtime picks the outermost `[data-composition-id]` element, which is right for almost every file; set it when compositions nest and you need to be unambiguous.
 - `data-layout-allow-overflow` — tells `hyperframes check` that overflow on this element (or its descendants) is intentional. Notes:
   - The `check` layout audit measures `getBoundingClientRect` at sampled timestamps, not rendered pixels. `overflow: hidden` clips the visual but does **not** suppress a layout finding. This attribute is the escape hatch; CSS overflow is not.
   - Can be set on the composition **root** as well as on any child. When the cited offender is `div.<comp>-root inside div.<comp>-root` (the root reports its own children's union as overflowing), the fix goes on the root, not on individual text descendants — shrinking font sizes will not converge.
