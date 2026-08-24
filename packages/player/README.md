@@ -134,7 +134,11 @@ player.iframeElement; // HTMLIFrameElement (read-only)
 
 ## Advanced: iframe access
 
-The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. For most use cases you don't need direct access — the JavaScript API above is enough. But if you're building an editor, recorder, or custom timeline that needs to inspect the composition's DOM or read its `__player` / `__timelines` runtime objects, use the `iframeElement` getter:
+The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. The default sandbox includes `allow-same-origin` for editor, recorder, and custom-timeline integrations that inspect the composition DOM. That is a trusted-content mode, not an isolation boundary: same-origin composition code can reach the embedding page.
+
+For read-only or message-bridge integrations, set `sandbox-origin="opaque"`. This removes `allow-same-origin` while retaining scripts, and prevents the composition from reading unrelated parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally unavailable in that mode.
+
+If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
 const player = document.querySelector("hyperframes-player");

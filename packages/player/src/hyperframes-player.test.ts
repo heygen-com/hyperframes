@@ -2497,7 +2497,54 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.referrerPolicy).toBe("no-referrer");
   });
 
+  it("supports an opaque-origin sandbox for hosts that do not need direct iframe DOM access", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
+    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
+    expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
+
+    player.removeAttribute("sandbox-origin");
+    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+  });
+
   it("rejects payloads that structuredClone cannot transfer", () => {
     expect(() => player.setRuntimeData("captions", () => undefined)).toThrow();
+  });
+
+  it("fails closed when structuredClone is unavailable", () => {
+    const original = globalThis.structuredClone;
+    Object.defineProperty(globalThis, "structuredClone", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      expect(() => player.setRuntimeData("captions", { words: ["unsafe"] })).toThrow(
+        /requires structuredClone support/,
+      );
+      player._onMessage(readyMessage());
+      expect(runtimeCalls()).toHaveLength(0);
+    } finally {
+      Object.defineProperty(globalThis, "structuredClone", {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
+
+  it("reports postMessage delivery failures instead of silently dropping runtime data", () => {
+    player._onMessage(readyMessage());
+    postSpy.mockImplementation(() => {
+      throw new DOMException("payload cannot be cloned", "DataCloneError");
+    });
+    const errors: CustomEvent[] = [];
+    player.addEventListener("runtimedataerror", (event) => errors.push(event as CustomEvent));
+
+    player.setRuntimeData("captions", { words: ["value"] });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.detail).toMatchObject({
+      channel: "captions",
+      message: "payload cannot be cloned",
+    });
   });
 });

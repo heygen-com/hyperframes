@@ -29,6 +29,7 @@ import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 // production browsers.
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
+const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 
 export type ColorGradingTarget =
   | string
@@ -70,6 +71,7 @@ class HyperframesPlayer extends HTMLElement {
       "poster",
       "playback-rate",
       "audio-src",
+      SANDBOX_ORIGIN_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
     ];
@@ -163,6 +165,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   connectedCallback() {
+    this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
     window.addEventListener("message", this._onMessage);
     this.iframe.addEventListener("load", this._onIframeLoad);
@@ -217,6 +220,9 @@ class HyperframesPlayer extends HTMLElement {
         this._runtimeBridgeReady = false;
         if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         else this.iframe.removeAttribute("srcdoc");
+        break;
+      case SANDBOX_ORIGIN_ATTR:
+        this._applySandboxOriginPolicy();
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
@@ -273,6 +279,15 @@ class HyperframesPlayer extends HTMLElement {
         this._reloadShaderOptions();
         break;
     }
+  }
+
+  private _applySandboxOriginPolicy(): void {
+    const policy = this.getAttribute(SANDBOX_ORIGIN_ATTR);
+    if (policy === "opaque") {
+      this.iframe.sandbox.remove("allow-same-origin");
+      return;
+    }
+    this.iframe.sandbox.add("allow-same-origin");
   }
 
   /**
@@ -395,7 +410,12 @@ class HyperframesPlayer extends HTMLElement {
     if (!/^[a-z][a-z0-9-]{0,63}$/.test(channel)) {
       throw new Error(`Invalid HyperFrames runtime-data channel: ${channel}`);
     }
-    const retained = typeof structuredClone === "function" ? structuredClone(payload) : payload;
+    if (typeof structuredClone !== "function") {
+      throw new Error(
+        "HyperFrames runtime data requires structuredClone support; refusing an unverified payload",
+      );
+    }
+    const retained = structuredClone(payload);
     this._runtimeData.set(channel, retained);
     this._deliverRuntimeData(channel, retained);
   }
@@ -529,7 +549,7 @@ class HyperframesPlayer extends HTMLElement {
     else this.removeAttribute("loop");
   }
 
-  private _sendControl(action: string, extra: Record<string, unknown> = {}) {
+  private _sendControl(action: string, extra: Record<string, unknown> = {}): boolean {
     try {
       this.iframe.contentWindow?.postMessage(
         {
@@ -541,8 +561,19 @@ class HyperframesPlayer extends HTMLElement {
         },
         "*",
       );
-    } catch {
-      /* cross-origin */
+      return true;
+    } catch (error) {
+      if (action === "set-runtime-data" || action === "clear-runtime-data") {
+        this.dispatchEvent(
+          new CustomEvent("runtimedataerror", {
+            detail: {
+              channel: extra["channel"],
+              message: error instanceof Error ? error.message : String(error),
+            },
+          }),
+        );
+      }
+      return false;
     }
   }
 
