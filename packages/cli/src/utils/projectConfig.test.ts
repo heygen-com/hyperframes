@@ -398,6 +398,21 @@ describe("projectConfig", () => {
       }
     });
 
+    // The old guard compared object identity, and `add` always builds fresh
+    // records, so a redundant re-add always rewrote the file. Pinned through
+    // the file's own byte-level formatting: a rewrite would re-serialize it.
+    it("does not rewrite the file when every item is already recorded", () => {
+      const dir = tmp();
+      try {
+        const text = `{\n\t"registry": "https://example.com/r",\n\t"registryItems": [\n\t\t{ "name": "data-chart", "type": "hyperframes:block", "target": "compositions/data-chart.html" }\n\t]\n}\n`;
+        writeFileSync(projectConfigPath(dir), text, "utf-8");
+        recordProjectRegistryItems(dir, [{ ...BLOCK }]);
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe(text);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     // The config is normally committed, so an install must not rewrite keys it
     // does not own or reflow the file.
     it("preserves unknown keys and the file's own indentation", () => {
