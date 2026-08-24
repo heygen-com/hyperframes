@@ -196,7 +196,10 @@ const MAX_REPORTED_ITEM_NAMES = 40;
  * The used names are narrowed to the reported installed names, so
  * `registry_blocks_used` stays a subset of `registry_items` even when the cap
  * bites. Sliced independently, the two lists can come out disjoint, breaking
- * the one relationship a drop-off query relies on.
+ * the one relationship a drop-off query relies on. When the cap does bite,
+ * `registry_items_truncated` says so: the counts still carry the truth, but the
+ * names are a window, and a query that joins on names must not read the
+ * difference as abandonment.
  *
  * An unreadable manifest reports itself and omits the counts rather than
  * sending zeros, so a failed read cannot pose as a project that never used the
@@ -211,9 +214,15 @@ function catalogEventProperties(
   const names = usage.installed.slice(0, MAX_REPORTED_ITEM_NAMES);
   const reportedNames = new Set(names);
   const used = usage.usedBlocks.filter((name) => reportedNames.has(name));
+  const truncated = names.length < usage.installed.length;
   return {
     registry_item_count: usage.installed.length,
     registry_blocks_used_count: usage.usedBlocks.length,
+    // Say when the name lists are a window rather than the whole set. Without
+    // it a name-joining drop-off query silently reads a truncated project as
+    // all-abandoned: the used blocks can all sit past the cap, leaving an empty
+    // `registry_blocks_used` against a non-zero count.
+    ...(truncated ? { registry_items_truncated: true } : {}),
     ...(names.length > 0 ? { registry_items: names.join(",") } : {}),
     ...(used.length > 0 ? { registry_blocks_used: used.join(",") } : {}),
   };

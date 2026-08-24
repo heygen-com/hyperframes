@@ -85,6 +85,19 @@ describe("collectSubCompositionSrcs", () => {
     expect(collectSubCompositionSrcs(html)).toEqual(["a.html"]);
   });
 
+  // A remote mount names no file on disk, and every caller resolves what comes
+  // back against the project root. Letting one through yields a nonsense path
+  // (`<projectDir>/https:/host/a.html`): a false "does not exist" for lint, and
+  // a wasted slot against the telemetry walk's file budget.
+  it("drops remote and inline mounts, keeping local ones", () => {
+    const html =
+      '<div data-composition-src="https://host/remote.html"></div>' +
+      '<div data-composition-src="//host/protocol-relative.html"></div>' +
+      '<div data-composition-src="data:text/html,inline"></div>' +
+      '<div data-composition-src="compositions/local.html"></div>';
+    expect(collectSubCompositionSrcs(html)).toEqual(["compositions/local.html"]);
+  });
+
   it("ignores an unterminated final tag and an attribute outside any tag", () => {
     expect(collectSubCompositionSrcs('<div data-composition-src="a.html"')).toEqual([]);
     expect(collectSubCompositionSrcs('data-composition-src="a.html"')).toEqual([]);

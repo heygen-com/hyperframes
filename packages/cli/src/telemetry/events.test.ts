@@ -244,6 +244,28 @@ describe("render telemetry events", () => {
     expect(props.registry_item_count).toBe(45);
     expect(props.registry_blocks_used_count).toBe(5);
     expect(String(props.registry_items).split(",")).toHaveLength(40);
+    // The names are a window, and a query joining on them would otherwise read
+    // this project as 45 abandoned items: every used block sits past the cap,
+    // so `registry_blocks_used` is absent against a count of 5.
+    expect(props.registry_items_truncated).toBe(true);
+    expect(props.registry_blocks_used).toBeUndefined();
+  });
+
+  it("does not claim truncation when every name fits", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: {
+        installed: ["bar-chart-race", "data-chart"],
+        usedBlocks: ["data-chart"],
+        manifestUnreadable: false,
+      },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_items_truncated).toBeUndefined();
   });
 
   // Sliced independently the two lists come out disjoint, which breaks the one

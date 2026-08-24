@@ -65,7 +65,9 @@ const COMPOSITION_SRC_ATTR = /\bdata-composition-src\s*=\s*["']([^"']+)["']/i;
  * every nesting level (see `parseSubCompositions` in htmlCompiler.ts).
  *
  * Comments, `<style>`, and `<script>` bodies are masked first so a
- * commented-out mount is not counted as a real one.
+ * commented-out mount is not counted as a real one. Build-time placeholders and
+ * remote or inline URLs are dropped: neither names a file on disk, and every
+ * caller resolves what comes back against the project root.
  *
  * The scan walks tag by tag with `indexOf` rather than running one regex with
  * two open-ended `[^>]*` spans across the whole file. That shape is quadratic:
@@ -97,6 +99,12 @@ export function collectSubCompositionSrcs(html: string): string[] {
     if (!src || seen.has(src)) continue;
     // __UPPER__ placeholder or late-bound templating token — not a real reference.
     if (isUnresolvedAssetPlaceholder(src)) continue;
+    // A remote or inline mount names no file on disk. Every caller resolves
+    // these against the project root, so letting one through produces a
+    // nonsense path (`<projectDir>/https:/host/a.html`) that then reads as a
+    // missing local file: a false "does not exist" for lint, and a wasted
+    // visit against the telemetry walk's file budget.
+    if (isRemoteOrInlineUrl(src)) continue;
     seen.add(src);
     srcs.push(src);
   }
