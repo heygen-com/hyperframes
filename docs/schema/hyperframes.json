@@ -56,6 +56,29 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
       "description": "Owning authoring-workflow skill slug (e.g. product-launch-video). Set by `hyperframes init --skill` or seeded from the first `hyperframes render --skill`; every render of this project is then attributed to it on anonymous telemetry, without re-passing the flag."
+    },
+    "registryItems": {
+      "type": "array",
+      "description": "Catalog items installed by `hyperframes add`, in install order. Installed files are plain composition HTML with no provenance marker, so this is the only record that a file came from the registry; a render reads it back to report which catalog items the finished video actually used. Append-only, deduped by name.",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "target"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Registry item name, e.g. data-chart."
+          },
+          "type": {
+            "type": "string",
+            "description": "Registry item type, e.g. hyperframes:block."
+          },
+          "target": {
+            "type": "string",
+            "description": "Primary installed file, relative to the project root."
+          }
+        }
+      }
     }
   }
 }

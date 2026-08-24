@@ -200,7 +200,7 @@ describe("render telemetry events", () => {
       quality: "draft",
       docker: false,
       gpu: false,
-      catalogUsage: { installed: [], usedBlocks: [] },
+      catalogUsage: { installed: [], usedBlocks: [], manifestUnreadable: false },
     });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.registry_item_count).toBe(0);
@@ -215,13 +215,70 @@ describe("render telemetry events", () => {
       quality: "draft",
       docker: false,
       gpu: false,
-      catalogUsage: { installed: ["bar-chart-race", "data-chart"], usedBlocks: ["data-chart"] },
+      catalogUsage: {
+        installed: ["bar-chart-race", "data-chart"],
+        usedBlocks: ["data-chart"],
+        manifestUnreadable: false,
+      },
     });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.registry_items).toBe("bar-chart-race,data-chart");
     expect(props.registry_item_count).toBe(2);
     expect(props.registry_blocks_used).toBe("data-chart");
     expect(props.registry_blocks_used_count).toBe(1);
+  });
+
+  // A count is one integer with no cardinality risk. Capping it would lose the
+  // real number with no way downstream to tell 40 installs from 400.
+  it("caps the item names but reports the true counts past the cap", () => {
+    const installed = Array.from({ length: 45 }, (_, i) => `b${String(i + 1).padStart(2, "0")}`);
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: { installed, usedBlocks: installed.slice(-5), manifestUnreadable: false },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_item_count).toBe(45);
+    expect(props.registry_blocks_used_count).toBe(5);
+    expect(String(props.registry_items).split(",")).toHaveLength(40);
+  });
+
+  // Sliced independently the two lists come out disjoint, which breaks the one
+  // relationship any drop-off query relies on.
+  it("keeps the used names a subset of the reported installed names", () => {
+    const installed = Array.from({ length: 45 }, (_, i) => `b${String(i + 1).padStart(2, "0")}`);
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: { installed, usedBlocks: installed.slice(-5), manifestUnreadable: false },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    const reported = new Set(String(props.registry_items).split(","));
+    const used =
+      props.registry_blocks_used === undefined ? [] : String(props.registry_blocks_used).split(",");
+    expect(used.every((name) => reported.has(name))).toBe(true);
+  });
+
+  // The control cohort is the one that must not silently absorb failures: a
+  // project whose manifest cannot be read is not a project without a catalog.
+  it("flags an unreadable manifest instead of reporting it as zero catalog items", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      catalogUsage: { installed: [], usedBlocks: [], manifestUnreadable: true },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.registry_manifest_unreadable).toBe(true);
+    expect(props.registry_item_count).toBeUndefined();
   });
 
   // A caller that built render options by hand makes no catalog claim, rather

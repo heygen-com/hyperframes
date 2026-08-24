@@ -175,6 +175,16 @@ export function trackCommand(command: string, runId?: string): void {
 }
 
 /**
+ * Cap on item names in one event. Registry names are low-cardinality slugs, but
+ * a project with a hundred blocks should not push a hundred-name string into
+ * every render. The cap belongs at the boundary that builds the string, and
+ * deliberately NOT on the counts: a count is one integer with no cardinality
+ * risk, and a saturated one loses the real number with no way downstream to
+ * tell 40 installs from 400.
+ */
+const MAX_REPORTED_ITEM_NAMES = 40;
+
+/**
  * Catalog half of `render_complete`.
  *
  * Counts are emitted even when zero: the no-catalog cohort is exactly what the
@@ -183,16 +193,29 @@ export function trackCommand(command: string, runId?: string): void {
  * as a comma-joined string because event property values are scalars only (same
  * shape as `recent_render_ids` on `cli_render_feedback`).
  *
- * Undefined usage means the caller built render options by hand rather than
- * through the render plan, so it makes no catalog claim at all.
+ * The used names are narrowed to the reported installed names, so
+ * `registry_blocks_used` stays a subset of `registry_items` even when the cap
+ * bites. Sliced independently, the two lists can come out disjoint, breaking
+ * the one relationship a drop-off query relies on.
+ *
+ * An unreadable manifest reports itself and omits the counts rather than
+ * sending zeros, so a failed read cannot pose as a project that never used the
+ * catalog. Undefined usage means the caller built render options by hand rather
+ * than through the render plan, so it makes no catalog claim at all.
  */
-function catalogEventProperties(usage: CatalogUsage | undefined): Record<string, string | number> {
+function catalogEventProperties(
+  usage: CatalogUsage | undefined,
+): Record<string, string | number | boolean> {
   if (!usage) return {};
+  if (usage.manifestUnreadable) return { registry_manifest_unreadable: true };
+  const names = usage.installed.slice(0, MAX_REPORTED_ITEM_NAMES);
+  const reportedNames = new Set(names);
+  const used = usage.usedBlocks.filter((name) => reportedNames.has(name));
   return {
     registry_item_count: usage.installed.length,
     registry_blocks_used_count: usage.usedBlocks.length,
-    ...(usage.installed.length > 0 ? { registry_items: usage.installed.join(",") } : {}),
-    ...(usage.usedBlocks.length > 0 ? { registry_blocks_used: usage.usedBlocks.join(",") } : {}),
+    ...(names.length > 0 ? { registry_items: names.join(",") } : {}),
+    ...(used.length > 0 ? { registry_blocks_used: used.join(",") } : {}),
   };
 }
 

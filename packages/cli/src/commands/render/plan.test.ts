@@ -46,8 +46,14 @@ describe("createRenderPlan", () => {
         '<div data-composition-src="compositions/kept.html" data-duration="2"></div></main>',
     );
     mkdirSync(join(projectDir, "compositions"), { recursive: true });
-    writeFileSync(join(projectDir, "compositions", "kept.html"), "<html></html>");
-    writeFileSync(join(projectDir, "compositions", "dropped.html"), "<html></html>");
+    // `<template>`-wrapped, as sub-compositions are actually authored: template
+    // content is inert, so a DOM scan of these files would find nothing.
+    for (const name of ["kept", "dropped"]) {
+      writeFileSync(
+        join(projectDir, "compositions", `${name}.html`),
+        `<template id="${name}-template"><div data-composition-id="${name}" data-width="1920" data-height="1080"></div></template>`,
+      );
+    }
     writeFileSync(
       join(projectDir, "hyperframes.json"),
       JSON.stringify({
@@ -60,7 +66,11 @@ describe("createRenderPlan", () => {
     );
 
     const plan = createRenderPlan({ dir: projectDir, output: "result.mp4" });
-    expect(plan.catalogUsage).toEqual({ installed: ["dropped", "kept"], usedBlocks: ["kept"] });
+    expect(plan.catalogUsage).toEqual({
+      installed: ["dropped", "kept"],
+      usedBlocks: ["kept"],
+      manifestUnreadable: false,
+    });
   });
 
   it("preserves an explicit strict-readiness opt-in", () => {
