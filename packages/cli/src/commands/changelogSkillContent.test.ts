@@ -23,7 +23,7 @@ describe("changelog-video layout contract", () => {
     const seeks = seekList?.split(",").map(Number) ?? [];
     expect(seeks).toHaveLength(25);
     expect(
-      Math.max(...seeks.slice(1).map((seek, index) => seek - seeks[index])) * 60,
+      Math.max(...seeks.slice(1).map((seek, index) => seek - (seeks[index] ?? Number.NaN))) * 60,
     ).toBeLessThanOrEqual(2.401);
     expect(skeleton).toMatch(/id="cap-line"[^>]*data-layout-allow-caption-zone/);
   });
