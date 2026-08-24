@@ -6,7 +6,12 @@ import {
   type AutomationTiming,
 } from "../audio/audioFxAutomation.js";
 import { VOLUME_RANGE } from "../audioAutomation.js";
-import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
+import {
+  audioGroupOf,
+  isAudibleUnderSolo,
+  readAudioGroupVolume,
+  resolveGroupElement,
+} from "../audioGroups.js";
 import { swallow } from "./diagnostics";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
@@ -106,6 +111,8 @@ function scheduleVolumeLane(
 type ScheduledSourceBase = {
   el: HTMLMediaElement;
   gainNode: GainNode;
+  /** Dedicated solo stage so toggles never overwrite authored volume ramps. */
+  soloGain: GainNode;
   /** FX chain spliced between source and gain, when the element carries one. */
   fx?: ElementFxHandle | null;
   compositionStart: number;
@@ -169,6 +176,8 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
+  // Session-only preview state pushed by Studio. Never serialized.
+  private _soloed: ReadonlySet<string> = new Set();
 
   async init(): Promise<boolean> {
     try {
@@ -242,6 +251,26 @@ export class WebAudioTransport {
     return this._playGeneration;
   }
 
+  /** Connect one source through its own solo stage and then into its group bus
+   * (or master for an ungrouped clip). Resolving the group first preserves one
+   * shared bus while solo remains strictly per member. */
+  private connectThroughSolo(
+    ctx: AudioContext,
+    masterGain: GainNode,
+    el: HTMLMediaElement,
+    gainNode: GainNode,
+    timing: { scheduledAt: number; compositionTime: number; rate: number },
+  ): GainNode {
+    const destination =
+      this.resolveDestination(el, timing.scheduledAt, timing.compositionTime, timing.rate) ??
+      masterGain;
+    const soloGain = ctx.createGain();
+    soloGain.gain.value = isAudibleUnderSolo(this._soloed, el.id, audioGroupOf(el)) ? 1 : 0;
+    gainNode.connect(soloGain);
+    soloGain.connect(destination);
+    return soloGain;
+  }
+
   /**
    * Route the browser's pitch-preserving HTMLMediaElement transport through the
    * same FX, automation, element-gain, and master graph used by final audio.
@@ -282,9 +311,11 @@ export class WebAudioTransport {
       // its fallback), so routing it at master would have left every grouped
       // track bypassing the bus whose whole premise is that a group is one
       // signal.
-      gainNode.connect(
-        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
-      );
+      const soloGain = this.connectThroughSolo(this._ctx, this._masterGain, el, gainNode, {
+        scheduledAt,
+        compositionTime,
+        rate: safeRate,
+      });
       scheduleVolumeLane(el, gainNode, timing);
 
       this._rate = safeRate;
@@ -297,6 +328,7 @@ export class WebAudioTransport {
         sourceNode,
         sourceKind: "media-element",
         gainNode,
+        soloGain,
         compositionStart,
         mediaStart: _mediaStart,
         scheduledAt,
@@ -483,6 +515,7 @@ export class WebAudioTransport {
       sourceNode.disconnect();
       scheduled.fx?.dispose();
       scheduled.gainNode.disconnect();
+      scheduled.soloGain.disconnect();
     } catch {
       // Already torn down.
     }
@@ -535,9 +568,11 @@ export class WebAudioTransport {
       // output — the same order the offline render uses. Preview and render run
       // the identical graph builders, so what is heard here is what is written.
       const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
-      gainNode.connect(
-        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
-      );
+      const soloGain = this.connectThroughSolo(this._ctx, this._masterGain, el, gainNode, {
+        scheduledAt,
+        compositionTime,
+        rate: safeRate,
+      });
 
       scheduleVolumeLane(el, gainNode, timing);
 
@@ -559,6 +594,7 @@ export class WebAudioTransport {
         sourceNode.disconnect();
         fx?.dispose();
         gainNode.disconnect();
+        soloGain.disconnect();
         return null;
       }
 
@@ -572,6 +608,7 @@ export class WebAudioTransport {
         sourceNode,
         sourceKind: "buffer",
         gainNode,
+        soloGain,
         compositionStart,
         mediaStart,
         scheduledAt,
@@ -653,6 +690,7 @@ export class WebAudioTransport {
         source.sourceNode.disconnect();
         source.fx?.dispose();
         source.gainNode.disconnect();
+        source.soloGain.disconnect();
       } catch {
         // already stopped
       }
@@ -695,6 +733,25 @@ export class WebAudioTransport {
   setMuted(muted: boolean): void {
     this._masterMuted = muted;
     this.applyMasterGain();
+  }
+
+  /** Update every active source without rebuilding the graph. Group ids solo
+   * all members through the shared audibility predicate. */
+  setSolo(soloed: ReadonlySet<string>): void {
+    this._soloed = soloed;
+    for (const source of this._activeSources) {
+      try {
+        source.soloGain.gain.value = isAudibleUnderSolo(
+          this._soloed,
+          source.el.id,
+          audioGroupOf(source.el),
+        )
+          ? 1
+          : 0;
+      } catch (err) {
+        swallow("webAudioTransport.setSolo", err);
+      }
+    }
   }
 
   private applyMasterGain(): void {
