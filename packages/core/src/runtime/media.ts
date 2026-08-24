@@ -224,9 +224,6 @@ export function syncRuntimeMedia(params: {
   /** Native media routed through WebAudio keeps its upstream element volume at
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
-  /** "Hear only this" gate for the HTMLMedia fallback path. WebAudio-owned
-   * sources apply the same predicate on their dedicated solo gain. */
-  isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -343,9 +340,7 @@ export function syncRuntimeMedia(params: {
       // fallback played at full level.
       const silencedByHidden =
         el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
-      const silencedBySolo = params.isAudibleUnderSolo ? !params.isAudibleUnderSolo(el) : false;
-      const effectiveVolume =
-        silencedByHidden || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
+      const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

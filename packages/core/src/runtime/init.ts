@@ -43,10 +43,8 @@ import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorG
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import {
-  audioGroupOf,
   ensureAudioGroupInertStyle,
   HF_AUDIO_GROUP_TAG,
-  isAudibleUnderSolo,
   isMemberGroupHidden,
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
@@ -189,15 +187,7 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
-  // Keep Studio's session-only "Hear only this" bridge alive until the solo
-  // controls are removed later in the stack. It must not be serialized into
-  // the composition because solo is preview state, not authored state.
-  let soloedIds: ReadonlySet<string> = new Set();
   window.__hf = window.__hf || {};
-  window.__hf.setAudioSolo = (ids) => {
-    soloedIds = new Set(ids);
-    webAudio.setSolo(soloedIds);
-  };
   /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
    *  never an ancestor — membership is on the member's `data-audio-group` — so
    *  `closest()` alone could not see a muted group, which the render drops. */
@@ -2122,7 +2112,6 @@ export function initSandboxRuntimeModular(): void {
           webAudio.setElementVolume(el, authorVolume),
         isWebAudioOwned: (el) => webAudio.ownsElement(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
-        isAudibleUnderSolo: (el) => isAudibleUnderSolo(soloedIds, el.id, audioGroupOf(el)),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
