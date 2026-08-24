@@ -145,9 +145,10 @@ scaffold.
 
 ### 6 · Gates (all green before presenting)
 
-1. `bun run --cwd packages/cli hyperframes check` (or the installed
+1. `bun run --cwd packages/cli hyperframes check --caption-zone "x0=0;y0=.90;x1=1;y1=1;severity=error;seek=.05,.15,.25,.35,.45,.55,.65,.75,.85,.95"` (or the installed
    `hyperframes` CLI from the repo-local `skills/hyperframes-cli/` skill) —
-   0 errors (contrast: dim text ≥ .66 alpha). Do NOT reach for
+   0 errors (contrast: dim text ≥ .66 alpha; scene content stays above the
+   caption rail). Do NOT reach for
    `npx hyperframes@latest`; the tracked repo-local CLI is the source of
    truth for the composition contract this skill produces against.
 2. `seam-gate.mjs verify` — 0 fail.
