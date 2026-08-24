@@ -4,6 +4,7 @@ import {
   registerRuntimeDataHandler,
   resetRuntimeDataForTests,
   setRuntimeData,
+  setRuntimeDataAppliedReporter,
   setRuntimeDataErrorReporter,
 } from "./runtimeData";
 
@@ -49,5 +50,21 @@ describe("runtime data registry", () => {
     });
     expect(() => setRuntimeData("captions", {})).not.toThrow();
     expect(reporter).toHaveBeenCalledWith("captions", expect.any(Error));
+  });
+
+  it("reports asynchronous completion and rejection", async () => {
+    const applied = vi.fn();
+    const failed = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    setRuntimeDataErrorReporter(failed);
+    registerRuntimeDataHandler("captions", async (payload) => {
+      await Promise.resolve();
+      if (payload === "bad") throw new Error("async attach failed");
+    });
+
+    setRuntimeData("captions", "good");
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions"));
+    setRuntimeData("captions", "bad");
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledWith("captions", expect.any(Error)));
   });
 });

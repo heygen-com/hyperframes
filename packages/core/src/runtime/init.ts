@@ -67,7 +67,12 @@ import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
-import { clearRuntimeData, setRuntimeData, setRuntimeDataErrorReporter } from "./runtimeData";
+import {
+  clearRuntimeData,
+  setRuntimeData,
+  setRuntimeDataAppliedReporter,
+  setRuntimeDataErrorReporter,
+} from "./runtimeData";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -140,6 +145,9 @@ export function initSandboxRuntimeModular(): void {
       channel,
       message: error instanceof Error ? error.message : String(error),
     });
+  });
+  setRuntimeDataAppliedReporter((channel) => {
+    postRuntimeMessage({ source: "hf-preview", type: "runtime-data-applied", channel });
   });
   // SDK moveElement edits must render even when no usable GSAP timeline ever
   // binds (CSS/WAAPI-animated or fully static compositions) — apply at init.

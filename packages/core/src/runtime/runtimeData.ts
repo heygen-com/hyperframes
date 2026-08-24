@@ -1,9 +1,11 @@
-export type RuntimeDataHandler = (payload: unknown) => void;
+export type RuntimeDataHandler = (payload: unknown) => void | Promise<void>;
 export type RuntimeDataErrorReporter = (channel: string, error: unknown) => void;
+export type RuntimeDataAppliedReporter = (channel: string) => void;
 
 const retained = new Map<string, unknown>();
 const handlers = new Map<string, RuntimeDataHandler>();
 let reportError: RuntimeDataErrorReporter = () => undefined;
+let reportApplied: RuntimeDataAppliedReporter = () => undefined;
 
 function validChannel(channel: string): boolean {
   return /^[a-z][a-z0-9-]{0,63}$/.test(channel);
@@ -13,7 +15,10 @@ function deliver(channel: string, payload: unknown): void {
   const handler = handlers.get(channel);
   if (!handler) return;
   try {
-    handler(payload);
+    void Promise.resolve(handler(payload)).then(
+      () => reportApplied(channel),
+      (error) => reportError(channel, error),
+    );
   } catch (error) {
     reportError(channel, error);
   }
@@ -21,6 +26,10 @@ function deliver(channel: string, payload: unknown): void {
 
 export function setRuntimeDataErrorReporter(reporter: RuntimeDataErrorReporter): void {
   reportError = reporter;
+}
+
+export function setRuntimeDataAppliedReporter(reporter: RuntimeDataAppliedReporter): void {
+  reportApplied = reporter;
 }
 
 export function setRuntimeData(channel: string, payload: unknown): void {
@@ -52,4 +61,5 @@ export function resetRuntimeDataForTests(): void {
   retained.clear();
   handlers.clear();
   reportError = () => undefined;
+  reportApplied = () => undefined;
 }

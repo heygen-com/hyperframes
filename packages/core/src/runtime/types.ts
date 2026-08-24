@@ -178,6 +178,12 @@ export type RuntimeDataErrorMessage = {
   message: string;
 };
 
+export type RuntimeDataAppliedMessage = {
+  source: "hf-preview";
+  type: "runtime-data-applied";
+  channel: string;
+};
+
 /**
  * Analytics events emitted by the runtime.
  *
@@ -229,6 +235,7 @@ export type RuntimeOutboundMessage =
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeDataErrorMessage
+  | RuntimeDataAppliedMessage
   | RuntimeAnalyticsMessage
   | RuntimePerformanceMessage
   | RuntimeGroupLevelsMessage;

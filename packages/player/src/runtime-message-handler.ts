@@ -101,6 +101,13 @@ export function handleRuntimeMessage(
     return;
   }
 
+  if (data["type"] === "runtime-data-applied") {
+    callbacks.dispatchEvent(
+      new CustomEvent("runtimedataapplied", { detail: { channel: data["channel"] } }),
+    );
+    return;
+  }
+
   if (data["type"] === "state") {
     callbacks.setPlaybackState(
       applyRuntimeStateMessage(

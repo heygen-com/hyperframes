@@ -92,6 +92,22 @@ describe("handleRuntimeMessage runtime data errors", () => {
       expect.objectContaining({ type: "runtimedataerror" }),
     );
   });
+
+  it("surfaces successful channel application", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+    handleRuntimeMessage(
+      {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "runtime-data-applied", channel: "captions" },
+      } as MessageEvent,
+      frameWindow,
+      callbacks,
+    );
+    expect(callbacks.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "runtimedataapplied" }),
+    );
+  });
 });
 
 describe("handleRuntimeMessage media autoplay fallback", () => {
