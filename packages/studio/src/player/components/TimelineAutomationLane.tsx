@@ -1,21 +1,15 @@
 /**
  * Breakpoint automation over an audio clip, edited the way a DAW edits it:
  * double-click the line to add a point, drag one to shape it, right-click or
- * Shift+click a point to remove it, Alt-drag the line between two points to bend
- * it, and double-click a point to type an exact value.
+ * Shift+click a point to remove it, drag a line segment to move both endpoints,
+ * Alt-drag the line to bend it, and double-click a point to type an exact value.
  *
- * Modifiers follow Ableton's, because that is the muscle memory an automation
- * lane inherits: Shift locks a drag to one axis and fines the value down, Alt
- * over a segment curves it, and Alt during a point drag ignores the grid.
+ * Ableton-style modifiers apply: Shift locks/fines a drag, while Alt bends a
+ * segment or ignores the grid during a point drag. Background drags select a
+ * set that can be moved, deleted, or shaped together.
  *
- * Drag the background to draw a selection box around a set of breakpoints, then
- * Delete to remove them, drag any one of them to move the whole set, or
- * right-click inside the box for shapes over its span.
- *
- * The lane knows nothing about any particular effect. Which parameters it can
- * offer, their ranges, units and whether they read logarithmically all come
- * from the FX registry, so an effect gained upstream needs no change here — the
- * same principle the property panel's controls follow.
+ * Effect parameters, ranges, units, and scaling come from the FX registry, so
+ * an upstream effect needs no lane-specific code here.
  */
 
 import {
@@ -42,6 +36,7 @@ import { generateShape, type AutomationShapeId } from "./automationShapes";
 import { simplifyPoints } from "./automationSimplify";
 import { pointInSelection, pointsIn, replaceRange } from "./automationLaneSelection";
 import { defaultTimelineTheme } from "./timelineTheme";
+import { AutomationEnvelopePaths } from "./AutomationEnvelopePaths";
 
 /**
  * Drawn radius of a breakpoint.
@@ -102,7 +97,7 @@ function pointCircleStyle(
 function laneTitle(readOnly: boolean | undefined): string {
   return readOnly
     ? "Drag a box to select points, which also selects this clip; then double-click to add a point"
-    : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click or Shift+click to remove it. Drag the background to draw a box around points, then Delete to remove them or drag one to move them all. Alt-drag the line to curve it. Shift locks an axis mid-drag; Alt ignores the grid.";
+    : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click or Shift+click to remove it. Drag a line segment to move both endpoints. Drag the background to draw a box around points, then Delete to remove them or drag one to move them all. Alt-drag the line to curve it. Shift locks an axis mid-drag; Alt ignores the grid.";
 }
 
 /**
@@ -155,13 +150,19 @@ function pointHandleOpacity(args: {
   return !args.readOnly && args.hovered ? 1 : 0;
 }
 
-function laneCursor(readOnly: boolean | undefined, dragging: boolean, stretching: boolean): string {
+function laneCursor(
+  readOnly: boolean | undefined,
+  dragging: boolean,
+  stretching: boolean,
+  segmentHovering: boolean,
+): string {
   // A stretch handle wins over everything it might also sit above: the handle is
   // a few px wide and always overlaps whatever is under the selection edge, so
   // any other cursor there would advertise a gesture the press will not start.
   if (stretching) return "col-resize";
   if (readOnly) return "pointer";
-  return dragging ? "grabbing" : "crosshair";
+  if (dragging) return "grabbing";
+  return segmentHovering ? "grab" : "crosshair";
 }
 
 export interface TimelineAutomationLaneProps {
@@ -318,7 +319,16 @@ export function TimelineAutomationLane({
     duration,
     rangeSelection,
   });
-  const { dragIndex, curveIndex, edgeDrag, edgeHover, hint, editing } = gestures;
+  const {
+    dragIndex,
+    curveIndex,
+    segmentDragIndex,
+    segmentHoverIndex,
+    edgeDrag,
+    edgeHover,
+    hint,
+    editing,
+  } = gestures;
 
   const removeAt = useCallback(
     (index: number): void => {
@@ -426,8 +436,9 @@ export function TimelineAutomationLane({
           height: h,
           cursor: laneCursor(
             readOnly,
-            dragIndex !== null || curveIndex !== null,
+            dragIndex !== null || curveIndex !== null || segmentDragIndex !== null,
             edgeDrag !== null || edgeHover,
+            segmentHoverIndex !== null,
           ),
           opacity: readOnly ? 0.55 : 1,
           touchAction: "none",
@@ -435,7 +446,10 @@ export function TimelineAutomationLane({
         width={widthPx + PAD_X * 2}
         height={h}
         onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        onPointerLeave={() => {
+          setHovered(false);
+          gestures.onPointerLeave();
+        }}
         onPointerDown={gestures.onPointerDown}
         onPointerMove={gestures.onPointerMove}
         onPointerUp={gestures.endDrag}
@@ -478,12 +492,14 @@ export function TimelineAutomationLane({
             pointerEvents="none"
           />
         ) : null}
-        <path
-          d={path}
-          fill="none"
-          stroke={accentColor}
-          strokeWidth={1.5}
-          opacity={lane.points.length === 0 ? 0.35 : 0.95}
+        <AutomationEnvelopePaths
+          path={path}
+          lane={lane}
+          range={range}
+          accentColor={accentColor}
+          activeSegment={segmentDragIndex ?? segmentHoverIndex}
+          xOf={xOf}
+          yOf={yOf}
         />
         {lane.points.map((p, i) => {
           // Endpoint-inclusive, the same rule Delete uses, so what looks caught by

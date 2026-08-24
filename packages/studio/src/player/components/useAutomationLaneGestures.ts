@@ -25,6 +25,7 @@ import {
   type GroupDragSnapshot,
   type ShiftAxis,
 } from "./automationLaneDragMath";
+import { useAutomationSegmentDrag } from "./useAutomationSegmentDrag";
 
 /** How far a press may travel and still count as a click rather than a drag. */
 const CLICK_SLOP_PX = 3;
@@ -63,10 +64,16 @@ export interface UseAutomationLaneGesturesResult {
   dragIndex: number | null;
   /** Segment being bent, identified by the point that owns its curve. */
   curveIndex: number | null;
+  /** Segment whose two endpoints are being translated together. */
+  segmentDragIndex: number | null;
+  /** Segment close enough to the pointer to offer that translation. */
+  segmentHoverIndex: number | null;
   /** Value readout to show while a gesture is live. */
   hint: string | null;
   hitIndex(clientX: number, clientY: number): number | null;
   segmentIndex(clientX: number, clientY: number): number | null;
+  /** Clear hover feedback when the pointer leaves the lane. */
+  onPointerLeave(): void;
   onPointerDown(e: ReactPointerEvent<SVGSVGElement>): void;
   onPointerMove(e: ReactPointerEvent<SVGSVGElement>): void;
   /** Edge being stretched, for the cursor. Null when no stretch is live. */
@@ -227,16 +234,37 @@ export function useAutomationLaneGestures({
     [lane, pointAt],
   );
 
-  /** What a press starts: moving a point, or — with Alt on the line — bending it. */
+  const segmentDrag = useAutomationSegmentDrag({
+    getBox,
+    lane,
+    range,
+    pointAt,
+    xOf,
+    yOf,
+    segmentIndex,
+    commitPoints,
+    duration,
+    snapTimes,
+    readOnly,
+    onHint: setHint,
+  });
+
+  /** What a press starts: point move, segment move, or Alt segment bend. */
   const gestureAt = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>): { curve: boolean; index: number } | null => {
+    (
+      e: ReactPointerEvent<SVGSVGElement>,
+    ): { kind: "point" | "segment" | "curve"; index: number } | null => {
       const index = hitIndex(e.clientX, e.clientY);
-      if (index !== null) return { curve: false, index };
-      if (!e.altKey) return null;
-      const segment = segmentIndex(e.clientX, e.clientY);
-      return segment === null ? null : { curve: true, index: segment };
+      if (index !== null) return { kind: "point", index };
+      // Alt is an explicit bend gesture and retains its span-wide hit target.
+      // The unmodified translation is offered only close to the drawn line.
+      const segment = e.altKey
+        ? segmentIndex(e.clientX, e.clientY)
+        : segmentDrag.hitIndex(e.clientX, e.clientY);
+      if (segment === null) return null;
+      return { kind: e.altKey ? "curve" : "segment", index: segment };
     },
-    [hitIndex, segmentIndex],
+    [hitIndex, segmentDrag, segmentIndex],
   );
 
   const onPointerDown = useCallback(
@@ -274,8 +302,13 @@ export function useAutomationLaneGestures({
       }
       e.preventDefault();
       capturePointer(e);
-      if (gesture.curve) {
+      segmentDrag.clearHover();
+      if (gesture.kind === "curve") {
         setCurveIndex(gesture.index);
+        return;
+      }
+      if (gesture.kind === "segment") {
+        segmentDrag.arm(gesture.index, e.clientX, e.clientY);
         return;
       }
       dragOrigin.current = originOf(lane.points[gesture.index]);
@@ -299,6 +332,7 @@ export function useAutomationLaneGestures({
       // selecting a range read the previous selection, or none.
       rangeSelection,
       stretch,
+      segmentDrag,
     ],
   );
 
@@ -394,6 +428,20 @@ export function useAutomationLaneGestures({
     [dragIndex, duration, lane, pointAt, range, commitPoints, snapTimes, xOf, yOf, moveGroup],
   );
 
+  /** Route a live point, bend, or segment gesture after global gestures stand down. */
+  const moveLiveGesture = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>): void => {
+      const from = pressAt.current;
+      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > CLICK_SLOP_PX) {
+        pressTravelled.current = true;
+      }
+      if (curveIndex !== null) bendSegment(e.clientX, e.clientY);
+      else if (segmentDrag.dragIndex !== null) segmentDrag.move(e);
+      else movePoint(e);
+    },
+    [bendSegment, curveIndex, movePoint, segmentDrag],
+  );
+
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
       if (stretch.edge !== null) {
@@ -409,19 +457,15 @@ export function useAutomationLaneGestures({
         rangeDrag.move(e);
         return;
       }
-      if (curveIndex === null && dragIndex === null) {
+      if (curveIndex === null && dragIndex === null && segmentDrag.dragIndex === null) {
         stretch.updateHover(e);
+        segmentDrag.updateHover(e.clientX, e.clientY);
         return;
       }
       e.stopPropagation();
-      const from = pressAt.current;
-      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > CLICK_SLOP_PX) {
-        pressTravelled.current = true;
-      }
-      if (curveIndex !== null) bendSegment(e.clientX, e.clientY);
-      else movePoint(e);
+      moveLiveGesture(e);
     },
-    [rangeDrag, curveIndex, dragIndex, bendSegment, movePoint, stretch],
+    [rangeDrag, curveIndex, dragIndex, segmentDrag, moveLiveGesture, stretch],
   );
 
   const endDrag = useCallback(
@@ -436,12 +480,13 @@ export function useAutomationLaneGestures({
         rangeDrag.finish();
         return;
       }
-      if (dragIndex === null && curveIndex === null) return;
+      if (dragIndex === null && curveIndex === null && segmentDrag.dragIndex === null) return;
       e.stopPropagation();
       const index = dragIndex;
       const shiftClicked = index !== null && e.shiftKey && !pressTravelled.current;
       setDragIndex(null);
       setCurveIndex(null);
+      segmentDrag.finish();
       dragOrigin.current = null;
       groupDrag.current = null;
       shiftAxis.current = null;
@@ -459,7 +504,7 @@ export function useAutomationLaneGestures({
       }
       commitPoints(lane.points, true);
     },
-    [rangeDrag, curveIndex, dragIndex, lane, commitPoints, stretch],
+    [rangeDrag, curveIndex, dragIndex, segmentDrag, lane, commitPoints, stretch],
   );
 
   /**
@@ -519,12 +564,15 @@ export function useAutomationLaneGestures({
   return {
     dragIndex,
     curveIndex,
+    segmentDragIndex: segmentDrag.dragIndex,
+    segmentHoverIndex: segmentDrag.hoverIndex,
     edgeDrag: stretch.edge,
     edgeHover: stretch.hover,
     cancelDrag,
     hint,
     hitIndex,
     segmentIndex,
+    onPointerLeave: segmentDrag.clearHover,
     onPointerDown,
     onPointerMove,
     endDrag,

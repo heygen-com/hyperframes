@@ -10,6 +10,7 @@ import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import {
   normalizeAutomation,
   resolveAutomationRange,
+  sampleAutomationLane,
   VOLUME_RANGE,
   type HfAutomation,
 } from "@hyperframes/core/audio-automation";
@@ -665,6 +666,118 @@ describe("TimelineAutomationLane point visibility", () => {
     fire(svg, "pointermove", { clientX: PAD + 40, clientY: 30, buttons: 1 });
     leave(svg);
     expect(opacityOf(container)).toBe("1");
+  });
+});
+
+describe("TimelineAutomationLane segment drag", () => {
+  const four: HfAutomation = {
+    version: 1,
+    lanes: [
+      {
+        target: "volume",
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 0.8 },
+          { t: 2, v: 0.6 },
+          { t: 3.5, v: 0.2 },
+        ],
+      },
+    ],
+  };
+
+  const previewedPoints = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+    props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as {
+      t: number;
+      v: number;
+      viaX?: number;
+      viaY?: number;
+    }[];
+
+  it("thickens the segment and offers a grab cursor only within its hit proximity", () => {
+    const { container, svg } = mount(ramp);
+    const envelope = container.querySelector<SVGPathElement>("[data-automation-envelope]");
+    expect(envelope?.getAttribute("stroke-width")).toBe("1.5");
+
+    fire(svg, "pointermove", at(2, 0.5));
+    const active = container.querySelector<SVGPathElement>("[data-automation-segment-active]");
+    expect(active).not.toBeNull();
+    expect(active?.getAttribute("stroke-width")).toBe("3");
+    expect(svg.style.cursor).toBe("grab");
+
+    // Same time span, but far enough above the drawn ramp to be background.
+    fire(svg, "pointermove", at(2, 0.9));
+    expect(container.querySelector("[data-automation-segment-active]")).toBeNull();
+    expect(svg.style.cursor).toBe("crosshair");
+  });
+
+  it("moves both segment endpoints by the same time and value delta", () => {
+    const { svg, props } = mount(four);
+    // Midpoint of the segment from (1, .8) to (2, .6).
+    fire(svg, "pointerdown", { ...at(1.5, 0.7), buttons: 1 });
+    fire(svg, "pointermove", { ...at(2, 0.5), buttons: 1 });
+
+    const points = previewedPoints(props);
+    expect(points[0]).toEqual({ t: 0, v: 1 });
+    expect(points[1]!.t).toBeCloseTo(1.5, 2);
+    expect(points[2]!.t).toBeCloseTo(2.5, 2);
+    expect(points[1]!.v).toBeCloseTo(0.6, 2);
+    expect(points[2]!.v).toBeCloseTo(0.4, 2);
+    expect(points[3]).toEqual({ t: 3.5, v: 0.2 });
+  });
+
+  it("treats a press outside the line's proximity as a background range drag", () => {
+    const onRangeSelect = vi.fn();
+    const { svg, props } = mount(four, { onRangeSelect });
+    fire(svg, "pointerdown", { ...at(1.5, 0.95), buttons: 1 });
+    fire(svg, "pointermove", { ...at(2.5, 0.95), buttons: 1 });
+    expect(onRangeSelect).toHaveBeenCalled();
+    expect(props.onPreview).not.toHaveBeenCalled();
+  });
+
+  it("preserves the segment's curve while translating its endpoints", () => {
+    const curved: HfAutomation = {
+      version: 1,
+      lanes: [
+        {
+          target: "volume",
+          points: [
+            { t: 0, v: 1 },
+            { t: 1, v: 0.8, viaX: 0.4, viaY: 0.7 },
+            { t: 2, v: 0.6 },
+            { t: 3.5, v: 0.2 },
+          ],
+        },
+      ],
+    };
+    const { svg, props } = mount(curved);
+    const lineValue = sampleAutomationLane(curved.lanes[0]!, 1.7, "linear");
+    fire(svg, "pointerdown", { ...at(1.7, lineValue), buttons: 1 });
+    fire(svg, "pointermove", { ...at(2.1, lineValue - 0.1), buttons: 1 });
+    const points = previewedPoints(props);
+    expect(points[1]?.viaX).toBe(0.4);
+    expect(points[1]?.viaY).toBe(0.7);
+  });
+
+  it("stops both endpoints together before the next breakpoint", () => {
+    const { svg, props } = mount(four);
+    fire(svg, "pointerdown", { ...at(1.5, 0.7), buttons: 1 });
+    fire(svg, "pointermove", { ...at(4, 0.7), buttons: 1, altKey: true });
+    const points = previewedPoints(props);
+    expect(points[2]!.t).toBeLessThan(points[3]!.t);
+    expect(points[3]!.t - points[2]!.t).toBeCloseTo(0.001, 4);
+    expect(points[2]!.t - points[1]!.t).toBeCloseTo(1, 4);
+  });
+
+  it("previews every move and persists the segment once on release", () => {
+    const { svg, props } = mount(four);
+    fire(svg, "pointerdown", { ...at(1.5, 0.7), buttons: 1 });
+    for (const t of [1.7, 1.9, 2.1]) {
+      fire(svg, "pointermove", { ...at(t, 0.6), buttons: 1 });
+    }
+    expect(props.onPreview).toHaveBeenCalledTimes(3);
+    expect(props.onCommit).not.toHaveBeenCalled();
+    fire(svg, "pointerup", { ...at(2.1, 0.6), buttons: 0 });
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
   });
 });
 

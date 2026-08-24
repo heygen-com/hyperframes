@@ -35,6 +35,8 @@ export const POINT_MERGE_SEC = 0.02;
 export const MIN_POINT_GAP_SEC = 0.001;
 /** Hit radius for grabbing a point, in px. */
 export const GRAB_PX = 7;
+/** Distance from the drawn envelope that offers a segment drag, in px. */
+export const SEGMENT_GRAB_PX = 5;
 /** Samples used to draw a segment the eye should see as curved. */
 export const DRAW_SAMPLES = 64;
 /**
@@ -222,6 +224,29 @@ export function snapLaneTime(t: number, targets: readonly number[], thresholdSec
   return best;
 }
 
+/** Draw commands from one breakpoint to the next, sampled when it is curved. */
+function segmentLineCommands(input: {
+  lane: HfAutomationLane;
+  range: AutomationRange;
+  index: number;
+  xOf(t: number): number;
+  yOf(v: number): number;
+}): string[] {
+  const { lane, range, index, xOf, yOf } = input;
+  const a = lane.points[index];
+  const b = lane.points[index + 1];
+  if (!a || !b) return [];
+  // A via point bends the segment with no `curve` of its own, so the
+  // straight-line shortcut has to rule out both.
+  if (!a.curve && a.viaX === undefined && range.scale === "linear") {
+    return [`L ${xOf(b.t)} ${yOf(b.v)}`];
+  }
+  return Array.from({ length: DRAW_SAMPLES }, (_, sample) => {
+    const t = a.t + ((b.t - a.t) * (sample + 1)) / DRAW_SAMPLES;
+    return `L ${xOf(t)} ${yOf(sampleAutomationLane(lane, t, range.scale))}`;
+  });
+}
+
 /**
  * The svg path for one lane's envelope.
  *
@@ -247,21 +272,35 @@ export function envelopePath(input: {
   }
   const pts = [`M ${PAD_X} ${yOf(first.v)}`, `L ${xOf(first.t)} ${yOf(first.v)}`];
   for (let i = 0; i + 1 < lane.points.length; i += 1) {
-    const a = lane.points[i];
-    const b = lane.points[i + 1];
-    if (!a || !b) continue;
-    // A via point bends the segment with no `curve` of its own, so the
-    // straight-line shortcut has to rule out both.
-    if (!a.curve && a.viaX === undefined && range.scale === "linear") {
-      pts.push(`L ${xOf(b.t)} ${yOf(b.v)}`);
-      continue;
-    }
-    for (let k = 1; k <= DRAW_SAMPLES; k += 1) {
-      const t = a.t + ((b.t - a.t) * k) / DRAW_SAMPLES;
-      pts.push(`L ${xOf(t)} ${yOf(sampleAutomationLane(lane, t, range.scale))}`);
-    }
+    pts.push(...segmentLineCommands({ lane, range, index: i, xOf, yOf }));
   }
   pts.push(`L ${PAD_X + widthPx} ${yOf(last.v)}`);
+  return pts.join(" ");
+}
+
+/**
+ * The visible path for one segment, without the lane's constant extensions.
+ *
+ * Used for the hover/drag affordance: only the segment under the pointer grows
+ * heavier, rather than making the entire envelope look selected. It samples by
+ * the same rule as `envelopePath`, so a curved or logarithmic segment's hover
+ * stroke sits exactly on the line the audio model draws.
+ */
+export function envelopeSegmentPath(input: {
+  lane: HfAutomationLane;
+  range: AutomationRange;
+  index: number;
+  xOf(t: number): number;
+  yOf(v: number): number;
+}): string | null {
+  const { lane, range, index, xOf, yOf } = input;
+  const a = lane.points[index];
+  const b = lane.points[index + 1];
+  if (!a || !b) return null;
+  const pts = [
+    `M ${xOf(a.t)} ${yOf(a.v)}`,
+    ...segmentLineCommands({ lane, range, index, xOf, yOf }),
+  ];
   return pts.join(" ");
 }
 
