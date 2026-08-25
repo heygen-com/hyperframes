@@ -33,7 +33,7 @@ function alreadyHasRuntime(html: string, runtimeUrl: string): boolean {
 }
 
 type OpeningTag = { index: number; end: number };
-const OPENING_TAG_BOUNDARIES = new Set([">", " ", "\t", "\n", "\r", "\f"]);
+const OPENING_TAG_BOUNDARIES = new Set<string | undefined>([">", " ", "\t", "\n", "\r", "\f"]);
 
 /** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
 function findOpeningTag(html: string, tagName: string): OpeningTag | null {
