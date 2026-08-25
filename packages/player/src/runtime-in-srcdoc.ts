@@ -54,10 +54,7 @@ function findOpeningTag(html: string, tagName: string): OpeningTag | null {
   return null;
 }
 
-export function ensureRuntimeBeforeBodyScripts(
-  html: string,
-  runtimeUrl: string,
-): string {
+export function ensureRuntimeBeforeBodyScripts(html: string, runtimeUrl: string): string {
   if (!html || alreadyHasRuntime(html, runtimeUrl)) return html;
 
   const tag = `<script src="${runtimeUrl}"></script>`;
