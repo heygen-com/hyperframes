@@ -3,6 +3,12 @@ name: Release guard credential health
 permissions: {}
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - ".github/workflows/release-guard-health.yml"
+      - "scripts/stable-release-guard.mjs"
   schedule:
     - cron: "17 13 * * 1"
   workflow_dispatch: {}
@@ -10,12 +16,33 @@ on:
 jobs:
   health:
     name: Verify release guard credential health
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name != 'pull_request' &&
+       github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      EXPECTED_HEALTH_SHA: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.head.sha
+            || github.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.EXPECTED_HEALTH_SHA }}
+
+      - name: Verify immutable health checkout
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_HEALTH_SHA}^{commit}")"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+            echo "::error::Expected health source $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
+            exit 1
+          fi
 
       - name: Verify release guard health
         env:

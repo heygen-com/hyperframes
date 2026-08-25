@@ -158,16 +158,44 @@ test("effective non-check rule enforcement and maintenance are explicit", () => 
   assert.doesNotMatch(guardSource, /\/commits\/\$\{sha\}\/status/);
 });
 
-test("credential health is weekly, manually runnable, read-only, and incapable of publishing", () => {
+test("credential health is pre-merge reachable, immutable, read-only, and incapable of publishing", () => {
   assert.notEqual(healthWorkflowSource, "", "release-guard-health.yml must exist");
   const healthConfig = parse(healthWorkflowSource);
-  assert.deepEqual(Object.keys(healthConfig.on).sort(), ["schedule", "workflow_dispatch"]);
+  assert.deepEqual(Object.keys(healthConfig.on).sort(), [
+    "pull_request",
+    "schedule",
+    "workflow_dispatch",
+  ]);
+  assert.deepEqual(healthConfig.on.pull_request, {
+    types: ["opened", "synchronize", "reopened"],
+    branches: ["main"],
+    paths: [".github/workflows/release-guard-health.yml", "scripts/stable-release-guard.mjs"],
+  });
   assert.equal(healthConfig.on.schedule.length, 1);
   assert.match(healthConfig.on.schedule[0].cron, /^\d+ \d+ \* \* \d$/);
   const healthJob = healthConfig.jobs.health;
+  assert.equal(
+    normalizeExpression(healthJob.if),
+    "(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
+  );
   assert.deepEqual(healthJob.permissions, { contents: "read" });
+  assert.equal(
+    normalizeExpression(healthJob.env.EXPECTED_HEALTH_SHA),
+    "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+  );
+  const healthCheckout = healthJob.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+  assert.equal(healthCheckout.with.ref, "${{ env.EXPECTED_HEALTH_SHA }}");
+  const healthCheckoutGuard = healthJob.steps.find(
+    (step) => step.name === "Verify immutable health checkout",
+  );
+  assert.ok(healthCheckoutGuard);
+  assert.equal(healthCheckoutGuard.if, undefined);
+  assert.equal(healthCheckoutGuard["continue-on-error"], undefined);
+  assert.match(healthCheckoutGuard.run, /git rev-parse HEAD/);
+  assert.match(healthCheckoutGuard.run, /EXPECTED_HEALTH_SHA/);
   const healthStep = healthJob.steps.find((step) => step.name === "Verify release guard health");
   assert.ok(healthStep);
+  assert.ok(healthJob.steps.indexOf(healthCheckoutGuard) < healthJob.steps.indexOf(healthStep));
   assert.equal(healthStep.env.RELEASE_GUARD_TOKEN, "${{ secrets.RELEASE_GUARD_TOKEN }}");
   assert.equal(healthStep.run.trim(), "node scripts/stable-release-guard.mjs --health");
   for (const step of healthJob.steps.filter((candidate) => candidate !== healthStep)) {

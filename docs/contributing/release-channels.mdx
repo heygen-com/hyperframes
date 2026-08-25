@@ -99,11 +99,14 @@ successful check before merge. If the secret is missing, expired, incorrectly sc
 capability check does not pass, this PR must not merge and the stable workflow will fail before
 creating a tag.
 
-The separate release-guard credential health workflow repeats these reads every Monday and supports
-a safe manual run after provisioning or rotation. It discovers a recent merged `main` pull request
-and verifies effective rules, its exact month-window rule suite, reviews, and check runs. It has only
-`contents: read` on the built-in token, passes `RELEASE_GUARD_TOKEN` only to the health step, and has
-no release, tag, package, or publish path.
+The separate release-guard credential health workflow repeats these reads on same-repository pull
+requests, every Monday, and through a safe manual run after provisioning or rotation. The pull-request
+trigger is the bootstrap path before the workflow exists on the default branch (GitHub does not
+register `workflow_dispatch` there until after merge): each PR run pins checkout to the exact head SHA
+and refuses fork pull requests. Scheduled and manual runs are restricted to the repository's default
+branch. The check discovers a recent merged `main` pull request and verifies effective rules, its exact
+month-window rule suite, reviews, and check runs. It has only `contents: read` on the built-in token,
+passes `RELEASE_GUARD_TOKEN` only to the health step, and has no release, tag, package, or publish path.
 
 Required checks remain dynamically sourced from effective rules, but each must identify a concrete
 GitHub App integration so the guard can reduce actual check runs. A new required context without a
