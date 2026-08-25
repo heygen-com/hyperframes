@@ -30,6 +30,7 @@ import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 
 export type ColorGradingTarget =
   | string
@@ -48,8 +49,13 @@ export type ColorGradingCompareState = {
 };
 
 type RuntimeDataBridge = {
-  setRuntimeData?: (channel: string, payload: unknown) => void;
-  clearRuntimeData?: (channel: string) => void;
+  setRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
+  clearRuntimeData?: (channel: string, requestId?: number) => void;
+};
+
+type PendingRuntimeDataDelivery = {
+  requestId: number;
+  timeoutId: number;
 };
 
 function clampPlaybackRate(rate: number): number {
@@ -106,6 +112,8 @@ class HyperframesPlayer extends HTMLElement {
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
   private _runtimeData = new Map<string, unknown>();
+  private _runtimeDataRequestId = 0;
+  private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
 
   constructor() {
     super();
@@ -203,26 +211,33 @@ class HyperframesPlayer extends HTMLElement {
     this._paused = true;
     this._ready = false;
     this._runtimeBridgeReady = false;
+    this._rejectAllRuntimeDataDeliveries("Player disconnected before runtime data was applied");
   }
 
   // fallow-ignore-next-line complexity
-  attributeChangedCallback(name: string, _old: string | null, val: string | null) {
+  attributeChangedCallback(name: string, oldVal: string | null, val: string | null) {
     switch (name) {
       case "src":
         if (val) {
           this._ready = false;
           this._runtimeBridgeReady = false;
+          this._rejectAllRuntimeDataDeliveries(
+            "Composition navigated before runtime data was applied",
+          );
           this.iframe.src = prepareSrcForElement(this, val);
         }
         break;
       case "srcdoc":
         this._ready = false;
         this._runtimeBridgeReady = false;
+        this._rejectAllRuntimeDataDeliveries(
+          "Composition navigated before runtime data was applied",
+        );
         if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         else this.iframe.removeAttribute("srcdoc");
         break;
       case SANDBOX_ORIGIN_ATTR:
-        this._applySandboxOriginPolicy();
+        this._applySandboxOriginPolicy(this.isConnected && oldVal !== val);
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
@@ -281,13 +296,26 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
-  private _applySandboxOriginPolicy(): void {
-    const policy = this.getAttribute(SANDBOX_ORIGIN_ATTR);
-    if (policy === "opaque") {
+  private _applySandboxOriginPolicy(reloadActiveDocument = false): void {
+    if (this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
       this.iframe.sandbox.remove("allow-same-origin");
+    } else {
+      this.iframe.sandbox.add("allow-same-origin");
+    }
+    if (reloadActiveDocument) this._reloadForSandboxOriginPolicy();
+  }
+
+  private _reloadForSandboxOriginPolicy(): void {
+    this._ready = false;
+    this._runtimeBridgeReady = false;
+    this._rejectAllRuntimeDataDeliveries("Sandbox policy changed before runtime data was applied");
+    const srcdoc = this.getAttribute("srcdoc");
+    if (srcdoc !== null) {
+      this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
       return;
     }
-    this.iframe.sandbox.add("allow-same-origin");
+    const src = this.getAttribute("src");
+    this.iframe.src = src === null ? "about:blank" : prepareSrcForElement(this, src);
   }
 
   /**
@@ -551,7 +579,18 @@ class HyperframesPlayer extends HTMLElement {
 
   private _sendControl(action: string, extra: Record<string, unknown> = {}): boolean {
     try {
-      this.iframe.contentWindow?.postMessage(
+      const frameWindow = this.iframe.contentWindow;
+      if (!frameWindow) {
+        if (action === "set-runtime-data" || action === "clear-runtime-data") {
+          this._rejectRuntimeDataDelivery(
+            extra["channel"],
+            extra["requestId"],
+            "Composition iframe is unavailable",
+          );
+        }
+        return false;
+      }
+      frameWindow.postMessage(
         {
           ...extra,
           source: "hf-parent",
@@ -564,13 +603,10 @@ class HyperframesPlayer extends HTMLElement {
       return true;
     } catch (error) {
       if (action === "set-runtime-data" || action === "clear-runtime-data") {
-        this.dispatchEvent(
-          new CustomEvent("runtimedataerror", {
-            detail: {
-              channel: extra["channel"],
-              message: error instanceof Error ? error.message : String(error),
-            },
-          }),
+        this._rejectRuntimeDataDelivery(
+          extra["channel"],
+          extra["requestId"],
+          error instanceof Error ? error.message : String(error),
         );
       }
       return false;
@@ -579,36 +615,38 @@ class HyperframesPlayer extends HTMLElement {
 
   private _deliverRuntimeData(channel: string, payload: unknown): void {
     if (!this.isConnected || !this._runtimeBridgeReady) return;
-    if (this._trySetRuntimeDataDirect(channel, payload)) return;
-    this._sendControl("set-runtime-data", { channel, payload });
+    const requestId = this._beginRuntimeDataDelivery(channel);
+    if (this._trySetRuntimeDataDirect(channel, payload, requestId)) return;
+    this._sendControl("set-runtime-data", { channel, payload, requestId });
   }
 
   private _deliverRuntimeDataClear(channel: string): void {
     if (!this.isConnected || !this._runtimeBridgeReady) return;
-    if (this._tryClearRuntimeDataDirect(channel)) return;
-    this._sendControl("clear-runtime-data", { channel });
+    const requestId = this._beginRuntimeDataDelivery(channel);
+    if (this._tryClearRuntimeDataDirect(channel, requestId)) return;
+    this._sendControl("clear-runtime-data", { channel, requestId });
   }
 
-  private _trySetRuntimeDataDirect(channel: string, payload: unknown): boolean {
+  private _trySetRuntimeDataDirect(channel: string, payload: unknown, requestId: number): boolean {
     try {
       const bridge = (
         this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
       )?.__hyperframes;
       if (typeof bridge?.setRuntimeData !== "function") return false;
-      bridge.setRuntimeData(channel, payload);
+      bridge.setRuntimeData(channel, payload, requestId);
       return true;
     } catch {
       return false;
     }
   }
 
-  private _tryClearRuntimeDataDirect(channel: string): boolean {
+  private _tryClearRuntimeDataDirect(channel: string, requestId: number): boolean {
     try {
       const bridge = (
         this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
       )?.__hyperframes;
       if (typeof bridge?.clearRuntimeData !== "function") return false;
-      bridge.clearRuntimeData(channel);
+      bridge.clearRuntimeData(channel, requestId);
       return true;
     } catch {
       return false;
@@ -618,6 +656,69 @@ class HyperframesPlayer extends HTMLElement {
   private _replayRuntimeData(): void {
     for (const [channel, payload] of this._runtimeData) {
       this._deliverRuntimeData(channel, payload);
+    }
+  }
+
+  private _beginRuntimeDataDelivery(channel: string): number {
+    const previous = this._pendingRuntimeData.get(channel);
+    if (previous) window.clearTimeout(previous.timeoutId);
+    this._runtimeDataRequestId += 1;
+    const requestId = this._runtimeDataRequestId;
+    const timeoutId = window.setTimeout(() => {
+      this._rejectRuntimeDataDelivery(
+        channel,
+        requestId,
+        `Runtime data delivery timed out after ${RUNTIME_DATA_DELIVERY_TIMEOUT_MS}ms`,
+      );
+    }, RUNTIME_DATA_DELIVERY_TIMEOUT_MS);
+    this._pendingRuntimeData.set(channel, { requestId, timeoutId });
+    return requestId;
+  }
+
+  private _resolveRuntimeDataDelivery(channel: unknown, requestId: unknown): void {
+    const pending = this._takeRuntimeDataDelivery(channel, requestId);
+    if (!pending) return;
+    this.dispatchEvent(
+      new CustomEvent("runtimedataapplied", {
+        detail: { channel, requestId: pending.requestId },
+      }),
+    );
+  }
+
+  private _rejectRuntimeDataDelivery(channel: unknown, requestId: unknown, message: unknown): void {
+    const pending = this._takeRuntimeDataDelivery(channel, requestId);
+    if (!pending) return;
+    this.dispatchEvent(
+      new CustomEvent("runtimedataerror", {
+        detail: {
+          channel,
+          requestId: pending.requestId,
+          message: typeof message === "string" ? message : String(message),
+        },
+      }),
+    );
+  }
+
+  private _takeRuntimeDataDelivery(
+    channel: unknown,
+    requestId: unknown,
+  ): PendingRuntimeDataDelivery | null {
+    if (
+      typeof channel !== "string" ||
+      typeof requestId !== "number" ||
+      !Number.isSafeInteger(requestId)
+    )
+      return null;
+    const pending = this._pendingRuntimeData.get(channel);
+    if (!pending || pending.requestId !== requestId) return null;
+    window.clearTimeout(pending.timeoutId);
+    this._pendingRuntimeData.delete(channel);
+    return pending;
+  }
+
+  private _rejectAllRuntimeDataDeliveries(message: string): void {
+    for (const [channel, pending] of [...this._pendingRuntimeData]) {
+      this._rejectRuntimeDataDelivery(channel, pending.requestId, message);
     }
   }
 
@@ -780,6 +881,10 @@ class HyperframesPlayer extends HTMLElement {
         this._replayBridgeState();
         this._replayRuntimeData();
       },
+      onRuntimeDataApplied: (channel, requestId) =>
+        this._resolveRuntimeDataDelivery(channel, requestId),
+      onRuntimeDataError: (channel, requestId, message) =>
+        this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;

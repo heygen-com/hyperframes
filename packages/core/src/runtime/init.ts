@@ -138,16 +138,22 @@ export function initSandboxRuntimeModular(): void {
   // Own the analytics bridge before any best-effort runtime installation so
   // early failures are observable instead of disappearing before player setup.
   initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
-  setRuntimeDataErrorReporter((channel, error) => {
+  setRuntimeDataErrorReporter((channel, requestId, error) => {
     postRuntimeMessage({
       source: "hf-preview",
       type: "runtime-data-error",
       channel,
+      requestId,
       message: error instanceof Error ? error.message : String(error),
     });
   });
-  setRuntimeDataAppliedReporter((channel) => {
-    postRuntimeMessage({ source: "hf-preview", type: "runtime-data-applied", channel });
+  setRuntimeDataAppliedReporter((channel, requestId) => {
+    postRuntimeMessage({
+      source: "hf-preview",
+      type: "runtime-data-applied",
+      channel,
+      requestId,
+    });
   });
   // SDK moveElement edits must render even when no usable GSAP timeline ever
   // binds (CSS/WAAPI-animated or fully static compositions) — apply at init.

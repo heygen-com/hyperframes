@@ -175,6 +175,7 @@ export type RuntimeDataErrorMessage = {
   source: "hf-preview";
   type: "runtime-data-error";
   channel: string;
+  requestId: number;
   message: string;
 };
 
@@ -182,6 +183,7 @@ export type RuntimeDataAppliedMessage = {
   source: "hf-preview";
   type: "runtime-data-applied";
   channel: string;
+  requestId: number;
 };
 
 /**
@@ -339,6 +341,7 @@ export type RuntimeGsapSetVars = Record<string, string | number | boolean | null
 type RuntimeDataControlFields = {
   channel?: string;
   payload?: unknown;
+  requestId?: number;
 };
 
 type RuntimeBridgeControlAction =

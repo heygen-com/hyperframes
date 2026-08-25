@@ -49,7 +49,7 @@ describe("runtime data registry", () => {
       throw new Error("attach failed");
     });
     expect(() => setRuntimeData("captions", {})).not.toThrow();
-    expect(reporter).toHaveBeenCalledWith("captions", expect.any(Error));
+    expect(reporter).toHaveBeenCalledWith("captions", expect.any(Number), expect.any(Error));
   });
 
   it("reports asynchronous completion and rejection", async () => {
@@ -63,8 +63,29 @@ describe("runtime data registry", () => {
     });
 
     setRuntimeData("captions", "good");
-    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions"));
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions", expect.any(Number)));
     setRuntimeData("captions", "bad");
-    await vi.waitFor(() => expect(failed).toHaveBeenCalledWith("captions", expect.any(Error)));
+    await vi.waitFor(() =>
+      expect(failed).toHaveBeenCalledWith("captions", expect.any(Number), expect.any(Error)),
+    );
+  });
+
+  it("reports only the latest concurrent delivery on a channel", async () => {
+    const applied = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    const resolvers: Array<() => void> = [];
+    registerRuntimeDataHandler(
+      "captions",
+      () => new Promise<void>((resolve) => resolvers.push(resolve)),
+    );
+
+    setRuntimeData("captions", "first", 101);
+    setRuntimeData("captions", "latest", 102);
+    resolvers[1]?.();
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions", 102));
+    resolvers[0]?.();
+    await Promise.resolve();
+
+    expect(applied).toHaveBeenCalledTimes(1);
   });
 });

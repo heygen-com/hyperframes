@@ -44,6 +44,7 @@ declare global {
     __playerNavStart?: number;
     __playerDuration?: number;
     __playerError?: string;
+    __sandboxProbeResults?: boolean[];
   }
 }
 
