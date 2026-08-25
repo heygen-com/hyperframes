@@ -302,10 +302,7 @@ export async function assemble(
     }
 
     // ── 3. Audio: pad-or-trim then mux ────────────────────────────────────
-    let normalizedAudio: {
-      path: string;
-      preserveAudioPrimingEditList: boolean;
-    } | null = null;
+    let normalizedAudioPath: string | null = null;
     if (audioPath !== null && existsSync(audioPath)) {
       const paddedAudioPath = join(workDir, "audio-padded.m4a");
       const padTrimResult = await padOrTrimAudioToVideoFrameCount({
@@ -317,10 +314,7 @@ export async function assemble(
       if (!padTrimResult.success) {
         throw new Error(`[assemble] audio pad/trim failed: ${padTrimResult.error}`);
       }
-      normalizedAudio = {
-        path: paddedAudioPath,
-        preserveAudioPrimingEditList: padTrimResult.operation !== "copy",
-      };
+      normalizedAudioPath = paddedAudioPath;
       log.info("[assemble] audio normalized for mux", {
         operation: padTrimResult.operation,
         targetDurationSeconds: padTrimResult.targetDurationSeconds,
@@ -333,16 +327,17 @@ export async function assemble(
     // because it operates on a `RenderJob` and emits `updateJobStatus`
     // payloads — the distributed activity has no job to thread through.
     const muxOutputPath =
-      normalizedAudio !== null ? join(workDir, `mux.${plan.dimensions.format}`) : postConcatPath;
-    if (normalizedAudio !== null) {
+      normalizedAudioPath !== null
+        ? join(workDir, `mux.${plan.dimensions.format}`)
+        : postConcatPath;
+    if (normalizedAudioPath !== null) {
       const muxResult = await muxVideoWithAudio(
         postConcatPath,
-        normalizedAudio.path,
+        normalizedAudioPath,
         muxOutputPath,
         abortSignal,
         {
           audioCodec: "aac",
-          preserveAudioPrimingEditList: normalizedAudio.preserveAudioPrimingEditList,
         },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
