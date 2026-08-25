@@ -983,6 +983,7 @@ describe("HyperframesPlayer seek() sync path", () => {
     stopMedia: () => void;
     iframe: HTMLIFrameElement;
     _currentTime: number;
+    duration: number;
     _parentMedia: Array<{
       el: { pause: ReturnType<typeof vi.fn>; src: string };
       start: number;
@@ -1102,6 +1103,35 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(timeline.seek).toHaveBeenCalledTimes(1);
     // suppressEvents=false so onUpdate fires (imperative-visibility compositions repaint).
     expect(timeline.seek).toHaveBeenCalledWith(2, false);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("rebinds when a same-origin composition replaces its registered timeline", () => {
+    const first: TimelineStub = {
+      duration: vi.fn(() => 5),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const second: TimelineStub = {
+      duration: vi.fn(() => 8),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const timelines = { main: first };
+    const post = vi.fn();
+    stubContentWindow({ __timelines: timelines, postMessage: post });
+
+    player.seek(1);
+    timelines.main = second;
+    player.seek(6);
+
+    expect(first.seek).toHaveBeenCalledTimes(1);
+    expect(second.seek).toHaveBeenCalledWith(6, false);
+    expect(player.duration).toBe(8);
     expect(post).not.toHaveBeenCalled();
   });
 

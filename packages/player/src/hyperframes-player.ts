@@ -798,10 +798,18 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _withDirectTimeline(fn: (tl: DirectTimelineAdapter) => void): boolean {
-    const tl = this._directTimelineAdapter || this.probe.resolveDirectTimelineAdapter();
+    const resolved = this.probe.resolveDirectTimelineAdapter();
+    const tl = resolved || this._directTimelineAdapter;
     if (!tl) return false;
     try {
       fn(tl);
+      if (resolved && resolved !== this._directTimelineAdapter) {
+        const duration = resolved.duration();
+        if (Number.isFinite(duration) && duration > 0) {
+          this._duration = duration;
+          this.controlsApi?.updateTime(this._currentTime, duration);
+        }
+      }
       this._directTimelineAdapter = tl;
       return true;
     } catch {
