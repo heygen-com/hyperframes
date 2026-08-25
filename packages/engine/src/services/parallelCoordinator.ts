@@ -461,6 +461,43 @@ export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineC
   return config?.browserGpuMode === "software" && workerId === 0;
 }
 
+/**
+ * Race a single in-flight capture call against `signal` actually firing.
+ *
+ * `captureFrame`/`captureFrameToBuffer`/`captureFrameToBufferPipelined` take
+ * no abort signal of their own — a native browser call wedged inside one of
+ * them (WSL2 hangs the very first drawElement/BeginFrame capture at frame 0
+ * with no error, heygen-com/hyperframes#3441) cannot be cancelled, only
+ * raced. Without this, the `signal?.aborted` checks at the top of the
+ * `captureFrameRange` loop are a no-op the moment a worker is already
+ * awaiting a hung call: nothing revisits that check until the await settles,
+ * which on a genuine hang is never. The DE parallel-router's stall watchdog
+ * (`captureStreamingStage.ts`) does fire `stallController.abort()` after
+ * `HF_DE_STALL_MS`, but until this call actually observes the signal, that
+ * abort has no effect on an already-wedged worker — `executeParallelCapture`'s
+ * `Promise.all` waits forever, so the render hangs indefinitely and the CLI's
+ * circuit breaker (which only runs after `executeRenderJob` settles) never
+ * gets a chance to trip.
+ */
+function raceAgainstAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new Error("Parallel worker cancelled"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error("Parallel worker cancelled"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 // fallow-ignore-next-line complexity
 async function captureFrameRange(
   session: CaptureSession,
@@ -498,7 +535,10 @@ async function captureFrameRange(
       if (dbg && i < task.startFrame + dbgWin) {
         console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
       }
-      const { encodeResult } = await captureFrameToBufferPipelined(session, i - outputOffset, time);
+      const { encodeResult } = await raceAgainstAbort(
+        captureFrameToBufferPipelined(session, i - outputOffset, time),
+        signal,
+      );
       // Marks the promise "handled" for Node's unhandled-rejection detector
       // without affecting the real `await prev.encodeResult` below — if a
       // later iteration throws (abort, downstream writeFrame failure) before
@@ -542,10 +582,13 @@ async function captureFrameRange(
     const fileFrameIdx = i - outputOffset;
 
     if (onFrameBuffer) {
-      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
+      const { buffer } = await raceAgainstAbort(
+        captureFrameToBuffer(session, fileFrameIdx, time),
+        signal,
+      );
       await onFrameBuffer(i, buffer, session);
     } else {
-      await captureFrame(session, fileFrameIdx, time);
+      await raceAgainstAbort(captureFrame(session, fileFrameIdx, time), signal);
     }
     framesCaptured++;
     if (onFrameCaptured) onFrameCaptured(task.workerId, i);
