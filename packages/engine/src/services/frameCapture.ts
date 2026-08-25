@@ -226,6 +226,13 @@ export interface CaptureSession {
   /** Count of per-frame "No cached paint record" screenshot fallbacks (telemetry). */
   deNcprFallbacks?: number;
   /**
+   * Count of drawElement frame captures that blew `HF_DE_FRAME_TIMEOUT_MS`
+   * because the renderer stopped scheduling after drawElementImage returned
+   * (PRINFRA-488). Each one aborts the drawElement attempt so the whole render
+   * retries via screenshot.
+   */
+  deFrameTimeouts?: number;
+  /**
    * drawElement init passed every gate but stopped before verification +
    * canvas injection: the session has no video-frame injector yet (probe
    * sessions initialize before extraction) and the comp has <video> elements,
@@ -3347,6 +3354,104 @@ function isNoCachedPaintRecordError(err: unknown): boolean {
   return msg.includes("No cached paint record");
 }
 
+/**
+ * Per-frame deadline for the drawElement capture round-trip.
+ *
+ * drawElementImage can return normally and then leave the renderer not draining
+ * its task queue: the `setTimeout(…, 0)` that drawAndEncode schedules to run
+ * `toDataURL` never fires, so the capture `page.evaluate` never settles.
+ * Reproduced deterministically on Chromium 152.0.7977.30, one comp, always the
+ * same frame (PRINFRA-488). Nothing below the render-level watchdog bounded
+ * this, so a single bad frame failed the ENTIRE render after a 60 s stall.
+ *
+ * This bounds the round-trip so the frame can take the same per-frame screenshot
+ * fallback the `No cached paint record` case already takes — one slow frame
+ * instead of a dead render. Tune with `HF_DE_FRAME_TIMEOUT_MS`; 0 disables.
+ */
+const DE_FRAME_TIMEOUT_MS = Number(process.env.HF_DE_FRAME_TIMEOUT_MS ?? "15000");
+
+class DeFrameTimeoutError extends Error {
+  constructor(label: string, ms: number) {
+    super(`drawElement ${label} exceeded ${ms}ms (renderer stopped scheduling; see PRINFRA-488)`);
+    this.name = "DeFrameTimeoutError";
+  }
+}
+
+/**
+ * Race `work` against a deadline. The losing promise is NOT cancellable —
+ * puppeteer cannot abort an in-flight `page.evaluate` — so its rejection is
+ * swallowed to avoid an unhandled rejection when it eventually settles (or
+ * never does). The orphaned round-trip keeps running in its Chrome worker;
+ * that worker is reclaimed by the outer retry rebuilding the page
+ * (`closeOrphanedProbeForRetry`), not by anything here.
+ *
+ * `onTimeout` fires exactly when the deadline wins, and is the ONLY place the
+ * stall is observable: because the deadline races `work` from outside, nothing
+ * inside `work` — including its own catch blocks — ever sees this error.
+ *
+ * Exported for the deadline unit test; `captureFrameToBuffer` is the only
+ * production caller.
+ */
+export async function withFrameDeadline<T>(
+  work: Promise<T>,
+  label: string,
+  ms: number,
+  onTimeout?: () => void,
+): Promise<T> {
+  if (!(ms > 0)) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      onTimeout?.();
+      reject(new DeFrameTimeoutError(label, ms));
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, guard]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    void work.catch(() => {
+      /* orphaned round-trip — see doc above */
+    });
+  }
+}
+
+function isDeFrameTimeoutError(err: unknown): boolean {
+  return err instanceof DeFrameTimeoutError;
+}
+
+/**
+ * Bound a drawElement round-trip, counting and logging the stall if the
+ * deadline wins. Every drawElement capture entry point goes through this —
+ * streaming (`captureFrameToBuffer`), disk (`captureFrame`) and worker-encode
+ * (`captureFrameToBufferPipelined`). Bounding only one of them left the other
+ * two hitting the 60 s render-level watchdog on the same wedged renderer,
+ * which is the whole failure this deadline exists to replace.
+ */
+function withDeFrameDeadline<T>(
+  session: CaptureSession,
+  frameIndex: number,
+  work: Promise<T>,
+): Promise<T> {
+  if (session.captureMode !== "drawelement") return work;
+  return withFrameDeadline(work, `frame ${frameIndex}`, DE_FRAME_TIMEOUT_MS, () => {
+    // Deliberately NO per-frame screenshot fallback. When the renderer stops
+    // scheduling it is wedged for EVERY subsequent round-trip on that page —
+    // measured: the screenshot fallback blew the same deadline. Fail fast and
+    // let the producer re-render the whole comp on a fresh page via the
+    // screenshot path, the only recovery that works. Counted here rather than
+    // in a capture catch: the deadline rejects from OUTSIDE the work promise,
+    // so no catch inside it ever runs.
+    session.deFrameTimeouts = (session.deFrameTimeouts ?? 0) + 1;
+    console.log(
+      `[engine] fast capture: frame ${frameIndex} — capture exceeded ` +
+        `${DE_FRAME_TIMEOUT_MS}ms; renderer stalled after drawElementImage ` +
+        `(PRINFRA-488). Failing the drawElement attempt so the whole render ` +
+        `retries via screenshot.`,
+    );
+  });
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
@@ -3529,10 +3634,10 @@ export async function captureFrame(
   frameIndex: number,
   time: number,
 ): Promise<CaptureResult> {
-  const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
+  const { buffer, quantizedTime, captureTimeMs } = await withDeFrameDeadline(
     session,
     frameIndex,
-    time,
+    captureFrameCore(session, frameIndex, time),
   );
   const framePath = writeCapturedFrame(session, frameIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
@@ -3566,7 +3671,11 @@ export async function captureFrameToBuffer(
   frameIndex: number,
   time: number,
 ): Promise<CaptureBufferResult> {
-  const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time);
+  const { buffer, captureTimeMs } = await withDeFrameDeadline(
+    session,
+    frameIndex,
+    captureFrameCore(session, frameIndex, time),
+  );
 
   return { buffer, captureTimeMs };
 }
@@ -3665,12 +3774,10 @@ export async function captureFrameToBufferPipelined(
     // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
     // BeginFrame branch present in the synchronous captureFrameCore is therefore
     // unreachable here and intentionally omitted.
-    const { encodeResult } = await produceDrawElementFrame(
-      page,
-      options.width,
-      options.height,
-      options.quality ?? 80,
-      true,
+    const { encodeResult } = await withDeFrameDeadline(
+      session,
+      frameIndex,
+      produceDrawElementFrame(page, options.width, options.height, options.quality ?? 80, true),
     );
 
     const captureTimeMs = Date.now() - startTime;
@@ -3704,6 +3811,11 @@ export async function captureFrameToBufferPipelined(
       const buffer = await pageScreenshotCapture(page, options);
       return { encodeResult: Promise.resolve(buffer), captureTimeMs: Date.now() - startTime };
     }
+    // A blown deadline means the renderer is not draining its task queue, so
+    // the diagnostics below — which screenshot and evaluate against that same
+    // page — would block until the render-level watchdog fires, spending the
+    // whole budget the deadline just saved.
+    if (isDeFrameTimeoutError(captureError)) throw captureError;
     // Mirror captureFrameCore: capture per-frame diagnostics (frame-error
     // PNG/HTML/JSON + console tail) before rethrowing so pipelined-path
     // failures are debuggable like the serial path.
@@ -4184,5 +4296,6 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     deVerifyInitMs: session.deVerifyInitMs ?? 0,
     deBoundaryFrames: session.clipBoundaryFrames?.size ?? 0,
     deNcprFallbacks: session.deNcprFallbacks ?? 0,
+    deFrameTimeouts: session.deFrameTimeouts ?? 0,
   };
 }

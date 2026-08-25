@@ -297,6 +297,7 @@ export function trackRenderComplete(
     deBlankRecaptures?: number;
     deBoundaryFrames?: number;
     deNcprFallbacks?: number;
+    deFrameTimeouts?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
     // triggered by a studio preview-server render (POST /api/projects/:id/render).
     source?: "cli" | "studio";
@@ -399,6 +400,7 @@ export function trackRenderComplete(
       de_blank_recaptures: props.deBlankRecaptures,
       de_boundary_frames: props.deBoundaryFrames,
       de_ncpr_fallbacks: props.deNcprFallbacks,
+      de_frame_timeouts: props.deFrameTimeouts,
       ...powerStateFields(),
       source: props.source ?? "cli",
       composition_duration_ms: props.compositionDurationMs,

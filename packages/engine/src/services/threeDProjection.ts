@@ -786,7 +786,41 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.useProgram(prog);
 
-      // canvas px → clip space, y flipped, z scaled into the clip volume
+      // canvas px → clip space, y flipped, z scaled into the clip volume AND
+      // NEGATED.
+      //
+      // The negation is load-bearing. CSS puts +z toward the viewer (see the
+      // convention note on the matrix helpers above); GL's depth buffer treats
+      // LARGER ndc z as FARTHER, and this context clears depth to 1 and tests
+      // LEQUAL. Passing CSS z through with a positive scale therefore inverted
+      // every depth comparison: the nearest quad got the largest depth, lost
+      // the test, and was occluded by the quad behind it.
+      //
+      // The y-flip on the row above changes handedness, which was already
+      // compensated for winding (frontFace(gl.CW) at group setup) but never
+      // for depth — so the bug only showed up once two quads in one context
+      // could be visible at the same time. A single-quad context has nothing to
+      // lose a depth test against, which is why it went unnoticed.
+      //
+      // Measured on a comp with two planes at ±45° in one preserve-3d context,
+      // drawElement render vs a screenshot render of the same comp:
+      // 18.8 dB (near plane painted behind the far one, labels and colours
+      // swapped) → 51.2 dB, visually identical to the screenshot arm. The
+      // single-quad cases are unchanged by the negation: backface flip card at
+      // rest 54.5 dB, perspective+rotationX 51.1 dB, matrix3d 49.5 dB.
+      //
+      // NOTE: this cannot be covered by a unit test — the whole enclosing
+      // function is contractually self-contained (no outer-scope references,
+      // it is shipped into the page via page.evaluate), so the matrix is not
+      // reachable from a test without breaking that contract. Verify it by
+      // rendering a two-plane preserve-3d comp on both capture paths and
+      // comparing; the self-verify net CANNOT catch a regression here, because
+      // it captures ground truth after this rewrite and would compare wrong
+      // geometry against wrong geometry (measured: a 65 dB "pass" over a
+      // truly-broken 18.8 dB render). The only backstop that can see this class
+      // of regression is a render-parity comp in a regression shard, which
+      // needs harness plumbing rather than a fixture drop — PRINFRA-570 carries
+      // the scope. Until it lands, THIS SIGN IS UNCOVERED BY CI.
       const ndc: Mat4 = [
         2 / canvasW,
         0,
@@ -798,7 +832,7 @@ export async function initThreeDProjectionInPage(): Promise<ThreeDProjectionResu
         1,
         0,
         0,
-        Z_SCALE,
+        -Z_SCALE,
         0,
         0,
         0,
