@@ -144,6 +144,66 @@ function runEnvironmentVerification(response) {
   }
 }
 
+function assertHealthTriggerContract(healthConfig) {
+  assert.deepEqual(Object.keys(healthConfig.on).sort(), [
+    "pull_request",
+    "schedule",
+    "workflow_dispatch",
+  ]);
+  assert.deepEqual(healthConfig.on.pull_request, {
+    types: ["opened", "synchronize", "reopened"],
+    branches: ["main"],
+    paths: [".github/workflows/release-guard-health.yml", "scripts/stable-release-guard.mjs"],
+  });
+  assert.equal(healthConfig.on.schedule.length, 1);
+  assert.match(healthConfig.on.schedule[0].cron, /^\d+ \d+ \* \* \d$/);
+}
+
+function assertHealthCheckoutContract(healthJob) {
+  assert.equal(
+    normalizeExpression(healthJob.env.EXPECTED_HEALTH_SHA),
+    "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+  );
+  const checkoutStep = healthJob.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+  assert.equal(checkoutStep.with.ref, "${{ env.EXPECTED_HEALTH_SHA }}");
+  const checkoutGuard = healthJob.steps.find(
+    (step) => step.name === "Verify immutable health checkout",
+  );
+  assert.ok(checkoutGuard);
+  assert.equal(checkoutGuard.if, undefined);
+  assert.equal(checkoutGuard["continue-on-error"], undefined);
+  assert.match(checkoutGuard.run, /git rev-parse HEAD/);
+  assert.match(checkoutGuard.run, /EXPECTED_HEALTH_SHA/);
+  return checkoutGuard;
+}
+
+function assertHealthCredentialContract(healthJob, checkoutGuard) {
+  const healthStep = healthJob.steps.find((step) => step.name === "Verify release guard health");
+  assert.ok(healthStep);
+  assert.ok(healthJob.steps.indexOf(checkoutGuard) < healthJob.steps.indexOf(healthStep));
+  assert.equal(healthStep.env.RELEASE_GUARD_TOKEN, "${{ secrets.RELEASE_GUARD_TOKEN }}");
+  assert.equal(healthStep.run.trim(), "node scripts/stable-release-guard.mjs --health");
+  for (const step of healthJob.steps.filter((candidate) => candidate !== healthStep)) {
+    assert.equal(step.env?.RELEASE_GUARD_TOKEN, undefined);
+  }
+  assert.equal(healthWorkflowSource.match(/secrets\.RELEASE_GUARD_TOKEN/g)?.length, 1);
+  const commands = healthJob.steps.map((step) => step.run ?? "").join("\n");
+  assert.doesNotMatch(commands, /npm\s+publish|git\s+tag|gh\s+release|publish-packages/i);
+  assert.doesNotMatch(healthWorkflowSource, /id-token:\s*write|contents:\s*write/);
+}
+
+function assertHealthRunbookContract() {
+  for (const requirement of [
+    /environment-scoped.*RELEASE_GUARD_TOKEN/is,
+    /required reviewers/i,
+    /prevent\s+self-review/i,
+    /administrator bypass.*disabled/i,
+    /before.*uploading.*environment secret/i,
+  ]) {
+    assert.match(releaseRunbook, requirement);
+  }
+}
+
 test("stable publishing has one reviewed immutable event path", () => {
   assert.deepEqual(config.on.push.tags, ["v*-*"]);
   assert.equal(config.on.workflow_dispatch, undefined);
@@ -255,18 +315,7 @@ test("effective non-check rule enforcement and maintenance are explicit", () => 
 test("credential health is pre-merge reachable, immutable, read-only, and incapable of publishing", () => {
   assert.notEqual(healthWorkflowSource, "", "release-guard-health.yml must exist");
   const healthConfig = parse(healthWorkflowSource);
-  assert.deepEqual(Object.keys(healthConfig.on).sort(), [
-    "pull_request",
-    "schedule",
-    "workflow_dispatch",
-  ]);
-  assert.deepEqual(healthConfig.on.pull_request, {
-    types: ["opened", "synchronize", "reopened"],
-    branches: ["main"],
-    paths: [".github/workflows/release-guard-health.yml", "scripts/stable-release-guard.mjs"],
-  });
-  assert.equal(healthConfig.on.schedule.length, 1);
-  assert.match(healthConfig.on.schedule[0].cron, /^\d+ \d+ \* \* \d$/);
+  assertHealthTriggerContract(healthConfig);
   const healthJob = healthConfig.jobs.health;
   assert.equal(
     normalizeExpression(healthJob.if),
@@ -274,41 +323,9 @@ test("credential health is pre-merge reachable, immutable, read-only, and incapa
   );
   assert.deepEqual(healthJob.permissions, { contents: "read" });
   assertPullRequestCredentialBoundaries(workflowSources);
-  assert.equal(
-    normalizeExpression(healthJob.env.EXPECTED_HEALTH_SHA),
-    "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
-  );
-  const healthCheckout = healthJob.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
-  assert.equal(healthCheckout.with.ref, "${{ env.EXPECTED_HEALTH_SHA }}");
-  const healthCheckoutGuard = healthJob.steps.find(
-    (step) => step.name === "Verify immutable health checkout",
-  );
-  assert.ok(healthCheckoutGuard);
-  assert.equal(healthCheckoutGuard.if, undefined);
-  assert.equal(healthCheckoutGuard["continue-on-error"], undefined);
-  assert.match(healthCheckoutGuard.run, /git rev-parse HEAD/);
-  assert.match(healthCheckoutGuard.run, /EXPECTED_HEALTH_SHA/);
-  const healthStep = healthJob.steps.find((step) => step.name === "Verify release guard health");
-  assert.ok(healthStep);
-  assert.ok(healthJob.steps.indexOf(healthCheckoutGuard) < healthJob.steps.indexOf(healthStep));
-  assert.equal(healthStep.env.RELEASE_GUARD_TOKEN, "${{ secrets.RELEASE_GUARD_TOKEN }}");
-  assert.equal(healthStep.run.trim(), "node scripts/stable-release-guard.mjs --health");
-  for (const step of healthJob.steps.filter((candidate) => candidate !== healthStep)) {
-    assert.equal(step.env?.RELEASE_GUARD_TOKEN, undefined);
-  }
-  assert.equal(healthWorkflowSource.match(/secrets\.RELEASE_GUARD_TOKEN/g)?.length, 1);
-  const commands = healthJob.steps.map((step) => step.run ?? "").join("\n");
-  assert.doesNotMatch(commands, /npm\s+publish|git\s+tag|gh\s+release|publish-packages/i);
-  assert.doesNotMatch(healthWorkflowSource, /id-token:\s*write|contents:\s*write/);
-  for (const requirement of [
-    /environment-scoped.*RELEASE_GUARD_TOKEN/is,
-    /required reviewers/i,
-    /prevent\s+self-review/i,
-    /administrator bypass.*disabled/i,
-    /before.*uploading.*environment secret/i,
-  ]) {
-    assert.match(releaseRunbook, requirement);
-  }
+  const checkoutGuard = assertHealthCheckoutContract(healthJob);
+  assertHealthCredentialContract(healthJob, checkoutGuard);
+  assertHealthRunbookContract();
 });
 
 test("every pull-request credential consumer is mutation-pinned to its environment", () => {
