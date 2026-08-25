@@ -49,6 +49,7 @@ import {
   cleanupDrawElementWorkerEncode,
   produceDrawElementFrame,
   produceDrawElementFrameBatch,
+  DE_CANVAS_NOT_INITIALIZED_CODE,
 } from "./drawElementService.js";
 import { initThreeDProjection, detectCssEffectRisk } from "./threeDProjection.js";
 import { isPsnrFilterAvailable } from "../utils/psnrFilterAvailability.js";
@@ -3341,23 +3342,40 @@ async function computeTimelineAtRiskFrames(
  * thrown when a subtree element has no paint record for the current frame (display
  * toggled / detached / freshly-shown at a clip-cut boundary). Per-frame, not
  * whole-comp — callers fall back to screenshot for the single frame.
+ *
+ * This is a NATIVE Chrome DOMException (`drawElementImage`'s own error), so we
+ * can't bake a discriminant into it the way we can for our own thrown errors
+ * (see {@link isCanvasNotInitializedError}) — Puppeteer's `page.evaluate`
+ * error reconstruction also doesn't preserve a usable `.name` for it (comes
+ * back generic). Match on the FULL native phrase ("...for element"), not just
+ * the generic "No cached paint record" prefix, to cut the odds of an
+ * unrelated message coincidentally matching (review: substring-match footgun).
  */
 function isNoCachedPaintRecordError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("No cached paint record");
+  return msg.includes("No cached paint record for element");
 }
 
 /**
- * True for the drawElement `canvas not initialized` error (thrown by
- * drawElementService when the injected capture canvas isn't set up yet —
- * observed at frame 0 on some macOS/Chrome combinations, see #3423). Like the
- * no-cached-paint-record case, this is recoverable per-frame: callers fall
- * back to screenshot capture for the affected frame instead of hard-failing
- * the whole render.
+ * True for the drawElement "capture canvas isn't set up yet" error — thrown
+ * (or, on the batch path, returned as a string) by drawElementService when
+ * the injected capture canvas isn't set up yet (observed at frame 0 on some
+ * macOS/Chrome combinations, see #3423). Like the no-cached-paint-record
+ * case, this is recoverable per-frame: callers fall back to screenshot
+ * capture for the affected frame(s) instead of hard-failing the whole render.
+ *
+ * Unlike the native paint-record error, THIS error is constructed by our own
+ * code (three sites in drawElementService.ts), so it carries the
+ * {@link DE_CANVAS_NOT_INITIALIZED_CODE} discriminant baked into the message
+ * — matching on that stable code (rather than the free-text phrase
+ * "canvas not initialized") avoids false-positiving on unrelated prose, and
+ * keeps matching correctly even after `produceDrawElementFrameBatch`'s
+ * "batch produce failed at frame N: <code>: ..." wrapping (review: prefer an
+ * error-code discriminant over a substring-match footgun).
  */
 function isCanvasNotInitializedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("canvas not initialized");
+  return msg.includes(DE_CANVAS_NOT_INITIALIZED_CODE);
 }
 
 /**
@@ -3788,10 +3806,21 @@ export async function recaptureDrawElementFrameForVerify(
  * P6 prototype (HF_DE_BATCH): capture N consecutive frames in one CDP
  * round-trip via {@link produceDrawElementFrameBatch}. The caller pre-plans the
  * batch (consecutive frame indices, none static-dedup'd, none opt-in
- * boundary-screenshot). On a mid-batch in-page failure the remaining frames are
- * re-captured through {@link captureFrameToBufferPipelined}, which owns the
- * per-frame screenshot-fallback semantics — so failure behavior is identical to
- * the unbatched path, just discovered at batch granularity.
+ * boundary-screenshot). On a mid-batch in-page failure the remaining frames'
+ * handling depends on whether the failure is one of the recoverable
+ * per-frame drawElement conditions (canvas-not-initialized / no-cached-paint-
+ * record, #3423):
+ *  - Recoverable: capture the remaining frames directly via screenshot,
+ *    same as the per-frame paths' own fallback (avoids re-attempting a
+ *    drawElement produce that the batch call just told us will fail again —
+ *    review finding: audit this path explicitly rather than relying on the
+ *    incidental retry-then-catch behavior below).
+ *  - Anything else (unrecognized error): fall through to
+ *    {@link captureFrameToBufferPipelined}, which re-attempts drawElement (so
+ *    a genuinely transient, non-drawElement-specific failure still gets a
+ *    second chance) and owns the same recoverable-error/fatal-error split for
+ *    whatever it encounters — so failure behavior for a truly fatal error is
+ *    identical to the unbatched path, just discovered at batch granularity.
  */
 export async function captureFramesBatchPipelined(
   session: CaptureSession,
@@ -3835,17 +3864,48 @@ export async function captureFramesBatchPipelined(
   }
 
   if (failedAt !== null) {
-    console.log(
-      `[engine] fast capture: batch produce failed at frame ` +
-        `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
-        `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
-    );
-    for (let i = failedAt; i < frameIndices.length; i++) {
-      const frameIndex = frameIndices[i];
-      const time = times[i];
-      if (frameIndex === undefined || time === undefined) break;
-      const { encodeResult } = await captureFrameToBufferPipelined(session, frameIndex, time);
-      results.push({ frameIndex, encodeResult });
+    // `error` is a plain string here (produceDrawElementFrameBatch returns it
+    // out of an in-page evaluate rather than throwing an Error instance) —
+    // isRecoverableDrawElementError accepts `unknown` and stringifies non-Error
+    // input, so passing the string straight through classifies it correctly,
+    // including through produceDrawElementFrameBatch's own error text (which
+    // embeds the same DE_CANVAS_NOT_INITIALIZED_CODE / native paint-record
+    // phrase the per-frame paths match on).
+    if (isRecoverableDrawElementError(error)) {
+      const reason = isCanvasNotInitializedError(error)
+        ? "drawElement canvas not initialized"
+        : "No cached paint record";
+      console.log(
+        `[engine] fast capture: batch produce failed at frame ` +
+          `${frameIndices[failedAt] ?? "?"} (${reason}); ` +
+          `screenshot fallback for ${frameIndices.length - failedAt} frame(s) ` +
+          `(see fast-capture-limitations.md)`,
+      );
+      for (let i = failedAt; i < frameIndices.length; i++) {
+        const frameIndex = frameIndices[i];
+        if (frameIndex === undefined) break;
+        session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+        const buffer = await pageScreenshotCapture(page, options);
+        const encodeResult = Promise.resolve(buffer);
+        if (session.staticFrames) {
+          session.lastEncodeResult = encodeResult;
+          session.lastEncodeResultFrame = frameIndex;
+        }
+        results.push({ frameIndex, encodeResult });
+      }
+    } else {
+      console.log(
+        `[engine] fast capture: batch produce failed at frame ` +
+          `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
+          `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
+      );
+      for (let i = failedAt; i < frameIndices.length; i++) {
+        const frameIndex = frameIndices[i];
+        const time = times[i];
+        if (frameIndex === undefined || time === undefined) break;
+        const { encodeResult } = await captureFrameToBufferPipelined(session, frameIndex, time);
+        results.push({ frameIndex, encodeResult });
+      }
     }
   }
 
@@ -4176,8 +4236,49 @@ export function percentileOf(samples: number[], p: number): number {
   return Math.round(sorted[idx] ?? 0);
 }
 
+/**
+ * Fraction of captured frames above which a fast-capture render is treated as
+ * "drawElement effectively didn't engage" rather than "recovered a handful of
+ * edge-case frames" (see the cross-PR-seam warning in
+ * {@link getCapturePerfSummary}). Not currently a hard gate — see that
+ * function's comment for why — just the threshold for the loud diagnostic.
+ */
+const DE_FALLBACK_RATIO_WARN_THRESHOLD = 0.5;
+
 export function getCapturePerfSummary(session: CaptureSession): CapturePerfSummary {
   const frames = Math.max(1, session.capturePerf.frames);
+  const ncprFallbacks = session.deNcprFallbacks ?? 0;
+  // Cross-PR seam (#3423 per-frame screenshot fallback vs #3429 artifact
+  // validation): #3429's artifact validation only checks that the render
+  // produced the right frame COUNT and duration — it has no visibility into
+  // HOW each frame was captured. If a composition is so incompatible with
+  // drawElement that most/all frames take the per-frame screenshot fallback
+  // added here, the render still reports "complete" with a correct frame
+  // count, even though drawElement effectively never engaged for it. That's
+  // not itself a correctness bug — screenshot capture is the platform's
+  // normal, well-tested baseline, so the SHIPPED PIXELS are fine — but a
+  // near-100% fallback ratio is a strong signal that fast-capture silently
+  // failed to engage for the whole render (e.g. a persistent canvas-injection
+  // problem) rather than recovering a handful of expected edge-case frames,
+  // and today nothing surfaces that distinction to telemetry or to a human.
+  //
+  // Deliberately NOT a circuit breaker: aborting/failing the render here
+  // would make a render that reliably succeeds via the well-tested screenshot
+  // path fail instead, which is a worse outcome than a slow-but-correct
+  // render. Whether artifact validation (or this session) should eventually
+  // gate on the ratio — and where that decision belongs — is tracked as an
+  // explicit follow-up: https://github.com/heygen-com/hyperframes/issues/3482
+  // ("Fast-capture: fallback-ratio guard for #3423 x #3429 seam"), rather
+  // than decided unilaterally in this review-response commit.
+  if (frames > 0 && ncprFallbacks / frames > DE_FALLBACK_RATIO_WARN_THRESHOLD) {
+    const pct = Math.round((ncprFallbacks / frames) * 100);
+    console.warn(
+      `[engine] fast capture: ${ncprFallbacks}/${frames} frame(s) (${pct}%) fell back to ` +
+        `screenshot capture (canvas-not-initialized / no-cached-paint-record) — ` +
+        `drawElement likely failed to engage for this render rather than recovering a few ` +
+        `edge-case frames; see fast-capture-limitations.md.`,
+    );
+  }
   return {
     frames: session.capturePerf.frames,
     avgTotalMs: Math.round(session.capturePerf.totalMs / frames),
@@ -4216,6 +4317,6 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     deVerifyArmed: session.deVerifyFrames?.size ?? 0,
     deVerifyInitMs: session.deVerifyInitMs ?? 0,
     deBoundaryFrames: session.clipBoundaryFrames?.size ?? 0,
-    deNcprFallbacks: session.deNcprFallbacks ?? 0,
+    deNcprFallbacks: ncprFallbacks,
   };
 }
