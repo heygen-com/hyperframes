@@ -9,6 +9,24 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.14"
+  description="Released - 2026-08-24"
+  tags={["Release", "CLI", "Skills,lint"]}
+>
+Agent skills no longer teach composition rules the renderer does not enforce, four of which used to make a render fail outright. `hyperframes add` now records what it installed in `hyperframes.json`, so a render can report which catalog blocks the video used.
+
+## Fixes
+
+- **Skills,lint:** Correct composition-contract claims the code contradicts ([b2fc18b2d](https://github.com/heygen-com/hyperframes/commit/b2fc18b2df60fd9049cb694c97c45104ee5b4e0d), [#3468](https://github.com/heygen-com/hyperframes/pull/3468)).
+
+## Catalog
+
+- **CLI:** Report which catalog items a render actually used ([045b3a4fd](https://github.com/heygen-com/hyperframes/commit/045b3a4fd7df71b46f4432c114f70fb25d13b551), [#3470](https://github.com/heygen-com/hyperframes/pull/3470)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.13...v0.8.14).
+</Update>
+
+<Update
   label="HyperFrames v0.8.13"
   description="Released - 2026-08-24"
   tags={["Release", "Studio", "Changelog", "Skills"]}
