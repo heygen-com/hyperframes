@@ -3883,8 +3883,18 @@ export async function captureFramesBatchPipelined(
       );
       for (let i = failedAt; i < frameIndices.length; i++) {
         const frameIndex = frameIndices[i];
-        if (frameIndex === undefined) break;
+        const time = times[i];
+        if (frameIndex === undefined || time === undefined) break;
         session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+        // Each remaining frame still needs its own seek/prepare — the batch
+        // produce call left the page composited for whichever frame it last
+        // attempted, not this one. Without this, every fallback screenshot in
+        // the loop captures the SAME (stale) frame instead of advancing.
+        // Deliberately reuse prepareFrameForCapture rather than routing
+        // through captureFrameToBufferPipelined here, since that would
+        // re-attempt produceDrawElementFrame — which the batch call already
+        // told us will fail again for these frames (see function doc above).
+        await prepareFrameForCapture(session, frameIndex, time);
         const buffer = await pageScreenshotCapture(page, options);
         const encodeResult = Promise.resolve(buffer);
         if (session.staticFrames) {
