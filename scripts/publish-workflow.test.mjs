@@ -106,7 +106,7 @@ function assertPullRequestCredentialBoundaries(sources) {
 
 function environmentVerificationCommand(markdown) {
   const match = markdown.match(
-    /<!-- release-guard-environment-verification:start -->\s*```bash\n([\s\S]*?)\n```\s*<!-- release-guard-environment-verification:end -->/,
+    /\{\/\* release-guard-environment-verification:start \*\/\}\s*```bash\n([\s\S]*?)\n```\s*\{\/\* release-guard-environment-verification:end \*\/\}/,
   );
   assert.ok(match, "runbook must contain the copy-pasteable environment API verification block");
   return match[1];

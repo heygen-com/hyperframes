@@ -86,7 +86,7 @@ Before the initial upload and before every rotation, run this read-only API veri
 unless the exact environment has a non-bypassable required-reviewer boundary with self-review
 prevention and at least one reviewer. Do not upload either environment-secret copy unless it exits 0.
 
-<!-- release-guard-environment-verification:start -->
+{/* release-guard-environment-verification:start */}
 ```bash
 ENVIRONMENT_JSON="$(gh api repos/heygen-com/hyperframes/environments/release-guard-health)"
 jq -e '
@@ -103,7 +103,7 @@ jq -e '
 }
 echo "release-guard-health protection verified; environment secret upload may proceed."
 ```
-<!-- release-guard-environment-verification:end -->
+{/* release-guard-environment-verification:end */}
 
 After provisioning or rotation, an administrator must run the read-only capability check from a
 protected environment that injects the secret without putting its value on the command line:
