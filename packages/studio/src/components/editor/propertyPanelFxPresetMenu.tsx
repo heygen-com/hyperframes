@@ -133,8 +133,18 @@ export function FxPresetMenu({
               <span className="hf-fx-preset-problem block truncate text-[10px]">
                 {PRESET_PROBLEM[preset.id] ?? preset.description}
               </span>
-              <span className="hf-fx-preset-name block truncate font-mono text-[9px] text-panel-text-2">
-                {preset.label}
+              {/* "Clean Voice · 5 effects" — the count is on the row in the
+                  designs, not hidden in a tooltip. It is doing real work there:
+                  it tells the author a preset IS a chain they can open and edit,
+                  rather than an opaque setting they cannot follow. The count is
+                  its own span so `.hf-fx-preset-name` stays the NAME — several
+                  tests read it as the preset's identity. */}
+              <span className="block truncate font-mono text-[9px] text-panel-text-2">
+                <span className="hf-fx-preset-name">{preset.label}</span>
+                <span className="hf-fx-preset-count">
+                  {" · "}
+                  {preset.nodes.length} effect{preset.nodes.length === 1 ? "" : "s"}
+                </span>
               </span>
               {/* Hovering a preset plays it, and playing is otherwise invisible:
                   the panel looks identical whether the audition is sounding or

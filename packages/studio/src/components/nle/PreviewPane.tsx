@@ -156,7 +156,6 @@ export function PreviewPane({
           disabled={timelineDisabled}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
-          previewIframeRef={iframeRef}
         />
       </div>
     </div>

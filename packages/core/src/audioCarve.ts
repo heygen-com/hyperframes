@@ -188,6 +188,40 @@ export function couldBeCarveSource(...parts: readonly (string | null | undefined
   return kind === "voice" || kind === "unknown";
 }
 
+/**
+ * Could this track be the BED a carve is written onto?
+ *
+ * The other half of `couldBeCarveSource`, and the half nothing used to ask. A
+ * carve makes room in a bed for a voice; a voice track has no room to make for
+ * itself, and offering it the control is offering a track to duck against its
+ * own kind. Observed: a narration clip in a Voiceover group carved against that
+ * group — a member ducking the bus it feeds.
+ *
+ * Loose in the same direction as its sibling: a name that says nothing stays
+ * eligible, because a name is a hint and an author may know better. Only a name
+ * that positively reads as speech is refused.
+ */
+export function couldBeCarveBed(...parts: readonly (string | null | undefined)[]): boolean {
+  return classifyAudioName(...parts) !== "voice";
+}
+
+/**
+ * Does this track's name positively say "bed"?
+ *
+ * Stricter than `couldBeCarveBed`, for the one act the author did not ask for:
+ * applying a carve on their behalf. Offering the control on a track named `a1`
+ * is a suggestion they can ignore; writing `data-fx-carve` onto it is a decision,
+ * and a decision taken off a name that said nothing is how a carve appears that
+ * nobody remembers configuring.
+ *
+ * The same split the source side already makes between what the picker may show
+ * and what `autoSourceIds` may choose unprompted.
+ */
+export function isNamedCarveBed(...parts: readonly (string | null | undefined)[]): boolean {
+  const kind = classifyAudioName(...parts);
+  return kind === "music" || kind === "sfx";
+}
+
 export const DEFAULT_CARVE: HfCarveSettings = {
   enabled: true,
   sources: [],

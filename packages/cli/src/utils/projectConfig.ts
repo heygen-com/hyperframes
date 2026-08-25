@@ -33,6 +33,23 @@ export interface ProjectConfigMedia {
   autoProxy?: boolean;
 }
 
+/**
+ * One catalog item installed into this project by `hyperframes add`.
+ *
+ * Installed files are plain composition HTML with no provenance marker, so
+ * this manifest is the only record that a file came from the registry. It is
+ * what lets a render report which catalog items a finished video actually
+ * used, instead of only which ones were once downloaded.
+ */
+export interface RegistryItemRecord {
+  /** Registry item name, e.g. "data-chart". */
+  name: string;
+  /** Registry item type, e.g. "hyperframes:block". */
+  type: string;
+  /** Primary installed file, relative to the project root. */
+  target: string;
+}
+
 export interface ProjectConfig {
   $schema?: string;
   /** Base URL of the registry to pull items from. */
@@ -49,6 +66,13 @@ export interface ProjectConfig {
    * telemetry without the caller re-passing the flag.
    */
   authoringSkill?: string;
+  /**
+   * Catalog items installed by `hyperframes add`, in install order. Append-only
+   * and deduped by name; removing an item from the project does not prune it,
+   * so a later render still reports it as installed-but-unused rather than
+   * silently forgetting it was ever tried.
+   */
+  registryItems?: RegistryItemRecord[];
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -69,16 +93,41 @@ export function projectConfigPath(projectDir: string): string {
   return join(resolve(projectDir), PROJECT_CONFIG_FILENAME);
 }
 
+/**
+ * Why a project-config read produced no config.
+ *
+ * Most callers only need "did I get one", but a caller reporting on the config
+ * must not treat a broken file as an absent one: a project whose config cannot
+ * be read is not a project without a config, and collapsing the two enrolls a
+ * failure into whatever the empty case means.
+ */
+export type ProjectConfigReadStatus = "ok" | "missing" | "unreadable";
+
+/** Read `hyperframes.json`, distinguishing an absent file from a broken one. */
+export function readProjectConfigWithStatus(projectDir: string): {
+  status: ProjectConfigReadStatus;
+  config?: ProjectConfig;
+} {
+  const path = projectConfigPath(projectDir);
+  let text: string;
+  try {
+    text = readFileSync(path, "utf-8");
+  } catch (error) {
+    // Anything other than "not there" (permissions, I/O) is a real failure to
+    // read a config that may well exist.
+    return { status: isFileNotFound(error) ? "missing" : "unreadable" };
+  }
+  try {
+    return { status: "ok", config: normalizeConfig(JSON.parse(text) as Partial<ProjectConfig>) };
+  } catch {
+    return { status: "unreadable" };
+  }
+}
+
 /** Read `hyperframes.json` from a project directory. */
 export function readProjectConfig(projectDir: string): ProjectConfig | undefined {
-  const path = projectConfigPath(projectDir);
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as Partial<ProjectConfig>;
-    return normalizeConfig(parsed);
-  } catch {
-    // Missing file or corrupt JSON → no config.
-    return undefined;
-  }
+  // Missing file or corrupt JSON → no config.
+  return readProjectConfigWithStatus(projectDir).config;
 }
 
 /**
@@ -104,7 +153,29 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
     // Slug-gate on read so a hand-edited or corrupt value never reaches the
     // telemetry stream; an invalid slug simply drops the attribution.
     authoringSkill: normalizeSkillSlug(partial.authoringSkill),
+    // Whitelist rebuild - an omission here silently drops the manifest on
+    // every config round-trip, which would read as "this project never
+    // installed a catalog item".
+    registryItems: normalizeRegistryItems(partial.registryItems),
   };
+}
+
+/**
+ * Keep only well-formed records. A hand-edited or partially-written manifest
+ * degrades to the entries that still parse rather than failing a command that
+ * merely wanted to read the registry URL.
+ */
+function normalizeRegistryItems(raw: unknown): RegistryItemRecord[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const items = raw.filter(
+    (entry): entry is RegistryItemRecord =>
+      isJsonObject(entry) &&
+      typeof entry.name === "string" &&
+      entry.name !== "" &&
+      typeof entry.type === "string" &&
+      typeof entry.target === "string",
+  );
+  return items.length > 0 ? items : undefined;
 }
 
 /** Write `hyperframes.json` to a project directory. Overwrites if present. */
@@ -162,9 +233,10 @@ function isFileNotFound(error: unknown): boolean {
  * empty slug is ignored. Best effort: a read-only or missing project directory
  * never fails the render it rode in on.
  *
- * This is the only writer that touches an ALREADY EXISTING `hyperframes.json`
- * (every other `writeProjectConfig` call site is guarded to write only when the
- * file is absent), so it must not round-trip through {@link normalizeConfig}:
+ * One of two writers that touch an ALREADY EXISTING `hyperframes.json` (the
+ * other is {@link recordProjectRegistryItems}; every plain `writeProjectConfig`
+ * call site is guarded to write only when the file is absent), so it must not
+ * round-trip through {@link normalizeConfig}:
  * that rebuilds the object from a field whitelist, which would drop keys it
  * does not know about and materialize defaults the user never wrote. The file
  * is normally committed, so a render must not introduce a diff beyond the one
@@ -208,5 +280,66 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
   } catch {
     // Corrupt JSON, or a read-only file: attribution is best-effort telemetry,
     // never a render blocker.
+  }
+}
+
+/**
+ * Append installed catalog items to `hyperframes.json` so a later render can
+ * report which of them the finished video actually used.
+ *
+ * Same in-place patch discipline as {@link seedProjectAuthoringSkill}, and for
+ * the same reason: this writes an ALREADY EXISTING, normally committed config,
+ * so it must not round-trip through {@link normalizeConfig} (a whitelist
+ * rebuild would drop unknown keys and materialize defaults the user never
+ * wrote). Existing entries are kept and deduped by name, so re-adding an item
+ * does not grow the file and a manually pruned entry is not resurrected twice.
+ *
+ * Best effort throughout: a read-only project, a missing config, or corrupt
+ * JSON must never fail the `add` it rode in on.
+ */
+export function recordProjectRegistryItems(
+  projectDir: string,
+  items: readonly RegistryItemRecord[],
+): void {
+  if (items.length === 0) return;
+  const path = projectConfigPath(projectDir);
+
+  let text: string;
+  try {
+    text = readFileSync(path, "utf-8");
+  } catch {
+    // No config to patch. `add` outside an initialized project is a valid
+    // flow; it simply leaves no manifest behind.
+    return;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!isJsonObject(parsed)) return;
+    const existing = normalizeRegistryItems(parsed.registryItems) ?? [];
+    const byName = new Map(existing.map((item) => [item.name, item]));
+    for (const item of items) byName.set(item.name, item);
+    // Compare by value, not identity: `add` always constructs fresh record
+    // objects, so an identity check would never match and re-adding an
+    // unchanged item would rewrite the file on every install.
+    const merged = [...byName.values()];
+    const unchanged =
+      merged.length === existing.length &&
+      merged.every((item, index) => {
+        const prior = existing[index];
+        return (
+          prior !== undefined &&
+          prior.name === item.name &&
+          prior.type === item.type &&
+          prior.target === item.target
+        );
+      });
+    if (unchanged) return;
+    parsed.registryItems = merged;
+    const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
+    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
+  } catch {
+    // Corrupt JSON or a read-only file: the manifest is telemetry provenance,
+    // never an install blocker.
   }
 }

@@ -1,7 +1,8 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
 import type { FfmpegStatus } from "../components/renders/useFfmpegStatus";
+import { useContext, useMemo, type ReactNode } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 
 export interface StudioShellValue {
   projectId: string;
@@ -52,8 +53,11 @@ export interface StudioPlaybackValue {
 
 export type StudioContextValue = StudioShellValue & StudioPlaybackValue;
 
-const StudioShellContext = createContext<StudioShellValue | null>(null);
-const StudioPlaybackContext = createContext<StudioPlaybackValue | null>(null);
+const StudioShellContext = createStableContext<StudioShellValue | null>("StudioShellContext", null);
+const StudioPlaybackContext = createStableContext<StudioPlaybackValue | null>(
+  "StudioPlaybackContext",
+  null,
+);
 
 export function useStudioShellContext(): StudioShellValue {
   const ctx = useContext(StudioShellContext);

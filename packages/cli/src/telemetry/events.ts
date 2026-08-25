@@ -1,6 +1,7 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
+import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
@@ -173,6 +174,60 @@ export function trackCommand(command: string, runId?: string): void {
   });
 }
 
+/**
+ * Cap on item names in one event. Registry names are low-cardinality slugs, but
+ * a project with a hundred blocks should not push a hundred-name string into
+ * every render. The cap belongs at the boundary that builds the string, and
+ * deliberately NOT on the counts: a count is one integer with no cardinality
+ * risk, and a saturated one loses the real number with no way downstream to
+ * tell 40 installs from 400.
+ */
+const MAX_REPORTED_ITEM_NAMES = 40;
+
+/**
+ * Catalog half of `render_complete`.
+ *
+ * Counts are emitted even when zero: the no-catalog cohort is exactly what the
+ * with-catalog cohort gets compared against, and a property that is simply
+ * absent is indistinguishable from an older CLI that never sent one. Names ride
+ * as a comma-joined string because event property values are scalars only (same
+ * shape as `recent_render_ids` on `cli_render_feedback`).
+ *
+ * The used names are narrowed to the reported installed names, so
+ * `registry_blocks_used` stays a subset of `registry_items` even when the cap
+ * bites. Sliced independently, the two lists can come out disjoint, breaking
+ * the one relationship a drop-off query relies on. When the cap does bite,
+ * `registry_items_truncated` says so: the counts still carry the truth, but the
+ * names are a window, and a query that joins on names must not read the
+ * difference as abandonment.
+ *
+ * An unreadable manifest reports itself and omits the counts rather than
+ * sending zeros, so a failed read cannot pose as a project that never used the
+ * catalog. Undefined usage means the caller built render options by hand rather
+ * than through the render plan, so it makes no catalog claim at all.
+ */
+function catalogEventProperties(
+  usage: CatalogUsage | undefined,
+): Record<string, string | number | boolean> {
+  if (!usage) return {};
+  if (usage.manifestUnreadable) return { registry_manifest_unreadable: true };
+  const names = usage.installed.slice(0, MAX_REPORTED_ITEM_NAMES);
+  const reportedNames = new Set(names);
+  const used = usage.usedBlocks.filter((name) => reportedNames.has(name));
+  const truncated = names.length < usage.installed.length;
+  return {
+    registry_item_count: usage.installed.length,
+    registry_blocks_used_count: usage.usedBlocks.length,
+    // Say when the name lists are a window rather than the whole set. Without
+    // it a name-joining drop-off query silently reads a truncated project as
+    // all-abandoned: the used blocks can all sit past the cap, leaving an empty
+    // `registry_blocks_used` against a non-zero count.
+    ...(truncated ? { registry_items_truncated: true } : {}),
+    ...(names.length > 0 ? { registry_items: names.join(",") } : {}),
+    ...(used.length > 0 ? { registry_blocks_used: used.join(",") } : {}),
+  };
+}
+
 export function trackRenderComplete(
   props: {
     durationMs: number;
@@ -180,6 +235,13 @@ export function trackRenderComplete(
     quality: string;
     /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
     authoringSkill?: string;
+    /**
+     * Catalog items installed in this project, and those the rendered
+     * composition reaches. The pair is what joins `registry_item_added` to a
+     * finished video: an installed item missing from the used set was tried
+     * and dropped, which no add-time event can express.
+     */
+    catalogUsage?: CatalogUsage;
     workers?: number;
     // Worker auto-sizing provenance (RenderPerfSummary.workerSizing). Answers
     // "why N workers?" fleet-wide, and validates the advisory per-worker heap
@@ -292,6 +354,7 @@ export function trackRenderComplete(
       fps: props.fps,
       quality: props.quality,
       authoring_skill: props.authoringSkill,
+      ...catalogEventProperties(props.catalogUsage),
       workers: props.workers,
       workers_bound_by: props.workersBoundBy,
       workers_cpu_based: props.workersCpuBased,

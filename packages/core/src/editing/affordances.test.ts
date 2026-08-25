@@ -4,6 +4,7 @@ import {
   resolveEditingSections,
   type EditableElementFacts,
 } from "./affordances";
+import { HF_AUDIO_GROUP_TAG } from "../audioGroups";
 
 function baseFacts(over: Partial<EditableElementFacts> = {}): EditableElementFacts {
   return {
@@ -207,5 +208,43 @@ describe("audioFx section", () => {
   it("does not apply to video, whose sound lives on a separate audio element", () => {
     expect(resolveEditingSections(baseFacts({ tag: "video" })).audioFx).toBe(false);
     expect(resolveEditingSections(baseFacts({ tag: "div" })).audioFx).toBe(false);
+  });
+});
+
+describe("audio has timing but no animation; a bus has neither", () => {
+  // Nothing on an `<audio>` element or an `<hf-audio-group>` bus has a
+  // transform, an opacity or a box, so a tween on one moves nothing. The panel
+  // showed its GSAP editor for both anyway, because it gated that on the
+  // handlers being wired rather than on the element being animatable.
+  it("withholds animation from an audio clip that HAS tweens", () => {
+    const s = resolveEditingSections(baseFacts({ tag: "audio", animationCount: 3 }));
+    expect(s.animation).toBe(false);
+  });
+
+  it("withholds it from a bus too", () => {
+    const s = resolveEditingSections(baseFacts({ tag: HF_AUDIO_GROUP_TAG, animationCount: 3 }));
+    expect(s.animation).toBe(false);
+  });
+
+  it("still grants it to a div with tweens, so the gate is the tag", () => {
+    expect(resolveEditingSections(baseFacts({ tag: "div", animationCount: 1 })).animation).toBe(
+      true,
+    );
+  });
+
+  // An audio clip is placed on the timeline like any other, so Start/Duration
+  // stay editable — that is the half of the old Motion section worth keeping.
+  it("keeps timing on an audio clip with an authored start", () => {
+    const s = resolveEditingSections(baseFacts({ tag: "audio", hasTimingStart: true }));
+    expect(s.timing).toBe(true);
+  });
+
+  // A bus has no `data-start` and no duration; its automation clock is
+  // composition time. Start/Duration/End would be editing nothing.
+  it("withholds timing from a bus even if something claims a start", () => {
+    const s = resolveEditingSections(
+      baseFacts({ tag: HF_AUDIO_GROUP_TAG, hasTimingStart: true, animationCount: 2 }),
+    );
+    expect(s.timing).toBe(false);
   });
 });

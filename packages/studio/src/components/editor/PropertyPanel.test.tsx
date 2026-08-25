@@ -22,7 +22,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function baseElement() {
+function baseElement(): NonNullable<PropertyPanelProps["element"]> {
   return {
     element: document.createElement("div"),
     id: "mono-label",
@@ -81,7 +81,7 @@ function nonTextElement() {
 // flat multi-field layer list (FlatTextLayerList + FlatTextFieldEditor) —
 // must not double-render the "Text" heading (FlatGroup's own heading; this
 // component never renders one of its own).
-function multiFieldTextElement() {
+function multiFieldTextElement(): NonNullable<PropertyPanelProps["element"]> {
   const base = baseElement();
   return {
     ...base,
@@ -177,6 +177,43 @@ function sixGroupElement() {
   };
 }
 
+/** An `<audio>` clip: placed on the timeline, but nothing a tween could move. */
+function audioClipElement() {
+  const element = document.createElement("audio");
+  return {
+    ...baseElement(),
+    element,
+    id: "vo-1",
+    selector: "#vo-1",
+    label: "Vo 1",
+    tagName: "audio",
+    textFields: [],
+    dataAttributes: { start: "1", duration: "3" },
+  };
+}
+
+/**
+ * A mixer bus: no clip range at all, and no box either.
+ *
+ * Carries a `data-start` on purpose. A real bus has none — its automation clock
+ * is composition time — but the timing gate has to refuse the TAG rather than
+ * merely fall out of a missing attribute, or something writing one would put
+ * Start/Duration back on a thing that has no range.
+ */
+function audioBusElement() {
+  const element = document.createElement("hf-audio-group");
+  return {
+    ...baseElement(),
+    element,
+    id: "voiceover",
+    selector: "#voiceover",
+    label: "Voiceover",
+    tagName: "hf-audio-group",
+    textFields: [],
+    dataAttributes: { start: "0", duration: "8" },
+  };
+}
+
 const INFERRED_TIMING_ANIMATION = {
   id: "a1",
   targetSelector: "#inferred-anim",
@@ -196,7 +233,7 @@ const INFERRED_TIMING_ANIMATION = {
 
 async function renderPanel(
   flatEnabled: boolean,
-  elementOverride: ReturnType<typeof baseElement> = baseElement(),
+  elementOverride: NonNullable<PropertyPanelProps["element"]> = baseElement(),
   propsOverride: Partial<PropertyPanelProps> = {},
   currentTime?: number,
 ) {
@@ -947,6 +984,67 @@ describe("PropertyPanel — flat group entrance animation scoping (fix round)", 
       if (!openWrapper) throw new Error("expected the open-group wrapper");
       expect(openWrapper.querySelector(".hf-flat-group-enter")).not.toBeNull();
 
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+describe("PropertyPanel — Motion is for things that move", () => {
+  it.each([
+    ["a custom music tag", () => document.createElement("music")],
+    [
+      "an element with an audio source",
+      () => {
+        const element = document.createElement("div");
+        element.setAttribute("src", "voiceover.mp3");
+        return element;
+      },
+    ],
+  ])("recognizes %s through the shared audio predicate", async (_label, makeElement) => {
+    const fixture = {
+      ...audioClipElement(),
+      element: makeElement(),
+      tagName: "div",
+    };
+    const { host, root } = await renderPanel(true, fixture);
+    const titles = Array.from(
+      host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+    ).map((node) => node.textContent ?? "");
+    expect(titles.some((title) => title.includes("Motion"))).toBe(false);
+    expect(titles.some((title) => title.includes("Timing"))).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it(
+    "calls the section Timing on an audio clip, and offers no tween editor",
+    async () => {
+      const { host, root } = await renderPanel(true, audioClipElement());
+      const titles = Array.from(
+        host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+      ).map((el) => el.textContent ?? "");
+      // The clip's placement survives — it is still a clip on a track.
+      expect(titles.some((t) => t.includes("Timing"))).toBe(true);
+      // "Motion" named the tween editor, which an <audio> element has no
+      // transform, opacity or box for. Showing it was the panel gating on
+      // handler presence rather than on the element.
+      expect(titles.some((t) => t.includes("Motion"))).toBe(false);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "offers a bus neither — it has no clip range to edit",
+    async () => {
+      const { host, root } = await renderPanel(true, audioBusElement());
+      const titles = Array.from(
+        host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+      ).map((el) => el.textContent ?? "");
+      expect(titles.some((t) => t.includes("Motion"))).toBe(false);
+      expect(titles.some((t) => t.includes("Timing"))).toBe(false);
+      // It is still a mixer bus: the reason to select one at all.
+      expect(titles.some((t) => t.includes("Audio FX"))).toBe(true);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

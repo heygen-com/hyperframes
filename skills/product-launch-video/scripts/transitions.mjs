@@ -326,7 +326,8 @@ function runVerify(argv) {
     a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
   const fail = [];
 
-  // (4) global no same-track overlap (the lint invariant).
+  // (4) global no same-track overlap. This is this workflow's own lane convention,
+  //     not a lint rule: nothing in the framework rejects same-track overlap.
   const all = [...clips.values()];
   for (let i = 0; i < all.length; i++)
     for (let j = i + 1; j < all.length; j++) {

@@ -190,6 +190,99 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
+  /**
+   * `data-volume` is an authoring GAIN up to `MAX_AUDIO_GAIN` (12 dB ~ 3.98) —
+   * `HTMLMediaElement.volume` accepts only 0..1. The bridge clamps its own
+   * argument, but the PRODUCT `clipVolume * volume` was assigned unclamped, so a
+   * clip authored above unity threw
+   * `IndexSizeError: The volume provided (2.42103) is outside the range [0, 1]`
+   * (2.42103 is the +7.68 dB fader stop) — and the throw aborted the loop, so
+   * every media element after it kept its old volume too.
+   */
+  it("clamps the native volume of an over-unity clip instead of throwing", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const loud = document.createElement("audio");
+    loud.setAttribute("data-start", "0");
+    loud.setAttribute("data-duration", "10");
+    loud.setAttribute("data-volume", "2.42103");
+    loud.load = () => {};
+    root.appendChild(loud);
+    // Second element proves the throw took the whole sweep down with it, not just
+    // the offending clip.
+    const quiet = document.createElement("audio");
+    quiet.setAttribute("data-start", "0");
+    quiet.setAttribute("data-duration", "10");
+    quiet.setAttribute("data-volume", "0.5");
+    quiet.load = () => {};
+    root.appendChild(quiet);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const errors: string[] = [];
+    const onError = (e: ErrorEvent) => errors.push(String(e.message ?? e.error));
+    window.addEventListener("error", onError);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
+      }),
+    );
+    window.removeEventListener("error", onError);
+    expect(errors).toEqual([]);
+  });
+
+  /**
+   * The runtime stamps `data-start`/`data-duration` on every id'd child of the
+   * composition root so a blank canvas still shows selectable rows. An
+   * `<hf-audio-group>` is a mixer BUS, not a clip: stamping it put it in
+   * `__clipManifest` as a full-duration element, which the studio drew as an
+   * ordinary clip row above the real group header — draggable, trimmable, and
+   * deletable, and deleting it takes the bus (so the group's FX rack) with it.
+   */
+  it("does not stamp timing onto an <hf-audio-group> bus", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const bus = document.createElement("hf-audio-group");
+    bus.id = "voiceover";
+    bus.setAttribute("data-label", "Voiceover");
+    root.appendChild(bus);
+
+    // A plain id'd sibling proves the stamp still happens for everything else.
+    const caption = document.createElement("div");
+    caption.id = "cap-1";
+    root.appendChild(caption);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    // The stamp only runs inside the studio preview (`window.parent !== window`),
+    // which jsdom is not — so the condition has to be staged for the test.
+    const realParent = window.parent;
+    Object.defineProperty(window, "parent", { value: {}, configurable: true });
+    try {
+      initSandboxRuntimeModular();
+    } finally {
+      Object.defineProperty(window, "parent", { value: realParent, configurable: true });
+    }
+
+    expect(bus.hasAttribute("data-start")).toBe(false);
+    expect(bus.hasAttribute("data-duration")).toBe(false);
+    expect(caption.getAttribute("data-start")).toBe("0");
+  });
+
   it("resolves Studio hold as a deterministic step at the segment end", () => {
     const defaultEase = (progress: number) => progress;
     const originalParseEase = vi.fn(() => defaultEase);
@@ -1350,10 +1443,13 @@ describe("initSandboxRuntimeModular", () => {
     window.__timelines = { main: createMockTimeline(10) };
     initSandboxRuntimeModular();
 
-    // `scheduleMediaElementPlayback` is the Web Audio scheduling entry point (#3322 routed
-    // media-element clips straight through the graph; `decodeAudioElement` is only the fallback
-    // for the rate-shifted case, so it is NOT called on this path).
-    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+    // `scheduleMediaElementPlayback`, not `decodeAudioElement`: the media-element
+    // transport is the path the runtime tries FIRST for audio, and the decoded
+    // buffer is only its fallback. What is under test either way is which
+    // ELEMENTS get scheduled at all.
+    const scheduleSpy = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+      .mockResolvedValue(null);
 
     const player = window.__player;
     player?.play();
@@ -1361,6 +1457,50 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(scheduleSpy).toHaveBeenCalledTimes(1);
     expect(scheduleSpy.mock.calls[0]?.[0]).toBe(audibleAudio);
+  });
+
+  it("reschedules only when a data-hidden mutation actually moved something", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const hiddenAudio = document.createElement("audio");
+    hiddenAudio.setAttribute("data-start", "0");
+    hiddenAudio.setAttribute("data-duration", "10");
+    hiddenAudio.setAttribute("data-hidden", "");
+    hiddenAudio.load = () => {};
+    hiddenAudio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(hiddenAudio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    const stopSpy = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+    const player = window.__player;
+    player?.play();
+
+    // A seek stops the transport itself, so the COUNT is the measure. Without
+    // the dirty gate the reschedule fired on every visibility pass, adding a
+    // second stop — an audible stop-and-restart across the whole mix — to
+    // rebuild an identical active set.
+    stopSpy.mockClear();
+    player?.seek(1, { keepPlaying: true });
+    const seekOnly = stopSpy.mock.calls.length;
+
+    // The dirty flag is set by a data-hidden MUTATION, so the toggle is the
+    // gesture; a plain seek never reaches the reschedule at all.
+    stopSpy.mockClear();
+    hiddenAudio.removeAttribute("data-hidden");
+    player?.seek(2, { keepPlaying: true });
+    const afterToggle = stopSpy.mock.calls.length;
+
+    expect(seekOnly).toBe(1);
+    expect(afterToggle).toBe(seekOnly + 1);
   });
 
   it("batches a mid-playback data-hidden toggle into exactly one Web Audio reschedule", () => {
@@ -1401,7 +1541,9 @@ describe("initSandboxRuntimeModular", () => {
     // toggles away from.
     player?.play();
 
-    const scheduleSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+    const scheduleSpy = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+      .mockResolvedValue(null);
     const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
 
     // Both become visible in the SAME sync pass — must still be one reschedule.
@@ -1413,6 +1555,52 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(generationSpy).toHaveBeenCalledTimes(1);
     expect(scheduleSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // Scheduling does NOT replace the active set: it bumps a generation, which
+  // only rejects schedules still in flight. Every source already started keeps
+  // playing and there is no per-element dedup, so rescheduling on its own laid
+  // a second buffer source over every sounding clip — the whole mix doubled,
+  // slightly out of phase, from one mute click until the next pause.
+  it("stops the running sources before rescheduling on a data-hidden toggle", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("data-hidden", "");
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.resolve());
+    root.appendChild(audio);
+
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    const player = window.__player;
+    player?.play();
+
+    vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+    const stopSpy = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+    const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
+
+    audio.removeAttribute("data-hidden");
+    player?.seek(1, { keepPlaying: true });
+
+    expect(generationSpy).toHaveBeenCalledTimes(1);
+    // Two: `seek` clears the graph on its way in, and the toggle's own
+    // reschedule clears it again. Only the second one is what this covers —
+    // without it the count is 1 and the reschedule stacks on live sources.
+    expect(stopSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    // Order matters, not just presence: stopping AFTER the reschedule would
+    // silence the clips it had just started.
+    const lastStop = Math.max(...stopSpy.mock.invocationCallOrder);
+    expect(lastStop).toBeLessThan(generationSpy.mock.invocationCallOrder[0] ?? 0);
   });
 
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {

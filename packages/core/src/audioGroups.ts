@@ -10,24 +10,11 @@
  */
 
 import { HF_AUDIO_FX_ATTR } from "./audioFx.js";
+import { AUDIO_GROUP_RENDER_ID_ATTR, MEDIA_RENDER_ID_ATTR } from "./compiler/mediaRenderIds.js";
 import { HF_AUDIO_AUTOMATION_ATTR } from "./audioAutomation.js";
 
 export const HF_AUDIO_GROUP_TAG = "hf-audio-group";
 export const HF_AUDIO_GROUP_ATTR = "data-audio-group";
-
-/**
- * v1 membership, in one place: an `<audio>` carrying a NON-EMPTY
- * `data-audio-group`.
- *
- * Both readers below derive from this string, because they disagreed when they
- * did not. `resolveAudioGroups` scanned `audio[...]` while `audioGroupOf`
- * returned the attribute off any element, so the same DOM answered "no group"
- * for a `<video data-audio-group="voiceover">` in one and `"voiceover"` in the
- * other. The render already enforces audio-only (see audioMixer's
- * `type === "audio"` guard), so the disagreement was preview routing a track
- * the export would never group.
- */
-const MEMBER_SELECTOR = `audio[${HF_AUDIO_GROUP_ATTR}]`;
 
 export interface HfAudioGroup {
   id: string;
@@ -49,7 +36,13 @@ export interface HfAudioGroup {
   hidden: boolean;
 }
 
-function parseGroupVolume(el: Element | undefined): number {
+/**
+ * A group element's `data-volume`, defaulting to 1 for a missing, unparseable
+ * or absent element. Shared so the preview bus and `resolveAudioGroups` (which
+ * the render reads) cannot drift: the export was ~8 dB quieter than what was
+ * auditioned for exactly as long as the preview ignored this.
+ */
+export function readAudioGroupVolume(el: Element | null | undefined): number {
   const raw = el?.getAttribute("data-volume");
   const parsed = raw ? parseFloat(raw) : 1;
   return Number.isFinite(parsed) ? parsed : 1;
@@ -64,7 +57,7 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
     memberIds,
     ...(fxChain ? { fxChain } : {}),
     ...(automation ? { automation } : {}),
-    volume: parseGroupVolume(el),
+    volume: readAudioGroupVolume(el),
     hidden: el?.hasAttribute("data-hidden") ?? false,
   };
 }
@@ -76,10 +69,76 @@ function buildGroup(id: string, memberIds: string[], el: Element | undefined): H
  * (label = id) so a hand-authored composition degrades gracefully. Audio
  * only in v1 — a `data-audio-group` on a `<video>` is ignored.
  */
+/**
+ * The `<hf-audio-group>` element for a group id, or null.
+ *
+ * Tag-checked, which a bare `getElementById` is not. Every group attribute —
+ * the fader, the mute, the FX chain, the automation lane — is read off whatever
+ * this returns, so an unrelated element sharing the id used to be read as a bus:
+ * an `<audio id="vo" data-audio-group="vo" data-volume="0.5" data-fx-chain=…>`
+ * had its own fader and chain applied a SECOND time on the bus, and a
+ * `<div id="bg" data-hidden>` silenced group "bg" in preview only. The render
+ * never had this problem — `resolveAudioGroups` only ever accepted the tag —
+ * so the two disagreed on exactly the attributes the bus exists to carry.
+ *
+ * Returning null is the documented "group with no element" case, which
+ * degrades to a flat sum rather than borrowing a stranger's settings.
+ */
+export function resolveGroupElement(
+  doc:
+    | (Pick<Document, "getElementById"> & Partial<Pick<Document, "querySelectorAll">>)
+    | null
+    | undefined,
+  groupId: string,
+): Element | null {
+  // A render-stamped key names an INSTANCE, and `getElementById` cannot find it
+  // — the author id is what is on the element's `id`. Tried first so a compiled
+  // document resolves the right one of two identically-named buses.
+  // Compare the raw attribute value instead of interpolating an author-provided
+  // id into a selector. Quotes and backslashes are valid attribute values, and
+  // turning one into selector syntax made this otherwise tolerant reader throw.
+  const stamped = Array.from(
+    doc?.querySelectorAll?.(`${HF_AUDIO_GROUP_TAG}[${MEDIA_RENDER_ID_ATTR}]`) ?? [],
+  ).find((candidate) => candidate.getAttribute(MEDIA_RENDER_ID_ATTR) === groupId);
+  if (stamped) return stamped;
+  const el = doc?.getElementById(groupId) ?? null;
+  if (!el) return null;
+  return el.tagName?.toLowerCase() === HF_AUDIO_GROUP_TAG ? el : null;
+}
+
+/**
+ * Whether the bus a member belongs to is muted.
+ *
+ * Membership is held by the MEMBER's `data-audio-group`; a group never nests
+ * its members. So `el.closest("[data-hidden]")` cannot see a muted bus, which
+ * is how the render came to drop a hidden group's members while the preview
+ * fallback played them at full level.
+ */
+export function isMemberGroupHidden(
+  doc: Pick<Document, "getElementById"> | null | undefined,
+  el: Element | null | undefined,
+): boolean {
+  // A compiler stamp identifies the bus INSTANCE. The author id is only unique
+  // within one composition file, so resolving by it in an inlined document made
+  // every repeated sub-composition consult the first instance's mute state.
+  const groupId =
+    el?.getAttribute?.(AUDIO_GROUP_RENDER_ID_ATTR) ?? el?.getAttribute?.(HF_AUDIO_GROUP_ATTR);
+  if (!groupId) return false;
+  return resolveGroupElement(doc, groupId)?.hasAttribute("data-hidden") ?? false;
+}
+
 export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
   const membersByGroup = new Map<string, string[]>();
-  for (const member of root.querySelectorAll(MEMBER_SELECTOR)) {
-    const groupId = member.getAttribute(HF_AUDIO_GROUP_ATTR);
+  for (const member of root.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)) {
+    // The render-stamped instance key when the compiler has been through
+    // (`assignMediaRenderIds`), else the author id. An author id is unique only
+    // per composition FILE, so a sub-composition declaring a bus AND its members
+    // and used twice put both instances' members under one key — one sub-mix for
+    // two independent buses, instance B's fader and chain over instance A's
+    // audio, and with only B muted BOTH instances dropped from the export. The
+    // live preview has no stamps, so it reads exactly as before.
+    const groupId =
+      member.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? member.getAttribute(HF_AUDIO_GROUP_ATTR);
     if (!groupId || !member.id) continue;
     const members = membersByGroup.get(groupId);
     if (members) members.push(member.id);
@@ -88,7 +147,10 @@ export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
 
   const groupElements = new Map<string, Element>();
   for (const el of root.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
-    if (el.id) groupElements.set(el.id, el);
+    // Keyed the same way, so a stamped document pairs instance for instance and
+    // an unstamped one keeps id-for-id.
+    const key = el.getAttribute(MEDIA_RENDER_ID_ATTR) ?? el.id;
+    if (key) groupElements.set(key, el);
   }
 
   const groups: HfAudioGroup[] = [];
@@ -122,27 +184,25 @@ export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): st
     const group = groupsById.get(id);
     if (group) {
       group.memberIds.forEach(add);
-    } else if (doc.getElementById(id)) {
+    } else if (doc.getElementById(id) && !resolveGroupElement(doc, id)) {
+      // A group with no members resolves to no entry above, and its own bus
+      // element would then pass this existence check and be returned as if it
+      // were a clip — a source the analysis can only fail to find, which the
+      // docblock above promises is dropped.
       add(id);
     }
   }
   return out;
 }
 
-/**
- * The group a member belongs to, or null — the same predicate
- * `resolveAudioGroups` scans with, so the two can never disagree about a given
- * element.
+/** The group an audio member belongs to, or null. Membership is audio-only in
+ * v1, matching `resolveAudioGroups` and the render mixer; video and group-bus
+ * attributes are inert.
  *
- * Non-`<audio>` returns null: video is out of scope in v1, and so is
- * `data-audio-group` on an `<hf-audio-group>` itself (groups do not nest).
- * `data-audio-group=""` returns null rather than `""` — the resolver skips a
- * falsy id, and the "or null" in this contract has to mean it.
- *
- * Tolerant of objects that only partially implement `Element` (test doubles for
- * `HTMLMediaElement` commonly do): anything missing `tagName` or `getAttribute`
- * simply has no group, mirroring `readChain`'s style in `runtime/audioFx.ts`.
- */
+ * Tolerant of objects that only partially implement `Element` (test doubles
+ * for `HTMLMediaElement` commonly do) — anything missing `tagName` or
+ * `getAttribute` simply has no group, mirroring `readChain`'s style in
+ * `runtime/audioFx.ts`. */
 export function audioGroupOf(el: Element): string | null {
   if (typeof el.tagName !== "string" || el.tagName.toLowerCase() !== "audio") return null;
   if (typeof el.getAttribute !== "function") return null;
@@ -165,42 +225,10 @@ export function audioGroupOf(el: Element): string | null {
  * runtime rather than the compiler so preview and render share one source.
  */
 export function ensureAudioGroupInertStyle(doc: Document): void {
-  const STYLE_ID = "__hf-audio-group-inert";
-  if (!doc?.head || doc.getElementById(STYLE_ID)) return;
+  const styleId = "__hf-audio-group-inert";
+  if (!doc?.head || doc.getElementById(styleId)) return;
   const style = doc.createElement("style");
-  style.id = STYLE_ID;
+  style.id = styleId;
   style.textContent = `${HF_AUDIO_GROUP_TAG}{display:none!important}`;
   doc.head.appendChild(style);
-}
-
-/**
- * Solo ("Hear only this") predicate — shared by the studio store (which owns
- * the `soloed` set and the UI's lit/half-lit state) and the preview transport
- * (which turns it into gain). An element is audible while any solo is active
- * only if IT is soloed, or its OWN group is soloed (group solo = members
- * solo). There is no "ancestor" to reach up to in this data model — a group
- * bus is never itself attenuated by solo, so a soloed member's path through
- * its group stays open by construction; this predicate only ever gates the
- * member's own gain. No solo active at all is the one path that returns true
- * unconditionally.
- */
-export function isAudibleUnderSolo(
-  soloed: ReadonlySet<string>,
-  id: string,
-  groupId?: string | null,
-): boolean {
-  if (soloed.size === 0) return true;
-  if (soloed.has(id)) return true;
-  return Boolean(groupId && soloed.has(groupId));
-}
-
-/** Half-lit: this group itself isn't soloed, but at least one of its members
- *  is — the display-only signal that "some of what's under here still plays". */
-export function isGroupHalfLitUnderSolo(
-  soloed: ReadonlySet<string>,
-  groupId: string,
-  memberIds: readonly string[],
-): boolean {
-  if (soloed.size === 0 || soloed.has(groupId)) return false;
-  return memberIds.some((id) => soloed.has(id));
 }

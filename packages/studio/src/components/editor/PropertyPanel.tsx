@@ -36,6 +36,7 @@ import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+import { isAudioDomElement } from "../../utils/timelineInspector";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -119,6 +120,19 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
   const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
+  /**
+   * An audio element gets no hide control here.
+   *
+   * On an audio track "hidden" and "muted" are not similar operations, they are
+   * the SAME operation with two names (groups doc §2.1) — which is why the
+   * timeline's eye became the mute rather than growing a sibling. A second copy
+   * in the panel, still called "Hide element", is precisely the thing that step
+   * removed: "Two controls that silence a track, sitting next to each other,
+   * differing only in a distinction the author cannot see." An
+   * `<hf-audio-group>` has no visual to hide at all, and its mute lives on its
+   * own row.
+   */
+  const audioSelection = isAudioDomElement(element?.element);
   // Live during playback, the store's when paused — see the hook. Shared with the
   // audio FX panel, which follows the playhead for the same reason: a value the
   // timeline drives has to be shown moving, not frozen at what the attribute says.
@@ -309,7 +323,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               selectedElementId={selectedElementId}
               selectedElementHidden={selectedElementHidden}
               visibilityLabel={visibilityToggleLabel}
-              onToggleHidden={onToggleElementHidden}
+              onToggleHidden={audioSelection ? undefined : onToggleElementHidden}
             />
           </div>
         </div>

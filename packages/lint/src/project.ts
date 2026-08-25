@@ -7,6 +7,7 @@ import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-compositi
 import { parseHTML } from "linkedom";
 import {
   cleanAssetUrl,
+  collectSubCompositionSrcs,
   isRemoteOrInlineUrl,
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
@@ -588,14 +589,9 @@ function lintMissingOrEmptySubComposition(
 
   // fallow-ignore-next-line complexity
   const walk = (html: string): void => {
-    const compositionSrcRe = /<[^>]*\bdata-composition-src\s*=\s*["']([^"']+)["'][^>]*>/gi;
-    const scannable = maskNonScannableRanges(html);
-    let match: RegExpExecArray | null;
-    while ((match = compositionSrcRe.exec(scannable)) !== null) {
-      const srcPath = (match[1] ?? "").trim();
-      if (!srcPath) continue;
-      if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or late-bound templating token
-
+    // Shared scanner — see collectSubCompositionSrcs for why this must be a
+    // text scan rather than a DOM query (template content is inert).
+    for (const srcPath of collectSubCompositionSrcs(html)) {
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses
       // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions

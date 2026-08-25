@@ -23,11 +23,6 @@ function renderHeader(
         laneCount={0}
         isLaneOpen={false}
         onToggleLanes={vi.fn()}
-        hidden={false}
-        onToggleHidden={vi.fn()}
-        isSoloed={false}
-        isHalfLitSolo={false}
-        onToggleSolo={vi.fn()}
         onFxChainChange={vi.fn()}
         onOpenFxRack={vi.fn()}
         columnWidth={220}

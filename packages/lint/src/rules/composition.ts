@@ -432,7 +432,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           severity: "error",
           message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> uses data-layer instead of data-track-index.`,
           elementId,
-          fixHint: "Replace data-layer with data-track-index. The runtime reads data-track-index.",
+          fixHint:
+            "Replace data-layer with data-track-index, which is the canonical name Studio and the linter read. Neither name is read by the render.",
           snippet: truncateSnippet(tag.raw),
         });
       }
@@ -935,10 +936,13 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // can't leak styles into each other. A rule whose LEFTMOST selector is the ROOT
   // element's own class (e.g. `.frame { ... }` on the same element that carries
   // data-composition-id) therefore becomes a DESCENDANT selector that can never
-  // match the root — the whole scene renders unstyled (tiny text top-left, images
-  // at natural size). lint/validate/inspect evaluate the file in isolation (no
-  // scoping) and Studio previews each scene in its own iframe (no scoping), so the
-  // break is invisible until the composited MP4 render. Style the root via `#root`
+  // match the SCOPED element itself. NOTE on the symptom: since #1886 the producer
+  // preserves the authored root as a `data-hf-inner-root` wrapper INSIDE the scoped
+  // element (regression fixture packages/producer/tests/sub-comp-class-selector),
+  // so the class still matches as a descendant and the scene no longer renders
+  // unstyled. This rule is now a consistency constraint, not a render-bug guard:
+  // `#root` is the shape the registry blocks model and the one the scoper
+  // special-cases. Style the root via `#root`
   // (the scoper special-cases the root id) and descendants via plain selectors,
   // like the registry blocks — the runtime already scopes each scene by id, so a
   // class namespace on the root is redundant.
@@ -960,10 +964,10 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         severity: "error",
         message:
           `Root element has class="${rootClasses.join(" ")}" and is styled by ${offenders.length} rule(s) keyed off that class (e.g. ${example}). ` +
-          `At render, every sub-composition rule is scoped to [data-composition-id="${rootCompositionId}"] <selector>, so a selector whose leftmost part is the ROOT's own class becomes a descendant selector that cannot match the root — the scene renders unstyled (tiny text top-left, full-size images). ` +
-          `lint/validate/inspect and Studio's per-frame iframe preview do not scope, so this passes every static check and looks correct in preview.`,
+          `At render, every sub-composition rule is scoped to [data-composition-id="${rootCompositionId}"] <selector>, so a selector whose leftmost part is the ROOT's own class becomes a descendant selector that cannot match the scoped element itself. ` +
+          `Since #1886 the producer preserves the authored root as an inner wrapper, so this no longer renders the scene unstyled, but #root is the shape the scoper special-cases and the registry blocks model. Use it so preview, render, and Studio agree.`,
         selector: example,
-        fixHint: `Give the root id="root" and style it with \`#root { ... }\` plus plain descendant selectors (\`.kicker\`, \`#hero\`) — the runtime already scopes each sub-composition by data-composition-id, so a class namespace on the root is redundant and breaks under scoping.`,
+        fixHint: `Give the root id="root" and style it with \`#root { ... }\` plus plain descendant selectors (\`.kicker\`, \`#hero\`) — the runtime already scopes each sub-composition by data-composition-id, so a class namespace on the root is redundant.`,
         snippet: truncateSnippet(rootTag.raw),
       },
     ];

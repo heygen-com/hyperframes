@@ -8,11 +8,17 @@ const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..",
 const read = (...parts: string[]): string => readFileSync(join(REPO_ROOT, ...parts), "utf8");
 
 describe("hyperframes-core contract docs", () => {
-  it("keeps root data-start in the minimal composition skeleton", () => {
+  it("keeps a runnable root in the minimal composition skeleton", () => {
     const minimal = read("skills", "hyperframes-core", "references", "minimal-composition.md");
 
-    expect(minimal).toMatch(/data-composition-id="main"[\s\S]{0,300}data-start="0"/);
-    expect(minimal).toContain('Root `<div>` with `data-composition-id`, `data-start="0"`');
+    // Structural pin: the skeleton must still declare a root the runtime can find
+    // and size. The prose around it is deliberately not pinned: asserting exact
+    // sentences here made every docs correction a CI failure, and the sentence this
+    // replaces ("Root <div> with data-composition-id, data-start=\"0\"") listed
+    // data-start as required when the runtime stamps it (runtime/init.ts).
+    expect(minimal).toMatch(/data-composition-id="main"/);
+    expect(minimal).toMatch(/data-width="1920"[\s\S]{0,120}data-height="1080"/);
+    expect(minimal).toMatch(/window\.__timelines\["main"\]/);
   });
 
   it("teaches check as the canonical quality gate", () => {

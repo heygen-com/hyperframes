@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { useCallback, useContext, useMemo, type ReactNode } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 import { trackDesignInput, type DesignInputUi } from "../utils/designInputTracking";
 
 // Carries which inspector UI and which section the currently-rendered design-panel
@@ -11,10 +12,10 @@ interface DesignPanelInputContextValue {
   section: string;
 }
 
-const DesignPanelInputContext = createContext<DesignPanelInputContextValue>({
-  ui: "classic",
-  section: "unknown",
-});
+const DesignPanelInputContext = createStableContext<DesignPanelInputContextValue>(
+  "DesignPanelInputContext",
+  { ui: "classic", section: "unknown" },
+);
 
 export function DesignPanelInputProvider({
   ui,

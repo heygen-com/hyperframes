@@ -3,6 +3,7 @@ import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelop
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
 import { clampAudioGain } from "../audioGain.js";
+import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 export { readElementPlaybackRate, resolveNaturalMediaTimelineDuration } from "./playbackRate.js";
 
@@ -223,11 +224,6 @@ export function syncRuntimeMedia(params: {
   /** Native media routed through WebAudio keeps its upstream element volume at
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
-  /** "Hear only this" gate for the HTMLMedia fallback path (video / any audio
-   *  not owned by the Web Audio transport, which applies its own dedicated
-   *  solo gain instead — see `WebAudioTransport.setSolo`). Absent when solo
-   *  isn't wired up at all, which reads as "always audible". */
-  isAudibleUnderSolo?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
@@ -335,13 +331,16 @@ export function syncRuntimeMedia(params: {
       }
 
       // A data-hidden ancestor is silent in the export (audioMixer.ts drops
-      // it); preview must match. Folded into the per-tick volume, not
+      // it), so preview matches. Folded into the per-tick volume, not
       // el.muted (RULES trap: el.muted is the transport's ownership flag).
-      // Solo rides the same fold for the same reason — never el.muted, and
-      // never touching any attribute (it is session-only, unlike hidden).
-      const silencedBySolo = params.isAudibleUnderSolo ? !params.isAudibleUnderSolo(el) : false;
-      const effectiveVolume =
-        el.closest("[data-hidden]") || silencedBySolo ? 0 : clampVolume(authorVolume * userVol);
+      // Two independent ways to be silent, and the second is not an ancestor
+      // question: membership lives on the MEMBER's `data-audio-group`, so a
+      // muted BUS is invisible to `closest()`. The render drops such members
+      // (`memberGroupHidden`), so without this the export was silent where the
+      // fallback played at full level.
+      const silencedByHidden =
+        el.closest("[data-hidden]") !== null || isMemberGroupHidden(el.ownerDocument, el);
+      const effectiveVolume = silencedByHidden ? 0 : clampVolume(authorVolume * userVol);
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume, authorVolume);

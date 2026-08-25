@@ -299,6 +299,42 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  // The same assertion, with a group present. It passed on an empty fixture
+  // while TimelineGroupRow called the THROWING context hook — one grouped clip
+  // and the whole timeline render died, not just the row.
+  it("renders without the provider even when a group row is on screen", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [
+        {
+          id: "voice-1",
+          domId: "voice-1",
+          tag: "audio",
+          start: 0,
+          duration: 2,
+          track: 0,
+          audioGroup: "voiceover",
+        },
+        {
+          id: "voice-2",
+          domId: "voice-2",
+          tag: "audio",
+          start: 2,
+          duration: 2,
+          track: 1,
+          audioGroup: "voiceover",
+        },
+      ],
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    expect(host.querySelector('[role="treegrid"]')).not.toBeNull();
+    act(() => root.unmount());
+  });
+
   it("renders the complete track list while row virtualization is gated off", () => {
     const host = createSizedTimelineHost(640);
     usePlayerStore.setState({
@@ -389,7 +425,10 @@ describe("Timeline provider boundary", () => {
       button.click();
     });
 
-    const row = button.parentElement?.parentElement;
+    // Up from the rowheader rather than counting parents: the header now lays
+    // its name and its controls out on two lines, so the button sits one level
+    // deeper than it used to.
+    const row = button.closest('[role="rowheader"]')?.parentElement;
     // Row children: [TimelineTrackHeader (sticky column), time-mapped content].
     const trackContent = row?.children.item(1);
     expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false, 1);

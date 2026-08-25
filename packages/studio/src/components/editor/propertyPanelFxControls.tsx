@@ -188,7 +188,14 @@ export function FxParamRow({
   if (param.kind === "enum") {
     return (
       <label className="hf-fx-row flex min-h-6 items-center gap-2" title={param.hint}>
-        <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2">
+        {/* Wraps rather than truncating. These names are whole questions — "How
+            big the space is" — so 86px of truncation left "How big the sp…", and
+            three rows of that read as the same word four times. A title only
+            answers it on hover, one row at a time; wrapping answers it for the
+            whole column at rest. `break-words` so a long single token breaks
+            instead of widening the column. The row keeps `title={param.hint}`:
+            the name and the explanation are different questions. */}
+        <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
           {param.label}
         </span>
         <select
@@ -227,8 +234,9 @@ export function FxParamRow({
       title={param.hint}
       data-automated={automated ? "" : undefined}
     >
+      {/* See the enum row above for why the name wraps instead of truncating. */}
       <span
-        className={`hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] ${
+        className={`hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight ${
           automated ? "text-panel-accent" : "text-panel-text-2"
         }`}
       >

@@ -22,13 +22,17 @@ import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
 import { riffChunks } from "./wavChunks.js";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
-const SUPPORTED_BITS = 16;
+const FLOAT_FORMAT = 3; // WAVE_FORMAT_IEEE_FLOAT
 
 interface WavLayout {
   numChannels: number;
   sampleRate: number;
   dataOffset: number;
   dataSize: number;
+  /** 16-bit integer, or 32-bit float — the group sub-mix writes float so an
+   *  over-unity member sum is not hard-clipped before the group's own FX and
+   *  fader get to act on it. */
+  float: boolean;
 }
 
 /**
@@ -39,34 +43,49 @@ interface WavLayout {
  * and trailing chunks (LIST/fact/etc.) are skipped harmlessly. Returns null on
  * anything unexpected so the caller falls back to the expression path.
  */
-function parseWavLayout(buffer: Buffer): WavLayout | null {
-  if (buffer.length < 12 || buffer.toString("ascii", 0, 4) !== "RIFF") return null;
-  if (buffer.toString("ascii", 8, 12) !== "WAVE") return null;
+interface WavFmt {
+  numChannels: number;
+  sampleRate: number;
+  /** 16-bit integer PCM, or 32-bit IEEE float. Anything else is unreadable. */
+  float: boolean;
+}
 
-  let fmt: { numChannels: number; sampleRate: number; bitsPerSample: number } | null = null;
+/** The `fmt ` chunk, or null for a format this cannot safely edit in place. */
+function readFmtChunk(buffer: Buffer, body: number): WavFmt | null {
+  const format = buffer.readUInt16LE(body);
+  const bits = buffer.readUInt16LE(body + 14);
+  const float = format === FLOAT_FORMAT;
+  if (!float && format !== PCM_FORMAT) return null;
+  if (bits !== (float ? 32 : 16)) return null;
+  const numChannels = buffer.readUInt16LE(body + 2);
+  if (numChannels < 1) return null;
+  return { numChannels, sampleRate: buffer.readUInt32LE(body + 4), float };
+}
+
+function isRiffWave(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WAVE"
+  );
+}
+
+function parseWavLayout(buffer: Buffer): WavLayout | null {
+  if (!isRiffWave(buffer)) return null;
+
+  let fmt: WavFmt | null = null;
   let data: { offset: number; size: number } | null = null;
 
   for (const { id, body, size } of riffChunks(buffer)) {
     if (id === "fmt " && body + 16 <= buffer.length) {
-      if (buffer.readUInt16LE(body) !== PCM_FORMAT) return null;
-      fmt = {
-        numChannels: buffer.readUInt16LE(body + 2),
-        sampleRate: buffer.readUInt32LE(body + 4),
-        bitsPerSample: buffer.readUInt16LE(body + 14),
-      };
+      fmt = readFmtChunk(buffer, body);
     } else if (id === "data") {
       data = { offset: body, size: Math.min(size, buffer.length - body) };
     }
   }
 
   if (!fmt || !data) return null;
-  if (fmt.bitsPerSample !== SUPPORTED_BITS || fmt.numChannels < 1) return null;
-  return {
-    numChannels: fmt.numChannels,
-    sampleRate: fmt.sampleRate,
-    dataOffset: data.offset,
-    dataSize: data.size,
-  };
+  return { ...fmt, dataOffset: data.offset, dataSize: data.size };
 }
 
 /**
@@ -103,11 +122,40 @@ export function createEnvelopeWalker(
   };
 }
 
+/** Every sample scaled by the envelope, in place, in whichever of the two
+ *  formats the layout reports. Float is NOT clamped: it is the format the group
+ *  sub-mix writes precisely so an over-unity sum keeps its headroom until
+ *  something downstream chooses to reduce it. */
+function scaleSamples(
+  buffer: Buffer,
+  layout: WavLayout,
+  gainAt: (seconds: number) => number,
+): void {
+  const { numChannels, sampleRate, dataOffset, dataSize, float } = layout;
+  const bytesPerSample = float ? 4 : 2;
+  const frameBytes = numChannels * bytesPerSample;
+  const frameCount = Math.floor(dataSize / frameBytes);
+  const scaleOne = float
+    ? (at: number, gain: number) => buffer.writeFloatLE(buffer.readFloatLE(at) * gain, at)
+    : (at: number, gain: number) => {
+        const scaled = Math.round(buffer.readInt16LE(at) * gain);
+        buffer.writeInt16LE(scaled < -32768 ? -32768 : scaled > 32767 ? 32767 : scaled, at);
+      };
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const gain = gainAt(frame / sampleRate);
+    const base = dataOffset + frame * frameBytes;
+    for (let channel = 0; channel < numChannels; channel += 1) {
+      scaleOne(base + channel * bytesPerSample, gain);
+    }
+  }
+}
+
 /**
  * Multiply a prepared WAV's samples by a time-varying gain envelope in place.
  *
- * @returns `true` if the envelope was applied; `false` if the file isn't the
- *   expected 16-bit PCM (caller should fall back to the expression path).
+ * @returns `true` if the envelope was applied; `false` if the file is neither
+ *   16-bit PCM nor 32-bit float (caller should fall back to the expression path).
  */
 export function applyVolumeEnvelopeToWav(
   wavPath: string,
@@ -123,20 +171,7 @@ export function applyVolumeEnvelopeToWav(
     const layout = parseWavLayout(buffer);
     if (!layout) return false;
 
-    const { numChannels, sampleRate, dataOffset, dataSize } = layout;
-    const bytesPerSample = SUPPORTED_BITS / 8;
-    const frameBytes = numChannels * bytesPerSample;
-    const frameCount = Math.floor(dataSize / frameBytes);
-
-    for (let frame = 0; frame < frameCount; frame += 1) {
-      const gain = gainAt(frame / sampleRate);
-      const base = dataOffset + frame * frameBytes;
-      for (let channel = 0; channel < numChannels; channel += 1) {
-        const at = base + channel * bytesPerSample;
-        const scaled = Math.round(buffer.readInt16LE(at) * gain);
-        buffer.writeInt16LE(scaled < -32768 ? -32768 : scaled > 32767 ? 32767 : scaled, at);
-      }
-    }
+    scaleSamples(buffer, layout, gainAt);
 
     // Write to a uniquely-named sibling then atomically rename over the
     // original. The random name avoids following a pre-planted symlink at a

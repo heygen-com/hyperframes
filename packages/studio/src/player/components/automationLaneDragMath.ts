@@ -59,6 +59,34 @@ export function armGroupDrag(
   };
 }
 
+/**
+ * Snapshot the two endpoints owned by a segment drag.
+ *
+ * The pointer itself is the anchor: a line can be grabbed anywhere along its
+ * span, and the segment must not jump so either endpoint takes the pointer's
+ * place when the gesture starts.
+ */
+export function armSegmentDrag(
+  lane: HfAutomationLane,
+  index: number,
+  anchor: { t: number; v: number },
+): GroupDragSnapshot | null {
+  const a = lane.points[index];
+  const b = lane.points[index + 1];
+  if (!a || !b) return null;
+  return {
+    points: lane.points.map((p) => ({ ...p })),
+    indices: [index, index + 1],
+    anchor: { ...anchor },
+    selection: {
+      t0: a.t,
+      t1: b.t,
+      v0: Math.min(a.v, b.v),
+      v1: Math.max(a.v, b.v),
+    },
+  };
+}
+
 export interface GroupMoveResult {
   points: HfAutomationLane["points"];
   selection: AutomationSelectionBox;

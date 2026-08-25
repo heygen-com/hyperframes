@@ -119,7 +119,7 @@ When using sub-compositions, `index.html` should be **thin**. Its job is to decl
 
 Key properties of this layout:
 
-- **Visual scenes on the same `data-track-index`** (e.g. `1`). Sequential — they cannot overlap on the same track. For a cross-fade between two scenes, put one on a higher track and overlap their times by the fade duration.
+- **Visual scenes on the same `data-track-index`** (e.g. `1`), authored sequentially. For a cross-fade, overlap their times by the fade duration; giving the incoming scene its own track keeps Studio's timeline readable, but the render accepts an overlap either way.
 - **Audio on a separate, higher track index** (e.g. `10`). Keeps the linter's overlap rules clear of any visual collisions.
 - **Root timeline is near-empty.** All animation lives in the sub-comps. A root-level fade-to-black at the very end is fine; do not stage a parallel animation track from the root.
 - **Host slot ids** use `el-<name>` or `<scene-id>`. The slot's `data-composition-id` must still equal the sub-comp's internal id (see `sub-compositions.md`).
@@ -256,7 +256,7 @@ Before adding or modifying scenes, identify which architecture is in use:
 ls compositions/ 2>/dev/null && echo "modular" || echo "monolithic"
 ```
 
-- In a **monolithic** project, add new scenes as inline `<section class="clip">` elements with a non-overlapping `data-start` and a sensible `data-track-index`, and extend the existing single timeline.
+- In a **monolithic** project, add new scenes as inline `<section class="clip">` elements with a deliberate `data-start` and a sensible `data-track-index`, and extend the existing single timeline.
 - In a **modular** project, match the pattern: add a new file under `compositions/`, add a slot in `index.html`, keep the root timeline thin. Do **not** start inlining new scenes into `index.html` when sibling scenes are sub-comps — the inconsistency is the worst of both worlds.
 - If a monolithic project needs a third or fourth scene cut, lift each scene into a sub-comp before adding more. The conversion is mechanical (see "Refactor between them" above).
 

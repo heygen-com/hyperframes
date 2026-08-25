@@ -12,7 +12,7 @@ import { resolveAutomationRange, type HfAutomationLane } from "@hyperframes/core
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { getTimelineLaneTop } from "./timelineLayout";
-import { groupAutomationLanes } from "./automationLaneData";
+import { groupAutomationLanes, isCarveLane } from "./automationLaneData";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
@@ -100,7 +100,21 @@ function ClipAutomationLanes({
             onCommit={bound.onCommit}
             onSelect={bound.onSelect}
             snapTimes={snapTimes}
-            readOnly={bound.readOnly}
+            // The carve owns its own envelopes and rewrites them on every
+            // re-run, so a drag would be silently discarded — shown, but not
+            // editable. Per LANE, not per binding: a carved bed can carry the
+            // author's own volume curve beside the carve's bands.
+            readOnly={bound.readOnly || isCarveLane(lane.target, bound.chain)}
+            // Two distinct reasons, so two notes. The carve one names the way
+            // out — change strength, or switch the carve off and own the chain
+            // — because "not editable" without that reads as broken.
+            readOnlyNote={
+              isCarveLane(lane.target, bound.chain)
+                ? "Owned by the voiceover carve — re-derived on every analysis. Change strength in the FX rack, or turn the carve off to edit these by hand."
+                : bound.readOnly
+                  ? "Read-only here."
+                  : undefined
+            }
             rangeSelection={
               bound.selection?.target === lane.target
                 ? {
@@ -128,6 +142,10 @@ export interface TimelineAutomationLaneSlotProps {
   pps: number;
   /** Keyframe lanes already stacked above, which automation sits under. */
   laneCount: number;
+  /** Exact y for the first lane, overriding `laneCount`. A group's lanes sit
+   *  directly under its header row rather than under a stack of keyframe
+   *  lanes, so it cannot be said in `laneCount`. */
+  topOffset?: number;
   accentColor: string;
   /** Composition-time playhead; the slot converts it to clip-local. */
   currentTime: number;
@@ -151,6 +169,7 @@ export function TimelineAutomationLaneSlot({
   lanes,
   pps,
   laneCount,
+  topOffset,
   accentColor,
   currentTime,
   beatTimes,
@@ -165,7 +184,7 @@ export function TimelineAutomationLaneSlot({
       else rowsByClip.set(key, [{ lane: entry.lane, rowIndex }]);
     }
   });
-  const top = getTimelineLaneTop(laneCount);
+  const top = topOffset ?? getTimelineLaneTop(laneCount);
   return (
     <>
       {clips.map((element) => (

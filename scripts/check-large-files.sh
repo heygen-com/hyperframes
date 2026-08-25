@@ -52,6 +52,19 @@ list_files "$@" | while IFS= read -r f; do
   # round-trip. Those are the product, not accidental bloat — skip them here.
   case "$f" in registry/*) continue ;; esac
 
+  # Text is exempt, whatever its size, because the cost this hook exists to stop
+  # is a binary one. Git delta-compresses text, so a file that grows by a few KB
+  # per commit adds a few KB to the pack. A binary of the same size re-enters the
+  # pack whole on every edit, which is exactly how the history got its hundreds
+  # of megabytes. `docs/changelog.mdx` is the case that forced this: half a
+  # megabyte of release notes, a little larger every release, tripping a check
+  # whose own error message says "large binaries".
+  #
+  # `grep -I` treats a file containing NUL bytes as binary, the same heuristic
+  # git uses to print "Binary files differ". A generated blob of text is still
+  # caught by review, not here.
+  grep -qI . "$f" 2>/dev/null && continue
+
   bytes="$(wc -c < "$f" | tr -d ' ')"
   # Ceiling division: a sub-1024-byte file must report >=1 KB, never 0, so it
   # can't slip past a strict threshold (e.g. HF_MAX_NONLFS_KB=0). Plain

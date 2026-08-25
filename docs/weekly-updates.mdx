@@ -13,6 +13,136 @@ For exact versioned release notes, see the [Changelog](/changelog).
 {/* New weekly digest entries are prepended by `bun run changelog:weekly --from YYYY-MM-DD --to YYYY-MM-DD --write`. */}
 
 <Update
+  label="Week of August 17, 2026"
+  description="Weekly digest - August 17, 2026 - August 24, 2026"
+  tags={["Weekly update", "Highlights"]}
+>
+
+<Frame>
+  <DocsVideo
+    title="HyperFrames video: Weekly Changelog Aug17 24"
+    src="https://static.heygen.ai/hyperframes/changelog-videos/weekly-changelog-aug17-24.mp4"
+  />
+</Frame>
+
+Grouped audio shipped. A voiceover, a music bed and a sound effect can now live in named
+groups, each with its own volume, its own effects chain and its own mute. The rollout
+finished by deleting three feature gates rather than raising their percentages, so the
+effects rack, the group rows and mute are on for everyone. Two controls did not survive
+the week: solo and the group meter both shipped and were then removed. Lint got smaller
+on purpose, the CLI preview grew a real lifecycle, and Windows stopped opening stray
+console windows. Fifteen releases shipped, v0.7.110 through v0.8.12. The minor bump to
+v0.8.0 was not the headline: it marks the removal of two catalog components.
+
+## Features
+
+- **Audio groups.** Give an audio element a group and it joins a bus. The group carries a
+  `data-volume`, an effects chain, and a mute. Preview and render build the same graph, so
+  what you hear is what ships. Mute works by dropping the member from the mix rather than
+  setting its volume to zero, which keeps a muted bus out of the export instead of writing
+  silence into it. ([524036715](https://github.com/heygen-com/hyperframes/commit/524036715043c4685d0fd41eaccb5addf5ce31c7), [#3278](https://github.com/heygen-com/hyperframes/pull/3278), [602cf53cf](https://github.com/heygen-com/hyperframes/commit/602cf53cf6d556711dc02592baad5f7e6088e748), [#3287](https://github.com/heygen-com/hyperframes/pull/3287), [99f42be04](https://github.com/heygen-com/hyperframes/commit/99f42be04ce6bce535600c42a8eb694fed8ebc9e), [#3289](https://github.com/heygen-com/hyperframes/pull/3289), [acfa7c55a](https://github.com/heygen-com/hyperframes/commit/acfa7c55a2f3dcdb070e304bfb8e7b819d2ef3cf), [#3286](https://github.com/heygen-com/hyperframes/pull/3286))
+- **The effects rack and its presets are on for everyone.** The twelve-PR audio stack had
+  landed with all three of its canaries at zero percent, which meant the rack, the group
+  rows and mute were in the build and reachable by nobody. The gates were removed rather
+  than raised, so each feature now renders on its own precondition. `audio-fx-rack`,
+  `audio-track-mute` and `audio-groups` no longer exist, and a test asserts that no audio
+  canary comes back. ([0e9a4f371](https://github.com/heygen-com/hyperframes/commit/0e9a4f371d4cff4e853640ea87caf76814af5278), [#3401](https://github.com/heygen-com/hyperframes/pull/3401), [43c4e6935](https://github.com/heygen-com/hyperframes/commit/43c4e6935ef34468b09b71f49a1977b83781e9a1), [#3274](https://github.com/heygen-com/hyperframes/pull/3274), [6a92d2140](https://github.com/heygen-com/hyperframes/commit/6a92d21401974441a6a9b311c78e40df522e209d), [#3292](https://github.com/heygen-com/hyperframes/pull/3292))
+- **Group volume and mute on the timeline row.** The group row carries a volume control and
+  a mute, and the timeline groups member tracks under a disclosure you can split open.
+  ([5fd84c395](https://github.com/heygen-com/hyperframes/commit/5fd84c395b52d8533c924ea31628e71e7e5bc3f6), [#3290](https://github.com/heygen-com/hyperframes/pull/3290), [0d26072e6](https://github.com/heygen-com/hyperframes/commit/0d26072e6cb3f5b901891c26396a0f6c1e0d8853), [#3291](https://github.com/heygen-com/hyperframes/pull/3291))
+- **A carve aims at voiceover groups.** Ducking music under narration now targets the
+  voiceover group rather than a single clip, including when there are several of them.
+  ([485c037dc](https://github.com/heygen-com/hyperframes/commit/485c037dcf2602b2b92fc9297a8dec8f965e79dc), [#3288](https://github.com/heygen-com/hyperframes/pull/3288))
+- **Pitch shift, as the fifth effect worklet.** A granular shifter joins the chain, and the
+  character presets that need it are unlocked. ([1b86b5612](https://github.com/heygen-com/hyperframes/commit/1b86b561273e85e09e4f1a2cc57233ceac1a2945), [#3276](https://github.com/heygen-com/hyperframes/pull/3276), [5e0cc7511](https://github.com/heygen-com/hyperframes/commit/5e0cc75115e3080aeb2ebab0f13ceac435fd52c4), [#3277](https://github.com/heygen-com/hyperframes/pull/3277))
+- **Lint checks audio group membership and timing.** A group with a member that does not
+  exist, or timing that cannot hold, is reported before you render. ([54091b501](https://github.com/heygen-com/hyperframes/commit/54091b5015aa0d45ca61275e75567701daf6e2b2), [#3447](https://github.com/heygen-com/hyperframes/pull/3447))
+- **`normalize-audio` matches one clip's loudness to another.** ([b3c43e248](https://github.com/heygen-com/hyperframes/commit/b3c43e24804e632ef2437e2ebd6789094ced2569), [#3306](https://github.com/heygen-com/hyperframes/pull/3306))
+- **The CLI preview has one lifecycle and one output shape.** Every launch mode can run a
+  managed background preview, every lifecycle operation emits a single JSON document, a
+  live preview keeps an ownership record, and the CLI signals only processes the operating
+  system agrees own the port. ([9da422fd7](https://github.com/heygen-com/hyperframes/commit/9da422fd7f75b0d5fe7f7f2defd889239bb82fe6), [#3310](https://github.com/heygen-com/hyperframes/pull/3310), [0e3c5f6be](https://github.com/heygen-com/hyperframes/commit/0e3c5f6bef4760d863309e997619bb1db99f5530), [#3309](https://github.com/heygen-com/hyperframes/pull/3309), [74149e249](https://github.com/heygen-com/hyperframes/commit/74149e249ac5a2e7a88d15f241d12ec58db01283), [#3308](https://github.com/heygen-com/hyperframes/pull/3308), [c1c70f44b](https://github.com/heygen-com/hyperframes/commit/c1c70f44bd9d43e22e80449d1b084d6e4d8ae034), [#3307](https://github.com/heygen-com/hyperframes/pull/3307))
+- **Lint measures itself.** Telemetry records which rules fire, what they cost, and which
+  ones fail to converge. Studio surfaces project lint in the editor. ([f822200fb](https://github.com/heygen-com/hyperframes/commit/f822200fb8f437b73985f43837c195f5e7312289), [#3367](https://github.com/heygen-com/hyperframes/pull/3367), [8b67bb6db](https://github.com/heygen-com/hyperframes/commit/8b67bb6db591e8d2866abd914fd791583f5cc701), [#3393](https://github.com/heygen-com/hyperframes/pull/3393))
+- **Renders fall back rather than fail when a filter is missing.** The engine checks for the
+  psnr filter first and drops to a screenshot comparison when it is absent. ([073b098e2](https://github.com/heygen-com/hyperframes/commit/073b098e21aa006571b60c446711c6dff57a2eac), [#3418](https://github.com/heygen-com/hyperframes/pull/3418))
+- **Studio asks for FFmpeg before an export, not after it.** ([5058236ed](https://github.com/heygen-com/hyperframes/commit/5058236eda13cc31536e39bd37cf7eb4f9a99025), [#3314](https://github.com/heygen-com/hyperframes/pull/3314))
+- **Smaller ones.** Promoted templates have edit contracts. Creator media edits are
+  render-safe. Text measurement is exposed on `window.__hyperframes`. Distributed plans
+  default to v2. Producer reports host and render telemetry in its perf summary.
+  ([dac8f9f91](https://github.com/heygen-com/hyperframes/commit/dac8f9f912a3b08190784195e48076774f859b42), [#3407](https://github.com/heygen-com/hyperframes/pull/3407), [afafca4b9](https://github.com/heygen-com/hyperframes/commit/afafca4b9670cad60afd66475207ef6a016a759b), [#3322](https://github.com/heygen-com/hyperframes/pull/3322), [0285a711e](https://github.com/heygen-com/hyperframes/commit/0285a711e926a592bd189d647474b50de474581c), [#3302](https://github.com/heygen-com/hyperframes/pull/3302), [17a2a00ed](https://github.com/heygen-com/hyperframes/commit/17a2a00ed5248bfc1b5f4efee1267610b0610727), [#3311](https://github.com/heygen-com/hyperframes/pull/3311), [7e3bcd9ef](https://github.com/heygen-com/hyperframes/commit/7e3bcd9ef145b9d0ebac7dd2b497b58b3e5d0ca2), [#1551](https://github.com/heygen-com/hyperframes/pull/1551))
+
+## Fixes
+
+- **Lint stopped crying wolf.** Seven rules that fired on correct compositions were dropped,
+  two more that the runtime already owns went with them, and two fix-loops were broken. The
+  `head_leaked_text` rule was removed. `duplicate_composition_id` no longer fires on a
+  sub-composition mounted more than once, and the documented canonical clip block stopped
+  erroring. Media variable defaults that cannot load are surfaced instead of being read as
+  paths. ([83ceaeb90](https://github.com/heygen-com/hyperframes/commit/83ceaeb902f07ffc4bed976ca3bdd501eb60aa55), [#3366](https://github.com/heygen-com/hyperframes/pull/3366), [9bb4b4ce6](https://github.com/heygen-com/hyperframes/commit/9bb4b4ce60b6d41f2aa5fc4c1bcfc3e4efa73b16), [#3400](https://github.com/heygen-com/hyperframes/pull/3400), [a89780679](https://github.com/heygen-com/hyperframes/commit/a8978067981805bdae72b8f16ca1c57153ec207a), [#3385](https://github.com/heygen-com/hyperframes/pull/3385), [09a5ef709](https://github.com/heygen-com/hyperframes/commit/09a5ef70925f8a67276df0166ff1e1a6eca5db6f), [#3404](https://github.com/heygen-com/hyperframes/pull/3404), [2be5a03b8](https://github.com/heygen-com/hyperframes/commit/2be5a03b800e0b17ee36e99167c99edc383065ce), [#3374](https://github.com/heygen-com/hyperframes/pull/3374), [41edbfb2c](https://github.com/heygen-com/hyperframes/commit/41edbfb2ce5a8beb1c9d9de2a3eb09195a369a4b), [#3406](https://github.com/heygen-com/hyperframes/pull/3406))
+- **Windows stopped opening console windows.** The browser and ffmpeg both run without a
+  visible console now, and a failed `chrome-headless-shell` launch points at
+  `HYPERFRAMES_BROWSER_PATH`. ([63eb35041](https://github.com/heygen-com/hyperframes/commit/63eb35041c0c1ad4f571d7d21f24ac3689ac5df7), [#3394](https://github.com/heygen-com/hyperframes/pull/3394), [315a7b758](https://github.com/heygen-com/hyperframes/commit/315a7b758cca73b67dc9cb0b2548bae6295cea73), [#3381](https://github.com/heygen-com/hyperframes/pull/3381), [7563b644a](https://github.com/heygen-com/hyperframes/commit/7563b644a2f5c4f8b6787b2b088695219aaf9419), [#2481](https://github.com/heygen-com/hyperframes/pull/2481))
+- **A render that succeeded stopped reporting itself as failed.** A throw caught after the
+  render finished was being reported as a failure. ([ea95b7d44](https://github.com/heygen-com/hyperframes/commit/ea95b7d44e6de95a514931026d6c01be7f9c01a0), [#3409](https://github.com/heygen-com/hyperframes/pull/3409))
+- **Captions keep their deduplicated statics.** Static dedup survives across caption runs,
+  and inlined media gets a render id that is unique within the document. ([65b2299db](https://github.com/heygen-com/hyperframes/commit/65b2299db284ece3232de26ed7afbe0360e097bd), [#3438](https://github.com/heygen-com/hyperframes/pull/3438), [634df5a5a](https://github.com/heygen-com/hyperframes/commit/634df5a5af7aad3e529035d62d324aca1512df35), [#3342](https://github.com/heygen-com/hyperframes/pull/3342))
+- **Fonts embed against the right occurrence.** Local font embedding is anchored to its
+  `url()` occurrence rather than to the first match. ([e1191edba](https://github.com/heygen-com/hyperframes/commit/e1191edba6d8ec44e3d79624cc92ef32fe99805d), [#3405](https://github.com/heygen-com/hyperframes/pull/3405))
+- **A symlink can no longer escape the project directory.** The HTML bundler resolves paths
+  inside the project and rejects the ones that leave it. ([c09b0b918](https://github.com/heygen-com/hyperframes/commit/c09b0b91830f26e34e2393d0c5ac8abc8b2da027), [#1214](https://github.com/heygen-com/hyperframes/pull/1214))
+- **Studio interaction fixes, in four passes.** The editor panel commits safely and answers
+  the keyboard. The sidebar confirms an asset delete, supports rename, and releases the
+  search trap. The player draws an honest waveform and its keyframe actions work. Captions
+  exit their mode cleanly, undo behaves, and autosave says what it is doing.
+  ([ba607bf88](https://github.com/heygen-com/hyperframes/commit/ba607bf88683f129a489ea6855e1ff562e4a4d93), [#1965](https://github.com/heygen-com/hyperframes/pull/1965), [44791c3f7](https://github.com/heygen-com/hyperframes/commit/44791c3f7da178a114950e498ffd6396f8dcf2f1), [#1966](https://github.com/heygen-com/hyperframes/pull/1966), [a01a5d7b3](https://github.com/heygen-com/hyperframes/commit/a01a5d7b3c6555b5e577fed45fbeb59c8f1cfcfe), [#1967](https://github.com/heygen-com/hyperframes/pull/1967), [254de3d1c](https://github.com/heygen-com/hyperframes/commit/254de3d1c4c1babe4484e0d3112a3c1e3e5c4cc1), [#1968](https://github.com/heygen-com/hyperframes/pull/1968))
+- **The preview stays in step with the project.** Preview state stays synchronized, the
+  preview signature is invalidated from the watcher that actually sees project writes, and
+  sub-composition timelines stay open during playback. A drag-paused timeline resumes
+  instead of only re-seeking. ([89069d24c](https://github.com/heygen-com/hyperframes/commit/89069d24c3f31a8f4c4a15c5e587e57bdb61a0da), [#3450](https://github.com/heygen-com/hyperframes/pull/3450), [5842dd8df](https://github.com/heygen-com/hyperframes/commit/5842dd8df4c7fca3ed895e4bc047299c9274ed14), [#3364](https://github.com/heygen-com/hyperframes/pull/3364), [a340ed382](https://github.com/heygen-com/hyperframes/commit/a340ed382aa5d335a3b7e40b6cfb4dfae1870569), [#3382](https://github.com/heygen-com/hyperframes/pull/3382), [64b94ebf3](https://github.com/heygen-com/hyperframes/commit/64b94ebf3a5ac4611292e10f6b676a4616e9dfe2), [#1876](https://github.com/heygen-com/hyperframes/pull/1876))
+- **Studio layout and reporting.** The grouping dialog stops opening off the bottom of the
+  window. Timeline portals sit on the same tier as every other portal. The group row caret
+  gets the panel's glyph and size back. A failed render request names its cause. Delete
+  removes the whole canvas selection. ([dd0626a55](https://github.com/heygen-com/hyperframes/commit/dd0626a55a0d0f24cae1b00bd2c95c0ebfa7a573), [#3421](https://github.com/heygen-com/hyperframes/pull/3421), [8612cfd40](https://github.com/heygen-com/hyperframes/commit/8612cfd40fcfd2d4dae6bff6b9b9ac940c7e7bbd), [#3414](https://github.com/heygen-com/hyperframes/pull/3414), [c59402389](https://github.com/heygen-com/hyperframes/commit/c59402389555ef2fca455e504fa40c5773354cf3), [#3415](https://github.com/heygen-com/hyperframes/pull/3415), [7a024cf68](https://github.com/heygen-com/hyperframes/commit/7a024cf68ee64b13ad6d7694b19efb252c0ce699), [#3424](https://github.com/heygen-com/hyperframes/pull/3424), [ec0b23f3c](https://github.com/heygen-com/hyperframes/commit/ec0b23f3cec98ea9bb4b61d54ad18bb48ee1c721), [#3339](https://github.com/heygen-com/hyperframes/pull/3339))
+- **Audio controls tell the truth.** The property-panel audio controls are reconnected, the
+  volume fader reports the gain it writes, and authored gain above unity stays off
+  `el.volume` in the sandbox bridge. ([0c274f7e5](https://github.com/heygen-com/hyperframes/commit/0c274f7e576a5417936e35581ab2b74eaa59ae88), [#3453](https://github.com/heygen-com/hyperframes/pull/3453), [228eabd43](https://github.com/heygen-com/hyperframes/commit/228eabd43fa6164dc1296e4615bae33dcca98696), [#3305](https://github.com/heygen-com/hyperframes/pull/3305), [9140c0eaa](https://github.com/heygen-com/hyperframes/commit/9140c0eaa1b332de7ca061af040611f5b1c64419), [#3349](https://github.com/heygen-com/hyperframes/pull/3349))
+- **Producer diagnostics name the file.** An ffprobe failure carries the src URL, a missing
+  manifest lists every path that was tried, HDR pre-extract decodes a percent-encoded src,
+  and visibility discovery seeks once per step. ([00f08e8de](https://github.com/heygen-com/hyperframes/commit/00f08e8de461aa03f9c9c13aa6b1e6cb428ea5e7), [#3033](https://github.com/heygen-com/hyperframes/pull/3033), [718bf5ef3](https://github.com/heygen-com/hyperframes/commit/718bf5ef32d4e521f686ea6ebe64545a6a2647ed), [#3387](https://github.com/heygen-com/hyperframes/pull/3387), [13c867267](https://github.com/heygen-com/hyperframes/commit/13c867267e50030e786bf209164d4817ff12869a), [#2759](https://github.com/heygen-com/hyperframes/pull/2759), [d09145faa](https://github.com/heygen-com/hyperframes/commit/d09145faabfd3078c29969fbcf293067d50275ac), [#3233](https://github.com/heygen-com/hyperframes/pull/3233))
+- **Catalog previews answer their panel.** Component previews respond to the variables
+  panel, the Matrix Decode preview renders, and chosen variables take effect in both the
+  CLI and the preview. ([406bf316a](https://github.com/heygen-com/hyperframes/commit/406bf316a38d8a6ff24c00696d9e537ee85997d4), [#3323](https://github.com/heygen-com/hyperframes/pull/3323), [d4765512d](https://github.com/heygen-com/hyperframes/commit/d4765512df8b9ff9636c7a2e5e4a41de08039a78), [#3396](https://github.com/heygen-com/hyperframes/pull/3396), [ea7c48f37](https://github.com/heygen-com/hyperframes/commit/ea7c48f37249aff26211913562c74e29b85e8ddb), [#3316](https://github.com/heygen-com/hyperframes/pull/3316))
+- **Publish archives are byte-identical.** Zipping the publish archive produces the same
+  bytes every time. ([d464f60b9](https://github.com/heygen-com/hyperframes/commit/d464f60b9600485cd97c537338e25b7f77f9ca90), [#3358](https://github.com/heygen-com/hyperframes/pull/3358))
+- **Sub-composition scoping.** Native window methods are bound in the scoped
+  sub-composition proxy. ([a1c1f519c](https://github.com/heygen-com/hyperframes/commit/a1c1f519cb1d83baf3162e78aa5271c72abcd937), [#3378](https://github.com/heygen-com/hyperframes/pull/3378))
+
+## Under the hood
+
+- **Two catalog components were removed, and that is the v0.8.0 bump.** The AI generation
+  canvas and the AI prompt flow are gone from the catalog. Checkout Flow was removed
+  alongside the Matrix Decode fix. ([ed18f1ea9](https://github.com/heygen-com/hyperframes/commit/ed18f1ea9aae00c26fdb712b231ac123e9170086), [#3317](https://github.com/heygen-com/hyperframes/pull/3317), [d4765512d](https://github.com/heygen-com/hyperframes/commit/d4765512df8b9ff9636c7a2e5e4a41de08039a78), [#3396](https://github.com/heygen-com/hyperframes/pull/3396))
+- **Solo and the group meter were removed.** Both shipped earlier in the same week. The
+  meter's level hook and the group bus strip are gone, and the studio solo bridge is
+  retired. This is the week's one breaking change. ([05affaae2](https://github.com/heygen-com/hyperframes/commit/05affaae2175a6dde0e2eafa5e702b67863d721c), [#3454](https://github.com/heygen-com/hyperframes/pull/3454))
+- **Skills.** An anchored-connector rule and a source-traceable visuals doctrine landed. A
+  skill update now asks for confirmation first. Blueprint ids resolve from a qualified
+  field, captured SVGs are staged, proxy-driver tweens are counted in the animation map,
+  the caption brand font declares its style axis, and Python scripts pin UTF-8. Mirror
+  fan-out skips agents that read the universal store.
+  ([a6a9e2f89](https://github.com/heygen-com/hyperframes/commit/a6a9e2f89e509424a64a1dcd976aabfd54b60d02), [#3354](https://github.com/heygen-com/hyperframes/pull/3354), [efc2e1964](https://github.com/heygen-com/hyperframes/commit/efc2e1964a1c837f748a1c319896998a0e9da211), [#3295](https://github.com/heygen-com/hyperframes/pull/3295), [d1482b012](https://github.com/heygen-com/hyperframes/commit/d1482b012926d7118fa39e53ef8974328e84cc9e), [#3337](https://github.com/heygen-com/hyperframes/pull/3337), [c66c9a4c7](https://github.com/heygen-com/hyperframes/commit/c66c9a4c76ff0681cadc8007a8e02744bbcdab10), [#3336](https://github.com/heygen-com/hyperframes/pull/3336), [0d874adc6](https://github.com/heygen-com/hyperframes/commit/0d874adc685a94a519311cf9ed9e4107bb0347c9), [#3301](https://github.com/heygen-com/hyperframes/pull/3301), [a41da8651](https://github.com/heygen-com/hyperframes/commit/a41da8651768942adf588a959d9dc062c90c6a13), [#3300](https://github.com/heygen-com/hyperframes/pull/3300), [f8a1e2d31](https://github.com/heygen-com/hyperframes/commit/f8a1e2d315e51856491af003958914152371c29d), [#3298](https://github.com/heygen-com/hyperframes/pull/3298), [95e1ac9f0](https://github.com/heygen-com/hyperframes/commit/95e1ac9f041ded5cd5c2a034de1dbd16c499bd04), [#3325](https://github.com/heygen-com/hyperframes/pull/3325))
+- **Docs.** Grouped audio and its guardrails are documented. The player loads from latest
+  rather than a pinned minor, and the skills install commands dropped `--full-depth`.
+  ([2685c8f22](https://github.com/heygen-com/hyperframes/commit/2685c8f2231e39da31871f25b2e4609551a78c76), [#3455](https://github.com/heygen-com/hyperframes/pull/3455), [d7688f994](https://github.com/heygen-com/hyperframes/commit/d7688f9943814b44ab20b7d4b079ab50f7ca36df), [#3320](https://github.com/heygen-com/hyperframes/pull/3320), [9ec75a485](https://github.com/heygen-com/hyperframes/commit/9ec75a485f05e0e6a6190b0931aefbdc48bd8535), [#3399](https://github.com/heygen-com/hyperframes/pull/3399))
+- **CI and pinning.** The ffmpeg apt fetch is bounded so a stalled mirror costs a retry
+  instead of the job, and pinned Chromium moved to 152.0.7977.30. ([7e96e60fe](https://github.com/heygen-com/hyperframes/commit/7e96e60fe228548fe4813aa5e9917bbde9a50feb), [#3356](https://github.com/heygen-com/hyperframes/pull/3356), [556fe936f](https://github.com/heygen-com/hyperframes/commit/556fe936f89d5d4cc520f2a4e7b60e31bb7ae01c), [#3231](https://github.com/heygen-com/hyperframes/pull/3231))
+- **A blank default composition entry is rejected.** ([a9ea07edd](https://github.com/heygen-com/hyperframes/commit/a9ea07edde6648463e3970a572dc42f4007a3d7f), [#3392](https://github.com/heygen-com/hyperframes/pull/3392))
+
+For exact versioned release notes, see the [Changelog](/changelog).
+</Update>
+
+<Update
   label="Week of August 10, 2026"
   description="Weekly digest - August 10, 2026 - August 17, 2026"
   tags={["Weekly update", "Highlights"]}

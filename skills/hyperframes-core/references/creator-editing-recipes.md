@@ -1,6 +1,10 @@
 # Creator Editing Recipes
 
-Use these copyable contracts after `tracks-and-clips.md`. Global math: **consumed source = timeline duration × rate**; **natural timeline duration = remaining source / rate**. Audio is always a separate audio track.
+Use these copyable contracts after `tracks-and-clips.md`. Global math: **consumed source = timeline duration × rate**; **natural timeline duration = remaining source / rate**.
+
+These recipes keep sound on a separate `<audio>` element with the `<video>` muted, which is the pattern to reach for when picture and sound are cut independently. An unmuted `<video>` that declares `data-has-audio="true"` is also mixed, so a separate track is a choice, not a requirement.
+
+**Every `<video>` and `<audio>` below carries an `id`, and that is not cosmetic**: `lint` errors with `media_missing_id` on timed media without one, and an id-less `<audio>` is never picked up by the mixer, so the render comes out silent. Keep the ids when you copy a recipe.
 
 ## Hard cut
 
@@ -26,6 +30,7 @@ Use these copyable contracts after `tracks-and-clips.md`. Global math: **consume
   playsinline
 ></video>
 <audio
+  id="a-audio"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -33,6 +38,7 @@ Use these copyable contracts after `tracks-and-clips.md`. Global math: **consume
   data-track-index="10"
 ></audio>
 <audio
+  id="b-audio"
   src="take.mp4"
   data-start="2"
   data-duration="3"
@@ -41,12 +47,13 @@ Use these copyable contracts after `tracks-and-clips.md`. Global math: **consume
 ></audio>
 ```
 
-Timeline math: B starts at A start + duration. Source math: each range starts at `data-media-start`; consumed source = timeline duration × rate. Audio follows: duplicate matching `<audio>` ranges/timing. Owner: `/hyperframes-core`. Limit: adjacent windows only; same-track overlap is invalid.
+Timeline math: B starts at A start + duration. Source math: each range starts at `data-media-start`; consumed source = timeline duration × rate. Audio follows: duplicate matching `<audio>` ranges/timing. Owner: `/hyperframes-core`. Limit: adjacent windows only; author the two windows edge to edge.
 
 ## Trim in/out
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="1"
   data-duration="3"
@@ -56,6 +63,7 @@ Timeline math: B starts at A start + duration. Source math: each range starts at
   playsinline
 ></video>
 <audio
+  id="shot-1-audio"
   src="take.mp4"
   data-start="1"
   data-duration="3"
@@ -70,6 +78,7 @@ Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; neve
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -79,6 +88,7 @@ Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; neve
   playsinline
 ></video>
 <video
+  id="shot-2"
   src="take.mp4"
   data-start="2"
   data-duration="2"
@@ -88,6 +98,7 @@ Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; neve
   playsinline
 ></video>
 <audio
+  id="shot-1-audio"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -95,6 +106,7 @@ Timeline math: visible window is `[1,4]`. Source math: in=6, out=6+3 at 1x; neve
   data-track-index="10"
 ></audio>
 <audio
+  id="shot-2-audio"
   src="take.mp4"
   data-start="2"
   data-duration="2"
@@ -109,6 +121,7 @@ Timeline math: splice at t=2. Source math: independent source offsets select kep
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="0"
   data-duration="1"
@@ -118,6 +131,7 @@ Timeline math: splice at t=2. Source math: independent source offsets select kep
   playsinline
 ></video>
 <video
+  id="shot-2"
   src="take.mp4"
   data-start="4"
   data-duration="1"
@@ -127,6 +141,7 @@ Timeline math: splice at t=2. Source math: independent source offsets select kep
   playsinline
 ></video>
 <audio
+  id="shot-1-audio"
   src="take.mp4"
   data-start="0"
   data-duration="1"
@@ -134,6 +149,7 @@ Timeline math: splice at t=2. Source math: independent source offsets select kep
   data-track-index="10"
 ></audio>
 <audio
+  id="shot-2-audio"
   src="take.mp4"
   data-start="4"
   data-duration="1"
@@ -148,6 +164,7 @@ Timeline math: copies may occupy different starts. Source math: identical offset
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -157,6 +174,7 @@ Timeline math: copies may occupy different starts. Source math: identical offset
   playsinline
 ></video>
 <video
+  id="shot-2"
   src="take.mp4"
   data-start="2"
   data-duration="2"
@@ -166,6 +184,7 @@ Timeline math: copies may occupy different starts. Source math: identical offset
   playsinline
 ></video>
 <audio
+  id="shot-1-audio"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -173,6 +192,7 @@ Timeline math: copies may occupy different starts. Source math: identical offset
   data-track-index="10"
 ></audio>
 <audio
+  id="shot-2-audio"
   src="take.mp4"
   data-start="2"
   data-duration="2"
@@ -181,7 +201,7 @@ Timeline math: copies may occupy different starts. Source math: identical offset
 ></audio>
 ```
 
-Timeline math: `data-start` defines authored order. Source math: source offsets need not be chronological. Audio follows: reorder identical matching audio windows. Owner: `/hyperframes-core`. Limit: same-track overlap is invalid.
+Timeline math: `data-start` defines authored order. Source math: source offsets need not be chronological. Audio follows: reorder identical matching audio windows. Owner: `/hyperframes-core`. Limit: reordering changes placement only, not source ranges.
 
 ## Freeze / hold
 
@@ -195,6 +215,7 @@ Timeline math: the still owns its hold duration. Source math: final-source frame
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="0"
   data-duration="2"
@@ -276,6 +297,7 @@ Timeline math: overlap placed clips for the 0.5s handoff. Source math: each clip
   ></video>
 </div>
 <audio
+  id="a-audio"
   src="a.mp4"
   data-start="0"
   data-duration="3"
@@ -283,6 +305,7 @@ Timeline math: overlap placed clips for the 0.5s handoff. Source math: each clip
   data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1},{"t":2.5,"v":1},{"t":3,"v":0}]}]}'
 ></audio>
 <audio
+  id="b-audio"
   src="b.mp4"
   data-start="2.5"
   data-duration="3"
@@ -299,12 +322,13 @@ Timeline math: overlap placed clips for the 0.5s handoff. Source math: each clip
 </script>
 ```
 
-Timeline math: distinct tracks overlap by 0.5s with opposing opacity envelopes. Source math: each source range remains independent. Audio follows: opposing volume envelopes on distinct audio tracks. Owner: `/hyperframes-core` + `/hyperframes-keyframes` + `/hyperframes-audio`. Limit: same-track overlap is invalid.
+Timeline math: distinct tracks overlap by 0.5s with opposing opacity envelopes. Source math: each source range remains independent. Audio follows: opposing volume envelopes on distinct audio tracks. Owner: `/hyperframes-core` + `/hyperframes-keyframes` + `/hyperframes-audio`. Limit: the crossfade is the opacity/volume envelopes, not a source-level dissolve.
 
 ## Volume fades / ducking
 
 ```html
 <audio
+  id="music-bed"
   src="music.wav"
   data-start="0"
   data-duration="5"
@@ -319,6 +343,7 @@ Timeline math: lane `t` is clip-local authored time: fade-in 0–1, duck down 2�
 
 ```html
 <video
+  id="shot-1"
   src="take.mp4"
   data-start="3"
   data-duration="2"
@@ -329,6 +354,7 @@ Timeline math: lane `t` is clip-local authored time: fade-in 0–1, duck down 2�
   playsinline
 ></video>
 <audio
+  id="shot-1-audio"
   src="take.mp4"
   data-start="3"
   data-duration="2"

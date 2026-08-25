@@ -34,6 +34,38 @@ export interface FocusedEaseSegment {
 
 type FocusedEaseSegmentTarget = Omit<FocusedEaseSegment, "projectId" | "sessionEpoch" | "nonce">;
 
+/**
+ * A request to reveal one automated parameter in the audio FX rack.
+ *
+ * `elementKey` is the timeline element whose rack it belongs to — a group's own
+ * id for a group lane, the clip's key otherwise — so the panel can refuse a
+ * request aimed at something it is not showing.
+ */
+export interface RevealedAudioFxTarget {
+  elementKey: string;
+  /** The lane's own `fx.<node>.<param>` / `volume` target. */
+  automationTarget: string;
+  projectId: string | null;
+  sessionEpoch: number;
+  nonce: number;
+}
+
+export type RevealedAudioFxTargetRequest = Omit<
+  RevealedAudioFxTarget,
+  "projectId" | "sessionEpoch" | "nonce"
+>;
+
+/** Whether a reveal request still belongs to what is on screen. */
+export function isRevealedAudioFxRequestCurrent(
+  request: RevealedAudioFxTarget,
+  state: TimelineSessionIdentity,
+): boolean {
+  return (
+    request.projectId === state.timelineProjectId &&
+    request.sessionEpoch === state.timelineSessionEpoch
+  );
+}
+
 interface TimelineSessionIdentity {
   timelineProjectId: string | null;
   timelineSessionEpoch: number;
@@ -63,8 +95,16 @@ export interface KeyframeSlice {
   /** Union-expand clips (keyframed clips are expanded by default on load). */
   expandClips: (ids: readonly string[]) => void;
 
-  /** Groups whose member rows the caret has shown (structural, not lanes). */
-  expandedGroupIds: Set<string>;
+  /**
+   * Groups whose member rows the caret has HIDDEN (structural, not lanes).
+   *
+   * Inverted deliberately. As an expanded-set, "not in the set" could not tell
+   * never-touched from deliberately-collapsed, so every group defaulted to
+   * collapsed — and since nothing seeds the set on create, grouping three
+   * tracks made all three vanish behind a header the user had not yet learned
+   * to open. Groups are expanded until someone closes one.
+   */
+  collapsedGroupIds: Set<string>;
   toggleGroupExpanded: (id: string) => void;
 
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
@@ -79,6 +119,19 @@ export interface KeyframeSlice {
   focusedEaseRequestNonce: number;
   setFocusedEaseSegment: (target: FocusedEaseSegmentTarget) => void;
   clearFocusedEaseSegment: (nonce: number) => void;
+
+  /**
+   * "Show me this automated parameter in the rack" — raised by clicking an
+   * automation lane's label in the timeline, consumed by the property panel.
+   *
+   * Session-stamped and nonce-guarded exactly like `focusedEaseSegment`: a
+   * request outlives the click, so one made against a different project or
+   * before a reload must not reopen a rack on whatever is mounted later.
+   */
+  revealedAudioFxTarget: RevealedAudioFxTarget | null;
+  revealedAudioFxNonce: number;
+  setRevealedAudioFxTarget: (target: RevealedAudioFxTargetRequest) => void;
+  clearRevealedAudioFxTarget: (nonce: number) => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
@@ -127,13 +180,13 @@ export function createKeyframeSlice(
         return { expandedClipIds: next };
       }),
 
-    expandedGroupIds: new Set(),
+    collapsedGroupIds: new Set(),
     toggleGroupExpanded: (id) =>
       set((state) => {
-        const next = new Set(state.expandedGroupIds);
+        const next = new Set(state.collapsedGroupIds);
         if (next.has(id)) next.delete(id);
         else next.add(id);
-        return { expandedGroupIds: next };
+        return { collapsedGroupIds: next };
       }),
 
     expandedLaneOwnerIds: new Set(),
@@ -164,6 +217,27 @@ export function createKeyframeSlice(
     clearFocusedEaseSegment: (nonce) =>
       set((state) =>
         state.focusedEaseSegment?.nonce === nonce ? { focusedEaseSegment: null } : state,
+      ),
+
+    revealedAudioFxTarget: null,
+    revealedAudioFxNonce: 0,
+    setRevealedAudioFxTarget: (target) =>
+      set((state) => {
+        const nonce = state.revealedAudioFxNonce + 1;
+        const { timelineProjectId, timelineSessionEpoch } = getTimelineSessionIdentity();
+        return {
+          revealedAudioFxNonce: nonce,
+          revealedAudioFxTarget: {
+            ...target,
+            projectId: timelineProjectId,
+            sessionEpoch: timelineSessionEpoch,
+            nonce,
+          },
+        };
+      }),
+    clearRevealedAudioFxTarget: (nonce) =>
+      set((state) =>
+        state.revealedAudioFxTarget?.nonce === nonce ? { revealedAudioFxTarget: null } : state,
       ),
 
     keyframeCache: new Map(),

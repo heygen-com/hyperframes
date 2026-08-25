@@ -9,6 +9,7 @@ import {
   projectConfigPath,
   readProjectConfig,
   resolveAutoProxy,
+  recordProjectRegistryItems,
   seedProjectAuthoringSkill,
   writeProjectConfig,
   PROJECT_CONFIG_FILENAME,
@@ -362,6 +363,103 @@ describe("projectConfig", () => {
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
+    });
+  });
+  describe("recordProjectRegistryItems", () => {
+    const BLOCK = {
+      name: "data-chart",
+      type: "hyperframes:block",
+      target: "compositions/data-chart.html",
+    };
+
+    it("appends installed items to an existing config", () => {
+      const dir = tmp();
+      try {
+        writeProjectConfig(dir);
+        recordProjectRegistryItems(dir, [BLOCK]);
+        expect(loadProjectConfig(dir).registryItems).toEqual([BLOCK]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("dedupes by name, so re-adding an item does not grow the manifest", () => {
+      const dir = tmp();
+      try {
+        writeProjectConfig(dir);
+        recordProjectRegistryItems(dir, [BLOCK]);
+        recordProjectRegistryItems(dir, [BLOCK, { ...BLOCK, name: "bar-chart-race" }]);
+        expect(loadProjectConfig(dir).registryItems?.map((i) => i.name)).toEqual([
+          "data-chart",
+          "bar-chart-race",
+        ]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // The old guard compared object identity, and `add` always builds fresh
+    // records, so a redundant re-add always rewrote the file. Pinned through
+    // the file's own byte-level formatting: a rewrite would re-serialize it.
+    it("does not rewrite the file when every item is already recorded", () => {
+      const dir = tmp();
+      try {
+        const text = `{\n\t"registry": "https://example.com/r",\n\t"registryItems": [\n\t\t{ "name": "data-chart", "type": "hyperframes:block", "target": "compositions/data-chart.html" }\n\t]\n}\n`;
+        writeFileSync(projectConfigPath(dir), text, "utf-8");
+        recordProjectRegistryItems(dir, [{ ...BLOCK }]);
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe(text);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // The config is normally committed, so an install must not rewrite keys it
+    // does not own or reflow the file.
+    it("preserves unknown keys and the file's own indentation", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ registry: "https://example.com/r", customKey: 42 }, null, 4),
+          "utf-8",
+        );
+        recordProjectRegistryItems(dir, [BLOCK]);
+        const text = readFileSync(projectConfigPath(dir), "utf-8");
+        expect(text).toContain('"customKey": 42');
+        expect(text).toContain('\n    "registry"');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not create a config for a project that has none", () => {
+      const dir = tmp();
+      try {
+        recordProjectRegistryItems(dir, [BLOCK]);
+        expect(readProjectConfig(dir)).toBeUndefined();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("leaves a corrupt config untouched", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(projectConfigPath(dir), "{ not valid json", "utf-8");
+        recordProjectRegistryItems(dir, [BLOCK]);
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe("{ not valid json");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // normalizeConfig rebuilds from a whitelist; an omission there would read
+    // as "this project never installed a catalog item".
+    it("survives a normalizeConfig round-trip", () => {
+      expect(normalizeConfig({ registryItems: [BLOCK] }).registryItems).toEqual([BLOCK]);
+      expect(
+        normalizeConfig({ registryItems: [{ name: "x" }] as never }).registryItems,
+      ).toBeUndefined();
     });
   });
 });

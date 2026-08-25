@@ -29,6 +29,7 @@ import {
 } from "../../utils/renderArgs.js";
 import { normalizeSkillSlug } from "../../telemetry/skill.js";
 import { loadProjectConfig } from "../../utils/projectConfig.js";
+import { type CatalogUsage, summarizeCatalogUsage } from "../../utils/catalogUsage.js";
 
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
 const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
@@ -99,6 +100,8 @@ export interface RenderPlan {
   quality: RenderQuality;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
+  /** Catalog items installed in this project, and those the entry reaches. */
+  catalogUsage: CatalogUsage;
   format: RenderFormat;
   gifLoop?: number;
   gifFpsCapped: boolean;
@@ -203,6 +206,10 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     typeof args.skill === "string" && args.skill.trim() !== "" && !flagSkill
       ? args.skill
       : undefined;
+
+  // Resolved here, once, from the same entry the render will use: batch rows
+  // vary only their variables, so every row shares this composition tree.
+  const catalogUsage = summarizeCatalogUsage(project.dir, renderTarget);
 
   const formatRaw = args.format ?? "mp4";
   const format = parseRenderFormat(formatRaw);
@@ -412,6 +419,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     quality,
     authoringSkill,
     invalidAuthoringSkill,
+    catalogUsage,
     format,
     gifLoop,
     gifFpsCapped,
@@ -461,7 +469,6 @@ export function renderOutputDirectory(plan: RenderPlan): string {
 
 /** Resolve browser GPU mode from Docker, CLI, env, then the auto default. */
 // Re-exported by render.ts to preserve its tested public seam.
-// fallow-ignore-next-line unused-export
 export function resolveBrowserGpuForCli(
   useDocker: boolean,
   browserGpuArg: boolean | undefined,

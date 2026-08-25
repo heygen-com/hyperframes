@@ -48,7 +48,7 @@
     <div id="bg-scrim"></div>
     <div id="kicker-chip" class="chrome">HYPERFRAMES WEEKLY <span style="color:rgba(245,246,244,.66)">· <RANGE></span></div>
     <div id="progress" class="chrome"><span class="dot" id="dot1"></span><!-- one per theme --></div>
-    <div id="cap-line" class="chrome" data-layout-allow-overlap></div>
+    <div id="cap-line" class="chrome" data-layout-allow-caption-zone></div>
 
     <!-- Title (film open — authors its OWN entry; exit is stamped) -->
     <div id="s-title" class="slide clip" data-start="0" data-duration="<CUT1>" data-track-index="1">
@@ -57,8 +57,9 @@
 
     <!-- One slide per theme. data-start = EXACTLY the ledger cut time.
          Shell composed at local t=0; internal beats ≥0.4s after the cut,
-         done ≥0.45s before the next. data-layout-allow-overlap on mock slides. -->
-    <div id="s-t1" class="slide clip" data-start="<CUT1>" data-duration="<DUR1>" data-track-index="1" data-layout-allow-overlap>
+         done ≥0.45s before the next. Put data-layout-allow-overlap only on
+         the specific text blocks that deliberately layer. -->
+    <div id="s-t1" class="slide clip" data-start="<CUT1>" data-duration="<DUR1>" data-track-index="1">
       <div class="sec-chip">01 · <THEME></div>
       <div class="sec-head"><HEADLINE></div>
       <!-- the mock, from references/visualization-registry.md, y ∈ [288, 944] -->

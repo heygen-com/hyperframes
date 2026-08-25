@@ -1,11 +1,56 @@
 import { TRACK_H } from "./timelineLayout";
 import { TrackClipCount } from "./TrackClipCount";
 
-// Layer row (Figma order: disclosure ∿, diamond, name) — the disclosure lives
+// Layer row (diamond, name, then the ∿ disclosure on the right edge) — the
+// disclosure lives
 // here, not on the clip bar, and re-expands a collapsed layer. `∿` (not a
 // caret) because a group's own row keeps the caret for its structural
 // disclosure (member rows) — this button only ever means "show this row's
 // lanes", so it needs its own distinct glyph.
+/**
+ * The `∿` that shows or hides a row's lanes.
+ *
+ * Shared, because two layouts need the identical control: the keyframe layer
+ * row below, and the plain track header — an audio track with automation keeps
+ * its own look (music glyph, indent) and gains this, rather than being
+ * re-rendered as a keyframe layer to get at the button.
+ */
+export function LaneToggleButton({
+  name,
+  isExpanded,
+  lanesId,
+  onToggle,
+}: {
+  name: string;
+  isExpanded: boolean;
+  lanesId: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      // ponytail: No focus id here; keyboard routing belongs to the enclosing logical row.
+      tabIndex={-1}
+      aria-expanded={isExpanded}
+      aria-controls={lanesId}
+      aria-label={`${isExpanded ? "Hide" : "Show"} ${name} lanes`}
+      title={`${isExpanded ? "Hide" : "Show"} lanes`}
+      // h-6 w-6 = the 24x24 WCAG 2.2 minimum target. The glyph stays 11px;
+      // only the hit box grows.
+      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+        isExpanded ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
+      }`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      <span aria-hidden="true">∿</span>
+    </button>
+  );
+}
+
 export function LayerDisclosureRow({
   name,
   clipCount,
@@ -45,37 +90,26 @@ export function LayerDisclosureRow({
         background: gutterBackground,
       }}
     >
-      <button
-        type="button"
-        // ponytail: No focus id here; keyboard routing belongs to the enclosing logical row.
-        tabIndex={-1}
-        aria-expanded={isExpanded}
-        aria-controls={lanesId}
-        aria-label={`${isExpanded ? "Hide" : "Show"} ${name} lanes`}
-        title={`${isExpanded ? "Hide" : "Show"} lanes`}
-        // h-6 w-6 = the 24x24 WCAG 2.2 minimum target. The glyph stays 11px;
-        // only the hit box grows.
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
-          isExpanded ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
-        }`}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleClipExpanded();
-        }}
-      >
-        <span aria-hidden="true">∿</span>
-      </button>
       {/* Decorative: the disclosure button above already names the row's keyframe
           state, and aria-label on a plain span is not exposed reliably anyway. */}
       <span aria-hidden="true" className="shrink-0 text-[13px] leading-none text-white/40">
         ◇
       </span>
-      <span className="min-w-0 flex-1 truncate font-medium" title={name}>
-        {name}
-      </span>
+      {/* Wraps rather than truncating: a truncated name needs a hover to be
+          read, which a scanned column cannot rely on. */}
+      <span className="min-w-0 flex-1 break-words font-medium leading-tight">{name}</span>
       <TrackClipCount clipCount={clipCount} />
       {children}
+      {/* Anchored right, on every header that has one: the lane toggle is the
+          row's last word about itself, and a left-hand ∿ put it where the eye
+          looks for identity instead. `ml-auto` rather than a spacer so it holds
+          the edge whatever else the row grows. */}
+      <LaneToggleButton
+        name={name}
+        isExpanded={isExpanded}
+        lanesId={lanesId}
+        onToggle={onToggleClipExpanded}
+      />
     </div>
   );
 }

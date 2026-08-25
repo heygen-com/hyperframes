@@ -3,16 +3,16 @@
  *
  * Extracted from `useTimelinePlayer`, which had grown past the studio's 600-line
  * file cap and carried a `fallow-ignore-next-line complexity` on this function
- * admitting the same thing. Nothing here is new logic — it is the same four
- * branches (accept-gate, group levels, state, timeline) against the same refs,
- * with the suppression retired rather than moved.
+ * admitting the same thing. Nothing here is new logic — it is the same three
+ * branches (accept-gate, state, timeline) against the same refs, with the
+ * suppression retired rather than moved. The group-levels branch went with the
+ * level meter it fed (see the group volume/meter removal).
  */
 
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
-import { groupLevels, parseGroupLevelsMessage } from "../store/groupLevels";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
@@ -58,12 +58,6 @@ function acceptedPreviewMessage(
   const data = e.data as PreviewMessage | null;
   if (data?.source !== "hf-preview") return null;
   return acceptStudioRuntimeMessage(data) ? data : null;
-}
-
-/** One meter reading per group with an active member. */
-function handleGroupLevelsMessage(data: PreviewMessage): void {
-  const levels = parseGroupLevelsMessage(data);
-  if (levels) groupLevels.notify(levels);
 }
 
 /**
@@ -118,7 +112,6 @@ export function createPreviewMessageHandler(
     const iframe = deps.iframeRef.current;
     const data = acceptedPreviewMessage(e, iframe);
     if (!data) return;
-    if (data.type === "group-levels") return handleGroupLevelsMessage(data);
     if (data.type === "state") return handleStateMessage(deps, iframe);
     if (data.type === "timeline" && Array.isArray(data.clips)) {
       handleTimelineMessage(deps, iframe, data as unknown as ClipManifestMessage);

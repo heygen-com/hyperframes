@@ -27,7 +27,7 @@ HyperFrames controls GSAP through its `gsap` runtime adapter. Create a paused ti
 - The registry key must match the composition root's `data-composition-id`.
 - Bracket and dot syntax both register: `window.__timelines["main"] = tl` and `window.__timelines.main = tl` are equivalent (the linter recognizes both). Bracket form is required when the id isn't a valid identifier (e.g. contains `-`).
 - Do not call `tl.play()` for render-critical motion.
-- Do not build timelines inside async code, timers, or event handlers.
+- Building inside an async callback such as `document.fonts.ready` is supported and common. What breaks is **registering the key before the build finishes**: an empty timeline registered early is treated as ready and nested empty, so it renders blank (`lint`: `gsap_timeline_registered_before_async_build`, error). Assign `window.__timelines[id] = tl` at the end of the callback. Do not drive render-critical motion from timers or event handlers.
 - Keep loops finite. HyperFrames renders finite video durations.
 - **Render duration comes from `data-duration` on the composition root, not from GSAP timeline length.** Do not pad the timeline with empty tweens like `tl.set({}, {}, 283)` to "extend" it. (Some external docs show this trick; in HyperFrames it conflicts with the seek-driven duration model — set `data-duration` instead.)
 
@@ -70,10 +70,10 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 
 **Forbidden** (breaks the renderer or the clip lifecycle):
 
-- `display`, raw `visibility` — never duration-tween these directly. Use `autoAlpha` (opacity plus endpoint visibility) or a zero-duration timeline set at an explicit boundary, and only on a non-clip element or wrapper inside a clip. Never target `.clip` itself.
+- `display`, raw `visibility` **on a clip element**: never duration-tween these. HyperFrames owns a clip's visibility and `lint` rejects it. Use `autoAlpha` (opacity plus endpoint visibility) or a zero-duration timeline set at an explicit boundary. Animating a clip element's other visual properties is fine and the shipped catalog does it throughout; what is forbidden is taking over its visibility.
 - Anything driven by `Math.random()`, `Date.now()`, `performance.now()`, or event handlers — animation state must be deterministic from time alone.
 
-> **Note**: `docs/guides/gsap-animation.mdx` lists `width`/`height`/`visibility` in its "Supported Properties" — that list is too permissive for HyperFrames composition rules. This allowlist is the canonical one. See `hyperframes-core/references/determinism-rules.md` for the full deterministic-render contract.
+> **Note**: the list above is a **denylist**, not an allowlist. Properties outside it, including `width`, `height`, `filter`, `clipPath` and `strokeDashoffset`, are legitimate targets; prefer transforms and opacity where you have the choice, for performance rather than correctness. See `hyperframes-core/references/determinism-rules.md` for the full deterministic-render contract.
 
 ## References
 

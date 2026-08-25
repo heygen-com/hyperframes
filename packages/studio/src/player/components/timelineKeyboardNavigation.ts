@@ -77,8 +77,8 @@ export interface BuildTimelineLogicalRowsInput {
   selectedElementId: string | null;
   selectedElementIds: ReadonlySet<string>;
   expandedClipIds: ReadonlySet<string>;
-  /** Groups whose member rows the caret has shown (structural, not lanes). */
-  expandedGroupIds: ReadonlySet<string>;
+  /** Groups the caret has COLLAPSED — absent means expanded, the default. */
+  collapsedGroupIds: ReadonlySet<string>;
   /** Rows (clip id or group id) whose automation-lane rows the `∿` button opened. */
   expandedLaneOwnerIds: ReadonlySet<string>;
   groups: readonly TimelineTrackGroupInfo[];
@@ -251,7 +251,7 @@ export function buildTimelineLogicalRows({
   selectedElementId,
   selectedElementIds,
   expandedClipIds,
-  expandedGroupIds,
+  collapsedGroupIds,
   expandedLaneOwnerIds,
   groups,
   trackGroupOf,
@@ -273,7 +273,8 @@ export function buildTimelineLogicalRows({
       selectedElementIds,
       gsapAnimations,
     );
-    const expanded = isRowOpen(activeId, expandedClipIds, expandedLaneOwnerIds) && lanes.length > 0;
+    const disclosable = isTrackDisclosable(elements, lanes.length);
+    const expanded = isRowOpen(activeId, expandedClipIds, expandedLaneOwnerIds) && disclosable;
     rows.push({
       id: trackId,
       kind: "row",
@@ -282,7 +283,7 @@ export function buildTimelineLogicalRows({
       level,
       parentId,
       elementId: activeId,
-      expandable: lanes.length > 0,
+      expandable: disclosable,
       expanded,
       items: clipItems(trackId, elements),
     });
@@ -300,7 +301,7 @@ export function buildTimelineLogicalRows({
   // count.
   function emitGroup(group: TimelineTrackGroupInfo): void {
     const groupRowId = timelineGroupRowId(group.id);
-    const groupExpanded = expandedGroupIds.has(group.id);
+    const groupExpanded = !collapsedGroupIds.has(group.id);
     rows.push({
       id: groupRowId,
       kind: "row",
@@ -315,8 +316,10 @@ export function buildTimelineLogicalRows({
       items: [],
     });
     if (expandedLaneOwnerIds.has(group.id)) {
-      const memberElements = group.memberTracks.flatMap((track) => trackMap.get(track) ?? []);
-      for (const laneGroup of groupAutomationLanes(memberElements)) {
+      // The group's own member list, not `trackMap`: a COLLAPSED group can have
+      // its lane shelf open, and its members are absent from the display list —
+      // so looking them up there emitted zero lane rows for exactly that case.
+      for (const laneGroup of groupAutomationLanes(group.memberElements)) {
         rows.push({
           id: `${groupRowId}::${laneGroup.key}`,
           kind: "row",
@@ -451,4 +454,18 @@ export function resolveTimelineFocusFallback(
     if (parent) return parent.target;
   }
   return nextRows[previous.rowIndex] ?? nextRows[previous.rowIndex - 1] ?? null;
+}
+
+/**
+ * Does a track have anything to open — the header's own `disclosable`.
+ *
+ * `TimelineTrackHeader` is `lanes.length > 0 || automationRows.length > 0`, and
+ * keyed on tweens alone here an audio track whose only disclosable content is
+ * AUTOMATION drew the `∿` while reporting itself unexpandable to the treegrid,
+ * so ArrowRight could not open it. Automation rows are counted per shared
+ * PROPERTY across the track's clips, the way the header counts them, not per
+ * clip.
+ */
+function isTrackDisclosable(elements: readonly TimelineElement[], laneCount: number): boolean {
+  return laneCount > 0 || groupAutomationLanes(elements).length > 0;
 }

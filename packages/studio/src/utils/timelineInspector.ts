@@ -1,8 +1,29 @@
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import type { TimelineElement } from "../player";
 
 const AUDIO_TIMELINE_TAGS = new Set(["audio", "music", "sfx", "sound", "narration"]);
 const AUDIO_SOURCE_EXT_RE = /\.(aac|flac|m4a|mp3|ogg|opus|wav)(?:[?#].*)?$/i;
 const MUSIC_ID_RE = /\b(music|bgm|soundtrack|background[-_]?music)\b/i;
+
+/**
+ * Is this DOM node an audio clip, judged the way `isAudioTimelineElement`
+ * judges a timeline element?
+ *
+ * The selection layer holds real elements rather than timeline records, and
+ * layout grouping is decided there — so it needs the same question asked of a
+ * node. Same tag set and same source-extension fallback, so the two cannot
+ * drift into disagreeing about what counts as audio.
+ */
+export function isAudioDomElement(node: Element | null | undefined): boolean {
+  if (!node) return false;
+  // A group bus counts: it is audio-only, and the panel's single-select path
+  // already treats `<hf-audio-group>` as audio for exactly these decisions.
+  if (node.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
+  return isAudioTimelineElement({
+    tag: node.tagName,
+    src: node.getAttribute("src") ?? undefined,
+  });
+}
 
 export function isAudioTimelineElement(
   element: Pick<TimelineElement, "tag" | "src"> | null | undefined,
@@ -59,4 +80,21 @@ export function resolveBeatSourceTrack(
     if (!best || el.duration > best.duration) best = el;
   }
   return best ? { element: best, isFallback: true } : null;
+}
+
+/**
+ * May this multi-selection be hidden as one action?
+ *
+ * Audio has no visual to hide, and `data-hidden` on an audio element is what
+ * MUTES it — preview silences it and the render drops it from the mix. The
+ * timeline withholds the eye on an audio track for that reason
+ * (`visible={!isAudioTrack}`), and the single-selection panel gates the same
+ * write on `audioSelection`. The multi-selection "Hide all" was the one path
+ * left back to it, on a control whose label promises visibility.
+ *
+ * A shared predicate rather than a check in the handler so the panel's button
+ * and the handler's refusal cannot disagree — the button is not the only caller.
+ */
+export function canHideSelections(selections: readonly { element?: Element | null }[]): boolean {
+  return !selections.some((selection) => isAudioDomElement(selection.element));
 }

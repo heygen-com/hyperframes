@@ -7,7 +7,6 @@
  * and callbacks to promote or to edit the bound variable's default in place.
  */
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Composition, CompositionVariable } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -22,6 +21,8 @@ import {
   uniqueId,
   type PromoteChannel,
 } from "./variablePromoteHelpers";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { createStableContext } from "../utils/hmrStableContext";
 
 export type { PromoteChannel };
 
@@ -47,7 +48,10 @@ interface VariablePromoteContextValue {
   onPersistError: (error: unknown) => void;
 }
 
-const VariablePromoteContext = createContext<VariablePromoteContextValue | null>(null);
+const VariablePromoteContext = createStableContext<VariablePromoteContextValue | null>(
+  "VariablePromoteContext",
+  null,
+);
 
 function readBinding(session: Composition, hfId: string, channel: PromoteChannel): string | null {
   const snapshot = session.getElement(hfId);

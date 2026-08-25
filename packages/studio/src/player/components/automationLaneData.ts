@@ -91,7 +91,30 @@ export function elementAutomation(element: TimelineElement): HfAutomation {
   });
 }
 
+/**
+ * Is this lane one the CARVE wrote, rather than the author?
+ *
+ * The carve compiles to tagged nodes and rewrites their envelopes on every
+ * re-run (`withoutCarveLanes` replaces each one), so a drag on such a lane is
+ * silently discarded the next time it analyses. Read-only rather than hidden:
+ * the ducking curve is what a carve IS, and the whole reason to look at a
+ * carved bed in the timeline is to see where it makes room. Hiding them left a
+ * bed whose every lane was the carve's showing no automation at all and no
+ * control to reveal any — which reads as the carve having done nothing.
+ */
+export function isCarveLane(target: string, chain: HfAudioFxChain | null): boolean {
+  return (chain?.nodes ?? []).some(
+    (node) => node.fromCarve && node.id && target.startsWith(`fx.${node.id}.`),
+  );
+}
+
 /** Lanes in the order they are drawn, one row each. */
+/**
+ * The lanes a TIMELINE row should draw.
+ *
+ * Every lane the element carries, the carve's included — see `isCarveLane` for
+ * why those are shown read-only instead of withheld.
+ */
 export function elementAutomationLanes(element: TimelineElement): HfAutomationLane[] {
   return elementAutomation(element).lanes;
 }

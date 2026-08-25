@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
@@ -35,6 +35,42 @@ describe("createRenderPlan", () => {
     expect(plan.batchConcurrency).toBe(1);
     expect(Object.isFrozen(plan)).toBe(true);
     expect(Object.isFrozen(plan.environment)).toBe(true);
+  });
+
+  // The catalog join reaches the render event through the plan, so a plan that
+  // silently drops it would leave every render reporting no catalog items.
+  it("resolves catalog usage from the project manifest and the render entry", () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<main data-composition-id="main" data-width="1920" data-height="1080" data-fps="24">' +
+        '<div data-composition-src="compositions/kept.html" data-duration="2"></div></main>',
+    );
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    // `<template>`-wrapped, as sub-compositions are actually authored: template
+    // content is inert, so a DOM scan of these files would find nothing.
+    for (const name of ["kept", "dropped"]) {
+      writeFileSync(
+        join(projectDir, "compositions", `${name}.html`),
+        `<template id="${name}-template"><div data-composition-id="${name}" data-width="1920" data-height="1080"></div></template>`,
+      );
+    }
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({
+        registry: "https://example.test",
+        registryItems: [
+          { name: "kept", type: "hyperframes:block", target: "compositions/kept.html" },
+          { name: "dropped", type: "hyperframes:block", target: "compositions/dropped.html" },
+        ],
+      }),
+    );
+
+    const plan = createRenderPlan({ dir: projectDir, output: "result.mp4" });
+    expect(plan.catalogUsage).toEqual({
+      installed: ["dropped", "kept"],
+      usedBlocks: ["kept"],
+      manifestUnreadable: false,
+    });
   });
 
   it("preserves an explicit strict-readiness opt-in", () => {

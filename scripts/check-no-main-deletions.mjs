@@ -121,6 +121,38 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/core/scripts/build-inline-artifact.ts",
     "a later branch in this stack (wa-20b2-lfo-fixes) independently deduped the same two build scripts a different way — buildInjectedArtifact.ts plus two thin per-target files — before this consolidation and that one had merged; this branch's tree keeps that shape instead, so build-inline-artifact.ts is the one that goes.",
   ],
+  [
+    "packages/studio/src/hooks/useAudioSoloBridge.ts",
+    "#3453 removes the obsolete solo bridge after its last consumer leaves",
+  ],
+  [
+    "packages/studio/src/hooks/useGroupLevel.ts",
+    "#3454 deliberately removes the group level meter with the group volume strip",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineGroupBusStrip.test.tsx",
+    "#3454 deliberately removes the group volume and level-meter strip and its tests",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineGroupBusStrip.tsx",
+    "#3454 deliberately removes the group volume and level-meter strip",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineSoloButton.tsx",
+    "#3454 deliberately removes track and group solo controls",
+  ],
+  [
+    "packages/studio/src/player/store/audioSoloSlice.test.ts",
+    "#3454 deliberately removes session solo state and its tests",
+  ],
+  [
+    "packages/studio/src/player/store/audioSoloSlice.ts",
+    "#3454 deliberately removes session solo state",
+  ],
+  [
+    "packages/studio/src/player/store/groupLevels.ts",
+    "#3454 deliberately removes group level-meter state",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

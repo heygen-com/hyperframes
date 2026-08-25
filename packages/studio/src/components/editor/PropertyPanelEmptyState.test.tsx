@@ -71,4 +71,78 @@ describe("PropertyPanelEmptyState — flat multi-select", () => {
     expect(onClearSelection).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
+
+  // A layout group is a positioned wrapper around a bounding box; an <audio>
+  // clip has none (offsetWidth/Height are 0), so grouping audio produced a 0x0
+  // div with inline left/top on elements that are never laid out. Withheld
+  // rather than offered-then-refused.
+  const audioElements = (tags: string[]) =>
+    tags.map((tag, i) => ({
+      id: `el-${i}`,
+      selector: `#el-${i}`,
+      label: `El ${i}`,
+      tagName: tag,
+      element: document.createElement(tag),
+    })) as unknown as DomEditSelection[];
+
+  it("withholds both actions when the selection includes audio", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["audio", "audio"])}
+        onGroupSelection={vi.fn()}
+        onHideAllSelected={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    // Hiding is visibility, and `data-hidden` on audio is what MUTES it — the
+    // timeline withholds the eye on an audio track for that reason, and this
+    // panel was the way back to the same write.
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
+    // The list still names what is selected; only the actions go.
+    expect(host.textContent).toContain("2 elements selected");
+    act(() => root.unmount());
+  });
+
+  it("withholds it for a mixed selection too, since the wrapper would still take audio in", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["div", "audio"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("counts an <hf-audio-group> bus as audio too", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["hf-audio-group", "div"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("still offers both for a selection of layout elements", () => {
+    const { host, root } = renderInto(
+      <PropertyPanelEmptyState
+        flat
+        multiSelectCount={2}
+        multiSelectedElements={audioElements(["div", "span"])}
+        onGroupSelection={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-multiselect-group="true"]')).not.toBeNull();
+    expect(host.querySelector('[data-flat-multiselect-hide-all="true"]')).not.toBeNull();
+    act(() => root.unmount());
+  });
 });

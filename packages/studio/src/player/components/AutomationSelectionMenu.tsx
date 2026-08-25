@@ -41,6 +41,10 @@ export const AutomationSelectionMenu = memo(function AutomationSelectionMenu({
   return createPortal(
     <div
       ref={menuRef}
+      // z-[200] for the same reason the timeline's FX popover uses it: this is
+      // portaled to `document.body`, but the ruler's sticky header sits at z-70
+      // in the SAME root stacking context, so a z-50 menu opened near the top of
+      // the timeline is painted through by the ruler and the playhead.
       className="hf-automation-menu fixed z-[200] min-w-[140px] rounded border border-panel-border-input bg-panel-bg-2 py-1 shadow-lg"
       style={{ left: adjustedX, top: adjustedY }}
     >

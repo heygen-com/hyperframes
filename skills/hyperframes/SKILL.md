@@ -92,21 +92,21 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
 | Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
 | Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
-| Voiceover carve, audio effect chains, or automation envelopes on a track                                            | `/hyperframes-audio`     |
+| Voiceover carve, audio effect chains, automation envelopes, or one chain/fader across several tracks (submix bus)   | `/hyperframes-audio`     |
 | Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |
 | Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |
 
 Creator edit phrases are cross-domain requests. Load every skill named in the matching row:
 
-| Creator request                                                                                   | Required domains                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| “cut this footage”, hard cut, trim, splice, reorder, or use a source range                        | `/general-video` + `/hyperframes-core`; core owns `data-start`, `data-duration`, `data-media-start`, and track layout.                                                            |
-| zoom in here, punch-in / punch-out, smooth multi-state zoom or reframe, Ken Burns, or camera move | `/general-video` + `/hyperframes-core` + `/hyperframes-keyframes`; animate the inner visual/crop wrapper, not the timed clip.                                                     |
-| match cut or whip pan camera transition                                                           | `/general-video` + `/hyperframes-animation` + `/hyperframes-keyframes` + `/hyperframes-registry`; search/install a transition primitive before hand-authoring.                    |
-| fade, crossfade, track gain/volume, automation, duck/carve, or audio effects                      | `/general-video` + `/hyperframes-core` + `/hyperframes-audio`; core places clips, audio mixes placed tracks.                                                                      |
-| picture and sound edits that combine cuts with camera motion or mixing                            | `/general-video` + `/hyperframes-core` + `/hyperframes-keyframes` when there is visual motion + `/hyperframes-audio` when sound is faded, mixed, ducked, automated, or processed. |
-| source or generate media, or preprocess an unsupported speed ramp/mid-source freeze               | `/media-use`; sourcing/generation/preprocessing only, never placed-track mixing.                                                                                                  |
+| Creator request                                                                                                | Required domains                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| “cut this footage”, hard cut, trim, splice, reorder, or use a source range                                     | `/general-video` + `/hyperframes-core`; core owns `data-start`, `data-duration`, `data-media-start`, and track layout.                                                            |
+| zoom in here, punch-in / punch-out, smooth multi-state zoom or reframe, Ken Burns, or camera move              | `/general-video` + `/hyperframes-core` + `/hyperframes-keyframes`; animate the inner visual/crop wrapper, not the timed clip.                                                     |
+| match cut or whip pan camera transition                                                                        | `/general-video` + `/hyperframes-animation` + `/hyperframes-keyframes` + `/hyperframes-registry`; search/install a transition primitive before hand-authoring.                    |
+| fade, crossfade, track gain/volume, automation, duck/carve, audio effects, or one effect across several tracks | `/general-video` + `/hyperframes-core` + `/hyperframes-audio`; core places clips, audio mixes placed tracks — including a submix bus over a group of them.                        |
+| picture and sound edits that combine cuts with camera motion or mixing                                         | `/general-video` + `/hyperframes-core` + `/hyperframes-keyframes` when there is visual motion + `/hyperframes-audio` when sound is faded, mixed, ducked, automated, or processed. |
+| source or generate media, or preprocess an unsupported speed ramp/mid-source freeze                            | `/media-use`; sourcing/generation/preprocessing only, never placed-track mixing.                                                                                                  |
 
 Constant `data-playback-rate` is render-safe for picture and pitch-preserved
 sound. It does not make source speed ramps keyframeable; preprocess ramps.

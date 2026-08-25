@@ -248,7 +248,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     ];
   },
 
-  // missing_timeline_registry + timeline_registry_missing_init
+  // missing_timeline_registry
   // fallow-ignore-next-line complexity
   ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
@@ -269,19 +269,17 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         fixHint: "Register each composition timeline on `window.__timelines[compositionId]`.",
       });
     }
-    if (
-      TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_INIT_PATTERN.test(source)
-    ) {
-      findings.push({
-        code: "timeline_registry_missing_init",
-        severity: "error",
-        message:
-          "`window.__timelines[…] = …` is used without initializing `window.__timelines` first.",
-        fixHint:
-          "Add `window.__timelines = window.__timelines || {};` before any timeline assignment.",
-      });
-    }
+    // `timeline_registry_missing_init` used to fire here, demanding
+    // `window.__timelines = window.__timelines || {}` before any assignment.
+    // The runtime already owns that invariant: runtime/entry.ts creates the
+    // registry at script-evaluation time, before any inline composition script
+    // runs, and both injection paths put the runtime bundle in <head> ahead of
+    // the body scripts that build timelines. Verified by rendering a
+    // composition whose only registration is a bare
+    // `window.__timelines["main"] = gsap.timeline(...)`: it renders and
+    // animates correctly. The rule made a working file fail lint, and a lint
+    // ERROR also suppresses the layout and contrast audits in `check`, so it
+    // cost far more than the line it was protecting.
     return findings;
   },
 

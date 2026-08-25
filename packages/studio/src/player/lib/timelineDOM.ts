@@ -12,7 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
-import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { groupInfoFor } from "./timelineGroupInfo";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -66,37 +66,6 @@ export {
 
 function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
-}
-
-// One `<hf-audio-group>` scan per document, not per clip — resolveAudioGroups
-// walks the whole tree, and a parse touches every clip in it.
-interface GroupInfo {
-  label: string;
-  volume: number;
-  hidden: boolean;
-  fxChain?: string;
-}
-
-const groupInfoCache = new WeakMap<Document, Map<string, GroupInfo>>();
-
-function groupInfoFor(doc: Document | null | undefined, groupId: string): GroupInfo {
-  if (!doc) return { label: groupId, volume: 1, hidden: false };
-  let info = groupInfoCache.get(doc);
-  if (!info) {
-    info = new Map(
-      resolveAudioGroups(doc).map((group) => [
-        group.id,
-        {
-          label: group.label,
-          volume: group.volume,
-          hidden: group.hidden,
-          ...(group.fxChain ? { fxChain: group.fxChain } : {}),
-        },
-      ]),
-    );
-    groupInfoCache.set(doc, info);
-  }
-  return info.get(groupId) ?? { label: groupId, volume: 1, hidden: false };
 }
 
 // fallow-ignore-next-line complexity
@@ -178,6 +147,7 @@ export function createTimelineElementFromManifestClip(params: {
       entry.audioGroupVolume = info.volume;
       entry.audioGroupHidden = info.hidden;
       if (info.fxChain) entry.audioGroupFxChain = info.fxChain;
+      if (info.automation) entry.audioGroupAutomation = info.automation;
     }
     const fxChain = hostEl.getAttribute("data-fx-chain");
     if (fxChain) entry.fxChain = fxChain;
@@ -405,6 +375,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       entry.audioGroupVolume = domGroupInfo.volume;
       entry.audioGroupHidden = domGroupInfo.hidden;
       if (domGroupInfo.fxChain) entry.audioGroupFxChain = domGroupInfo.fxChain;
+      if (domGroupInfo.automation) entry.audioGroupAutomation = domGroupInfo.automation;
     }
 
     // Sub-compositions

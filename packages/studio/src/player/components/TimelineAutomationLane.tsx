@@ -1,21 +1,15 @@
 /**
  * Breakpoint automation over an audio clip, edited the way a DAW edits it:
  * double-click the line to add a point, drag one to shape it, right-click or
- * Shift+click a point to remove it, Alt-drag the line between two points to bend
- * it, and double-click a point to type an exact value.
+ * Shift+click a point to remove it, drag a line segment to move both endpoints,
+ * Alt-drag the line to bend it, and double-click a point to type an exact value.
  *
- * Modifiers follow Ableton's, because that is the muscle memory an automation
- * lane inherits: Shift locks a drag to one axis and fines the value down, Alt
- * over a segment curves it, and Alt during a point drag ignores the grid.
+ * Ableton-style modifiers apply: Shift locks/fines a drag, while Alt bends a
+ * segment or ignores the grid during a point drag. Background drags select a
+ * set that can be moved, deleted, or shaped together.
  *
- * Drag the background to draw a selection box around a set of breakpoints, then
- * Delete to remove them, drag any one of them to move the whole set, or
- * right-click inside the box for shapes over its span.
- *
- * The lane knows nothing about any particular effect. Which parameters it can
- * offer, their ranges, units and whether they read logarithmically all come
- * from the FX registry, so an effect gained upstream needs no change here — the
- * same principle the property panel's controls follow.
+ * Effect parameters, ranges, units, and scaling come from the FX registry, so
+ * an upstream effect needs no lane-specific code here.
  */
 
 import {
@@ -42,6 +36,7 @@ import { generateShape, type AutomationShapeId } from "./automationShapes";
 import { simplifyPoints } from "./automationSimplify";
 import { pointInSelection, pointsIn, replaceRange } from "./automationLaneSelection";
 import { defaultTimelineTheme } from "./timelineTheme";
+import { AutomationEnvelopePaths } from "./AutomationEnvelopePaths";
 
 /**
  * Drawn radius of a breakpoint.
@@ -86,13 +81,88 @@ function pointCircleStyle(
 }
 
 /** Pointer shape: a read-only lane can only be selected, a live one edited. */
-function laneCursor(readOnly: boolean | undefined, dragging: boolean, stretching: boolean): string {
+/**
+ * Whether a point's grab handle is up.
+ *
+ * A raised handle is an offer to drag, so a read-only lane keeps them down: the
+ * carve rewrites its envelopes from the analysis on every run, and a point
+ * moved here is discarded rather than saved. Hidden rather than unmounted
+ * either way, so the hit area survives — a point dragged past the lane's edge
+ * fires pointerleave mid-gesture, and a handle that vanished then would drop
+ * the drag. A live drag and a selected range both keep them up regardless: the
+ * range is the subject of a pending Delete, and which points it caught cannot
+ * depend on where the mouse is.
+ */
+/** The svg's tooltip: what this lane's gestures actually are. */
+function laneTitle(readOnly: boolean | undefined): string {
+  return readOnly
+    ? "Drag a box to select points, which also selects this clip; then double-click to add a point"
+    : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click or Shift+click to remove it. Drag a line segment to move both endpoints. Drag the background to draw a box around points, then Delete to remove them or drag one to move them all. Alt-drag the line to curve it. Shift locks an axis mid-drag; Alt ignores the grid.";
+}
+
+/**
+ * Why this lane will not take an edit, in the lane itself.
+ *
+ * Dimming and a default cursor say "not editable" but not WHY, and the why is
+ * the part that matters: the carve rewrites these envelopes from its own
+ * analysis on every run, so a point moved here is discarded rather than saved.
+ * Only while hovered, so a stack of read-only lanes is not a stack of notices,
+ * and never over a selection the author is about to act on.
+ *
+ * Separate from the gesture `hint` slot, which belongs to handlers that do not
+ * run on a read-only lane at all.
+ */
+function ReadOnlyNote({
+  readOnly,
+  note,
+  hovered,
+  hasRange,
+  leftPx,
+  widthPx,
+}: {
+  readOnly: boolean | undefined;
+  note: string | undefined;
+  hovered: boolean;
+  /** A selection is the subject of a pending action; do not cover it. */
+  hasRange: boolean;
+  leftPx: number;
+  widthPx: number;
+}) {
+  if (!readOnly || !note || !hovered || hasRange) return null;
+  return (
+    <div
+      data-automation-readonly-note=""
+      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-black/85 px-1.5 py-0.5 text-[9px] text-white/80"
+      style={{ left: leftPx + 6, top: 2, zIndex: 3, maxWidth: Math.max(120, widthPx - 12) }}
+    >
+      {note}
+    </div>
+  );
+}
+
+function pointHandleOpacity(args: {
+  readOnly: boolean | undefined;
+  hovered: boolean;
+  dragging: boolean;
+  hasRange: boolean;
+}): number {
+  if (args.dragging || args.hasRange) return 1;
+  return !args.readOnly && args.hovered ? 1 : 0;
+}
+
+function laneCursor(
+  readOnly: boolean | undefined,
+  dragging: boolean,
+  stretching: boolean,
+  segmentHovering: boolean,
+): string {
   // A stretch handle wins over everything it might also sit above: the handle is
   // a few px wide and always overlaps whatever is under the selection edge, so
   // any other cursor there would advertise a gesture the press will not start.
   if (stretching) return "col-resize";
   if (readOnly) return "pointer";
-  return dragging ? "grabbing" : "crosshair";
+  if (dragging) return "grabbing";
+  return segmentHovering ? "grab" : "crosshair";
 }
 
 export interface TimelineAutomationLaneProps {
@@ -120,6 +190,9 @@ export interface TimelineAutomationLaneProps {
   snapTimes?: readonly number[];
   /** Editing writes to the selected element, so an unselected clip is read-only. */
   readOnly?: boolean;
+  /** Why `readOnly`, shown in the lane on hover. Without it the lane only looks
+   *  disabled; the author still has to guess what would let them edit it. */
+  readOnlyNote?: string;
   /** Called when a read-only lane is pressed: selects the clip so it goes live. */
   onSelect?(): void;
   /** Active selection box on THIS lane, or null. */
@@ -142,6 +215,7 @@ export function TimelineAutomationLane({
   onCommit,
   snapTimes,
   readOnly,
+  readOnlyNote,
   onSelect,
   rangeSelection,
   onRangeSelect,
@@ -245,7 +319,16 @@ export function TimelineAutomationLane({
     duration,
     rangeSelection,
   });
-  const { dragIndex, curveIndex, edgeDrag, edgeHover, hint, editing } = gestures;
+  const {
+    dragIndex,
+    curveIndex,
+    segmentDragIndex,
+    segmentHoverIndex,
+    edgeDrag,
+    edgeHover,
+    hint,
+    editing,
+  } = gestures;
 
   const removeAt = useCallback(
     (index: number): void => {
@@ -353,8 +436,9 @@ export function TimelineAutomationLane({
           height: h,
           cursor: laneCursor(
             readOnly,
-            dragIndex !== null || curveIndex !== null,
+            dragIndex !== null || curveIndex !== null || segmentDragIndex !== null,
             edgeDrag !== null || edgeHover,
+            segmentHoverIndex !== null,
           ),
           opacity: readOnly ? 0.55 : 1,
           touchAction: "none",
@@ -362,7 +446,10 @@ export function TimelineAutomationLane({
         width={widthPx + PAD_X * 2}
         height={h}
         onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        onPointerLeave={() => {
+          setHovered(false);
+          gestures.onPointerLeave();
+        }}
         onPointerDown={gestures.onPointerDown}
         onPointerMove={gestures.onPointerMove}
         onPointerUp={gestures.endDrag}
@@ -372,11 +459,7 @@ export function TimelineAutomationLane({
         role="group"
         aria-label={`${range.label} automation`}
       >
-        <title>
-          {readOnly
-            ? "Drag a box to select points, which also selects this clip; then double-click to add a point"
-            : "Double-click to add a point, drag to shape, double-click a point to type a value, right-click or Shift+click to remove it. Drag the background to draw a box around points, then Delete to remove them or drag one to move them all. Alt-drag the line to curve it. Shift locks an axis mid-drag; Alt ignores the grid."}
-        </title>
+        <title>{laneTitle(readOnly)}</title>
         {/* No plate behind the envelope: the lane used to darken its clip's width,
             which drew a box inside the row and made a stack of lanes read as tiles
             rather than as rows of one timeline. The row background shows through, and
@@ -409,12 +492,14 @@ export function TimelineAutomationLane({
             pointerEvents="none"
           />
         ) : null}
-        <path
-          d={path}
-          fill="none"
-          stroke={accentColor}
-          strokeWidth={1.5}
-          opacity={lane.points.length === 0 ? 0.35 : 0.95}
+        <AutomationEnvelopePaths
+          path={path}
+          lane={lane}
+          range={range}
+          accentColor={accentColor}
+          activeSegment={segmentDragIndex ?? segmentHoverIndex}
+          xOf={xOf}
+          yOf={yOf}
         />
         {lane.points.map((p, i) => {
           // Endpoint-inclusive, the same rule Delete uses, so what looks caught by
@@ -433,15 +518,14 @@ export function TimelineAutomationLane({
               fill={accentColor}
               stroke={stroke}
               strokeWidth={strokeWidth}
-              // Hidden rather than unmounted, so the hit area survives: a point
-              // dragged past the lane's edge fires pointerleave mid-gesture, and a
-              // handle that vanishes then would drop the drag. A drag in progress
-              // and a selected range both keep them up for the same reason — the
-              // range is the subject of a pending Delete, and which points it
-              // caught cannot depend on where the mouse is.
               style={{
                 cursor: readOnly ? "default" : "grab",
-                opacity: hovered || dragIndex !== null || rangeSelection ? 1 : 0,
+                opacity: pointHandleOpacity({
+                  readOnly,
+                  hovered,
+                  dragging: dragIndex !== null,
+                  hasRange: Boolean(rangeSelection),
+                }),
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -483,6 +567,15 @@ export function TimelineAutomationLane({
           {hint}
         </div>
       ) : null}
+
+      <ReadOnlyNote
+        readOnly={readOnly}
+        note={readOnlyNote}
+        hovered={hovered}
+        hasRange={Boolean(rangeSelection)}
+        leftPx={leftPx}
+        widthPx={widthPx}
+      />
 
       {menuAt && rangeSelection ? (
         <AutomationSelectionMenu

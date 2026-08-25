@@ -162,6 +162,48 @@ afterEach(() => {
 });
 
 describe("FxSection chain", () => {
+  it("scrolls again when the same open parameter is revealed twice", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const chain: HfAudioFxChain = {
+      version: 1,
+      nodes: [
+        {
+          type: "lowpass",
+          id: "filter-1",
+          enabled: true,
+          params: defaultAudioFxParams("lowpass"),
+        },
+      ],
+    };
+    const renderFxSection = (revealNonce: number) => (
+      <FxSection
+        chain={chain}
+        onChainChange={vi.fn()}
+        onCarveChange={vi.fn()}
+        carve={null}
+        sourceOptions={[]}
+        revealTarget="fx.filter-1.frequency"
+        revealNonce={revealNonce}
+      />
+    );
+
+    try {
+      const { root } = renderInto(renderFxSection(1));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      act(() => root.render(renderFxSection(2)));
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    } finally {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", descriptor);
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    }
+  });
+
   it("says so when the track has no effects", () => {
     const { host } = mount();
     // "other", because the carve module is in the rack whenever a voice exists.

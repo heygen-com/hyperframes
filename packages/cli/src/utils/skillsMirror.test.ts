@@ -177,6 +177,30 @@ describe("mirrorGlobalSkills", () => {
     const link = join(home, ".cursor", "skills", "hyperframes");
     expect(realpathSync(link)).toBe(realpathSync(join(home, ".claude", "skills", "hyperframes")));
   });
+
+  // Pi natively discovers BOTH ~/.pi/agent/skills and the universal
+  // ~/.agents/skills (pi's packages/coding-agent/docs/skills.md#locations).
+  // A mirrored per-agent copy collides with the universal one and Pi skips
+  // the universal entry on name conflict (#3294), so the mirror must not fan
+  // out to it.
+  it("skips agents that natively read the universal store (pi, #3294)", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes"]);
+    installMarker(home, ".pi/agent"); // Pi present
+    installMarker(home, ".cursor"); // a regular per-dir agent, for contrast
+
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
+    const agents = mirrored.map((m) => m.agent);
+    expect(agents).not.toContain("pi");
+    expect(agents).toContain("cursor");
+    // no per-agent copy created where the universal store already serves Pi
+    expect(existsSync(join(home, ".pi", "agent", "skills", "hyperframes"))).toBe(false);
+  });
 });
 
 describe("AGENT_GLOBAL_DIRS (generated table)", () => {

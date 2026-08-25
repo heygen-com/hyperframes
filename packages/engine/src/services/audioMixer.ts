@@ -48,6 +48,7 @@ import {
   readMediaStart,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -68,8 +69,43 @@ export type { AudioElement, MixResult } from "./audioMixer.types.js";
  */
 export const MIXED_AUDIO_FILENAME = "audio.m4a";
 
+/**
+ * The bus key a member belongs to, as `resolveAudioGroups` keys them.
+ *
+ * The compiler's `data-hf-group-render-id` names one INSTANCE of a bus; the
+ * author's `data-audio-group` names it only within its own composition file. A
+ * sub-composition declaring a bus and its members, used twice, therefore had
+ * both instances' members under one key: one sub-mix for two independent buses,
+ * one instance's fader and chain over the other's audio, and — with only the
+ * second muted — BOTH instances dropped from the export. Uncompiled documents
+ * (the live preview) carry no stamp and read exactly as before.
+ */
+function memberGroupKey(el: RefResolverEl): string | null {
+  return el.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? el.getAttribute(HF_AUDIO_GROUP_ATTR);
+}
+
 function clampVolume(volume: number): number {
   return clampAudioGain(volume);
+}
+
+/**
+ * An author-controlled id, made safe to put in a filename.
+ *
+ * `data-audio-group` reaches this file straight from the document — the
+ * studio's `GROUP_ID_PATTERN` guards only ids the studio itself mints, and a
+ * hand-authored or agent-written one is unvalidated. Interpolated raw it could
+ * carry `/` or `..`, and `mkdirSync(recursive)` inside ffmpeg's own path
+ * handling would then write outside `workDir`, where `bail()`'s `rmSync` never
+ * cleans it up. Everything outside [A-Za-z0-9_-] collapses to `_`, and every
+ * result gets a stable positional suffix so distinct ids that sanitize alike
+ * cannot share one intermediate file.
+ */
+function safePathSegment(id: string, fallbackIndex: number): string {
+  const cleaned = id.replace(/[^A-Za-z0-9_-]/g, "_");
+  // Sanitisation is many-to-one (`bed/a` and `bed?a` both become `bed_a`).
+  // The stable position keeps every authored group on a distinct temp path
+  // even when their readable portions collide.
+  return `${cleaned || "group"}-${fallbackIndex}`;
 }
 
 function formatFilterNumber(value: number): string {
@@ -469,7 +505,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     resolveAudioGroups(document).map((group) => [group.id, group] as const),
   );
   const memberGroupHidden = (el: AudioMediaElement): boolean => {
-    const groupId = el.getAttribute(HF_AUDIO_GROUP_ATTR);
+    const groupId = memberGroupKey(el);
     return groupId ? (groupsById.get(groupId)?.hidden ?? false) : false;
   };
 
@@ -484,7 +520,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
     // Audio only in v1 (matches resolveAudioGroups, which only scans
     // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
-    const groupId = type === "audio" ? el.getAttribute(HF_AUDIO_GROUP_ATTR) : null;
+    const groupId = type === "audio" ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
     return {
       id,
@@ -519,6 +555,8 @@ export function parseAudioElements(html: string): AudioElement[] {
 
   for (const el of document.querySelectorAll("audio[id][src]")) {
     const id = trackId(el);
+    // `memberGroupHidden` is the group's own mute: a hidden BUS drops every
+    // member from the mix, the same way `isHidden` drops one track.
     if (!id || !el.getAttribute("src") || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
     elements.push(build(el, id, "audio"));
@@ -865,6 +903,14 @@ async function mixAudioTracks(
   };
 }
 
+/**
+ * Verified against the real binary, because the wording is the whole contract:
+ * ffmpeg 8.1.1 emits `Error applying option 'X' to filter 'amix': Option not
+ * found`, which "option not found" matches. Only pre-4.4 libavfilter's
+ * `Option 'normalize' not found` phrasing sits outside the first test — and
+ * that build predates `normalize` existing at all, so it would fail for the
+ * right reason anyway. A review pass read this as dead and it is not.
+ */
 function groupNormalizeOptionUnsupported(stderr: string): boolean {
   return (
     /normalize/i.test(stderr) &&
@@ -894,24 +940,36 @@ async function mixGroupMembers(
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; degradedAutomation?: boolean }> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const inputFilters = memberTracks.map((track, i) => {
-    const delayMs = Math.round(track.start * 1000);
-    const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
-    const volumeFilter = buildVolumeExpression(track);
-    return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
-  });
+  const buildInputFilters = (ignoreKeyframes: boolean) =>
+    memberTracks.map((track, i) => {
+      const delayMs = Math.round(track.start * 1000);
+      const trimDuration = track.end - track.start + (track.tailSeconds ?? 0);
+      const volumeFilter = buildVolumeExpression(track, ignoreKeyframes);
+      // Same `asetpts=N/SR/TB` as the master mix above, for the same reason and
+      // on the same builds: these are delayed branches padded to length and then
+      // amix'd, so without the renumbering a delayed member lands at t=0 and a
+      // group of four or more loses its last one.
+      return `[${i}:a]atrim=0:${formatFilterNumber(trimDuration)},${volumeFilter},adelay=${delayMs}|${delayMs},apad,asetpts=N/SR/TB,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`;
+    });
   const mixInputs = memberTracks.map((_, i) => `[a${i}]`).join("");
 
-  const runOnce = async (useNormalize: boolean): Promise<RunFfmpegResult> => {
+  const runOnce = async (
+    useNormalize: boolean,
+    ignoreKeyframes = false,
+  ): Promise<RunFfmpegResult> => {
+    const inputFilters = buildInputFilters(ignoreKeyframes);
     const mixFilter = useNormalize
       ? `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0:normalize=0[out]`
-      : // amix's default normalize divides by input count; compensate by THIS
-        // group's own member count — never the render's global track count.
+      : // Every member is padded and trimmed to totalDuration above, and
+        // dropout_transition=0 keeps all N inputs active for that whole span.
+        // amix's default normalize therefore divides by exactly N throughout;
+        // compensate by THIS group's own member count — never the render's
+        // global track count.
         `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0[mixed];[mixed]volume=${formatFilterNumber(memberTracks.length)}[out]`;
     const filterComplex = [...inputFilters, mixFilter].join(";");
     const scriptDir = mkdtempSync(join(outputDir, ".group-filter-complex-"));
@@ -931,8 +989,15 @@ async function mixGroupMembers(
         scriptPath,
         "-map",
         "[out]",
+        // Float, not pcm_s16le: `normalize=0` sums the members at unity, so any
+        // over-unity sum hard-clipped at ±1 in the intermediate — BEFORE the
+        // group's FX chain and its fader ran. Pulling the group down, or the
+        // Giant preset's compressor, then operated on distortion. Preview
+        // cannot reproduce it (its bus is float), and it only shows up in the
+        // export. Both readers downstream take float: `readWav` (format 3) and
+        // `applyVolumeEnvelopeToWav`.
         "-acodec",
-        "pcm_s16le",
+        "pcm_f32le",
         "-ar",
         "48000",
         "-t",
@@ -952,14 +1017,32 @@ async function mixGroupMembers(
     }
   };
 
-  let result = await runOnce(true);
+  let useNormalize = true;
+  let result = await runOnce(useNormalize);
   if (!result.success && groupNormalizeOptionUnsupported(result.stderr)) {
-    result = await runOnce(false);
+    useNormalize = false;
+    result = await runOnce(useNormalize);
   }
+
+  // The same defence `mixAudioTracks` has, which this forked without: a
+  // member's volume automation becomes an ffmpeg `volume` expression whose
+  // evaluator limits are build-dependent, so a dense envelope can fail the
+  // whole run. Ungrouped, that track degrades to base volume with a warning;
+  // grouped, it took the entire composition's audio down with it.
+  let degradedAutomation = false;
+  const hasAutomation = memberTracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
+  if (!result.success && !signal?.aborted && hasAutomation) {
+    const retry = await runOnce(useNormalize, true);
+    if (retry.success) {
+      result = retry;
+      degradedAutomation = true;
+    }
+  }
+
   if (signal?.aborted) return { success: false, error: "Group sub-mix cancelled" };
   if (!result.success)
     return { success: false, error: formatFfmpegError(result.exitCode, result.stderr) };
-  return { success: true };
+  return { success: true, degradedAutomation };
 }
 
 export async function processCompositionAudio(
@@ -1314,87 +1397,118 @@ export async function processCompositionAudio(
   // clock is composition time (offset 0): a group has no `data-start` of its
   // own, and members are already delayed to their composition positions
   // inside the sub-mix, so the group WAV's t=0 IS composition time.
+  const groupsDegradedAutomation: string[] = [];
+  let groupIndex = -1;
   for (const [groupId, memberTracks] of groupTracks) {
+    groupIndex += 1;
     const meta = groupMeta.get(groupId);
     if (!meta) continue;
-    const groupWavPath = join(workDir, `group-${groupId}.wav`);
-    const subMix = await mixGroupMembers(
-      memberTracks,
-      groupWavPath,
-      totalDuration,
-      effectiveSignal,
-      config,
-    );
-    if (!subMix.success) {
+    const pathId = safePathSegment(groupId, groupIndex);
+    const groupWavPath = join(workDir, `group-${pathId}.wav`);
+    // Same contract the per-element loop above gives: a malformed `data-fx-chain`
+    // or `data-automation` on a BUS threw straight out of processCompositionAudio,
+    // bypassing the MixResult/failures[] shape the caller handles and skipping
+    // `bail()`, so the temp dir leaked too. An AudioFxRenderError stays fatal
+    // for the same reason it is fatal per element: shipping the dry signal in
+    // place of a processed one sounds plausible and is not what was authored.
+    try {
+      const subMix = await mixGroupMembers(
+        memberTracks,
+        groupWavPath,
+        totalDuration,
+        effectiveSignal,
+        config,
+      );
+      if (!subMix.success) {
+        failures.push({
+          stage: "mix",
+          reason: "ffmpeg_failed",
+          owner: "system",
+          retryable: false,
+          elementId: groupId,
+          detail: boundedDetail(
+            `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
+          ),
+        });
+        continue;
+      }
+      if (subMix.degradedAutomation) groupsDegradedAutomation.push(groupId);
+
+      // Composition-time automation (offset 0, duration totalDuration) — same
+      // resolve/lane/bake path a member uses, just anchored at the group clock
+      // instead of a clip's own start.
+      const automation = meta.automation
+        ? resolveAutomation(
+            parseAutomation(meta.automation),
+            meta.fxChain ? parseAudioFxChain(meta.fxChain) : undefined,
+          )
+        : null;
+      const laneKeyframes = automation ? volumeLaneKeyframes(automation, 0, totalDuration) : null;
+      const envelope =
+        laneKeyframes && laneKeyframes.length > 0
+          ? { keyframes: laneKeyframes, trackStart: 0, baseVolume: meta.volume }
+          : null;
+
+      let groupSrcPath = groupWavPath;
+      let bakedEnvelope = false;
+      if (meta.fxChain) {
+        const chain = parseAudioFxChain(meta.fxChain);
+        const fxResult = await applyAudioFxChain(
+          groupSrcPath,
+          chain,
+          join(workDir, `group-${pathId}-fx.wav`),
+          {
+            trackId: groupId,
+            signal: effectiveSignal,
+            ...(automation ? { automation } : {}),
+            ...(envelope ? { envelope } : {}),
+          },
+        );
+        groupSrcPath = fxResult.path;
+        bakedEnvelope = fxResult.envelopeBaked;
+      }
+      if (envelope && !bakedEnvelope) {
+        bakedEnvelope = applyVolumeEnvelopeToWav(
+          groupSrcPath,
+          envelope.keyframes,
+          envelope.trackStart,
+          envelope.baseVolume,
+        );
+      }
+
+      // `end` is already the render's totalDuration, so the outer mix's own
+      // atrim-to-totalDuration clips this track exactly the same way it would
+      // an ungrouped one whose clip ran to the end of the render — a group's FX
+      // tail gets the same "never past the end of the video" treatment member
+      // tails get, for free, with no separate tailSeconds bookkeeping needed.
+      tracks.push({
+        id: groupId,
+        srcPath: groupSrcPath,
+        start: 0,
+        end: totalDuration,
+        mediaStart: 0,
+        duration: totalDuration,
+        volume: bakedEnvelope ? 1.0 : meta.volume,
+        // Same fallback an ungrouped track gets: when the envelope could not be
+        // baked into the samples, hand the keyframes to the outer mix's volume
+        // expression instead of dropping the group's automation on the floor.
+        ...(bakedEnvelope || !laneKeyframes?.length ? {} : { volumeKeyframes: laneKeyframes }),
+      });
+    } catch (err: unknown) {
+      if (err instanceof AudioFxRenderError) throw err;
       failures.push({
         stage: "mix",
-        reason: "ffmpeg_failed",
+        reason: "internal",
         owner: "system",
         retryable: false,
         elementId: groupId,
         detail: boundedDetail(
-          `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
+          `Audio processing failed for group ${groupId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         ),
       });
-      continue;
     }
-
-    // Composition-time automation (offset 0, duration totalDuration) — same
-    // resolve/lane/bake path a member uses, just anchored at the group clock
-    // instead of a clip's own start.
-    const automation = meta.automation
-      ? resolveAutomation(
-          parseAutomation(meta.automation),
-          meta.fxChain ? parseAudioFxChain(meta.fxChain) : undefined,
-        )
-      : null;
-    const laneKeyframes = automation ? volumeLaneKeyframes(automation, 0, totalDuration) : null;
-    const envelope =
-      laneKeyframes && laneKeyframes.length > 0
-        ? { keyframes: laneKeyframes, trackStart: 0, baseVolume: meta.volume }
-        : null;
-
-    let groupSrcPath = groupWavPath;
-    let bakedEnvelope = false;
-    if (meta.fxChain) {
-      const chain = parseAudioFxChain(meta.fxChain);
-      const fxResult = await applyAudioFxChain(
-        groupSrcPath,
-        chain,
-        join(workDir, `group-${groupId}-fx.wav`),
-        {
-          trackId: groupId,
-          signal: effectiveSignal,
-          ...(automation ? { automation } : {}),
-          ...(envelope ? { envelope } : {}),
-        },
-      );
-      groupSrcPath = fxResult.path;
-      bakedEnvelope = fxResult.envelopeBaked;
-    }
-    if (envelope && !bakedEnvelope) {
-      bakedEnvelope = applyVolumeEnvelopeToWav(
-        groupSrcPath,
-        envelope.keyframes,
-        envelope.trackStart,
-        envelope.baseVolume,
-      );
-    }
-
-    // `end` is already the render's totalDuration, so the outer mix's own
-    // atrim-to-totalDuration clips this track exactly the same way it would
-    // an ungrouped one whose clip ran to the end of the render — a group's FX
-    // tail gets the same "never past the end of the video" treatment member
-    // tails get, for free, with no separate tailSeconds bookkeeping needed.
-    tracks.push({
-      id: groupId,
-      srcPath: groupSrcPath,
-      start: 0,
-      end: totalDuration,
-      mediaStart: 0,
-      duration: totalDuration,
-      volume: bakedEnvelope ? 1.0 : meta.volume,
-    });
   }
   if (failures.length > 0) return bail();
 
@@ -1406,9 +1520,21 @@ export async function processCompositionAudio(
     /* ignore */
   }
 
+  // A group whose sub-mix had to drop member automation reports it the same
+  // way mixAudioTracks reports its own degradation: on a SUCCESSFUL result, so
+  // the render ships and the caller can still say what was lost.
+  const degradedNote =
+    groupsDegradedAutomation.length > 0
+      ? `Volume automation exceeded this ffmpeg build's expression limits in group(s) ${groupsDegradedAutomation.join(", ")}; rendered at base volume`
+      : undefined;
+
   return {
     ...mixResult,
     durationMs: Date.now() - startMs,
-    error: mixResult.error,
+    // Both, when both degraded. `mixResult.error ?? degradedNote` reported only
+    // the outer mix and dropped the one that names which GROUPS lost their
+    // members' automation — two different losses, and the operator needs to
+    // hear about the one they can act on.
+    error: [mixResult.error, degradedNote].filter(Boolean).join("; ") || undefined,
   };
 }

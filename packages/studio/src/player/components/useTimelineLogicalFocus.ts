@@ -35,7 +35,7 @@ interface TimelineLogicalFocusInput {
 
 export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
   const expandedClipIds = usePlayerStore((state) => state.expandedClipIds);
-  const expandedGroupIds = usePlayerStore((state) => state.expandedGroupIds);
+  const collapsedGroupIds = usePlayerStore((state) => state.collapsedGroupIds);
   const expandedLaneOwnerIds = usePlayerStore((state) => state.expandedLaneOwnerIds);
   const projectId = usePlayerStore((state) => state.timelineProjectId);
   const logicalRows = useTimelineLogicalRows({
@@ -45,7 +45,7 @@ export function useTimelineLogicalFocus(input: TimelineLogicalFocusInput) {
     selectedElementId: input.selectedElementId,
     selectedElementIds: input.selectedElementIds,
     expandedClipIds,
-    expandedGroupIds,
+    collapsedGroupIds,
     expandedLaneOwnerIds,
     groups: input.groups,
     trackGroupOf: input.trackGroupOf,

@@ -5,7 +5,8 @@
  * is not an entry in the chain.
  */
 
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { audioFxRevealTarget, scrollRevealedRowIntoView } from "./audioFxRevealTarget.js";
 import {
   defaultAudioFxParams,
   mintAudioFxNodeId,
@@ -25,6 +26,7 @@ import { applyAudioFxProfile, getAudioFxProfile } from "@hyperframes/core/audio-
 import { audioFxJobNode, type HfAudioFxJob } from "@hyperframes/core/audio-fx-jobs";
 import { FxPresetMenu } from "./propertyPanelFxPresetMenu.js";
 import { FxRackChain } from "./propertyPanelFxRackChain.js";
+import { CLIP_SIGNAL_PATH } from "./audioFxSignalPath.js";
 import { FxAddMenu } from "./propertyPanelFxAddMenu.js";
 import { useFxAudition } from "./useFxAudition.js";
 import {
@@ -103,6 +105,9 @@ export function FxSection({
   onRemovePresetAutomation,
   automatedPresets,
   onAuditionTransport,
+  signalPath,
+  revealTarget,
+  revealNonce,
 }: FxSectionProps) {
   const presetAutomated = automatedPresets ?? new Set<string>();
   // Falls back to the persisting write when no preview handler is supplied, which
@@ -134,11 +139,18 @@ export function FxSection({
     [chain, onChainPreview],
   );
 
-  const { audition, clearAudition } = useFxAudition(chain, onChainPreview, onAuditionTransport);
+  const { audition, clearAudition, storedChain } = useFxAudition(
+    chain,
+    onChainPreview,
+    onAuditionTransport,
+  );
 
   const applyPreset = useCallback(
     (id: string) => {
-      const next = applyPresetToChain(chain, id, trackKind);
+      // The stored chain, not whatever is being auditioned on top of it — see
+      // `storedChain`. Clicking preset B while hovering preset A used to save
+      // both, which is heard as the effect running twice.
+      const next = applyPresetToChain(storedChain(), id, trackKind);
       if (!next) return;
       // The audition WAS this, so there is nothing to put back — and putting the
       // old chain back over the write that just landed is a race the author
@@ -150,7 +162,7 @@ export function FxSection({
       setOpenNode(next.nodes.findIndex((n) => n.fromPreset === id));
       setPicking(false);
     },
-    [chain, mutate, clearAudition, trackKind],
+    [storedChain, mutate, clearAudition, trackKind],
   );
 
   const addJob = useCallback(
@@ -311,6 +323,51 @@ export function FxSection({
   }, [handBuilt, eqIds.length, showCarve]);
   const [openEq, setOpenEq] = useState<string | null>(null);
 
+  /** The reveal request held until its row is mounted and scrolled. */
+  const [consumedRevealNonce, setConsumedRevealNonce] = useState<number | null>(null);
+  const [pendingReveal, setPendingReveal] = useState<{
+    nonce: number;
+    target: string;
+  } | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  if (revealNonce != null && revealNonce !== consumedRevealNonce) {
+    setConsumedRevealNonce(revealNonce);
+    const where = revealTarget ? audioFxRevealTarget(revealTarget, chain) : null;
+    if (where) {
+      // Each surface has its own open-state; the resolver says which one owns
+      // this parameter. Opening the wrong one leaves the click looking dead.
+      if (where.kind === "node") setOpenNode(where.index);
+      if (where.kind === "eq") setOpenEq(where.eqId);
+      if (where.kind === "carve") setCarveOpen(true);
+      if (where.kind === "preset") {
+        setCollapsedRuns((was) => {
+          if (!was.has(where.runKey)) return was;
+          const next = new Set(was);
+          next.delete(where.runKey);
+          return next;
+        });
+      }
+    }
+    setPendingReveal(where && revealTarget ? { nonce: revealNonce, target: revealTarget } : null);
+  }
+
+  /**
+   * Scroll the revealed parameter into view once its row has actually mounted.
+   *
+   * The request itself is a dependency so a second click on an already-open
+   * surface still scrolls. It is cleared once used, so a later unrelated
+   * re-render does not yank the panel back to an old parameter.
+   */
+  useEffect(() => {
+    const target = pendingReveal?.target;
+    if (target && scrollRevealedRowIntoView(rootRef.current, target, chain)) {
+      setPendingReveal(null);
+    }
+    // `chain` is deliberately not a dependency: it changes on every knob edit,
+    // and re-running then would scroll the panel while the author is dragging.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNode, openEq, carveOpen, collapsedRuns, pendingReveal]);
+
   const addEq = useCallback(() => {
     clearAudition();
     const { chain: next, eqId } = addAudioEq(chain);
@@ -404,12 +461,14 @@ export function FxSection({
 
   return (
     <div
+      ref={rootRef}
       className="hf-fx-section space-y-2"
       // Focus lives on the buttons and menu items inside, so the keystroke
       // bubbles to here without the section needing focus of its own.
       onKeyDown={closeMenus}
     >
       <FxRackChain
+        signalPath={signalPath ?? CLIP_SIGNAL_PATH}
         chain={chain}
         showCarve={showCarve}
         carveNodes={carveNodes}

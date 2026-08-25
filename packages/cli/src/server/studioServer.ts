@@ -61,9 +61,20 @@ const REMOTE_GIF_IMG_SRC_RE =
   /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
 async function loadStudioProducer() {
-  return isDevMode()
-    ? await import("../../../producer/src/index.js")
-    : await import("@hyperframes/producer");
+  if (!isDevMode()) return await import("@hyperframes/producer");
+  // The producer's SOURCE uses the TS convention of `.js` specifiers naming
+  // `.ts` files, which bun resolves and Node does not. Node 22 strips TS types
+  // natively, so a Node-hosted dev server boots fine and only dies here, as
+  // `Cannot find module .../renderOrchestrator.js` with no other context.
+  // Vite's own shebang is `#!/usr/bin/env node` and it hosts this API
+  // in-process, so `vite` without `bun --bun` lands exactly here.
+  if (!process.versions.bun) {
+    throw new Error(
+      "Studio dev-mode rendering requires bun (the producer is loaded from TypeScript source, " +
+        "which Node cannot resolve). Restart the studio with `bun run studio`.",
+    );
+  }
+  return await import("../../../producer/src/index.js");
 }
 
 // ── Path resolution ─────────────────────────────────────────────────────────

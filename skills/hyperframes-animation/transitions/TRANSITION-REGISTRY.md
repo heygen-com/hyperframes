@@ -23,7 +23,8 @@ injector:
 2. Pulls `#el-<to>` wrapper `data-start` earlier by `duration_s` (creates the
    overlap window).
 3. Reassigns **all** clip `data-track-index` as a 0/1 ping-pong so the two
-   overlapping wrappers never share a track (same-track overlap is illegal —
+   overlapping wrappers never share a track (a readability convention, not a
+   render constraint,
    `core/src/lint/rules/composition.ts`). Higher track composites on top.
 4. Stamps the `gsap_template` into `window.__timelines["main"]` at `T = overlap-start`.
 

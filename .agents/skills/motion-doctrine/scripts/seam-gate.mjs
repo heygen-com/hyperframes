@@ -71,7 +71,12 @@ async function ensureServer() {
     const port = 5380 + Math.floor(Math.random() * 20);
     const env = { ...process.env };
     delete env.HYPERFRAME_RUNTIME_URL; // wrong value fails silently as 200 HTML
-    const cmd = flag("server-cmd", `npx --yes hyperframes preview --no-open --port ${port}`);
+    // `preview` backgrounds itself when stdin/stdout aren't TTYs, which they never are here: the
+    // launcher would exit 0 before the server is up and detach it out of our process group.
+    const cmd = flag(
+      "server-cmd",
+      `npx --yes hyperframes preview --foreground --no-open --port ${port}`,
+    );
     const child = spawn("sh", ["-c", cmd.replace(/\{port\}/g, String(port))], {
       cwd: project,
       env,

@@ -253,6 +253,21 @@ class HfPitchshift extends AudioWorkletProcessor {
     this.buf = [];
     this.write = 0;
     this.phase = 0;
+    // Samples written so far, capped at one grain. The taps read up to a grain
+    // behind the write head, so until this fills they would read the ring's
+    // zeros — the head of every clip came out attenuated or silent.
+    this.filled = 0;
+    // How much of the wet (pitch-shifted) path is currently in the output, and
+    // where it is heading. Crossing between dry and wet is a ~50 ms jump in the
+    // signal, so it is RAMPED rather than switched: a hard swap either way is a
+    // click. Ramping in both directions is also what lets a node return to true
+    // bypass at semitones 0 — a one-way latch left preview stuck with the delay
+    // that the render, building a fresh node from the attribute, does not have.
+    this.wet = 0;
+    this.wetTarget = 0;
+    // ~15 ms one-pole, short enough to feel immediate on a slider drag and long
+    // enough that the splice is inaudible.
+    this.wetCoef = Math.exp(-1 / (sampleRate * 0.015));
     this.port.onmessage = (e) => {
       if (e.data && e.data.__hfDispose) { this.dead = true; return; }
       this.p = { ...this.p, ...e.data };
@@ -265,20 +280,51 @@ class HfPitchshift extends AudioWorkletProcessor {
     const p = this.p;
     const semitones = Math.max(-12, Math.min(12, p.semitones ?? 0));
     const mix = Math.max(0, Math.min(1, p.mix ?? 1));
-    const ratio = Math.pow(2, semitones / 12);
     const grain = this.grain;
     const ringLen = grain * 2;
-    const inc = (1 - ratio) / grain;
     const n = i[0] ? i[0].length : 0;
     for (let ch = 0; ch < i.length; ch++) {
       if (!this.buf[ch]) this.buf[ch] = new Float32Array(ringLen);
     }
-    let write = this.write, phase = this.phase;
+
+    // Nothing to shift, or mixed fully out. The grain delay is ~grain/2
+    // whatever the ratio, so at semitones=0 this degenerated into a pure 50 ms
+    // delay of the signal — while the copy for that exact setting reads
+    // "Unchanged pitch".
+    this.wetTarget = semitones === 0 ? 0 : mix;
+
+    // Fully dry AND settled: take the cheap transparent path. The ring keeps
+    // filling, so a later shift does not start cold.
+    if (this.wetTarget === 0 && this.wet < 1e-4) {
+      this.wet = 0;
+      let w = this.write;
+      for (let s = 0; s < n; s++) {
+        for (let ch = 0; ch < i.length; ch++) {
+          const x = i[ch][s];
+          this.buf[ch][w] = x;
+          o[ch][s] = x;
+        }
+        w = (w + 1) % ringLen;
+      }
+      this.write = w;
+      this.filled = Math.min(grain, this.filled + n);
+      return true;
+    }
+
+    const ratio = Math.pow(2, semitones / 12);
+    const inc = (1 - ratio) / grain;
+    let write = this.write, phase = this.phase, filled = this.filled, wetNow = this.wet;
+    const target = this.wetTarget, coef = this.wetCoef;
     for (let s = 0; s < n; s++) {
       phase += inc;
       phase -= Math.floor(phase);
       const phaseB = (phase + 0.5) % 1;
       const gA = xfade(phase), gB = xfade(phaseB);
+      // Ramp the wet path in as the ring fills rather than reading zeros:
+      // 100 ms of unshifted audio at the head of a clip beats 50 ms of silence.
+      const warm = filled >= grain ? 1 : filled / grain;
+      wetNow = target + coef * (wetNow - target);
+      const wetMix = wetNow * warm;
       for (let ch = 0; ch < i.length; ch++) {
         const ring = this.buf[ch];
         const inp = i[ch], out = o[ch];
@@ -286,12 +332,15 @@ class HfPitchshift extends AudioWorkletProcessor {
         ring[write] = x;
         const wet =
           readTap(ring, write, phase * grain) * gA + readTap(ring, write, phaseB * grain) * gB;
-        out[s] = x * (1 - mix) + wet * mix;
+        out[s] = x * (1 - wetMix) + wet * wetMix;
       }
       write = (write + 1) % ringLen;
+      if (filled < grain) filled++;
     }
     this.write = write;
     this.phase = phase;
+    this.filled = filled;
+    this.wet = wetNow;
     return true;
   }
 }

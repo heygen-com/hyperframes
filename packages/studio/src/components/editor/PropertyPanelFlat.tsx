@@ -1,5 +1,5 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { slugifyDesignInput } from "../../utils/designInputTracking";
@@ -7,15 +7,18 @@ import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
+import { closedGroupHeader, isSelectionHidden } from "./propertyPanelFlatClosedGroup";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
-import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
+import { FlatMotionSection, motionSectionLabel } from "./propertyPanelFlatMotionSection";
 import { AudioFxGroup } from "./propertyPanelAudioFxGroup.js";
 import { useVolumeAutomation } from "./useVolumeAutomation";
+import { useAudioFxRevealSection } from "./useAudioFxRevealSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
@@ -40,6 +43,7 @@ import {
   EMPTY_GSAP_EFFECT_HANDLERS,
   type FlatGroupDescriptor,
 } from "./propertyPanelFlatDescriptors";
+import { isAudioDomElement } from "../../utils/timelineInspector";
 
 /** The flat inspector shell with one shared open-group state. */
 // fallow-ignore-next-line complexity
@@ -135,7 +139,13 @@ export function PropertyPanelFlat({
         ? "style"
         : sections.media
           ? "media"
-          : "layout",
+          : // An `<hf-audio-group>` has no style, no layout and no media — its
+            // chain is the only reason to select one. Without this the fallback
+            // landed on "layout", a section a bus does not render, so opening the
+            // rack on a group produced a panel with everything collapsed.
+            sections.audioFx
+            ? "audio-fx"
+            : "layout",
   );
 
   // Tracks which group(s) are actively transitioning this toggle cycle, so
@@ -161,6 +171,7 @@ export function PropertyPanelFlat({
       timelineSessionEpoch: state.timelineSessionEpoch,
     })),
   );
+  const storeElements = usePlayerStore((state) => state.elements);
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -185,6 +196,25 @@ export function PropertyPanelFlat({
       focusedEaseSegment.elementId === renderedElementId &&
       gsapAnimations.some((animation) => animation.id === focusedEaseSegment.animationId);
     if (focusesThisPanel) setOpenGroupId("motion");
+  }
+
+  /**
+   * A lane's reveal request opens the Audio FX section, the same way a focused
+   * ease segment opens Motion.
+   *
+   * Without this the request reached a collapsed section: the rack — and the
+   * module the request names — is not mounted while it is closed, so the click
+   * selected the clip and then appeared to do nothing.
+   */
+  const hiddenNow = isSelectionHidden(selectedElementHidden, element);
+
+  const reveal = useAudioFxRevealSection({
+    elementId: element?.id,
+    hasAudioFxSection: Boolean(sections.audioFx),
+  });
+  if (reveal.revealNonce !== null) {
+    reveal.consume(reveal.revealNonce);
+    setOpenGroupId("audio-fx");
   }
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
@@ -254,10 +284,29 @@ export function PropertyPanelFlat({
           onSetAllKeyframeEases,
         }
       : null;
-  const showMotionEffects = gsapEffectHandlers !== null;
+  const audioSelection = isAudioDomElement(element.element);
+  // Handlers being wired is necessary but not sufficient: App.tsx always passes
+  // them, so this alone showed the tween editor for every selection — including
+  // an `<audio>` clip and an `<hf-audio-group>` bus, neither of which has a
+  // transform, an opacity or a box for a tween to move. Gated on the TAG, not on
+  // `sections.animation` (`animationCount > 0`): a div with no tweens yet must
+  // still offer "+ Add", so "has none" and "can have none" are different
+  // questions and only the second one belongs here.
+  const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
   const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
+
+  // The group this clip belongs to, if any — the Audio FX summary reads
+  // "in Voiceover" for a member (see `audioFxSummary`). Membership lives on the
+  // members, so resolve the owning label from the live document.
+  const audioGroupLabel = useMemo((): string | undefined => {
+    const doc = element.element?.ownerDocument;
+    const id = element.id;
+    if (!doc || !id) return undefined;
+    return resolveAudioGroups(doc).find((group) => group.memberIds.includes(id))?.label;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- store replacement signals live group membership changed
+  }, [element, storeElements]);
 
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
@@ -346,8 +395,12 @@ export function PropertyPanelFlat({
   if (showMotionGroup) {
     groups.push({
       id: "motion",
-      title: "Motion",
-      summary: `${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`,
+      ...motionSectionLabel({
+        timingOnly: audioSelection,
+        start: elStart,
+        duration: elDuration,
+        effectCount: gsapAnimations.length,
+      }),
       content: (
         <FlatMotionSection
           element={element}
@@ -431,7 +484,7 @@ export function PropertyPanelFlat({
     groups.push({
       id: "audio-fx",
       title: "Audio FX",
-      summary: audioFxSummary(element),
+      summary: audioFxSummary(element, audioGroupLabel),
       content: (
         <AudioFxGroup
           element={element}
@@ -466,17 +519,8 @@ export function PropertyPanelFlat({
   const beforeOpen = openIndex === -1 ? groups : groups.slice(0, openIndex);
   const openGroup = openIndex === -1 ? null : groups[openIndex];
   const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
-  const renderClosedGroup = (group: FlatGroupDescriptor) => (
-    <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
-      <FlatGroupHeader
-        title={group.title}
-        isOpen={false}
-        onToggleOpen={() => toggleOpen(group.id)}
-        summary={group.summary}
-        animateEntrance={justToggledIds.includes(group.id)}
-      />
-    </DesignPanelInputProvider>
-  );
+  const renderClosedGroup = (group: FlatGroupDescriptor) =>
+    closedGroupHeader(group, toggleOpen, justToggledIds);
 
   return (
     <DesignPanelInputProvider ui="flat">
@@ -486,10 +530,27 @@ export function PropertyPanelFlat({
             name={element.label}
             meta={`${sourceLabel} · ${element.tagName}`}
             elementKind={elementKind}
-            hidden={selectedElementHidden}
+            hidden={hiddenNow}
+            // Audio gets no hide control here. On an audio track "hidden" and
+            // "muted" are not similar operations, they are the SAME operation
+            // with two names (groups doc §2.1) — which is why the timeline's eye
+            // BECAME the mute rather than growing a sibling. A second copy in
+            // the panel, still called "Hide element", is exactly what that step
+            // set out to remove: "Two controls that silence a track, sitting
+            // next to each other, differing only in a distinction the author
+            // cannot see." An `<hf-audio-group>` has no visual to hide at all.
+            //
+            // EXCEPT while it is already hidden — the same door-from-the-inside
+            // the timeline's eye keeps for an audio track
+            // (`TimelineTrackPlainHeader`). Withholding it unconditionally
+            // withheld the only way back: a `data-hidden` group is silent in
+            // preview (the bus's mute gain) and absent from the render (every
+            // member dropped), and the group header carries no visibility
+            // control of its own now that mute and solo are gone. Only
+            // hand-editing the HTML brought the audio back.
             onToggleHidden={
-              selectedElementId && onToggleElementHidden
-                ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
+              selectedElementId && onToggleElementHidden && (!audioSelection || hiddenNow)
+                ? () => void onToggleElementHidden(selectedElementId, !hiddenNow)
                 : undefined
             }
             copied={clipboardCopied}

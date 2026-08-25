@@ -530,6 +530,49 @@ it("skips caption_zone_collision when data-layout-allow-caption-zone is set", as
   expect(report.layout.findings).toEqual([]);
 });
 
+it("keeps overlap waivers from suppressing changelog caption-rail collisions", async () => {
+  const collectGeometryCandidates = vi.fn(async (time: number) => [
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Release card copy",
+      selector: "#release-card",
+      rect: fixtureRect(120, 970, 840, 118),
+      time,
+      dataAttributes: { "data-layout-allow-overlap": "" },
+    }),
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Intentional caption rail",
+      selector: "#cap-line",
+      rect: fixtureRect(0, 990, 1080, 52),
+      time,
+      dataAttributes: { "data-layout-allow-caption-zone": "" },
+    }),
+  ]);
+  const { report } = await runScenario(
+    fakeDriver({
+      getCanvas: vi.fn(async () => ({ width: 1080, height: 1080 })),
+      collectGeometryCandidates,
+    }),
+    {
+      samples: 1,
+      contrast: false,
+      captionZone: { x0: 0, y0: 0.9, x1: 1, y1: 1, severity: "error" },
+    },
+  );
+
+  expect(report.layout.findings).toEqual([
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "error",
+      selector: "#release-card",
+    }),
+  ]);
+  expect(report.ok).toBe(false);
+});
+
 it("filters caption candidates by the element box while centering the text rect", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({

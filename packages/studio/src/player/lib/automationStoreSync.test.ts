@@ -80,4 +80,30 @@ describe("syncStoredAutomationFromPreview", () => {
     syncStoredAutomationFromPreview(null);
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(TWO_POINTS);
   });
+  // The reported symptom: automate a parameter on a GROUP from the FX rack and
+  // the group's row shows no automation. The rack is not group-aware — it
+  // writes the attribute on the group node through the ordinary element path —
+  // and the timeline reads a group's lanes from the mirrors its MEMBERS carry,
+  // which that path used to leave untouched.
+  it("re-reads what the group carries onto every member that belongs to it", () => {
+    const chain = '{"version":1,"nodes":[{"type":"gain","id":"n1","params":{"gain":0}}]}';
+    const groupAutomation =
+      '{"version":1,"lanes":[{"target":"fx.n1.gain","points":[{"t":0,"v":0}]}]}';
+    const doc = document.implementation.createHTMLDocument("preview");
+    const group = doc.createElement("hf-audio-group");
+    group.id = "voiceover";
+    group.setAttribute("data-fx-chain", chain);
+    group.setAttribute("data-automation", groupAutomation);
+    const audio = doc.createElement("audio");
+    audio.id = "bgm";
+    audio.setAttribute("data-audio-group", "voiceover");
+    doc.body.append(group, audio);
+
+    usePlayerStore.setState({ elements: [el({ audioGroup: "voiceover" })] });
+    syncStoredAutomationFromPreview(doc);
+
+    const stored = usePlayerStore.getState().elements[0];
+    expect(stored?.audioGroupAutomation).toBe(groupAutomation);
+    expect(stored?.audioGroupFxChain).toBe(chain);
+  });
 });

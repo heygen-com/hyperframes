@@ -16,11 +16,11 @@ This skill is the **technical contract** — how to build one hyperframes projec
 | `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                                                                                            |
 | `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                                          |
 | `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                                            |
-| `references/tracks-and-clips.md`        | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                                                                                      |
+| `references/tracks-and-clips.md`        | understand what `data-track-index` does (and does not) control, z-index, time a clip relative to another                                                                           |
 | `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits                                                                          |
 | `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                                         |
 | `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                                     |
-| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                                                                                  |
+| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; layout / text fit                                                                                                                     |
 | `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                                                                                                   |
 | `references/storyboard-format.md`       | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                                                                              |
 | `references/review-loop.md`             | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow                                                                         |
@@ -38,11 +38,11 @@ For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperf
 
 ### Two root forms (not interchangeable)
 
-- **Standalone** (top-level `index.html`) — root `<div data-composition-id="…">` sits directly in `<body>`, **no `<template>` wrapper** (wrapping it hides all content and breaks rendering).
-- **Sub-composition** (loaded via `data-composition-src`) — root **must** be wrapped in `<template>`.
+- **Standalone** (top-level `index.html`): root `<div data-composition-id="…">` sits directly in `<body>`, **no `<template>` wrapper**. Wrapping a standalone root hides all content and `lint` rejects it (`standalone_composition_wrapped_in_template`, error).
+- **Sub-composition** (loaded via `data-composition-src`): wrap the root in `<template>`. This is the shape to write: the loader also accepts a plain full document and falls back to its `<body>`, but the templated form is what the examples and tooling assume.
 
-> ⚠ Transport rule: the runtime **only clones `<template>` contents**; everything outside (incl. `<head>` styles/scripts) is discarded — put `<style>`/`<script>` **inside** the template.
-> ⚠ Host-id rule: the host slot's `data-composition-id` must **exactly equal** the inner template's `data-composition-id` **and** the `window.__timelines["<id>"]` key — no `-mount`/`-slot`/`-host` suffix.
+> ⚠ Transport rule: for a **templated** sub-composition the assembler drops the file's own `<head>` `<style>`/`<script>` (`packages/core/src/compiler/compositionAssembly.ts`, the `hasTemplate` gate), so put `<style>`/`<script>` **inside** the template. `<link>` is hoisted either way.
+> ⚠ Host-id convention: give the host slot, the inner template, and the `window.__timelines["<id>"]` key the **same** id. A different local id is supported (the assembler falls back to the first root in the file) but the mismatch is silent, so match them unless you have a reason not to.
 
 File shape, host wiring, and the pre-render checklist → `references/sub-compositions.md`.
 
@@ -52,31 +52,35 @@ The standalone root needs an explicit **sized box** (`width`/`height` in px), an
 
 ### One paused timeline
 
-Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`), built **synchronously** at page load. Render duration = root `data-duration`, not timeline length. Don't manually nest sub-timelines into the host. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
+Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`). Building it inside an async callback (`document.fonts.ready`) is supported; what matters is that you **register only after the build completes**. Render length is the root's `data-duration`, **not** the timeline's length: a timeline that runs past it is cut off, and one that ends early holds its last frame. Omit the root `data-duration` and the length is inferred instead (timeline, media window, or adapter). You do not need `window.__timelines = window.__timelines || {}`: the runtime creates the registry before your inline scripts run, and `lint` no longer asks for it. Don't manually nest sub-timelines into the host; the runtime auto-nests registered child timelines. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
 
 ### First-pass lint gotchas (a guaranteed first build failure)
 
-Two rules that `lint` **does** catch, but only after the fact — write them right the first time:
+Rules that `lint` **does** catch, but only after the fact. Write them right the first time:
 
-- The **root** composition element must carry `data-start="0"` (alongside `data-composition-id`/`data-width`/`data-height`); omitting it fails `lint` with `root_composition_missing_data_start`.
 - Never pair a CSS initial `transform` with a GSAP tween on the **same** property — the CSS value and the tween's start fight and `lint` rejects it with `gsap_css_transform_conflict`. Set the initial state inside the tween with `gsap.fromTo(el, { x: -40 }, { x: 0 })` instead of a CSS `transform: translateX(-40px)`.
+- Never put `crossorigin` on `<video>`/`<audio>`. `lint` rejects it unconditionally with `media_crossorigin_breaks_preview` (error), including for canvas/WebGL/WebAudio readback. There is no suppression.
+- Never give a `<video data-start>` an ancestor that also carries `data-start`. `lint` rejects it with `video_nested_in_timed_element` (error). Time the wrapper **or** the video, not both.
+- Every `<audio>` needs an `id`. `lint` rejects it with `media_missing_id`, and an id-less `<audio>` is never picked up by the mixer, so the render is **silent**.
+
+A lint **error** also switches off the layout and contrast audits: `check` then reports `0 sample(s)` and `0/0 text checks`, which reads like a clean file but means nothing ran. Clear lint errors before you trust those numbers.
 
 ### Non-negotiable rules (silent bugs automated gates may miss)
 
 Surfaced here; full rationale in the linked reference. Do not violate:
 
 - No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
-- Animate only the visual-property allowlist; never tween `display` or raw `visibility`. GSAP `autoAlpha` and zero-duration timeline boundary sets are the only visibility exceptions, and only on non-clip elements or wrappers inside a clip. The framework alone controls `.clip` visibility. Do not `gsap.set` later-scene clips at page load. → `determinism-rules.md`
+- Never tween `display` or raw `visibility` on a clip element. The framework owns clip visibility, and `lint` rejects it. Use GSAP `autoAlpha` or a zero-duration boundary `set`. (Tweening ordinary visual properties on a clip element is fine; what lint forbids is taking over its visibility.) → `determinism-rules.md`
 - No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
-- `<video>`/`<audio>` work at **any nesting depth** (including inside a sub-comp `<template>` or wrapper); the framework owns playback and seeks/decodes media wherever it lives. The one caveat is timelines, not placement: a sub-comp timeline can't animate host-root elements. → `variables-and-media.md`
-- Every `id` must be unique across the **assembled** page; inside a sub-comp, prefix ids with the composition id (`#<id>-hero`). Duplicate `<video>`/`<img>` ids render **blank** — the producer injects frames by `getElementById`, and cross-file dupes slip past `lint`. → `composition-patterns.md`
-- A full-screen scene fill goes on a full-bleed **child** (`position:absolute; inset:0`), never on the composition root itself — the producer's frame compositing can drop the root element's own `background` (the frame renders **black**) even though preview/`snapshot` show it correctly. → `composition-patterns.md`
+- `<video>`/`<audio>` are found by a flat document query, so the framework seeks and decodes them at **any nesting depth** (including inside a sub-comp `<template>` or wrapper). One hard limit: `lint` errors if a `<video data-start>` sits inside another **plain** element that also has `data-start`, and the failure is real (wrong source frames, then the clip vanishes mid-slot), so put the timing on the wrapper or on the video, never both. Sub-composition hosts are exempt: media inside a sub-composition renders correctly. The other caveat is timelines, not placement: a sub-comp timeline can't animate host-root elements. → `variables-and-media.md`
+- Keep every `id` unique across the **assembled** page (prefix sub-comp ids with the composition id, `#<id>-hero`) so your own `#id` CSS and `getElementById` calls resolve. Frame injection no longer depends on it: the compiler stamps a document-unique `data-hf-render-id` on every `video[src]`/`audio[src]`/`img[src]`. Media that uses `<source>` children instead of a `src` attribute is **not** stamped, so unique ids still matter there. → `composition-patterns.md`
+- A full-screen fill on the composition **root** is fine on a normal render. It is dropped only on the layered-composite path (HDR content, or a composition using shader transitions), where the engine forces every composition root transparent so the layer beneath shows through. If your composition uses shader transitions or HDR media, put the fill on a full-bleed **child** (`position:absolute; inset:0`). → `composition-patterns.md`
 
 ## Editing existing compositions
 
 - Read the files first. Preserve unrelated timing, tracks, IDs, variables, media paths.
 - Match existing composition IDs and timeline keys.
-- Adding a clip: pick a non-overlapping `data-track-index` or adjust surrounding timing intentionally.
+- Adding a clip: set its `data-start`/`data-duration` intentionally against the clips around it. `data-track-index` is a Studio display lane, not a timing constraint, so it does not need to be free.
 - `data-hidden` on any composition element hides it in BOTH preview and render, overriding its time window; it is non-destructive/reversible and toggled by Studio's timeline eye icon.
 - Adding a sub-composition: verify its internal `data-composition-id` before wiring the host.
 

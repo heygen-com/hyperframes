@@ -55,7 +55,7 @@ Every finding carries a selector, the element's `data-*` identity, the compositi
 **Escape hatches** (mark intent in the HTML, then re-run):
 
 - `data-layout-allow-overflow` — overflow is intentional (entrance/exit travel).
-- `data-layout-allow-overlap` — deliberate text layering (e.g. a demo cursor label over a heading).
+- `data-layout-allow-overlap` — deliberate text layering (e.g. a demo cursor label over a heading). Applies only to the marked text block; it is not inherited. Mark the specific layering participant, never a scene/root wrapper, so unrelated descendant collisions remain auditable.
 - `data-layout-allow-occlusion` — an element is meant to cover text.
 - `data-layout-allow-caption-zone` — intentional lower-third / caption-band copy under `--caption-zone`. Applies to the marked element and every descendant (`closest`); silences only `caption_zone_collision` (not overflow/overlap/occlusion). Prefer the narrowest wrapper that owns the intentional band copy.
 - `data-layout-ignore` — decorative element that should never be audited.

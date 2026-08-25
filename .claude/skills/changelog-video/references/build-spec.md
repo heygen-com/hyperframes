@@ -102,8 +102,8 @@ otherwise) and must stay flat 2D (no 3D ancestors).
 ## Lint/check gotchas (all hit before, all pre-solved)
 
 - Mock containers with intentional stacking: `data-layout-allow-overlap` on
-  the slide root; elements a playhead/line crosses:
-  `data-layout-allow-occlusion`.
+  each text block that deliberately participates, never on the slide root;
+  elements a playhead/line crosses: `data-layout-allow-occlusion`.
 - Dim text: `rgba(245,246,244,.66)` minimum (contrast gate).
 - Audio: every `<audio>` carries an `id`. BGM: the house track ships at
   `<SKILL_DIR>/assets/bgm.mp3` (159s instrumental) — copy it to the project

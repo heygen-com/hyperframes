@@ -164,43 +164,9 @@ export function FxCarveModule({
   onCarveChange(carve: HfCarveSettings): void;
   onCarvePreview(carve: HfCarveSettings): void;
 }) {
-  const bands = nodes.filter((n) => n.type === "peaking").length;
-  const hasLevel = nodes.some((n) => n.type === "gain");
   const on = carve.enabled;
-  /**
-   * The only track this bed could be listening to, when there is exactly one.
-   *
-   * A picker with one entry is a question with one answer: it asks the author to
-   * confirm something already decided. So the voice reads out instead.
-   *
-   * Not when the stored source is some OTHER track, though — a name that no longer
-   * classifies as a voice, or a track since renamed. Reading out the one remaining
-   * candidate there would quietly claim the carve listens to something it does not,
-   * so the picker comes back and shows the mismatch.
-   */
-  const soleVoice =
-    sourceOptions.length === 1 &&
-    (carve.sources.length === 0 ||
-      (carve.sources.length === 1 && carve.sources[0] === sourceOptions[0]?.id))
-      ? sourceOptions[0]
-      : null;
-  // What the module is worth right now, in the head, so a collapsed card still
-  // says whether it is doing anything: the analysis it produced, or why not.
-  const summary = !on
-    ? "off"
-    : analysing
-      ? "analysing…"
-      : bands > 0
-        ? [
-            `${bands} band${bands === 1 ? "" : "s"}`,
-            ...(hasLevel ? ["level"] : []),
-            // Worth saying when it is more than one: the cuts follow whoever is
-            // speaking, and that is not obvious from a band count.
-            ...(carve.sources.length > 1 ? [`${carve.sources.length} voices`] : []),
-          ].join(" + ")
-        : carve.sources.length > 0
-          ? "no analysis yet"
-          : "pick a voice";
+  const soleVoice = soleCarveVoice(sourceOptions, carve.sources);
+  const summary = carveSummary({ nodes, carve, analysing });
   // The carve's own colour, used three ways: the module's left edge, the title,
   // and the wash behind it. A preset gets a title treatment because it is a
   // character; the carve gets one because it is the only module in the rack
@@ -230,6 +196,8 @@ export function FxCarveModule({
           // sets `tracking-normal`, and two Tailwind tracking utilities on one
           // element resolve by stylesheet order, not by the order written.
           style={{ color: tint, letterSpacing: "0.16em" }}
+          // Truncates in a narrow panel like every other name in the rack.
+          title="Voiceover carve"
           aria-expanded={open}
           onClick={onToggleOpen}
         >
@@ -255,50 +223,13 @@ export function FxCarveModule({
       {open && on ? (
         <div className="hf-fx-carve-body border-t border-panel-border-input">
           <div className="hf-fx-carve-controls space-y-0.5 px-1.5 py-1.5">
-            <div className="hf-fx-row flex min-h-6 items-center gap-2">
-              <span className="hf-fx-label w-[86px] flex-shrink-0 truncate text-[10px] text-panel-text-2">
-                Listen to
-              </span>
-              {soleVoice ? (
-                <span
-                  className="hf-fx-carve-source min-w-0 flex-1 truncate font-mono text-[10px] text-panel-text-1"
-                  data-carve-source={soleVoice.id}
-                >
-                  {soleVoice.label}
-                </span>
-              ) : (
-                /* Every voice, not one of them. A bed usually runs under a whole
-                   sequence — a narrator, an answer, a second presenter — and they are
-                   analysed together, so the cuts follow whoever is speaking. Which
-                   makes this a set of things to include, not a choice between them. */
-                <div className="hf-fx-carve-sources flex min-w-0 flex-1 flex-wrap gap-x-2.5 gap-y-0.5">
-                  {sourceOptions.map((o) => (
-                    <label
-                      key={o.id}
-                      className="flex min-w-0 items-center gap-1 font-mono text-[9px] text-panel-text-1"
-                      title={`Make room for ${o.label}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="hf-fx-carve-source h-2.5 w-2.5 accent-panel-accent"
-                        data-carve-source={o.id}
-                        checked={carve.sources.includes(o.id)}
-                        disabled={disabled}
-                        onChange={(e) =>
-                          onCarveChange({
-                            ...carve,
-                            sources: e.target.checked
-                              ? [...carve.sources, o.id]
-                              : carve.sources.filter((id) => id !== o.id),
-                          })
-                        }
-                      />
-                      <span className="truncate">{o.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CarveSourceRow
+              carve={carve}
+              sourceOptions={sourceOptions}
+              soleVoice={soleVoice}
+              disabled={disabled}
+              onCarveChange={onCarveChange}
+            />
             {/* One knob for the whole effect. Depth, band count, width, the
                 intelligibility weighting and both level-match numbers move together
                 anyway — a gentle carve is shallow in few bands with little ducking, a
@@ -330,53 +261,200 @@ export function FxCarveModule({
               change re-derives all of them — so leaving them up reads as the
               settings that are in force when they are already history, and the one
               honest thing to say is that the work is happening. */}
-          {analysing ? (
-            <p className="hf-fx-carve-working flex items-center justify-center gap-1.5 border-t border-panel-border-input py-2 text-[10px] text-panel-text-2">
-              <svg
-                className="hf-fx-carve-spinner h-3 w-3 animate-spin motion-reduce:animate-none"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              Analysing…
-            </p>
-          ) : nodes.length > 0 ? (
-            <div className="hf-fx-carve-members divide-y divide-panel-border-input/60 border-t border-panel-border-input">
-              <div className="hf-fx-carve-members-label px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
-                analysed
-              </div>
-              {nodes.map((node, i) => (
-                <FxCarveMember
-                  key={node.id ?? `${node.type}-${i}`}
-                  node={node}
-                  automatedTargets={automatedTargets}
-                  liveAutomationValues={liveAutomationValues}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="hf-fx-carve-working border-t border-panel-border-input py-1.5 text-center text-[10px] text-panel-text-2">
-              {carve.sources.length > 0
-                ? "Nothing analysed yet."
-                : "Pick the voices this bed should make room for."}
-            </p>
-          )}
+          <CarveAnalysis
+            nodes={nodes}
+            analysing={analysing}
+            hasSources={carve.sources.length > 0}
+            automatedTargets={automatedTargets}
+            liveAutomationValues={liveAutomationValues}
+          />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The only track this bed could be listening to, when there is exactly one.
+ *
+ * A picker with one entry is a question with one answer: it asks the author to
+ * confirm something already decided. So the voice reads out instead.
+ *
+ * Not when the stored source is some OTHER track, though — a name that no longer
+ * classifies as a voice, or a track since renamed. Reading out the one remaining
+ * candidate there would quietly claim the carve listens to something it does not,
+ * so the picker comes back and shows the mismatch.
+ */
+function soleCarveVoice(
+  sourceOptions: AudioTrackOption[],
+  sources: readonly string[],
+): AudioTrackOption | null {
+  if (sourceOptions.length !== 1) return null;
+  const only = sourceOptions[0];
+  if (!only) return null;
+  if (sources.length === 0) return only;
+  return sources.length === 1 && sources[0] === only.id ? only : null;
+}
+
+/**
+ * What the module is worth right now, for its head, so a collapsed card still
+ * says whether it is doing anything: the analysis it produced, or why not.
+ */
+function carveSummary(input: {
+  nodes: HfAudioFxNode[];
+  carve: HfCarveSettings;
+  analysing?: boolean;
+}): string {
+  const { nodes, carve, analysing } = input;
+  if (!carve.enabled) return "off";
+  if (analysing) return "analysing…";
+  const bands = nodes.filter((n) => n.type === "peaking").length;
+  if (bands === 0) return carve.sources.length > 0 ? "no analysis yet" : "pick a voice";
+  return [
+    `${bands} band${bands === 1 ? "" : "s"}`,
+    ...(nodes.some((n) => n.type === "gain") ? ["level"] : []),
+    // Worth saying when it is more than one: the cuts follow whoever is
+    // speaking, and that is not obvious from a band count.
+    ...(carve.sources.length > 1 ? [`${carve.sources.length} voices`] : []),
+  ].join(" + ");
+}
+
+/** Which voices the bed makes room for: a readout when there is only one to
+ *  choose, otherwise a set of checkboxes. */
+function CarveSourceRow({
+  carve,
+  sourceOptions,
+  soleVoice,
+  disabled,
+  onCarveChange,
+}: {
+  carve: HfCarveSettings;
+  sourceOptions: AudioTrackOption[];
+  soleVoice: AudioTrackOption | null;
+  disabled?: boolean;
+  onCarveChange(carve: HfCarveSettings): void;
+}) {
+  return (
+    <div className="hf-fx-row flex min-h-6 items-center gap-2">
+      {/* Wraps like every other name in this column (see FxParamRow) — one
+          truncating row beside wrapping ones reads as a rendering bug. */}
+      <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
+        Listen to
+      </span>
+      {soleVoice ? (
+        <span
+          className="hf-fx-carve-source min-w-0 flex-1 truncate font-mono text-[10px] text-panel-text-1"
+          data-carve-source={soleVoice.id}
+        >
+          {soleVoice.label}
+        </span>
+      ) : (
+        /* Every voice, not one of them. A bed usually runs under a whole
+           sequence — a narrator, an answer, a second presenter — and they are
+           analysed together, so the cuts follow whoever is speaking. Which
+           makes this a set of things to include, not a choice between them. */
+        <div className="hf-fx-carve-sources flex min-w-0 flex-1 flex-wrap gap-x-2.5 gap-y-0.5">
+          {sourceOptions.map((o) => (
+            <label
+              key={o.id}
+              className="flex min-w-0 items-center gap-1 font-mono text-[9px] text-panel-text-1"
+              title={`Make room for ${o.label}`}
+            >
+              <input
+                type="checkbox"
+                className="hf-fx-carve-source h-2.5 w-2.5 accent-panel-accent"
+                data-carve-source={o.id}
+                checked={carve.sources.includes(o.id)}
+                disabled={disabled}
+                onChange={(e) =>
+                  onCarveChange({
+                    ...carve,
+                    sources: e.target.checked
+                      ? [...carve.sources, o.id]
+                      : carve.sources.filter((id) => id !== o.id),
+                  })
+                }
+              />
+              <span className="truncate">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the analysis made of all that. Divided rather than boxed: these are parts
+ * of one module, and a border around each would read as the separate effects
+ * this replaced.
+ *
+ * While the analysis runs the previous filters are gone rather than stale. Every
+ * number in that list is about to be replaced — a strength change re-derives all
+ * of them — so leaving them up reads as the settings that are in force when they
+ * are already history, and the one honest thing to say is that the work is
+ * happening.
+ */
+function CarveAnalysis({
+  nodes,
+  analysing,
+  hasSources,
+  automatedTargets,
+  liveAutomationValues,
+}: {
+  nodes: HfAudioFxNode[];
+  analysing?: boolean;
+  hasSources: boolean;
+  automatedTargets?: ReadonlySet<string>;
+  liveAutomationValues?: ReadonlyMap<string, number>;
+}) {
+  if (analysing) {
+    return (
+      <p className="hf-fx-carve-working flex items-center justify-center gap-1.5 border-t border-panel-border-input py-2 text-[10px] text-panel-text-2">
+        <svg
+          className="hf-fx-carve-spinner h-3 w-3 animate-spin motion-reduce:animate-none"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+          />
+        </svg>
+        Analysing…
+      </p>
+    );
+  }
+  if (nodes.length === 0) {
+    return (
+      <p className="hf-fx-carve-working border-t border-panel-border-input py-1.5 text-center text-[10px] text-panel-text-2">
+        {hasSources ? "Nothing analysed yet." : "Pick the voices this bed should make room for."}
+      </p>
+    );
+  }
+  return (
+    <div className="hf-fx-carve-members divide-y divide-panel-border-input/60 border-t border-panel-border-input">
+      <div className="hf-fx-carve-members-label px-1.5 pt-1 font-mono text-[9px] uppercase tracking-wide text-panel-text-2">
+        analysed
+      </div>
+      {nodes.map((node, i) => (
+        <FxCarveMember
+          key={node.id ?? `${node.type}-${i}`}
+          node={node}
+          automatedTargets={automatedTargets}
+          liveAutomationValues={liveAutomationValues}
+        />
+      ))}
     </div>
   );
 }

@@ -125,6 +125,7 @@ function Fader({
 }
 
 export function FxEqModule({
+  eqId,
   bands,
   open,
   disabled,
@@ -141,6 +142,8 @@ export function FxEqModule({
       className="hf-fx-node hf-fx-eq-module rounded-[4px] border border-l-2 border-panel-border-input"
       data-fx-node="eq"
       data-fx-family="smart"
+      // Scroll anchor for a revealed EQ-band automation lane.
+      data-fx-eq={eqId}
       // Smart, with the carve and the leveller: three bands the author sets by
       // ear on a control surface, not three filters they configured.
       style={{ borderLeftColor: fxFamilyTint({ type: "eq", fromEq: "eq" }) }}

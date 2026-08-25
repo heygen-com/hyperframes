@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyPreviewAudioFlags,
   buildMissingCompositionElements,
   scrubPreviewAudio,
   setPreviewMediaVolume,
@@ -85,5 +86,25 @@ describe("scrubPreviewAudio", () => {
 
     expect(audio.volume).toBeCloseTo(0.1);
     stopScrubPreviewAudio();
+  });
+});
+
+describe("applyPreviewAudioFlags", () => {
+  // Everything pushed here is state the runtime loses on reload and nothing else
+  // re-sends, so the push has to carry all of it every time. Volume in
+  // particular: the transport comes back at unity, so a preview the author had
+  // turned down came back loud.
+  it("re-pushes mute and volume together", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
+
+    applyPreviewAudioFlags(iframe, true, 0.4);
+
+    const actions = postMessage.mock.calls.map(
+      (call) => (call[0] as { action?: string }).action ?? "",
+    );
+    expect(actions).toContain("set-muted");
+    expect(actions).toContain("set-volume");
   });
 });
