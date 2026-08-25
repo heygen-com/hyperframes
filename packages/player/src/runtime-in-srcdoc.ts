@@ -33,6 +33,7 @@ function alreadyHasRuntime(html: string, runtimeUrl: string): boolean {
 }
 
 type OpeningTag = { index: number; end: number };
+const OPENING_TAG_BOUNDARIES = new Set([">", " ", "\t", "\n", "\r", "\f"]);
 
 /** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
 function findOpeningTag(html: string, tagName: string): OpeningTag | null {
@@ -43,14 +44,7 @@ function findOpeningTag(html: string, tagName: string): OpeningTag | null {
     const index = lower.indexOf(prefix, from);
     if (index < 0) return null;
     const boundary = lower[index + prefix.length];
-    const isBoundary =
-      boundary === ">" ||
-      boundary === " " ||
-      boundary === "\t" ||
-      boundary === "\n" ||
-      boundary === "\r" ||
-      boundary === "\f";
-    if (isBoundary) {
+    if (OPENING_TAG_BOUNDARIES.has(boundary)) {
       const close = lower.indexOf(">", index + prefix.length);
       if (close < 0) return null;
       return { index, end: close + 1 };
@@ -60,7 +54,10 @@ function findOpeningTag(html: string, tagName: string): OpeningTag | null {
   return null;
 }
 
-export function ensureRuntimeBeforeBodyScripts(html: string, runtimeUrl: string): string {
+export function ensureRuntimeBeforeBodyScripts(
+  html: string,
+  runtimeUrl: string,
+): string {
   if (!html || alreadyHasRuntime(html, runtimeUrl)) return html;
 
   const tag = `<script src="${runtimeUrl}"></script>`;
