@@ -3347,6 +3347,30 @@ function isNoCachedPaintRecordError(err: unknown): boolean {
   return msg.includes("No cached paint record");
 }
 
+/**
+ * True for the drawElement `canvas not initialized` error (thrown by
+ * drawElementService when the injected capture canvas isn't set up yet —
+ * observed at frame 0 on some macOS/Chrome combinations, see #3423). Like the
+ * no-cached-paint-record case, this is recoverable per-frame: callers fall
+ * back to screenshot capture for the affected frame instead of hard-failing
+ * the whole render.
+ */
+function isCanvasNotInitializedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("canvas not initialized");
+}
+
+/**
+ * Single gate for drawElement failures the fast-capture pipeline knows how to
+ * recover from by falling back to screenshot capture instead of aborting the
+ * render. Both {@link captureFrameCore} and {@link captureFrameToBufferPipelined}
+ * consult this so a newly-recognized recoverable error only needs to be taught
+ * here once.
+ */
+function isRecoverableDrawElementError(err: unknown): boolean {
+  return isNoCachedPaintRecordError(err) || isCanvasNotInitializedError(err);
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
@@ -3418,7 +3442,7 @@ async function captureFrameCore(
       // stale), so the "fallback" REPLACES good frames with damaged ones (validated:
       // 35e8fa9f 462→0 damaged frames, 4001da8e 11→0, when this is off). The two real
       // boundary failure modes are now caught reactively below — the throw case by
-      // isNoCachedPaintRecordError, the silent-solid-black case by the small-frame
+      // isRecoverableDrawElementError, the silent-solid-black case by the small-frame
       // blank-guard (a solid frame is a tiny JPEG) — without touching frames drawElement
       // handles. Force the old behavior with HF_FAST_CAPTURE_BOUNDARY_SS=true. The worker
       // path keeps proactive boundary-SS (it has no blank-guard); see
@@ -3476,13 +3500,18 @@ async function captureFrameCore(
       } catch (err) {
         // drawElementImage throws `InvalidStateError: No cached paint record for
         // element` when an element in the subtree has no paint record this frame
-        // (display toggled / detached / freshly-shown at a clip-cut boundary). This
-        // is a per-frame condition, not a whole-comp one — fall back to screenshot
-        // for THIS frame instead of aborting the render. See fast-capture-limitations.md.
-        if (isNoCachedPaintRecordError(err)) {
+        // (display toggled / detached / freshly-shown at a clip-cut boundary), and
+        // `canvas not initialized` when the injected capture canvas isn't set up yet
+        // (observed at frame 0 on some macOS/Chrome combinations, see #3423). Both
+        // are per-frame conditions, not whole-comp ones — fall back to screenshot for
+        // THIS frame instead of aborting the render. See fast-capture-limitations.md.
+        if (isRecoverableDrawElementError(err)) {
           session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+          const reason = isCanvasNotInitializedError(err)
+            ? "drawElement canvas not initialized"
+            : "No cached paint record";
           console.log(
-            `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
+            `[engine] fast capture: frame ${frameIndex} — ${reason}; ` +
               `screenshot fallback for this frame (see fast-capture-limitations.md)`,
           );
           screenshotBuffer = await pageScreenshotCapture(page, options);
@@ -3691,14 +3720,18 @@ export async function captureFrameToBufferPipelined(
 
     return { encodeResult, captureTimeMs };
   } catch (captureError) {
-    // Per-frame `No cached paint record`: fall back to screenshot for THIS frame
-    // instead of aborting the render (clip-cut boundary / freshly-shown element).
-    // The worker isn't involved for this frame; return a resolved encodeResult so
-    // the pipeline loop writes it like any other. See fast-capture-limitations.md.
-    if (isNoCachedPaintRecordError(captureError)) {
+    // Per-frame `No cached paint record` or `canvas not initialized` (#3423): fall
+    // back to screenshot for THIS frame instead of aborting the render (clip-cut
+    // boundary / freshly-shown element / capture canvas not yet set up). The worker
+    // isn't involved for this frame; return a resolved encodeResult so the pipeline
+    // loop writes it like any other. See fast-capture-limitations.md.
+    if (isRecoverableDrawElementError(captureError)) {
       session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+      const reason = isCanvasNotInitializedError(captureError)
+        ? "drawElement canvas not initialized"
+        : "No cached paint record";
       console.log(
-        `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
+        `[engine] fast capture: frame ${frameIndex} — ${reason}; ` +
           `screenshot fallback for this frame (see fast-capture-limitations.md)`,
       );
       const buffer = await pageScreenshotCapture(page, options);
