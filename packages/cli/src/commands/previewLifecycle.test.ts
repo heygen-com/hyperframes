@@ -355,6 +355,11 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "started", port: 3210, pid: 4321 });
     expect(unref).toHaveBeenCalledOnce();
+    expect(spawn).toHaveBeenCalledWith(
+      "/usr/bin/node",
+      expect.any(Array),
+      expect.objectContaining({ detached: true, windowsHide: true }),
+    );
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
   });
 
