@@ -175,6 +175,9 @@ jobs:
               pkg.name = 'hyperframes';
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             "
+            # pnpm copies the workspace-root LICENSE into each tarball; plain
+            # npm publish does not, so place it in the package first.
+            cp LICENSE packages/cli/LICENSE
             echo "📦 Publishing hyperframes@${VERSION}..."
             if (cd packages/cli && npm publish --access public --tag "$DIST_TAG"); then
               echo "✅ hyperframes@${VERSION} published"
