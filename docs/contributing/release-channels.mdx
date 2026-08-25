@@ -72,13 +72,15 @@ This prevents an alpha-only feature from being included in a stable hotfix by ac
 
 ### Stable guard maintenance
 
-Stable publishing requires the repository secret `RELEASE_GUARD_TOKEN`. Its named owner must
+Stable publishing requires the environment-scoped secret `RELEASE_GUARD_TOKEN`. Its named owner must
 provision and rotate a dedicated fine-grained personal access token with an explicit expiry and only
 these repository permissions: Administration (read-only) and Pull requests (read-only). Metadata read
 access is added automatically by GitHub. Scope the token to this repository only; do not grant
-Contents, Packages, Workflows, or organization write access. The publish workflow passes this
-credential only to the read-only stable guard; checkout, tag creation, npm provenance, and GitHub
-Release writes continue to use their existing credentials.
+Contents, Packages, Workflows, or organization write access. Store the credential under the same name
+in both the `release-guard-health` and `npm-publish` environments; never create it as a repository or
+organization secret. The publish workflow passes this credential only to the read-only stable guard;
+checkout, tag creation, npm provenance, and GitHub Release writes continue to use their existing
+credentials.
 
 After provisioning or rotation, an administrator must run the read-only capability check from a
 protected environment that injects the secret without putting its value on the command line:
@@ -103,7 +105,12 @@ The separate release-guard credential health workflow repeats these reads on sam
 requests, every Monday, and through a safe manual run after provisioning or rotation. The pull-request
 trigger is the bootstrap path before the workflow exists on the default branch (GitHub does not
 register `workflow_dispatch` there until after merge): each PR run pins checkout to the exact head SHA
-and refuses fork pull requests. Scheduled and manual runs are restricted to the repository's default
+and refuses fork pull requests. Because that source is still mutable PR code, the credential-bearing
+job references the `release-guard-health` environment and cannot start until a required reviewer
+approves that exact run. Configure the environment with required reviewers (at least one), prevent
+self-review enabled, and administrator bypass disabled **before** uploading its environment secret.
+An unconfigured environment or missing environment secret is a fail-closed blocker, not a reason to
+fall back to a repository secret. Scheduled and manual runs are restricted to the repository's default
 branch. The check discovers a recent merged `main` pull request and verifies effective rules, its exact
 month-window rule suite, reviews, and check runs. It has only `contents: read` on the built-in token,
 passes `RELEASE_GUARD_TOKEN` only to the health step, and has no release, tag, package, or publish path.

@@ -179,6 +179,17 @@ test("credential health is pre-merge reachable, immutable, read-only, and incapa
     "(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
   );
   assert.deepEqual(healthJob.permissions, { contents: "read" });
+  const credentialBearingPullRequestJobs = Object.values(healthConfig.jobs).filter(
+    (job) =>
+      healthConfig.on.pull_request && JSON.stringify(job).includes("secrets.RELEASE_GUARD_TOKEN"),
+  );
+  assert.ok(credentialBearingPullRequestJobs.length > 0);
+  for (const job of credentialBearingPullRequestJobs) {
+    assert.deepEqual(job.environment, {
+      name: "release-guard-health",
+      deployment: false,
+    });
+  }
   assert.equal(
     normalizeExpression(healthJob.env.EXPECTED_HEALTH_SHA),
     "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
@@ -205,6 +216,11 @@ test("credential health is pre-merge reachable, immutable, read-only, and incapa
   const commands = healthJob.steps.map((step) => step.run ?? "").join("\n");
   assert.doesNotMatch(commands, /npm\s+publish|git\s+tag|gh\s+release|publish-packages/i);
   assert.doesNotMatch(healthWorkflowSource, /id-token:\s*write|contents:\s*write/);
+  assert.match(releaseRunbook, /environment-scoped.*RELEASE_GUARD_TOKEN/is);
+  assert.match(releaseRunbook, /required reviewers/i);
+  assert.match(releaseRunbook, /prevent\s+self-review/i);
+  assert.match(releaseRunbook, /administrator bypass.*disabled/i);
+  assert.match(releaseRunbook, /before.*uploading.*environment secret/i);
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {
