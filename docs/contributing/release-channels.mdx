@@ -82,6 +82,29 @@ organization secret. The publish workflow passes this credential only to the rea
 checkout, tag creation, npm provenance, and GitHub Release writes continue to use their existing
 credentials.
 
+Before the initial upload and before every rotation, run this read-only API verification. It fails
+unless the exact environment has a non-bypassable required-reviewer boundary with self-review
+prevention and at least one reviewer. Do not upload either environment-secret copy unless it exits 0.
+
+<!-- release-guard-environment-verification:start -->
+```bash
+ENVIRONMENT_JSON="$(gh api repos/heygen-com/hyperframes/environments/release-guard-health)"
+jq -e '
+  .can_admins_bypass == false and
+  any(
+    .protection_rules[]?;
+    .type == "required_reviewers" and
+    .prevent_self_review == true and
+    ((.reviewers // []) | length >= 1)
+  )
+' <<<"$ENVIRONMENT_JSON" >/dev/null || {
+  echo "release-guard-health is not protected; do not upload RELEASE_GUARD_TOKEN." >&2
+  exit 1
+}
+echo "release-guard-health protection verified; environment secret upload may proceed."
+```
+<!-- release-guard-environment-verification:end -->
+
 After provisioning or rotation, an administrator must run the read-only capability check from a
 protected environment that injects the secret without putting its value on the command line:
 

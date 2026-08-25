@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 
 const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8");
 const guardSource = readFileSync(new URL("./stable-release-guard.mjs", import.meta.url), "utf8");
@@ -19,6 +28,12 @@ const healthWorkflowPath = new URL(
 const healthWorkflowSource = existsSync(healthWorkflowPath)
   ? readFileSync(healthWorkflowPath, "utf8")
   : "";
+const workflowDirectory = join(import.meta.dirname, "..", ".github", "workflows");
+const workflowSources = Object.fromEntries(
+  readdirSync(workflowDirectory)
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => [name, readFileSync(join(workflowDirectory, name), "utf8")]),
+);
 const config = parse(workflow);
 const publish = config.jobs.publish;
 const checkout = publish.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -48,6 +63,85 @@ function runCreateReleaseTag(cwd, version) {
     env: { ...process.env, VERSION: version },
     timeout: 5_000,
   });
+}
+
+function normalizeEnvironment(environment) {
+  return typeof environment === "string" ? { name: environment, deployment: true } : environment;
+}
+
+function credentialConsumers([workflowName, source]) {
+  const workflowConfig = parse(source);
+  if (!workflowConfig.on?.pull_request) return [];
+  return Object.entries(workflowConfig.jobs ?? {}).flatMap(([jobName, job]) =>
+    JSON.stringify(job).includes("secrets.RELEASE_GUARD_TOKEN")
+      ? [{ workflowName, jobName, environment: normalizeEnvironment(job.environment) }]
+      : [],
+  );
+}
+
+function collectPullRequestCredentialConsumers(sources) {
+  return Object.entries(sources)
+    .flatMap(credentialConsumers)
+    .sort((left, right) =>
+      `${left.workflowName}:${left.jobName}`.localeCompare(
+        `${right.workflowName}:${right.jobName}`,
+      ),
+    );
+}
+
+function assertPullRequestCredentialBoundaries(sources) {
+  assert.deepEqual(collectPullRequestCredentialConsumers(sources), [
+    {
+      workflowName: "publish.yml",
+      jobName: "publish",
+      environment: { name: "npm-publish", deployment: true },
+    },
+    {
+      workflowName: "release-guard-health.yml",
+      jobName: "health",
+      environment: { name: "release-guard-health", deployment: false },
+    },
+  ]);
+}
+
+function environmentVerificationCommand(markdown) {
+  const match = markdown.match(
+    /<!-- release-guard-environment-verification:start -->\s*```bash\n([\s\S]*?)\n```\s*<!-- release-guard-environment-verification:end -->/,
+  );
+  assert.ok(match, "runbook must contain the copy-pasteable environment API verification block");
+  return match[1];
+}
+
+function runEnvironmentVerification(response) {
+  const root = mkdtempSync(join(tmpdir(), "release-guard-environment-test-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  const gh = join(bin, "gh");
+  writeFileSync(
+    gh,
+    [
+      "#!/usr/bin/env bash",
+      'test "$*" = "api repos/heygen-com/hyperframes/environments/release-guard-health"',
+      "printf '%s\\n' \"$FAKE_GH_RESPONSE\"",
+    ].join("\n"),
+  );
+  chmodSync(gh, 0o755);
+  try {
+    return spawnSync(
+      "bash",
+      ["-euo", "pipefail", "-c", environmentVerificationCommand(releaseRunbook)],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          FAKE_GH_RESPONSE: JSON.stringify(response),
+        },
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 test("stable publishing has one reviewed immutable event path", () => {
@@ -179,17 +273,7 @@ test("credential health is pre-merge reachable, immutable, read-only, and incapa
     "(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
   );
   assert.deepEqual(healthJob.permissions, { contents: "read" });
-  const credentialBearingPullRequestJobs = Object.values(healthConfig.jobs).filter(
-    (job) =>
-      healthConfig.on.pull_request && JSON.stringify(job).includes("secrets.RELEASE_GUARD_TOKEN"),
-  );
-  assert.ok(credentialBearingPullRequestJobs.length > 0);
-  for (const job of credentialBearingPullRequestJobs) {
-    assert.deepEqual(job.environment, {
-      name: "release-guard-health",
-      deployment: false,
-    });
-  }
+  assertPullRequestCredentialBoundaries(workflowSources);
   assert.equal(
     normalizeExpression(healthJob.env.EXPECTED_HEALTH_SHA),
     "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
@@ -216,11 +300,70 @@ test("credential health is pre-merge reachable, immutable, read-only, and incapa
   const commands = healthJob.steps.map((step) => step.run ?? "").join("\n");
   assert.doesNotMatch(commands, /npm\s+publish|git\s+tag|gh\s+release|publish-packages/i);
   assert.doesNotMatch(healthWorkflowSource, /id-token:\s*write|contents:\s*write/);
-  assert.match(releaseRunbook, /environment-scoped.*RELEASE_GUARD_TOKEN/is);
-  assert.match(releaseRunbook, /required reviewers/i);
-  assert.match(releaseRunbook, /prevent\s+self-review/i);
-  assert.match(releaseRunbook, /administrator bypass.*disabled/i);
-  assert.match(releaseRunbook, /before.*uploading.*environment secret/i);
+  for (const requirement of [
+    /environment-scoped.*RELEASE_GUARD_TOKEN/is,
+    /required reviewers/i,
+    /prevent\s+self-review/i,
+    /administrator bypass.*disabled/i,
+    /before.*uploading.*environment secret/i,
+  ]) {
+    assert.match(releaseRunbook, requirement);
+  }
+});
+
+test("every pull-request credential consumer is mutation-pinned to its environment", () => {
+  assertPullRequestCredentialBoundaries(workflowSources);
+  for (const [workflowName, jobName] of [
+    ["publish.yml", "publish"],
+    ["release-guard-health.yml", "health"],
+  ]) {
+    const mutatedConfig = parse(workflowSources[workflowName]);
+    delete mutatedConfig.jobs[jobName].environment;
+    assert.throws(() =>
+      assertPullRequestCredentialBoundaries({
+        ...workflowSources,
+        [workflowName]: stringify(mutatedConfig),
+      }),
+    );
+  }
+});
+
+test("the pre-upload environment API command rejects every unprotected shape", () => {
+  const protectedEnvironment = {
+    can_admins_bypass: false,
+    protection_rules: [
+      {
+        type: "required_reviewers",
+        prevent_self_review: true,
+        reviewers: [{ type: "User", reviewer: { login: "release-reviewer" } }],
+      },
+    ],
+  };
+  const passing = runEnvironmentVerification(protectedEnvironment);
+  assert.equal(passing.status, 0, `${passing.stdout}\n${passing.stderr}`);
+
+  for (const environment of [
+    { ...protectedEnvironment, can_admins_bypass: true },
+    { ...protectedEnvironment, protection_rules: [] },
+    {
+      ...protectedEnvironment,
+      protection_rules: [
+        {
+          type: "required_reviewers",
+          prevent_self_review: false,
+          reviewers: [{ type: "User", reviewer: { login: "release-reviewer" } }],
+        },
+      ],
+    },
+    {
+      ...protectedEnvironment,
+      protection_rules: [{ type: "required_reviewers", prevent_self_review: true, reviewers: [] }],
+    },
+  ]) {
+    const failing = runEnvironmentVerification(environment);
+    assert.equal(failing.status, 1, `${failing.stdout}\n${failing.stderr}`);
+    assert.match(failing.stderr, /do not upload RELEASE_GUARD_TOKEN/i);
+  }
 });
 
 test("the workflow invokes one shared publisher and owns no package roster", () => {
