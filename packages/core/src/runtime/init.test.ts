@@ -5,6 +5,11 @@ import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
 import type { RuntimeTimelineLike } from "./types";
+import {
+  registerRuntimeDataHandler,
+  resetRuntimeDataForTests,
+  setRuntimeData,
+} from "./runtimeData";
 
 it("schedules WebAudio element gain from author volume without bridge volume", () => {
   const source = readFileSync("src/runtime/init.ts", "utf8");
@@ -107,6 +112,7 @@ describe("initSandboxRuntimeModular", () => {
   const originalCancelAnimationFrame = window.cancelAnimationFrame;
 
   beforeEach(() => {
+    resetRuntimeDataForTests();
     document.body.innerHTML = "";
     (globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS ??= {};
     globalThis.CSS.escape ??= (value: string) => value;
@@ -174,6 +180,7 @@ describe("initSandboxRuntimeModular", () => {
 
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
+    resetRuntimeDataForTests();
     document.body.innerHTML = "";
     window.__timelines = {} as Record<string, RuntimeTimelineLike>;
     delete window.__player;
@@ -2723,6 +2730,111 @@ describe("initSandboxRuntimeModular", () => {
     expect(clipExpired?.style.visibility).toBe("hidden");
     expect(clipFuture?.style.visibility).toBe("hidden");
     expect(clipControl?.style.visibility).toBe("visible");
+  });
+
+  it("rebinds the injected player before reporting runtime-data applied", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const first = createMockTimeline(10);
+    const replacement = createMockTimeline(10);
+    window.__timelines = { main: first };
+    const applied: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(0.25);
+    registerRuntimeDataHandler("captions", async () => {
+      await Promise.resolve();
+      window.__timelines = { main: replacement };
+    });
+
+    setRuntimeData("captions", { style: "replacement" }, 7);
+    await vi.waitFor(() => expect(applied).toHaveLength(1));
+
+    // Runtime seeks are canonicalized to the configured frame rate.
+    expect(replacement.time()).toBeCloseTo(7 / 30, 5);
+    expect(first.time()).toBeCloseTo(7 / 30, 5);
+
+    window.__player?.seek(1.25);
+
+    expect(first.time()).toBeCloseTo(7 / 30, 5);
+    expect(replacement.time()).toBeCloseTo(37 / 30, 5);
+    expect(applied[0]).toMatchObject({ channel: "captions", requestId: 7 });
+  });
+
+  it("does not seek a removed timeline after runtime data is cleared", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const first = createMockTimeline(10);
+    window.__timelines = { main: first };
+    const applied: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(0.25);
+    registerRuntimeDataHandler("captions", () => {
+      window.__timelines = {};
+    });
+
+    setRuntimeData("captions", undefined, 8);
+    await vi.waitFor(() => expect(applied).toHaveLength(1));
+    const timeAtClear = first.time();
+
+    window.__player?.seek(1.25);
+
+    expect(first.time()).toBe(timeAtClear);
+  });
+
+  it("does not report applied when a runtime-data handler rejects", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    window.__timelines = { main: createMockTimeline(10) };
+
+    const applied: Array<Record<string, unknown>> = [];
+    const errors: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+      if (payload.type === "runtime-data-error") errors.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    registerRuntimeDataHandler("captions", async () => {
+      await Promise.resolve();
+      throw new Error("attach failed");
+    });
+
+    setRuntimeData("captions", { style: "broken" }, 9);
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+
+    expect(applied).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ channel: "captions", requestId: 9 });
   });
 
   it("onSetMuted preserves authored muted attribute on video elements", () => {

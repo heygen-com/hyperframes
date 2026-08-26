@@ -135,6 +135,11 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // Runtime-data handlers may replace the timeline object they mutate. Keep the
+  // reconciliation callback late-bound because the reporter is installed before
+  // the timeline resolver/binder is declared below. Delivery cannot complete
+  // until after init has installed the final callback.
+  let reconcileTimelineAfterRuntimeData: () => void = () => undefined;
   // Own the analytics bridge before any best-effort runtime installation so
   // early failures are observable instead of disappearing before player setup.
   initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
@@ -148,6 +153,18 @@ export function initSandboxRuntimeModular(): void {
     });
   });
   setRuntimeDataAppliedReporter((channel, requestId) => {
+    try {
+      reconcileTimelineAfterRuntimeData();
+    } catch (error) {
+      postRuntimeMessage({
+        source: "hf-preview",
+        type: "runtime-data-error",
+        channel,
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
     postRuntimeMessage({
       source: "hf-preview",
       type: "runtime-data-applied",
@@ -1542,11 +1559,30 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
-  (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind = () => {
-    childrenBound = false;
-    bindRootTimelineIfAvailable();
+  const reconcileTimeline = () => {
+    if (state.tornDown) return;
+    const resolution = resolveRootTimelineFromDocument();
+    if (!resolution.timeline) {
+      // A successful clear must not leave the player seeking a killed timeline.
+      state.capturedTimeline = null;
+      childrenBound = false;
+      clock.setDuration(0);
+      syncTimedElementVisibility(state.currentTime);
+      return;
+    }
+
+    // Avoid needlessly invalidating the child-binding cache when a handler
+    // updates data in place. A replacement object is the signal that a rebind
+    // is required.
+    if (state.capturedTimeline !== resolution.timeline) {
+      childrenBound = false;
+      bindRootTimelineIfAvailable();
+    }
     syncTimedElementVisibility(state.currentTime);
   };
+  reconcileTimelineAfterRuntimeData = reconcileTimeline;
+  (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind =
+    reconcileTimeline;
 
   const emitRootStageLayoutDiagnostics = () => {
     const rootNode = resolveRootCompositionElement();
@@ -3485,6 +3521,7 @@ export function initSandboxRuntimeModular(): void {
     }
     state.injectedCompScripts = [];
     state.capturedTimeline = null;
+    reconcileTimelineAfterRuntimeData = () => undefined;
     if (window.__hfRuntimeTeardown === teardown) {
       window.__hfRuntimeTeardown = null;
     }
