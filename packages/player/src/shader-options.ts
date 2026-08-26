@@ -9,6 +9,7 @@ import { RUNTIME_CDN_URL } from "./runtime-url.js";
 
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
 export const SHADER_LOADING_ATTR = "shader-loading";
+export const RUNTIME_SRC_ATTR = "runtime-src";
 const SHADER_CAPTURE_SCALE_PARAM = "__hf_shader_capture_scale";
 const SHADER_LOADING_PARAM = "__hf_shader_loading";
 
@@ -153,6 +154,17 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
       normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
       getShaderModeFromElement(el),
     ),
-    RUNTIME_CDN_URL,
+    runtimeSrcFromElement(el),
   );
+}
+
+function runtimeSrcFromElement(el: Element): string {
+  const configured = el.getAttribute(RUNTIME_SRC_ATTR)?.trim();
+  if (!configured) return RUNTIME_CDN_URL;
+  try {
+    const url = new URL(configured, document.baseURI);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : RUNTIME_CDN_URL;
+  } catch {
+    return RUNTIME_CDN_URL;
+  }
 }

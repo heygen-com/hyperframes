@@ -8,6 +8,7 @@ import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
   SHADER_CAPTURE_SCALE_ATTR,
   SHADER_LOADING_ATTR,
+  RUNTIME_SRC_ATTR,
   type ShaderLoadingMode,
   getShaderCaptureScaleFromElement,
   getShaderModeFromElement,
@@ -78,6 +79,7 @@ class HyperframesPlayer extends HTMLElement {
       "playback-rate",
       "audio-src",
       SANDBOX_ORIGIN_ATTR,
+      RUNTIME_SRC_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
     ];
@@ -297,6 +299,7 @@ class HyperframesPlayer extends HTMLElement {
         break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
+      case RUNTIME_SRC_ATTR:
         this._reloadShaderOptions();
         break;
     }
@@ -987,7 +990,10 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onIframeLoad() {
     this._ready = false;
-    this._runtimeBridgeReady = false;
+    // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
+    // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
+    // retained data set after load until a second `ready` that never comes. Source setters and
+    // sandbox-policy reloads already clear bridge readiness before starting a navigation.
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();

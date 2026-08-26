@@ -1494,6 +1494,33 @@ describe("HyperframesPlayer srcdoc attribute", () => {
       | undefined;
     expect(ctor).toBeDefined();
     expect(ctor!.observedAttributes).toContain("srcdoc");
+    expect(ctor!.observedAttributes).toContain("runtime-src");
+  });
+
+  it("uses a configured runtime source for loopback srcdoc", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("runtime-src", "http://127.0.0.1:8900/hyperframe.runtime.iife.js");
+    player.setAttribute("srcdoc", "<!doctype html><html><head></head><body></body></html>");
+    document.body.appendChild(player);
+
+    expect(player.iframe.getAttribute("srcdoc")).toContain(
+      '<script src="http://127.0.0.1:8900/hyperframe.runtime.iife.js"></script>',
+    );
+
+    player.remove();
+  });
+
+  it("falls back to the pinned runtime for an unsafe runtime source", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("runtime-src", 'javascript:alert("no")');
+    player.setAttribute("srcdoc", "<!doctype html><html><head></head><body></body></html>");
+    document.body.appendChild(player);
+
+    const srcdoc = player.iframe.getAttribute("srcdoc") ?? "";
+    expect(srcdoc).not.toContain("javascript:");
+    expect(srcdoc).toContain("hyperframe.runtime.iife.js");
+
+    player.remove();
   });
 
   it("forwards an initial srcdoc attribute to the iframe on connect", () => {
@@ -1961,6 +1988,8 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     paused: boolean;
     iframe: HTMLIFrameElement;
     _onMessage: (event: MessageEvent) => void;
+    _onIframeLoad: () => void;
+    _runtimeBridgeReady: boolean;
   }
 
   let player: PlayerInternal;
@@ -2100,6 +2129,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onMessage(readyMessage());
 
     expect(findControlCalls("set-muted")).toHaveLength(2);
+  });
+
+  it("does not erase a DOMContentLoaded runtime handshake when iframe load follows it", () => {
+    player._onMessage(readyMessage());
+    expect(player._runtimeBridgeReady).toBe(true);
+
+    player._onIframeLoad();
+
+    expect(player._runtimeBridgeReady).toBe(true);
   });
 
   it("ignores ready events from a different window", () => {
