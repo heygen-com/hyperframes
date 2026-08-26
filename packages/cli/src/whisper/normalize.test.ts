@@ -317,6 +317,16 @@ Render video. Built for agents.
     expect(cues).toHaveLength(2);
   });
 
+  it("treats entries at the length threshold as phrases", () => {
+    // Four characters is the boundary: at or above it the entries are read as
+    // phrase-level cues, below it as word-level tokens.
+    const cues = wordsToCues([
+      { text: "你好世界", start: 0, end: 2 },
+      { text: "谢谢大家", start: 2, end: 4 },
+    ]);
+    expect(cues).toHaveLength(2);
+  });
+
   it("still groups word-level CJK tokens into cues", () => {
     // The mirror of the case above: short per-token entries are word-level
     // whisper output and must still be joined.
