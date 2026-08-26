@@ -2809,6 +2809,13 @@ export function initSandboxRuntimeModular(): void {
   }
   let transportTickCount = 0;
   let inTransportTick = false;
+  // A paused transport has no new frame to render. Re-seeking the same GSAP timeline at the
+  // same time on every rAF is not merely redundant: one picker can embed several paused
+  // players, multiplying full timeline traversal and style invalidation across every iframe.
+  // Keep enough identity to render once when time or the asynchronously-bound timeline changes.
+  let lastTransportSeekTime = Number.NaN;
+  let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
+  let pausedSeekDeferredByManualGesture = false;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -3129,10 +3136,23 @@ export function initSandboxRuntimeModular(): void {
       // skipping the re-seek is a no-op for every other element; it resumes
       // the frame the gesture marker clears (drop/cancel). Playback is never
       // affected — the seek runs whenever the clock is playing.
-      if (clock.isPlaying() || !hasActiveStudioManualEditGesture()) {
+      const isPlaying = clock.isPlaying();
+      const manualEditOwnsPausedFrame = !isPlaying && hasActiveStudioManualEditGesture();
+      if (manualEditOwnsPausedFrame) {
+        // Force one reconciliation after drop/cancel even though the playhead did not move.
+        pausedSeekDeferredByManualGesture = true;
+      } else if (
+        isPlaying ||
+        pausedSeekDeferredByManualGesture ||
+        t !== lastTransportSeekTime ||
+        state.capturedTimeline !== lastTransportSeekTimeline
+      ) {
         seekTimelineAndAdapters(t);
+        lastTransportSeekTime = t;
+        lastTransportSeekTimeline = state.capturedTimeline;
+        if (!isPlaying) pausedSeekDeferredByManualGesture = false;
       }
-      if (clock.isPlaying()) {
+      if (isPlaying) {
         colorGrading.redrawAnimated();
       }
 

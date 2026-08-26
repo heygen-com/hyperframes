@@ -3030,11 +3030,74 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes.length).toBeGreaterThan(beforePlaying);
     player?.pause();
 
-    // (3) Paused + marker cleared (drop/cancel) → the per-frame re-seek resumes.
+    // (3) Paused + marker cleared (drop/cancel) → one reconciliation seek runs.
     document.getElementById("dragged")?.removeAttribute("data-hf-studio-manual-edit-gesture");
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  it("does not re-seek an unchanged paused timeline on every animation frame", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const seekTimes: number[] = [];
+    const tl = createMockTimeline(5);
+    const origTotalTime = tl.totalTime;
+    tl.totalTime = ((time: number, ...rest: unknown[]) => {
+      seekTimes.push(time);
+      (origTotalTime as Function).call(tl, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    window.__timelines = { root: tl };
+    initSandboxRuntimeModular();
+
+    // The first transport frame reconciles the initial timeline at the paused playhead.
+    raf.step(16);
+    const afterInitialFrame = seekTimes.length;
+    expect(afterInitialFrame).toBeGreaterThan(0);
+
+    // No time or timeline change means there is no new frame to render.
+    raf.step(16);
+    raf.step(16);
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterInitialFrame);
+
+    // An explicit paused seek still renders immediately, then settles again after the transport
+    // records the new playhead on its next frame.
+    window.__player?.seek(2);
+    expect(seekTimes.some((time) => time === 2)).toBe(true);
+    raf.step(16);
+    const afterPausedSeek = seekTimes.length;
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterPausedSeek);
+
+    // A runtime-data rebuild can replace the timeline without moving the paused playhead. The
+    // identity check must render that new object once instead of treating it as the old frame.
+    const replacementSeekTimes: number[] = [];
+    const replacement = createMockTimeline(5);
+    const replacementTotalTime = replacement.totalTime;
+    replacement.totalTime = ((time: number, ...rest: unknown[]) => {
+      replacementSeekTimes.push(time);
+      (replacementTotalTime as Function).call(replacement, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+    window.__timelines = { root: replacement };
+    window.__hfForceTimelineRebind?.();
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBeGreaterThan(0);
+    const afterReplacementFrame = replacementSeekTimes.length;
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBe(afterReplacementFrame);
+
+    // Playback still traverses the timeline every frame.
+    window.__player?.play();
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBeGreaterThan(afterReplacementFrame);
   });
 
   it("redraws animated grading from the transport clock only during playback", () => {
