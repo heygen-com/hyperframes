@@ -525,6 +525,7 @@ describe("HyperframesPlayer shader transition options", () => {
     const player = document.createElement("hyperframes-player") as PlayerWithIframe;
     player.setAttribute("shader-capture-scale", "0.5");
     player.setAttribute("shader-loading", "player");
+    document.body.appendChild(player);
     player.setAttribute("src", "/api/projects/demo/preview?x=1#stage");
 
     const url = new URL(player.iframeElement.src);
@@ -539,6 +540,7 @@ describe("HyperframesPlayer shader transition options", () => {
     const player = document.createElement("hyperframes-player") as PlayerWithIframe;
     player.setAttribute("shader-capture-scale", "0.5");
     player.setAttribute("shader-loading", "player");
+    document.body.appendChild(player);
     player.setAttribute(
       "srcdoc",
       '<!doctype html><html><head><script src="composition.js"></script></head><body></body></html>',
@@ -1508,6 +1510,36 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     // parse. The composition itself must still arrive intact.
     expect(player.iframe.getAttribute("srcdoc")).toContain("<body>hello</body>");
     expect(player.iframe.getAttribute("srcdoc")).toContain("hyperframe.runtime.iife.js");
+
+    player.remove();
+  });
+
+  it("does not navigate initial srcdoc before the runtime listener is connected", () => {
+    // React assigns custom-element attributes before inserting the element. If the observed
+    // attribute callback navigates the child iframe immediately, a fast srcdoc runtime can post
+    // its one-shot `ready` message before connectedCallback subscribes to `window.message`.
+    // Retained runtime data then waits forever and a caption style appears stuck on its bootstrap
+    // frame. The connect path owns the first navigation; attributeChangedCallback owns only
+    // subsequent swaps.
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("srcdoc", "<!doctype html><html><body>deferred</body></html>");
+
+    expect(player.iframe.hasAttribute("srcdoc")).toBe(false);
+
+    document.body.appendChild(player);
+    expect(player.iframe.getAttribute("srcdoc")).toContain("<body>deferred</body>");
+
+    player.remove();
+  });
+
+  it("does not navigate initial src before the runtime listener is connected", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("src", "/api/projects/deferred/preview");
+
+    expect(player.iframe.hasAttribute("src")).toBe(false);
+
+    document.body.appendChild(player);
+    expect(player.iframe.getAttribute("src")).toBe("/api/projects/deferred/preview");
 
     player.remove();
   });

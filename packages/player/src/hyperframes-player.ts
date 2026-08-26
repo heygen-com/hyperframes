@@ -218,6 +218,11 @@ class HyperframesPlayer extends HTMLElement {
   attributeChangedCallback(name: string, oldVal: string | null, val: string | null) {
     switch (name) {
       case "src":
+        // Custom-element attributes are normally assigned before insertion (React does this for
+        // every render). Navigating the inner iframe here would let its one-shot runtime `ready`
+        // message fire before connectedCallback installs the parent message listener. Initial
+        // attributes are applied below by connectedCallback; only live changes navigate here.
+        if (!this.isConnected) break;
         if (val) {
           this._ready = false;
           this._runtimeBridgeReady = false;
@@ -228,6 +233,7 @@ class HyperframesPlayer extends HTMLElement {
         }
         break;
       case "srcdoc":
+        if (!this.isConnected) break;
         this._ready = false;
         this._runtimeBridgeReady = false;
         this._rejectAllRuntimeDataDeliveries(
