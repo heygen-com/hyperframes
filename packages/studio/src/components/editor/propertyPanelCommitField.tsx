@@ -21,7 +21,7 @@ export function CommitField({
   liveCommit?: boolean;
   align?: "left" | "right";
   onPreview?: (nextValue: string) => void;
-  onCommit: (nextValue: string) => void | Promise<void>;
+  onCommit: (nextValue: string) => void | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(value);
   const valueRef = useRef(value);

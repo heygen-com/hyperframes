@@ -38,7 +38,7 @@ export function FlatMediaSection({
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   /** A volume lane in the timeline drives the level; the slider cannot. */

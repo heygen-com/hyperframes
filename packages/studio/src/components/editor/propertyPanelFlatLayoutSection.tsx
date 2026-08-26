@@ -181,7 +181,7 @@ export function LayoutZIndexRow({
   onSetStyle,
 }: {
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const zIndex = String(parseInt(styles["z-index"] || "auto", 10) || 0);
   return (
@@ -200,7 +200,7 @@ export function LayoutFlexBlock({
   disabled,
 }: {
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   disabled: boolean;
 }) {
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
@@ -337,7 +337,7 @@ interface FlatLayoutSectionProps
     > {
   element: DomEditSelection;
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   disabled: boolean;
 }
 

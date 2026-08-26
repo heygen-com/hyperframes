@@ -83,7 +83,7 @@ interface DomEditOverlayProps {
     restore?: () => void,
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
-  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   gridVisible?: boolean;
   gridSpacing?: number;
   recordingState?: GestureRecordingState;

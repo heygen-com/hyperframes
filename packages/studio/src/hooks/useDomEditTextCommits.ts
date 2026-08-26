@@ -30,7 +30,9 @@ import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
   bumpDomEditCommitMapVersion,
   bumpDomEditCommitVersion,
+  domEditCommitDeclined,
   runDomEditCommit,
+  runReportedDomEditCommit,
 } from "./domEditCommitRunner";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
@@ -187,9 +189,12 @@ export function useDomEditTextCommits({
 
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
-      if (!domEditSelection) return;
-      if (isManualGeometryStyleProperty(property)) return;
-      if (!domEditSelection.capabilities.canEditStyles) return;
+      if (!domEditSelection) return domEditCommitDeclined("no-selection");
+      if (isManualGeometryStyleProperty(property))
+        return domEditCommitDeclined("geometry-property");
+      if (!domEditSelection.capabilities.canEditStyles) {
+        return domEditCommitDeclined("styles-not-editable");
+      }
       const styleCommitKey = `${getDomEditTargetKey(domEditSelection)}:${property}`;
       const isLatestStyleCommit = bumpDomEditCommitMapVersion(
         domStyleCommitVersionRef.current,
@@ -210,7 +215,7 @@ export function useDomEditTextCommits({
       // element in-browser immediately, so a reload would only cost a black blink.
       const skipRefresh = true;
 
-      await runDomEditCommit({
+      return runReportedDomEditCommit({
         capture: () => {
           if (!doc) return;
           const el = findElementForSelection(doc, domEditSelection, activeCompPath);
@@ -268,8 +273,10 @@ export function useDomEditTextCommits({
 
   const handleDomTextCommit = useCallback(
     async (value: string, fieldKey?: string) => {
-      if (!domEditSelection) return;
-      if (!isTextEditableSelection(domEditSelection)) return;
+      if (!domEditSelection) return domEditCommitDeclined("no-selection");
+      if (!isTextEditableSelection(domEditSelection)) {
+        return domEditCommitDeclined("not-text-editable");
+      }
       const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
       const nextTextFields = buildNextDomTextFields(domEditSelection.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(domEditSelection.textFields, nextTextFields, value);
@@ -278,7 +285,7 @@ export function useDomEditTextCommits({
       let editedElement: HTMLElement | null = null;
       let previousInnerHtml: string | null = null;
 
-      await runDomEditCommit({
+      return runReportedDomEditCommit({
         capture: () => {
           if (!doc) return;
           const el = findElementForSelection(doc, domEditSelection, activeCompPath);
