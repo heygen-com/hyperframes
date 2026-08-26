@@ -24,9 +24,18 @@ describe("namespaceSvgIds", () => {
     expect(document.querySelector("clipPath")!.getAttribute("id")).toBe("clip");
   });
 
-  it("renames an svg element id and records the authored id", () => {
+  it("does not rename svg ids that have no native reference (url/href)", () => {
     const { document, idMap } = namespace(
-      '<svg><clipPath id="clip"><rect/></clipPath></svg>',
+      '<svg><path id="cut-1" d="M0,0 L10,10"></path></svg>',
+      "scene-a",
+    );
+    expect(idMap.size).toBe(0);
+    expect(document.querySelector("path")!.getAttribute("id")).toBe("cut-1");
+  });
+
+  it("renames a natively-referenced svg id and records the authored id", () => {
+    const { document, idMap } = namespace(
+      '<svg><clipPath id="clip"><rect/></clipPath></svg><div clip-path="url(#clip)"></div>',
       "scene-a",
     );
     const clipPath = document.querySelector("clipPath")!;
@@ -71,6 +80,16 @@ describe("namespaceSvgIds", () => {
     const uses = [...document.querySelectorAll("use")];
     expect(uses[0]!.getAttribute("href")).toBe("#scene-c--shape");
     expect(uses[1]!.getAttribute("xlink:href")).toBe("#scene-c--shape");
+  });
+
+  it("detects url(#id) references inside style elements", () => {
+    const { document, idMap } = namespace(
+      '<svg><filter id="rough-filter"><feTurbulence/></filter></svg>' +
+        "<style>.title { filter: url(#rough-filter); }</style>",
+      "scene-a",
+    );
+    expect(idMap.get("rough-filter")).toBe("scene-a--rough-filter");
+    expect(document.querySelector("filter")!.getAttribute("id")).toBe("scene-a--rough-filter");
   });
 
   it("leaves unrelated hrefs and non-fragment urls untouched", () => {

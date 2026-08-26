@@ -131,25 +131,72 @@ interface SvgIdScopeLike {
  * host has no unique identity to prefix with, the same guard
  * `scopeCssToComposition` and `wrapScopedCompositionScript` already apply.
  */
+function collectUrlHashRefsFromText(
+  text: string,
+  filter: ReadonlySet<string>,
+  out: Set<string>,
+): void {
+  let m: RegExpExecArray | null;
+  URL_HASH_REF_RE.lastIndex = 0;
+  while ((m = URL_HASH_REF_RE.exec(text))) {
+    const refId = m[3]!;
+    if (filter.has(refId)) out.add(refId);
+  }
+}
+
+/** Ids referenced by native browser resolution — `url(#id)` funcrefs and
+ *  bare `href="#id"` fragment refs — as opposed to JavaScript-only refs
+ *  (e.g. GSAP's `tl.to("#cut-1")`). Global libraries access `document`
+ *  directly and bypass the composition-scoped querySelector Proxy, so only
+ *  natively-referenced ids are safe to rename. */
+function collectHrefFragmentRef(attr: Attr, filter: ReadonlySet<string>, out: Set<string>): void {
+  if (isHrefAttrName(attr.name) && attr.value.startsWith("#")) {
+    const id = attr.value.slice(1);
+    if (filter.has(id)) out.add(id);
+  }
+}
+
+function collectNativelyReferencedIds(
+  root: SvgIdScopeLike,
+  candidates: readonly Element[],
+  svgIds: ReadonlySet<string>,
+): Set<string> {
+  const referenced = new Set<string>();
+  for (const el of candidates) {
+    for (const attr of el.attributes ? Array.from(el.attributes) : []) {
+      if (!attr.value) continue;
+      collectHrefFragmentRef(attr, svgIds, referenced);
+      if (attr.value.includes("url(")) collectUrlHashRefsFromText(attr.value, svgIds, referenced);
+    }
+  }
+  for (const styleEl of root.querySelectorAll("style")) {
+    const text = (styleEl as unknown as { textContent: string | null }).textContent;
+    if (text && text.includes("url(")) collectUrlHashRefsFromText(text, svgIds, referenced);
+  }
+  return referenced;
+}
+
 export function namespaceSvgIds(root: SvgIdScopeLike, namespace: string): Map<string, string> {
   const idMap = new Map<string, string>();
   if (!namespace) return idMap;
 
+  const svgIds = new Set<string>();
   for (const el of root.querySelectorAll("svg [id], svg[id]")) {
-    const originalId = el.getAttribute(ID_ATTR);
-    if (!originalId || idMap.has(originalId)) continue;
-    idMap.set(originalId, buildNamespacedId(namespace, originalId));
+    const id = el.getAttribute(ID_ATTR);
+    if (id) svgIds.add(id);
   }
-  if (idMap.size === 0) return idMap;
+  if (svgIds.size === 0) return idMap;
 
   const candidates: Element[] = [...root.querySelectorAll("*")];
-  // The scan root itself may carry a reference (e.g. a host `<div
-  // style="clip-path:url(#clip)">` wrapping the `<svg>` that defines it) —
-  // `querySelectorAll("*")` only returns descendants, so include it
-  // explicitly when it exposes the attribute methods (an Element, not a
-  // Document, which has no id and nothing to reference from itself).
   if (typeof root.getAttribute === "function" && typeof root.setAttribute === "function") {
     candidates.unshift(root as unknown as Element);
+  }
+
+  const nativelyReferenced = collectNativelyReferencedIds(root, candidates, svgIds);
+  if (nativelyReferenced.size === 0) return idMap;
+
+  for (const id of nativelyReferenced) {
+    idMap.set(id, buildNamespacedId(namespace, id));
   }
   for (const el of candidates) {
     const currentId = el.getAttribute(ID_ATTR);
