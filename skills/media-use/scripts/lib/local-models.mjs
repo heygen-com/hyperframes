@@ -114,16 +114,20 @@ const MODELS = {
     // pipeline these weights were converted for; also powers Phosphene).
     // Wan 2.x MLX exists only as A14B conversions (too large for consumer
     // unified memory); revisit when a 5B Wan MLX conversion lands.
-    // IMPORTANT: download the weights with a targeted include list first;
-    // pointing tools at the repo blind snapshot-downloads the lot (60 GB q4,
-    // 88 GB q8):
-    //   hf download dgrauet/ltx-2.3-mlx-q4 --include \
-    //     transformer-distilled-1.1.safetensors connector.safetensors \
-    //     "vae_*.safetensors" audio_vae.safetensors vocoder.safetensors "*.json"
+    // IMPORTANT: sizeMB below is the FULL repo, because that is what a run
+    // actually downloads. Both invokes pass a repo id to `--model`, and
+    // upstream resolve_model_dir() (ltx_pipelines_mlx/utils/_orchestration.py)
+    // calls snapshot_download(repo) with no allow_patterns - so the whole repo
+    // lands regardless of what you pre-fetched. A targeted `hf download
+    // --include` subset used to be documented here; it was removed because it
+    // is both ineffective (the runner refetches the rest at generate time) and
+    // insufficient (--two-stage needs transformer-dev AND transformer-distilled
+    // AND the x2 spatial upscaler; --distilled needs an upscaler too). The q4
+    // tier verified below only worked BECAUSE the download is unfiltered.
     {
       id: "ltx-2.3-mlx-q4",
       tier: "medium",
-      sizeMB: 20000, // distilled subset; gemma-3-12b-4bit text encoder adds ~7GB
+      sizeMB: 59700, // full repo, measured 59.69GB; gemma-3-12b-4bit text encoder adds ~7GB
       needs: { ramMB: 16384, gpu: true },
       wordTimestamps: false,
       install:
@@ -136,7 +140,7 @@ const MODELS = {
     {
       id: "ltx-2.3-mlx-q8",
       tier: "large",
-      sizeMB: 28800,
+      sizeMB: 87500, // full repo, measured 87.51GB
       needs: { ramMB: 32768, gpu: true },
       wordTimestamps: false,
       install:
@@ -144,7 +148,7 @@ const MODELS = {
       invoke:
         "ltx-2-mlx generate --prompt {prompt} --two-stage --low-ram --model dgrauet/ltx-2.3-mlx-q8 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
       notes:
-        "LTX 2.3 int8 on MLX, two-stage (upstream production default; higher quality than the q4 distilled tier). Replaced dgrauet/ltx-2.3-mlx-bf16, which is gated (HTTP 401) and cannot be downloaded at all. sizeMB is the targeted include-list subset, measured 28.8GB. --low-ram matches this tier's 32GB floor (block streaming); 64-128GB Macs for long/HD runs. NOT live-verified on a 32GB+ machine - the q4 tier below is the verified one.",
+        "LTX 2.3 int8 on MLX, two-stage (upstream production default; higher quality than the q4 distilled tier). Replaced dgrauet/ltx-2.3-mlx-bf16, which is gated (HTTP 401) and cannot be downloaded at all. Costs an 87.5GB download against q4's 59.7GB - a real tradeoff, not a rounding difference. --two-stage is dev model + CFG at half-res, upscale, then distilled LoRA refine (upstream's own help text), so it needs transformer-dev + transformer-distilled + spatial_upscaler_x2; the full snapshot carries all three. --low-ram matches this tier's 32GB floor (block streaming); 64-128GB Macs for long/HD runs. NOT live-verified on a 32GB+ machine - the q4 tier below is the verified one.",
     },
   ],
   imagegen: [
@@ -303,6 +307,7 @@ export function describeModelLadder(capability, specs) {
       id: model.id,
       tier: model.tier,
       needsRamMB: model.needs?.ramMB ?? 0,
+      sizeMB: model.sizeMB,
       fits,
       reason: fits
         ? `fits (needs ~${model.needs?.ramMB}MB, ${budget}MB available)`

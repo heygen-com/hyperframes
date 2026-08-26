@@ -8,7 +8,7 @@ import { probeSpecs } from "./specs.mjs";
 // tier whose tool is missing or whose run fails demotes to the next fitting
 // tier, so one unusable entry does not fail the capability. Returns:
 //   { model, tier, out }                              on success
-//   { recommend:"install", model, command, reason }   when the tool isn't installed
+//   { recommend:"install", model, sizeMB, command, reason }  tool isn't installed
 //   { recommend:"cli", reason }                        when no tier fits the machine
 // `exec` / `which` are injectable for tests.
 //
@@ -54,8 +54,9 @@ export function runLocalModel(capability, opts = {}) {
       lastFailure = {
         recommend: "install",
         model: model.id,
+        sizeMB: model.sizeMB,
         command: model.install,
-        reason: `${model.id} not installed`,
+        reason: `${model.id} not installed (~${(model.sizeMB / 1000).toFixed(1)}GB to download once it is)`,
       };
       continue;
     }
@@ -65,6 +66,7 @@ export function runLocalModel(capability, opts = {}) {
       lastFailure = {
         recommend: "install",
         model: model.id,
+        sizeMB: model.sizeMB,
         command: model.install,
         reason: e.message || String(e),
       };

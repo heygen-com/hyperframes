@@ -112,4 +112,63 @@ test("runner missing from PATH reports the install hint per tier and returns nul
   assert.equal(result, null);
   assert.equal(errors.length, 2, "both fitting tiers reported");
   assert.match(errors[0], /uv pip install mflux/);
+  // each hint states that tier's download cost before the user commits
+  assert.match(errors[0], /GB of weights to/);
+  assert.match(errors[1], /GB of weights to/);
+});
+
+// Same per-attempt temp path, same orphaning risk as the LTX provider: a
+// partial png from a failed tier must not survive a lower tier succeeding.
+const outputOf = (argv) => argv[argv.indexOf("--output") + 1];
+const attemptedOutputs = (calls) =>
+  calls.filter(([bin]) => bin !== "which" && bin !== "hf").map(([, argv]) => outputOf(argv));
+
+test("a failed attempt's partial output is discarded before demoting", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const unlinked = [];
+  const { calls, exec } = stubExec({ failGenerateFor: ["flux2-klein-4b"] });
+
+  const result = await mfluxImageGenerate(
+    "a red bicycle",
+    { specs: bothTiersSpecs },
+    exec,
+    () => true,
+    (path) => unlinked.push(path),
+  );
+
+  assert.ok(result, "the schnell tier still produced an image");
+  assert.deepEqual(unlinked, [attemptedOutputs(calls)[0]], "the failed klein partial is removed");
+});
+
+test("every tier failing discards every partial, one per attempt", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const unlinked = [];
+  const { calls, exec } = stubExec({ failGenerateFor: ["flux2-klein-4b", "schnell"] });
+
+  const result = await mfluxImageGenerate(
+    "a red bicycle",
+    { specs: bothTiersSpecs },
+    exec,
+    () => true,
+    (path) => unlinked.push(path),
+  );
+
+  assert.equal(result, null);
+  assert.deepEqual(unlinked, attemptedOutputs(calls), "nothing is left behind");
+});
+
+test("a successful generation is never discarded", async () => {
+  const unlinked = [];
+  const { exec } = stubExec();
+
+  const result = await mfluxImageGenerate(
+    "a red bicycle",
+    { specs: bothTiersSpecs },
+    exec,
+    () => true,
+    (path) => unlinked.push(path),
+  );
+
+  assert.ok(result);
+  assert.deepEqual(unlinked, [], "the returned artifact must survive");
 });

@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { probeSpecs } from "./specs.mjs";
+import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModelLadder } from "./local-models.mjs";
 
 // Local image generation via mflux (FLUX-on-MLX), the Mac-native runner.
@@ -33,10 +33,23 @@ export async function mfluxImageGenerate(
   ctx,
   execFn = execFileSync,
   pathExists = existsSync,
+  unlinkFn = unlinkSync,
 ) {
   const specs = ctx?.specs || probeSpecs();
   const ladder = selectModelLadder("imagegen", specs, { preferTier: ctx?.preferTier });
   if (!ladder.length) return null; // no local model fits -> codex upsell/fallback
+
+  // Each attempt mints its own timestamped output path, so a partial artifact
+  // from a failed tier is orphaned rather than overwritten - and a lower tier
+  // then succeeding hides it. Discard it before demoting. Best-effort: a
+  // partial we cannot remove must never mask the real failure.
+  const discardPartial = (path) => {
+    try {
+      if (pathExists(path)) unlinkFn(path);
+    } catch {
+      // nothing actionable: the generate failure below is the real story
+    }
+  };
 
   // Best tier first, demoting past any tier that cannot run here (runner off
   // PATH, a snapshot that won't download, an OOM) rather than failing local
@@ -51,7 +64,7 @@ export async function mfluxImageGenerate(
       execFn("which", [bin], { stdio: ["ignore", "ignore", "ignore"] });
     } catch {
       console.error(
-        `media-use: local image gen not enabled (\`${bin}\` not on PATH). Install for free on-device FLUX: ${model.install}`,
+        `media-use: local image gen not enabled (\`${bin}\` not on PATH). Install for free on-device FLUX: ${model.install}. Heads up: ${model.id} ${describeDownload(model.sizeMB)}.`,
       );
       continue;
     }
@@ -88,6 +101,7 @@ export async function mfluxImageGenerate(
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
+      discardPartial(outPath);
       console.error(
         `media-use: local image gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
       );

@@ -89,3 +89,33 @@ test("every fitting tier failing reports the last tier's install command", () =>
   assert.equal(r.recommend, "install");
   assert.equal(r.model, "kokoro", "the smallest fitting tier is the actionable one");
 });
+
+test("the install recommendation states the download size", () => {
+  // nothing today tells the user what they are agreeing to before a tool
+  // starts pulling weights, so the size travels in the payload AND in the
+  // text a caller shows them
+  const r = runLocalModel("tts", {
+    specs: strongCpu,
+    which: () => {
+      throw new Error("not found");
+    },
+  });
+
+  assert.equal(r.recommend, "install");
+  assert.equal(typeof r.sizeMB, "number");
+  assert.ok(r.sizeMB > 0);
+  assert.match(r.reason, /GB to download/);
+});
+
+test("a failed run still reports the tier's size", () => {
+  const r = runLocalModel("tts", {
+    specs: strongCpu,
+    which: ok,
+    exec: () => {
+      throw new Error("boom");
+    },
+  });
+
+  assert.equal(r.recommend, "install");
+  assert.equal(typeof r.sizeMB, "number");
+});

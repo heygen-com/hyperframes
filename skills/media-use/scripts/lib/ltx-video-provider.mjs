@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { probeSpecs } from "./specs.mjs";
+import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
 
 export async function ltxVideoGenerate(
@@ -10,6 +10,7 @@ export async function ltxVideoGenerate(
   ctx,
   execFn = execFileSync,
   pathExists = existsSync,
+  unlinkFn = unlinkSync,
 ) {
   const specs = ctx?.specs || probeSpecs();
   const ladder = selectModelLadder("videogen", specs, { preferTier: ctx?.preferTier });
@@ -20,6 +21,18 @@ export async function ltxVideoGenerate(
     );
     return null;
   }
+
+  // Each attempt mints its own timestamped output path, so a partial artifact
+  // from a failed tier is orphaned rather than overwritten - and a lower tier
+  // then succeeding hides it. Discard it before demoting. Best-effort: a
+  // partial we cannot remove must never mask the real failure.
+  const discardPartial = (path) => {
+    try {
+      if (pathExists(path)) unlinkFn(path);
+    } catch {
+      // nothing actionable: the generate failure below is the real story
+    }
+  };
 
   // Walk the whole ladder, best tier first. A tier that cannot run on this
   // machine for a reason no spec check sees (runner off PATH, gated weights, an
@@ -32,7 +45,7 @@ export async function ltxVideoGenerate(
       execFn("which", [bin], { stdio: ["ignore", "ignore", "ignore"] });
     } catch {
       console.error(
-        `media-use: local video gen not enabled (\`${bin}\` not on PATH). Install for free on-device LTX: ${model.install}`,
+        `media-use: local video gen not enabled (\`${bin}\` not on PATH). Install for free on-device LTX: ${model.install}. Heads up: ${model.id} ${describeDownload(model.sizeMB)}.`,
       );
       continue;
     }
@@ -54,6 +67,7 @@ export async function ltxVideoGenerate(
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
+      discardPartial(outPath);
       console.error(
         `media-use: local video gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
       );
