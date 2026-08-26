@@ -1499,8 +1499,11 @@ describe("HyperframesPlayer srcdoc attribute", () => {
 
   it("uses a configured runtime source for loopback srcdoc", () => {
     const player = document.createElement("hyperframes-player") as PlayerInternal;
-    player.setAttribute("runtime-src", "http://127.0.0.1:8900/hyperframe.runtime.iife.js");
     player.setAttribute("srcdoc", "<!doctype html><html><head></head><body></body></html>");
+    player.setAttribute("runtime-src", "http://127.0.0.1:8900/hyperframe.runtime.iife.js");
+
+    expect(player.iframe.hasAttribute("srcdoc")).toBe(false);
+
     document.body.appendChild(player);
 
     expect(player.iframe.getAttribute("srcdoc")).toContain(

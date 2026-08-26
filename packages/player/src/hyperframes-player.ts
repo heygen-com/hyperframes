@@ -300,6 +300,7 @@ class HyperframesPlayer extends HTMLElement {
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
       case RUNTIME_SRC_ATTR:
+        if (!this.isConnected) break;
         this._reloadShaderOptions();
         break;
     }
