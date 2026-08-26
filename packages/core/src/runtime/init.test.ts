@@ -2745,13 +2745,18 @@ describe("initSandboxRuntimeModular", () => {
     const replacement = createMockTimeline(10);
     window.__timelines = { main: first };
     const applied: Array<Record<string, unknown>> = [];
+    const deliveryOrder: string[] = [];
     vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
       if (typeof message !== "object" || message === null) return;
       const payload = message as Record<string, unknown>;
+      if (payload.type === "timeline" || payload.type === "runtime-data-applied") {
+        deliveryOrder.push(String(payload.type));
+      }
       if (payload.type === "runtime-data-applied") applied.push(payload);
     });
 
     initSandboxRuntimeModular();
+    deliveryOrder.length = 0;
     window.__player?.seek(0.25);
     registerRuntimeDataHandler("captions", async () => {
       await Promise.resolve();
@@ -2770,6 +2775,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(first.time()).toBeCloseTo(7 / 30, 5);
     expect(replacement.time()).toBeCloseTo(37 / 30, 5);
     expect(applied[0]).toMatchObject({ channel: "captions", requestId: 7 });
+    expect(deliveryOrder.slice(0, 2)).toEqual(["timeline", "runtime-data-applied"]);
   });
 
   it("does not seek a removed timeline after runtime data is cleared", async () => {

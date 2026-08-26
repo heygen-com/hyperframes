@@ -1580,7 +1580,14 @@ export function initSandboxRuntimeModular(): void {
     }
     syncTimedElementVisibility(state.currentTime);
   };
-  reconcileTimelineAfterRuntimeData = reconcileTimeline;
+  reconcileTimelineAfterRuntimeData = () => {
+    reconcileTimeline();
+    // The parent treats runtime-data-applied as permission to re-seek immediately. Publish the
+    // replacement duration first; otherwise that seek is clamped by the bootstrap timeline (often
+    // one second) and a style switch appears frozen on the first caption segment until some later
+    // polling tick happens to post the rebuilt timeline.
+    postTimeline();
+  };
   (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind =
     reconcileTimeline;
 
