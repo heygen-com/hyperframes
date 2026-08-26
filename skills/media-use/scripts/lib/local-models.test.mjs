@@ -4,6 +4,7 @@ import {
   listModels,
   meetsSpecs,
   selectModel,
+  selectModelLadder,
   describeModelLadder,
   CAPABILITIES,
 } from "./local-models.mjs";
@@ -151,4 +152,69 @@ test("ASR offers word-timestamp-capable models (better than plain whisper)", () 
     asr.every((m) => m.wordTimestamps),
     "every ASR model must support word timestamps",
   );
+});
+
+// A machine that clears BOTH videogen tiers (the 32GB entry and the 16GB one).
+// The existing fixtures deliberately sit under the large tier's floor, which is
+// exactly how a dead 32GB entry stayed invisible: nothing could select it.
+const bothVideogenTiers = { availableRamMB: 40000, gpu: { present: true } };
+
+test("selectModelLadder returns every fitting model, best-first", () => {
+  const ladder = selectModelLadder("videogen", bothVideogenTiers);
+  assert.deepEqual(
+    ladder.map((m) => m.tier),
+    ["large", "medium"],
+    "both tiers fit 40GB, biggest first",
+  );
+  assert.equal(
+    selectModel("videogen", bothVideogenTiers).model.id,
+    ladder[0].id,
+    "selectModel's pick is the ladder's head",
+  );
+});
+
+test("selectModelLadder drops what the machine cannot run", () => {
+  const oneTier = selectModelLadder("videogen", { availableRamMB: 20000, gpu: { present: true } });
+  assert.deepEqual(
+    oneTier.map((m) => m.tier),
+    ["medium"],
+    "20GB cannot reach the 32GB tier",
+  );
+  assert.deepEqual(
+    selectModelLadder("videogen", { availableRamMB: 100, gpu: { present: true } }),
+    [],
+    "nothing fits -> empty ladder, and selectModel recommends the CLI",
+  );
+  assert.equal(
+    selectModel("videogen", { availableRamMB: 100, gpu: { present: true } }).recommend,
+    "cli",
+  );
+});
+
+test("selectModelLadder honours preferTier", () => {
+  const pinned = selectModelLadder("videogen", bothVideogenTiers, { preferTier: "medium" });
+  assert.deepEqual(
+    pinned.map((m) => m.tier),
+    ["medium"],
+    "preferTier pins the ladder to one tier",
+  );
+});
+
+test("an invoke that names an owner/repo model agrees with the entry id", () => {
+  // Guards a half-done repoint: moving an entry to different weights means
+  // changing BOTH the id and the --model argument. Change one and the table
+  // selects one model while the runner downloads another.
+  let checked = 0;
+  for (const cap of CAPABILITIES) {
+    for (const m of listModels(cap)) {
+      if (m.repo) continue; // entries with an explicit repo resolve through it
+      const named = /--model\s+(\S+)/.exec(m.invoke);
+      if (!named) continue;
+      const [, name] = named[1].split("/");
+      if (!name) continue; // a bare model name, not an owner/repo id
+      assert.equal(name, m.id, `${cap}/${m.id}: invoke runs ${named[1]}`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 0, "no entry pins an owner/repo model - guard would be vacuous");
 });

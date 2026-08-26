@@ -52,3 +52,40 @@ test("a failing run degrades to an install recommendation, never throws", () => 
   });
   assert.equal(r.recommend, "install");
 });
+
+test("a tier whose tool is missing demotes to the next tier that fits", () => {
+  // 64GB + GPU fits BOTH tts tiers, so the ladder has two rungs: fish-speech
+  // (its own binary) above Kokoro (`python -m kokoro`). fish-speech absent must
+  // not cost the user Kokoro.
+  const strongGpu = { ramMB: 64000, gpu: { present: true, vramMB: 24000 } };
+  let ran = "";
+  const r = runLocalModel("tts", {
+    specs: strongGpu,
+    which: (bin) => {
+      if (bin === "fish-speech") throw new Error("not found");
+    },
+    exec: (cmd) => {
+      ran = cmd;
+    },
+    vars: { text: "hello", voice: "af_heart", out: "/tmp/v.wav" },
+  });
+
+  assert.equal(r.model, "kokoro", "demoted past the missing fish-speech binary");
+  assert.equal(r.tier, "medium");
+  assert.match(ran, /kokoro/);
+});
+
+test("every fitting tier failing reports the last tier's install command", () => {
+  const strongGpu = { ramMB: 64000, gpu: { present: true, vramMB: 24000 } };
+  const r = runLocalModel("tts", {
+    specs: strongGpu,
+    which: ok,
+    exec: () => {
+      throw new Error("boom");
+    },
+    vars: { text: "hi", out: "/tmp/v.wav" },
+  });
+
+  assert.equal(r.recommend, "install");
+  assert.equal(r.model, "kokoro", "the smallest fitting tier is the actionable one");
+});
