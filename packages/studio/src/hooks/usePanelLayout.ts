@@ -56,9 +56,13 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(
     initialState?.rightPanelTab ?? "design",
   );
+  const rightPanelTabRef = useRef(rightPanelTab);
+  rightPanelTabRef.current = rightPanelTab;
   const [rightInspectorPanes, setRightInspectorPanes] = useState<RightInspectorPanes>(() =>
     getInitialRightInspectorPanes(initialState?.rightPanelTab),
   );
+  const rightInspectorPanesRef = useRef(rightInspectorPanes);
+  rightInspectorPanesRef.current = rightInspectorPanes;
   // Set when the user explicitly reopens a panel the window had auto-collapsed,
   // so the rail cannot immediately swallow it again. Cleared once the window is
   // wide enough that auto-collapse is no longer in play.
@@ -161,7 +165,9 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
 
   const setRightCollapsedWithOverride = useCallback((collapsed: boolean) => {
     setRightCollapsed(collapsed);
-    if (!collapsed) setAutoCollapseOverride((prev) => ({ ...prev, right: true }));
+    if (!collapsed) {
+      setAutoCollapseOverride((prev) => (prev.right ? prev : { ...prev, right: true }));
+    }
   }, []);
 
   const handlePanelResizeStart = useCallback((side: PanelSide, e: React.PointerEvent) => {
@@ -192,6 +198,15 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
 
   const trackedSetRightPanelTab = useCallback(
     (tab: RightPanelTab) => {
+      const paneAlreadySelected =
+        tab !== "design" && tab !== "layers"
+          ? true
+          : STUDIO_FLAT_INSPECTOR_ENABLED
+            ? rightInspectorPanesRef.current[tab] &&
+              !rightInspectorPanesRef.current[tab === "design" ? "layers" : "design"]
+            : rightInspectorPanesRef.current[tab];
+      if (rightPanelTabRef.current === tab && paneAlreadySelected) return;
+      rightPanelTabRef.current = tab;
       if (tab === "design" || tab === "layers") {
         // Flat inspector: Layers always renders full-height by itself (see
         // StudioRightPanel's render gate), so this MUST land on the same
@@ -202,11 +217,11 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
         // inspector tab) would otherwise additively leave both panes `true`
         // and reproduce the "both tabs highlight, only one renders" bug this
         // still-additive branch used to cause under the flat flag.
-        setRightInspectorPanes(
-          STUDIO_FLAT_INSPECTOR_ENABLED
-            ? { design: tab === "design", layers: tab === "layers" }
-            : (panes) => ({ ...panes, [tab]: true }),
-        );
+        const nextPanes = STUDIO_FLAT_INSPECTOR_ENABLED
+          ? { design: tab === "design", layers: tab === "layers" }
+          : { ...rightInspectorPanesRef.current, [tab]: true };
+        rightInspectorPanesRef.current = nextPanes;
+        setRightInspectorPanes(nextPanes);
       }
       setRightPanelTab(tab);
       trackStudioEvent("tab_switch", { panel: "right_panel", tab });

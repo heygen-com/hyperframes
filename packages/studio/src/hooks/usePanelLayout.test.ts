@@ -4,11 +4,15 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import { usePanelLayout } from "./usePanelLayout";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+
 beforeEach(() => {
+  vi.mocked(trackStudioEvent).mockClear();
   const entries = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
     configurable: true,
@@ -165,6 +169,29 @@ describe("usePanelLayout — right inspector panes", () => {
     harness.unmount();
   });
 
+  it("tracks only actual right-panel tab changes, including rapid repeated calls", () => {
+    const harness = renderPanelLayout();
+
+    act(() => {
+      harness.getState().setRightPanelTab("design");
+      harness.getState().setRightPanelTab("design");
+    });
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+
+    act(() => {
+      harness.getState().setRightPanelTab("layers");
+      harness.getState().setRightPanelTab("layers");
+    });
+    expect(trackStudioEvent).toHaveBeenCalledOnce();
+    expect(trackStudioEvent).toHaveBeenCalledWith("tab_switch", {
+      panel: "right_panel",
+      tab: "layers",
+    });
+    expect(harness.getState().rightPanelTab).toBe("layers");
+
+    harness.unmount();
+  });
+
   it("caps a panel relative to the window instead of at a flat 600px", () => {
     resizeWindowTo(700);
     const harness = renderPanelLayout();
@@ -287,6 +314,17 @@ describe("usePanelLayout — right inspector panes", () => {
     });
     const { usePanelLayout: usePanelLayoutFlatOn } = await import("./usePanelLayout");
     const harness = renderPanelLayoutWith(usePanelLayoutFlatOn);
+    expect(harness.getState().rightInspectorPanes).toEqual({ layers: false, design: true });
+
+    // The flat inspector can change its visible pane without changing the
+    // umbrella rightPanelTab value. A later element selection must still bring
+    // Design back even though rightPanelTab already says "design".
+    act(() => harness.getState().setExclusiveRightInspectorPane("layers"));
+    expect(harness.getState()).toMatchObject({
+      rightPanelTab: "design",
+      rightInspectorPanes: { layers: true, design: false },
+    });
+    act(() => harness.getState().setRightPanelTab("design"));
     expect(harness.getState().rightInspectorPanes).toEqual({ layers: false, design: true });
 
     // Element-select / block-params-close / header Inspector-button callers
