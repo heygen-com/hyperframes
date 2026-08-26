@@ -23,6 +23,7 @@ import {
 } from "./compositionScoping";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
+import { namespaceSvgIds, rewriteSvgIdReferencesInCss } from "./svgIdNamespacing";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -260,6 +261,17 @@ export function inlineSubCompositions(
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
+    // Namespace this instance's SVG ids (`<clipPath id="clip">`, `<symbol
+    // id="shape">`, `<filter id="fx">`, …) before any <style>/<script>
+    // extraction below, so `scopeSubStyle`'s CSS-text rewrite sees the exact
+    // id map this DOM pass just applied. Keyed on the document-unique
+    // runtime id (falling back to the authored id for an anonymous host with
+    // no duplicate instances) — the same identity CSS scoping and script
+    // scoping already key on. See svgIdNamespacing.ts for why this is a
+    // rename, unlike the sibling getElementById/media-id fixes.
+    const svgIdNamespace = runtimeCompId || scopeCompId;
+    const svgIdMap = namespaceSvgIds(innerRoot ?? contentDoc, svgIdNamespace);
+
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
     // (template/fragment sub-comps store their schema on the root div, not a
@@ -293,7 +305,8 @@ export function inlineSubCompositions(
     // sub-comp's html/body/:root rules from clobbering the host document (they
     // are remapped to the composition box); see compositionScoping.
     const scopeSubStyle = (raw: string): string => {
-      const css = rewriteCssAssetUrls(raw, src, assetExists);
+      const withNamespacedSvgIds = rewriteSvgIdReferencesInCss(raw, svgIdMap);
+      const css = rewriteCssAssetUrls(withNamespacedSvgIds, src, assetExists);
       return scopeCompId
         ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
             compoundAuthoredRoot: compoundAuthoredRoot === true,
