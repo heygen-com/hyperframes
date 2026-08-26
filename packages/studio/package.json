@@ -71,6 +71,7 @@
     "@hyperframes/player": "workspace:*",
     "@hyperframes/sdk": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
+    "@mcp-b/global": "^5.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",

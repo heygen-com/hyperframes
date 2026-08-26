@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { trackEvent } from "../telemetry/client";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import { makeStudioDebugLogger } from "../utils/studioDebug";
+import { loadModelContextPolyfill } from "./polyfill";
 import { registerStudioTools, type ToolRegistrationReport } from "./registrar";
 import { runToolBody, type ToolResult } from "./toolResult";
 import { getModelContext, type ModelContext, type ModelContextTool } from "./types";
@@ -16,8 +17,8 @@ import {
 
 const log = makeStudioDebugLogger("webmcp");
 
-function reportRegistration(report: ToolRegistrationReport): void {
-  log("registered", { ...report });
+function reportRegistration(report: ToolRegistrationReport, native: boolean): void {
+  log("registered", { native, ...report });
   for (const failure of report.failed) {
     trackEvent("webmcp_registration_failed", {
       error_name: failure.name,
@@ -91,17 +92,26 @@ export function useStudioAgentTools(deps: StudioAgentToolsDeps): void {
       return;
     }
 
-    const modelContext: ModelContext | null = getModelContext();
-    if (!modelContext) {
-      // Expected on any browser that has not shipped WebMCP. Not an error.
-      log("skipped", { why: "document.modelContext absent" });
-      return;
-    }
-
     const controller = new AbortController();
-    void registerStudioTools(modelContext, buildStudioTools(depsRef), controller.signal).then(
-      reportRegistration,
-    );
+
+    void (async () => {
+      const native: ModelContext | null = getModelContext();
+      // Native browsers never download the polyfill.
+      const modelContext = native ?? (await loadModelContextPolyfill());
+      if (!modelContext) {
+        log("skipped", { why: "no model context, native or polyfilled" });
+        return;
+      }
+      // The import is async, so the component may already be gone.
+      if (controller.signal.aborted) return;
+
+      const report = await registerStudioTools(
+        modelContext,
+        buildStudioTools(depsRef),
+        controller.signal,
+      );
+      reportRegistration(report, native !== null);
+    })();
 
     return () => controller.abort();
   }, []);

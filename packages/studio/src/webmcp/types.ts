@@ -1,5 +1,5 @@
 /**
- * Local typings for the WebMCP browser API, which is not in lib.dom yet.
+ * The slice of the WebMCP browser API that Studio uses.
  *
  * Mirrors the WebIDL in the W3C spec (`webmachinelearning/webmcp`, `index.bs`)
  * as of 2026-08-26. Two things worth knowing before editing this file:
@@ -11,8 +11,15 @@
  *   only places that touch the API, so a spec change is a two-file edit. Re-read
  *   `index.bs` rather than trusting this transcription.
  *
- * Only the surface Studio actually uses is declared. `getTools` and
+ * Only the surface Studio registers against is declared. `getTools` and
  * `executeTool` are the consumer side; Studio registers, it does not call.
+ *
+ * These stay hand-written rather than imported from `@mcp-b/webmcp-types`,
+ * which the polyfill pulls in. That package's `registerTool` is overloaded to
+ * infer argument types from a literal `inputSchema`, which is useful when you
+ * register one tool inline and actively hostile when you register a uniform
+ * list of them, as `registerStudioTools` does. Narrower is the safe operation
+ * here. It does mean this file can drift from the spec, hence the note above.
  */
 
 export interface ModelContextToolAnnotations {
@@ -24,9 +31,9 @@ export interface ModelContextToolAnnotations {
 
 export interface ToolExecuteCallbackOptions {
   /**
-   * Aborted when the caller cancels. Note that Studio's commit path is not
-   * cancellable once dispatched, so tools check this BEFORE dispatching and
-   * document that a late abort does not unwind a write.
+   * Aborted when the caller cancels. Studio's commit path is not cancellable
+   * once dispatched, so tools check this BEFORE dispatching and document that a
+   * late abort does not unwind a write.
    */
   signal: AbortSignal;
 }
@@ -65,12 +72,19 @@ export interface ModelContext {
   registerTool(tool: ModelContextTool, options?: ModelContextRegisterToolOptions): Promise<void>;
 }
 
-interface DocumentWithModelContext extends Document {
-  modelContext?: ModelContext;
+function isModelContext(value: unknown): value is ModelContext {
+  if (typeof value !== "object" || value === null) return false;
+  return typeof Reflect.get(value, "registerTool") === "function";
 }
 
-/** The live WebMCP entry point, or null when this browser has not shipped it. */
+/**
+ * The live WebMCP entry point, or null when this browser has not shipped it.
+ *
+ * Reads through a guard rather than augmenting the `Document` interface. The
+ * polyfill's typings already declare `Document.modelContext` globally, and a
+ * second, narrower declaration of the same property is a type error.
+ */
 export function getModelContext(doc: Document = document): ModelContext | null {
-  const candidate = (doc as DocumentWithModelContext).modelContext;
-  return typeof candidate?.registerTool === "function" ? candidate : null;
+  const candidate = Reflect.get(doc, "modelContext");
+  return isModelContext(candidate) ? candidate : null;
 }
