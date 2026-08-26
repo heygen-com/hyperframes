@@ -20,6 +20,7 @@ import {
   type LayerRevealCommitOwnership,
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
+import { domEditCommitDeclined } from "./domEditCommitRunner";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 
@@ -89,9 +90,9 @@ export function useElementLifecycleOps({
     // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return domEditCommitDeclined("no-project");
       const [selection] = selections;
-      if (!selection) return;
+      if (!selection) return domEditCommitDeclined("no-selection");
       const label =
         selections.length === 1
           ? selection.label || selection.id || selection.selector || selection.tagName
@@ -208,9 +209,13 @@ export function useElementLifecycleOps({
           `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
           "info",
         );
+        return { ok: true } as const;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
+        // The toast is what tells the human. The returned outcome is what tells
+        // a caller that has no screen to read.
+        return domEditCommitDeclined("persist-failed");
       }
     },
     [

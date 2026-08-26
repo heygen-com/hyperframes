@@ -66,6 +66,7 @@ export async function runDomEditCommit(config: DomEditCommitRunnerConfig): Promi
  * programmatic caller has no screen, so it has to be told.
  */
 export type DomEditCommitDeclineReason =
+  | "no-project"
   | "no-selection"
   | "geometry-property"
   | "styles-not-editable"
