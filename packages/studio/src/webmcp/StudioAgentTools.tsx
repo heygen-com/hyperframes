@@ -1,8 +1,8 @@
-import { useCallback } from "react";
-import { useDomEditSelectionContext } from "../contexts/DomEditContext";
+import { useCallback, useMemo } from "react";
+import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePlayerStore } from "../player";
-import { useStudioAgentTools } from "./useStudioAgentTools";
+import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
 import type { StudioLookSnapshot } from "./tools/lookTools";
 
 /**
@@ -12,14 +12,15 @@ import type { StudioLookSnapshot } from "./tools/lookTools";
  * contexts are only readable below `DomEditProvider`, which `App` renders, and
  * `App.tsx` sits three lines under the 600-line cap.
  *
- * The player store is read IMPERATIVELY through `getState()` inside the
- * snapshot callback rather than subscribed to. Subscribing to `currentTime`
- * would re-render this component on every animation frame during playback for
- * a value nothing here displays.
+ * The player store is read IMPERATIVELY through `getState()` rather than
+ * subscribed to. Subscribing to `currentTime` would re-render this component on
+ * every animation frame during playback for a value nothing here displays.
  */
 export function StudioAgentTools() {
   const { projectId, activeCompPath, editHistory } = useStudioShellContext();
   const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
+  const { previewIframeRef, buildDomSelectionFromTarget, applyDomSelection } =
+    useDomEditActionsContext();
 
   const getSnapshot = useCallback((): StudioLookSnapshot => {
     const player = usePlayerStore.getState();
@@ -41,6 +42,25 @@ export function StudioAgentTools() {
     };
   }, [projectId, activeCompPath, domEditSelection, selectedGsapAnimations, editHistory]);
 
-  useStudioAgentTools({ getSnapshot });
+  const deps = useMemo<StudioAgentToolsDeps>(
+    () => ({
+      getSnapshot,
+      getPreviewDocument: () => previewIframeRef.current?.contentDocument ?? null,
+      buildSelection: (element) => buildDomSelectionFromTarget(element),
+      applySelection: (selection) => applyDomSelection(selection, { revealPanel: true }),
+      requestSeek: (time) => usePlayerStore.getState().requestSeek(time),
+      readPlayhead: () => {
+        const player = usePlayerStore.getState();
+        return {
+          currentTime: player.currentTime,
+          duration: player.duration,
+          isPlaying: player.isPlaying,
+        };
+      },
+    }),
+    [getSnapshot, previewIframeRef, buildDomSelectionFromTarget, applyDomSelection],
+  );
+
+  useStudioAgentTools(deps);
   return null;
 }

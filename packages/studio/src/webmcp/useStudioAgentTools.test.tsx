@@ -29,6 +29,19 @@ function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapsh
   };
 }
 
+/** Full deps with inert defaults; override only what the test is about. */
+function deps(overrides: Partial<StudioAgentToolsDeps> = {}): StudioAgentToolsDeps {
+  return {
+    getSnapshot: () => snapshot(),
+    getPreviewDocument: () => null,
+    buildSelection: async () => null,
+    applySelection: () => undefined,
+    requestSeek: () => undefined,
+    readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
+    ...overrides,
+  };
+}
+
 /** Install a fake `document.modelContext` and report what got registered. */
 function installModelContext() {
   const registered: ModelContextTool[] = [];
@@ -50,12 +63,12 @@ function removeModelContext() {
   Reflect.deleteProperty(document, "modelContext");
 }
 
-function mountTools(deps: StudioAgentToolsDeps) {
+function mountTools(initial: StudioAgentToolsDeps) {
   function Probe({ current }: { current: StudioAgentToolsDeps }) {
     useStudioAgentTools(current);
     return null;
   }
-  const root = mountReactHarness(<Probe current={deps} />);
+  const root = mountReactHarness(<Probe current={initial} />);
   cleanup = () => act(() => root.unmount());
   return {
     rerenderWith(next: StudioAgentToolsDeps) {
@@ -82,10 +95,14 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
-    expect(registered.map((tool) => tool.name)).toEqual(["studio_look"]);
+    expect(registered.map((tool) => tool.name)).toEqual([
+      "studio_look",
+      "studio_select",
+      "studio_seek",
+    ]);
     expect(trackEvent).toHaveBeenCalledWith("webmcp.native_present");
   });
 
@@ -97,16 +114,16 @@ describe("useStudioAgentTools", () => {
 
     let harness: ReturnType<typeof mountTools> | null = null;
     await act(async () => {
-      harness = mountTools({ getSnapshot: () => snapshot() });
+      harness = mountTools(deps({ getSnapshot: () => snapshot() }));
     });
-    expect(registerTool).toHaveBeenCalledTimes(1);
+    expect(registerTool).toHaveBeenCalledTimes(3);
 
     await act(async () => {
-      harness?.rerenderWith({ getSnapshot: () => snapshot({ currentTime: 5 }) });
-      harness?.rerenderWith({ getSnapshot: () => snapshot({ currentTime: 6 }) });
+      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 5 }) }));
+      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 6 }) }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(1);
+    expect(registerTool).toHaveBeenCalledTimes(3);
   });
 
   it("executes against the LATEST deps, not the ones present at registration", async () => {
@@ -116,11 +133,11 @@ describe("useStudioAgentTools", () => {
 
     let harness: ReturnType<typeof mountTools> | null = null;
     await act(async () => {
-      harness = mountTools({ getSnapshot: () => snapshot({ currentTime: 1 }) });
+      harness = mountTools(deps({ getSnapshot: () => snapshot({ currentTime: 1 }) }));
     });
 
     await act(async () => {
-      harness?.rerenderWith({ getSnapshot: () => snapshot({ currentTime: 42 }) });
+      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 42 }) }));
     });
 
     const look = registered[0];
@@ -138,7 +155,7 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
     const signal = registerTool.mock.calls[0]?.[1]?.signal;
     expect(signal?.aborted).toBe(false);
@@ -153,7 +170,7 @@ describe("useStudioAgentTools", () => {
     removeModelContext();
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
     // The assertion is that mounting did not throw; a browser without the API
@@ -166,7 +183,7 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
     expect(registerTool).not.toHaveBeenCalled();
@@ -176,10 +193,10 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(1);
+    expect(registerTool).toHaveBeenCalledTimes(3);
   });
 
   it("reports a non-abort registration failure through production telemetry", async () => {
@@ -187,7 +204,7 @@ describe("useStudioAgentTools", () => {
     registerTool.mockRejectedValue(new DOMException("blocked", "NotAllowedError"));
 
     await act(async () => {
-      mountTools({ getSnapshot: () => snapshot() });
+      mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
     expect(trackEvent).toHaveBeenCalledWith("webmcp_registration_failed", {
@@ -200,11 +217,13 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
 
     await act(async () => {
-      mountTools({
-        getSnapshot: () => {
-          throw new TypeError("handler signature moved");
-        },
-      });
+      mountTools(
+        deps({
+          getSnapshot: () => {
+            throw new TypeError("handler signature moved");
+          },
+        }),
+      );
     });
     vi.spyOn(console, "error").mockImplementation(() => {});
 

@@ -36,7 +36,7 @@ export function toolOk<T extends object>(value: T): { ok: true } & T {
   return { ok: true, ...value };
 }
 
-function toolFailure(kind: ToolFailureKind, reason: string, hint?: string): ToolFailure {
+export function toolFailure(kind: ToolFailureKind, reason: string, hint?: string): ToolFailure {
   return hint ? { ok: false, kind, reason, hint } : { ok: false, kind, reason };
 }
 

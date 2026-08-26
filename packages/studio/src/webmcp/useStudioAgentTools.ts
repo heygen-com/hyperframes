@@ -14,6 +14,17 @@ import {
   type StudioLookInput,
   type StudioLookSnapshot,
 } from "./tools/lookTools";
+import {
+  studioSeek,
+  studioSelect,
+  STUDIO_SEEK_DESCRIPTION,
+  STUDIO_SEEK_INPUT_SCHEMA,
+  STUDIO_SELECT_DESCRIPTION,
+  STUDIO_SELECT_INPUT_SCHEMA,
+  type SelectionToolDeps,
+  type StudioSeekResult,
+  type StudioSelectResult,
+} from "./tools/selectionTools";
 
 const log = makeStudioDebugLogger("webmcp");
 
@@ -27,7 +38,7 @@ function reportRegistration(report: ToolRegistrationReport, native: boolean): vo
   }
 }
 
-export interface StudioAgentToolsDeps {
+export interface StudioAgentToolsDeps extends SelectionToolDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
   getSnapshot: () => StudioLookSnapshot;
 }
@@ -57,7 +68,44 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
           buildStudioLook(depsRef.current.getSnapshot(), input as StudioLookInput),
         ),
     },
+    {
+      name: "studio_select",
+      title: "Select an element",
+      description: STUDIO_SELECT_DESCRIPTION,
+      inputSchema: STUDIO_SELECT_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: (input): Promise<ToolResult<StudioSelectResult>> =>
+        runToolBody("studio_select", () =>
+          studioSelect(depsRef.current, readStringInput(input, "handle")),
+        ),
+    },
+    {
+      name: "studio_seek",
+      title: "Move the playhead",
+      description: STUDIO_SEEK_DESCRIPTION,
+      inputSchema: STUDIO_SEEK_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false },
+      execute: (input): Promise<ToolResult<StudioSeekResult>> =>
+        runToolBody("studio_seek", async () =>
+          studioSeek(depsRef.current, readNumberInput(input, "time")),
+        ),
+    },
   ];
+}
+
+/**
+ * Nothing in the platform validates the input object against `inputSchema`, so
+ * a tool receives whatever the agent sent. These read a field without asserting
+ * its type; the tools themselves reject what they cannot use.
+ */
+function readStringInput(input: object, key: string): string {
+  const value = Reflect.get(input, key);
+  return typeof value === "string" ? value : "";
+}
+
+function readNumberInput(input: object, key: string): number {
+  const value = Reflect.get(input, key);
+  return typeof value === "number" ? value : Number.NaN;
 }
 
 /**
