@@ -6,7 +6,7 @@
  * Videos are replaced with <img> elements during capture.
  */
 
-import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -55,6 +55,7 @@ import {
   type CacheEntry,
   type CacheFrameFormat,
 } from "./extractionCache.js";
+import { framePathsFromDirectory } from "./extractedFrameIndex.js";
 
 export interface VideoElement {
   id: string;
@@ -802,13 +803,7 @@ export async function extractVideoFramesRange(
     );
   }
 
-  const framePaths = new Map<number, string>();
-  const files = readdirSync(videoOutputDir)
-    .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${format}`))
-    .sort();
-  files.forEach((file, index) => {
-    framePaths.set(index, join(videoOutputDir, file));
-  });
+  const framePaths = framePathsFromDirectory(videoOutputDir, format);
   if (framePaths.size === 0 && duration > 0) {
     throw new VideoSourceExtractionError(
       "zero_output",
@@ -1180,13 +1175,6 @@ type SupersetGroupPlan = {
   members: SupersetMemberPlan[];
 };
 
-function extractedFrameFileNames(outputDir: string, format: CacheFrameFormat): string[] {
-  const suffix = `.${format}`;
-  return readdirSync(outputDir)
-    .filter((file) => file.startsWith(FRAME_FILENAME_PREFIX) && file.endsWith(suffix))
-    .sort();
-}
-
 function extractedFramesFromDirectory(
   work: PreparedExtraction,
   outputDir: string,
@@ -1194,10 +1182,7 @@ function extractedFramesFromDirectory(
   fps: number,
 ): ExtractedFrames {
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${work.format}`;
-  const framePaths = new Map<number, string>();
-  extractedFrameFileNames(outputDir, work.format).forEach((file, index) => {
-    framePaths.set(index, join(outputDir, file));
-  });
+  const framePaths = framePathsFromDirectory(outputDir, work.format);
   return {
     videoId: work.video.id,
     srcPath,
