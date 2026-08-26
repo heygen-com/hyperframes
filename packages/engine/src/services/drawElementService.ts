@@ -357,7 +357,10 @@ export async function captureDrawElementFrame(
     }) => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) {
+      if (!root) {
+        throw new Error("HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found");
+      }
+      if (!canvas) {
         throw new Error("HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized");
       }
       const ctx = canvas.getContext("2d");
@@ -800,7 +803,10 @@ export async function produceDrawElementFrame(
     ({ w, h, q, sync, fid }: { w: number; h: number; q: number; sync: boolean; fid: number }) => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) {
+      if (!root) {
+        throw new Error("HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found");
+      }
+      if (!canvas) {
         throw new Error("HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized");
       }
       const ctx = canvas.getContext("2d");
@@ -1029,7 +1035,13 @@ export async function produceDrawElementFrameBatch(
     }): Promise<{ failedAt: number | null; error?: string }> => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) {
+      if (!root) {
+        return {
+          failedAt: 0,
+          error: "HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found",
+        };
+      }
+      if (!canvas) {
         return {
           failedAt: 0,
           error: "HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized",

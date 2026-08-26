@@ -3359,19 +3359,19 @@ function isNoCachedPaintRecordError(err: unknown): boolean {
 /**
  * True for the drawElement "capture canvas isn't set up yet" error — thrown
  * (or, on the batch path, returned as a string) by drawElementService when
- * the injected capture canvas isn't set up yet (observed at frame 0 on some
- * macOS/Chrome combinations, see #3423). Like the no-cached-paint-record
- * case, this is recoverable per-frame: callers fall back to screenshot
- * capture for the affected frame(s) instead of hard-failing the whole render.
+ * the injected capture canvas (`#__hf_de_canvas`) isn't set up yet (observed
+ * at frame 0 on some macOS/Chrome combinations, see #3423). Recoverable:
+ * the composition root IS present, so `pageScreenshotCapture` captures valid
+ * content.
  *
- * Unlike the native paint-record error, THIS error is constructed by our own
- * code (three sites in drawElementService.ts), so it carries the
- * {@link DE_CANVAS_NOT_INITIALIZED_CODE} discriminant baked into the message
- * — matching on that stable code (rather than the free-text phrase
- * "canvas not initialized") avoids false-positiving on unrelated prose, and
- * keeps matching correctly even after `produceDrawElementFrameBatch`'s
- * "batch produce failed at frame N: <code>: ..." wrapping (review: prefer an
- * error-code discriminant over a substring-match footgun).
+ * This is distinct from the composition-root-missing case
+ * (`HF_DE_COMPOSITION_ROOT_MISSING`), which is NOT recoverable — the page
+ * has no composition content to screenshot, so falling back would capture
+ * blank or navigated-away content.
+ *
+ * Matches the {@link DE_CANVAS_NOT_INITIALIZED_CODE} discriminant baked into
+ * the message (not free-text), so it survives `produceDrawElementFrameBatch`'s
+ * "batch produce failed at frame N: <code>: ..." wrapping.
  */
 function isCanvasNotInitializedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -3777,8 +3777,9 @@ export async function captureFrameToBufferPipelined(
  * drain time:
  *  - the static-dedup fast path returns session.lastEncodeResult, which by
  *    drain time can hold a frame several indices AHEAD of the suspect frame;
- *  - the per-frame "No cached paint record" screenshot fallback captures the
- *    injected canvas — i.e. the LAST drawn drawElement frame, not this one.
+ *  - the per-frame recoverable-error screenshot fallback ("No cached paint
+ *    record" or "canvas not initialized") captures the viewport — which may
+ *    hold the LAST drawn drawElement frame, not this one.
  * Any failure here throws; the caller treats that as verification failure and
  * falls back the whole render (correct, never wrong-frame).
  */
