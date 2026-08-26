@@ -57,8 +57,29 @@ export function StudioAgentTools() {
           isPlaying: player.isPlaying,
         };
       },
+      getProjectId: () => projectId,
+      getCompositionPath: () => activeCompPath,
+      // HEAD, not GET: the tool only needs to know the frame renders. Pulling
+      // the PNG here would download it once for nothing, since the agent
+      // fetches the URL itself.
+      probeFrame: async (url) => {
+        try {
+          const response = await fetch(url, { method: "HEAD" });
+          return { ok: response.ok, status: response.status };
+        } catch {
+          return { ok: false, status: 0 };
+        }
+      },
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     }),
-    [getSnapshot, previewIframeRef, buildDomSelectionFromTarget, applyDomSelection],
+    [
+      getSnapshot,
+      previewIframeRef,
+      buildDomSelectionFromTarget,
+      applyDomSelection,
+      projectId,
+      activeCompPath,
+    ],
   );
 
   useStudioAgentTools(deps);

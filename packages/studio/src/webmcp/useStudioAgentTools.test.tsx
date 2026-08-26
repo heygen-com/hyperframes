@@ -38,6 +38,10 @@ function deps(overrides: Partial<StudioAgentToolsDeps> = {}): StudioAgentToolsDe
     applySelection: () => undefined,
     requestSeek: () => undefined,
     readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
+    getProjectId: () => "demo",
+    getCompositionPath: () => "index.html",
+    probeFrame: async () => ({ ok: true, status: 200 }),
+    wait: async () => undefined,
     ...overrides,
   };
 }
@@ -102,6 +106,7 @@ describe("useStudioAgentTools", () => {
       "studio_look",
       "studio_select",
       "studio_seek",
+      "studio_frame",
     ]);
     expect(trackEvent).toHaveBeenCalledWith("webmcp.native_present");
   });
@@ -116,14 +121,14 @@ describe("useStudioAgentTools", () => {
     await act(async () => {
       harness = mountTools(deps({ getSnapshot: () => snapshot() }));
     });
-    expect(registerTool).toHaveBeenCalledTimes(3);
+    expect(registerTool).toHaveBeenCalledTimes(4);
 
     await act(async () => {
       harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 5 }) }));
       harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 6 }) }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(3);
+    expect(registerTool).toHaveBeenCalledTimes(4);
   });
 
   it("executes against the LATEST deps, not the ones present at registration", async () => {
@@ -196,7 +201,7 @@ describe("useStudioAgentTools", () => {
       mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(3);
+    expect(registerTool).toHaveBeenCalledTimes(4);
   });
 
   it("reports a non-abort registration failure through production telemetry", async () => {

@@ -25,6 +25,14 @@ import {
   type StudioSeekResult,
   type StudioSelectResult,
 } from "./tools/selectionTools";
+import {
+  studioFrame,
+  STUDIO_FRAME_DESCRIPTION,
+  STUDIO_FRAME_INPUT_SCHEMA,
+  type FrameToolDeps,
+  type StudioFrameInput,
+  type StudioFrameResult,
+} from "./tools/frameTools";
 
 const log = makeStudioDebugLogger("webmcp");
 
@@ -38,7 +46,7 @@ function reportRegistration(report: ToolRegistrationReport, native: boolean): vo
   }
 }
 
-export interface StudioAgentToolsDeps extends SelectionToolDeps {
+export interface StudioAgentToolsDeps extends SelectionToolDeps, FrameToolDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
   getSnapshot: () => StudioLookSnapshot;
 }
@@ -89,6 +97,15 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
         runToolBody("studio_seek", async () =>
           studioSeek(depsRef.current, readNumberInput(input, "time")),
         ),
+    },
+    {
+      name: "studio_frame",
+      title: "See the composition",
+      description: STUDIO_FRAME_DESCRIPTION,
+      inputSchema: STUDIO_FRAME_INPUT_SCHEMA,
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: (input): Promise<ToolResult<StudioFrameResult>> =>
+        runToolBody("studio_frame", () => studioFrame(depsRef.current, input as StudioFrameInput)),
     },
   ];
 }
