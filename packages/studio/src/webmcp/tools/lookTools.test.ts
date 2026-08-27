@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { DomEditSelection } from "../../components/editor/domEditingTypes";
 import type { TimelineElement } from "../../player/store/timelineElement";
-import { buildStudioLook, type StudioLookSnapshot } from "./lookTools";
+import { buildStudioLook, STUDIO_LOOK_INPUT_SCHEMA, type StudioLookSnapshot } from "./lookTools";
 
 function element(overrides: Partial<TimelineElement>): TimelineElement {
   return { id: "synthetic", tag: "div", start: 0, duration: 1, track: 0, ...overrides };
@@ -134,6 +134,19 @@ describe("buildStudioLook", () => {
     expect(byLabel.elements.map((e) => e.handle)).toEqual(["hf:abc"]);
     expect(byTag.elements.map((e) => e.handle)).toEqual(["dom:cta"]);
     expect(byHandle.elements.map((e) => e.handle)).toEqual(["hf:abc"]);
+  });
+
+  it("bounds a filter before normalizing it", () => {
+    const boundedFilter = "x".repeat(128);
+    const look = expectOk<{ elements: { handle: string | null }[] }>(
+      buildStudioLook(
+        snapshot({ elements: [element({ domId: "bounded", label: boundedFilter })] }),
+        { filter: `${boundedFilter}${"y".repeat(10_000)}` },
+      ),
+    );
+
+    expect(look.elements.map((entry) => entry.handle)).toEqual(["dom:bounded"]);
+    expect(STUDIO_LOOK_INPUT_SCHEMA.properties.filter.maxLength).toBe(128);
   });
 
   it("keeps the true match count when the list is truncated", () => {

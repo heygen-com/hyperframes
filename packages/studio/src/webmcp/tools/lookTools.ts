@@ -95,6 +95,7 @@ export interface StudioLookInput {
 }
 
 const DEFAULT_LIMIT = 200;
+const MAX_FILTER_LENGTH = 128;
 
 function describeElement(element: TimelineElement): LookElement {
   return {
@@ -142,7 +143,7 @@ export function buildStudioLook(
   input: StudioLookInput = {},
 ): ToolResult<StudioLook> {
   const described = snapshot.elements.map(describeElement);
-  const needle = input.filter?.trim().toLowerCase();
+  const needle = input.filter?.slice(0, MAX_FILTER_LENGTH).trim().toLowerCase();
   const matched = needle
     ? described.filter((element) => matchesFilter(element, needle))
     : described;
@@ -175,6 +176,7 @@ export const STUDIO_LOOK_INPUT_SCHEMA = {
   properties: {
     filter: {
       type: "string",
+      maxLength: MAX_FILTER_LENGTH,
       description: "Case-insensitive substring matched against element label, tag, and handle.",
     },
     limit: {
