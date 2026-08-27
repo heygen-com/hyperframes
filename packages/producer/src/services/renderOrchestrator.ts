@@ -685,7 +685,13 @@ export function applyRenderWarningPolicy(
   const hasAudioProcessingFailure = job.warnings.some(
     (warning) => warning.code === "audio_processing_failed",
   );
-  if (strictness === "strict" || hasAudioProcessingFailure) {
+  // A script failure means the composition's GSAP timelines can never
+  // register — the render produces a degenerate 2-frame output that looks
+  // like a still image. Fail loudly rather than shipping garbage (#3352).
+  const hasSubTimelineScriptFailure = job.warnings.some(
+    (warning) => warning.code === "sub_timeline_script_failure",
+  );
+  if (strictness === "strict" || hasAudioProcessingFailure || hasSubTimelineScriptFailure) {
     throw new RenderQualityError(job.warnings);
   }
 }

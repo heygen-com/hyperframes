@@ -246,6 +246,45 @@ describe("updateJobStatus", () => {
     );
   });
 
+  it("blocks sub-timeline script failures in best-effort mode (#3352)", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    expect(() =>
+      applyRenderWarningPolicy(
+        job,
+        [
+          {
+            code: "sub_timeline_script_failure",
+            message: "A sub-composition script threw during execution",
+            details: {
+              timeoutMs: 45_000,
+              sources: ["runtime-error:decision-tree-123"],
+            },
+          },
+        ],
+        log,
+      ),
+    ).toThrow(RenderQualityError);
+    expect(job.warnings).toHaveLength(1);
+  });
+
+  it("allows sub-timeline readiness timeout in best-effort mode", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    applyRenderWarningPolicy(
+      job,
+      [
+        {
+          code: "sub_timeline_readiness_timeout",
+          message: "Sub-composition timelines did not become ready within 45000ms",
+          details: { timeoutMs: 45_000 },
+        },
+      ],
+      log,
+    );
+    expect(job.warnings).toHaveLength(1);
+  });
+
   it("fails explicitly strict renders on correctness warnings", () => {
     const job = createRenderJob({ fps: 30, quality: "high", strictness: "strict" });
     const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
