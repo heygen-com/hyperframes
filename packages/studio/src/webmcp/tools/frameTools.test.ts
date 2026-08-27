@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { studioFrame, type FrameToolDeps, type StudioFrameResult } from "./frameTools";
-import type { ToolFailure, ToolResult } from "../toolResult";
+import { expectFailure, expectOk } from "../webmcpTestUtils";
 
 function frameDeps(overrides: Partial<FrameToolDeps> = {}): FrameToolDeps {
   return {
@@ -13,16 +13,6 @@ function frameDeps(overrides: Partial<FrameToolDeps> = {}): FrameToolDeps {
     wait: async () => undefined,
     ...overrides,
   };
-}
-
-function expectOk<T>(result: ToolResult<T>): { ok: true } & T {
-  if (!result.ok) throw new Error(`expected ok, got ${JSON.stringify(result)}`);
-  return result;
-}
-
-function expectFailure(result: ToolResult<unknown>): ToolFailure {
-  if (result.ok) throw new Error(`expected failure, got ${JSON.stringify(result)}`);
-  return result;
 }
 
 describe("studioFrame", () => {

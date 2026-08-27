@@ -18,7 +18,12 @@ import type { StudioLookSnapshot } from "./tools/lookTools";
  */
 export function StudioAgentTools() {
   const { projectId, activeCompPath, editHistory } = useStudioShellContext();
-  const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
+  const {
+    domEditSelection,
+    selectedGsapAnimations,
+    gsapMultipleTimelines,
+    gsapUnsupportedTimelinePattern,
+  } = useDomEditSelectionContext();
   const { previewIframeRef, buildDomSelectionFromTarget, applyDomSelection } =
     useDomEditActionsContext();
 
@@ -71,6 +76,12 @@ export function StudioAgentTools() {
         }
       },
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      getCurrentSelection: () => domEditSelection,
+      getGsapDiagnostics: () => ({
+        animations: selectedGsapAnimations,
+        multipleTimelines: gsapMultipleTimelines,
+        unsupportedTimelinePattern: gsapUnsupportedTimelinePattern,
+      }),
     }),
     [
       getSnapshot,
@@ -79,6 +90,10 @@ export function StudioAgentTools() {
       applyDomSelection,
       projectId,
       activeCompPath,
+      domEditSelection,
+      selectedGsapAnimations,
+      gsapMultipleTimelines,
+      gsapUnsupportedTimelinePattern,
     ],
   );
 
