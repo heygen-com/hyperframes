@@ -33,6 +33,10 @@ export function StudioAgentTools() {
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
+    handleGsapAddAnimation,
+    handleGsapUpdateMeta,
+    handleGsapAddKeyframeBatch,
+    handleGsapDeleteAnimation,
   } = useDomEditActionsContext();
 
   const getSnapshot = useCallback((): StudioLookSnapshot => {
@@ -97,6 +101,11 @@ export function StudioAgentTools() {
       moveTo: (selection, next) => handleDomPathOffsetCommit(selection, next),
       resizeTo: (selection, next) => handleDomBoxSizeCommit(selection, next),
       rotateTo: (selection, next) => handleDomRotationCommit(selection, next),
+      addAnimation: (method) => handleGsapAddAnimation(method),
+      updateAnimation: (animationId, updates) => handleGsapUpdateMeta(animationId, updates),
+      addKeyframe: (animationId, percent, properties) =>
+        handleGsapAddKeyframeBatch(animationId, percent, properties),
+      deleteAnimation: (animationId) => handleGsapDeleteAnimation(animationId),
       getGsapDiagnostics: () => ({
         animations: selectedGsapAnimations,
         multipleTimelines: gsapMultipleTimelines,
@@ -116,6 +125,10 @@ export function StudioAgentTools() {
       handleDomPathOffsetCommit,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
+      handleGsapAddAnimation,
+      handleGsapUpdateMeta,
+      handleGsapAddKeyframeBatch,
+      handleGsapDeleteAnimation,
       domEditSelection,
       selectedGsapAnimations,
       gsapMultipleTimelines,

@@ -60,6 +60,25 @@ import {
   type StudioTransformResult,
   type TransformToolDeps,
 } from "./tools/transformTools";
+import {
+  studioAddAnimation,
+  studioAddKeyframe,
+  studioDeleteAnimation,
+  studioUpdateAnimation,
+  STUDIO_ADD_ANIMATION_DESCRIPTION,
+  STUDIO_ADD_ANIMATION_INPUT_SCHEMA,
+  STUDIO_ADD_KEYFRAME_DESCRIPTION,
+  STUDIO_ADD_KEYFRAME_INPUT_SCHEMA,
+  STUDIO_DELETE_ANIMATION_DESCRIPTION,
+  STUDIO_DELETE_ANIMATION_INPUT_SCHEMA,
+  STUDIO_UPDATE_ANIMATION_DESCRIPTION,
+  STUDIO_UPDATE_ANIMATION_INPUT_SCHEMA,
+  type AnimationToolDeps,
+  type StudioAddAnimationResult,
+  type StudioAddKeyframeResult,
+  type StudioDeleteAnimationResult,
+  type StudioUpdateAnimationResult,
+} from "./tools/animationTools";
 
 const log = makeStudioDebugLogger("webmcp");
 
@@ -74,7 +93,13 @@ function reportRegistration(report: ToolRegistrationReport, native: boolean): vo
 }
 
 export interface StudioAgentToolsDeps
-  extends SelectionToolDeps, FrameToolDeps, InspectToolDeps, ContentToolDeps, TransformToolDeps {
+  extends
+    SelectionToolDeps,
+    FrameToolDeps,
+    InspectToolDeps,
+    ContentToolDeps,
+    TransformToolDeps,
+    AnimationToolDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
   getSnapshot: () => StudioLookSnapshot;
 }
@@ -174,6 +199,42 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
         runToolBody("studio_transform", () =>
           studioTransform(depsRef.current, input as StudioTransformInput),
         ),
+    },
+    {
+      name: "studio_add_animation",
+      title: "Add an animation",
+      description: STUDIO_ADD_ANIMATION_DESCRIPTION,
+      inputSchema: STUDIO_ADD_ANIMATION_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false },
+      execute: (input): Promise<ToolResult<StudioAddAnimationResult>> =>
+        runToolBody("studio_add_animation", () => studioAddAnimation(depsRef.current, input)),
+    },
+    {
+      name: "studio_update_animation",
+      title: "Change an animation",
+      description: STUDIO_UPDATE_ANIMATION_DESCRIPTION,
+      inputSchema: STUDIO_UPDATE_ANIMATION_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false },
+      execute: (input): Promise<ToolResult<StudioUpdateAnimationResult>> =>
+        runToolBody("studio_update_animation", () => studioUpdateAnimation(depsRef.current, input)),
+    },
+    {
+      name: "studio_add_keyframe",
+      title: "Add a keyframe",
+      description: STUDIO_ADD_KEYFRAME_DESCRIPTION,
+      inputSchema: STUDIO_ADD_KEYFRAME_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false },
+      execute: (input): Promise<ToolResult<StudioAddKeyframeResult>> =>
+        runToolBody("studio_add_keyframe", () => studioAddKeyframe(depsRef.current, input)),
+    },
+    {
+      name: "studio_delete_animation",
+      title: "Remove an animation",
+      description: STUDIO_DELETE_ANIMATION_DESCRIPTION,
+      inputSchema: STUDIO_DELETE_ANIMATION_INPUT_SCHEMA,
+      annotations: { readOnlyHint: false },
+      execute: (input): Promise<ToolResult<StudioDeleteAnimationResult>> =>
+        runToolBody("studio_delete_animation", () => studioDeleteAnimation(depsRef.current, input)),
     },
   ];
 }
