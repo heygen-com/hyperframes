@@ -30,6 +30,9 @@ export function StudioAgentTools() {
     applyDomSelection,
     handleDomTextCommit,
     handleDomStyleCommit,
+    handleDomPathOffsetCommit,
+    handleDomBoxSizeCommit,
+    handleDomRotationCommit,
   } = useDomEditActionsContext();
 
   const getSnapshot = useCallback((): StudioLookSnapshot => {
@@ -85,6 +88,15 @@ export function StudioAgentTools() {
       getWriteBlockedReason: () => writeBlockedReason,
       setText: (value, fieldKey) => handleDomTextCommit(value, fieldKey),
       setStyle: (property, value) => handleDomStyleCommit(property, value),
+      // Measured, not authored: the tool compares this before and after to
+      // tell a real change from a handler that did nothing and resolved.
+      readBox: (selection) => {
+        const rect = selection.element.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      },
+      moveTo: (selection, next) => handleDomPathOffsetCommit(selection, next),
+      resizeTo: (selection, next) => handleDomBoxSizeCommit(selection, next),
+      rotateTo: (selection, next) => handleDomRotationCommit(selection, next),
       getGsapDiagnostics: () => ({
         animations: selectedGsapAnimations,
         multipleTimelines: gsapMultipleTimelines,
@@ -101,6 +113,9 @@ export function StudioAgentTools() {
       writeBlockedReason,
       handleDomTextCommit,
       handleDomStyleCommit,
+      handleDomPathOffsetCommit,
+      handleDomBoxSizeCommit,
+      handleDomRotationCommit,
       domEditSelection,
       selectedGsapAnimations,
       gsapMultipleTimelines,
