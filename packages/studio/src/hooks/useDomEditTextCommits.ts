@@ -33,6 +33,7 @@ import {
   domEditCommitDeclined,
   runDomEditCommit,
   runReportedDomEditCommit,
+  type DomEditCommitOutcome,
 } from "./domEditCommitRunner";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
@@ -188,7 +189,7 @@ export function useDomEditTextCommits({
   });
 
   const handleDomStyleCommit = useCallback(
-    async (property: string, value: string) => {
+    async (property: string, value: string): Promise<DomEditCommitOutcome> => {
       if (!domEditSelection) return domEditCommitDeclined("no-selection");
       if (isManualGeometryStyleProperty(property))
         return domEditCommitDeclined("geometry-property");
@@ -272,7 +273,7 @@ export function useDomEditTextCommits({
   );
 
   const handleDomTextCommit = useCallback(
-    async (value: string, fieldKey?: string) => {
+    async (value: string, fieldKey?: string): Promise<DomEditCommitOutcome> => {
       if (!domEditSelection) return domEditCommitDeclined("no-selection");
       if (!isTextEditableSelection(domEditSelection)) {
         return domEditCommitDeclined("not-text-editable");

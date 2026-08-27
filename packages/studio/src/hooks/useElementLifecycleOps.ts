@@ -20,7 +20,7 @@ import {
   type LayerRevealCommitOwnership,
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
-import { domEditCommitDeclined } from "./domEditCommitRunner";
+import { domEditCommitDeclined, type DomEditCommitOutcome } from "./domEditCommitRunner";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 
@@ -88,7 +88,7 @@ export function useElementLifecycleOps({
   // fallow-ignore-next-line complexity
   const handleDomEditElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selections: DomEditSelection[]) => {
+    async (selections: DomEditSelection[]): Promise<DomEditCommitOutcome> => {
       const pid = projectIdRef.current;
       if (!pid) return domEditCommitDeclined("no-project");
       const [selection] = selections;
