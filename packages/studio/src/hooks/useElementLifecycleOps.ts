@@ -175,7 +175,8 @@ export function useElementLifecycleOps({
           // matching at all means the preview is describing a document the file
           // does not have — say so rather than reporting a delete that happened.
           reloadPreview();
-          throw new Error("Nothing to delete — the preview was out of date. Try again.");
+          showToast("Nothing to delete, the preview was out of date. Try again.");
+          return domEditCommitDeclined("preview-stale");
         }
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;

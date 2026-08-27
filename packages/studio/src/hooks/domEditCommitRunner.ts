@@ -72,6 +72,7 @@ export type DomEditCommitDeclineReason =
   | "geometry-property"
   | "styles-not-editable"
   | "not-text-editable"
+  | "preview-stale"
   | "persist-failed";
 
 export type DomEditCommitOutcome = { ok: true } | { ok: false; reason: DomEditCommitDeclineReason };

@@ -145,6 +145,6 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
     });
 
     expect(showToast.mock.calls.flat().join(" ")).toContain("out of date");
-    expect(outcome).toEqual({ ok: false, reason: "persist-failed" });
+    expect(outcome).toEqual({ ok: false, reason: "preview-stale" });
   });
 });
