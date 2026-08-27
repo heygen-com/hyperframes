@@ -29,7 +29,8 @@ describe("studioSetText", () => {
     const ok = expectOk<StudioSetTextResult>(result);
     expect(ok.text).toBe("Ship it faster");
     expect(ok.changed).toBe(true);
-    expect(setText).toHaveBeenCalledWith("Ship it faster", undefined);
+    // The single field is resolved and named, rather than left undefined.
+    expect(setText).toHaveBeenCalledWith("Ship it faster", "self");
   });
 
   it("reports changed:false when the text already said that", async () => {
@@ -103,6 +104,79 @@ describe("studioSetText", () => {
 
     expect(result.kind).toBe("invalid");
     expect(result.hint).toMatch(/studio_select/);
+    expect(setText).not.toHaveBeenCalled();
+  });
+
+  it("targets the element's ACTUAL text field, not a field called self", async () => {
+    // Found end to end, not by these tests. An element's text usually lives in a
+    // child field keyed like `child:0:h1`. Passing no key planned zero
+    // operations, and the server rejected the empty patch with
+    // "target and operations required" -- a persist failure that looked like a
+    // server problem and was not.
+    const element = previewElement('<h1 id="headline">Ship it</h1>', "headline");
+    const selection = selectionFor(element);
+    selection.textFields = [{ ...selection.textFields[0]!, key: "child:0:h1" }];
+    const setText = vi.fn(async () => ({ ok: true }) as const);
+
+    await studioSetText(contentDeps({ getCurrentSelection: () => selection, setText }), {
+      text: "Shipped it",
+    });
+
+    expect(setText).toHaveBeenCalledWith("Shipped it", "child:0:h1");
+  });
+
+  it("rejects a field the element does not have, rather than writing nowhere", async () => {
+    const element = previewElement('<h1 id="headline">Ship it</h1>', "headline");
+    const selection = selectionFor(element);
+    selection.textFields = [{ ...selection.textFields[0]!, key: "child:0:h1" }];
+    const setText = vi.fn();
+
+    const result = expectFailure(
+      await studioSetText(contentDeps({ getCurrentSelection: () => selection, setText }), {
+        text: "x",
+        field: "self",
+      }),
+    );
+
+    expect(result.kind).toBe("invalid");
+    expect(result.hint).toContain("child:0:h1");
+    expect(setText).not.toHaveBeenCalled();
+  });
+
+  it("asks which field when the element has several", async () => {
+    const element = previewElement('<div id="card">a</div>', "card");
+    const selection = selectionFor(element);
+    const base = selection.textFields[0]!;
+    selection.textFields = [
+      { ...base, key: "child:0:h2" },
+      { ...base, key: "child:1:p" },
+    ];
+    const setText = vi.fn();
+
+    const result = expectFailure(
+      await studioSetText(contentDeps({ getCurrentSelection: () => selection, setText }), {
+        text: "x",
+      }),
+    );
+
+    expect(result.kind).toBe("invalid");
+    expect(result.reason).toMatch(/2 text fields/);
+    expect(setText).not.toHaveBeenCalled();
+  });
+
+  it("reports an element with no text field as blocked", async () => {
+    const element = previewElement('<div id="box"></div>', "box");
+    const selection = selectionFor(element);
+    selection.textFields = [];
+    const setText = vi.fn();
+
+    const result = expectFailure(
+      await studioSetText(contentDeps({ getCurrentSelection: () => selection, setText }), {
+        text: "x",
+      }),
+    );
+
+    expect(result.kind).toBe("blocked");
     expect(setText).not.toHaveBeenCalled();
   });
 });

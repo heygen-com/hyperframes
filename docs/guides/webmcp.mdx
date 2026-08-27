@@ -52,6 +52,11 @@ console.log(tools.map((tool) => tool.name));
 // ["studio_look", "studio_select", "studio_seek", ...]
 ```
 
+<Note>
+  Registration is asynchronous, so a caller that reads `getTools()` the instant Studio loads can
+  see a partial list. Wait for the `toolchange` event, or poll until the count settles at twelve.
+</Note>
+
 <Warning>
   The API is `document.modelContext`, not `navigator.modelContext`. Many published examples use
   the second one. It is a compatibility shim some polyfills add, not part of the specification, so

@@ -79,12 +79,45 @@ export async function studioSetText(
   if (typeof input.text !== "string") {
     return toolFailure("invalid", "text must be a string");
   }
-  const field = typeof input.field === "string" && input.field ? input.field : undefined;
 
   const blocked = guardWrite(deps);
   if (blocked) return blocked;
 
-  const before = deps.getCurrentSelection()?.textContent ?? null;
+  const selection = deps.getCurrentSelection();
+  if (!selection) return toolFailure("invalid", "nothing is selected");
+
+  const fields = selection.textFields;
+  const requested = typeof input.field === "string" && input.field ? input.field : undefined;
+  if (requested && !fields.some((candidate) => candidate.key === requested)) {
+    return toolFailure(
+      "invalid",
+      `this element has no text field "${requested}"`,
+      `Its fields are: ${fields.map((candidate) => candidate.key).join(", ") || "none"}.`,
+    );
+  }
+
+  // Resolving the field is NOT optional. An element's text usually lives in a
+  // child field keyed like `child:0:h1`, not in one called `self`, and passing
+  // no key plans zero operations. The server then rejects the empty patch with
+  // "target and operations required", which surfaces as a persist failure that
+  // looks like a server problem and is not.
+  const field = requested ?? (fields.length === 1 ? fields[0]?.key : undefined);
+  if (!field) {
+    if (fields.length === 0) {
+      return toolFailure(
+        "blocked",
+        "this element has no editable text field",
+        "studio_inspect lists an element's textFields.",
+      );
+    }
+    return toolFailure(
+      "invalid",
+      `this element has ${fields.length} text fields, so one must be named`,
+      `Pass field as one of: ${fields.map((candidate) => candidate.key).join(", ")}.`,
+    );
+  }
+
+  const before = selection.textContent ?? null;
   const outcome = await deps.setText(input.text, field);
   const failure = fromOutcome(outcome, "the text");
   if (failure) return failure;
