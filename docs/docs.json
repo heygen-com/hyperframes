@@ -872,7 +872,8 @@
             "group": "Agent setup",
             "pages": [
               "guides/authentication",
-              "guides/skills"
+              "guides/skills",
+              "guides/webmcp"
             ]
           },
           {
