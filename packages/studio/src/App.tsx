@@ -433,6 +433,8 @@ export function StudioApp() {
     handleRedo: appHotkeys.handleRedo,
     renderQueue,
     compositionDimensions,
+    domEditSaveQueuePaused: previewPersistence.domEditSaveQueuePaused,
+    externalFileConflict: externalFileChanges.blocked !== null,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     handlePreviewIframeRef,
     refreshPreviewDocumentVersion,

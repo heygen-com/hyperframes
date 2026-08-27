@@ -25,6 +25,10 @@ interface StudioContextInput {
   // fields around it: the context type owns it.
   renderQueue: StudioContextValue["renderQueue"];
   compositionDimensions: { width: number; height: number } | null;
+  /** Message from `usePreviewPersistence` when auto-save is paused. */
+  domEditSaveQueuePaused: string | null;
+  /** True when an external edit to the open file is awaiting the user's decision. */
+  externalFileConflict: boolean;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
   refreshPreviewDocumentVersion: () => void;
@@ -46,6 +50,11 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     timelineElements: input.timelineElements,
     isPlaying: input.isPlaying,
     editHistory: input.editHistory,
+    // Conflict first: when both are true the conflict is the one the user has
+    // been asked to decide, and resolving it is what unblocks the queue.
+    writeBlockedReason: input.externalFileConflict
+      ? "an external change to this file is waiting to be resolved"
+      : input.domEditSaveQueuePaused,
     handleUndo: input.handleUndo,
     handleRedo: input.handleRedo,
     renderQueue: input.renderQueue,
