@@ -2,7 +2,10 @@
  * Registers Studio's tools with the browser, once.
  *
  * The only file besides `types.ts` that touches the WebMCP API, so a spec
- * change lands here.
+ * change lands here. Tool names are document-scoped, so Studio relies on its
+ * single live `EditorShell` mounting one `StudioAgentTools`. A second live
+ * shell would register the same names and receive `InvalidStateError`; the
+ * duplicate check below only owns duplicates within one registration set.
  */
 
 import type { ModelContext, ModelContextTool } from "./types";
