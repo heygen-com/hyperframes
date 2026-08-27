@@ -96,6 +96,7 @@ export function useStudioAgentTools(deps: StudioAgentToolsDeps): void {
 
     void (async () => {
       const native: ModelContext | null = getModelContext();
+      if (native) trackEvent("webmcp.native_present");
       // Native browsers never download the polyfill.
       const modelContext = native ?? (await loadModelContextPolyfill());
       if (!modelContext) {

@@ -86,6 +86,7 @@ describe("useStudioAgentTools", () => {
     });
 
     expect(registered.map((tool) => tool.name)).toEqual(["studio_look"]);
+    expect(trackEvent).toHaveBeenCalledWith("webmcp.native_present");
   });
 
   it("does not re-register when the deps object changes identity", async () => {

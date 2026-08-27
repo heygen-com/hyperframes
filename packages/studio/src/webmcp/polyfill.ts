@@ -13,6 +13,7 @@
  */
 
 import { makeStudioDebugLogger } from "../utils/studioDebug";
+import { trackEvent } from "../telemetry/client";
 import { getModelContext, type ModelContext } from "./types";
 
 const log = makeStudioDebugLogger("webmcp");
@@ -30,21 +31,30 @@ async function importPolyfill(): Promise<ModelContext | null> {
     if (!modelContext) {
       // The package loaded but did not define what it promises to define.
       log("polyfill", { loaded: true, modelContext: false });
+      trackEvent("webmcp.polyfill_failed", { error_name: "ModelContextMissingError" });
+    } else {
+      trackEvent("webmcp.polyfill_loaded");
     }
     return modelContext;
   } catch (error) {
     // A missing agent surface must never break Studio's boot.
     log("polyfill", { failed: error instanceof Error ? error.message : String(error) });
+    trackEvent("webmcp.polyfill_failed", {
+      error_name: error instanceof Error ? error.name : "NonError",
+    });
     return null;
   }
 }
 
 export function loadModelContextPolyfill(): Promise<ModelContext | null> {
-  pending ??= importPolyfill();
-  return pending;
-}
+  if (pending) return pending;
 
-/** Test seam. Nothing in production resets this. */
-export function resetModelContextPolyfillForTest(): void {
-  pending = null;
+  const attempt = importPolyfill();
+  pending = attempt;
+  // A transient chunk/CSP failure must not disable WebMCP for the rest of the
+  // tab. Concurrent callers still share this attempt; a later mount may retry.
+  void attempt.then((modelContext) => {
+    if (modelContext === null && pending === attempt) pending = null;
+  });
+  return pending;
 }

@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadModelContextPolyfill, resetModelContextPolyfillForTest } from "./polyfill";
 import type { ModelContext } from "./types";
 
 // The real package defines `document.modelContext` as an import side effect.
 // A mock cannot do that, so tests stand the object up themselves to represent
 // the import having happened.
+const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("@mcp-b/global", () => ({}));
+vi.mock("../telemetry/client", () => ({ trackEvent }));
+
+let loadModelContextPolyfill: typeof import("./polyfill").loadModelContextPolyfill;
 
 function installModelContext(): ModelContext {
   const modelContext: ModelContext = { registerTool: vi.fn().mockResolvedValue(undefined) };
@@ -18,8 +21,10 @@ function installModelContext(): ModelContext {
   return modelContext;
 }
 
-beforeEach(() => {
-  resetModelContextPolyfillForTest();
+beforeEach(async () => {
+  vi.resetModules();
+  ({ loadModelContextPolyfill } = await import("./polyfill"));
+  trackEvent.mockReset();
 });
 
 afterEach(() => {
@@ -32,6 +37,7 @@ describe("loadModelContextPolyfill", () => {
     const modelContext = installModelContext();
 
     await expect(loadModelContextPolyfill()).resolves.toBe(modelContext);
+    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_loaded");
   });
 
   it("shares one load between callers that race", async () => {
@@ -57,16 +63,36 @@ describe("loadModelContextPolyfill", () => {
 
   it("returns null when the package loads but defines nothing", async () => {
     // Studio must still boot. A missing agent surface is not a broken editor.
-    await expect(loadModelContextPolyfill()).resolves.toBeNull();
+    const first = loadModelContextPolyfill();
+    await expect(first).resolves.toBeNull();
+
+    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_failed", {
+      error_name: "ModelContextMissingError",
+    });
+    const retry = loadModelContextPolyfill();
+    expect(retry).not.toBe(first);
+    await expect(retry).resolves.toBeNull();
   });
 
-  it("starts a fresh load after the test seam resets it", async () => {
-    installModelContext();
+  it("reports a polyfill failure and lets a later mount retry", async () => {
+    const failure = new TypeError("blocked by policy");
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      get: () => {
+        throw failure;
+      },
+    });
+
     const first = loadModelContextPolyfill();
-    await first;
+    await expect(first).resolves.toBeNull();
+    expect(trackEvent).toHaveBeenCalledWith("webmcp.polyfill_failed", {
+      error_name: "TypeError",
+    });
 
-    resetModelContextPolyfillForTest();
-
-    expect(loadModelContextPolyfill()).not.toBe(first);
+    Reflect.deleteProperty(document, "modelContext");
+    const modelContext = installModelContext();
+    const retry = loadModelContextPolyfill();
+    expect(retry).not.toBe(first);
+    await expect(retry).resolves.toBe(modelContext);
   });
 });
