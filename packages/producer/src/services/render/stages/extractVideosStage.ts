@@ -131,15 +131,17 @@ export interface VideoExtractionPolicy {
 }
 
 /**
- * Candidate-lane rollout controls. Stable behavior remains unchanged unless
- * explicitly enabled in the producer environment.
+ * Extraction failure policy. Defaults to `enforce` so per-source errors
+ * surface as render failures instead of being silently swallowed (#3372).
+ * Set `HF_VIDEO_EXTRACTION_FAILURE_MODE=off` to restore the old silent
+ * behavior, or `observe` to log without failing.
  */
 export function resolveVideoExtractionPolicy(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): VideoExtractionPolicy {
   const rawMode = env.HF_VIDEO_EXTRACTION_FAILURE_MODE?.trim().toLowerCase();
   const failureMode: VideoExtractionFailureMode =
-    rawMode === "observe" || rawMode === "enforce" ? rawMode : "off";
+    rawMode === "observe" || rawMode === "off" ? rawMode : "enforce";
   const maxTransientRetries =
     failureMode !== "off" && env.HF_VIDEO_EXTRACTION_MAX_RETRIES?.trim() === "1" ? 1 : 0;
   return { failureMode, maxTransientRetries };
