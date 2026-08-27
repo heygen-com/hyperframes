@@ -9,6 +9,10 @@ import type { StudioLookSnapshot } from "./tools/lookTools";
 
 const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/client", () => ({ trackEvent }));
+// The polyfill package defines `document.modelContext` as an import side effect.
+// We only care about the hook's behavior, so keep the real package out of the
+// jsdom environment to avoid a global-state side effect that leaks between tests.
+vi.mock("@mcp-b/global", () => ({}));
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
