@@ -123,9 +123,23 @@ is working.
 
 ## Turning it off
 
-Set `agentToolsEnabled` to `false` in Studio's preferences and reload. The browser also asks your
-permission before any agent actually calls a tool, so registering them is not the same as granting
-access.
+There is no settings toggle yet. The switch is a Studio preference, so set it from the console and
+reload:
+
+```javascript
+const KEY = "hf-studio-ui-preferences";
+const prefs = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+localStorage.setItem(KEY, JSON.stringify({ ...prefs, agentToolsEnabled: false }));
+location.reload();
+```
+
+Read the existing object and spread it, as above. Writing `{agentToolsEnabled: false}` on its own
+replaces the whole preferences blob and loses your panel sizes, zoom and timeline settings.
+
+Set it back to `true`, or delete the key, to re-enable.
+
+The browser also asks your permission before any agent actually calls a tool, so registering them is
+not the same as granting access.
 
 ## Related topics
 
