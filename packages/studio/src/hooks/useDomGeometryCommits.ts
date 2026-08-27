@@ -130,6 +130,9 @@ export function useDomGeometryCommits({
   const handleDomManualEditsReset = useCallback(
     (selection: DomEditSelection) => {
       const element = selection.element;
+      const beforeOffset = captureStudioPathOffset(element);
+      const beforeSize = captureStudioBoxSize(element);
+      const beforeRotation = captureStudioRotation(element);
       const clearPatches = [
         ...buildClearPathOffsetPatches(element),
         ...buildClearBoxSizePatches(element),
@@ -139,11 +142,16 @@ export function useDomGeometryCommits({
       clearStudioBoxSize(element);
       clearStudioRotation(element);
       // skipRefresh:false triggers reloadPreview() which re-syncs selection on load
-      void commitPositionPatchToHtml(selection, clearPatches, {
+      return commitPositionPatchToHtml(selection, clearPatches, {
         label: "Reset layer edits",
         coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
         skipRefresh: false,
-      }).catch(() => undefined);
+      }).catch((error) => {
+        restoreStudioPathOffset(element, beforeOffset);
+        restoreStudioBoxSize(element, beforeSize);
+        restoreStudioRotation(element, beforeRotation);
+        throw error;
+      });
     },
     [commitPositionPatchToHtml],
   );

@@ -142,7 +142,7 @@ export function useElementLifecycleOps({
               `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
               "info",
             );
-            return;
+            return { ok: true } as const;
           }
         }
 

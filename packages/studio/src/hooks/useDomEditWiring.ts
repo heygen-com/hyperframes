@@ -107,7 +107,7 @@ export interface UseDomEditWiringParams {
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
-  handleDomManualEditsReset: (sel: DomEditSelection) => void;
+  handleDomManualEditsReset: (sel: DomEditSelection) => Promise<void>;
 }
 
 // fallow-ignore-next-line complexity

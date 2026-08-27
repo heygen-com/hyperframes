@@ -61,9 +61,10 @@ export async function runDomEditCommit(config: DomEditCommitRunnerConfig): Promi
  *
  * `runDomEditCommit` resolves on persist failure by design (see its contract
  * above), so a caller cannot learn whether the write landed by awaiting it — a
- * failed commit and a successful one are indistinguishable. The human path does
- * not need to ask, because `onError` already put a toast on screen. A
- * programmatic caller has no screen, so it has to be told.
+ * failed persist and a successful one are indistinguishable. Capture and apply
+ * bugs still reject. The human path does not need to ask about handled persist
+ * failures, because `onError` already put a toast on screen. A programmatic
+ * caller has no screen, so it has to be told.
  */
 export type DomEditCommitDeclineReason =
   | "no-project"
