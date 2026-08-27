@@ -20,9 +20,7 @@ function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapsh
     isPlaying: false,
     elements: [],
     selection: null,
-    selectedElementIds: [],
     history: { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null },
-    writeBlockedReason: null,
     ...overrides,
   };
 }

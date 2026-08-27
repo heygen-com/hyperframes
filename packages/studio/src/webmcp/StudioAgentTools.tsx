@@ -31,19 +31,12 @@ export function StudioAgentTools() {
       isPlaying: player.isPlaying,
       elements: player.elements,
       selection: domEditSelection,
-      selectedElementIds: [...player.selectedElementIds],
       history: {
         canUndo: editHistory.canUndo,
         canRedo: editHistory.canRedo,
         undoLabel: editHistory.undoLabel ?? null,
         redoLabel: editHistory.redoLabel ?? null,
       },
-      // TODO(webmcp): the save-queue and external-conflict states live on
-      // App's previewPersistence and externalFileChanges, which are not on any
-      // context this component can read. Until they are, `canWrite` is
-      // optimistic. The write tools land in a later unit and MUST NOT ship
-      // trusting this field; they need the real guard.
-      writeBlockedReason: null,
     };
   }, [projectId, activeCompPath, domEditSelection, editHistory]);
 

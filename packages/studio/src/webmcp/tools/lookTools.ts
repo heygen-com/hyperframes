@@ -2,8 +2,7 @@
  * `studio_look`: the one call that orients an agent.
  *
  * Deliberately fat. Every field here is one the agent would otherwise have to
- * spend a round trip discovering, and several of them (the capabilities, the
- * write-blocked reason) exist to stop it attempting a write that cannot land.
+ * spend a round trip discovering.
  *
  * The building is a pure function over a snapshot so it can be tested with
  * values. Gathering the snapshot is the React layer's job.
@@ -22,7 +21,6 @@ export interface StudioLookSnapshot {
   isPlaying: boolean;
   elements: readonly TimelineElement[];
   selection: DomEditSelection | null;
-  selectedElementIds: readonly string[];
   /**
    * The undo stack as Studio's shell actually exposes it.
    *
@@ -39,8 +37,6 @@ export interface StudioLookSnapshot {
     undoLabel: string | null;
     redoLabel: string | null;
   };
-  /** Why a write would be refused right now, or null when writes are possible. */
-  writeBlockedReason: string | null;
 }
 
 interface LookElement {
@@ -79,8 +75,6 @@ export interface StudioLook {
   playhead: number;
   duration: number;
   isPlaying: boolean;
-  canWrite: boolean;
-  writeBlockedReason: string | null;
   history: StudioLookSnapshot["history"];
   selection: LookSelection | null;
   elementCount: number;
@@ -160,8 +154,6 @@ export function buildStudioLook(
     playhead: snapshot.currentTime,
     duration: snapshot.duration,
     isPlaying: snapshot.isPlaying,
-    canWrite: snapshot.writeBlockedReason === null,
-    writeBlockedReason: snapshot.writeBlockedReason,
     history: snapshot.history,
     selection: snapshot.selection ? describeSelection(snapshot.selection) : null,
     // The count is of everything that MATCHED, so a truncated list is visible
@@ -195,7 +187,6 @@ export const STUDIO_LOOK_DESCRIPTION = [
   "element will and will not accept), and the timeline's elements with a handle for each.",
   "Pass a handle back to any tool that edits an element.",
   "Returns an object with `ok: true`, or `ok: false` with `kind`, `reason` and often a `hint`.",
-  "Check `canWrite` before attempting an edit. `history.undoLabel` is worth checkpointing",
-  "before a batch: if it later names something you did not do, a human pressed undo and your",
-  "earlier edits are gone.",
+  "`history.undoLabel` is worth checkpointing before a batch: if it later names something",
+  "you did not do, a human pressed undo and your earlier edits are gone.",
 ].join(" ");

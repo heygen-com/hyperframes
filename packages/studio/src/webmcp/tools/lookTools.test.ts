@@ -17,9 +17,7 @@ function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapsh
     isPlaying: false,
     elements: [],
     selection: null,
-    selectedElementIds: [],
     history: { canUndo: true, canRedo: false, undoLabel: "Move layer", redoLabel: null },
-    writeBlockedReason: null,
     ...overrides,
   };
 }
@@ -209,12 +207,10 @@ describe("buildStudioLook", () => {
     expect(look.selection).toBeNull();
   });
 
-  it("tells the agent writes are blocked, and why, before it tries one", () => {
-    const look = expectOk<{ canWrite: boolean; writeBlockedReason: string | null }>(
-      buildStudioLook(snapshot({ writeBlockedReason: "Auto-save is paused" })),
-    );
+  it("does not advertise write readiness before the real write gate exists", () => {
+    const look = expectOk<Record<string, unknown>>(buildStudioLook(snapshot()));
 
-    expect(look.canWrite).toBe(false);
-    expect(look.writeBlockedReason).toBe("Auto-save is paused");
+    expect(look).not.toHaveProperty("canWrite");
+    expect(look).not.toHaveProperty("writeBlockedReason");
   });
 });
