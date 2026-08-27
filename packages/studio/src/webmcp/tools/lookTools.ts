@@ -21,6 +21,8 @@ export interface StudioLookSnapshot {
   isPlaying: boolean;
   elements: readonly TimelineElement[];
   selection: DomEditSelection | null;
+  /** Live animations for the current selection arrive outside DomEditSelection. */
+  selectionAnimationCount: number;
   /**
    * The undo stack as Studio's shell actually exposes it.
    *
@@ -69,6 +71,11 @@ interface LookSelection {
   animationCount: number;
 }
 
+/**
+ * Session-scoped response shape. There is intentionally no schema version:
+ * WebMCP consumers discover the current tool and schema when they connect
+ * rather than pinning a cached REST response contract.
+ */
 export interface StudioLook {
   projectId: string | null;
   compositionPath: string | null;
@@ -104,7 +111,7 @@ function describeElement(element: TimelineElement): LookElement {
   };
 }
 
-function describeSelection(selection: DomEditSelection): LookSelection {
+function describeSelection(selection: DomEditSelection, animationCount: number): LookSelection {
   const { capabilities } = selection;
   return {
     handle: mintElementHandle(patchTargetAddress(selection)),
@@ -120,7 +127,7 @@ function describeSelection(selection: DomEditSelection): LookSelection {
       editText: selection.textFields.length > 0,
       reasonIfDisabled: capabilities.reasonIfDisabled ?? null,
     },
-    animationCount: selection.gsapAnimations?.length ?? 0,
+    animationCount,
   };
 }
 
@@ -155,7 +162,9 @@ export function buildStudioLook(
     duration: snapshot.duration,
     isPlaying: snapshot.isPlaying,
     history: snapshot.history,
-    selection: snapshot.selection ? describeSelection(snapshot.selection) : null,
+    selection: snapshot.selection
+      ? describeSelection(snapshot.selection, snapshot.selectionAnimationCount)
+      : null,
     // The count is of everything that MATCHED, so a truncated list is visible
     // as a truncated list rather than reading as "that is all there is".
     elementCount: matched.length,

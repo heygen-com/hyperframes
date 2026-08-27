@@ -38,6 +38,8 @@ export interface StudioUiPreferences {
    * Expose Studio's editing capabilities to an agentic browser as WebMCP tools.
    * Absent means on: the browser still gates every actual call behind its own
    * permission prompt, so "registered" is not "reachable without consent".
+   * Changes take effect on the next Studio reload because registration is
+   * intentionally scoped to one mount.
    */
   agentToolsEnabled?: boolean;
 }

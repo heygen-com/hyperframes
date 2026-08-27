@@ -17,6 +17,7 @@ function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapsh
     isPlaying: false,
     elements: [],
     selection: null,
+    selectionAnimationCount: 0,
     history: { canUndo: true, canRedo: false, undoLabel: "Move layer", redoLabel: null },
     ...overrides,
   };
@@ -180,6 +181,14 @@ describe("buildStudioLook", () => {
     expect(look.selection?.handle).toBe("hf:abc123");
     expect(look.selection?.box.width).toBe(880);
     expect(look.selection?.can.editStyles).toBe(true);
+  });
+
+  it("reports the live animation count supplied outside the DOM selection", () => {
+    const look = expectOk<{ selection: { animationCount: number } | null }>(
+      buildStudioLook(snapshot({ selection: selection(), selectionAnimationCount: 3 })),
+    );
+
+    expect(look.selection?.animationCount).toBe(3);
   });
 
   it("passes the disabled reason through so the agent learns it from a read", () => {

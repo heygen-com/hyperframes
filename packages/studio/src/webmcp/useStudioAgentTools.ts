@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
+import { trackEvent } from "../telemetry/client";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import { makeStudioDebugLogger } from "../utils/studioDebug";
-import { registerStudioTools } from "./registrar";
+import { registerStudioTools, type ToolRegistrationReport } from "./registrar";
 import { runToolBody, type ToolResult } from "./toolResult";
 import { getModelContext, type ModelContext, type ModelContextTool } from "./types";
 import {
@@ -14,6 +15,16 @@ import {
 } from "./tools/lookTools";
 
 const log = makeStudioDebugLogger("webmcp");
+
+function reportRegistration(report: ToolRegistrationReport): void {
+  log("registered", { ...report });
+  for (const failure of report.failed) {
+    trackEvent("webmcp_registration_failed", {
+      error_name: failure.name,
+      tool_name: failure.tool,
+    });
+  }
+}
 
 export interface StudioAgentToolsDeps {
   /** Read Studio's current state. Called per tool invocation, never cached. */
@@ -63,6 +74,11 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
  * `useStudioTestHooks` carries a comment about the same class of bug already hit
  * in this codebase, where effect teardown revoked a lease moments after it was
  * taken because writing state changed the effect's dependency identities.
+ *
+ * Any fallback must be awaited inside this effect before registration and then
+ * re-read here. Installing one from a sibling effect would race this mount-only
+ * lookup. Hot-module replacement can still create a brief unregister/register
+ * window in development; production has one document-scoped registration.
  */
 export function useStudioAgentTools(deps: StudioAgentToolsDeps): void {
   const depsRef = useRef(deps);
@@ -84,7 +100,7 @@ export function useStudioAgentTools(deps: StudioAgentToolsDeps): void {
 
     const controller = new AbortController();
     void registerStudioTools(modelContext, buildStudioTools(depsRef), controller.signal).then(
-      (report) => log("registered", { ...report }),
+      reportRegistration,
     );
 
     return () => controller.abort();

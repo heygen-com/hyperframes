@@ -19,7 +19,7 @@ import type { StudioLookSnapshot } from "./tools/lookTools";
  */
 export function StudioAgentTools() {
   const { projectId, activeCompPath, editHistory } = useStudioShellContext();
-  const { domEditSelection } = useDomEditSelectionContext();
+  const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
 
   const getSnapshot = useCallback((): StudioLookSnapshot => {
     const player = usePlayerStore.getState();
@@ -31,6 +31,7 @@ export function StudioAgentTools() {
       isPlaying: player.isPlaying,
       elements: player.elements,
       selection: domEditSelection,
+      selectionAnimationCount: selectedGsapAnimations.length,
       history: {
         canUndo: editHistory.canUndo,
         canRedo: editHistory.canRedo,
@@ -38,7 +39,7 @@ export function StudioAgentTools() {
         redoLabel: editHistory.redoLabel ?? null,
       },
     };
-  }, [projectId, activeCompPath, domEditSelection, editHistory]);
+  }, [projectId, activeCompPath, domEditSelection, selectedGsapAnimations, editHistory]);
 
   useStudioAgentTools({ getSnapshot });
   return null;

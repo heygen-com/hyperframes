@@ -7,6 +7,9 @@ import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgent
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
 import type { StudioLookSnapshot } from "./tools/lookTools";
 
+const trackEvent = vi.hoisted(() => vi.fn());
+vi.mock("../telemetry/client", () => ({ trackEvent }));
+
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 let cleanup: (() => void) | null = null;
@@ -20,6 +23,7 @@ function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapsh
     isPlaying: false,
     elements: [],
     selection: null,
+    selectionAnimationCount: 0,
     history: { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null },
     ...overrides,
   };
@@ -62,6 +66,7 @@ function mountTools(deps: StudioAgentToolsDeps) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  trackEvent.mockReset();
 });
 
 afterEach(() => {
@@ -174,6 +179,20 @@ describe("useStudioAgentTools", () => {
     });
 
     expect(registerTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a non-abort registration failure through production telemetry", async () => {
+    const { registerTool } = installModelContext();
+    registerTool.mockRejectedValue(new DOMException("blocked", "NotAllowedError"));
+
+    await act(async () => {
+      mountTools({ getSnapshot: () => snapshot() });
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith("webmcp_registration_failed", {
+      error_name: "NotAllowedError",
+      tool_name: "studio_look",
+    });
   });
 
   it("reports a tool that throws as an internal failure instead of rejecting", async () => {
