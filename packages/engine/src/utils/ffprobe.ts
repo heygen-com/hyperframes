@@ -1050,12 +1050,28 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+
+  if (timestamps.length === 1) {
+    // A single keyframe means every seek past it lands inside one GOP that
+    // spans the whole stream, which is the worst case the multi-keyframe
+    // branch below reports on. The interval is the stream duration, not
+    // zero — the video-stream duration, not the container's, since they can
+    // disagree (e.g. an audio-only tail past the last video frame).
+    const { videoStreamDurationSeconds } = await extractMediaMetadata(filePath);
+    const duration = Math.round(videoStreamDurationSeconds * 100) / 100;
+    return {
+      avgIntervalSeconds: duration,
+      maxIntervalSeconds: duration,
+      keyframeCount: 1,
+      isProblematic: duration > 2,
     };
   }
 
