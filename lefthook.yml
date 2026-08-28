@@ -60,18 +60,11 @@ pre-commit:
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
       # other packages enforce size discipline via code review and convention.
-      glob: "packages/studio/**/*.{ts,tsx}"
-      exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
-      run: |
-        for f in {staged_files}; do
-          # Skip test and generated files (exclude pattern backup in case lefthook doesn't filter)
-          case "$f" in *.test.ts|*.test.tsx|*.generated.*) continue ;; esac
-          lines=$(wc -l < "$f")
-          if [ "$lines" -gt 600 ]; then
-            echo "ERROR: $f has $lines lines (max 600)"
-            exit 1
-          fi
-        done
+      # The script reads the staged set and does its own glob/exclude filtering
+      # (see its header comment for why: a `run: |` block containing a literal
+      # `"` breaks lefthook's Windows command line, same class of problem as
+      # `largefiles` below).
+      run: ./scripts/check-studio-filesize.sh
 
 commit-msg:
   commands:
