@@ -24,6 +24,13 @@ export interface OnionElement {
   samples: OnionSample[];
 }
 
+export interface RenderedStripFrame {
+  t: number;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
 export type ShotLayout = "path" | "strip";
 
 export interface ShotLayoutOptions {
@@ -96,6 +103,12 @@ export function sampleTimes(
     const t = t0 + (i / (count - 1)) * (t1 - t0);
     return Math.round(t * 1000) / 1000;
   });
+}
+
+/** Exact clip ends are half-open in the runtime. If an authored sample has no
+ * visible bounds there, retry one nominal 30fps frame inside the clip. */
+export function stripCaptureTimeCandidates(time: number): number[] {
+  return time > 0 ? [time, Math.max(0, time - 1 / 30)] : [time];
 }
 
 /** Opacity ramp for the rendered ("ghost") onion-skin: older frames fainter,
@@ -192,6 +205,40 @@ export function buildOnionSvg(elements: OnionElement[], opt: ShotLayoutOptions):
 
   if (opt.label) body += text({ x: 28, y: 40 }, opt.label, timeColor(0), 18);
 
+  return `<svg ${attrs({
+    xmlns: "http://www.w3.org/2000/svg",
+    style: "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647",
+    viewBox: `0 0 ${W} ${H}`,
+  })}>${body}</svg>`;
+}
+
+/** Build an image-backed filmstrip from real selector crops. Unlike marker
+ * ghosts, this preserves transparent SVG groups' painted child geometry. */
+export function buildRenderedStripSvg(
+  frames: RenderedStripFrame[],
+  opt: Pick<ShotLayoutOptions, "width" | "height" | "label">,
+): string {
+  const { width: W, height: H } = opt;
+  const { cols, cellW, cellH } = stripCells(frames.length, W, H);
+  let body = `<rect ${attrs({ x: 0, y: 0, width: W, height: H, fill: "#0b1320" })}/>`;
+  frames.forEach((frame, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const cellX = col * cellW;
+    const cellY = row * cellH;
+    const availableW = Math.max(1, cellW - 20);
+    const availableH = Math.max(1, cellH - 38);
+    const scale = Math.min(availableW / frame.width, availableH / frame.height);
+    const imageW = frame.width * scale;
+    const imageH = frame.height * scale;
+    const imageX = cellX + (cellW - imageW) / 2;
+    const imageY = cellY + 30 + (availableH - imageH) / 2;
+    const f = frames.length <= 1 ? 0 : index / (frames.length - 1);
+    body += `<rect ${attrs({ x: round(cellX + 3), y: round(cellY + 3), width: round(cellW - 6), height: round(cellH - 6), fill: "none", stroke: "#1c2531", "stroke-width": 1, rx: 8 })}/>`;
+    body += `<image ${attrs({ x: round(imageX), y: round(imageY), width: round(imageW), height: round(imageH), href: frame.dataUrl, preserveAspectRatio: "xMidYMid meet" })}/>`;
+    body += text({ x: cellX + 12, y: cellY + 24 }, `${frame.t}s`, timeColor(f), 16);
+  });
+  if (opt.label) body += text({ x: 28, y: 40 }, opt.label, timeColor(0), 18);
   return `<svg ${attrs({
     xmlns: "http://www.w3.org/2000/svg",
     style: "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647",

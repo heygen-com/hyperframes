@@ -4,22 +4,52 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { seekAllAdaptersInBrowser } from "./motionShot.js";
+import { sampleMarkerOnionElements, seekAllAdaptersInBrowser } from "./motionShot.js";
 
 const motionShotSourcePath = join(dirname(fileURLToPath(import.meta.url)), "motionShot.ts");
 const motionWindow = window as Window & {
   __player?: { renderSeek?: (time: number) => void };
   __hfWaitForSeekCompletion?: () => Promise<void>;
+  __hfSeekAllAdapters?: (time: number) => Promise<void>;
 };
 
 afterEach(() => {
   delete motionWindow.__player;
   delete motionWindow.__hfWaitForSeekCompletion;
+  delete motionWindow.__hfSeekAllAdapters;
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
 
 describe("motion-shot adapter seeking", () => {
+  it("samples an SVG group from its local bbox projected through the screen CTM", async () => {
+    document.body.innerHTML = '<svg><g id="bike"></g></svg>';
+    const bike = document.querySelector("#bike")!;
+    Object.defineProperties(bike, {
+      getBBox: {
+        value: () => ({ x: -44, y: -120, width: 238, height: 164 }),
+      },
+      getScreenCTM: {
+        value: () => ({ a: 1, b: 0, c: 0, d: 1, e: 60, f: 200 }),
+      },
+    });
+    motionWindow.__hfSeekAllAdapters = vi.fn(async () => undefined);
+    const [element] = await sampleMarkerOnionElements(["#bike"], [2]);
+
+    expect(element).toBeDefined();
+    if (!element) return;
+    const [sample] = element.samples;
+    expect(sample).toBeDefined();
+    if (!sample) return;
+    expect(sample.q).toEqual([
+      { x: 16, y: 80 },
+      { x: 254, y: 80 },
+      { x: 254, y: 244 },
+      { x: 16, y: 244 },
+    ]);
+    expect(sample.c).toEqual({ x: 135, y: 162 });
+  });
+
   it("awaits GPU work registered by a standalone hf-seek listener", async () => {
     document.body.innerHTML =
       '<div data-composition-id="gpu" data-requires-webgpu data-duration="2"></div>';
