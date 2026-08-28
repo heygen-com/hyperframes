@@ -1215,11 +1215,13 @@ describe("initSandboxRuntimeModular", () => {
 
     initSandboxRuntimeModular();
 
+    for (const globalTime of [
+      42.353, 49.412, 56.471, 63.529, 70.588, 77.647, 84.706, 91.765, 98.824, 105.882, 112.941,
+    ]) {
+      window.__player?.renderSeek(globalTime);
+      expect(video.style.visibility, `global ${globalTime}s`).toBe("visible");
+    }
     expect(window.__hfResolveMediaStartSeconds?.(video)).toBeCloseTo(39.233);
-    window.__player?.renderSeek(80.4);
-    expect(video.style.visibility).toBe("visible");
-    window.__player?.renderSeek(111);
-    expect(video.style.visibility).toBe("visible");
   });
 
   it("uses the canonical resolver for reference starts, auto-start media, and inline hosts", () => {
