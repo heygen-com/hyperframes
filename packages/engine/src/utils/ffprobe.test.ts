@@ -832,6 +832,96 @@ describe("ffprobe missing-binary fallback", () => {
     expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
 
+  it("analyzeKeyframeIntervals treats a single keyframe as the whole stream duration", async () => {
+    // A 10s single-GOP video: exactly one keyframe at t=0. Every seek past
+    // it lands inside that one GOP, so the effective interval is the whole
+    // stream, not zero.
+    const { spawn, calls } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 640,
+              height: 360,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              duration: "10.0",
+            },
+          ],
+          format: { duration: "10.0" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/single-gop.mp4");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 10,
+      maxIntervalSeconds: 10,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+    expect(calls.length).toBe(2);
+  });
+
+  it("analyzeKeyframeIntervals does not flag a single keyframe under the threshold", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 640,
+              height: 360,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              duration: "1.0",
+            },
+          ],
+          format: { duration: "1.0" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/short-single-gop.mp4");
+
+    expect(result.keyframeCount).toBe(1);
+    expect(result.isProblematic).toBe(false);
+  });
+
+  it("analyzeKeyframeIntervals reports no keyframes as not problematic", async () => {
+    const { spawn, calls } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/no-keyframes.mp4");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 0,
+      isProblematic: false,
+    });
+    // Only the keyframe probe should run — no metadata lookup for zero timestamps.
+    expect(calls.length).toBe(1);
+  });
+
   it("ffprobe-missing error message includes install hint", async () => {
     const { spawn } = createSpawnSpy([{ kind: "missing" }]);
     hidePathBinaries();
