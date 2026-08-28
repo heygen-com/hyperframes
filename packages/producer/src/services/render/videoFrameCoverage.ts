@@ -45,7 +45,7 @@
  */
 
 import { parseHTML } from "linkedom";
-import { fpsToNumber, toFps, type FpsInput } from "@hyperframes/core";
+import { fpsToNumber, normalizePlaybackRate, toFps, type FpsInput } from "@hyperframes/core";
 import {
   extractionFrameCountForDuration,
   resolvePlayableVideoDuration,
@@ -166,7 +166,9 @@ function expectedFramesForVideo(
   fps: FpsInput,
 ): number {
   const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
-  const slotFrames = expectedFramesForClip(video.start, video.end, fps, rounding);
+  const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
+  const slotSourceDuration = Math.max(0, video.end - video.start) * playbackRate;
+  const slotFrames = expectedFramesForClip(0, slotSourceDuration, fps, rounding);
   if (!entry) return slotFrames;
 
   // A short source in a longer slot has a legitimate delivery ceiling of
