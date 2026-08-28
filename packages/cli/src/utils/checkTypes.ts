@@ -179,6 +179,8 @@ export type MotionSpecResolution =
 export interface CheckAuditDriver {
   initialize(contrast: boolean): Promise<void>;
   getDuration(): Promise<number>;
+  /** True when the root composition explicitly declares that it is intentionally timeline-free. */
+  hasNoTimelineDeclaration(): Promise<boolean>;
   getTransitionBoundaries(): Promise<number[]>;
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
