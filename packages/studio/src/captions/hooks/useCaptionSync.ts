@@ -4,6 +4,18 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
+import {
+  StudioFileConflictError,
+  createStudioSaveHttpError,
+  retryStudioSave,
+} from "../../utils/studioSaveDiagnostics";
+
+const CAPTION_OVERRIDES_PATH = "caption-overrides.json";
+const ENCODED_CAPTION_OVERRIDES_PATH = encodeURIComponent(CAPTION_OVERRIDES_PATH);
+
+function captionOverridesUrl(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/files/${ENCODED_CAPTION_OVERRIDES_PATH}`;
+}
 
 interface CaptionOverrideEntry {
   wordId?: string;
@@ -69,10 +81,74 @@ export function useCaptionSync(projectId: string | null) {
   const suppressSaveRef = useRef(false);
 
   // True while an edit is debounced or a PUT is in flight — guards tab close.
+  // Mirrored into the store so useCaptionDetection can skip a flush that has
+  // nothing to send, instead of firing a PUT on every composition switch.
   const pendingRef = useRef(false);
   // Bumped on every new edit: a PUT's success may only clear the pending flag
   // when no newer edit re-armed the debounce while it was in flight.
   const editSeqRef = useRef(0);
+  // caption-overrides.json's content version. undefined = unknown (preflight
+  // before the first write), null = confirmed not to exist yet (send
+  // If-None-Match instead of If-Match).
+  const versionRef = useRef<string | null | undefined>(undefined);
+
+  const setPending = (pending: boolean) => {
+    pendingRef.current = pending;
+    useCaptionStore.getState().setHasPendingSave(pending);
+  };
+
+  const putOverrides = useCallback(async (pid: string, body: string) => {
+    const url = captionOverridesUrl(pid);
+    await retryStudioSave(async () => {
+      const expectedVersion = versionRef.current;
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "text/plain",
+            ...studioWriteHeaders(),
+            ...(expectedVersion ? { "If-Match": expectedVersion } : { "If-None-Match": "*" }),
+          },
+          body,
+        });
+      } catch (error) {
+        throw new Error(`Failed to save ${CAPTION_OVERRIDES_PATH}: network error`, {
+          cause: error,
+        });
+      }
+      if (response.status === 409) {
+        const conflict = (await response.json().catch(() => null)) as {
+          currentVersion?: string | null;
+          currentContent?: string | null;
+        } | null;
+        const currentVersion = conflict?.currentVersion ?? null;
+        // Another writer already saved identical content: adopt its version,
+        // nothing left to send.
+        if (currentVersion && conflict?.currentContent === body) {
+          versionRef.current = currentVersion;
+          return;
+        }
+        // caption-overrides.json has exactly one writer in the whole app (this
+        // hook), so a real conflict means our own cached version went stale —
+        // a manual file edit, or a second tab. Adopt the fresh version and let
+        // the caller retry once with it; there is no conflict UI for captions
+        // to surface a StudioFileConflictError to.
+        versionRef.current = currentVersion;
+        throw new StudioFileConflictError({
+          filePath: CAPTION_OVERRIDES_PATH,
+          currentVersion,
+          currentContent: conflict?.currentContent ?? null,
+          attemptedContent: body,
+        });
+      }
+      if (!response.ok) {
+        throw await createStudioSaveHttpError(response, `Failed to save ${CAPTION_OVERRIDES_PATH}`);
+      }
+      const result = (await response.json()) as { version?: string };
+      versionRef.current = result.version ?? response.headers.get("etag") ?? null;
+    });
+  }, []);
 
   const save = useCallback(() => {
     const state = useCaptionStore.getState();
@@ -80,28 +156,35 @@ export function useCaptionSync(projectId: string | null) {
     // path that fires the flush) must still write the last edits; the model
     // survives exit, and after a store reset it is null anyway.
     if (!state.model || !state.sourceFilePath) {
-      pendingRef.current = false;
+      setPending(false);
       return;
     }
     const pid = projectIdRef.current;
     if (!pid) {
-      pendingRef.current = false;
+      setPending(false);
       return;
     }
 
     const seqAtSave = editSeqRef.current;
-    const overrides = buildOverrides(state.model);
+    const body = JSON.stringify(buildOverrides(state.model), null, 2);
 
-    fetch(`/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain", ...studioWriteHeaders() },
-      body: JSON.stringify(overrides, null, 2),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    (async () => {
+      try {
+        await putOverrides(pid, body);
+      } catch (error) {
+        if (error instanceof StudioFileConflictError) {
+          // versionRef was already refreshed by putOverrides; one retry with
+          // it is enough for a single-writer file.
+          await putOverrides(pid, body);
+        } else {
+          throw error;
+        }
+      }
+    })()
+      .then(() => {
         // A newer edit may have re-armed the debounce while this PUT was in
         // flight — its beforeunload/unmount flush still needs pending=true.
-        if (editSeqRef.current === seqAtSave) pendingRef.current = false;
+        if (editSeqRef.current === seqAtSave) setPending(false);
         const s = useCaptionStore.getState();
         if (s.syncError) s.setSyncError(null);
       })
@@ -111,15 +194,23 @@ export function useCaptionSync(projectId: string | null) {
         trackEvent("studio_caption_autosave_failed", { error: String(error) });
         useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
       });
-  }, []);
+  }, [putOverrides]);
 
   // Auto-save on model changes with 800ms debounce
   useMountEffect(() => {
     let prevModel = useCaptionStore.getState().model;
 
     const unsub = useCaptionStore.subscribe((state) => {
-      if (!state.isEditMode || state.model === prevModel || !state.model) return;
+      // Track the latest model on every tick, even before edit mode is
+      // entered. useCaptionDetection calls setModel() BEFORE setEditMode(true)
+      // when it activates caption editing; without this, that setModel() is
+      // skipped here (isEditMode still false) and prevModel is left stale, so
+      // the very next tick (setEditMode(true), same model) sees
+      // `state.model !== prevModel` and arms a save for an edit that never
+      // happened.
+      const modelChanged = state.model !== prevModel;
       prevModel = state.model;
+      if (!modelChanged || !state.isEditMode || !state.model) return;
 
       // Skip save when loadOverrides just updated the model
       if (suppressSaveRef.current) {
@@ -128,7 +219,7 @@ export function useCaptionSync(projectId: string | null) {
       }
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      pendingRef.current = true;
+      setPending(true);
       editSeqRef.current++;
       debounceRef.current = setTimeout(save, 800);
     });
@@ -168,13 +259,19 @@ export function useCaptionSync(projectId: string | null) {
     const pid = projectIdRef.current;
     if (!pid) return;
 
-    let data: { content?: string };
+    let data: { content?: string; version?: string };
     try {
-      const res = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
-      );
-      if (!res.ok) return; // no overrides file yet — normal
+      const res = await fetch(captionOverridesUrl(pid));
+      if (!res.ok) {
+        // Treated as "no overrides file yet" below. If that guess is wrong
+        // (a transient error rather than a real 404), the save path's
+        // 409-conflict retry recovers: it adopts the server's real version
+        // and retries once.
+        versionRef.current = null;
+        return;
+      }
       data = await res.json();
+      versionRef.current = data.version ?? res.headers.get("etag") ?? null;
     } catch {
       return; // network failure fetching an optional file — nothing to restore
     }
