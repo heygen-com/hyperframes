@@ -4,10 +4,22 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const publishState = vi.hoisted(() => ({ publish: vi.fn() }));
+const authState = vi.hoisted(() => ({ tryResolveCredential: vi.fn().mockResolvedValue(null) }));
+const clackState = vi.hoisted(() => ({ confirm: vi.fn() }));
 
 vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/publishProject.js")>()),
   publishProjectArchive: publishState.publish,
+}));
+
+vi.mock("../auth/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth/index.js")>()),
+  tryResolveCredential: authState.tryResolveCredential,
+}));
+
+vi.mock("@clack/prompts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@clack/prompts")>()),
+  confirm: clackState.confirm,
 }));
 
 import publishCommand, { parseUpdateTarget } from "./publish.js";
@@ -88,5 +100,45 @@ describe("publish default-entry preflight", () => {
     expect(output).toContain("compositions/card.html");
     expect(output).not.toContain("hyperframes publish <project>/compositions");
     expect(output).toContain("publish accepts project directories, not individual HTML files");
+  });
+});
+
+describe("publish consent notice", () => {
+  async function runConsent(credential: unknown): Promise<string> {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-consent-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
+    );
+    publishState.publish.mockReset();
+    authState.tryResolveCredential.mockReset().mockResolvedValue(credential);
+    // Declining the prompt stops the run right after the notice — no network, no upload.
+    clackState.confirm.mockReset().mockResolvedValue(false);
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+
+    try {
+      await publishCommand.run?.({ args: { dir: project, proxy: false } } as never);
+      expect(publishState.publish).not.toHaveBeenCalled();
+      return lines.join("\n");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
+  it("offers the claim step when publishing anonymously", async () => {
+    const output = await runConsent(null);
+
+    expect(output).toContain("claim it after authenticating");
+  });
+
+  it("tells a signed-in publisher there is no claim link", async () => {
+    const output = await runConsent({ type: "api_key", key: "k", source: "env" });
+
+    expect(output).toContain("owned by your account");
+    expect(output).not.toContain("claim it after authenticating");
   });
 });

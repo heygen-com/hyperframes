@@ -119,13 +119,22 @@ export default defineCommand({
       }
     }
 
+    // Resolved once: the consent notice and the --update/--space gate must agree on
+    // whether this publish is authenticated.
+    const credential = await tryResolveCredential();
+
     if (args.yes !== true) {
       console.log();
       console.log(
-        `  ${c.bold("hyperframes publish uploads this project and creates a stable public URL.")}`,
+        `  ${c.bold("hyperframes publish uploads this project and creates a stable URL.")}`,
       );
+      // Only an anonymous publish gets a claim token; an authenticated one is owned on
+      // creation. Promising a claim step to a signed-in user sends them looking for a
+      // token the server never issued.
       console.log(
-        `  ${c.dim("Anyone with the URL can open the published project and claim it after authenticating.")}`,
+        credential === null
+          ? `  ${c.dim("Anyone with the URL can open the published project and claim it after authenticating.")}`
+          : `  ${c.dim("You are signed in, so the project is owned by your account on publish. There is no claim link.")}`,
       );
       console.log();
       const approved = await clack.confirm({ message: "Publish this project?" });
@@ -147,7 +156,6 @@ export default defineCommand({
     // --update / --space only take effect for an authenticated owner. Fail loudly rather
     // than silently minting a fresh URL — the exact failure mode this feature removes.
     if (updateTarget || spaceOverride) {
-      const credential = await tryResolveCredential();
       if (!credential) {
         console.log();
         console.log(
