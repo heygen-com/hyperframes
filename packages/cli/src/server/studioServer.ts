@@ -36,7 +36,6 @@ import {
   consumeFileWriteReceipt,
   fileContentVersion,
   getMimeType,
-  affectsProjectSignature,
   type PreviewApiAdapter,
   thumbnailDeviceScaleFactor,
   type ResolvedProject,
@@ -374,12 +373,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // ── CLI adapter for the shared studio API ──────────────────────────────
 
   const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
-  let cachedProjectSignature: string | null = null;
-  watcher.addListener((changedPath) => {
-    if (affectsProjectSignature(projectDir, join(projectDir, changedPath))) {
-      cachedProjectSignature = null;
-    }
-  });
 
   const adapter: PreviewApiAdapter = {
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
@@ -438,11 +431,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return injectDeterministicFontFaces(prepared.html);
     },
 
-    getProjectSignature(dir: string): string {
-      if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
-      cachedProjectSignature ??= createProjectSignature(projectDir);
-      return cachedProjectSignature;
-    },
+    // No `getProjectSignature` override on purpose: `resolveProjectSignature`
+    // falls back to `createProjectSignature`, which already memoises behind its
+    // own stat-only (mtime+size) fingerprint and only re-hashes content when the
+    // project actually changed. A second memo here owned the same invariant a
+    // second time and could disagree with the disk — it was cleared only by a
+    // watcher listener, so any edit the watcher missed (a dead or never-started
+    // `fs.watch` handle) froze the preview ETag for the life of the process.
 
     async lint(html: string, opts?: { filePath?: string }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
@@ -790,11 +785,24 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       };
       // Re-applied here because the watcher now also emits the signature
       // manifest files, which must not trigger a browser reload.
-      watcher.addListener((changedPath) => {
+      const onFileChange = (changedPath: string) => {
         if (shouldWatchProjectFile(changedPath)) listener(changedPath);
-      });
-      while (true) {
-        await stream.sleep(30000);
+      };
+      watcher.addListener(onFileChange);
+      // Studio reopens this stream on every reconnect, so a listener that
+      // outlives its connection is not merely a slow leak: each dead listener
+      // still runs, and `consumeFileWriteReceipt` is one-shot, so the first
+      // dead listener to fire eats the receipt the live stream needed and the
+      // client stops recognising its own writes.
+      stream.onAbort(() => watcher.removeListener(onFileChange));
+      try {
+        // streamSSE only runs its own cleanup once this callback returns, so
+        // the loop has to end on disconnect instead of sleeping forever.
+        while (!stream.aborted && !stream.closed) {
+          await stream.sleep(30000);
+        }
+      } finally {
+        watcher.removeListener(onFileChange);
       }
     });
   });

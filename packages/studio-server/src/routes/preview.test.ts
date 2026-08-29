@@ -1204,3 +1204,37 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     });
   });
 });
+
+describe("project asset cache headers", () => {
+  it("revalidates non-text assets instead of letting the browser hold them, and serves replaced bytes", async () => {
+    const projectDir = createProjectDir();
+    const asset = join(projectDir, "logo.png");
+    writeFileSync(asset, "original-png-bytes");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const first = await app.request("http://localhost/projects/demo/preview/logo.png");
+    expect(first.status).toBe(200);
+    // Any max-age lets a browser serve a replaced asset out of its own cache
+    // without asking the server, so the stale image stays on screen.
+    expect(first.headers.get("Cache-Control")).toBe("private, no-cache");
+    const firstEtag = first.headers.get("ETag");
+    expect(firstEtag).toBeTruthy();
+    expect(await first.text()).toBe("original-png-bytes");
+
+    // An unchanged asset still costs one cheap 304 — the ETag path is intact.
+    const unchanged = await app.request("http://localhost/projects/demo/preview/logo.png", {
+      headers: { "If-None-Match": firstEtag as string },
+    });
+    expect(unchanged.status).toBe(304);
+
+    // Replacing the file on disk must invalidate that ETag immediately.
+    writeFileSync(asset, "replaced-png-bytes-and-longer");
+    const afterEdit = await app.request("http://localhost/projects/demo/preview/logo.png", {
+      headers: { "If-None-Match": firstEtag as string },
+    });
+    expect(afterEdit.status).toBe(200);
+    expect(afterEdit.headers.get("ETag")).not.toBe(firstEtag);
+    expect(await afterEdit.text()).toBe("replaced-png-bytes-and-longer");
+  });
+});

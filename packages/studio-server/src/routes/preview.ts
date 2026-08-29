@@ -576,7 +576,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : {
-          "Cache-Control": "private, max-age=3600, must-revalidate",
+          // `no-cache` (revalidate every time), not `max-age`: this is a live
+          // authoring server, and under any max-age the browser serves a
+          // replaced image/video/font from its own cache without asking, so the
+          // stale asset stays on screen until a hard refresh. The mtime+size
+          // ETag below keeps an unchanged asset at one cheap 304.
+          "Cache-Control": "private, no-cache",
           ETag: etag,
         };
 

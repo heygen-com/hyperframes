@@ -114,6 +114,91 @@ describe("Studio project lint endpoint", () => {
   });
 });
 
+describe("preview ETag tracks the project on disk", () => {
+  const composition = (body: string) =>
+    `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"><div class="clip" data-start="0" data-duration="10">${body}</div></div></body></html>`;
+
+  // The preview ETag must be derived from what is on disk right now, never from
+  // a cache that only a file-watcher event can clear. `createProjectWatcher`
+  // reaches a permanently silent state on its own — the constructor `catch`
+  // (recursive `fs.watch` is unsupported on some platforms) and the 'error'
+  // handler that nulls the handle (e.g. EMFILE) — and a signature memo cleared
+  // only from that watcher then freezes the preview for the life of the
+  // process, which is exactly the "restart the server to see my edit" symptom.
+  it("changes after an external edit even when no watcher event ever fires", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), composition("Before"));
+    server = createStudioServer({ projectDir, projectName: "demo" });
+
+    const first = await server.app.request("http://localhost/api/projects/demo/preview");
+    const firstEtag = first.headers.get("ETag");
+    expect(first.status).toBe(200);
+    expect(firstEtag).toBeTruthy();
+
+    // Stand in for the dead/never-started handle: no listener fires again.
+    server.watcher.close();
+    writeFileSync(join(projectDir, "index.html"), composition("After the external edit"));
+
+    const second = await server.app.request("http://localhost/api/projects/demo/preview");
+    expect(second.status).toBe(200);
+    expect(second.headers.get("ETag")).not.toBe(firstEtag);
+    expect(await second.text()).toContain("After the external edit");
+  });
+
+  it("still answers 304 for a conditional request when nothing changed", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), composition("Unchanged"));
+    server = createStudioServer({ projectDir, projectName: "demo" });
+
+    // Warm-up: the route persists `data-hf-id` back to index.html on first
+    // sight, so request #1 legitimately changes the project and invalidates its
+    // own ETag. That write is idempotent, so the project is settled from here.
+    await server.app.request("http://localhost/api/projects/demo/preview");
+
+    const settled = await server.app.request("http://localhost/api/projects/demo/preview");
+    const etag = settled.headers.get("ETag");
+    expect(etag).toBeTruthy();
+
+    const conditional = await server.app.request("http://localhost/api/projects/demo/preview", {
+      headers: { "If-None-Match": etag as string },
+    });
+    expect(conditional.status).toBe(304);
+  });
+});
+
+describe("the /api/events SSE stream", () => {
+  // Studio reconnects this stream constantly, so a listener left behind on
+  // every disconnect accumulates without bound. That is not just memory: each
+  // dead listener still runs on a file change, and `consumeFileWriteReceipt`
+  // is one-shot, so a dead listener eats the receipt meant for the live stream.
+  it("removes its watcher listener when the stream disconnects", async () => {
+    server = createStudioServer({ projectDir: tmpProject(), projectName: "demo" });
+
+    let added = 0;
+    let removed = 0;
+    const realAdd = server.watcher.addListener.bind(server.watcher);
+    const realRemove = server.watcher.removeListener.bind(server.watcher);
+    server.watcher.addListener = (fn) => {
+      added += 1;
+      realAdd(fn);
+    };
+    server.watcher.removeListener = (fn) => {
+      removed += 1;
+      realRemove(fn);
+    };
+
+    // Cancelling the response body is the real client-disconnect path: it is
+    // what hono's StreamingApi turns into `abort()`.
+    for (let i = 0; i < 5; i += 1) {
+      const res = await server.app.request("http://localhost/api/events");
+      await res.body?.cancel();
+    }
+
+    expect(added).toBe(5);
+    expect(removed).toBe(5);
+  });
+});
+
 describe("host guarding on identity-bearing responses", () => {
   // NOTE: the SPA-injection branch itself is covered in telemetryIdentity.test.ts
   // via buildStudioHeadScriptsForHost. It cannot be asserted here: this route
