@@ -7,9 +7,8 @@
 // install id rather than the user's, which is worse than attributing it
 // correctly.
 
-import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountRenderQueue, renderPosts, stubRenderFetch } from "./renderQueueTestHarness";
+import { startRenderAndReadBody, type MountedQueue } from "./renderQueueTestHarness";
 
 const policyState = { allowed: true };
 const mintCalls = vi.fn(() => "browser-user-123");
@@ -26,20 +25,15 @@ vi.mock("../../telemetry/events", () => ({
 
 const { useRenderQueue } = await import("./useRenderQueue");
 
-let queue: ReturnType<typeof mountRenderQueue> | null = null;
+let queue: MountedQueue | null = null;
 
 /** Body of the POST the hook makes when a render is started. */
 async function startRenderBody(): Promise<Record<string, unknown>> {
-  const fetchMock = stubRenderFetch();
-  queue = mountRenderQueue(useRenderQueue);
-  await act(async () => {
-    await queue?.api().startRender({ fps: 30, quality: "standard", format: "mp4" });
+  const started = await startRenderAndReadBody(useRenderQueue, {
+    opts: { fps: 30, quality: "standard", format: "mp4" },
   });
-
-  const [post] = renderPosts(fetchMock) as [undefined | [string, RequestInit]];
-  const body = post?.[1]?.body;
-  if (body === undefined || body === null) throw new Error("hook made no POST with a body");
-  return JSON.parse(String(body)) as Record<string, unknown>;
+  queue = started.queue;
+  return started.body;
 }
 
 beforeEach(() => {
