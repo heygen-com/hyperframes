@@ -138,7 +138,20 @@ describe("publish consent notice", () => {
   it("tells a signed-in publisher there is no claim link", async () => {
     const output = await runConsent({ type: "api_key", key: "k", source: "env" });
 
-    expect(output).toContain("owned by your account");
+    expect(output).toContain("you own it on publish and there is no claim link");
     expect(output).not.toContain("claim it after authenticating");
+  });
+
+  it.each([
+    ["anonymous", null],
+    ["signed in", { type: "api_key", key: "k", source: "env" }],
+  ])("discloses the exposure before uploading (%s)", async (_label, credential) => {
+    // The consent prompt is the only place the user is told the artifact is world-readable:
+    // the result block prints no exposure line on the owned branch. Dropping it from either
+    // branch means someone approves an upload without being told who can reach it.
+    const output = await runConsent(credential);
+
+    expect(output).toContain("creates a stable public URL");
+    expect(output).toContain("Anyone with the URL can open the published project");
   });
 });

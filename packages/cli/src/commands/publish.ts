@@ -126,15 +126,17 @@ export default defineCommand({
     if (args.yes !== true) {
       console.log();
       console.log(
-        `  ${c.bold("hyperframes publish uploads this project and creates a stable URL.")}`,
+        `  ${c.bold("hyperframes publish uploads this project and creates a stable public URL.")}`,
       );
-      // Only an anonymous publish gets a claim token; an authenticated one is owned on
-      // creation. Promising a claim step to a signed-in user sends them looking for a
-      // token the server never issued.
+      // Both branches must state the exposure — the published project is readable by anyone
+      // holding the URL whether or not it is owned. Only the claim half differs: an
+      // anonymous publish gets a claim token, an authenticated one is owned on creation, so
+      // promising a claim step to a signed-in user sends them looking for a token the server
+      // never issued.
       console.log(
         credential === null
           ? `  ${c.dim("Anyone with the URL can open the published project and claim it after authenticating.")}`
-          : `  ${c.dim("You are signed in, so the project is owned by your account on publish. There is no claim link.")}`,
+          : `  ${c.dim("Anyone with the URL can open the published project. You are signed in, so you own it on publish and there is no claim link.")}`,
       );
       console.log();
       const approved = await clack.confirm({ message: "Publish this project?" });
