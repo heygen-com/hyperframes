@@ -25,11 +25,12 @@ export interface PlaybackStateCallbacks {
   play: () => void;
   getLoop: () => boolean;
   media: ParentMediaManager;
-  /** End the parent-driven tick clock. Reaching the end of the timeline is the
-   *  only playback stop the runtime initiates by itself, so it is the only one
-   *  that has to be relayed here; every other stop already goes through the
-   *  player's own pause() / seek() / teardown paths. */
-  stopPlaybackClock: () => void;
+  /** The runtime's own view of whether it is playing, forwarded verbatim from
+   *  the wire before any of this function's interpretation of it. The player
+   *  uses it to decide the fate of the parent-driven tick clock, which is the
+   *  one piece of state a runtime-initiated stop must reach: a stop the player
+   *  itself performs already goes through pause() / seek() / teardown. */
+  onRuntimePlaybackReport: (isPlaying: boolean) => void;
 }
 
 /**
@@ -43,6 +44,12 @@ export function applyRuntimeStateMessage(
   current: PlaybackState,
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
+  // Before any interpretation: a runtime that reports itself stopped is the
+  // only stop the player cannot see coming, and end-of-timeline is just one
+  // instance of it. Forwarding the raw flag here covers the whole class,
+  // including a composition calling pause() on `window.__player` itself.
+  callbacks.onRuntimePlaybackReport(data.isPlaying);
+
   const rawTime = (data.frame ?? 0) / fps;
   const currentTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
   const wasPlaying = !current.paused;
@@ -81,7 +88,6 @@ export function applyRuntimeStateMessage(
 
   if (completedPlayback) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
-    callbacks.stopPlaybackClock();
     next.paused = true;
     callbacks.updateControlsPlaying(false);
     callbacks.dispatchEvent(new Event("ended"));

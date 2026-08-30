@@ -99,6 +99,11 @@ class HyperframesPlayer extends HTMLElement {
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
+  /** True between sending "play" and the runtime echoing that it is playing.
+   *  postMessage delivery between two windows is ordered, so an
+   *  `isPlaying: false` seen inside that window was posted before our play
+   *  command arrived and describes the state we just left, not a stop. */
+  private _awaitingPlayEcho = false;
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
@@ -170,10 +175,8 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
-    if (this.hasAttribute("src"))
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src")!);
+    if (this.hasAttribute("srcdoc")) this._setIframeSrcdoc(this.getAttribute("srcdoc")!);
+    if (this.hasAttribute("src")) this._setIframeSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
     // desktop) drops the `audio-locked` attribute, attributeChangedCallback
@@ -206,17 +209,10 @@ class HyperframesPlayer extends HTMLElement {
   attributeChangedCallback(name: string, _old: string | null, val: string | null) {
     switch (name) {
       case "src":
-        if (val) {
-          this._ready = false;
-          this._runtimeBridgeReady = false;
-          this.iframe.src = prepareSrcForElement(this, val);
-        }
+        if (val) this._setIframeSrc(val);
         break;
       case "srcdoc":
-        this._ready = false;
-        this._runtimeBridgeReady = false;
-        if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
-        else this.iframe.removeAttribute("srcdoc");
+        this._setIframeSrcdoc(val);
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
@@ -299,6 +295,7 @@ class HyperframesPlayer extends HTMLElement {
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
     if (!directTimelineStarted) {
+      this._awaitingPlayEcho = true;
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
@@ -643,12 +640,38 @@ class HyperframesPlayer extends HTMLElement {
   private _reloadShaderOptions(): void {
     if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
+      this._setIframeSrcdoc(this.getAttribute("srcdoc") || "");
       return;
     }
     if (this.hasAttribute("src")) {
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src") || "");
+      this._setIframeSrc(this.getAttribute("src") || "");
     }
+  }
+
+  /**
+   * Point the iframe at a new `src` document.
+   *
+   * Every reassignment of the iframe's document goes through here or
+   * `_setIframeSrcdoc`, and clearing readiness is theirs alone. That is what
+   * makes `_onIframeLoad`'s test sound: a `load` seen while still ready can
+   * only be the late load of the document already playing, because starting a
+   * new one clears readiness first. The shader-option reload is why this is a
+   * method rather than a convention — it reassigns the document too, and when
+   * it did so without clearing readiness the load handler skipped the teardown
+   * and left the fresh document with a stale bridge flag and no probe running.
+   */
+  private _setIframeSrc(src: string): void {
+    this._ready = false;
+    this._runtimeBridgeReady = false;
+    this.iframe.src = prepareSrcForElement(this, src);
+  }
+
+  /** Point the iframe at a new `srcdoc` document, or clear it. See `_setIframeSrc`. */
+  private _setIframeSrcdoc(html: string | null): void {
+    this._ready = false;
+    this._runtimeBridgeReady = false;
+    if (html === null) this.iframe.removeAttribute("srcdoc");
+    else this.iframe.srcdoc = prepareSrcdocForElement(this, html);
   }
 
   private _trySyncSeek(timeInSeconds: number): boolean {
@@ -711,9 +734,13 @@ class HyperframesPlayer extends HTMLElement {
    * (it has no restart path) while the player still reports `paused === false`.
    * Cross-origin that leaves nothing driving the composition at all, because
    * the throttled iframe rAF this clock exists to replace is not running
-   * either. Every transition out of playback — pause(), seek(), a new document,
-   * disconnect, and the end of the timeline — calls `_stopParentTickClock`
-   * directly instead.
+   * either. Instead the two ways playback can end each stop it explicitly: the
+   * player's own pause(), seek(), new-document and disconnect paths call
+   * `_stopParentTickClock` directly, and a stop the runtime initiates for
+   * itself — the end of the timeline, or composition code calling pause() on
+   * `window.__player` — arrives as a playback report and is relayed through
+   * `onRuntimePlaybackReport`. Enumerating only the first group is what left
+   * the loop running after a runtime-side pause.
    */
   private _startParentTickClock(): void {
     this._stopParentTickClock();
@@ -774,7 +801,10 @@ class HyperframesPlayer extends HTMLElement {
       play: () => this.play(),
       getLoop: () => this.loop,
       media: this._media,
-      stopPlaybackClock: () => this._stopParentTickClock(),
+      onRuntimePlaybackReport: (isPlaying) => {
+        if (isPlaying) this._awaitingPlayEcho = false;
+        else if (!this._awaitingPlayEcho) this._stopParentTickClock();
+      },
     });
   }
 

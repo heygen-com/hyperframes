@@ -2514,7 +2514,9 @@ describe("HyperframesPlayer parent tick clock lifetime", () => {
     _duration: number;
     _paused: boolean;
     _parentTickRaf: number | null;
+    _runtimeBridgeReady: boolean;
     _onMessage: (event: MessageEvent) => void;
+    probe: { start: () => void };
   };
 
   let player: PlayerInternal;
@@ -2596,10 +2598,49 @@ describe("HyperframesPlayer parent tick clock lifetime", () => {
     expect(tickCount()).toBe(1);
   });
 
+  it("stops ticking when the composition pauses itself short of the end", () => {
+    player.play();
+    advanceFrame();
+    expect(tickCount()).toBe(1);
+    // The runtime confirms the play, so the next not-playing report is a real
+    // stop rather than a message that crossed our own play command.
+    player._onMessage(stateMessage(30, true));
+
+    // Composition code calling pause() on `window.__player`: mid-timeline, so
+    // the completed-playback path never runs.
+    player._onMessage(stateMessage(60, false));
+    advanceFrame();
+    advanceFrame();
+
+    expect(player._parentTickRaf).toBeNull();
+    expect(tickCount()).toBe(1);
+  });
+
+  it("keeps ticking after a shader-option reload starts a new document", () => {
+    // _reloadShaderOptions reassigns the iframe document. If that path does not
+    // clear readiness, the load handler skips the teardown and the fresh
+    // document is left with no probe and a stale bridge flag.
+    player.setAttribute("src", "https://composition.example/comp.html");
+    player._ready = true;
+
+    const probeStart = vi.spyOn(player.probe, "start");
+
+    player.setAttribute("shader-loading", "eager");
+    expect(player._ready).toBe(false);
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(probeStart).toHaveBeenCalled();
+    expect(player._runtimeBridgeReady).toBe(false);
+  });
+
   it("stops ticking once the composition reports the end of the timeline", () => {
     player.play();
     advanceFrame();
     expect(tickCount()).toBe(1);
+    // Playback reports itself as it runs; the runtime cannot reach the end of a
+    // timeline without having said it was playing on the way there.
+    player._onMessage(stateMessage(30, true));
 
     // frame 450 at the default 30fps protocol rate = 15s = the full duration.
     player._onMessage(stateMessage(450, false));
