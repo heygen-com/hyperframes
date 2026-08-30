@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.20"
+  description="Released - 2026-08-30"
+  tags={["Release", "Studio"]}
+>
+Studio now separates blocked direct edits from real save failures and keeps the file and HTTP details needed to diagnose them.
+Repeated failures are grouped, and write tracking now works in more secure browser contexts.
+
+## Fixes
+
+- **Studio:** Correct save failure telemetry ([28be8dddfa](https://github.com/heygen-com/hyperframes/commit/28be8dddfacefe29b5e25ae2d36fd76ffe4c4852), [#3499](https://github.com/heygen-com/hyperframes/pull/3499)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.19...v0.8.20).
+</Update>
+
+<Update
   label="HyperFrames v0.8.19"
   description="Released - 2026-08-29"
   tags={["Release", "Studio"]}
