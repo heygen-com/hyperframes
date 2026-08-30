@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contract: browser element capture to HyperFrames Studio</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f3f0e8;
+        --paper-strong: #fffdf7;
+        --ink: #151513;
+        --muted: #54524b;
+        --line: #c9c4b8;
+        --line-dark: #817d74;
+        --mint: #c8ff52;
+        --mint-dark: #315f24;
+        --blue: #1f52ff;
+        --ember: #9f3218;
+        --amber: #f0aa24;
+        --black: #10110f;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --display: Georgia, "Times New Roman", serif;
+        --body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background:
+          linear-gradient(90deg, transparent 0 23px, rgba(21, 21, 19, 0.045) 24px),
+          linear-gradient(0deg, transparent 0 23px, rgba(21, 21, 19, 0.045) 24px),
+          var(--paper);
+        background-size: 24px 24px;
+        color: var(--ink);
+        font: 16px/1.55 var(--body);
+      }
+
+      a { color: inherit; }
+      a:hover { color: var(--blue); }
+      button { font: inherit; }
+      code, pre, .mono { font-family: var(--mono); }
+      code { font-size: 0.88em; }
+      :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+      [hidden] { display: none !important; }
+
+      .page {
+        width: min(1480px, calc(100% - 32px));
+        margin: 16px auto 80px;
+        background: var(--paper-strong);
+        border: 1px solid var(--black);
+        box-shadow: 12px 12px 0 var(--black);
+      }
+
+      .topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        min-height: 46px;
+        padding: 9px 18px;
+        border-bottom: 1px solid var(--black);
+        background: var(--mint);
+        font: 700 12px/1.2 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .status-dot::before {
+        content: "";
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        margin-right: 8px;
+        border-radius: 50%;
+        background: var(--ember);
+        box-shadow: 0 0 0 3px rgba(215, 74, 36, 0.18);
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+        gap: 48px;
+        padding: clamp(36px, 6vw, 92px) clamp(24px, 5vw, 72px) 56px;
+        border-bottom: 1px solid var(--black);
+      }
+
+      .eyebrow {
+        margin: 0 0 18px;
+        font: 700 12px/1.2 var(--mono);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 950px;
+        margin: 0;
+        font: 700 clamp(54px, 8vw, 122px)/0.86 var(--display);
+        letter-spacing: -0.065em;
+      }
+
+      .lede {
+        max-width: 72ch;
+        margin: 28px 0 0;
+        font-size: clamp(18px, 2vw, 25px);
+        line-height: 1.35;
+      }
+
+      .headline-note {
+        align-self: end;
+        padding: 22px;
+        border: 1px solid var(--black);
+        background: var(--black);
+        color: white;
+      }
+
+      .headline-note strong {
+        display: block;
+        margin-bottom: 12px;
+        color: var(--mint);
+        font: 700 12px/1.2 var(--mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .headline-note p { margin: 0; }
+      .meta { margin-top: 18px; color: #c9c9c1; font: 12px/1.6 var(--mono); }
+
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        gap: 0;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--black);
+        background: var(--paper-strong);
+        backdrop-filter: blur(12px);
+        max-width: 100%;
+      }
+
+      nav a {
+        flex: 0 0 auto;
+        padding: 12px 16px;
+        border-right: 1px solid var(--black);
+        font: 700 11px/1.2 var(--mono);
+        letter-spacing: 0.05em;
+        text-decoration: none;
+        text-transform: uppercase;
+      }
+
+      nav a:hover { background: var(--mint); color: var(--ink); }
+
+      main > section {
+        min-width: 0;
+        padding: 64px clamp(20px, 4vw, 58px);
+        border-bottom: 1px solid var(--black);
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: 90px minmax(0, 1fr);
+        gap: 18px;
+        margin-bottom: 32px;
+      }
+
+      .section-number {
+        font: 700 14px/1 var(--mono);
+        letter-spacing: 0.1em;
+      }
+
+      h2 {
+        max-width: 980px;
+        margin: 0;
+        font: 700 clamp(36px, 5vw, 74px)/0.95 var(--display);
+        letter-spacing: -0.045em;
+      }
+
+      h3 { margin: 0 0 8px; font-size: 18px; }
+      p { margin: 0 0 14px; }
+      .muted { color: var(--muted); }
+      .small { font-size: 13px; }
+      .kicker { font: 700 11px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+      .fact { color: var(--mint-dark); }
+      .unknown { color: var(--ember); }
+      .recommendation { color: var(--blue); }
+
+      .decision-strip {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        border: 1px solid var(--black);
+      }
+
+      .decision-strip article {
+        min-height: 205px;
+        padding: 18px;
+        border-right: 1px solid var(--black);
+      }
+
+      .decision-strip article:last-child { border-right: 0; }
+      .decision-strip article:first-child { background: #fff2e7; }
+      .decision-strip .decision-id { display: block; margin-bottom: 34px; font: 700 12px/1 var(--mono); }
+      .decision-strip h3 { font: 700 17px/1.15 var(--body); }
+      .decision-strip p { font-size: 13px; }
+
+      .evidence-banner {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 24px;
+        margin-top: 20px;
+        padding: 20px;
+        border: 2px solid var(--ember);
+        background: #fff8f3;
+      }
+
+      .evidence-banner strong { font: 700 14px/1.2 var(--mono); text-transform: uppercase; }
+
+      .prototype {
+        border: 1px solid var(--black);
+        background: #e8e5dc;
+      }
+
+      .prototype-tabs {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        border-bottom: 1px solid var(--black);
+      }
+
+      .prototype-tab {
+        min-height: 48px;
+        border: 0;
+        border-right: 1px solid var(--black);
+        background: var(--paper-strong);
+        cursor: pointer;
+        font: 700 11px/1.2 var(--mono);
+        text-transform: uppercase;
+      }
+
+      .prototype-tab:last-child { border-right: 0; }
+      .prototype-tab[aria-pressed="true"] { background: var(--mint); }
+
+      .prototype-stage {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr 140px 1fr;
+        gap: 20px;
+        min-height: 530px;
+        padding: 30px;
+        overflow: hidden;
+      }
+
+      .browser, .studio {
+        position: relative;
+        min-width: 0;
+        border: 1px solid var(--black);
+        background: var(--paper-strong);
+        box-shadow: 7px 7px 0 rgba(16, 17, 15, 0.22);
+      }
+
+      .window-bar {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 38px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--black);
+        background: #d8d5cc;
+      }
+
+      .window-bar i { width: 9px; height: 9px; border: 1px solid var(--black); border-radius: 50%; }
+      .window-title { margin-left: 8px; font: 700 10px/1 var(--mono); text-transform: uppercase; }
+
+      .webpage {
+        position: relative;
+        min-height: 440px;
+        padding: 35px;
+        background: #f7efd8;
+      }
+
+      .source-copy { width: min(92%, 510px); margin: 0 auto; }
+      .source-copy .tag { margin-bottom: 28px; color: var(--ember); font: 700 11px/1 var(--mono); text-transform: uppercase; }
+      .source-copy h4 { margin: 0 0 16px; font: 700 clamp(29px, 4vw, 52px)/0.94 var(--display); letter-spacing: -0.04em; }
+      .source-copy p { max-width: 32ch; }
+
+      .target-card {
+        position: relative;
+        margin-top: 26px;
+        padding: 20px;
+        border: 1px solid var(--black);
+        background: #fffbef;
+        transition: transform 240ms ease, box-shadow 240ms ease;
+      }
+
+      .target-card::before, .target-card::after {
+        content: "";
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        opacity: 0;
+        transition: opacity 160ms ease;
+      }
+
+      .target-card::before { top: -8px; left: -8px; border-top: 3px solid var(--blue); border-left: 3px solid var(--blue); }
+      .target-card::after { right: -8px; bottom: -8px; border-right: 3px solid var(--blue); border-bottom: 3px solid var(--blue); }
+      [data-state="picking"] .target-card::before,
+      [data-state="picking"] .target-card::after,
+      [data-state="locked"] .target-card::before,
+      [data-state="locked"] .target-card::after { opacity: 1; }
+      [data-state="picking"] .target-card { box-shadow: 0 0 0 3px rgba(31, 82, 255, 0.18); transform: translateY(-3px); }
+
+      .picker-label {
+        position: absolute;
+        left: 24px;
+        bottom: 18px;
+        display: none;
+        padding: 8px 10px;
+        background: var(--blue);
+        color: white;
+        font: 700 11px/1.2 var(--mono);
+      }
+
+      [data-state="picking"] .picker-label { display: block; }
+
+      .capsule {
+        position: absolute;
+        right: 18px;
+        bottom: 18px;
+        display: none;
+        width: min(330px, calc(100% - 36px));
+        padding: 16px;
+        border: 1px solid var(--black);
+        background: var(--black);
+        color: white;
+        box-shadow: 5px 5px 0 var(--mint);
+      }
+
+      [data-state="locked"] .capsule,
+      [data-state="copied"] .capsule,
+      [data-state="failure"] .capsule { display: block; }
+      .capsule .kicker { color: var(--mint); }
+      .capsule-preview { height: 76px; margin: 12px 0; border: 1px solid #5d6059; background: linear-gradient(135deg, #f7efd8, #fff, #d8ff75); }
+      .capsule-stats { display: flex; gap: 10px; color: #cfd0c9; font: 10px/1.4 var(--mono); }
+      .capsule-copy { width: 100%; margin-top: 14px; padding: 10px; border: 1px solid var(--mint); background: var(--mint); color: var(--black); font-weight: 800; }
+      [data-state="failure"] .capsule { box-shadow: 5px 5px 0 var(--ember); }
+      [data-state="failure"] .capsule .kicker { color: #ff8a69; }
+
+      .handoff {
+        position: relative;
+        display: grid;
+        place-items: center;
+      }
+
+      .payload {
+        position: relative;
+        z-index: 3;
+        width: 92px;
+        padding: 13px 8px;
+        border: 1px solid var(--black);
+        background: var(--mint);
+        text-align: center;
+        font: 700 10px/1.3 var(--mono);
+        opacity: 0;
+        transform: translateX(-40px) rotate(-4deg);
+        transition: opacity 220ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      [data-state="copied"] .payload { opacity: 1; transform: translateX(0) rotate(0); }
+      [data-state="studio"] .payload { opacity: 1; transform: translateX(40px) rotate(3deg); background: var(--blue); color: white; }
+      .handoff::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--line-dark); }
+
+      .studio-workspace {
+        display: grid;
+        grid-template-rows: 1fr 120px;
+        min-height: 440px;
+        background: #151515;
+        color: white;
+      }
+
+      .studio-canvas {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: radial-gradient(circle at center, #343536, #171817 72%);
+      }
+
+      .composition {
+        position: relative;
+        width: min(92%, 460px);
+        aspect-ratio: 16 / 9;
+        background: #f7efd8;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      .arrived-card {
+        position: absolute;
+        inset: 22% 14%;
+        padding: 15px;
+        border: 2px solid var(--blue);
+        background: #fffbef;
+        color: var(--ink);
+        opacity: 0;
+        transform: scale(0.92);
+        transition: opacity 200ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      [data-state="studio"] .arrived-card { opacity: 1; transform: scale(1); }
+      .timeline { display: grid; grid-template-columns: 86px 1fr; border-top: 1px solid #50514d; }
+      .track-labels { padding: 12px; border-right: 1px solid #50514d; color: #a7aaa5; font: 10px/2.7 var(--mono); }
+      .tracks { position: relative; padding: 15px 12px; background: repeating-linear-gradient(90deg, #1c1d1b 0 59px, #2c2d2a 60px); }
+      .playhead { position: absolute; left: 34%; top: 0; bottom: 0; border-left: 2px solid #ff5a42; }
+      .timeline-clip { position: absolute; left: 34%; top: 48px; width: 36%; height: 28px; padding: 7px; background: var(--blue); opacity: 0; font: 700 9px/1 var(--mono); transition: opacity 180ms ease; }
+      [data-state="studio"] .timeline-clip { opacity: 1; }
+
+      .state-copy {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+        min-height: 124px;
+        padding: 20px 24px;
+        border-top: 1px solid var(--black);
+        background: var(--paper-strong);
+      }
+
+      .state-copy h3 { font: 700 22px/1.1 var(--display); }
+      .state-copy p { margin: 4px 0 0; color: var(--muted); }
+      .prototype-controls { display: flex; gap: 8px; }
+      .prototype-controls button {
+        min-width: 92px;
+        padding: 10px 14px;
+        border: 1px solid var(--black);
+        background: var(--paper-strong);
+        cursor: pointer;
+        font-weight: 750;
+      }
+      .prototype-controls button:last-child { background: var(--black); color: white; }
+      .prototype-controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+      .boundary-map {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(130px, 1fr));
+        border: 1px solid var(--black);
+        overflow-x: auto;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .boundary {
+        position: relative;
+        min-height: 176px;
+        padding: 16px;
+        border-right: 1px solid var(--black);
+      }
+
+      .boundary:last-child { border-right: 0; }
+      .boundary::after { content: "→"; position: absolute; top: 78px; right: -12px; z-index: 2; width: 24px; height: 24px; background: var(--black); color: white; text-align: center; }
+      .boundary:last-child::after { display: none; }
+      .boundary strong { display: block; min-height: 42px; font: 700 12px/1.3 var(--mono); text-transform: uppercase; }
+      .boundary p { color: var(--muted); font-size: 12px; }
+      .boundary.hostile { background: #fff0eb; }
+      .boundary.trusted { background: #f0ffe8; }
+      .boundary.pending { background: #fff8df; }
+
+      .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font: 12px/1.4 var(--mono); }
+      .swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 1px solid var(--black); vertical-align: -1px; }
+
+      .diagram-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      .diagram-grid > *, .contract-split > * { min-width: 0; }
+      .diagram { padding: 22px; border: 1px solid var(--black); background: var(--paper-strong); }
+      .diagram h3 { margin-bottom: 18px; font: 700 24px/1.1 var(--display); }
+
+      .ladder { display: grid; gap: 8px; }
+      .rung { display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--black); }
+      .rung .num { font: 700 12px/1 var(--mono); }
+      .rung .claim { color: var(--muted); font: 11px/1.3 var(--mono); }
+      .rung:last-child { background: #fff0eb; }
+
+      .capability-flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+      .capability-flow div { position: relative; min-height: 112px; padding: 12px; border: 1px solid var(--black); background: #eef4ff; }
+      .capability-flow div:not(:last-child)::after { content: "→"; position: absolute; right: -11px; top: 42px; z-index: 2; }
+      .capability-flow strong { display: block; margin-bottom: 7px; font: 700 11px/1.3 var(--mono); text-transform: uppercase; }
+      .capability-flow span { color: var(--muted); font-size: 12px; }
+
+      .sequence { display: grid; gap: 0; border: 1px solid var(--black); }
+      .sequence-row { display: grid; grid-template-columns: 48px 190px 1fr; gap: 12px; align-items: center; min-height: 64px; padding: 10px 14px; border-bottom: 1px solid var(--black); }
+      .sequence-row:last-child { border-bottom: 0; }
+      .sequence-row .step { font: 700 12px/1 var(--mono); }
+      .sequence-row .owner { font: 700 12px/1.3 var(--mono); text-transform: uppercase; }
+      .sequence-row.pointer { background: var(--mint); }
+      .sequence-row.failure { background: #fff0eb; }
+
+      .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; border: 1px solid var(--black); }
+      table { width: 100%; border-collapse: collapse; background: var(--paper-strong); font-size: 13px; }
+      th, td { padding: 12px 13px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      th { background: #dedbd2; font: 700 10px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+      td code { overflow-wrap: anywhere; }
+      .yes, .no, .partial { font: 700 11px/1.2 var(--mono); text-transform: uppercase; }
+      .yes { color: var(--mint-dark); }
+      .no { color: var(--ember); }
+      .partial { color: #8a5b00; }
+
+      pre {
+        max-width: 100%;
+        margin: 0;
+        padding: 18px;
+        overflow-x: auto;
+        border: 1px solid var(--black);
+        background: var(--black);
+        color: #eeeee8;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .contract-split { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 20px; }
+      .owner-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--black); background: var(--paper-strong); }
+      .owner-list li { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 12px; border-bottom: 1px solid var(--line); }
+      .owner-list li:last-child { border-bottom: 0; }
+      .owner-list strong { font: 700 11px/1.4 var(--mono); }
+      .owner-list span { color: var(--ink); }
+
+      .threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--black); }
+      .threat { min-height: 210px; padding: 18px; border-right: 1px solid var(--black); border-bottom: 1px solid var(--black); }
+      .threat:nth-child(3n) { border-right: 0; }
+      .threat:nth-last-child(-n + 3) { border-bottom: 0; }
+      .threat h3 { font: 700 14px/1.3 var(--mono); text-transform: uppercase; }
+      .threat .control { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--mint-dark); font-size: 13px; }
+
+      .coverage { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--black); }
+      .coverage article { min-height: 210px; padding: 20px; border-right: 1px solid var(--black); }
+      .coverage article:last-child { border-right: 0; }
+      .coverage .label { display: inline-block; margin-bottom: 38px; padding: 6px 8px; border: 1px solid currentColor; font: 700 10px/1 var(--mono); text-transform: uppercase; }
+
+      .decision-list { display: grid; gap: 14px; }
+      .decision {
+        display: grid;
+        grid-template-columns: 58px minmax(240px, 0.75fr) minmax(0, 1.25fr);
+        border: 1px solid var(--black);
+        background: var(--paper-strong);
+      }
+      .decision > div { padding: 18px; border-right: 1px solid var(--black); }
+      .decision > div:last-child { border-right: 0; }
+      .decision-num { background: var(--black); color: var(--mint); font: 700 17px/1 var(--mono); }
+      .option { display: grid; grid-template-columns: 180px 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+      .option:last-child { border-bottom: 0; }
+      .option strong { font-size: 13px; }
+      .option span { color: var(--muted); font-size: 13px; }
+      .option.recommended strong::after { content: " recommended"; color: var(--blue); font: 700 9px/1 var(--mono); text-transform: uppercase; }
+
+      .falsifiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .falsifier { min-height: 160px; padding: 18px; border: 1px solid var(--black); background: #fff8df; }
+      .falsifier strong { display: block; margin-bottom: 28px; font: 700 11px/1.3 var(--mono); text-transform: uppercase; }
+
+      footer { padding: 28px clamp(20px, 4vw, 58px); background: var(--black); color: white; }
+      footer p { max-width: 100ch; margin: 0; color: #c8c9c1; font: 12px/1.7 var(--mono); }
+
+      @media (max-width: 1100px) {
+        header { grid-template-columns: 1fr; }
+        .headline-note { max-width: 520px; }
+        .decision-strip { grid-template-columns: 1fr 1fr; }
+        .decision-strip article { border-bottom: 1px solid var(--black); }
+        .prototype-stage { grid-template-columns: 1fr; }
+        .handoff { min-height: 70px; }
+        .handoff::before { top: 0; bottom: 0; left: 50%; right: auto; border-top: 0; border-left: 1px dashed var(--line-dark); }
+        [data-state="studio"] .payload { transform: translateY(18px); }
+        .diagram-grid, .contract-split { grid-template-columns: 1fr; }
+        .threat-grid { grid-template-columns: 1fr 1fr; }
+        .threat:nth-child(3n) { border-right: 1px solid var(--black); }
+        .threat:nth-child(2n) { border-right: 0; }
+        .threat:nth-last-child(-n + 3) { border-bottom: 1px solid var(--black); }
+        .threat:nth-last-child(-n + 2) { border-bottom: 0; }
+      }
+
+      @media (max-width: 720px) {
+        .page { width: 100%; margin: 0; border-left: 0; border-right: 0; box-shadow: none; }
+        .topline { align-items: flex-start; flex-direction: column; gap: 5px; }
+        header { padding: 34px 20px 38px; }
+        h1 { font-size: clamp(48px, 17vw, 80px); }
+        .section-head { grid-template-columns: 1fr; }
+        .decision-strip, .coverage, .threat-grid, .falsifiers { grid-template-columns: 1fr; }
+        .decision-strip article, .coverage article, .threat { border-right: 0; border-bottom: 1px solid var(--black); }
+        .decision-strip article:last-child, .coverage article:last-child, .threat:last-child { border-bottom: 0; }
+        .evidence-banner { grid-template-columns: 1fr; }
+        .prototype-tabs { grid-template-columns: 1fr 1fr; }
+        .prototype-tab:nth-child(2n) { border-right: 0; }
+        .prototype-tab { border-bottom: 1px solid var(--black); }
+        .prototype-stage { padding: 14px; }
+        .webpage { padding: 22px 16px; }
+        .state-copy, .decision { grid-template-columns: 1fr; }
+        .prototype-controls { width: 100%; }
+        .prototype-controls button { flex: 1; }
+        .decision > div { border-right: 0; border-bottom: 1px solid var(--black); }
+        .decision > div:last-child { border-bottom: 0; }
+        .option, .owner-list li { grid-template-columns: 1fr; }
+        .capability-flow { grid-template-columns: 1fr; }
+        .capability-flow div:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -14px; }
+        .sequence-row { grid-template-columns: 38px 1fr; }
+        .sequence-row p { grid-column: 2; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="topline">
+        <span>Contract · read before building · U1</span>
+        <span class="status-dot">Product code blocked pending Miguel review</span>
+      </div>
+
+      <header>
+        <div>
+          <p class="eyebrow">Browser capture v2 · current source audited 2026-08-30</p>
+          <h1>One element.<br />One paste.<br />One undo.</h1>
+          <p class="lede">
+            Build a Chrome extension that lets a creator point at one visible web element, lock an honest local capture, copy it, and paste it into the current HyperFrames Studio composition as one selected, visible, undoable child composition.
+          </p>
+        </div>
+        <aside class="headline-note" aria-label="Contract takeaway">
+          <strong>What this turned out to be</strong>
+          <p>
+            This is not an HTML copy button. It is an eight-boundary import transaction where hostile page state becomes inert project files, then earns the right to appear selected only after preview acknowledgement.
+          </p>
+          <p class="meta">
+            CURRENT: 859ac622c2991250ed28fbdcee4b6d2a8efea6ff<br />
+            RECOVERED: 9fcc08560dd9516abe26f67ff9afd8a5173f5ffd
+          </p>
+        </aside>
+      </header>
+
+      <nav aria-label="Contract sections">
+        <a href="#decisions">Decisions</a>
+        <a href="#prototype">Prototype</a>
+        <a href="#boundaries">Boundaries</a>
+        <a href="#representation">Representation</a>
+        <a href="#contract">Contract</a>
+        <a href="#threats">Threats</a>
+        <a href="#coverage">Coverage</a>
+        <a href="#falsify">Falsify</a>
+      </nav>
+
+      <main>
+        <section id="decisions">
+          <div class="section-head">
+            <span class="section-number">00</span>
+            <div>
+              <p class="eyebrow unknown">The gate</p>
+              <h2>Five answers before extension code.</h2>
+            </div>
+          </div>
+          <div class="decision-strip">
+            <article>
+              <span class="decision-id">EVIDENCE</span>
+              <h3>What proves the shortcut matters?</h3>
+              <p>Target creator test, manual baseline, activation signal, and stop condition are unknown.</p>
+            </article>
+            <article>
+              <span class="decision-id">D1</span>
+              <h3>Accept the clipboard warning?</h3>
+              <p>Chrome says: “Modify data you copy and paste.” Reliable copy needs explicit user comprehension.</p>
+            </article>
+            <article>
+              <span class="decision-id">D2</span>
+              <h3>Approve hybrid fidelity?</h3>
+              <p>Semantic DOM stays editable. Opaque islands become local media or a still. The whole selection may fall back.</p>
+            </article>
+            <article>
+              <span class="decision-id">D3</span>
+              <h3>Approve the motion floor?</h3>
+              <p>DOM motion is staticized in v2. Canvas, video, and WebGL may become finite local media.</p>
+            </article>
+            <article>
+              <span class="decision-id">D4</span>
+              <h3>Keep reproducibility in readiness?</h3>
+              <p>A Store candidate is not ready until two clean workspaces produce identical bytes.</p>
+            </article>
+          </div>
+          <div class="evidence-banner">
+            <strong class="unknown">Blocking unknown</strong>
+            <div>
+              <p><b>Primary creator segment, hypothesis:</b> a HyperFrames creator with rights to reuse a visible web fragment who currently rebuilds its DOM, styles, assets, and timeline placement by hand.</p>
+              <p><b>Recommended activation signal:</b> the creator completes capture, paste, and one meaningful Studio edit without help, faster than their measured manual rebuild baseline.</p>
+              <p><b>Recommended stop condition:</b> stop U2 if users cannot explain Locked versus Copied, do not know where to paste, or reject the clipboard warning after seeing the real install prompt. No target-segment session has been run yet.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="prototype">
+          <div class="section-head">
+            <span class="section-number">01</span>
+            <div>
+              <p class="eyebrow">Interactive static prototype</p>
+              <h2>The user crosses two products without a false success.</h2>
+            </div>
+          </div>
+
+          <div class="prototype" data-state="activation" id="capture-prototype">
+            <div class="prototype-tabs" role="group" aria-label="Capture journey states">
+              <button class="prototype-tab" aria-pressed="true" data-prototype-state="activation">Activation</button>
+              <button class="prototype-tab" aria-pressed="false" data-prototype-state="picking">Picking</button>
+              <button class="prototype-tab" aria-pressed="false" data-prototype-state="locked">Locked</button>
+              <button class="prototype-tab" aria-pressed="false" data-prototype-state="copied">Copied</button>
+              <button class="prototype-tab" aria-pressed="false" data-prototype-state="studio">Studio</button>
+              <button class="prototype-tab" aria-pressed="false" data-prototype-state="failure">Failure</button>
+            </div>
+
+            <div class="prototype-stage" aria-live="polite">
+              <article class="browser" aria-label="Source browser page">
+                <div class="window-bar"><i></i><i></i><i></i><span class="window-title">Source page · active tab only</span></div>
+                <div class="webpage">
+                  <div class="source-copy">
+                    <div class="tag">Independent design archive</div>
+                    <h4>Objects should explain themselves.</h4>
+                    <p>A sample source page that contains a reusable editorial card.</p>
+                    <div class="target-card">
+                      <b>Material study 07</b>
+                      <p class="small">Semantic text, local image, computed layout, and one opaque canvas island.</p>
+                    </div>
+                  </div>
+                  <div class="picker-label">article.card · 426 × 138 · Enter to lock</div>
+                  <aside class="capsule" aria-label="Locked capture capsule">
+                    <span class="kicker prototype-capsule-title">Locked · Editable + still island</span>
+                    <div class="capsule-preview" aria-hidden="true"></div>
+                    <div class="capsule-stats"><span>118 KB</span><span>2 resources</span><span>1 warning</span></div>
+                    <button class="capsule-copy" type="button" disabled>Copy to Studio</button>
+                  </aside>
+                </div>
+              </article>
+
+              <div class="handoff" aria-hidden="true"><div class="payload">V2.0<br />LOCAL<br />INERT</div></div>
+
+              <article class="studio" aria-label="HyperFrames Studio destination">
+                <div class="window-bar"><i></i><i></i><i></i><span class="window-title">HyperFrames Studio · current project</span></div>
+                <div class="studio-workspace">
+                  <div class="studio-canvas">
+                    <div class="composition">
+                      <div class="arrived-card"><b>Material study 07</b><p class="small">Selected child composition. Text remains editable.</p></div>
+                    </div>
+                  </div>
+                  <div class="timeline">
+                    <div class="track-labels">VIDEO 2<br />VIDEO 1<br />AUDIO</div>
+                    <div class="tracks"><div class="playhead"></div><div class="timeline-clip">WEB CAPTURE · 3.0s</div></div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="state-copy">
+              <div>
+                <h3 id="prototype-title">Activation is a visible result.</h3>
+                <p id="prototype-description">The packaged popup requests one active-tab injection. It closes only after the picker acknowledges. Restricted pages keep the popup open with the exact reason and Done.</p>
+              </div>
+              <div class="prototype-controls">
+                <button id="prototype-prev" type="button" disabled>Previous</button>
+                <button id="prototype-next" type="button">Next state</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="boundaries">
+          <div class="section-head">
+            <span class="section-number">02</span>
+            <div><p class="eyebrow">Boundary map</p><h2>The clipboard is a courier, not a security seal.</h2></div>
+          </div>
+          <div class="boundary-map" role="list" aria-label="End to end trust boundary map" tabindex="0">
+            <div class="boundary hostile" role="listitem"><strong>1. Hostile page</strong><p>DOM, CSS, pixels, forms, remote resources, page events, and page scripts.</p></div>
+            <div class="boundary trusted" role="listitem"><strong>2. Isolated picker</strong><p>One epoch, one target, bounded capture, protected-field redaction.</p></div>
+            <div class="boundary pending" role="listitem"><strong>3. V2 builder</strong><p>Shared schema, canonical bytes, resources, diagnostics, claims, digest.</p></div>
+            <div class="boundary hostile" role="listitem"><strong>4. OS clipboard</strong><p>Mutable, forgeable, persistent or synchronized by the operating system.</p></div>
+            <div class="boundary pending" role="listitem"><strong>5. Native paste</strong><p>Fresh bytes from the user-triggered ClipboardEvent. Exact prefix claims the event.</p></div>
+            <div class="boundary trusted" role="listitem"><strong>6. Import planner</strong><p>Parse, quotas, inert DOM, sanitizer, CSS policy, resources, identity graph.</p></div>
+            <div class="boundary hostile" role="listitem"><strong>7. Local server</strong><p>The request remains hostile until capability, Origin, Host, body, paths, and plan pass again.</p></div>
+            <div class="boundary trusted" role="listitem"><strong>8. Project + preview</strong><p>Pointer-last commit, history receipt, refresh, preview acknowledgement, selection.</p></div>
+          </div>
+          <div class="legend">
+            <span><i class="swatch" style="background:#fff0eb"></i>hostile or forgeable</span>
+            <span><i class="swatch" style="background:#f0ffe8"></i>current trusted owner</span>
+            <span><i class="swatch" style="background:#fff8df"></i>proposed, not implemented</span>
+          </div>
+        </section>
+
+        <section id="representation">
+          <div class="section-head">
+            <span class="section-number">03</span>
+            <div><p class="eyebrow">Representation and durability</p><h2>Preserve meaning until honesty forces pixels.</h2></div>
+          </div>
+          <div class="diagram-grid">
+            <article class="diagram">
+              <h3>Representation ladder</h3>
+              <div class="ladder">
+                <div class="rung"><span class="num">01</span><div><b>Editable DOM</b><p class="small muted">Safe semantics, computed styles, pseudos, open shadow composition, local resources.</p></div><span class="claim">fixed viewport</span></div>
+                <div class="rung"><span class="num">02</span><div><b>Editable DOM + opaque islands</b><p class="small muted">Canvas, video, WebGL, closed shadow, or frames replaced in place when layout stays honest.</p></div><span class="claim">hybrid</span></div>
+                <div class="rung"><span class="num">03</span><div><b>Finite local media</b><p class="small muted">Short bounded motion with explicit time claim. Deterministic seek is a separate earned claim.</p></div><span class="claim">local bytes</span></div>
+                <div class="rung"><span class="num">04</span><div><b>Still</b><p class="small muted">Complete or explicitly cropped locked pixels. Never labeled editable.</p></div><span class="claim">one frame</span></div>
+                <div class="rung"><span class="num">05</span><div><b>Rejected</b><p class="small muted">No honest representation, protected pixels, missing bytes, or a hard budget exceeded.</p></div><span class="claim">zero write</span></div>
+              </div>
+            </article>
+
+            <article class="diagram">
+              <h3>Crash-consistent sequence</h3>
+              <div class="sequence">
+                <div class="sequence-row"><span class="step">01</span><span class="owner">Client</span><p>Persist pending intent. Snapshot project, target version, playhead, and UI generation.</p></div>
+                <div class="sequence-row"><span class="step">02</span><span class="owner">Server</span><p>Authorize before body parsing. Revalidate the immutable plan and reserve fresh paths.</p></div>
+                <div class="sequence-row"><span class="step">03</span><span class="owner">Journal</span><p>Write prepared state. Stage outside served and discovery paths.</p></div>
+                <div class="sequence-row"><span class="step">04</span><span class="owner">Filesystem</span><p>Commit resources first, then the child composition.</p></div>
+                <div class="sequence-row pointer"><span class="step">05</span><span class="owner">Pointer last</span><p>Update the parent composition only after every referent exists.</p></div>
+                <div class="sequence-row"><span class="step">06</span><span class="owner">History</span><p>Persist one lifecycle receipt. Undo removes the parent reference before referents.</p></div>
+                <div class="sequence-row"><span class="step">07</span><span class="owner">Arrival</span><p>Refresh once, reload once, find the host, select it, focus it, then claim success.</p></div>
+                <div class="sequence-row failure"><span class="step">!</span><span class="owner">Failure rule</span><p>Unknown outcomes reconcile by operationId. They never trigger a blind second write.</p></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="contract">
+          <div class="section-head">
+            <span class="section-number">04</span>
+            <div><p class="eyebrow">Current contract, exact ref</p><h2>The current source accepts only an in-memory Studio copy.</h2></div>
+          </div>
+
+          <div class="table-wrap" role="region" tabindex="0" aria-label="Current runtime contracts">
+            <table>
+              <thead><tr><th>Boundary</th><th>Runtime contract and accepting line</th><th>Exists</th><th>Reachable</th><th>Written or read</th></tr></thead>
+              <tbody>
+                <tr><td>Recovered action → page</td><td><code>chrome.action.onClicked → scripting.executeScript("content.js")</code><br /><span class="muted">Producer <code>9fcc08560:packages/extension/background.js:10-17</code>. Consumer <code>9fcc08560:packages/extension/content.js:8-14</code>.</span></td><td class="yes">yes</td><td class="yes">yes on old branch</td><td class="yes">runs picker</td></tr>
+                <tr><td>Recovered picker → clipboard</td><td><code>{ _marker: "hyperframes-clipboard:v1", kind: "dom-element", html, sourceFile: page URL }</code> → page-context copy.<br /><span class="muted">Producer <code>9fcc08560:packages/extension/src/serialize.js:885-895</code>. Consumer <code>9fcc08560:packages/extension/src/picker.js:192-218</code>.</span></td><td class="yes">yes</td><td class="partial">page context only</td><td class="yes">writes text</td></tr>
+                <tr><td>Studio internal copy</td><td><code>ClipboardPayload = { kind, html, sourceFile, originSelector?, originSelectorIndex? }</code><br /><span class="muted">Producer <code>packages/studio/src/hooks/useClipboard.ts:71-130</code>. Consumer <code>packages/studio/src/hooks/useClipboard.ts:136-183</code>.</span></td><td class="yes">yes</td><td class="yes">same hook memory</td><td class="yes">one ref</td></tr>
+                <tr><td>Dormant serialized v1</td><td><code>hyperframes-clipboard:v1</code> with JSON parse and shallow field checks.<br /><span class="muted">Producer <code>packages/studio/src/utils/clipboardPayload.ts:22-32</code>. Parser <code>packages/studio/src/utils/clipboardPayload.ts:34-54</code>. No production caller found in a repository-wide symbol search at this ref.</span></td><td class="yes">yes</td><td class="no">no production path</td><td class="no">unused externally</td></tr>
+                <tr><td>Native paste → Studio</td><td>The hotkey handler prevents default on Cmd/Ctrl+V, then calls the in-memory <code>handlePaste()</code> without reading <code>ClipboardEvent.clipboardData</code>.<br /><span class="muted">Accepting lines <code>packages/studio/src/hooks/useAppHotkeys.ts:218-238</code>.</span></td><td class="no">external ingress absent</td><td class="no">OS bytes ignored</td><td class="no">not read</td></tr>
+                <tr><td>Studio file history</td><td><code>files: Record&lt;path, { before: string; after: string }&gt;</code>. It snapshots existing text, writes sequentially, then records one edit.<br /><span class="muted">Owner <code>packages/studio/src/utils/studioFileHistory.ts:6-12,66-111</code>.</span></td><td class="yes">present-only</td><td class="yes">current saves</td><td class="partial">cannot encode missing</td></tr>
+                <tr><td>File server</td><td><code>PUT /projects/:id/files/*</code> requires <code>If-Match</code> or <code>If-None-Match: *</code>, then writes and returns version plus write token.<br /><span class="muted">Consumer <code>packages/studio-server/src/routes/files.ts:2254-2359</code>.</span></td><td class="yes">yes</td><td class="yes">Vite and CLI mount shared API</td><td class="yes">writes file</td></tr>
+                <tr><td>Composition insertion</td><td><code>insertCompositionIntoSource({ projectDir, targetPath, sourcePath, parentSource, start, desiredTrack })</code> returns HTML, hostId, track, duration.<br /><span class="muted">Consumer <code>packages/studio-server/src/helpers/compositionInsertion.ts:158-222</code>. Route <code>packages/studio-server/src/routes/files.ts:2400-2474</code>.</span></td><td class="yes">yes</td><td class="yes">server route</td><td class="yes">parent rewrite</td></tr>
+                <tr><td>Browser capture v2</td><td>Shared schema, native paste ingress, sanitizer, import transaction, capability, lifecycle receipt, and arrival coordinator.</td><td class="no">not implemented</td><td class="no">not reachable</td><td class="no">no reader or writer</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="contract-split" style="margin-top:20px">
+            <div>
+              <p class="eyebrow">Proposed grammar, not runtime fact</p>
+              <pre tabindex="0"><code>reserved-prefix LF canonical-json EOF
+
+canonical-json owns exactly:
+  version       exact supported v2.0
+  audience      hyperframes-studio
+  artifact      editable-dom | finite-local-media | still
+  resources     bounded opaque ids + declared bytes + sha256
+  diagnostics   closed producer codes, sorted
+  claims        source-frame + time + reflow
+  integrity     algorithm + digest over the declared scope
+
+No raw URL. No page script. No operationId.
+No source data-hf-id. No compressed alternate form.</code></pre>
+            </div>
+            <div>
+              <p class="eyebrow">One owner, one reader</p>
+              <ul class="owner-list">
+                <li><strong>Prefix + version</strong><span>Shared v2 contract owns. Native paste broker reads once to claim or leave the event.</span></li>
+                <li><strong>Artifact union</strong><span>Pure capture classifier writes. Shared schema and Studio planner read exhaustively.</span></li>
+                <li><strong>Resources</strong><span>Capture resource builder writes. Studio and server validators read before materialization.</span></li>
+                <li><strong>Diagnostics</strong><span>Closed shared registry owns codes. Extension and Studio each own only localized copy.</span></li>
+                <li><strong>Claims</strong><span>Classifier writes source-frame, time, and reflow separately. Capsule and Studio summary read.</span></li>
+                <li><strong>Integrity</strong><span>Canonical serializer writes. Shared parser verifies before hostile DOM parsing.</span></li>
+                <li><strong>operationId</strong><span>Studio mints after paste. It never comes from the clipboard or hostile page.</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="table-wrap" style="margin-top:20px" role="region" tabindex="0" aria-label="Proposed browser capture budgets">
+            <table>
+              <thead><tr><th>Proposed budget</th><th>Hard limit</th><th>Single owner</th><th>Boundary behavior</th></tr></thead>
+              <tbody>
+                <tr><td>Clipboard items</td><td><code>1</code></td><td>Shared budget module</td><td>Any alternate item or mismatched custom MIME rejects.</td></tr>
+                <tr><td>Final UTF-8 envelope</td><td><code>2,000,000 bytes</code></td><td>Shared budget module</td><td>Count after DOM-string normalization with <code>TextEncoder</code>.</td></tr>
+                <tr><td>HTML + CSS</td><td><code>1,000,000 bytes</code></td><td>Shared budget module</td><td>Reject before inert DOM work grows unbounded.</td></tr>
+                <tr><td>DOM</td><td><code>10,000 nodes</code>, depth <code>128</code></td><td>Shared budget module</td><td>Enforce during producer traversal and consumer parse.</td></tr>
+                <tr><td>Resources</td><td><code>64</code></td><td>Shared budget module</td><td>Every entry also passes aggregate decoded and materialized caps.</td></tr>
+                <tr><td>Attribute</td><td><code>64 KiB</code></td><td>Shared budget module</td><td>Reject pathological single values before policy expansion.</td></tr>
+                <tr><td>Raster</td><td><code>16 megapixels</code></td><td>Shared budget module</td><td>Declared bytes and decoded dimensions must agree.</td></tr>
+                <tr><td>Capture deadline</td><td><code>12 seconds</code></td><td>Capture epoch</td><td>One AbortSignal owns traversal, fetch, media, and cleanup.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="diagram-grid" style="margin-top:20px">
+            <article class="diagram">
+              <h3>Validation order</h3>
+              <div class="sequence">
+                <div class="sequence-row"><span class="step">01</span><span class="owner">Route</span><p>Exact reserved prefix, then synchronously claim the native paste event.</p></div>
+                <div class="sequence-row"><span class="step">02</span><span class="owner">Bytes</span><p>Normalize the DOM string and enforce the final UTF-8 cap.</p></div>
+                <div class="sequence-row"><span class="step">03</span><span class="owner">Grammar</span><p>Canonical parse with duplicate-key and trailing-data rejection.</p></div>
+                <div class="sequence-row"><span class="step">04</span><span class="owner">Protocol</span><p>Exact v2.0 version, audience, schema, digest, and quotas.</p></div>
+                <div class="sequence-row"><span class="step">05</span><span class="owner">Policy</span><p>Inert parse, HTML and CSS policy, resources, identity graph, fresh HF ids.</p></div>
+                <div class="sequence-row"><span class="step">06</span><span class="owner">Plan</span><p>Create one immutable import plan with no hostile source strings.</p></div>
+                <div class="sequence-row"><span class="step">07</span><span class="owner">Server</span><p>Authorize, reparse, revalidate, generate trusted HTML, then commit.</p></div>
+              </div>
+            </article>
+            <article class="diagram">
+              <h3>Lifecycle receipt, proposed</h3>
+              <pre tabindex="0"><code>{
+  operationId,
+  outcome: "committed" | "rolled-back" |
+           "recovery-required",
+  targetPath,
+  address: {
+    timelineKey,
+    hostDomId,
+    hostHfId
+  },
+  lifecycle: [
+    { kind: "create", path, after, afterVersion },
+    { kind: "update", path, before, beforeVersion,
+      after, afterVersion },
+    { kind: "delete", path, before, beforeVersion }
+  ]
+}
+
+The server owns the durable outcome.
+Studio owns history registration and arrival effects.</code></pre>
+            </article>
+          </div>
+
+          <div class="diagram" style="margin-top:20px">
+            <h3>Server capability lifecycle</h3>
+            <div class="capability-flow">
+              <div><strong>Mint</strong><span>Vite or CLI server creates a high-entropy capability per process and authorized Studio session.</span></div>
+              <div><strong>Deliver</strong><span>Non-cacheable Studio bootstrap binds it to process, session, and project scope.</span></div>
+              <div><strong>Present</strong><span>Studio sends it in a non-simple request header. Origin and Host must match before body parsing.</span></div>
+              <div><strong>Authorize</strong><span>Submit, status, receipt acknowledgement, Undo, and Redo share the same deny-by-default boundary.</span></div>
+              <div><strong>Expire</strong><span>Bounded lifetime, project/session mismatch, or server restart revokes it. Replay becomes zero-write.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="threats">
+          <div class="section-head">
+            <span class="section-number">05</span>
+            <div><p class="eyebrow">Threat model and refusals</p><h2>Every layer gets its own way to say no.</h2></div>
+          </div>
+          <div class="threat-grid">
+            <article class="threat"><h3>Hostile page code</h3><p>Copy handlers, event traps, constructors, scripts, framework bundles, and shaders may try to cross the boundary.</p><p class="control"><b>Control:</b> isolated world, extension-owned clipboard context, inert parsing, closed sanitizer, zero surviving page code.</p></article>
+            <article class="threat"><h3>Forged clipboard</h3><p>Any application can forge a marker, MIME, digest, or envelope.</p><p class="control"><b>Control:</b> markers route, never authorize. Studio treats every envelope as hostile and validates from bytes.</p></article>
+            <article class="threat"><h3>Stale Studio memory</h3><p>An old internal copy can be duplicated when the OS clipboard contains unrelated text.</p><p class="control"><b>Control:</b> native event owns freshness. Unrecognized text never falls back to stale memory.</p></article>
+            <article class="threat"><h3>Remote resource escape</h3><p>HTML, SVG, or CSS may hide network and executable URLs through encoding or indirection.</p><p class="control"><b>Control:</b> one canonicalizer, local resource ids only, parsed CSS, final-tree network invariant.</p></article>
+            <article class="threat"><h3>Identity clobbering</h3><p>Duplicate ids, dangling references, source data-hf-id, or DOM clobbering can bind to the wrong object.</p><p class="control"><b>Control:</b> graph rewrite after sanitization, ambiguous referenced duplicates reject, canonical HF allocator runs last.</p></article>
+            <article class="threat"><h3>Partial commit</h3><p>A process may die after resources, child, parent, or response while the user sees no answer.</p><p class="control"><b>Control:</b> durable journal, referents first, parent pointer last, operationId reconciliation, CAS rollback.</p></article>
+            <article class="threat"><h3>Worker restart</h3><p>MV3 global state can disappear between activation, capture, and copy.</p><p class="control"><b>Control:</b> content document owns immutable locked artifact. Worker messages are idempotent and carry identity plus epoch.</p></article>
+            <article class="threat"><h3>Same-origin preview</h3><p>Current preview execution is not a containment boundary if hostile code survives.</p><p class="control"><b>Control:</b> imported page code never survives. Active-code capture requires a separate product and origin.</p></article>
+            <article class="threat"><h3>Unauthorized localhost write</h3><p>A malicious web page can target local mutation routes unless the server authenticates Studio.</p><p class="control"><b>Control:</b> server-issued capability, exact Origin and Host, non-simple header, deny CORS, authorize before body parse.</p></article>
+          </div>
+
+          <div class="table-wrap" style="margin-top:20px" role="region" tabindex="0" aria-label="Refusal codes and caller actions">
+            <table>
+              <thead><tr><th>Refusal</th><th>Layer</th><th>Meaning</th><th>Caller action</th></tr></thead>
+              <tbody>
+                <tr><td><code>activation.restricted_page</code></td><td>Popup</td><td>Chrome refused injection on this URL.</td><td>Keep popup open. Name the page restriction. Offer Done.</td></tr>
+                <tr><td><code>capture.source_changed</code></td><td>Picker</td><td>Epoch, URL, target, or observed source changed before lock.</td><td>Restore page once. Ask the user to select again.</td></tr>
+                <tr><td><code>media.protected_or_unavailable</code></td><td>Classifier</td><td>No honest complete pixels or local media exist.</td><td>Reject or label a cropped still. Never call it complete.</td></tr>
+                <tr><td><code>clipboard.write_failed</code></td><td>Capsule</td><td>The locked artifact is valid but the OS clipboard was not written.</td><td>Keep the artifact immutable. Offer Retry and Done.</td></tr>
+                <tr><td><code>protocol.unsupported_version</code></td><td>Paste broker</td><td>The reserved format is recognized but Studio does not support it.</td><td>Prevent default. Show upgrade guidance. Perform zero writes.</td></tr>
+                <tr><td><code>policy.rejected</code></td><td>Importer</td><td>Executable, network, identity, quota, or ambiguous content survived into policy evaluation.</td><td>Report the category only. Perform zero writes.</td></tr>
+                <tr><td><code>authorization.denied</code></td><td>Server</td><td>Capability, Origin, Host, session, project, or operation binding failed.</td><td>Reject before body parsing. Perform zero writes.</td></tr>
+                <tr><td><code>transaction.recovery_required</code></td><td>Server</td><td>Rollback could not safely complete after a durable boundary.</td><td>Preserve journal and expose status. Never report success or rollback.</td></tr>
+                <tr><td><code>arrival.incomplete</code></td><td>Studio</td><td>Commit and history succeeded, but preview selection or focus did not acknowledge.</td><td>Keep content and Undo. Say “Added, arrival incomplete” with the failed phase.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="coverage">
+          <div class="section-head">
+            <span class="section-number">06</span>
+            <div><p class="eyebrow">Coverage, honestly</p><h2>Source-audited is not end-to-end exercised.</h2></div>
+          </div>
+          <div class="coverage">
+            <article><span class="label fact">Audited</span><p>Current and recovered producers and consumers were opened at exact refs. Studio memory-only clipboard, dormant v1 serializer, present-only history, versioned file writes, and composition insertion were traced to accepting lines.</p></article>
+            <article><span class="label recommendation">Trusting</span><p>The proposed v2 grammar, policy taxonomy, capability lifecycle, lifecycle receipt, and package profile come from the approved plan. They do not exist at the current ref and must not be described as shipped behavior.</p></article>
+            <article><span class="label unknown">Not exercised</span><p>No target creator tested this prototype. The real Chrome permission prompt was not shown to target creators. No OS clipboard to Studio import ran. No hostile corpus, crash matrix, preview acknowledgement, Undo, pixel threshold, or deterministic double build ran.</p></article>
+          </div>
+
+          <div class="table-wrap" style="margin-top:20px" role="region" tabindex="0" aria-label="Source research findings">
+            <table>
+              <thead><tr><th>Research finding</th><th>Evidence</th><th>Consequence</th></tr></thead>
+              <tbody>
+                <tr><td>Current production paste does not read the OS clipboard.</td><td><code>useAppHotkeys.ts:234-238</code> calls the in-memory handler. <code>useClipboard.ts:136-141</code> reads <code>clipboardRef.current</code>.</td><td>A browser extension cannot reach Studio without a native ClipboardEvent ingress.</td></tr>
+                <tr><td>Current history cannot represent created or deleted files.</td><td><code>studioFileHistory.ts:6-12</code> stores only string before and after states.</td><td>Child compositions and resources cannot be safely undone until lifecycle becomes explicit.</td></tr>
+                <tr><td>Current insertion places intrinsic size at origin.</td><td><code>compositionInsertion.ts:201-216</code> writes left 0, top 0, width, and height.</td><td>Center and fit without upscaling is planned behavior, not current behavior.</td></tr>
+                <tr><td>The recovered branch runs captured page code.</td><td><code>9fcc08560:scenePayload.js:1-14,373-405</code> and <code>shader.js:582-600</code>.</td><td>The old implementation is evidence and a fixture quarry only. It is not a safe base.</td></tr>
+                <tr><td>The recovered branch requests broader access.</td><td><code>9fcc08560:manifest.json:6-7,27-48</code> requests context menus, optional all-host access, and web-accessible resources.</td><td>The v2 candidate must justify the narrow direct-flow permission set from runtime behavior.</td></tr>
+                <tr><td>Chrome’s clipboard write permission has an install warning.</td><td><a href="https://developer.chrome.com/docs/extensions/reference/permissions-list">Official Chrome permission list</a> documents “Modify data you copy and paste.”</td><td>Reliability is a product adoption tradeoff. Miguel must accept it after a target-user test.</td></tr>
+                <tr><td>Offscreen clipboard support starts at Chrome 109.</td><td><a href="https://developer.chrome.com/docs/extensions/reference/api/offscreen">Official Chrome offscreen API</a>.</td><td>The manifest floor must be derived from every runtime API actually used.</td></tr>
+                <tr><td>Local page capture still counts as user-data handling.</td><td><a href="https://developer.chrome.com/docs/webstore/program-policies/user-data-faq">Official Chrome Web Store user-data FAQ</a>.</td><td>Store readiness needs an accurate local-processing privacy disclosure even with no backend.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="open-decisions">
+          <div class="section-head">
+            <span class="section-number">07</span>
+            <div><p class="eyebrow">Miguel owns the call</p><h2>Options and consequences, no hidden default.</h2></div>
+          </div>
+          <div class="decision-list">
+            <article class="decision">
+              <div class="decision-num">E</div>
+              <div><h3>Activation and stop signal</h3><p class="small muted">This decides whether U2 has a proven user job or only an attractive implementation idea.</p></div>
+              <div>
+                <div class="option recommended"><strong>Baseline test</strong><span>Target creators complete capture, paste, and one meaningful edit without help, faster than their measured manual rebuild. Stop if the primary flow or warning is not understood.</span></div>
+                <div class="option"><strong>Build on conviction</strong><span>Proceed without target evidence. Faster start, but adoption risk stays unbounded and U1’s product gate is waived.</span></div>
+              </div>
+            </article>
+            <article class="decision">
+              <div class="decision-num">1</div>
+              <div><h3><code>clipboardWrite</code> permission</h3><p class="small muted">Chrome presents an install warning. Without an extension-owned DOM context, copy reliability falls back to page focus and hostile event behavior.</p></div>
+              <div>
+                <div class="option recommended"><strong>Accept after test</strong><span>Keep reliable offscreen copy and explain the exact warning in onboarding and Store copy.</span></div>
+                <div class="option"><strong>Reject permission</strong><span>Rescope reliability and maximum payload size. Do not hide the warning behind a weaker path.</span></div>
+              </div>
+            </article>
+            <article class="decision">
+              <div class="decision-num">2</div>
+              <div><h3>Hybrid representation</h3><p class="small muted">This decides whether fidelity or editability wins when a selection contains opaque descendants.</p></div>
+              <div>
+                <div class="option recommended"><strong>Hybrid + escape hatch</strong><span>Keep safe DOM editable, replace honest opaque islands in place, and fall back for the whole selection when layout would lie.</span></div>
+                <div class="option"><strong>Whole-selection still</strong><span>Simpler and safer, but destroys editability whenever one opaque descendant appears.</span></div>
+                <div class="option"><strong>DOM only</strong><span>Maximum editability claim, but opaque visuals disappear or become misleading. Not recommended.</span></div>
+              </div>
+            </article>
+            <article class="decision">
+              <div class="decision-num">3</div>
+              <div><h3>V2 motion floor</h3><p class="small muted">Typed motion translation multiplies scope and trust surfaces before the direct capture loop is proven.</p></div>
+              <div>
+                <div class="option recommended"><strong>Finite local media</strong><span>Staticize DOM motion at lock. Allow bounded canvas, video, and WebGL media with explicit time claims. Defer typed motion.</span></div>
+                <div class="option"><strong>Static only</strong><span>Much smaller v2, but weak for visually distinctive web fragments and likely misses the product’s emotional promise.</span></div>
+                <div class="option"><strong>Typed motion now</strong><span>More editable, but materially expands capture semantics, determinism, tests, and failure modes before activation is proven.</span></div>
+              </div>
+            </article>
+            <article class="decision">
+              <div class="decision-num">4</div>
+              <div><h3>Candidate readiness</h3><p class="small muted">Reproducibility either belongs to the candidate definition or becomes optional release work that can drift.</p></div>
+              <div>
+                <div class="option recommended"><strong>Keep two workspaces</strong><span>Candidate readiness requires identical staged tree and ZIP checksums from one immutable SHA.</span></div>
+                <div class="option"><strong>Single build</strong><span>Faster artifact, but no proof that local state, timestamps, output residue, or tool drift did not change the Store bytes.</span></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="falsify">
+          <div class="section-head">
+            <span class="section-number">08</span>
+            <div><p class="eyebrow">What would falsify this page</p><h2>A contract should be easy to prove wrong.</h2></div>
+          </div>
+          <div class="falsifiers">
+            <article class="falsifier"><strong>Current source</strong><p>A production caller of <code>deserializeClipboardPayload</code> or a native outer-document paste broker at ref <code>859ac622c</code> would falsify the claim that external ingress is absent.</p></article>
+            <article class="falsifier"><strong>User model</strong><p>Target creators who naturally expect Copy to mean “already imported” would falsify the two-product handoff copy and block U2 until the flow changes.</p></article>
+            <article class="falsifier"><strong>Permission</strong><p>A real staged package whose aggregate install prompt differs from the documented warning would reopen D1 and the manifest profile.</p></article>
+            <article class="falsifier"><strong>Representation</strong><p>A fixture where hybrid island replacement changes layout while whole-selection fallback preserves it would prove the classifier needs the escape hatch.</p></article>
+            <article class="falsifier"><strong>Security</strong><p>Any captured fixture that executes source code or makes an external request during import, preview, reload, or render falsifies the trust model.</p></article>
+            <article class="falsifier"><strong>Durability</strong><p>Any crash cut point that leaves a live parent pointing at a missing child or makes the outcome unqueryable falsifies pointer-last recovery.</p></article>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <p>
+          Sources read directly: HyperFrames OSS at 859ac622c2991250ed28fbdcee4b6d2a8efea6ff and recovered extension evidence at 9fcc08560dd9516abe26f67ff9afd8a5173f5ffd, on 2026-08-30. Negative symbol claims use repository-wide search at that ref. Proposed v2 shapes are visibly labeled and are not runtime claims. This file performs no network request and opens from file://.
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      (() => {
+        const states = [
+          {
+            id: "activation",
+            title: "Activation is a visible result.",
+            description: "The packaged popup requests one active-tab injection. It closes only after the picker acknowledges. Restricted pages keep the popup open with the exact reason and Done.",
+          },
+          {
+            id: "picking",
+            title: "Picking is fast, local, and reversible.",
+            description: "Pointer or keyboard traversal moves one open-corner viewfinder. Hover does geometry only. Enter or Space locks. Escape restores focus, page motion, listeners, and key behavior.",
+          },
+          {
+            id: "locked",
+            title: "Locked means the artifact is immutable.",
+            description: "The capsule shows a real preview, representation, bytes, resources, and bounded warnings. Reselect starts a new epoch. Copy never mutates the locked artifact.",
+          },
+          {
+            id: "copied",
+            title: "Copied means only that the clipboard was written.",
+            description: "Exact copy: “Copied. Open HyperFrames Studio and press the platform paste shortcut.” It does not claim that Studio received, accepted, or imported anything.",
+          },
+          {
+            id: "studio",
+            title: "Arrival earns the success message.",
+            description: "Studio accepts fresh native paste bytes, commits one child and one host, records one Undo, refreshes once, then waits until both models and the preview acknowledge the returned address.",
+          },
+          {
+            id: "failure",
+            title: "Failure preserves the last honest state.",
+            description: "Clipboard failure keeps Locked for Retry. Policy failure writes nothing. Unknown server outcome reconciles by operationId. Post-commit arrival failure keeps content and Undo.",
+          },
+        ];
+
+        const root = document.getElementById("capture-prototype");
+        const title = document.getElementById("prototype-title");
+        const description = document.getElementById("prototype-description");
+        const previous = document.getElementById("prototype-prev");
+        const next = document.getElementById("prototype-next");
+        const tabs = Array.from(document.querySelectorAll("[data-prototype-state]"));
+        const capsuleTitle = document.querySelector(".prototype-capsule-title");
+        let index = 0;
+
+        function render(nextIndex, focusTab = false) {
+          index = Math.max(0, Math.min(states.length - 1, nextIndex));
+          const state = states[index];
+          root.dataset.state = state.id;
+          title.textContent = state.title;
+          description.textContent = state.description;
+          previous.disabled = index === 0;
+          next.disabled = index === states.length - 1;
+          next.textContent = index === states.length - 2 ? "Show failure" : "Next state";
+          capsuleTitle.textContent = state.id === "failure" ? "Copy failed · Locked preserved" : state.id === "copied" ? "Copied · Open Studio and paste" : "Locked · Editable + still island";
+          tabs.forEach((tab, tabIndex) => {
+            const selected = tabIndex === index;
+            tab.setAttribute("aria-pressed", String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+          });
+          if (focusTab) tabs[index].focus();
+        }
+
+        previous.addEventListener("click", () => render(index - 1));
+        next.addEventListener("click", () => render(index + 1));
+        tabs.forEach((tab, tabIndex) => {
+          tab.addEventListener("click", () => render(tabIndex));
+          tab.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowRight") { event.preventDefault(); render((tabIndex + 1) % states.length, true); }
+            if (event.key === "ArrowLeft") { event.preventDefault(); render((tabIndex - 1 + states.length) % states.length, true); }
+            if (event.key === "Home") { event.preventDefault(); render(0, true); }
+            if (event.key === "End") { event.preventDefault(); render(states.length - 1, true); }
+          });
+        });
+
+        render(0);
+      })();
+    </script>
+  </body>
+</html>
