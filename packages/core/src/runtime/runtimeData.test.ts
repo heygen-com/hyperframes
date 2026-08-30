@@ -88,4 +88,24 @@ describe("runtime data registry", () => {
 
     expect(applied).toHaveBeenCalledTimes(1);
   });
+
+  it("never reports a composition-side delivery under a pending host request id", async () => {
+    const applied = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    const resolvers: Array<() => void> = [];
+    registerRuntimeDataHandler(
+      "captions",
+      () => new Promise<void>((resolve) => resolvers.push(resolve)),
+    );
+
+    // The host mints id 1 and waits on it; the composition then calls the two-argument
+    // public form, which mints an id of its own.
+    setRuntimeData("captions", "first", 1);
+    setRuntimeData("captions", "latest");
+    resolvers[1]?.();
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledTimes(1));
+
+    const [, reportedId] = applied.mock.calls[0] ?? [];
+    expect(reportedId).not.toBe(1);
+  });
 });

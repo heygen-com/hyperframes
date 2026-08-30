@@ -35,7 +35,7 @@ declare global {
         channel: string,
         handler: (payload: unknown) => void,
       ) => () => void;
-      setRuntimeData?: (channel: string, payload: unknown) => void;
+      setRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
       clearRuntimeData?: (channel: string) => void;
       [key: string]: unknown;
     };

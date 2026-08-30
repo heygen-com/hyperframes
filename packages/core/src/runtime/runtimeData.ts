@@ -28,7 +28,10 @@ function nextGeneration(channel: string): number {
 function resolveRequestId(requestId: number | undefined): number {
   if (typeof requestId === "number" && Number.isSafeInteger(requestId) && requestId > 0)
     return requestId;
-  localRequestId += 1;
+  // Guest-local ids count down so they can never collide with a host id, which is
+  // required above to be positive. A shared id space lets a composition-side call
+  // report `applied` under a host request's id while that host payload is still in flight.
+  localRequestId -= 1;
   return localRequestId;
 }
 
