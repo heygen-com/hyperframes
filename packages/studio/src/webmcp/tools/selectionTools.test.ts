@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import type { DomEditSelection } from "../../components/editor/domEditingTypes";
 import {
   studioSeek,
   studioSelect,
@@ -8,46 +7,7 @@ import {
   type StudioSeekResult,
   type StudioSelectResult,
 } from "./selectionTools";
-import type { ToolFailure, ToolResult } from "../toolResult";
-
-function previewDoc(html: string): Document {
-  const iframe = document.createElement("iframe");
-  document.body.append(iframe);
-  const doc = iframe.contentDocument;
-  if (!doc) throw new Error("expected iframe document");
-  doc.body.innerHTML = html;
-  return doc;
-}
-
-function selectionFor(element: HTMLElement): DomEditSelection {
-  return {
-    id: element.id || undefined,
-    hfId: element.getAttribute("data-hf-id") ?? undefined,
-    element,
-    label: "Headline",
-    tagName: element.tagName.toLowerCase(),
-    sourceFile: "index.html",
-    compositionPath: "index.html",
-    isCompositionHost: false,
-    isInsideLockedComposition: false,
-    boundingBox: { x: 40, y: 12, width: 880, height: 96 },
-    textContent: element.textContent,
-    dataAttributes: {},
-    inlineStyles: {},
-    computedStyles: {},
-    textFields: [],
-    capabilities: {
-      canSelect: true,
-      canEditStyles: true,
-      canCrop: true,
-      canMove: true,
-      canResize: true,
-      canApplyManualOffset: true,
-      canApplyManualSize: true,
-      canApplyManualRotation: true,
-    },
-  };
-}
+import { expectFailure, expectOk, previewDoc, selectionFor } from "../webmcpTestUtils";
 
 function selectionDeps(overrides: Partial<SelectionToolDeps> = {}): SelectionToolDeps {
   return {
@@ -58,16 +18,6 @@ function selectionDeps(overrides: Partial<SelectionToolDeps> = {}): SelectionToo
     readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
     ...overrides,
   };
-}
-
-function expectFailure(result: ToolResult<unknown>): ToolFailure {
-  if (result.ok) throw new Error(`expected failure, got ${JSON.stringify(result)}`);
-  return result;
-}
-
-function expectOk<T>(result: ToolResult<T>): { ok: true } & T {
-  if (!result.ok) throw new Error(`expected ok, got ${JSON.stringify(result)}`);
-  return result;
 }
 
 describe("studioSelect", () => {
