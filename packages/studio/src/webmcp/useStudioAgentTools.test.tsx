@@ -46,6 +46,10 @@ function deps(overrides: Partial<StudioAgentToolsDeps> = {}): StudioAgentToolsDe
     getWriteBlockedReason: () => null,
     setText: async () => ({ ok: true }),
     setStyle: async () => ({ ok: true }),
+    readBox: () => ({ x: 0, y: 0, width: 100, height: 50 }),
+    moveTo: async () => undefined,
+    resizeTo: async () => undefined,
+    rotateTo: async () => undefined,
     getGsapDiagnostics: () => ({
       animations: [],
       multipleTimelines: false,
@@ -119,6 +123,7 @@ describe("useStudioAgentTools", () => {
       "studio_inspect",
       "studio_set_text",
       "studio_set_style",
+      "studio_transform",
     ]);
     expect(trackEvent).toHaveBeenCalledWith("webmcp.native_present");
   });
@@ -133,14 +138,14 @@ describe("useStudioAgentTools", () => {
     await act(async () => {
       harness = mountTools(deps({ getSnapshot: () => snapshot() }));
     });
-    expect(registerTool).toHaveBeenCalledTimes(7);
+    expect(registerTool).toHaveBeenCalledTimes(8);
 
     await act(async () => {
       harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 5 }) }));
       harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 6 }) }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(7);
+    expect(registerTool).toHaveBeenCalledTimes(8);
   });
 
   it("executes against the LATEST deps, not the ones present at registration", async () => {
@@ -213,7 +218,7 @@ describe("useStudioAgentTools", () => {
       mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
-    expect(registerTool).toHaveBeenCalledTimes(7);
+    expect(registerTool).toHaveBeenCalledTimes(8);
   });
 
   it("reports a non-abort registration failure through production telemetry", async () => {
