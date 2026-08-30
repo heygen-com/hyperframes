@@ -730,11 +730,15 @@ class HyperframesPlayer extends HTMLElement {
    * `_paused`: that field has a second writer — the runtime's "state" message,
    * which reports the iframe's playback as of the moment it was posted. A state
    * message already in flight when `play()` runs carries the pre-play
-   * `isPlaying: false`, lands a frame later, and would end the loop for good
-   * (it has no restart path) while the player still reports `paused === false`.
-   * Cross-origin that leaves nothing driving the composition at all, because
-   * the throttled iframe rAF this clock exists to replace is not running
-   * either. Instead the two ways playback can end each stop it explicitly: the
+   * `isPlaying: false`, lands a frame later, and would end the loop for good,
+   * because it has no restart path. Cross-origin that leaves nothing driving
+   * the composition at all, because the throttled iframe rAF this clock exists
+   * to replace is not running either. The same message also writes
+   * `paused = true`, so the player is momentarily consistent with the freeze;
+   * it is the runtime's next report — still playing, since nothing actually
+   * paused it — that puts `paused` back to `false` and settles into the shape
+   * the bug was reported as: a frozen composition on a player that says it is
+   * playing. Instead the two ways playback can end each stop it explicitly: the
    * player's own pause(), seek(), new-document and disconnect paths call
    * `_stopParentTickClock` directly, and a stop the runtime initiates for
    * itself — the end of the timeline, or composition code calling pause() on
