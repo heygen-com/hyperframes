@@ -204,6 +204,9 @@ export default defineCommand({
               ok: result.ok,
               projectDir: result.projectDir,
               url: result.url,
+              // Reported beside `ok`, because they answer different questions: a capture of an
+              // error page is `ok: true` with a status the caller has to see to know it.
+              httpStatus: result.httpStatus,
               title: result.title,
               screenshots: result.screenshots.length,
               assets: result.assets.length,
