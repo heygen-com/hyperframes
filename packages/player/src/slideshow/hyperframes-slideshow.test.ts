@@ -509,6 +509,7 @@ describe("handleRuntimeMessage scenes seam", () => {
       seek: () => {},
       play: () => {},
       getLoop: () => false,
+      stopPlaybackClock: () => {},
       media: {
         audioOwner: "iframe",
         promoteToParentProxy: () => {},

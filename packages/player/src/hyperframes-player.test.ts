@@ -2501,3 +2501,112 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(() => player.setRuntimeData("captions", () => undefined)).toThrow();
   });
 });
+
+// The parent tick clock is the only thing driving a composition whose own rAF
+// Chromium has throttled — which is exactly the cross-origin case. These cover
+// the two ways it used to be torn down before it had sent a single tick.
+describe("HyperframesPlayer parent tick clock lifetime", () => {
+  type PlayerInternal = HTMLElement & {
+    iframe: HTMLIFrameElement;
+    play: () => void;
+    pause: () => void;
+    _ready: boolean;
+    _duration: number;
+    _paused: boolean;
+    _parentTickRaf: number | null;
+    _onMessage: (event: MessageEvent) => void;
+  };
+
+  let player: PlayerInternal;
+  let frameWindow: Window;
+  let postSpy: ReturnType<typeof vi.spyOn>;
+  let frames: FrameRequestCallback[];
+  const originalRaf = window.requestAnimationFrame;
+  const originalCancelRaf = window.cancelAnimationFrame;
+
+  /** Run one animation frame's worth of scheduled callbacks. */
+  const advanceFrame = () => {
+    const due = frames;
+    frames = [];
+    for (const cb of due) cb(0);
+  };
+
+  const tickCount = () =>
+    postSpy.mock.calls.filter(
+      (call) => (call[0] as { action?: string } | undefined)?.action === "tick",
+    ).length;
+
+  const stateMessage = (frame: number, isPlaying: boolean) =>
+    new MessageEvent("message", {
+      source: frameWindow,
+      data: { source: "hf-preview", type: "state", frame, isPlaying },
+    });
+
+  beforeEach(async () => {
+    frames = [];
+    window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((id: number) => {
+      frames.splice(id - 1, 1);
+    }) as typeof window.cancelAnimationFrame;
+
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as PlayerInternal;
+    frameWindow = window;
+    postSpy = vi.spyOn(frameWindow, "postMessage").mockImplementation(() => undefined);
+    Object.defineProperty(player.iframe, "contentWindow", {
+      configurable: true,
+      get: () => frameWindow,
+    });
+    document.body.appendChild(player);
+    player._ready = true;
+    player._duration = 15;
+  });
+
+  afterEach(() => {
+    player.remove();
+    vi.restoreAllMocks();
+    window.requestAnimationFrame = originalRaf;
+    window.cancelAnimationFrame = originalCancelRaf;
+  });
+
+  it("keeps ticking when a state message posted before play() lands after it", () => {
+    player.play();
+    // The runtime posts this on the frame before it receives "play", so it
+    // reports isPlaying: false and arrives while the parent is already playing.
+    player._onMessage(stateMessage(0, false));
+
+    advanceFrame();
+    advanceFrame();
+
+    expect(tickCount()).toBe(2);
+  });
+
+  it("keeps ticking when the iframe load event lands after the composition is ready", () => {
+    player.play();
+    // A composition still fetching images/fonts announces its timeline on
+    // DOMContentLoaded and only fires `load` afterwards.
+    player.iframe.dispatchEvent(new Event("load"));
+
+    advanceFrame();
+
+    expect(player._ready).toBe(true);
+    expect(tickCount()).toBe(1);
+  });
+
+  it("stops ticking once the composition reports the end of the timeline", () => {
+    player.play();
+    advanceFrame();
+    expect(tickCount()).toBe(1);
+
+    // frame 450 at the default 30fps protocol rate = 15s = the full duration.
+    player._onMessage(stateMessage(450, false));
+    advanceFrame();
+    advanceFrame();
+
+    expect(player._parentTickRaf).toBeNull();
+    expect(tickCount()).toBe(1);
+  });
+});

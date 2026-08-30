@@ -27,6 +27,7 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   setCompositionSize: vi.fn(),
   sendControl: vi.fn(),
   getIframeDoc: vi.fn(() => null),
+  stopPlaybackClock: vi.fn(),
 });
 
 const stageSizeEvent = (width: unknown, height: unknown, source: object): MessageEvent =>

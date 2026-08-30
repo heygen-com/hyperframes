@@ -294,8 +294,8 @@ class HyperframesPlayer extends HTMLElement {
     this.posterEl?.remove();
     this.posterEl = null;
     if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
-    // Must be set before _startParentTickClock so the RAF loop's `_paused`
-    // check doesn't immediately self-terminate on the first callback.
+    // Must be set before the clocks start: DirectTimelineClock polls `_paused`
+    // and would self-terminate on its first callback otherwise.
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
     if (!directTimelineStarted) {
@@ -701,14 +701,23 @@ class HyperframesPlayer extends HTMLElement {
    * Chromium (e.g. deeply nested cross-origin iframes in Electron / Claude desktop).
    * The runtime's own rAF loop still runs — ticking GSAP twice per frame is
    * harmless because seekTimelineAndAdapters is idempotent.
+   *
+   * The loop runs from `_startParentTickClock` until `_stopParentTickClock`,
+   * and nothing else decides its lifetime. In particular it must not re-read
+   * `_paused`: that field has a second writer — the runtime's "state" message,
+   * which reports the iframe's playback as of the moment it was posted. A state
+   * message already in flight when `play()` runs carries the pre-play
+   * `isPlaying: false`, lands a frame later, and would end the loop for good
+   * (it has no restart path) while the player still reports `paused === false`.
+   * Cross-origin that leaves nothing driving the composition at all, because
+   * the throttled iframe rAF this clock exists to replace is not running
+   * either. Every transition out of playback — pause(), seek(), a new document,
+   * disconnect, and the end of the timeline — calls `_stopParentTickClock`
+   * directly instead.
    */
   private _startParentTickClock(): void {
     this._stopParentTickClock();
     const tick = () => {
-      if (this._paused) {
-        this._parentTickRaf = null;
-        return;
-      }
       this._sendControl("tick");
       this._parentTickRaf = requestAnimationFrame(tick);
     };
@@ -765,6 +774,7 @@ class HyperframesPlayer extends HTMLElement {
       play: () => this.play(),
       getLoop: () => this.loop,
       media: this._media,
+      stopPlaybackClock: () => this._stopParentTickClock(),
     });
   }
 
@@ -836,7 +846,19 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
-    this._ready = false;
+    // `load` marks the end of a document's subresource fetching, not the start
+    // of a new document. The runtime announces its timeline on DOMContentLoaded,
+    // so on a composition with images/fonts/video still in flight this event
+    // arrives AFTER the player has gone ready and started driving that very
+    // document — and the teardown below would then cancel the tick clock a
+    // play() in the "ready" handler had just started.
+    //
+    // A genuinely new document is always preceded by assigning `src`/`srcdoc`,
+    // which clears `_ready` first. So a load seen while ready belongs to the
+    // document already playing and there is nothing to reset. (A composition
+    // navigating its own frame would also land here, but cross-origin the
+    // player cannot observe that in any case.)
+    if (this._ready) return;
     this._runtimeBridgeReady = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();

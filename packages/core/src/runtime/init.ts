@@ -3381,7 +3381,16 @@ export function initSandboxRuntimeModular(): void {
         runAdapters("pause");
         syncMediaForCurrentState();
         postState(true);
+        return;
       }
+      // The parent drives this tick precisely when our own rAF transport is
+      // throttled, so nothing else will report the position it just advanced
+      // to. Without this the composition animates while the embedder's
+      // playhead, "timeupdate" and end-of-playback detection stay frozen at
+      // the last frame the local transport managed to post. postState's own
+      // change/interval filter keeps the message rate the same as the local
+      // transport's.
+      postState(false);
     },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),

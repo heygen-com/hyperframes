@@ -3307,3 +3307,65 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 });
+
+describe("parent-driven transport tick", () => {
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    (globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS ??= {};
+    globalThis.CSS.escape ??= (value: string) => value;
+    // The recursive schedule inside transportTick is short-circuited by the
+    // runtime's own re-entry guard, so a synchronous rAF runs the local
+    // transport exactly once and then leaves it stopped — which is the state
+    // this suite needs: a frame whose own rAF has stopped delivering.
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
+  });
+
+  afterEach(() => {
+    window.__hfRuntimeTeardown?.();
+    document.body.innerHTML = "";
+    window.__timelines = {} as Record<string, RuntimeTimelineLike>;
+    delete window.__player;
+    delete window.__playerReady;
+    vi.restoreAllMocks();
+    window.requestAnimationFrame = originalRequestAnimationFrame;
+    window.cancelAnimationFrame = originalCancelAnimationFrame;
+  });
+
+  function control(action: string, extra: Record<string, unknown> = {}): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action, ...extra },
+      }),
+    );
+  }
+
+  it("posts the position a parent tick advanced to", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="10"></div>`;
+    window.__timelines = {};
+    const nowMs = vi.spyOn(performance, "now");
+    nowMs.mockReturnValue(1_000);
+    initSandboxRuntimeModular();
+
+    const posted: Record<string, unknown>[] = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      posted.push(message as Record<string, unknown>);
+    });
+
+    control("play");
+    nowMs.mockReturnValue(3_000);
+    control("tick");
+
+    const states = posted.filter((m) => m["type"] === "state");
+    // 2s of wall clock at the default 30fps canonical rate = frame 60. Without
+    // the tick reporting the position it advanced to, the embedder only ever
+    // sees the frame the (now stopped) local transport last posted.
+    expect(states.at(-1)).toMatchObject({ frame: 60, isPlaying: true });
+  });
+});

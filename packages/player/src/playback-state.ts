@@ -25,6 +25,11 @@ export interface PlaybackStateCallbacks {
   play: () => void;
   getLoop: () => boolean;
   media: ParentMediaManager;
+  /** End the parent-driven tick clock. Reaching the end of the timeline is the
+   *  only playback stop the runtime initiates by itself, so it is the only one
+   *  that has to be relayed here; every other stop already goes through the
+   *  player's own pause() / seek() / teardown paths. */
+  stopPlaybackClock: () => void;
 }
 
 /**
@@ -76,6 +81,7 @@ export function applyRuntimeStateMessage(
 
   if (completedPlayback) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
+    callbacks.stopPlaybackClock();
     next.paused = true;
     callbacks.updateControlsPlaying(false);
     callbacks.dispatchEvent(new Event("ended"));
