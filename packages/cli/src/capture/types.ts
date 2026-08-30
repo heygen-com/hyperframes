@@ -69,6 +69,11 @@ export interface CaptureResult {
   projectDir: string;
   /** Source URL */
   url: string;
+  /**
+   * What the server answered for `url`, after redirects; null when navigation produced no
+   * response. Also persisted to `extracted/response.json` for out-of-process consumers.
+   */
+  httpStatus: number | null;
   /** Page title */
   title: string;
   /** Extracted HTML data */
