@@ -2090,7 +2090,9 @@ export async function compileForRender(
  * Discover media elements from the browser DOM after JavaScript has run.
  * This catches videos/audios whose `src` is set dynamically via JS
  * (e.g. `document.getElementById("pip-video").src = URL`), which the
- * static regex parsers miss because the HTML has `src=""`.
+ * static regex parsers miss because the HTML has `src=""`. Clips are keyed
+ * by `data-hf-render-id` when present — author ids collide across inlined
+ * scenes, and this snapshot is the only identity those empty-src elements get.
  */
 export interface BrowserMediaElement {
   id: string;
@@ -2152,7 +2154,14 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         : htmlEl.tagName.toLowerCase() === "video"
           ? "video"
           : "audio";
-      const id = htmlEl.id || (isImage ? autoImageIds.get(htmlEl) : undefined);
+      // Render id is document-unique after inlining; author id is only unique
+      // per composition file. Empty-src media is skipped by the static parse
+      // and lives or dies on this snapshot — keying by author id collapses
+      // colliding scenes onto one clip (residual of #3340).
+      const id =
+        htmlEl.getAttribute("data-hf-render-id") ||
+        htmlEl.id ||
+        (isImage ? autoImageIds.get(htmlEl) : undefined);
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
@@ -2213,7 +2222,10 @@ export async function discoverAudioVolumeAutomationFromTimeline(
   const sampleStep = 1 / Math.min(60, Math.max(1, sampleFps));
   const rawWindows = await page.evaluate((ids: string[]) => {
     return ids.flatMap((id) => {
-      const el = document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+      const el =
+        window.__hfMediaEl?.(id) ??
+        document.getElementById(id) ??
+        document.getElementById(id.replace(/-audio$/, ""));
       if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) return [];
       return [
         {
@@ -2302,7 +2314,9 @@ export async function discoverAudioVolumeAutomationFromTimeline(
 
       for (const { id, start, end } of clips) {
         const el =
-          document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+          window.__hfMediaEl?.(id) ??
+          document.getElementById(id) ??
+          document.getElementById(id.replace(/-audio$/, ""));
         if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) continue;
 
         const sampleStart = Math.max(0, start);
@@ -2419,7 +2433,7 @@ export async function discoverVideoVisibilityFromTimeline(
       lastVisible: number | null;
     }[] = [];
     for (const videoEl of videos) {
-      const id = videoEl.id;
+      const id = videoEl.getAttribute?.("data-hf-render-id") || videoEl.id;
       if (!id) continue;
       entries.push({
         id,

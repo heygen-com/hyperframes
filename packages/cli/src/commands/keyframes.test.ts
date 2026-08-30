@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -28,6 +28,29 @@ describe("keyframes direct composition scope", () => {
 });
 
 describe("keyframes shot output", () => {
+  it("rejects an output path that would overwrite the composition source", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-source-"));
+    const sourcePath = join(projectDir, "index.html");
+    writeFileSync(sourcePath, wrap(""));
+
+    expect(() => ensureShotOutputDir(sourcePath, sourcePath)).toThrow(
+      /must not overwrite the composition source/,
+    );
+    expect(readFileSync(sourcePath, "utf8")).toBe(wrap(""));
+  });
+
+  it("rejects an existing output alias that refers to the composition source", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-alias-"));
+    const sourcePath = join(projectDir, "index.html");
+    const aliasPath = join(projectDir, "shot.png");
+    writeFileSync(sourcePath, wrap(""));
+    linkSync(sourcePath, aliasPath);
+
+    expect(() => ensureShotOutputDir(aliasPath, sourcePath)).toThrow(
+      /must not overwrite the composition source/,
+    );
+  });
+
   it("creates a missing parent directory before writing --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-dir-"));
     const outputDir = join(projectDir, "nested", "proofs");

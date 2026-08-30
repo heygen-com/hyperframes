@@ -1,11 +1,14 @@
 import { useCallback, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import {
   StudioFileConflictError,
+  buildStudioSaveFailureProperties,
+  trackStudioSaveFailure,
   type StudioSaveDrainResult,
 } from "../utils/studioSaveDiagnostics";
+
+const FAILURE_BURST_MS = 5_000;
 
 interface RecordEditInput {
   label: string;
@@ -58,19 +61,40 @@ export function useEditorSave({
   const refreshRafRef = useRef<number | null>(null);
   // One error toast per burst of failures — every keystroke retries the save,
   // and error toasts persist until dismissed, so don't stack duplicates.
-  const lastFailureToastAtRef = useRef(0);
+  const lastFailureToastAtRef = useRef<number | null>(null);
+  const lastFailureReportRef = useRef<{ fingerprint: string; emittedAt: number } | null>(null);
   const pendingCandidateRef = useRef<EditorSaveCandidate | null>(null);
   const inFlightRef = useRef<Promise<EditorSaveDrainResult> | null>(null);
   const inFlightCandidateRef = useRef<EditorSaveCandidate | null>(null);
 
   const reportFailure = useCallback(
     (path: string, error: unknown) => {
-      trackStudioEvent("save_failure", {
-        source: "code_editor",
-        error_message: error instanceof Error ? error.message : "unknown",
-      });
       const now = Date.now();
-      if (now - lastFailureToastAtRef.current > 5000) {
+      const properties = buildStudioSaveFailureProperties({
+        source: "code_editor",
+        error,
+        filePath: path,
+      });
+      const errorName = error instanceof Error ? error.name : typeof error;
+      const fingerprint = JSON.stringify([
+        path,
+        errorName,
+        properties.error_message,
+        properties.status_code,
+      ]);
+      const previous = lastFailureReportRef.current;
+      if (
+        previous === null ||
+        previous.fingerprint !== fingerprint ||
+        now - previous.emittedAt >= FAILURE_BURST_MS
+      ) {
+        trackStudioSaveFailure({ source: "code_editor", error, filePath: path });
+        lastFailureReportRef.current = { fingerprint, emittedAt: now };
+      }
+      if (
+        lastFailureToastAtRef.current === null ||
+        now - lastFailureToastAtRef.current >= FAILURE_BURST_MS
+      ) {
         lastFailureToastAtRef.current = now;
         showToast(
           `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
@@ -95,6 +119,7 @@ export function useEditorSave({
       })
         .then<EditorSaveDrainResult>(() => {
           if (pendingCandidateRef.current === candidate) pendingCandidateRef.current = null;
+          lastFailureReportRef.current = null;
           if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
           refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
           return { status: "clean" };

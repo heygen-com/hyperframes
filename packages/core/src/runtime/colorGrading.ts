@@ -3065,16 +3065,30 @@ function drawEntry(entry: ColorGradingEntry): boolean {
   const sourceVisibility = entry.element.style.getPropertyValue("visibility");
   const injectedFrameSource = isRenderFrameImage(source);
   if (injectedFrameSource) keepCanvasAboveSource(entry, source);
+  // When color grading hid the source (opacity:0 !important), temporarily
+  // restore the authored inline opacity so getComputedStyle reflects the CSS
+  // animation's current value instead of our own hide. Without this, a CSS
+  // entrance animation (opacity: 0→1) freezes at its first-frame value for
+  // the entire render because the !important blocks all animation effects on
+  // the property (#3329). The restore–read–rehide is synchronous, so no
+  // repaint occurs between the style writes.
+  if (hiddenByColorGrading && !injectedFrameSource) {
+    if (entry.sourceInlineOpacity !== null) {
+      entry.element.style.setProperty(
+        "opacity",
+        entry.sourceInlineOpacity,
+        entry.sourceInlineOpacityPriority || "",
+      );
+    } else {
+      entry.element.style.removeProperty("opacity");
+    }
+  }
   const computed = window.getComputedStyle(injectedFrameSource ? source : entry.element);
-  // `hideSourceElement` owns the source's inline opacity while grading is active
-  // (opacity:0 !important), so reading it back would mirror grading's own hide
-  // onto the canvas and blank it. That gate is about opacity ONLY: grading never
-  // writes `visibility`, so the source's computed visibility always tracks the
-  // clip window and has to be re-read every frame. Leaving it stale let the
-  // canvas keep an explicit `visibility: visible` and paint straight through an
-  // inactive ancestor clip's inherited `visibility: hidden`.
-  if (injectedFrameSource || !hiddenByColorGrading) {
-    entry.sourceOpacityForCanvas = computed.opacity || "1";
+  // Grading never writes `visibility`, so the source's computed visibility
+  // always tracks the clip window and has to be re-read every frame.
+  entry.sourceOpacityForCanvas = computed.opacity || "1";
+  if (hiddenByColorGrading && !injectedFrameSource) {
+    entry.element.style.setProperty("opacity", "0", "important");
   }
   entry.sourceVisibleForCanvas =
     (injectedFrameSource || sourceVisibility !== "hidden") && computed.visibility !== "hidden";

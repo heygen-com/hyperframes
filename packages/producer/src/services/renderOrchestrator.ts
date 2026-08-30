@@ -685,7 +685,13 @@ export function applyRenderWarningPolicy(
   const hasAudioProcessingFailure = job.warnings.some(
     (warning) => warning.code === "audio_processing_failed",
   );
-  if (strictness === "strict" || hasAudioProcessingFailure) {
+  // A script failure means the composition's GSAP timelines can never
+  // register — the render produces a degenerate 2-frame output that looks
+  // like a still image. Fail loudly rather than shipping garbage (#3352).
+  const hasSubTimelineScriptFailure = job.warnings.some(
+    (warning) => warning.code === "sub_timeline_script_failure",
+  );
+  if (strictness === "strict" || hasAudioProcessingFailure || hasSubTimelineScriptFailure) {
     throw new RenderQualityError(job.warnings);
   }
 }
@@ -3943,7 +3949,15 @@ async function executeRenderPipeline(input: {
       observability.checkpoint("assemble", `skipped for ${outputFormat}`);
     }
 
-    artifactTransaction.validate();
+    await artifactTransaction.validate(
+      !isPngSequence && !isGif && Number.isFinite(job.duration) && job.duration > 0
+        ? {
+            expectedDurationSeconds: job.duration,
+            fps: fpsToNumber(job.config.fps),
+            expectedFrames: captureTotalFrames,
+          }
+        : undefined,
+    );
 
     const totalElapsed = Date.now() - pipelineStart;
 
@@ -4026,7 +4040,7 @@ async function executeRenderPipeline(input: {
       }
     }
 
-    artifactTransaction.commit();
+    await artifactTransaction.commit();
     job.outputPath = outputPath;
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
     await eventPublisher.flush();

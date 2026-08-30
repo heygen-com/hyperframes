@@ -172,6 +172,10 @@ export function trackStudioSaveFailure(input: StudioSaveFailureInput): void {
   trackStudioEvent("save_failure", buildStudioSaveFailureProperties(input));
 }
 
+export function trackStudioEditBlocked(input: StudioSaveFailureInput): void {
+  trackStudioEvent("edit_blocked", buildStudioSaveFailureProperties(input));
+}
+
 export async function createStudioSaveHttpError(
   response: Response,
   fallbackMessage: string,
