@@ -52,6 +52,7 @@ describe("useDomGeometryCommits rollback", () => {
       commits!.handleDomBoxSizeCommit(selection, { width: 200, height: 160 }, { x: 30, y: 40 }),
     ).rejects.toBe(failure);
     await expect(commits!.handleDomRotationCommit(selection, { angle: 45 })).rejects.toBe(failure);
+    await expect(commits!.handleDomManualEditsReset(selection)).rejects.toBe(failure);
 
     expect(readStudioPathOffset(element)).toEqual({ x: 10, y: 20 });
     expect(readStudioBoxSize(element)).toEqual({ width: 100, height: 80 });

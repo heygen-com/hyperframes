@@ -78,7 +78,13 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
-  /** Preserve a priming edit list known to have been created by AAC re-encoding. */
+  /**
+   * @deprecated No longer used. `-avoid_negative_ts` is never passed for
+   * mp4/mov muxing (ffmpeg's `auto` default already resolves to `disabled`
+   * for those containers), so the AAC priming edit list is preserved
+   * unconditionally and this flag has no effect. See issue #3487. Kept for
+   * source compatibility; it will be removed in a future major.
+   */
   preserveAudioPrimingEditList?: boolean;
   /** Hard cap copied audio to the already-encoded video's exact duration. */
 }
@@ -693,14 +699,18 @@ export async function muxVideoWithAudio(
       args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
     }
   }
-  const copiesContainerizedAac =
-    !isWebm && shouldCopyAudio && config?.preserveAudioPrimingEditList === true;
-  // PTS bases can diverge during mux and reintroduce negative DTS. See
-  // buildEncoderArgs for the full reasoning on why that breaks playback.
-  // A freshly encoded M4A is the exception: its edit list already hides the
-  // AAC priming packet. `make_zero` discards that edit and shifts copied video
-  // forward by one AAC frame (~21ms), creating a visible first-frame offset.
-  if (!copiesContainerizedAac) args.push("-avoid_negative_ts", "make_zero");
+  // No `-avoid_negative_ts` here, in any mode. ffmpeg's default is `auto`,
+  // which the mp4/mov muxers (AVFMT_TS_NEGATIVE) already resolve to
+  // `disabled` — the correct behavior for the containers this function
+  // writes. Passing `make_zero` explicitly overrides that default and, on the
+  // dominant audio-copy path, discards the AAC priming edit list the sidecar
+  // encode created: the video start_time shifts forward one AAC frame
+  // (~21ms) and the muxer writes an empty video edit at t=0, which
+  // edit-list-honoring players (QuickTime/Safari) show as a black first
+  // frame. See issue #3487. The video-only encoder args (buildEncoderArgs)
+  // still pass the flag deliberately — those chunks are consumed as raw
+  // elementary output, not as a delivered mp4/mov.
+  //
   // Re-assert provenance here: this stage re-muxes into the delivered
   // container, and the mp4 muxer drops the encode stage's tags without the
   // use_metadata_tags flag that appendRenderProvenanceArgs adds.

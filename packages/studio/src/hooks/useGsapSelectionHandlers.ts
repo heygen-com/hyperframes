@@ -111,7 +111,7 @@ export function useGsapSelectionHandlers({
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
 
-  handleDomManualEditsReset: (sel: DomEditSelection) => void;
+  handleDomManualEditsReset: (sel: DomEditSelection) => Promise<void>;
   selectedGsapAnimations: GsapAnimation[];
   showToast: (message: string, tone?: "error" | "info") => void;
 }) {
@@ -230,7 +230,9 @@ export function useGsapSelectionHandlers({
         },
       );
       if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
-        handleDomManualEditsReset(domEditSelection);
+        // The reset owns rollback and the position commit already owns user and
+        // telemetry reporting. This is only the fire-and-forget UI boundary.
+        void handleDomManualEditsReset(domEditSelection).catch(() => undefined);
       }
     },
     [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],

@@ -1280,6 +1280,8 @@ const REMOTE_MEDIA_SUBDIR = "_remote_media";
 // have `>` inside quoted attribute values (data-title etc.).
 const REMOTE_MEDIA_TAG_RE =
   /<(?:video|audio)\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+// <source src> on media elements (picture uses srcset, not src).
+const REMOTE_SOURCE_TAG_RE = /<source\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 // Match <img> tags (including agent-pipeline-emitted variants where `src` is
 // not the first attribute). Producer-side localisation is the primary fix for
 // the remote-<img> flicker; frameCapture's `pollImagesReady`/`decodeAllImages`
@@ -1350,10 +1352,11 @@ async function downloadAndRewriteUrls(
 }
 
 /**
- * Download any remote `src` URLs on `<video>` and `<audio>` elements into a
- * local subdirectory of `downloadDir`, rewrite the HTML src attributes to
- * relative paths, and return the updated HTML along with a map of
- * `{ relativePath → absoluteLocalPath }` for callers to add to `externalAssets`.
+ * Download any remote `src` URLs on `<video>` / `<audio>` elements and their
+ * `<source>` children into a local subdirectory of `downloadDir`, rewrite the
+ * HTML src attributes to relative paths, and return the updated HTML along with
+ * a map of `{ relativePath → absoluteLocalPath }` for callers to add to
+ * `externalAssets`.
  *
  * Skips URLs that fail to download (warns and preserves the original URL so
  * the browser can still attempt the remote fetch as a fallback).
@@ -1369,12 +1372,13 @@ export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  // Collect unique HTTP URLs from <video>/<audio> src attributes.
   const urlSet = new Set<string>();
-  const re = new RegExp(REMOTE_MEDIA_TAG_RE.source, REMOTE_MEDIA_TAG_RE.flags);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    if (m[1]) urlSet.add(m[1]);
+  for (const tagRe of [REMOTE_MEDIA_TAG_RE, REMOTE_SOURCE_TAG_RE]) {
+    const re = new RegExp(tagRe.source, tagRe.flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      if (m[1]) urlSet.add(m[1]);
+    }
   }
   return downloadAndRewriteUrls(
     urlSet,
@@ -2086,7 +2090,9 @@ export async function compileForRender(
  * Discover media elements from the browser DOM after JavaScript has run.
  * This catches videos/audios whose `src` is set dynamically via JS
  * (e.g. `document.getElementById("pip-video").src = URL`), which the
- * static regex parsers miss because the HTML has `src=""`.
+ * static regex parsers miss because the HTML has `src=""`. Clips are keyed
+ * by `data-hf-render-id` when present — author ids collide across inlined
+ * scenes, and this snapshot is the only identity those empty-src elements get.
  */
 export interface BrowserMediaElement {
   id: string;
@@ -2148,7 +2154,14 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         : htmlEl.tagName.toLowerCase() === "video"
           ? "video"
           : "audio";
-      const id = htmlEl.id || (isImage ? autoImageIds.get(htmlEl) : undefined);
+      // Render id is document-unique after inlining; author id is only unique
+      // per composition file. Empty-src media is skipped by the static parse
+      // and lives or dies on this snapshot — keying by author id collapses
+      // colliding scenes onto one clip (residual of #3340).
+      const id =
+        htmlEl.getAttribute("data-hf-render-id") ||
+        htmlEl.id ||
+        (isImage ? autoImageIds.get(htmlEl) : undefined);
       if (!id) return;
 
       // currentSrc is authoritative for <video>/<audio><source> and responsive images.
@@ -2209,7 +2222,10 @@ export async function discoverAudioVolumeAutomationFromTimeline(
   const sampleStep = 1 / Math.min(60, Math.max(1, sampleFps));
   const rawWindows = await page.evaluate((ids: string[]) => {
     return ids.flatMap((id) => {
-      const el = document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+      const el =
+        window.__hfMediaEl?.(id) ??
+        document.getElementById(id) ??
+        document.getElementById(id.replace(/-audio$/, ""));
       if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) return [];
       return [
         {
@@ -2298,7 +2314,9 @@ export async function discoverAudioVolumeAutomationFromTimeline(
 
       for (const { id, start, end } of clips) {
         const el =
-          document.getElementById(id) ?? document.getElementById(id.replace(/-audio$/, ""));
+          window.__hfMediaEl?.(id) ??
+          document.getElementById(id) ??
+          document.getElementById(id.replace(/-audio$/, ""));
         if (!(el instanceof HTMLAudioElement) && !(el instanceof HTMLVideoElement)) continue;
 
         const sampleStart = Math.max(0, start);
@@ -2415,7 +2433,7 @@ export async function discoverVideoVisibilityFromTimeline(
       lastVisible: number | null;
     }[] = [];
     for (const videoEl of videos) {
-      const id = videoEl.id;
+      const id = videoEl.getAttribute?.("data-hf-render-id") || videoEl.id;
       if (!id) continue;
       entries.push({
         id,

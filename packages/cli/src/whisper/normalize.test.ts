@@ -292,6 +292,53 @@ Render video. Built for agents.
     expect(cues).toEqual([{ text: "你好世界", start: 0, end: 1 }]);
   });
 
+  it("keeps phrase-level CJK entries as separate cues", () => {
+    // Chinese has no inter-word spaces, so the whitespace test cannot see
+    // that these are phrases; they used to collapse into one cue spanning
+    // the whole transcript.
+    const cues = wordsToCues([
+      { text: "这是第一个句子", start: 0, end: 2 },
+      { text: "这是第二个句子", start: 2, end: 4 },
+      { text: "这是第三个句子", start: 4, end: 6 },
+    ]);
+    expect(cues).toHaveLength(3);
+    expect(cues[0]).toEqual({
+      text: "这是第一个句子",
+      start: 0,
+      end: 2,
+    });
+  });
+
+  it("keeps phrase-level Thai entries as separate cues", () => {
+    const cues = wordsToCues([
+      { text: "สวัสดีครับ", start: 0, end: 2 },
+      { text: "ยินดีต้อนรับ", start: 2, end: 4 },
+    ]);
+    expect(cues).toHaveLength(2);
+  });
+
+  it("treats entries at the length threshold as phrases", () => {
+    // Four characters is the boundary: at or above it the entries are read as
+    // phrase-level cues, below it as word-level tokens.
+    const cues = wordsToCues([
+      { text: "你好世界", start: 0, end: 2 },
+      { text: "谢谢大家", start: 2, end: 4 },
+    ]);
+    expect(cues).toHaveLength(2);
+  });
+
+  it("still groups word-level CJK tokens into cues", () => {
+    // The mirror of the case above: short per-token entries are word-level
+    // whisper output and must still be joined.
+    const cues = wordsToCues([
+      { text: "你", start: 0, end: 0.3 },
+      { text: "好", start: 0.3, end: 0.6 },
+      { text: "世", start: 0.6, end: 0.9 },
+      { text: "界", start: 0.9, end: 1.2 },
+    ]);
+    expect(cues).toEqual([{ text: "你好世界", start: 0, end: 1.2 }]);
+  });
+
   it("preserves single-word cue boundaries when preGrouped", () => {
     // Phrase-level cues without internal whitespace (one-word or CJK captions)
     // must not merge — auto-detection can't see them, so the caller forces it.

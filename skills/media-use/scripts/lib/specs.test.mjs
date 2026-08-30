@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { probeSpecs } from "./specs.mjs";
+import { describeDownload, freeSpaceMB, probeSpecs, weightsCacheDir } from "./specs.mjs";
 
 // Fake os module + exec so the probe is deterministic across CI machines.
 const fakeOs = (over = {}) => ({
@@ -72,4 +72,86 @@ test("no GPU when nvidia-smi is absent / fails", () => {
   });
   assert.equal(s.gpu.present, false);
   assert.equal(s.gpu.vramMB, 0);
+});
+
+// --- download disclosure: what the user is agreeing to before the pull ---
+
+const fakeHome = { homedir: () => "/home/tester" };
+// statfs reports blocks, not bytes: bavail * bsize. 1 MB blocks keep the sums
+// readable, and mirror the real struct's shape.
+const fakeStatfs = (freeMB, existsOnly) => (path) => {
+  if (existsOnly && path !== existsOnly) throw new Error(`ENOENT: ${path}`);
+  return { bavail: freeMB, bsize: 1e6 };
+};
+
+test("weightsCacheDir follows huggingface_hub's precedence", () => {
+  assert.equal(
+    weightsCacheDir({ env: {}, osMod: fakeHome }),
+    "/home/tester/.cache/huggingface/hub",
+  );
+  assert.equal(weightsCacheDir({ env: { HF_HOME: "/data/hf" }, osMod: fakeHome }), "/data/hf/hub");
+  assert.equal(
+    weightsCacheDir({ env: { HF_HOME: "/data/hf", HUGGINGFACE_HUB_CACHE: "/c" }, osMod: fakeHome }),
+    "/c",
+    "HUGGINGFACE_HUB_CACHE outranks HF_HOME",
+  );
+  assert.equal(
+    weightsCacheDir({ env: { HF_HUB_CACHE: "/a", HUGGINGFACE_HUB_CACHE: "/c" }, osMod: fakeHome }),
+    "/a",
+    "HF_HUB_CACHE wins outright",
+  );
+});
+
+test("freeSpaceMB walks up to the deepest existing ancestor", () => {
+  // the cache dir does not exist until the first download, and statfs throws
+  // on a missing path - so the answer has to come from an ancestor
+  const statfs = fakeStatfs(4096, "/home");
+  assert.equal(freeSpaceMB("/home/tester/.cache/huggingface/hub", statfs), 4096);
+});
+
+test("freeSpaceMB reports null rather than zero when nothing can be read", () => {
+  assert.equal(
+    freeSpaceMB("/home/tester/.cache", () => {
+      throw new Error("EACCES");
+    }),
+    null,
+    "unknown must not be reported as no-space",
+  );
+});
+
+test("describeDownload names the size and where it lands", () => {
+  const msg = describeDownload(87500, {
+    statfsFn: fakeStatfs(200000),
+    env: {},
+    osMod: fakeHome,
+  });
+  assert.match(msg, /~87\.5GB/);
+  assert.match(msg, /\/home\/tester\/\.cache\/huggingface\/hub/);
+  assert.match(msg, /200\.0GB free/);
+  assert.equal(/NOT fit/.test(msg), false, "it fits, so no warning");
+});
+
+test("describeDownload says plainly when the weights will not fit", () => {
+  const msg = describeDownload(87500, {
+    statfsFn: fakeStatfs(14000),
+    env: {},
+    osMod: fakeHome,
+  });
+  assert.match(msg, /only 14\.0GB is free there/);
+  assert.match(msg, /will NOT fit as-is/);
+  // the tier is still described, not withheld: a machine that could free up
+  // space should know the tier exists
+  assert.match(msg, /~87\.5GB/);
+});
+
+test("describeDownload admits when free space is unknown", () => {
+  const msg = describeDownload(87500, {
+    statfsFn: () => {
+      throw new Error("EACCES");
+    },
+    env: {},
+    osMod: fakeHome,
+  });
+  assert.match(msg, /free space unknown/);
+  assert.equal(/NOT fit/.test(msg), false, "unknown is not a refusal");
 });

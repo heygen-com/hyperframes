@@ -324,6 +324,13 @@ export async function beginFrameSessionNeedsScreenshotFallback(
   return !(await probe(session.page, timeoutMs, probeTick, session.beginFrameIntervalMs));
 }
 
+function frameNumberFromFileName(name: string): number | null {
+  const match = /(\d+)(?=\.[^.]+$)/.exec(name);
+  if (!match) return null;
+  const frameNumber = Number(match[1]);
+  return Number.isSafeInteger(frameNumber) ? frameNumber : null;
+}
+
 /**
  * Rebuild the engine's in-memory `ExtractedFrames[]` from the on-disk
  * planDir layout. `<planDir>/video-frames/<videoId>/` holds the numbered
@@ -355,13 +362,18 @@ export function rebuildExtractedFramesFromPlanDir(
       );
     }
     // framePattern looks like `frame_%05d.jpg`; sprintf isn't available at
-    // runtime so list-and-sort the directory. Sorted-by-name matches
-    // sorted-by-frame-index because the extractor writes zero-padded
-    // monotonic indices.
+    // runtime so list the directory and order numeric names by their ordinal.
+    // Width changes once FFmpeg passes the padding minimum, so lexical order
+    // would interleave frame_100000 before frame_10001.
     const ext = (extname(v.framePattern) || ".jpg").toLowerCase();
     const frames = readdirSync(outputDir)
       .filter((name) => name.toLowerCase().endsWith(ext))
-      .sort();
+      .sort((left, right) => {
+        const leftNumber = frameNumberFromFileName(left);
+        const rightNumber = frameNumberFromFileName(right);
+        if (leftNumber === null || rightNumber === null) return left.localeCompare(right);
+        return leftNumber - rightNumber || left.localeCompare(right);
+      });
     const framePaths = new Map<number, string>();
     for (let i = 0; i < frames.length; i++) {
       const frameName = frames[i];
@@ -369,8 +381,8 @@ export function rebuildExtractedFramesFromPlanDir(
       // V1 plans preserve the historical sorted-position behavior even for
       // unusual zero-based filenames. V2 materialization is sparse, so only
       // that mode derives the original index from ffmpeg's 1-based filename.
-      const numbered = indexMode === "sparse-v2" ? /(\d+)(?=\.[^.]+$)/.exec(frameName) : null;
-      const frameIndex = numbered ? Number(numbered[1]) - 1 : i;
+      const frameNumber = indexMode === "sparse-v2" ? frameNumberFromFileName(frameName) : null;
+      const frameIndex = frameNumber === null ? i : frameNumber - 1;
       framePaths.set(frameIndex, join(outputDir, frameName));
     }
     result.push({

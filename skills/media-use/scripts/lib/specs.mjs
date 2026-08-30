@@ -9,6 +9,8 @@
 // stdout as a string, or throws / returns null on failure.
 
 import os from "node:os";
+import { statfsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { execSync } from "node:child_process";
 
 function defaultExec(cmd) {
@@ -78,4 +80,53 @@ export function probeSpecs({ osMod = os, exec = defaultExec } = {}) {
     appleSilicon: platform === "darwin" && arch === "arm64",
     gpu: detectGpu(platform, arch, ramMB, exec),
   };
+}
+
+// Where Hugging Face actually puts downloaded weights. A free-space check
+// against cwd measures the wrong filesystem, so the disk question has to be
+// asked about this directory. Precedence follows huggingface_hub's own order.
+export function weightsCacheDir({ env = process.env, osMod = os } = {}) {
+  if (env.HF_HUB_CACHE) return env.HF_HUB_CACHE;
+  if (env.HUGGINGFACE_HUB_CACHE) return env.HUGGINGFACE_HUB_CACHE;
+  if (env.HF_HOME) return join(env.HF_HOME, "hub");
+  return join(osMod.homedir(), ".cache", "huggingface", "hub");
+}
+
+// Free space on the filesystem that will hold the weights. The cache dir
+// usually does not exist until the first download and statfs throws on a
+// missing path, so walk up to the deepest ancestor that does exist. Returns
+// null when even the root cannot be read, so callers can say "unknown" instead
+// of implying zero and scaring someone off a download that would have worked.
+export function freeSpaceMB(dir, statfsFn = statfsSync) {
+  let path = dir;
+  for (;;) {
+    try {
+      const { bavail, bsize } = statfsFn(path);
+      return (bavail * bsize) / 1e6;
+    } catch {
+      const parent = dirname(path);
+      if (parent === path) return null;
+      path = parent;
+    }
+  }
+}
+
+// One line the user reads BEFORE agreeing to a pull that can be tens of GB.
+// Always names the size and where it lands. When it will not fit we say so
+// plainly rather than withholding the tier: a machine that could free up space
+// should still be told the tier exists. `statfsFn` / `env` / `osMod` are
+// injectable for tests.
+export function describeDownload(
+  sizeMB,
+  { statfsFn = statfsSync, env = process.env, osMod = os } = {},
+) {
+  const dir = weightsCacheDir({ env, osMod });
+  const gb = (mb) => (mb / 1000).toFixed(1);
+  const head = `downloads ~${gb(sizeMB)}GB of weights to ${dir}`;
+  const free = freeSpaceMB(dir, statfsFn);
+  if (free == null) return `${head} (free space unknown)`;
+  if (free < sizeMB) {
+    return `${head}, but only ${gb(free)}GB is free there, so it will NOT fit as-is`;
+  }
+  return `${head} (${gb(free)}GB free there)`;
 }

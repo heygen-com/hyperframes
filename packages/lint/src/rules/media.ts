@@ -1,4 +1,4 @@
-import type { LintContext, HyperframeLintFinding } from "../context";
+import type { LintContext, HyperframeLintFinding, OpenTag } from "../context";
 import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag } from "../utils";
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 
@@ -39,6 +39,20 @@ function hasAttrName(tagSource: string, attr: string): boolean {
   const escaped = escapeRegExp(attr);
   const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
   return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
+}
+
+/** Parent `src`, else a descendant `<source src>` (matches engine resolveMediaElementSrc). */
+function mediaHasResolvableSrc(tag: OpenTag, tags: readonly OpenTag[]): boolean {
+  if (readAttr(tag.raw, "src")) return true;
+  const end = tag.closeIndex ?? tag.endIndex;
+  if (end == null) return false;
+  return tags.some(
+    (child) =>
+      child.name === "source" &&
+      child.index > tag.index &&
+      child.index < end &&
+      Boolean(readAttr(child.raw, "src")),
+  );
 }
 
 function classNamesFromAttr(classAttr: string | null): string[] {
@@ -499,7 +513,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
       if (tag.name !== "video" && tag.name !== "audio") continue;
       const hasDataStart = readAttr(tag.raw, "data-start");
       const hasId = readAttr(tag.raw, "id");
-      const hasSrc = readAttr(tag.raw, "src");
+      const hasSrc = mediaHasResolvableSrc(tag, tags);
       if (hasSrc && !hasDataStart) {
         findings.push({
           code: "media_missing_data_start",
@@ -538,9 +552,9 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
           findings.push({
             code: "media_missing_src",
             severity: "error",
-            message: `<${tag.name} id="${hasId}"> has data-start but no src attribute. The renderer cannot load this media.`,
+            message: `<${tag.name} id="${hasId}"> has data-start but no src (on the element or a <source> child). The renderer cannot load this media.`,
             elementId: hasId,
-            fixHint: `Add a src attribute to the <${tag.name}> element directly. If using <source> children, the renderer still requires src on the parent element.`,
+            fixHint: `Add src on the <${tag.name}> element, or a <source src="..."> child.`,
             snippet: truncateSnippet(tag.raw),
           });
         }

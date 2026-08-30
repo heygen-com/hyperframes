@@ -20,7 +20,7 @@ import {
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
-import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
+import { resolveMediaElementSrc, resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
 import type {
@@ -512,7 +512,12 @@ export function parseAudioElements(html: string): AudioElement[] {
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
 
   // and `type`; everything else (timing, layer, volume) is read identically.
-  const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
+  const build = (
+    el: RefResolverEl,
+    id: string,
+    src: string,
+    type: AudioElement["type"],
+  ): AudioElement => {
     const playbackRateAttr = el.getAttribute("data-playback-rate");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
@@ -524,7 +529,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const group = groupId ? groupsById.get(groupId) : undefined;
     return {
       id,
-      src: el.getAttribute("src") as string,
+      src,
       start: resolveStart(el),
       end: parseEnd(el.getAttribute("data-end")),
       mediaStart: readMediaStart(el),
@@ -553,20 +558,22 @@ export function parseAudioElements(html: string): AudioElement[] {
   const trackId = (el: RefResolverEl): string | null =>
     el.getAttribute(MEDIA_RENDER_ID_ATTR) || el.getAttribute("id");
 
-  for (const el of document.querySelectorAll("audio[id][src]")) {
+  for (const el of document.querySelectorAll("audio[id]")) {
     const id = trackId(el);
+    const src = resolveMediaElementSrc(el);
     // `memberGroupHidden` is the group's own mute: a hidden BUS drops every
     // member from the mix, the same way `isHidden` drops one track.
-    if (!id || !el.getAttribute("src") || isHidden(el) || memberGroupHidden(el)) continue;
+    if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, id, "audio"));
+    elements.push(build(el, id, src, "audio"));
   }
 
-  for (const el of document.querySelectorAll('video[id][src][data-has-audio="true"]')) {
+  for (const el of document.querySelectorAll('video[id][data-has-audio="true"]')) {
     const id = trackId(el);
-    if (!id || !el.getAttribute("src") || isHidden(el)) continue;
+    const src = resolveMediaElementSrc(el);
+    if (!id || !src || isHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, "video"));
+    elements.push(build(el, `${id}-audio`, src, "video"));
   }
 
   return elements;

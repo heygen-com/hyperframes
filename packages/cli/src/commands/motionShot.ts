@@ -10,8 +10,8 @@
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import {
@@ -33,7 +33,25 @@ export interface ShotRequest {
   selector: string;
 }
 
-export function ensureShotOutputDir(outPath: string): void {
+function pathsReferToSameFile(firstPath: string, secondPath: string): boolean {
+  const first = resolve(firstPath);
+  const second = resolve(secondPath);
+  if (first === second) return true;
+  try {
+    const firstStat = statSync(first);
+    const secondStat = statSync(second);
+    return firstStat.dev === secondStat.dev && firstStat.ino === secondStat.ino;
+  } catch {
+    return false;
+  }
+}
+
+export function ensureShotOutputDir(outPath: string, sourcePath?: string): void {
+  if (sourcePath && pathsReferToSameFile(outPath, sourcePath)) {
+    throw new Error(
+      `--shot output must not overwrite the composition source: ${sourcePath}. Choose a separate .png path.`,
+    );
+  }
   mkdirSync(dirname(outPath), { recursive: true });
 }
 
@@ -644,7 +662,7 @@ export async function captureMotionPathShot(
   outPath: string,
   opts: ShotOptions = {},
 ): Promise<string> {
-  ensureShotOutputDir(outPath);
+  ensureShotOutputDir(outPath, resolve(projectDir, opts.entryFile ?? "index.html"));
   let requests = requestsIn;
   const samples = Math.max(1, Math.min(60, opts.samples ?? 9));
   const layout = opts.layout ?? "path";

@@ -402,8 +402,6 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "copy",
       "-movflags",
       "+faststart",
-      "-avoid_negative_ts",
-      "make_zero",
       ...renderProvenanceArgs("/tmp/output.mp4"),
       "-r",
       "30",
@@ -424,7 +422,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     });
   });
 
-  it("keeps negative-timestamp repair for an M4A without a known priming edit list", async () => {
+  it("never repairs negative timestamps for an M4A sidecar (regression #3487)", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -442,13 +440,15 @@ describe("muxVideoWithAudio audio codec handling", () => {
     await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("copy");
-    expect(calls[0]!.args).toContain("-avoid_negative_ts");
+    // `make_zero` would discard the sidecar's AAC priming edit list, shift
+    // the copied video forward ~21ms and leave an empty video edit at t=0.
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
   });
 
-  it("preserves a known M4A priming edit list instead of shifting copied video", async () => {
+  it("ignores the deprecated preserveAudioPrimingEditList option", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -459,7 +459,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "/tmp/audio.duration-normalized.m4a",
       "/tmp/output.mp4",
       undefined,
-      { audioCodec: "aac", preserveAudioPrimingEditList: true },
+      { audioCodec: "aac", preserveAudioPrimingEditList: false },
       { num: 30, den: 1 },
     );
 
@@ -582,6 +582,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("aac");
     expect(calls[0]!.args).toContain("-b:a");
     expect(calls[0]!.args).toContain("+faststart");
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
@@ -629,6 +630,10 @@ describe("muxVideoWithAudio audio codec handling", () => {
       if (ext !== ".webm") await flushMuxCodecResolution();
       const call = calls[calls.length - 1]!;
       expect(call.args).not.toContain("-shortest");
+      // Same for every container we mux into: ffmpeg's `auto` default is
+      // already `disabled` for mp4/mov, and forcing `make_zero` breaks the
+      // AAC priming edit list (#3487).
+      expect(call.args).not.toContain("-avoid_negative_ts");
       emitClose(call.proc, 0);
       await muxPromise;
     }

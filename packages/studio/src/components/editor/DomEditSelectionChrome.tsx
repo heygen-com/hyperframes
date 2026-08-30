@@ -123,7 +123,7 @@ interface DomEditSelectionChromeProps {
   groupSelectionCount: number;
   blockedMoveRef: RefObject<BlockedMoveState | null>;
   gestures: GestureHandlers;
-  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** The canvas' text-editing session: what opens one, and whether one is open. */

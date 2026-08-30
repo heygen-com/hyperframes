@@ -44,7 +44,7 @@ export interface PropertyPanelProps {
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onUngroup?: () => void;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onPreviewStyle?: (prop: string, value: string) => void;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   /** Commits several data-* attributes on the SAME element in ONE atomic

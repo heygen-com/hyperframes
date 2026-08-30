@@ -29,6 +29,7 @@ import snapshotCommand, {
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
+  resolveSnapshotVideoPlaybackRate,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -259,6 +260,12 @@ describe("resolveSnapshotVideoClipStart", () => {
         runtimeResolvedStart: null,
       }),
     ).toBe(3);
+  });
+});
+
+describe("resolveSnapshotVideoPlaybackRate", () => {
+  it("prefers the authored data-playback-rate over the browser default", () => {
+    expect(resolveSnapshotVideoPlaybackRate({ authoredRate: "1.8", defaultRate: 1 })).toBe(1.8);
   });
 });
 

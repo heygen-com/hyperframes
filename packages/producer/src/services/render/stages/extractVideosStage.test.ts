@@ -205,14 +205,14 @@ describe("shouldCopyExtractedFrames", () => {
 });
 
 describe("resolveVideoExtractionPolicy", () => {
-  it("preserves stable behavior by default", () => {
+  it("enforces extraction failures by default (#3372)", () => {
     expect(resolveVideoExtractionPolicy({})).toEqual({
-      failureMode: "off",
+      failureMode: "enforce",
       maxTransientRetries: 0,
     });
   });
 
-  it("allows only the bounded candidate rollout values", () => {
+  it("allows explicit opt-out or observe mode", () => {
     expect(
       resolveVideoExtractionPolicy({
         HF_VIDEO_EXTRACTION_FAILURE_MODE: "observe",
@@ -221,10 +221,15 @@ describe("resolveVideoExtractionPolicy", () => {
     ).toEqual({ failureMode: "observe", maxTransientRetries: 1 });
     expect(
       resolveVideoExtractionPolicy({
-        HF_VIDEO_EXTRACTION_FAILURE_MODE: "unexpected",
-        HF_VIDEO_EXTRACTION_MAX_RETRIES: "1",
+        HF_VIDEO_EXTRACTION_FAILURE_MODE: "off",
       }),
     ).toEqual({ failureMode: "off", maxTransientRetries: 0 });
+    expect(
+      resolveVideoExtractionPolicy({
+        HF_VIDEO_EXTRACTION_FAILURE_MODE: "enforce",
+        HF_VIDEO_EXTRACTION_MAX_RETRIES: "1",
+      }),
+    ).toEqual({ failureMode: "enforce", maxTransientRetries: 1 });
   });
 });
 

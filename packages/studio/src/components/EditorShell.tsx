@@ -15,6 +15,7 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
+import { StudioAgentTools } from "../webmcp/StudioAgentTools";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -262,6 +263,9 @@ function EditorShellBody({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
+      {/* Renders nothing; exposes Studio's state to an agentic browser. Mounted
+          here rather than in App because it needs the DomEdit contexts. */}
+      <StudioAgentTools />
       {/* Top row: [left | preview | right] — outer padding + the 8px resize
           seams give the panels CapCut-style separation on the dark canvas. */}
       <div className="flex flex-row flex-1 min-h-0 px-px pt-px">

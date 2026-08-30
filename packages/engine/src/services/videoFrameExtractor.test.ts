@@ -871,6 +871,17 @@ describe("parseVideoElements", () => {
       expect(Number.isNaN(v.start)).toBe(false);
     }
   });
+
+  it("discovers <video> elements that use <source> children", () => {
+    const videos = parseVideoElements(
+      '<video id="rec" data-start="1" data-duration="4">' +
+        '<source src="https://cdn.example.com/rec.mp4" type="video/mp4">' +
+        '<source src="_remote_media/rec.webm" type="video/webm">' +
+        "</video>",
+    );
+    expect(videos).toHaveLength(1);
+    expect(videos[0]).toMatchObject({ id: "rec", src: "_remote_media/rec.webm", start: 1, end: 5 });
+  });
 });
 
 describe("FrameLookupTable", () => {

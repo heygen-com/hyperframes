@@ -109,6 +109,18 @@ export function resolveSnapshotVideoClipStart(input: {
   return input.runtimeResolvedStart ?? input.authoredStart;
 }
 
+/** Match runtime/render timing: authored data-playback-rate wins over the
+ * browser default, then the effective rate is clamped to the supported range. */
+export function resolveSnapshotVideoPlaybackRate(input: {
+  authoredRate: string | undefined;
+  defaultRate: number;
+}): number {
+  const authoredRate = Number.parseFloat(input.authoredRate ?? "");
+  const rawRate =
+    Number.isFinite(authoredRate) && authoredRate > 0 ? authoredRate : input.defaultRate;
+  return Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+}
+
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   if (ffmpegPath) return ffmpegPath;
   throw new Error(
@@ -425,30 +437,23 @@ async function captureSnapshots(
               const v = el as HTMLVideoElement;
               const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
               const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
-              const rawRate = v.defaultPlaybackRate;
-              const playbackRate =
-                Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
               const mediaStart =
                 parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
               const rawDuration = parseFloat(v.dataset.duration ?? "");
               const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
-              const duration =
-                Number.isFinite(rawDuration) && rawDuration > 0
-                  ? rawDuration
-                  : srcDur > 0
-                    ? Math.max(0, (srcDur - mediaStart) / playbackRate)
-                    : Number.POSITIVE_INFINITY;
               return {
                 id: v.id,
                 src: v.currentSrc || v.src,
                 authoredStart,
+                authoredRate: v.dataset.playbackRate,
+                defaultRate: v.defaultPlaybackRate,
                 runtimeResolvedStart:
                   runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
                     ? runtimeResolvedStart
                     : null,
-                duration,
+                authoredDuration:
+                  Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null,
                 srcDuration: srcDur,
-                playbackRate,
                 mediaStart,
                 loop: v.loop,
               };
@@ -456,7 +461,13 @@ async function captureSnapshots(
           });
           const active = candidates.flatMap((candidate) => {
             const start = resolveSnapshotVideoClipStart(candidate);
-            let relTime = (time - start) * candidate.playbackRate + candidate.mediaStart;
+            const playbackRate = resolveSnapshotVideoPlaybackRate(candidate);
+            const duration =
+              candidate.authoredDuration ??
+              (candidate.srcDuration > 0
+                ? Math.max(0, (candidate.srcDuration - candidate.mediaStart) / playbackRate)
+                : Number.POSITIVE_INFINITY);
+            let relTime = (time - start) * playbackRate + candidate.mediaStart;
             if (
               candidate.loop &&
               candidate.srcDuration > candidate.mediaStart &&
@@ -470,11 +481,13 @@ async function captureSnapshots(
             const frameTime = resolveSnapshotVideoFrameTime({
               globalTime: time,
               clipStart: start,
-              clipDuration: candidate.duration,
+              clipDuration: duration,
               relativeTime: relTime,
               sourceDuration: candidate.srcDuration,
             });
-            return frameTime === null ? [] : [{ ...candidate, start, relTime: frameTime }];
+            return frameTime === null
+              ? []
+              : [{ ...candidate, start, playbackRate, duration, relTime: frameTime }];
           });
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];

@@ -12,6 +12,10 @@
 // (quality that is NOT size, e.g. ASR), else by RAM footprint (the quality
 // proxy for generation). No fit -> recommend the CLI/cloud path.
 //
+// selectModelLadder() returns EVERY fitting model in that same order. Callers
+// that can retry walk it so ONE unusable entry (gated weights, a missing
+// binary, an OOM) demotes to the next tier instead of killing the local path.
+//
 // Picks reflect the 2026 research pass, verified live where noted.
 
 export const CAPABILITIES = ["tts", "asr", "upscale", "videogen", "imagegen"];
@@ -102,41 +106,49 @@ const MODELS = {
     },
   ],
   videogen: [
-    // 2026-07 X research pass + live verification on a 24GB M-series Mac.
+    // 2026-07 X research pass + live verification on a 24GB M-series Mac -
+    // which reaches the q4 tier only: a 24GB machine cannot select the 32GB
+    // entry below it, so that tier's claims stay unverified until someone
+    // runs it on a 32GB+ machine.
     // The Mac-local video story is LTX 2.3 on MLX via dgrauet/ltx-2-mlx (the
     // pipeline these weights were converted for; also powers Phosphene).
     // Wan 2.x MLX exists only as A14B conversions (too large for consumer
     // unified memory); revisit when a 5B Wan MLX conversion lands.
-    // IMPORTANT: download the weights with a targeted include list first;
-    // pointing tools at the repo blind snapshot-downloads all 60 GB:
-    //   hf download dgrauet/ltx-2.3-mlx-q4 --include \
-    //     transformer-distilled-1.1.safetensors connector.safetensors \
-    //     "vae_*.safetensors" audio_vae.safetensors vocoder.safetensors "*.json"
+    // IMPORTANT: sizeMB below is the FULL repo, because that is what a run
+    // actually downloads. Both invokes pass a repo id to `--model`, and
+    // upstream resolve_model_dir() (ltx_pipelines_mlx/utils/_orchestration.py)
+    // calls snapshot_download(repo) with no allow_patterns - so the whole repo
+    // lands regardless of what you pre-fetched. A targeted `hf download
+    // --include` subset used to be documented here; it was removed because it
+    // is both ineffective (the runner refetches the rest at generate time) and
+    // insufficient (--two-stage needs transformer-dev AND transformer-distilled
+    // AND the x2 spatial upscaler; --distilled needs an upscaler too). The q4
+    // tier verified below only worked BECAUSE the download is unfiltered.
     {
       id: "ltx-2.3-mlx-q4",
       tier: "medium",
-      sizeMB: 20000, // distilled subset; gemma-3-12b-4bit text encoder adds ~7GB
+      sizeMB: 59700, // full repo, measured 59.69GB; gemma-3-12b-4bit text encoder adds ~7GB
       needs: { ramMB: 16384, gpu: true },
       wordTimestamps: false,
       install:
-        "git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras",
+        'git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras && export PATH="$PWD/.venv/bin:$PATH"',
       invoke:
         "ltx-2-mlx generate --prompt {prompt} --distilled --low-ram --model dgrauet/ltx-2.3-mlx-q4 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
       notes:
         "LTX 2.3 int4 on MLX. Verified on 24GB unified: 512x320 x 33 frames in ~19 min cold (incl. text-encoder download), t2v with audio. Dims must be multiples of 64. i2v, retake/extend, keyframe interpolation supported.",
     },
     {
-      id: "ltx-2.3-mlx-bf16",
+      id: "ltx-2.3-mlx-q8",
       tier: "large",
-      sizeMB: 45000,
+      sizeMB: 87500, // full repo, measured 87.51GB
       needs: { ramMB: 32768, gpu: true },
       wordTimestamps: false,
       install:
-        "git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras",
+        'git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras && export PATH="$PWD/.venv/bin:$PATH"',
       invoke:
-        "ltx-2-mlx generate --prompt {prompt} --two-stage --model dgrauet/ltx-2.3-mlx-bf16 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
+        "ltx-2-mlx generate --prompt {prompt} --two-stage --low-ram --model dgrauet/ltx-2.3-mlx-q8 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
       notes:
-        "Full-precision two-stage pipeline (upstream production default). 32GB with --low-ram block streaming; 64-128GB Macs for long/HD runs (the 25s multi-scene spots seen in the wild).",
+        "LTX 2.3 int8 on MLX, two-stage (upstream production default; higher quality than the q4 distilled tier). Replaced dgrauet/ltx-2.3-mlx-bf16, which is gated (HTTP 401) and cannot be downloaded at all. Costs an 87.5GB download against q4's 59.7GB - a real tradeoff, not a rounding difference. --two-stage is dev model + CFG at half-res, upscale, then distilled LoRA refine (upstream's own help text), so it needs transformer-dev + transformer-distilled + spatial_upscaler_x2; the full snapshot carries all three. --low-ram matches this tier's 32GB floor (block streaming); 64-128GB Macs for long/HD runs. NOT live-verified on a 32GB+ machine - the q4 tier below is the verified one.",
     },
   ],
   imagegen: [
@@ -248,6 +260,23 @@ function rankedByPreference(table) {
 }
 
 /**
+ * Every local model for a capability this machine can actually run, best-first
+ * (same ordering as selectModel, whose pick is this list's head).
+ *
+ * Callers that can retry should walk the whole list: a table entry can be
+ * unusable for reasons no spec check can see - weights pulled or gated behind a
+ * login, the runner missing from PATH, an OOM at a tier that nominally fits. On
+ * a single-select call any one of those fails the entire local path, because the
+ * cascade cannot tell "this model is broken" from "nothing here fits you".
+ * Demoting to the next fitting tier is almost always what the user wanted.
+ */
+export function selectModelLadder(capability, specs, { preferTier } = {}) {
+  const table = tableFor(capability);
+  const pool = preferTier ? table.filter((m) => m.tier === preferTier) : table;
+  return rankedByPreference(pool).filter((model) => meetsSpecs(model, specs));
+}
+
+/**
  * Pick the best local model the machine can run for a capability: the
  * highest-footprint model that fits the available-RAM budget (and GPU/VRAM).
  * `preferTier` pins the search to one tier (e.g. force a smaller/faster model).
@@ -255,10 +284,8 @@ function rankedByPreference(table) {
  */
 export function selectModel(capability, specs, { preferTier } = {}) {
   const table = tableFor(capability);
-  const pool = preferTier ? table.filter((m) => m.tier === preferTier) : table;
-  for (const model of rankedByPreference(pool)) {
-    if (meetsSpecs(model, specs)) return { model, tier: model.tier };
-  }
+  const [model] = selectModelLadder(capability, specs, { preferTier });
+  if (model) return { model, tier: model.tier };
   const smallest = table.reduce((a, b) => (a.sizeMB <= b.sizeMB ? a : b));
   return {
     recommend: "cli",
@@ -280,6 +307,7 @@ export function describeModelLadder(capability, specs) {
       id: model.id,
       tier: model.tier,
       needsRamMB: model.needs?.ramMB ?? 0,
+      sizeMB: model.sizeMB,
       fits,
       reason: fits
         ? `fits (needs ~${model.needs?.ramMB}MB, ${budget}MB available)`

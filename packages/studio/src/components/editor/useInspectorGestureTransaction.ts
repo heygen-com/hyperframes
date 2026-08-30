@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-function isPromiseCommit(result: void | Promise<void>): result is Promise<void> {
+function isPromiseCommit(result: void | Promise<unknown>): result is Promise<unknown> {
   return Boolean(result && typeof result.then === "function");
 }
 
@@ -12,7 +12,7 @@ export function useInspectorGestureTransaction<T>({
 }: {
   sourceValue: T;
   onPreview: (value: T) => void;
-  onCommit: (value: T) => void | Promise<void>;
+  onCommit: (value: T) => void | Promise<unknown>;
 }) {
   const sourceRef = useRef(sourceValue);
   const activeRef = useRef<{ before: T; latest: T } | null>(null);
@@ -122,7 +122,7 @@ export function useInspectorGestureDraft<T>({
 }: {
   sourceValue: T;
   onPreview: (value: T) => void;
-  onCommit: (value: T) => void | Promise<void>;
+  onCommit: (value: T) => void | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(sourceValue);
   const transaction = useInspectorGestureTransaction({

@@ -35,7 +35,7 @@ export function FlatRow({
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
   onPreview?: (nextValue: string) => void;
-  onCommit: (nextValue: string) => void | Promise<void>;
+  onCommit: (nextValue: string) => void | Promise<unknown>;
   onReset?: () => void;
 }) {
   const track = useTrackDesignInput();

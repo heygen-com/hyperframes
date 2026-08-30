@@ -50,7 +50,7 @@ function FlatFillFields({
   element: DomEditSelection;
   styles: Record<string, string>;
   assets: string[];
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
@@ -156,7 +156,7 @@ function FlatStrokeRow({
 }: {
   styles: Record<string, string>;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const borderWidthValue =
     parsePxMetricValue(styles["border-width"] ?? "") ??
@@ -236,7 +236,7 @@ function FlatRadiusRow({
   styles: Record<string, string>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const radiusTL =
@@ -286,7 +286,7 @@ function FlatShadowBlendRows({
 }: {
   styles: Record<string, string>;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const boxShadowPreset = inferBoxShadowPreset(styles["box-shadow"]);
   const blendValue = styles["mix-blend-mode"] || "normal";
@@ -332,7 +332,7 @@ function FlatBlurSliders({
 }: {
   styles: Record<string, string>;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
@@ -378,7 +378,7 @@ function FlatOverflowMaskRows({
 }: {
   styles: Record<string, string>;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const clipPathValue = styles["clip-path"] || "none";
@@ -432,7 +432,7 @@ function FlatOpacitySlider({
 }: {
   styles: Record<string, string>;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
 
@@ -464,7 +464,7 @@ export function FlatStyleSection({
   element: DomEditSelection;
   styles: Record<string, string>;
   assets: string[];
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;

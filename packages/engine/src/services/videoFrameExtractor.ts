@@ -6,7 +6,7 @@
  * Videos are replaced with <img> elements during capture.
  */
 
-import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -55,6 +55,7 @@ import {
   type CacheEntry,
   type CacheFrameFormat,
 } from "./extractionCache.js";
+import { framePathsFromDirectory } from "./extractedFrameIndex.js";
 
 export interface VideoElement {
   id: string;
@@ -527,16 +528,39 @@ export interface ExtractionResult {
   phaseBreakdown: ExtractionPhaseBreakdown;
 }
 
+/** Minimal structural shape for resolving parent/`<source>` media `src`. */
+interface MediaSrcEl {
+  getAttribute(name: string): string | null;
+  querySelectorAll(selectors: string): Iterable<{ getAttribute(name: string): string | null }>;
+}
+
+/**
+ * Parent `src`, else a `<source src>`. Prefer local paths over http(s) so a
+ * localized sibling wins when another `<source>` failed to download.
+ */
+export function resolveMediaElementSrc(el: MediaSrcEl): string | null {
+  const direct = el.getAttribute("src");
+  if (direct) return direct;
+  let remote: string | null = null;
+  for (const source of el.querySelectorAll("source")) {
+    const src = source.getAttribute("src");
+    if (!src) continue;
+    if (!/^https?:\/\//i.test(src)) return src;
+    remote ??= src;
+  }
+  return remote;
+}
+
 export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
   const startCache = new Map<RefResolverEl, number>();
   const visiting = new Set<RefResolverEl>();
 
-  const videoEls = document.querySelectorAll("video[src]");
+  const videoEls = document.querySelectorAll("video");
   let autoIdCounter = 0;
   for (const el of videoEls) {
-    const src = el.getAttribute("src");
+    const src = resolveMediaElementSrc(el);
     if (!src) continue;
     // Generate a stable ID for videos without one — the producer needs IDs
     // to track extracted frames and composite them during encoding.
@@ -802,13 +826,7 @@ export async function extractVideoFramesRange(
     );
   }
 
-  const framePaths = new Map<number, string>();
-  const files = readdirSync(videoOutputDir)
-    .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${format}`))
-    .sort();
-  files.forEach((file, index) => {
-    framePaths.set(index, join(videoOutputDir, file));
-  });
+  const framePaths = framePathsFromDirectory(videoOutputDir, format);
   if (framePaths.size === 0 && duration > 0) {
     throw new VideoSourceExtractionError(
       "zero_output",
@@ -1180,13 +1198,6 @@ type SupersetGroupPlan = {
   members: SupersetMemberPlan[];
 };
 
-function extractedFrameFileNames(outputDir: string, format: CacheFrameFormat): string[] {
-  const suffix = `.${format}`;
-  return readdirSync(outputDir)
-    .filter((file) => file.startsWith(FRAME_FILENAME_PREFIX) && file.endsWith(suffix))
-    .sort();
-}
-
 function extractedFramesFromDirectory(
   work: PreparedExtraction,
   outputDir: string,
@@ -1194,10 +1205,7 @@ function extractedFramesFromDirectory(
   fps: number,
 ): ExtractedFrames {
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${work.format}`;
-  const framePaths = new Map<number, string>();
-  extractedFrameFileNames(outputDir, work.format).forEach((file, index) => {
-    framePaths.set(index, join(outputDir, file));
-  });
+  const framePaths = framePathsFromDirectory(outputDir, work.format);
   return {
     videoId: work.video.id,
     srcPath,

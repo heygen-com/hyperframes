@@ -25,6 +25,7 @@ import {
   partialCacheEntryDir,
   publishCacheEntry,
   readKeyStat,
+  rehydrateCacheEntry,
   type CacheKeyInput,
 } from "./extractionCache.js";
 
@@ -73,6 +74,42 @@ describe("extractionCache constants", () => {
 
   it("uses a dotfile sentinel so ls-without-A hides it", () => {
     expect(COMPLETE_SENTINEL.startsWith(".")).toBe(true);
+  });
+});
+
+describe("rehydrateCacheEntry frame identity", () => {
+  it("fails loudly when a complete cache has a frame-number gap", () => {
+    const { tmpRoot } = makeCacheRoot();
+    try {
+      writeFileSync(join(tmpRoot, "frame_00001.jpg"), "one");
+      writeFileSync(join(tmpRoot, "frame_00003.jpg"), "three");
+
+      expect(() =>
+        rehydrateCacheEntry(
+          { dir: tmpRoot, keyHash: "a".repeat(64) },
+          {
+            videoId: "video-gap",
+            srcPath: "/video.mp4",
+            fps: 30,
+            format: "jpg",
+            metadata: {
+              durationSeconds: 1,
+              videoStreamDurationSeconds: 1,
+              width: 1920,
+              height: 1080,
+              fps: 30,
+              videoCodec: "h264",
+              hasAudio: false,
+              isVFR: false,
+              hasAlpha: false,
+              colorSpace: null,
+            },
+          },
+        ),
+      ).toThrow(/missing.*frame index 1/i);
+    } finally {
+      removeCacheRoot(tmpRoot);
+    }
   });
 });
 

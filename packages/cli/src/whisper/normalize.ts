@@ -356,6 +356,47 @@ function entriesToCues(words: Word[]): Cue[] {
 // inter-word spaces.
 const CJK_CHAR = /[　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
 
+// Scripts written without inter-word spaces: the CJK ranges above plus Thai,
+// Lao, Myanmar and Khmer. Used only to decide whether entries are already
+// phrase-level — the whitespace test below cannot answer that for these
+// scripts. Hangul is excluded for the same reason as in CJK_CHAR.
+const SPACELESS_SCRIPT_CHAR = /[฀-๿຀-໿က-႟ក-៿　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
+
+// Whisper emits word-level tokens for spaceless scripts one or two characters
+// at a time, while a phrase-level cue runs to several times that. Four is
+// comfortably above the token case and below any real caption.
+const SPACELESS_PHRASE_MIN_CHARS = 4;
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length === 0) return 0;
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
+/**
+ * Whether the entries are already grouped into phrases.
+ *
+ * Any entry containing internal whitespace is a multi-word phrase, which
+ * settles it for space-separated scripts. Chinese, Japanese, Thai and the
+ * other spaceless scripts never satisfy that test, so their phrase-level
+ * transcripts used to be re-grouped into a single cue covering the whole
+ * clip. For those, fall back to entry length instead.
+ *
+ * The median, rather than `some` or `every`, keeps one long token from
+ * declaring word-level input pre-grouped and a couple of short cues (a bare
+ * yes or no) from declaring a real transcript word-level.
+ */
+function inferPreGrouped(words: Word[]): boolean {
+  if (words.some((w) => /\s/.test(w.text.trim()))) return true;
+
+  const spaceless = words.filter((w) => SPACELESS_SCRIPT_CHAR.test(w.text));
+  if (spaceless.length === 0) return false;
+
+  return median(spaceless.map((w) => w.text.trim().length)) >= SPACELESS_PHRASE_MIN_CHARS;
+}
+
 /** Join two adjacent tokens, omitting the space across a CJK boundary. */
 function joinTokens(left: string, right: string): string {
   const a = left.at(-1) ?? "";
@@ -367,10 +408,10 @@ function joinTokens(left: string, right: string): string {
 export function wordsToCues(words: Word[], opts: WordsToCuesOptions = {}): Cue[] {
   // Phrase-level transcripts (imported .srt/.vtt cues) must keep their existing
   // cue boundaries — re-grouping would merge distinct captions and lose timing.
-  // The caller can force this via `preGrouped`; otherwise infer it from the data
-  // (any entry containing internal whitespace is a multi-word phrase, so the
-  // whole transcript is phrase-level rather than word-level whisper output).
-  const preGrouped = opts.preGrouped ?? words.some((w) => /\s/.test(w.text.trim()));
+  // The caller can force this via `preGrouped`; otherwise infer it from the
+  // data — internal whitespace for space-separated scripts, entry length for
+  // the scripts that have no inter-word spaces to look for.
+  const preGrouped = opts.preGrouped ?? inferPreGrouped(words);
   if (preGrouped) return entriesToCues(words);
 
   const maxChars = opts.maxChars ?? 42;

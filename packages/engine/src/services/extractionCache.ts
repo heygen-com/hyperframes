@@ -46,9 +46,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { VideoMetadata } from "../utils/ffprobe.js";
+import { FRAME_FILENAME_PREFIX, framePathsFromDirectory } from "./extractedFrameIndex.js";
 
 /** Filename prefix for extracted frames. Shared with the extractor. */
-export const FRAME_FILENAME_PREFIX = "frame_";
+export { FRAME_FILENAME_PREFIX } from "./extractedFrameIndex.js";
 
 /** Sentinel filename written after a cache entry is fully populated. */
 export const COMPLETE_SENTINEL = ".hf-complete";
@@ -508,14 +509,7 @@ export function rehydrateCacheEntry(
   options: RehydrateOptions,
 ): RehydratedFrames {
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${options.format}`;
-  const framePaths = new Map<number, string>();
-  const suffix = `.${options.format}`;
-  const files = readdirSync(entry.dir)
-    .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(suffix))
-    .sort();
-  files.forEach((file, idx) => {
-    framePaths.set(idx, join(entry.dir, file));
-  });
+  const framePaths = framePathsFromDirectory(entry.dir, options.format);
   return {
     videoId: options.videoId,
     srcPath: options.srcPath,

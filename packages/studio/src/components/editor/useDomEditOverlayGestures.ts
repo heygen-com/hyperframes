@@ -58,6 +58,12 @@ import {
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
+import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
+
+function logGestureCommitFailure(message: string, error: unknown): void {
+  if (error instanceof DomEditSaveQueueOpenError) return;
+  console.error(message, error);
+}
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -409,7 +415,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       }
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
         .catch((error) => {
-          console.error("rotate commit failed", error);
+          logGestureCommitFailure("rotate commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
@@ -493,7 +499,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore),
       )
         .catch((error) => {
-          console.error("resize commit failed", error);
+          logGestureCommitFailure("resize commit failed", error);
         })
         .finally(() => {
           if (member) endManualOffsetDragMembers([member]);

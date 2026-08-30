@@ -35,7 +35,7 @@ function makeEl(id: string, clip: string): HTMLElement {
 
 function render(
   el: HTMLElement,
-  onStyleCommit: (property: string, value: string) => Promise<void> | void = () => undefined,
+  onStyleCommit: (property: string, value: string) => Promise<unknown> | void = () => undefined,
 ): { root: Root; rerender: (next: HTMLElement) => void } {
   const host = document.createElement("div");
   document.body.append(host);

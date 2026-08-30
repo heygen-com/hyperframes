@@ -29,7 +29,7 @@ export function MetricField({
   scrub?: boolean;
   suffix?: string;
   tooltip?: string;
-  onCommit: (nextValue: string) => void | Promise<void>;
+  onCommit: (nextValue: string) => void | Promise<unknown>;
 }) {
   const track = useTrackDesignInput();
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);

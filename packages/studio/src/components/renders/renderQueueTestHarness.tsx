@@ -49,13 +49,39 @@ export interface MountedQueue {
   unmount: () => void;
 }
 
+/**
+ * Mounts the hook, starts one render, and returns the body of the POST it
+ * made — the only place Studio states what to render and who to attribute it
+ * to, so it is what the tests around it assert on. The caller keeps the
+ * returned queue to unmount it.
+ */
+export async function startRenderAndReadBody(
+  useRenderQueueHook: UseRenderQueue,
+  {
+    activeCompPath = null,
+    opts,
+  }: { activeCompPath?: string | null; opts?: Parameters<RenderQueueApi["startRender"]>[0] } = {},
+): Promise<{ body: Record<string, unknown>; queue: MountedQueue }> {
+  const fetchMock = stubRenderFetch();
+  const queue = mountRenderQueue(useRenderQueueHook, "demo", activeCompPath);
+  await act(async () => {
+    await queue.api().startRender(opts);
+  });
+  const [post] = renderPosts(fetchMock) as [undefined | [string, RequestInit]];
+  const body = post?.[1]?.body;
+  if (body === undefined || body === null) throw new Error("hook made no POST with a body");
+  return { body: JSON.parse(String(body)) as Record<string, unknown>, queue };
+}
+
 export function mountRenderQueue(
   useRenderQueueHook: UseRenderQueue,
   projectId = "demo",
+  activeCompPath: string | null = null,
 ): MountedQueue {
   let current: RenderQueueApi | null = null;
+  const activeCompPathRef = { current: activeCompPath };
   function Harness(): null {
-    current = useRenderQueueHook(projectId);
+    current = useRenderQueueHook(projectId, activeCompPathRef);
     return null;
   }
   const host = document.createElement("div");

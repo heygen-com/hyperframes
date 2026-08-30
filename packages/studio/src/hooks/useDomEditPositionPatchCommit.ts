@@ -35,7 +35,12 @@ export function useDomEditPositionPatchCommit({
           skipRefresh: options.skipRefresh ?? true,
         });
       }).catch((error) => {
-        if (error instanceof DomEditSaveQueueOpenError) return;
+        // A paused save queue is not worth a toast: the paused-save banner is
+        // already on screen, and one toast per blocked edit is what this branch
+        // exists to prevent. It still has to REJECT, though. Swallowing it
+        // resolved the commit, which skipped the caller's revert, so the element
+        // stayed where the drag put it while nothing reached the file.
+        if (error instanceof DomEditSaveQueueOpenError) throw error;
         showToast(error instanceof Error ? error.message : "Failed to save position");
         trackStudioSaveFailure({
           source: "dom_edit",

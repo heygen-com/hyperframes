@@ -492,7 +492,9 @@ function detectSweepStatic(
   duration: number,
   geometrySignatures: string[],
   motionIssues: AnchoredLayoutIssue[],
+  hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
+  if (hasNoTimelineDeclaration) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (geometrySignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
@@ -1071,6 +1073,7 @@ export async function runAuditGrid(
     grid.duration,
     collected.geometrySignatures,
     motionIssues,
+    await driver.hasNoTimelineDeclaration(),
   );
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,

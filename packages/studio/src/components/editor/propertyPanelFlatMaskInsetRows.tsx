@@ -27,7 +27,7 @@ export function FlatMaskInsetRows({
   clipPathValue: string;
   radiusValue: number;
   disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
 }) {
   const clipPathPreset = inferClipPathPreset(clipPathValue);
   const parsedClipInsets = parseInsetClipPathSides(clipPathValue);

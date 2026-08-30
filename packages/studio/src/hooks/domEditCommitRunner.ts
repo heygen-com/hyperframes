@@ -55,3 +55,50 @@ export async function runDomEditCommit(config: DomEditCommitRunnerConfig): Promi
   if (!config.shouldResync()) return;
   await config.resync();
 }
+
+/**
+ * Why a DOM edit commit did not change the file.
+ *
+ * `runDomEditCommit` resolves on persist failure by design (see its contract
+ * above), so a caller cannot learn whether the write landed by awaiting it — a
+ * failed persist and a successful one are indistinguishable. Capture and apply
+ * bugs still reject. The human path does not need to ask about handled persist
+ * failures, because `onError` already put a toast on screen. A programmatic
+ * caller has no screen, so it has to be told.
+ */
+export type DomEditCommitDeclineReason =
+  | "no-project"
+  | "no-selection"
+  | "geometry-property"
+  | "styles-not-editable"
+  | "not-text-editable"
+  | "preview-stale"
+  | "persist-failed";
+
+export type DomEditCommitOutcome = { ok: true } | { ok: false; reason: DomEditCommitDeclineReason };
+
+export function domEditCommitDeclined(reason: DomEditCommitDeclineReason): DomEditCommitOutcome {
+  return { ok: false, reason };
+}
+
+/**
+ * `runDomEditCommit`, reporting whether the write actually landed.
+ *
+ * Owns `onSettled` to do it, and forwards to a caller-supplied one rather than
+ * dropping it. `runDomEditCommit` calls `onSettled` exactly once on both the
+ * success and the failure path, so the flag is always set by the time it
+ * resolves.
+ */
+export async function runReportedDomEditCommit(
+  config: DomEditCommitRunnerConfig,
+): Promise<DomEditCommitOutcome> {
+  let landed = false;
+  await runDomEditCommit({
+    ...config,
+    onSettled: (ok) => {
+      landed = ok;
+      config.onSettled?.(ok);
+    },
+  });
+  return landed ? { ok: true } : domEditCommitDeclined("persist-failed");
+}
