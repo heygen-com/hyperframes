@@ -1889,13 +1889,16 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
 function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
   const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
+  const hasRuntimeErrors = session.scriptLoadFailures.some((f) => f.startsWith("runtime-error:"));
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: scriptFailure
-        ? "A sub-composition timeline script failed to load"
+        ? hasRuntimeErrors
+          ? `A sub-composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
+          : `A sub-composition timeline script failed to load (${session.scriptLoadFailures.join(", ")})`
         : `Sub-composition timelines did not become ready within ${timeoutMs}ms`,
-      details: { timeoutMs },
+      details: { timeoutMs, sources: [...session.scriptLoadFailures] },
     },
   ]);
 }
@@ -2066,6 +2069,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
     if (!diagnostic.suppressHostLog) console.log(diagnostic.text);
     appendBrowserDiagnostic(session, diagnostic.text);
+
+    // Composition script runtime errors mean the GSAP timeline registration
+    // can never arrive — same fail-fast treatment as script load failures.
+    // Without this, pollSubCompositionTimelines burns the full timeout and
+    // the render silently succeeds with a degenerate 2-frame output (#3352).
+    if (type === "error" && text.startsWith("[HyperFrames] composition script error:")) {
+      const detail = text.slice("[HyperFrames] composition script error:".length).trim();
+      const compId = detail.split(" ")[0] || "unknown";
+      recordScriptLoadFailure(session, `runtime-error:${compId}`);
+    }
   });
 
   page.on("pageerror", (err) => {

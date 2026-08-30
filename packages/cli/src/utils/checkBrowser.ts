@@ -395,6 +395,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
   return {
     initialize: (contrast) => injectAuditScripts(page, contrast),
     getDuration: () => getCompositionDuration(page),
+    hasNoTimelineDeclaration: () => hasNoTimelineDeclaration(page),
     getTransitionBoundaries: () => collectTweenBoundaries(page),
     getCanvas: () =>
       page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
@@ -418,6 +419,13 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     anchorMotionIssues: (issues) => anchorLayoutIssues(page, issues),
     collectContrast: (time, annotations) => collectContrast(page, time, annotations),
   };
+}
+
+async function hasNoTimelineDeclaration(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      document.querySelector("[data-composition-id]")?.hasAttribute("data-no-timeline") ?? false,
+  );
 }
 
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {

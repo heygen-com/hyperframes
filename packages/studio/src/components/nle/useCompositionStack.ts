@@ -108,7 +108,13 @@ export function useCompositionStack({
     if (activeCompositionPath === "index.html") {
       usePlayerStore.getState().setElements([]);
       updateCompositionStack([master]);
-    } else if (activeCompositionPath && activeCompositionPath.startsWith("compositions/")) {
+    } else if (activeCompositionPath) {
+      // Any composition file that isn't the root, wherever it lives. Gating
+      // this on a `compositions/` prefix meant a project laying its comps out
+      // anywhere else (`parts/part-1.html`, generated multi-part builds) hit
+      // no branch at all: the stack kept the master mounted while the Comps
+      // panel highlighted the row, so the canvas and timeline stayed on
+      // index.html and edits landed in the root file.
       const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
       const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(activeCompositionPath)}`;
       usePlayerStore.getState().setElements([]);
@@ -116,7 +122,7 @@ export function useCompositionStack({
         if (prev[prev.length - 1]?.id === activeCompositionPath) return prev;
         return [master, { id: activeCompositionPath, label, previewUrl }];
       });
-    } else if (!activeCompositionPath) {
+    } else {
       usePlayerStore.getState().setElements([]);
       updateCompositionStack([master]);
     }

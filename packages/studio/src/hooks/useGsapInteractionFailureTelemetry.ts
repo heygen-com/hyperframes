@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import { trackStudioEditBlocked, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { isGsapEditBlockedError } from "./gsapEditOutcome";
 
 export function useGsapInteractionFailureTelemetry(
@@ -9,7 +9,10 @@ export function useGsapInteractionFailureTelemetry(
 ) {
   return useCallback(
     (error: unknown, selection: DomEditSelection | null, mutationType: string, label: string) => {
-      trackStudioSaveFailure({
+      const report = isGsapEditBlockedError(error)
+        ? trackStudioEditBlocked
+        : trackStudioSaveFailure;
+      report({
         source: "gsap_commit",
         error,
         filePath: selection?.sourceFile ?? activeCompPath ?? "index.html",

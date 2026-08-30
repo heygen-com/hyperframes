@@ -12,13 +12,8 @@ import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
  * without giving anything a second reader.
  */
 export const RenderQueuePanel = memo(function RenderQueuePanel() {
-  const {
-    projectId,
-    activeCompPath,
-    compositionDimensions,
-    waitForPendingDomEditSaves,
-    renderQueue,
-  } = useStudioShellContext();
+  const { projectId, compositionDimensions, waitForPendingDomEditSaves, renderQueue } =
+    useStudioShellContext();
 
   return (
     <RenderQueue
@@ -36,14 +31,12 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
       onRecheckFfmpeg={renderQueue.recheckFfmpeg}
       onStartRender={async (format, quality, resolution, fps) => {
         await waitForPendingDomEditSaves();
-        const composition =
-          activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
+        // No `composition`: startRender targets the active one by default.
         await renderQueue.startRender({
           fps,
           quality,
           format,
           resolution,
-          composition,
           // Render what the user is previewing: active variable overrides
           // from the Variables panel ride along (undefined = defaults).
           variables: usePreviewVariablesStore.getState().values ?? undefined,

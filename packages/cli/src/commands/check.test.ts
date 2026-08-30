@@ -145,6 +145,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
   return {
     initialize: vi.fn(async (_contrast: boolean) => undefined),
     getDuration: vi.fn(async () => 9),
+    hasNoTimelineDeclaration: vi.fn(async () => false),
     getTransitionBoundaries: vi.fn(async () => []),
     getCanvas: vi.fn(async () => ({ width: 1920, height: 1080 })),
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
@@ -1220,6 +1221,18 @@ describe("check pipeline", () => {
             finding.message.includes("did not advance"),
         ),
       ).toBe(true);
+    });
+
+    it("does not flag intentional static content declared with data-no-timeline", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        hasNoTimelineDeclaration: vi.fn(async () => true),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
     });
 
     it("does not flag a 1.5s static title card — too short for the guard to apply", async () => {
