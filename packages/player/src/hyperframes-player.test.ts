@@ -1513,6 +1513,21 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     player.remove();
   });
 
+  it("falls back to the pinned runtime for a foreign-origin runtime source", () => {
+    // A srcdoc frame inherits the embedder's origin under the default `allow-same-origin`,
+    // so an attacker-controlled host would be script execution in the embedding page.
+    const player = document.createElement("hyperframes-player") as PlayerInternal;
+    player.setAttribute("runtime-src", "https://evil.example.com/hyperframe.runtime.iife.js");
+    player.setAttribute("srcdoc", "<!doctype html><html><head></head><body></body></html>");
+    document.body.appendChild(player);
+
+    const srcdoc = player.iframe.getAttribute("srcdoc") ?? "";
+    expect(srcdoc).not.toContain("evil.example.com");
+    expect(srcdoc).toContain("hyperframe.runtime.iife.js");
+
+    player.remove();
+  });
+
   it("falls back to the pinned runtime for an unsafe runtime source", () => {
     const player = document.createElement("hyperframes-player") as PlayerInternal;
     player.setAttribute("runtime-src", 'javascript:alert("no")');
@@ -2141,6 +2156,17 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     player._onIframeLoad();
 
     expect(player._runtimeBridgeReady).toBe(true);
+  });
+
+  it("drops the runtime handshake when a shader-option change navigates the frame", () => {
+    // The navigating sandbox path already clears readiness. This path navigates too, so a
+    // delivery issued afterwards must not be posted into the document being replaced.
+    player._onMessage(readyMessage());
+    expect(player._runtimeBridgeReady).toBe(true);
+
+    player.setAttribute("shader-capture-scale", "0.5");
+
+    expect(player._runtimeBridgeReady).toBe(false);
   });
 
   it("ignores ready events from a different window", () => {

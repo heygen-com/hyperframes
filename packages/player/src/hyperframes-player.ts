@@ -783,6 +783,13 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _reloadShaderOptions(): void {
+    // This navigates the frame, so readiness has to fall with it. Leaving
+    // `_runtimeBridgeReady` true lets a delivery post into a document that is being
+    // replaced, where it can only end in a delivery timeout rather than the immediate,
+    // explanatory rejection the caller gets from every other navigating path.
+    this._ready = false;
+    this._runtimeBridgeReady = false;
+    this._rejectAllRuntimeDataDeliveries("Shader options changed before runtime data was applied");
     if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
     if (this.hasAttribute("srcdoc")) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
