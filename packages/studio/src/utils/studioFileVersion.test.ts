@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consumeStudioWriteToken,
+  createStudioWriteToken,
   markStudioWriteToken,
   resetStudioWriteTokens,
   studioExpectedFileVersion,
   studioFileContentVersion,
+  studioWriteHeaders,
 } from "./studioFileVersion";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("studioFileContentVersion", () => {
   it("matches the strong SHA-256 ETag format used by studio-server", async () => {
@@ -42,6 +46,38 @@ describe("studioFileContentVersion", () => {
 });
 
 describe("studio write-token echo identity", () => {
+  it("prefers the platform randomUUID implementation", () => {
+    const randomUUID = vi.fn(() => "11111111-2222-4333-8444-555555555555");
+    vi.stubGlobal("crypto", { randomUUID });
+    resetStudioWriteTokens();
+
+    expect(studioWriteHeaders()).toEqual({
+      "X-Hyperframes-Write-Token": "11111111-2222-4333-8444-555555555555",
+    });
+    expect(randomUUID).toHaveBeenCalledOnce();
+    expect(consumeStudioWriteToken("11111111-2222-4333-8444-555555555555")).toBe(true);
+  });
+
+  it("creates an RFC 4122 UUID-v4 token from getRandomValues when randomUUID is unavailable", () => {
+    const source = Uint8Array.from({ length: 16 }, (_, index) => index);
+    vi.stubGlobal("crypto", {
+      getRandomValues: vi.fn((target: Uint8Array) => {
+        target.set(source);
+        return target;
+      }),
+    });
+
+    expect(createStudioWriteToken()).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+  });
+
+  it("fails explicitly when Web Crypto cannot provide secure random bytes", () => {
+    vi.stubGlobal("crypto", {});
+
+    expect(() => createStudioWriteToken()).toThrow(
+      "Web Crypto getRandomValues is required for Studio write identity",
+    );
+  });
+
   it("suppresses exactly one matching API write receipt without hiding path-only external writes", () => {
     resetStudioWriteTokens();
     markStudioWriteToken("studio-write-1");

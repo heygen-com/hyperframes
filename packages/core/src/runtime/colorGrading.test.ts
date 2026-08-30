@@ -799,6 +799,36 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.opacity).toBe("1");
   });
 
+  it("updates canvas opacity through grading's own hide when CSS animation progresses (#3329)", () => {
+    const video = makeDrawableVideo();
+    // Simulate a CSS entrance animation: the authored opacity is empty (no
+    // inline opacity), but at parse time the element has opacity 0 from the
+    // animation's initial keyframe.
+    video.setAttribute("data-hf-authored-opacity", "");
+    document.body.appendChild(video);
+
+    runtime = createColorGradingRuntime();
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-hf-color-grading-canvas]");
+    if (!canvas) throw new Error("Expected color grading canvas");
+
+    // Source is hidden by color grading.
+    expect(video.style.getPropertyValue("opacity")).toBe("0");
+    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+
+    // The canvas opacity should NOT be frozen at "0" — after the hide is
+    // temporarily lifted, jsdom's getComputedStyle returns "" (no inline
+    // opacity set), which the code normalizes to "1".
+    expect(canvas.style.opacity).toBe("1");
+
+    // Simulate the CSS animation progressing by re-reading after a redraw.
+    runtime.redraw();
+    expect(canvas.style.opacity).toBe("1");
+
+    // Source remains hidden throughout.
+    expect(video.style.getPropertyValue("opacity")).toBe("0");
+    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+  });
+
   it("allows a drawable producer render frame to initialize hidden source grading", () => {
     const video = makeDrawableVideo();
     video.style.display = "none";

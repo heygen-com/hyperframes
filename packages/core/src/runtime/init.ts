@@ -663,22 +663,15 @@ export function initSandboxRuntimeModular(): void {
     // Both timing conventions exist in shipped projects:
     //   - composition-local media, e.g. host@20 + video@0 => root@20
     //   - legacy root-global PIP media, e.g. host@45.4 + video@45.4 => root@45.4
-    // Preserve the global value when its authored window already intersects
-    // the host's absolute window. Otherwise it is unambiguously local and
-    // must inherit the recursively-resolved host start.
-    const authoredDuration = parseStrictFiniteTimingNumber(element.getAttribute("data-duration"));
+    // Preserve the global value when its authored start already falls inside
+    // the host's absolute window. A long local clip can overlap that window
+    // even when its start is local (host@39.233 + video@0/duration=80), so the
+    // duration cannot disambiguate the timing convention.
     const hostDuration = context.inheritedDuration;
     const hostEnd = hostDuration != null && hostDuration > 0 ? inheritedStart + hostDuration : null;
-    const authoredEnd =
-      authoredDuration != null && authoredDuration > 0
-        ? authoredStart + authoredDuration
-        : authoredStart;
-    const overlapsHostWindow =
-      hostEnd == null
-        ? authoredStart >= inheritedStart
-        : authoredStart < hostEnd &&
-          (authoredEnd > inheritedStart || authoredStart === inheritedStart);
-    return overlapsHostWindow ? authoredStart : inheritedStart + authoredStart;
+    const startsInsideHostWindow =
+      authoredStart >= inheritedStart && (hostEnd == null || authoredStart < hostEnd);
+    return startsInsideHostWindow ? authoredStart : inheritedStart + authoredStart;
   };
 
   window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;

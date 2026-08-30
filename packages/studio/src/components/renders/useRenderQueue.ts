@@ -30,7 +30,11 @@ export interface StartRenderOptions {
   format?: "mp4" | "webm" | "mov";
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
-  /** Render a specific composition file instead of index.html. */
+  /**
+   * Render a specific composition file. Omit it to render the composition the
+   * user currently has open — only the sidebar's per-composition Render button
+   * names one, because it renders a card the user is not looking at.
+   */
   composition?: string;
   /**
    * Composition-variable overrides ({variableId: value}), forwarded to the
@@ -66,7 +70,13 @@ function writeHiddenIds(projectId: string, ids: Set<string>): void {
   }
 }
 
-export function useRenderQueue(projectId: string | null) {
+export function useRenderQueue(
+  projectId: string | null,
+  // A ref, not the value: the render target has to be read at click time, and
+  // threading the value through would rebuild every callback below on each
+  // composition switch.
+  activeCompPathRef: { current: string | null },
+) {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   // History fetch failure — distinguished from "no renders yet" so the panel
   // never shows a false empty state.
@@ -185,7 +195,13 @@ export function useRenderQueue(projectId: string | null) {
       const quality = opts.quality ?? "standard";
       const format = opts.format ?? "mp4";
       const resolution = opts.resolution;
-      const composition = opts.composition;
+      // Which composition a render targets belongs here, with the same
+      // argument the FFmpeg gate above makes: Studio starts renders from three
+      // controls, and a default living in one of them leaves the others
+      // exporting a file the user is not looking at. The header's Export
+      // passed no options at all, so every render it started went to
+      // index.html no matter which composition was selected (#3549).
+      const composition = opts.composition ?? activeCompPathRef.current ?? undefined;
 
       trackStudioRenderStart({
         fps,
@@ -344,7 +360,7 @@ export function useRenderQueue(projectId: string | null) {
 
       return jobId;
     },
-    [projectId, closeActiveEventSource, addSessionJob, ffmpeg, ffmpegMissing],
+    [projectId, activeCompPathRef, closeActiveEventSource, addSessionJob, ffmpeg, ffmpegMissing],
   );
 
   // Cancel an in-flight render. The job row stays (as "cancelled") so the

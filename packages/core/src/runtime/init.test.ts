@@ -1187,6 +1187,43 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.style.visibility).toBe("visible");
   });
 
+  it("keeps a long video starting at zero local to its delayed composition host", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "120");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "nested-video");
+    host.setAttribute("data-composition-file", "compositions/nested.html");
+    host.setAttribute("data-start", "39.233");
+    host.setAttribute("data-duration", "80");
+    root.appendChild(host);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-duration", "80");
+    video.load = () => {};
+    host.appendChild(video);
+
+    window.__timelines = {
+      main: createMockTimeline(120),
+      "nested-video": createMockTimeline(80),
+    };
+
+    initSandboxRuntimeModular();
+
+    for (const globalTime of [
+      42.353, 49.412, 56.471, 63.529, 70.588, 77.647, 84.706, 91.765, 98.824, 105.882, 112.941,
+    ]) {
+      window.__player?.renderSeek(globalTime);
+      expect(video.style.visibility, `global ${globalTime}s`).toBe("visible");
+    }
+    expect(window.__hfResolveMediaStartSeconds?.(video)).toBeCloseTo(39.233);
+  });
+
   it("uses the canonical resolver for reference starts, auto-start media, and inline hosts", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

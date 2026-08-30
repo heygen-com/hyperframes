@@ -107,6 +107,16 @@ describe("discoverMediaFromBrowser", () => {
     );
     expect(media[0]).toMatchObject({ start: 0, end: 2, duration: 2, mediaStart: 1 });
   });
+
+  it("reports colliding empty-src videos by render id, not author id", async () => {
+    const media = await discover(
+      `<video id="clip" data-hf-render-id="clip" src="" data-start="0" data-end="4" data-media-start="10"></video>` +
+        `<video id="clip" data-hf-render-id="clip__hf2" src="" data-start="4" data-end="8" data-media-start="40"></video>`,
+      {},
+    );
+    expect(media.map((entry) => entry.id)).toEqual(["clip", "clip__hf2"]);
+    expect(media.map((entry) => entry.mediaStart)).toEqual([10, 40]);
+  });
 });
 
 function validTestMediaResponse(): Response {
@@ -2810,6 +2820,31 @@ describe("duplicate media ids across nested compositions", () => {
     expect(compiled.audios).toHaveLength(2);
     expect(compiled.audios[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
     expect(compiled.audios[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+
+  it("stamps unique render ids on empty-src videos across two scenes", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video id="clip" src="" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    // Static parse still omits empty src from the media list; the stamp is
+    // what the snapshot uses to keep the two clips distinct.
+    expect(compiled.videos).toHaveLength(0);
+    const { document } = parseHTML(compiled.html);
+    expect(
+      Array.from(document.querySelectorAll("video")).map((el) =>
+        el.getAttribute("data-hf-render-id"),
+      ),
+    ).toEqual(["clip", "clip__hf2"]);
   });
 });
 
