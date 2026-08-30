@@ -1,0 +1,149 @@
+---
+title: "Let an agent drive Studio"
+sidebarTitle: "Agent tools (WebMCP)"
+description: "Studio exposes its editing capabilities as WebMCP tools, so an agent in your browser can see the composition and change it alongside you."
+---
+
+Studio registers its own capabilities as WebMCP tools, so an AI agent running in your browser can read what Studio knows and make the same edits you can.
+
+<Note>
+  This is not the same as [creating through an AI chat](/guides/mcp). That page covers the hosted
+  HyperFrames MCP connector, which builds and renders a video from a conversation. This page is
+  about an agent working *inside Studio*, on a composition already open in front of you.
+</Note>
+
+## What it looks like
+
+With the tools available, an agent can do this without touching your files:
+
+```text
+studio_look                      -> the project, playhead, selection, and every element
+studio_select   hf:abc123        -> selects the headline, same as clicking it
+studio_inspect                   -> its resolved styles, text, and animations
+studio_set_style {"color":"red"} -> writes it, through Studio's own commit path
+studio_frame    2.4              -> a PNG of the composition at 2.4 seconds
+```
+
+The last one matters most. It is what lets an agent judge a change instead of guessing at it.
+
+## Turning it on
+
+The tools register automatically when Studio loads. Whether an agent can *reach* them depends on the browser.
+
+| Browser | Status |
+| --- | --- |
+| Chrome 149 | Origin Trial |
+| Edge 150 | Origin Trial |
+| ChatGPT Desktop | Shipped |
+| Brave (Leo) | Experimental |
+| Firefox, Safari | Not yet |
+
+For local development in Chrome, enable the flag and restart:
+
+```text chrome://flags
+chrome://flags/#enable-webmcp-testing
+```
+
+Then confirm the tools are there from Studio's console:
+
+```javascript
+const tools = await document.modelContext.getTools();
+console.log(tools.map((tool) => tool.name));
+// ["studio_look", "studio_select", "studio_seek", ...]
+```
+
+<Note>
+  Registration is asynchronous, so a caller that reads `getTools()` the instant Studio loads can
+  see a partial list. Wait for the `toolchange` event, or poll until the count settles at twelve.
+</Note>
+
+<Warning>
+  The API is `document.modelContext`, not `navigator.modelContext`. Many published examples use
+  the second one. It is a compatibility shim some polyfills add, not part of the specification, so
+  feature-detecting it will mislead you.
+</Warning>
+
+On browsers without native support, Studio loads a polyfill so a WebMCP bridge extension can still
+connect. Nothing is downloaded on a browser that has the API already.
+
+## What an agent can do
+
+### Read
+
+| Tool | Answers |
+| --- | --- |
+| `studio_look` | The open project and composition, the playhead, what you have selected, and every element with a handle |
+| `studio_inspect` | One element in full: resolved styles, text fields, box, animations, and what it will accept |
+| `studio_frame` | A PNG of the composition at any time |
+
+`studio_look` gives every element a **handle**. Pass it back to any tool that edits an element.
+
+### Change
+
+| Tool | Does |
+| --- | --- |
+| `studio_select` | Selects an element, exactly as clicking it does |
+| `studio_seek` | Moves the playhead |
+| `studio_set_text` | Rewrites text |
+| `studio_set_style` | Sets inline styles |
+| `studio_transform` | Moves, resizes or rotates |
+| `studio_add_animation` | Adds a GSAP animation at the playhead |
+| `studio_update_animation` | Changes a duration, ease or position |
+| `studio_add_keyframe` | Adds a keyframe to an animation |
+| `studio_delete_animation` | Removes an animation |
+
+Every edit runs through the same commit path a mouse gesture uses, so it lands in your file with the
+same undo entry and the same save behaviour. There is no separate agent write path.
+
+## Two rules worth knowing
+
+**Select first, then edit.** Most editing tools act on the current selection rather than taking an
+element. That is how Studio itself works: click, then type. An agent that edits without selecting
+gets an error telling it to select.
+
+**Check what came back.** Tools report what actually happened, not what was asked for.
+`studio_transform` reads the element's box back after writing and tells you which operations took
+effect. `studio_frame` reports the time it actually captured. When something could not be verified,
+the tool says so rather than claiming success.
+
+## Working alongside an agent
+
+This is built for you and an agent looking at the same composition. Studio shows you every change as
+it happens: an agent selecting an element draws the same selection box, and an edit appears in your
+undo history under its own name.
+
+That shared view is doing real work. Some of Studio's write paths report a failure through a toast
+rather than a return value, so **you** are the one who sees it. Leave Studio visible while an agent
+is working.
+
+<Note>
+  Studio refuses agent writes while auto-save is paused or an external change to the file is waiting
+  for your decision, and tells the agent why. Resolve the banner and it can continue.
+</Note>
+
+## Turning it off
+
+There is no settings toggle yet. The switch is a Studio preference, so set it from the console and
+reload:
+
+```javascript
+const KEY = "hf-studio-ui-preferences";
+const prefs = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+localStorage.setItem(KEY, JSON.stringify({ ...prefs, agentToolsEnabled: false }));
+location.reload();
+```
+
+Read the existing object and spread it, as above. Writing `{agentToolsEnabled: false}` on its own
+replaces the whole preferences blob and loses your panel sizes, zoom and timeline settings.
+
+Set it back to `true`, or delete the key, to re-enable.
+
+The browser gates tool access behind its own permission prompt, so registering a tool is not the same
+as granting access to it. How often you are asked, once per site or every call, is up to the browser
+and is still changing while the API is in origin trial.
+
+## Related topics
+
+- [Create through an AI chat](/guides/mcp)
+- [Install and update agent skills](/guides/skills)
+- [Work on the project in Studio](/studio)
