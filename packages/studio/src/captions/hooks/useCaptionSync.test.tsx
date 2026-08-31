@@ -219,4 +219,56 @@ describe("useCaptionSync", () => {
 
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(true);
   });
+  it("serializes overlapping saves so the newest body lands last", async () => {
+    vi.useFakeTimers();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const putBodies: string[] = [];
+    const releases: Array<() => void> = [];
+
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "PUT") return new Response(null, { status: 404 });
+      putBodies.push(String(init.body));
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      inFlight--;
+      return jsonResponse({ ok: true, version: `"sha256:v${putBodies.length}"` });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    mountCaptionSync("proj-1");
+    const store = useCaptionStore.getState();
+    store.setSourceFilePath("comp.html");
+    act(() => store.setModel(makeModel()));
+    act(() => store.setEditMode(true));
+
+    // First edit: its PUT starts and then hangs, still in flight.
+    act(() => store.setModel(makeModel({ x: 5 })));
+    await flushDebounce();
+    expect(putBodies).toHaveLength(1);
+
+    // A second edit arrives before the first PUT has come back. It must be
+    // queued rather than raced against the in-flight one, which is what could
+    // let the older body win and lose this edit.
+    act(() => store.setModel(makeModel({ x: 9 })));
+    await flushDebounce();
+    expect(putBodies).toHaveLength(1);
+    expect(maxInFlight).toBe(1);
+
+    // Releasing the first PUT lets the queued newest body go out.
+    await act(async () => {
+      releases.shift()?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(putBodies).toHaveLength(2);
+    expect(maxInFlight).toBe(1);
+    expect(putBodies[1]).toContain('"x": 9');
+
+    await act(async () => {
+      releases.shift()?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  });
 });

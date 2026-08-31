@@ -6,6 +6,7 @@ import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
 import {
   StudioFileConflictError,
+  StudioSaveNetworkError,
   createStudioSaveHttpError,
   retryStudioSave,
 } from "../../utils/studioSaveDiagnostics";
@@ -91,6 +92,15 @@ export function useCaptionSync(projectId: string | null) {
   // before the first write), null = confirmed not to exist yet (send
   // If-None-Match instead of If-Match).
   const versionRef = useRef<string | null | undefined>(undefined);
+  // Saves are serialized. Two PUTs in flight at once race on versionRef: the
+  // usual ordering self-heals (the older lands first, the newer 409s, adopts
+  // and retries), but if they reorder — or the older one's adopt-and-retry
+  // lands last — the older body wins and the newer edit is silently lost.
+  // Only one attempt runs at a time, and a save requested while one is in
+  // flight replaces any already-queued attempt rather than stacking, so the
+  // next PUT always carries the newest body.
+  const savingRef = useRef(false);
+  const queuedSaveRef = useRef<{ pid: string; body: string; seq: number } | null>(null);
 
   const setPending = (pending: boolean) => {
     pendingRef.current = pending;
@@ -113,9 +123,14 @@ export function useCaptionSync(projectId: string | null) {
           body,
         });
       } catch (error) {
-        throw new Error(`Failed to save ${CAPTION_OVERRIDES_PATH}: network error`, {
-          cause: error,
-        });
+        // StudioSaveNetworkError, not a plain Error, so retryStudioSave's
+        // network-retry path applies here the way it does in useFileManager.
+        throw new StudioSaveNetworkError(
+          `Failed to save ${CAPTION_OVERRIDES_PATH}: network error`,
+          {
+            cause: error,
+          },
+        );
       }
       if (response.status === 409) {
         const conflict = (await response.json().catch(() => null)) as {
@@ -165,35 +180,47 @@ export function useCaptionSync(projectId: string | null) {
       return;
     }
 
-    const seqAtSave = editSeqRef.current;
-    const body = JSON.stringify(buildOverrides(state.model), null, 2);
+    queuedSaveRef.current = {
+      pid,
+      body: JSON.stringify(buildOverrides(state.model), null, 2),
+      seq: editSeqRef.current,
+    };
+    if (savingRef.current) return;
+    savingRef.current = true;
 
-    (async () => {
+    void (async () => {
       try {
-        await putOverrides(pid, body);
-      } catch (error) {
-        if (error instanceof StudioFileConflictError) {
-          // versionRef was already refreshed by putOverrides; one retry with
-          // it is enough for a single-writer file.
-          await putOverrides(pid, body);
-        } else {
-          throw error;
+        // Drains whatever is queued, including edits that arrive mid-PUT, so
+        // the last write to land is always the newest body.
+        while (queuedSaveRef.current) {
+          const attempt = queuedSaveRef.current;
+          queuedSaveRef.current = null;
+          try {
+            await putOverrides(attempt.pid, attempt.body);
+          } catch (error) {
+            if (error instanceof StudioFileConflictError) {
+              // versionRef was already refreshed by putOverrides; one retry
+              // with it is enough for a single-writer file.
+              await putOverrides(attempt.pid, attempt.body);
+            } else {
+              throw error;
+            }
+          }
+          // A newer edit may have re-armed the debounce while this PUT was in
+          // flight — its beforeunload/unmount flush still needs pending=true.
+          if (editSeqRef.current === attempt.seq) setPending(false);
+          const s = useCaptionStore.getState();
+          if (s.syncError) s.setSyncError(null);
         }
-      }
-    })()
-      .then(() => {
-        // A newer edit may have re-armed the debounce while this PUT was in
-        // flight — its beforeunload/unmount flush still needs pending=true.
-        if (editSeqRef.current === seqAtSave) setPending(false);
-        const s = useCaptionStore.getState();
-        if (s.syncError) s.setSyncError(null);
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         // Caption auto-save is a data-loss path: surface it to the user, not
         // just telemetry. pendingRef stays true so beforeunload still warns.
         trackEvent("studio_caption_autosave_failed", { error: String(error) });
         useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
-      });
+      } finally {
+        savingRef.current = false;
+      }
+    })();
   }, [putOverrides]);
 
   // Auto-save on model changes with 800ms debounce
