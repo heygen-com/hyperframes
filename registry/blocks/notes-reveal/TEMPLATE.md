@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts a notes application and a hand-lettered checklist. The supplied website may provide the declared note and checklist copy; it does not own the notes application chrome.
+This template depicts a notes application and a hand-lettered checklist. The supplied website provides the declared note and checklist copy; it does not own the notes application chrome. The remix is an advertisement for that brand, but this template declares no name, domain, or logo slot: the brand can only come through in the note and checklist copy, and there is nowhere to place its mark.
 
 ## Editable slots
 

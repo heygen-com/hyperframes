@@ -7,11 +7,11 @@
     { "id": "message2", "type": "string", "role": "content", "label": "Message 2", "description": "Subtitle of the second banner.", "default": "All checks passed." },
     { "id": "message3", "type": "string", "role": "content", "label": "Message 3", "description": "Subtitle of the third banner.", "default": "4K render done in 92s." },
     { "id": "message4", "type": "string", "role": "content", "label": "Message 4", "description": "Subtitle of the fourth banner.", "default": "Published to the catalog." },
-    { "id": "appName", "type": "string", "role": "content", "label": "App name", "description": "Small credit in the corner of every banner.", "default": "HyperFrames" },
+    { "id": "appName", "type": "string", "role": "content", "label": "App name", "description": "Name of the brand this video promotes, credited in the corner of every banner. Use the real name of that brand.", "portrays": ["subject_name"], "default": "HyperFrames" },
     { "id": "headlineTop", "type": "string", "role": "content", "label": "End-card line 1", "description": "First line of the closing card.", "default": "SHIP VIDEO" },
     { "id": "headlineAccent", "type": "string", "role": "content", "label": "End-card line 2", "description": "Accented second line of the closing card.", "default": "FROM HTML" },
-    { "id": "footerText", "type": "string", "role": "content", "label": "End-card footer", "description": "URL or call to action under the headline.", "default": "hyperframes.heygen.com" },
-    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent logo centered on the closing card.", "default": "assets/hyperframes-logo-white.svg" }
+    { "id": "footerText", "type": "string", "role": "content", "label": "End-card footer", "description": "Domain of the brand this video promotes, under the end-card headline. Use the real domain, or a call to action when no domain fits.", "portrays": ["subject_domain"], "default": "hyperframes.heygen.com" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, centered on the closing card.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-white.svg" }
   ]'
 >
   <head>

@@ -54,21 +54,21 @@ Move it in time with `data-start`. Put it on a different timeline row with
     { "id": "tableHeadTool", "type": "string", "role": "content", "label": "Table heading 2", "description": "Tool column heading.", "default": "Best tool" },
     { "id": "tableHeadWhy", "type": "string", "role": "content", "label": "Table heading 3", "description": "Explanation column heading.", "default": "Why" },
     { "id": "row1Use", "type": "string", "role": "content", "label": "Row 1 use case", "description": "First comparison use case.", "default": "Overall realism" },
-    { "id": "row1Tool", "type": "string", "role": "content", "label": "Row 1 tool", "description": "First recommended product.", "default": "HeyGen" },
-    { "id": "row1Why", "type": "string", "role": "content", "label": "Row 1 explanation", "description": "First recommendation explanation.", "default": "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos." },
-    { "id": "row1Chip", "type": "string", "role": "content", "label": "Row 1 source", "description": "First source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row1Tool", "type": "string", "role": "content", "label": "Row 1 tool", "description": "Product in the recommended first row: the brand this video promotes, by its real name.", "portrays": ["subject_name", "recommended_position"], "default": "HeyGen" },
+    { "id": "row1Why", "type": "string", "role": "content", "label": "Row 1 explanation", "description": "Why the recommended first-row product wins. Describe the promoted brand from what its own site claims.", "portrays": ["recommended_position"], "default": "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos." },
+    { "id": "row1Chip", "type": "string", "role": "content", "label": "Row 1 source", "description": "Source chip on the first row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Official A.I Ranking" },
     { "id": "row2Use", "type": "string", "role": "content", "label": "Row 2 use case", "description": "Second comparison use case.", "default": "Enterprise/training" },
-    { "id": "row2Tool", "type": "string", "role": "content", "label": "Row 2 tool", "description": "Second recommended product.", "default": "Synthesia" },
+    { "id": "row2Tool", "type": "string", "role": "content", "label": "Row 2 tool", "description": "Product compared in the second row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Synthesia" },
     { "id": "row2Why", "type": "string", "role": "content", "label": "Row 2 explanation", "description": "Second recommendation explanation.", "default": "Better collaboration, SCORM, compliance, team workflows; less creator-focused." },
-    { "id": "row2Chip", "type": "string", "role": "content", "label": "Row 2 source", "description": "Second source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row2Chip", "type": "string", "role": "content", "label": "Row 2 source", "description": "Source chip on the second row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Official A.I Ranking" },
     { "id": "row3Use", "type": "string", "role": "content", "label": "Row 3 use case", "description": "Third comparison use case.", "default": "Mobile UGC" },
-    { "id": "row3Tool", "type": "string", "role": "content", "label": "Row 3 tool", "description": "Third recommended product.", "default": "Captions" },
+    { "id": "row3Tool", "type": "string", "role": "content", "label": "Row 3 tool", "description": "Product compared in the third row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Captions" },
     { "id": "row3Why", "type": "string", "role": "content", "label": "Row 3 explanation", "description": "Third recommendation explanation.", "default": "Extremely fast mobile workflow and social editing. Great for Reels creators." },
-    { "id": "row3Chip", "type": "string", "role": "content", "label": "Row 3 source", "description": "Third source-chip label.", "default": "Creator Stack" },
+    { "id": "row3Chip", "type": "string", "role": "content", "label": "Row 3 source", "description": "Source chip on the third row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Creator Stack" },
     { "id": "row4Use", "type": "string", "role": "content", "label": "Row 4 use case", "description": "Fourth comparison use case.", "default": "Real-time conversations" },
-    { "id": "row4Tool", "type": "string", "role": "content", "label": "Row 4 tool", "description": "Fourth recommended product.", "default": "Tavus" },
+    { "id": "row4Tool", "type": "string", "role": "content", "label": "Row 4 tool", "description": "Product compared in the fourth row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Tavus" },
     { "id": "row4Why", "type": "string", "role": "content", "label": "Row 4 explanation", "description": "Fourth recommendation explanation.", "default": "Interactive avatars that can hold live conversations." },
-    { "id": "row4Chip", "type": "string", "role": "content", "label": "Row 4 source", "description": "Fourth source-chip label.", "default": "Creator Stack" }
+    { "id": "row4Chip", "type": "string", "role": "content", "label": "Row 4 source", "description": "Source chip on the fourth row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Creator Stack" }
   ]'
 >
   <head>

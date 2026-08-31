@@ -49,7 +49,8 @@
       "type": "string",
       "role": "content",
       "label": "Link card title",
-      "description": "Title on the shared link card.",
+      "description": "Title of the shared link card. It leads with the real name of the brand this video promotes.",
+      "portrays": ["subject_name"],
       "default": "HyperFrames | Write HTML, render pixel-perfect video"
     },
     {
@@ -57,7 +58,8 @@
       "type": "string",
       "role": "content",
       "label": "Link card domain",
-      "description": "Domain line under the card title.",
+      "description": "Domain of the brand this video promotes, under the card title. Use the real domain.",
+      "portrays": ["subject_domain"],
       "default": "hyperframes.heygen.com"
     },
     {
@@ -97,7 +99,7 @@
       "type": "string",
       "role": "content",
       "label": "Source reply",
-      "description": "Typed outgoing reply naming where to find the product.",
+      "description": "Typed outgoing reply naming where to find the brand this video promotes.",
       "default": "on heygen"
     },
     {
@@ -137,7 +139,8 @@
       "type": "image",
       "role": "content",
       "label": "Brand logo",
-      "description": "Transparent horizontal wordmark on the closing card.",
+      "description": "Transparent horizontal wordmark of the brand this video promotes, on the closing card.",
+      "portrays": ["subject_logo"],
       "default": "assets/hyperframes-logo-black.svg"
     },
     {
@@ -145,7 +148,8 @@
       "type": "string",
       "role": "content",
       "label": "End-card proof",
-      "description": "Social-proof line under the stars.",
+      "description": "Social-proof line under the stars. Claim only a figure the brand itself publishes; use neutral copy when there is none.",
+      "portrays": ["authority_badge"],
       "default": "12,000+ creators"
     },
     {

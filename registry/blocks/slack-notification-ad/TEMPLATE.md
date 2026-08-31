@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts Slack notifications on an iOS lock screen. Slack and iOS own the notification and device chrome. The supplied website may appear only in declared notification copy and the final payoff identity.
+This template depicts Slack notifications on an iOS lock screen. Slack and iOS own the notification and device chrome. The supplied website appears in the declared notification copy and the final payoff identity, and nowhere else. The remix is an advertisement for that brand: the payoff notification carries its real name and its own mark.
 
 ## Editable slots
 

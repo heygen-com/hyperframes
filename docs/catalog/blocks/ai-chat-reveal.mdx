@@ -10,7 +10,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
   previewSrc="/public/catalog/blocks/ai-chat-reveal.json"
   compositionId="ai-chat-reveal"
   compositionSrc="compositions/ai-chat-reveal.html"
-  variables={[{"id":"botName","type":"string","role":"content","label":"Assistant name","description":"Title in the chat header.","default":"Assistant"},{"id":"userMessage","type":"string","role":"content","label":"User message","description":"The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing.","default":"How do I turn my HTML into real video?"},{"id":"answer1","type":"string","role":"content","label":"Answer paragraph 1","description":"First streamed paragraph.","default":"You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video."},{"id":"answer2","type":"string","role":"content","label":"Answer paragraph 2","description":"Short second beat.","default":"It is markup, not magic."},{"id":"answer3","type":"string","role":"content","label":"Answer paragraph 3","description":"Lead-in to the list.","default":"What you get out of the box:"},{"id":"bullet1","type":"string","role":"content","label":"Bullet 1","description":"First list item.","default":"A catalog of motion primitives you install and own"},{"id":"bullet2","type":"string","role":"content","label":"Bullet 2","description":"Second list item.","default":"GSAP timelines that seek to any frame"},{"id":"bullet3","type":"string","role":"content","label":"Bullet 3","description":"Third list item.","default":"4K renders from a single CLI command"},{"id":"ecHeadline","type":"string","role":"content","label":"End-card headline","description":"Closing card headline. A | breaks the line.","default":"It's not magic.|It's HTML."},{"id":"ecSub","type":"string","role":"content","label":"End-card subline","description":"Supporting sentence on the closing card.","default":"Open-source video rendering — write HTML, ship pixel-perfect video."},{"id":"ecCta","type":"string","role":"content","label":"End-card CTA","description":"Label on the closing card button.","default":"Try HyperFrames"},{"id":"ecFooter","type":"string","role":"content","label":"End-card footer","description":"Letter-spaced line at the very bottom.","default":"HYPERFRAMES.HEYGEN.COM"},{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Transparent logo in the closing-card header.","default":"assets/hyperframes-logo-white.svg"}]}
+  variables={[{"id":"botName","type":"string","role":"content","label":"Assistant name","description":"Name of the assistant answering in this mock chat. It belongs to the host product, never to the brand this video promotes.","portrays":["host_identity"],"default":"Assistant"},{"id":"userMessage","type":"string","role":"content","label":"User message","description":"The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing.","default":"How do I turn my HTML into real video?"},{"id":"answer1","type":"string","role":"content","label":"Answer paragraph 1","description":"First streamed paragraph. It names the brand this video promotes and says what that brand does.","default":"You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video."},{"id":"answer2","type":"string","role":"content","label":"Answer paragraph 2","description":"Short second beat.","default":"It is markup, not magic."},{"id":"answer3","type":"string","role":"content","label":"Answer paragraph 3","description":"Lead-in to the list.","default":"What you get out of the box:"},{"id":"bullet1","type":"string","role":"content","label":"Bullet 1","description":"First list item.","default":"A catalog of motion primitives you install and own"},{"id":"bullet2","type":"string","role":"content","label":"Bullet 2","description":"Second list item.","default":"GSAP timelines that seek to any frame"},{"id":"bullet3","type":"string","role":"content","label":"Bullet 3","description":"Third list item.","default":"4K renders from a single CLI command"},{"id":"ecHeadline","type":"string","role":"content","label":"End-card headline","description":"Closing card headline. A | breaks the line.","default":"It's not magic.|It's HTML."},{"id":"ecSub","type":"string","role":"content","label":"End-card subline","description":"Positioning sentence of the brand this video promotes, on the closing card.","portrays":["subject_tagline"],"default":"Open-source video rendering — write HTML, ship pixel-perfect video."},{"id":"ecCta","type":"string","role":"content","label":"End-card CTA","description":"Closing-card button label, which names the brand this video promotes. Use the real name of that brand.","portrays":["subject_name"],"default":"Try HyperFrames"},{"id":"ecFooter","type":"string","role":"content","label":"End-card footer","description":"Domain of the brand this video promotes, letter-spaced at the very bottom. Use the real domain.","portrays":["subject_domain"],"default":"HYPERFRAMES.HEYGEN.COM"},{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Transparent mark of the brand this video promotes, in the closing-card header.","portrays":["subject_logo"],"default":"assets/hyperframes-logo-white.svg"}]}
 >
 
 ```html ai-chat-reveal.html
@@ -18,19 +18,19 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 <html
   lang="en"
   data-composition-variables='[
-    { "id": "botName", "type": "string", "role": "content", "label": "Assistant name", "description": "Title in the chat header.", "default": "Assistant" },
+    { "id": "botName", "type": "string", "role": "content", "label": "Assistant name", "description": "Name of the assistant answering in this mock chat. It belongs to the host product, never to the brand this video promotes.", "portrays": ["host_identity"], "default": "Assistant" },
     { "id": "userMessage", "type": "string", "role": "content", "label": "User message", "description": "The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing.", "default": "How do I turn my HTML into real video?" },
-    { "id": "answer1", "type": "string", "role": "content", "label": "Answer paragraph 1", "description": "First streamed paragraph.", "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video." },
+    { "id": "answer1", "type": "string", "role": "content", "label": "Answer paragraph 1", "description": "First streamed paragraph. It names the brand this video promotes and says what that brand does.", "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video." },
     { "id": "answer2", "type": "string", "role": "content", "label": "Answer paragraph 2", "description": "Short second beat.", "default": "It is markup, not magic." },
     { "id": "answer3", "type": "string", "role": "content", "label": "Answer paragraph 3", "description": "Lead-in to the list.", "default": "What you get out of the box:" },
     { "id": "bullet1", "type": "string", "role": "content", "label": "Bullet 1", "description": "First list item.", "default": "A catalog of motion primitives you install and own" },
     { "id": "bullet2", "type": "string", "role": "content", "label": "Bullet 2", "description": "Second list item.", "default": "GSAP timelines that seek to any frame" },
     { "id": "bullet3", "type": "string", "role": "content", "label": "Bullet 3", "description": "Third list item.", "default": "4K renders from a single CLI command" },
     { "id": "ecHeadline", "type": "string", "role": "content", "label": "End-card headline", "description": "Closing card headline. A | breaks the line.", "default": "It&#39;s not magic.|It&#39;s HTML." },
-    { "id": "ecSub", "type": "string", "role": "content", "label": "End-card subline", "description": "Supporting sentence on the closing card.", "default": "Open-source video rendering — write HTML, ship pixel-perfect video." },
-    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Label on the closing card button.", "default": "Try HyperFrames" },
-    { "id": "ecFooter", "type": "string", "role": "content", "label": "End-card footer", "description": "Letter-spaced line at the very bottom.", "default": "HYPERFRAMES.HEYGEN.COM" },
-    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent logo in the closing-card header.", "default": "assets/hyperframes-logo-white.svg" }
+    { "id": "ecSub", "type": "string", "role": "content", "label": "End-card subline", "description": "Positioning sentence of the brand this video promotes, on the closing card.", "portrays": ["subject_tagline"], "default": "Open-source video rendering — write HTML, ship pixel-perfect video." },
+    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Closing-card button label, which names the brand this video promotes. Use the real name of that brand.", "portrays": ["subject_name"], "default": "Try HyperFrames" },
+    { "id": "ecFooter", "type": "string", "role": "content", "label": "End-card footer", "description": "Domain of the brand this video promotes, letter-spaced at the very bottom. Use the real domain.", "portrays": ["subject_domain"], "default": "HYPERFRAMES.HEYGEN.COM" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, in the closing-card header.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-white.svg" }
   ]'
 >
   <head>
@@ -1068,19 +1068,19 @@ want to change on the element:
 
 | Variable | Default | Accepts | What it does |
 | --- | --- | --- | --- |
-| `botName` | `Assistant` | string | Title in the chat header. |
+| `botName` | `Assistant` | string | Name of the assistant answering in this mock chat. It belongs to the host product, never to the brand this video promotes. |
 | `userMessage` | `How do I turn my HTML into real video?` | string | The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing. |
-| `answer1` | `You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video.` | string | First streamed paragraph. |
+| `answer1` | `You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video.` | string | First streamed paragraph. It names the brand this video promotes and says what that brand does. |
 | `answer2` | `It is markup, not magic.` | string | Short second beat. |
 | `answer3` | `What you get out of the box:` | string | Lead-in to the list. |
 | `bullet1` | `A catalog of motion primitives you install and own` | string | First list item. |
 | `bullet2` | `GSAP timelines that seek to any frame` | string | Second list item. |
 | `bullet3` | `4K renders from a single CLI command` | string | Third list item. |
 | `ecHeadline` | `It's not magic.|It's HTML.` | string | Closing card headline. A | breaks the line. |
-| `ecSub` | `Open-source video rendering — write HTML, ship pixel-perfect video.` | string | Supporting sentence on the closing card. |
-| `ecCta` | `Try HyperFrames` | string | Label on the closing card button. |
-| `ecFooter` | `HYPERFRAMES.HEYGEN.COM` | string | Letter-spaced line at the very bottom. |
-| `brandLogo` | `assets/hyperframes-logo-white.svg` | image | Transparent logo in the closing-card header. |
+| `ecSub` | `Open-source video rendering — write HTML, ship pixel-perfect video.` | string | Positioning sentence of the brand this video promotes, on the closing card. |
+| `ecCta` | `Try HyperFrames` | string | Closing-card button label, which names the brand this video promotes. Use the real name of that brand. |
+| `ecFooter` | `HYPERFRAMES.HEYGEN.COM` | string | Domain of the brand this video promotes, letter-spaced at the very bottom. Use the real domain. |
+| `brandLogo` | `assets/hyperframes-logo-white.svg` | image | Transparent mark of the brand this video promotes, in the closing-card header. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:
@@ -1102,19 +1102,19 @@ defaults, so this behaves exactly like the preview above until you change one:
 <html
   lang="en"
   data-composition-variables='[
-    { "id": "botName", "type": "string", "role": "content", "label": "Assistant name", "description": "Title in the chat header.", "default": "Assistant" },
+    { "id": "botName", "type": "string", "role": "content", "label": "Assistant name", "description": "Name of the assistant answering in this mock chat. It belongs to the host product, never to the brand this video promotes.", "portrays": ["host_identity"], "default": "Assistant" },
     { "id": "userMessage", "type": "string", "role": "content", "label": "User message", "description": "The question typed on the keyboard and sent. Around 40 characters keeps the measured pacing.", "default": "How do I turn my HTML into real video?" },
-    { "id": "answer1", "type": "string", "role": "content", "label": "Answer paragraph 1", "description": "First streamed paragraph.", "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video." },
+    { "id": "answer1", "type": "string", "role": "content", "label": "Answer paragraph 1", "description": "First streamed paragraph. It names the brand this video promotes and says what that brand does.", "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video." },
     { "id": "answer2", "type": "string", "role": "content", "label": "Answer paragraph 2", "description": "Short second beat.", "default": "It is markup, not magic." },
     { "id": "answer3", "type": "string", "role": "content", "label": "Answer paragraph 3", "description": "Lead-in to the list.", "default": "What you get out of the box:" },
     { "id": "bullet1", "type": "string", "role": "content", "label": "Bullet 1", "description": "First list item.", "default": "A catalog of motion primitives you install and own" },
     { "id": "bullet2", "type": "string", "role": "content", "label": "Bullet 2", "description": "Second list item.", "default": "GSAP timelines that seek to any frame" },
     { "id": "bullet3", "type": "string", "role": "content", "label": "Bullet 3", "description": "Third list item.", "default": "4K renders from a single CLI command" },
     { "id": "ecHeadline", "type": "string", "role": "content", "label": "End-card headline", "description": "Closing card headline. A | breaks the line.", "default": "It&#39;s not magic.|It&#39;s HTML." },
-    { "id": "ecSub", "type": "string", "role": "content", "label": "End-card subline", "description": "Supporting sentence on the closing card.", "default": "Open-source video rendering — write HTML, ship pixel-perfect video." },
-    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Label on the closing card button.", "default": "Try HyperFrames" },
-    { "id": "ecFooter", "type": "string", "role": "content", "label": "End-card footer", "description": "Letter-spaced line at the very bottom.", "default": "HYPERFRAMES.HEYGEN.COM" },
-    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent logo in the closing-card header.", "default": "assets/hyperframes-logo-white.svg" }
+    { "id": "ecSub", "type": "string", "role": "content", "label": "End-card subline", "description": "Positioning sentence of the brand this video promotes, on the closing card.", "portrays": ["subject_tagline"], "default": "Open-source video rendering — write HTML, ship pixel-perfect video." },
+    { "id": "ecCta", "type": "string", "role": "content", "label": "End-card CTA", "description": "Closing-card button label, which names the brand this video promotes. Use the real name of that brand.", "portrays": ["subject_name"], "default": "Try HyperFrames" },
+    { "id": "ecFooter", "type": "string", "role": "content", "label": "End-card footer", "description": "Domain of the brand this video promotes, letter-spaced at the very bottom. Use the real domain.", "portrays": ["subject_domain"], "default": "HYPERFRAMES.HEYGEN.COM" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, in the closing-card header.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-white.svg" }
   ]'
 >
   <head>
