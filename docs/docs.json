@@ -295,6 +295,7 @@
                   "catalog/components/headline-slam",
                   "catalog/blocks/hw-path-text",
                   "catalog/blocks/hw-title",
+                  "catalog/blocks/hw-write-title",
                   "catalog/components/inline-highlight",
                   "catalog/components/kinetic-type-swap",
                   "catalog/components/line-by-line-slide",

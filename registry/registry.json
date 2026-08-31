@@ -300,6 +300,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-write-title",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },

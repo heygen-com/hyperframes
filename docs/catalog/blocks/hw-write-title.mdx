@@ -1,0 +1,552 @@
+---
+title: "Handwritten Write-On Title"
+description: "True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils"
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-write-title.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-write-title.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add hw-write-title" item="hw-write-title" />
+
+That writes `compositions/hw-write-title.html`, plus 2 supporting files under `assets/baked/` and `assets/fonts/`.
+
+## Add it to your video
+
+It runs for 6 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="hw-write-title"
+  data-composition-src="compositions/hw-write-title.html"
+  data-start="0"
+  data-duration="6"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Source
+
+<Accordion title={`hw-write-title.html`}>
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/baked/caveat-pen.js"></script>
+    <style>
+      /* Caveat is NOT auto-resolved by the renderer — bundle it. Asset paths
+         are ROOT-relative. The glyph write-on itself renders BAKED outlines
+         (no live font dependency); the bundled face serves the fallback path
+         for characters outside the baked table. */
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- hw-write-title -------------------------------------------------
+         TRUE glyph write-on: filled Caveat letterforms revealed by animated
+         per-glyph centerline strokes (the AE mask-reveal classic — "a mask
+         barely covering the line"), traced in real stroke order with a
+         curvature-adaptive pen-velocity ease (fast on straights, slow into
+         curves; inter-stroke pen lifts). Centerlines + outlines + stem widths
+         ship baked (assets/baked/caveat-pen.js, generated deterministically
+         from Caveat-700 — regeneration script in the PR).
+         RULES: hwBoil owns x/y/rotation of the boil target; entrances/exits
+         ride the outer wrapper. One timeline has ONE onUpdate (hwOnUpdate). */
+      #hw-wt-root {
+        --hw-font-print: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+        --hw-ink-dark: #26241f;
+        --hw-accent-warm: #ffb020;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage or a board */
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-wt-wrap {
+        position: absolute;
+        pointer-events: none;
+      }
+      #hw-wt-svg {
+        overflow: visible;
+        display: block;
+      }
+      #hw-wt-under {
+        overflow: visible;
+        display: block;
+        margin-top: -8px;
+      }
+      #hw-wt-under path {
+        fill: none;
+        stroke: var(--hw-accent-warm);
+        stroke-width: 7;
+        stroke-linecap: round;
+      }
+      .hw-wt-fallback {
+        font-weight: 700;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hw-wt-root"
+      data-composition-id="hw-write-title"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-wt-move">
+        <div id="hw-wt-boil">
+          <div id="hw-wt-wrap">
+            <svg id="hw-wt-svg"></svg>
+            <svg id="hw-wt-under" width="10" height="40"><path id="hw-wt-under-path"></path></svg>
+          </div>
+        </div>
+      </div>
+      <div
+        id="hw-wt-drv"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var CONFIG = {
+          // ── Content (freely editable — not counted) ─────────────────────
+          text: "write it on",
+          fontSize: 170, // px; the word block auto-centers when x/y are null
+          x: null,
+          y: null,
+
+          // ── Controls (family base + 2 item-specific; comment grammar is the published-parameter list) ──
+          scheme: "chalk", //   variant: "chalk" | "ink" — selects the authored token set (family default "chalk")
+          animationIn: true, // toggle: entrance on/off — write-on IS the entrance; false = hard-on at t=0 (pairs with animationOut; the pair counts as one control)
+          animationOut: true, //  (exit fade; duration derived from DUR, never exposed)
+          boil: "calm", //      variant: "off" | "calm" | "lively" — authored amp/rot pairs over the family-locked frameDrop 3; seed locked
+          writeOn: "trace", //  variant: "trace" | "reveal" | "off" — trace = pen-traced glyph write-on (curvature-adaptive velocity, pen lifts); reveal = per-glyph staggered fade; off = hard-on; durations derived from stroke count, never exposed
+          underline: true, //   toggle: seeded squiggle underline drawn after the write completes
+
+          // ── Locked (edit the item source to change) ─────────────────────
+          // seed, pen-velocity constants (kCurve 10, floor 0.22, lift 60ms),
+          // trace-duration derivation, boil pose tables, all eases/durations
+        };
+        var SEED = 8; // locked — determinism
+        var DUR = 6;
+
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        /* ---- hw family runtime (copy identical across hw items) ---- */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+        // boil control: authored poses over the family-locked frameDrop.
+        // Unknown pose → default + console error (bounded-controls law).
+        window.hwBoilPose = function (tl, target, pose, opts) {
+          opts = opts || {};
+          var poses = { calm: { amp: 1.6, rot: 0.5 }, lively: { amp: 2.6, rot: 0.9 } };
+          if (pose === "off") return;
+          var p = poses[pose];
+          if (!p) {
+            console.error('hw: unknown boil pose "' + pose + '" — falling back to "calm"');
+            p = poses.calm;
+          }
+          window.hwBoil(tl, target, { amp: p.amp, rot: p.rot, frameDrop: 3, seed: opts.seed || 1 });
+        };
+
+        /* ---- pen-velocity ease: pure function of the path geometry ----
+           Sample 25–75 curvature-adaptive points, speed ∝ 1/(1+k·curvature)
+           floored at 0.22 (a pen slows into curves, never stalls), integrate
+           ds/speed, invert to a normalized time→distance ease. Seek-safe:
+           no per-frame state. */
+        window.hwPenEase = function (pathEl, opts) {
+          opts = opts || {};
+          var kCurve = opts.kCurve !== undefined ? opts.kCurve : 10;
+          var L = pathEl.getTotalLength();
+          if (L <= 0)
+            return {
+              ease: function (t) {
+                return t;
+              },
+              samples: 2,
+              inkTime: 1,
+              len: 0,
+            };
+          var PRE = 48;
+          var pts = [];
+          for (var i = 0; i <= PRE; i++) pts.push(pathEl.getPointAtLength((L * i) / PRE));
+          var curv = [0];
+          for (i = 1; i < PRE; i++) {
+            var ax = pts[i].x - pts[i - 1].x,
+              ay = pts[i].y - pts[i - 1].y;
+            var bx = pts[i + 1].x - pts[i].x,
+              by = pts[i + 1].y - pts[i].y;
+            var la = Math.hypot(ax, ay) || 1e-6,
+              lb = Math.hypot(bx, by) || 1e-6;
+            var dot = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb)));
+            curv.push(Math.acos(dot) / ((la + lb) / 2));
+          }
+          curv.push(0);
+          var mass = 0;
+          for (i = 0; i < curv.length; i++) mass += curv[i];
+          var N = Math.max(25, Math.min(75, Math.round(25 + mass * 18)));
+          var seg = L / N;
+          var times = [0];
+          var t = 0;
+          for (i = 1; i <= N; i++) {
+            var u = ((i - 0.5) / N) * PRE;
+            var i0 = Math.floor(u),
+              f = u - i0;
+            var c = curv[Math.min(i0, PRE)] * (1 - f) + curv[Math.min(i0 + 1, PRE)] * f;
+            var speed = Math.max(1 / (1 + kCurve * c * 14), 0.22);
+            t += seg / speed;
+            times.push(t);
+          }
+          var total = times[N];
+          for (i = 0; i <= N; i++) times[i] /= total;
+          var easeFn = function (p) {
+            if (p <= 0) return 0;
+            if (p >= 1) return 1;
+            var lo = 0,
+              hi = N;
+            while (hi - lo > 1) {
+              var mid = (lo + hi) >> 1;
+              if (times[mid] <= p) lo = mid;
+              else hi = mid;
+            }
+            var span = times[hi] - times[lo] || 1e-9;
+            return (lo + (p - times[lo]) / span) / N;
+          };
+          return { ease: easeFn, samples: N, inkTime: total, len: L };
+        };
+
+        /* ---- word assembly from the baked table ----
+           Each glyph: <mask> of centerline strokes (stroke-width = the glyph's
+           baked stem × 1.35) over the filled outline. Characters missing from
+           the table fall back to live Caveat text revealed by fade (+ console
+           warning) — the bundled face exists for exactly this path. */
+        function buildWord(svg, text) {
+          // everything in GLYPH UNITS (upem 1000, y-down, baseline 0) — the
+          // svg viewBox maps units → px, no scale transform needed
+          var table = window.__hwPenCaveat;
+          var ns = "http://www.w3.org/2000/svg";
+          // scheme control: bounded lookup — unknown → default + console error
+          var schemes = { chalk: "var(--hw-ink)", ink: "var(--hw-ink-dark)" };
+          if (!(CONFIG.scheme in schemes)) {
+            console.error('hw: unknown scheme "' + CONFIG.scheme + '" — falling back to "chalk"');
+          }
+          var ink = schemes[CONFIG.scheme] || schemes.chalk;
+          var g = document.createElementNS(ns, "g");
+          var x = 0;
+          var strokes = [];
+          var fallbacks = [];
+          var gi = 0;
+          for (var ci = 0; ci < text.length; ci++) {
+            var ch = text[ci];
+            var gl = table.glyphs[ch];
+            if (ch === " ") {
+              x += 340;
+              continue;
+            }
+            if (!gl) {
+              console.warn(
+                'hw-write-title: "' + ch + '" not in the baked table — Caveat fallback fade',
+              );
+              var ft = document.createElementNS(ns, "text");
+              ft.setAttribute("x", x);
+              ft.setAttribute("y", 0);
+              ft.setAttribute("class", "hw-wt-fallback");
+              ft.setAttribute("font-size", "1000");
+              ft.setAttribute("fill", ink);
+              ft.textContent = ch;
+              g.appendChild(ft);
+              fallbacks.push(ft);
+              x += 450;
+              continue;
+            }
+            var gg = document.createElementNS(ns, "g");
+            gg.setAttribute("transform", "translate(" + x + ",0)");
+            var maskId = "hw-wt-m" + gi;
+            var mask = document.createElementNS(ns, "mask");
+            mask.setAttribute("id", maskId);
+            mask.setAttribute("maskUnits", "userSpaceOnUse");
+            mask.setAttribute("x", "-200");
+            mask.setAttribute("y", "-900");
+            mask.setAttribute("width", gl.adv + 400);
+            mask.setAttribute("height", "1400");
+            for (var si = 0; si < gl.strokes.length; si++) {
+              var mp = document.createElementNS(ns, "path");
+              mp.setAttribute("d", gl.strokes[si]);
+              mp.setAttribute("fill", "none");
+              mp.setAttribute("stroke", "#fff");
+              mp.setAttribute("stroke-width", Math.max(30, Math.round(gl.stem * 1.35)));
+              mp.setAttribute("stroke-linecap", "round");
+              mp.setAttribute("stroke-linejoin", "round");
+              mask.appendChild(mp);
+              strokes.push({ path: mp, glyph: gi });
+            }
+            gg.appendChild(mask);
+            var op = document.createElementNS(ns, "path");
+            op.setAttribute("d", gl.outline);
+            op.setAttribute("fill", ink);
+            op.setAttribute("mask", "url(#" + maskId + ")");
+            gg.appendChild(op);
+            g.appendChild(gg);
+            x += gl.adv;
+            gi++;
+          }
+          svg.appendChild(g);
+          return { el: g, widthUnits: x, strokes: strokes, fallbacks: fallbacks };
+        }
+
+        /* ---- trace choreography: per-stroke reveals, pen-velocity eases,
+           60ms pen lifts; duration DERIVED from stroke count (writeOn owns
+           it — never exposed). One dispatcher-registered render applies the
+           dashoffsets. */
+        function writeOnTrace(tl, built, at) {
+          var strokes = built.strokes;
+          if (!strokes.length) return at;
+          var lift = 0.06;
+          var metas = [];
+          var inkSum = 0;
+          for (var i = 0; i < strokes.length; i++) {
+            var pe = window.hwPenEase(strokes[i].path);
+            var len = strokes[i].path.getTotalLength();
+            metas.push({ pe: pe, len: len, st: { p: 0 } });
+            inkSum += pe.inkTime;
+            strokes[i].path.setAttribute("stroke-dasharray", len + " " + len);
+            strokes[i].path.setAttribute("stroke-dashoffset", len);
+            strokes[i].path.style.opacity = "0"; // no round-cap nub pre-draw
+          }
+          var dur = clamp(0.55 + 0.22 * strokes.length, 1.2, 4);
+          var drawTotal = Math.max(0.1, dur - lift * (strokes.length - 1));
+          var t = at;
+          for (i = 0; i < metas.length; i++) {
+            var d = (metas[i].pe.inkTime / inkSum) * drawTotal;
+            metas[i].d = d;
+            tl.to(metas[i].st, { p: 1, duration: d, ease: metas[i].pe.ease }, t);
+            t += d + lift;
+          }
+          window.hwOnUpdate(tl, function () {
+            for (var i = 0; i < metas.length; i++) {
+              var m = metas[i];
+              strokes[i].path.style.strokeDashoffset = m.len * (1 - m.st.p);
+              strokes[i].path.style.opacity = m.st.p > 0 ? "1" : "0";
+            }
+          });
+          for (i = 0; i < built.fallbacks.length; i++) {
+            gsap.set(built.fallbacks[i], { opacity: 0 });
+            tl.to(
+              built.fallbacks[i],
+              { opacity: 1, duration: 0.4, ease: "power2.out" },
+              at + dur * 0.5,
+            );
+          }
+          return t - lift;
+        }
+
+        /* writeOn pose control — unknown → "trace" + console error */
+        function writeOnPose(tl, built, at, pose) {
+          if (pose !== "trace" && pose !== "reveal" && pose !== "off") {
+            console.error('hw: unknown writeOn pose "' + pose + '" — falling back to "trace"');
+            pose = "trace";
+          }
+          var all = built.strokes
+            .map(function (s) {
+              return s.path;
+            })
+            .concat(built.fallbacks);
+          if (pose === "off") {
+            for (var i = 0; i < all.length; i++) {
+              all[i].style.opacity = "0";
+              tl.set(all[i], { opacity: 1 }, at);
+            }
+            return at;
+          }
+          if (pose === "reveal") {
+            // per-glyph staggered fade (the family sweep grammar); derived timing
+            var byGlyph = {};
+            for (var j = 0; j < built.strokes.length; j++) {
+              (byGlyph[built.strokes[j].glyph] = byGlyph[built.strokes[j].glyph] || []).push(
+                built.strokes[j].path,
+              );
+            }
+            var keys = Object.keys(byGlyph);
+            for (var k = 0; k < keys.length; k++) {
+              var paths = byGlyph[keys[k]];
+              for (var m = 0; m < paths.length; m++) {
+                gsap.set(paths[m], { opacity: 0 });
+                tl.to(paths[m], { opacity: 1, duration: 0.3, ease: "power2.out" }, at + k * 0.12);
+              }
+            }
+            for (var f = 0; f < built.fallbacks.length; f++) {
+              gsap.set(built.fallbacks[f], { opacity: 0 });
+              tl.to(
+                built.fallbacks[f],
+                { opacity: 1, duration: 0.3, ease: "power2.out" },
+                at + keys.length * 0.06,
+              );
+            }
+            return at + keys.length * 0.12 + 0.3;
+          }
+          return writeOnTrace(tl, built, at);
+        }
+
+        /* ---- build ---- */
+        var table = window.__hwPenCaveat;
+        var scalePx = CONFIG.fontSize / 1000;
+        var svg = document.getElementById("hw-wt-svg");
+        var built = buildWord(svg, CONFIG.text);
+        var wUnits = built.widthUnits;
+        var hUnits = table.meta.ascent - table.meta.descent;
+        var wPx = wUnits * scalePx;
+        var hPx = hUnits * scalePx;
+        svg.setAttribute("width", Math.ceil(wPx));
+        svg.setAttribute("height", Math.ceil(hPx));
+        svg.setAttribute("viewBox", "0 " + -table.meta.ascent + " " + wUnits + " " + hUnits);
+
+        var wrap = document.getElementById("hw-wt-wrap");
+        var move = document.getElementById("hw-wt-move");
+        move.style.position = "absolute";
+        move.style.left = (CONFIG.x === null ? Math.round((1920 - wPx) / 2) : CONFIG.x) + "px";
+        move.style.top = (CONFIG.y === null ? Math.round((1080 - hPx) / 2) : CONFIG.y) + "px";
+
+        var tl = gsap.timeline({ paused: true });
+
+        var startAt = CONFIG.animationIn ? 0.35 : 0;
+        var writeEnd = startAt;
+        if (CONFIG.animationIn) {
+          writeEnd = writeOnPose(tl, built, startAt, CONFIG.writeOn);
+        } else {
+          // hard-on pose regardless of writeOn (animationIn=false = instant-on)
+          writeEnd = writeOnPose(tl, built, 0, "off");
+        }
+
+        /* squiggle underline (accent), drawn as the write lands */
+        var underPath = document.getElementById("hw-wt-under-path");
+        if (CONFIG.underline) {
+          var uw = Math.round(wPx);
+          var usvg = document.getElementById("hw-wt-under");
+          usvg.setAttribute("width", uw);
+          usvg.setAttribute("viewBox", "0 0 " + uw + " 40");
+          var segs = Math.max(6, Math.round(uw / 90));
+          var d = "M 2 " + (18 + window.hwHash(0, SEED) * 4).toFixed(1);
+          for (var i = 1; i <= segs; i++) {
+            var x2 = (uw / segs) * i;
+            var y2 = 18 + window.hwHash(i * 5 + 1, SEED) * 6;
+            var cxp = x2 - uw / segs / 2 + window.hwHash(i * 5 + 2, SEED) * 10;
+            var cyp = 18 + (i % 2 ? -1 : 1) * (9 + window.hwHash(i * 5 + 3, SEED) * 4);
+            d +=
+              " Q " +
+              cxp.toFixed(1) +
+              " " +
+              cyp.toFixed(1) +
+              " " +
+              x2.toFixed(1) +
+              " " +
+              y2.toFixed(1);
+          }
+          underPath.setAttribute("d", d);
+          var ulen = underPath.getTotalLength();
+          gsap.set(underPath, {
+            strokeDasharray: ulen + " " + ulen,
+            strokeDashoffset: ulen,
+            opacity: 0,
+          });
+          var uAt = Math.min(writeEnd + 0.1, DUR - 1.2);
+          tl.set(underPath, { opacity: 1 }, uAt);
+          tl.to(underPath, { strokeDashoffset: 0, duration: 0.7, ease: "power2.inOut" }, uAt);
+        } else {
+          document.getElementById("hw-wt-under").style.display = "none";
+        }
+
+        /* the boil rides its own wrapper; entrances/exits ride #hw-wt-move */
+        window.hwBoilPose(tl, "#hw-wt-boil", CONFIG.boil, { seed: SEED });
+
+        if (CONFIG.animationOut) {
+          tl.to(move, { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set("#hw-wt-root", { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["hw-write-title"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `handwritten` `typography` `title-card` `write-on` `overlay`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

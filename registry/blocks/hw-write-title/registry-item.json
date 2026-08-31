@@ -1,0 +1,66 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-write-title",
+  "type": "hyperframes:block",
+  "title": "Handwritten Write-On Title",
+  "description": "True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils",
+  "tags": ["handwritten", "typography", "title-card", "write-on", "overlay"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "hw-write-title.html",
+      "target": "compositions/hw-write-title.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/baked/caveat-pen.js",
+      "target": "assets/baked/caveat-pen.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "controls": [
+    {
+      "name": "scheme",
+      "type": "variant",
+      "values": ["chalk", "ink"],
+      "default": "chalk",
+      "drives": "which authored token set inks the letterforms (chalk-white over footage / marker-ink on boards)"
+    },
+    {
+      "name": "animation",
+      "type": "toggle",
+      "fields": ["animationIn", "animationOut"],
+      "default": { "animationIn": true, "animationOut": true },
+      "drives": "entrance (the write-on itself; false = hard-on) and exit fade — durations derived, never exposed"
+    },
+    {
+      "name": "boil",
+      "type": "variant",
+      "values": ["off", "calm", "lively"],
+      "default": "calm",
+      "drives": "boil amp/rot as authored pairs over the family-locked frameDrop 3; seed locked"
+    },
+    {
+      "name": "writeOn",
+      "type": "variant",
+      "values": ["trace", "reveal", "off"],
+      "default": "trace",
+      "drives": "reveal mechanic: pen-traced stroke order with velocity physics / per-glyph staggered fade / hard-on — trace duration derived from stroke count"
+    },
+    {
+      "name": "underline",
+      "type": "toggle",
+      "default": true,
+      "drives": "seeded accent squiggle underline drawn after the write lands"
+    }
+  ]
+}

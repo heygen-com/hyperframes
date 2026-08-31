@@ -1946,7 +1946,7 @@
     "name": "hw-arrow",
     "type": "component",
     "title": "Hand-Drawn Arrow",
-    "description": "Wobbled draw-on arrow with straight, gentle, and swoop curve presets; boils while on screen",
+    "description": "Wobbled draw-on arrow with straight, gentle, and swoop curve poses, a four-way stroke texture matrix (plain/soft/sharp/spray), and a travel-aligned head-arrival stretch pulse with spring recovery; boils while on screen",
     "tags": [
       "handwritten",
       "annotation",
@@ -1960,7 +1960,7 @@
     "name": "hw-boil",
     "type": "component",
     "title": "Hand-Drawn Boil",
-    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher and a wobbled-ellipse path generator",
+    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray — spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
     "tags": [
       "handwritten",
       "effect",
@@ -1973,7 +1973,7 @@
     "name": "hw-box-label",
     "type": "component",
     "title": "Hand-Drawn Box Label",
-    "description": "Wobbled rounded rectangle draws around a region with a handwritten label above or centered",
+    "description": "Wobbled rounded rectangle draws on — across the authored stroke matrix (plain/soft/sharp/spray) — or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
     "tags": [
       "handwritten",
       "annotation",
@@ -1986,7 +1986,7 @@
     "name": "hw-callout-circle",
     "type": "component",
     "title": "Scribble Callout Circle",
-    "description": "Wobbled ellipse draws around a target with optional scribble fill, curved connector, and handwritten label",
+    "description": "Wobbled ellipse draws around a target with optional scribble fill and curved connector; the handwritten label pops in WITH momentum and the drawn shapes absorb the arrival with a volume-preserving contact squash; outline and connector take the family stroke matrix (plain/soft/sharp/spray); boils",
     "tags": [
       "handwritten",
       "annotation",
@@ -2089,6 +2089,21 @@
     ],
     "href": "/catalog/components/hw-underline",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hw-underline.png"
+  },
+  {
+    "name": "hw-write-title",
+    "type": "block",
+    "title": "Handwritten Write-On Title",
+    "description": "True glyph write-on: filled Caveat letterforms revealed by baked per-glyph centerline strokes traced in real stroke order with a curvature-adaptive pen-velocity ease (fast on straights, slow into curves, inter-stroke pen lifts); optional squiggle underline; boils",
+    "tags": [
+      "handwritten",
+      "typography",
+      "title-card",
+      "write-on",
+      "overlay"
+    ],
+    "href": "/catalog/blocks/hw-write-title",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/hw-write-title.png"
   },
   {
     "name": "icon-morph-beat",
