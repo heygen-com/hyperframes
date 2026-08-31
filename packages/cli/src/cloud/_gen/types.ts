@@ -228,11 +228,8 @@ export interface DeleteHyperframesRenderResponse {
 }
 
 /**
- * Output aspect ratio. Only the three ratios already supported end-to-end by
- * the render pipeline are exposed today: ``16:9`` (landscape), ``9:16``
- * (portrait), ``1:1`` (square). ``auto`` and other social-media ratios (4:5,
- * 5:4) are reserved for a follow-up PR that wires composition-dim inference at
- * the controller boundary.
+ * Output aspect ratio. Supported ratios are ``16:9`` (landscape), ``9:16``
+ * (portrait), and ``1:1`` (square).
  */
 export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
 
@@ -314,9 +311,7 @@ export interface HyperframesRenderDetail {
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
 
 /**
- * Output resolution tier. Pricing diverges only at 4K (1.5x multiplier). The
- * render-pipeline value set is intentionally narrow at launch; 720p and other
- * tiers will follow once the producer/CLI surface catches up.
+ * Output resolution tier. 4K output uses a 1.5x pricing multiplier.
  */
 export type HyperframesResolution = "1080p" | "4k";
 
@@ -337,6 +332,34 @@ export interface StandardAPIError {
    * Link to error documentation
    */
   doc_url?: string | null;
+  /**
+   * Per-item error details for batch/multi-node failures (e.g. graph compilation
+   * errors by node).
+   */
+  errors?: Array<StandardAPIErrorDetail>;
+}
+
+export interface StandardAPIErrorDetail {
+  /**
+   * Machine-readable error code
+   */
+  code: string;
+  /**
+   * Human-readable error message
+   */
+  message: string;
+  /**
+   * Graph node id this error pertains to, if applicable
+   */
+  node_id?: string;
+  /**
+   * Port name on the node this error pertains to, if applicable
+   */
+  port?: string;
+  /**
+   * Field path within the item this error pertains to, if applicable
+   */
+  path?: string;
 }
 
 /**
