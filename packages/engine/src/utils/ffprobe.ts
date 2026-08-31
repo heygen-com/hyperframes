@@ -1050,12 +1050,20 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+  if (timestamps.length === 1) {
+    return {
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 1,
+      isProblematic: true,
     };
   }
 
