@@ -8,12 +8,47 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 
-const { generateContentMock, clientOptions } = vi.hoisted(() => ({
+const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
   generateContentMock: vi.fn(),
   // How the SDK client was constructed is the whole difference between the Vertex and API-key
   // paths, so the Vertex cases assert on it rather than on the request.
   clientOptions: [] as Record<string, unknown>[],
+  // A native abort inside libvips cannot be caught, so the only defence is never running two
+  // renders at once. That is a property of the loop, and this records it.
+  sharpState: {
+    inFlight: 0,
+    maxInFlight: 0,
+    concurrencyCalls: [] as number[],
+    renders: [] as string[],
+  },
 }));
+
+vi.mock("sharp", () => {
+  const pipeline = (filePath: string) => {
+    const chain = {
+      resize: () => chain,
+      flatten: () => chain,
+      png: () => chain,
+      toBuffer: async () => {
+        sharpState.inFlight += 1;
+        sharpState.maxInFlight = Math.max(sharpState.maxInFlight, sharpState.inFlight);
+        sharpState.renders.push(filePath);
+        // Yield, so an overlapping caller would be observed rather than serialized by luck.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        sharpState.inFlight -= 1;
+        return Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      },
+    };
+    return chain;
+  };
+  const sharp = Object.assign(pipeline, {
+    concurrency: (value: number) => {
+      sharpState.concurrencyCalls.push(value);
+      return value;
+    },
+  });
+  return { default: sharp };
+});
 
 vi.mock("@google/genai", () => ({
   GoogleGenAI: class {
@@ -499,18 +534,24 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vertexEnv();
-    generateContentMock.mockResolvedValue({ text: "A caption." });
+    // Capture the request inside the mock, where the argument is well-typed — avoids
+    // indexing `mock.calls` (and the repo's ban on `as` assertions).
+    let model: unknown;
+    let thinkingConfig: unknown;
+    generateContentMock.mockImplementation(
+      async (request: { model: string; config?: { thinkingConfig?: unknown } }) => {
+        model = request.model;
+        thinkingConfig = request.config?.thinkingConfig;
+        return { text: "A caption." };
+      },
+    );
 
     await captionImagesWithGemini(dir, () => {}, []);
 
     expect(generateContentMock).toHaveBeenCalledTimes(1);
-    const request = generateContentMock.mock.calls[0][0] as {
-      model: string;
-      config: { thinkingConfig?: { thinkingBudget?: number } };
-    };
-    expect(request.config.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    expect(thinkingConfig).toEqual({ thinkingBudget: 0 });
     // The API's flash-lite preview id is not resolvable on Vertex, so the default differs.
-    expect(request.model).toBe("gemini-2.5-flash");
+    expect(model).toBe("gemini-2.5-flash");
   });
 
   it("skips captioning when the service account is unparseable, without echoing it", async () => {
@@ -572,5 +613,115 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(captions).toEqual({});
     expect(clientOptions).toHaveLength(0);
     expect(generateContentMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("captionImagesWithGemini — SVG rasterization", () => {
+  const dirs: string[] = [];
+
+  beforeEach(() => {
+    sharpState.inFlight = 0;
+    sharpState.maxInFlight = 0;
+    sharpState.concurrencyCalls.length = 0;
+    sharpState.renders.length = 0;
+    clientOptions.length = 0;
+  });
+
+  afterEach(() => {
+    generateContentMock.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  function makeProjectWithSvgs(count: number): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-svg-"));
+    mkdirSync(join(dir, "assets", "svgs"), { recursive: true });
+    for (let i = 0; i < count; i++) {
+      writeFileSync(
+        join(dir, "assets", "svgs", `logo-${i}.svg`),
+        '<svg xmlns="http://www.w3.org/2000/svg"><path fill="#000" d="M0 0h8v8H0z"/></svg>',
+      );
+    }
+    return dir;
+  }
+
+  it("never runs two libvips renders at once", async () => {
+    // Production aborted here with `free(): unaligned chunk detected in tcache 2` (SIGABRT),
+    // twice in fourteen days, losing the whole capture. A native abort cannot be caught by the
+    // surrounding try/catch, so the concurrency has to be absent rather than handled — which
+    // makes "one at a time" the assertion, not "errors are reported".
+    const dir = makeProjectWithSvgs(6);
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        // Slower than a render, so overlapping renders would be the easy way to go faster —
+        // the point is that the loop does not take it.
+        await new Promise((resolve) => setTimeout(resolve, 15));
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: "A dark glyph." } }] }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }),
+    );
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(sharpState.renders).toHaveLength(6);
+    expect(sharpState.maxInFlight).toBe(1);
+    expect(Object.keys(captions)).toHaveLength(6);
+  });
+
+  it("bounds libvips' own worker pool as well", async () => {
+    // Left at its default the pool sizes itself to the host's core count, so serializing the
+    // loop alone still leaves one render fanning out across every core.
+    const dir = makeProjectWithSvgs(1);
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ choices: [{ message: { content: "A glyph." } }] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(sharpState.concurrencyCalls).toEqual([1]);
+  });
+
+  it("keeps captioning the rest when one SVG cannot be rasterized", async () => {
+    const dir = makeProjectWithSvgs(3);
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ choices: [{ message: { content: "A glyph." } }] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    // One file is unreadable, which is how an exotic SVG behaves through sharp.
+    rmSync(join(dir, "assets", "svgs", "logo-1.svg"));
+    mkdirSync(join(dir, "assets", "svgs", "logo-1.svg"));
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(Object.keys(captions).sort()).toEqual(["svgs/logo-0.svg", "svgs/logo-2.svg"]);
+    expect(sharpState.maxInFlight).toBe(1);
   });
 });
