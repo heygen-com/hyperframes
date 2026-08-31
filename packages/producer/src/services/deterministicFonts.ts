@@ -749,7 +749,13 @@ function fontSlug(familyName: string): string {
 function fontCacheDir(slug: string): string {
   const dir = join(resolveFontCacheRoot(), slug);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      const fallback = join(tmpdir(), `hyperframes-fonts-fallback`, slug);
+      mkdirSync(fallback, { recursive: true });
+      return fallback;
+    }
   }
   return dir;
 }
