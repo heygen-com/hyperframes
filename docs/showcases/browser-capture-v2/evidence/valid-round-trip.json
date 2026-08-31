@@ -1,0 +1,13 @@
+{
+  "caseId": "valid-round-trip",
+  "result": {
+    "ok": true,
+    "artifactKind": "editable-dom",
+    "version": "2.0",
+    "canonicalUtf8Bytes": 853
+  },
+  "materializerCalls": 2,
+  "decoder": "createImageBitmap",
+  "abortObserved": false,
+  "sourceResourceCount": 1
+}

@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web Capture v2: hostile input range</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0a;
+        --panel: #141414;
+        --panel-2: #1a1a1a;
+        --line: #2a2a2a;
+        --ink: #f5f5f5;
+        --dim: #a0a0a0;
+        --green: #22c55e;
+        --amber: #fbbf24;
+        --violet: #a78bfa;
+        --red: #ff7b88;
+        --blue: #3b82f6;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.65 var(--sans, ui-sans-serif, system-ui, sans-serif);
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: inherit;
+        text-decoration-color: color-mix(in srgb, currentColor 42%, transparent);
+        text-underline-offset: 0.2em;
+      }
+      a:hover {
+        text-decoration-color: currentColor;
+      }
+      :where(a, summary, video):focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 4px;
+      }
+      code,
+      pre,
+      .eyebrow,
+      .pill,
+      .case-id,
+      td.value {
+        font-family: var(--mono);
+      }
+      code {
+        padding: 0.1em 0.38em;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: #161e29;
+        font-size: 0.86em;
+      }
+      .wrap {
+        width: min(1160px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 42px 0 120px;
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding-bottom: 28px;
+        color: var(--dim);
+        font: 12px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        font-weight: 800;
+      }
+      .mark {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: linear-gradient(135deg, var(--green), var(--blue));
+        color: #07100c;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
+        gap: 40px;
+        padding: 62px 0 52px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .eyebrow {
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+      h1 {
+        max-width: 850px;
+        margin: 17px 0 20px;
+        font-size: clamp(48px, 7vw, 92px);
+        line-height: 0.92;
+        letter-spacing: -0.04em;
+        text-wrap: balance;
+      }
+      .lede {
+        max-width: 710px;
+        margin: 0;
+        color: #b5c0ce;
+        font-size: 19px;
+        line-height: 1.55;
+      }
+      .hero-proof {
+        align-self: end;
+        margin: 0;
+      }
+      .hero-proof img {
+        border-radius: 12px;
+      }
+      .pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 28px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #111821;
+        color: var(--dim);
+        font-size: 11px;
+      }
+      .toc {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 1px;
+        margin: 28px 0 0;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--line);
+      }
+      .toc a {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        padding: 16px;
+        background: #0d1218;
+        color: var(--dim);
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .toc a:hover {
+        background: #141c26;
+        color: var(--ink);
+      }
+      section {
+        padding-top: 82px;
+        scroll-margin-top: 20px;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: clamp(30px, 4vw, 48px);
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        text-wrap: balance;
+      }
+      h3 {
+        margin: 0;
+        font-size: 19px;
+        letter-spacing: -0.015em;
+        text-wrap: balance;
+      }
+      p {
+        color: #c6ced9;
+      }
+      .sub {
+        max-width: 760px;
+        margin: 8px 0 0;
+        color: var(--dim);
+        text-wrap: pretty;
+      }
+      .section-label {
+        margin-bottom: 10px;
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 750;
+      }
+      .commands {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 26px;
+      }
+      .command {
+        position: relative;
+        min-width: 0;
+        padding: 42px 20px 18px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+      .command::before {
+        content: attr(data-step);
+        position: absolute;
+        top: 14px;
+        left: 18px;
+        color: var(--green);
+        font: 800 11px/1 var(--mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      pre {
+        margin: 0;
+        overflow-x: auto;
+        color: #d5deea;
+        font-size: 12px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+      }
+      .fixture {
+        display: grid;
+        grid-template-columns: 1.4fr 0.6fr;
+        gap: 16px;
+        margin-top: 28px;
+      }
+      figure {
+        margin: 0;
+      }
+      img,
+      video {
+        display: block;
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #05070a;
+      }
+      figcaption {
+        margin-top: 9px;
+        color: var(--dim);
+        font-size: 13px;
+      }
+      .source {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+      .source pre {
+        margin-top: 22px;
+      }
+      .case {
+        --tone: var(--green);
+        position: relative;
+        margin-top: 86px;
+        padding-top: 28px;
+        border-top: 1px solid var(--line);
+      }
+      .case::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        left: 0;
+        width: 112px;
+        height: 2px;
+        background: var(--tone);
+      }
+      .case-head {
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 18px;
+        margin-bottom: 22px;
+      }
+      .case-id {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--tone) 17%, transparent);
+        color: var(--tone);
+        font-size: 14px;
+        font-weight: 900;
+      }
+      .case-head h2 {
+        font-size: clamp(28px, 4vw, 50px);
+      }
+      .outcome {
+        margin-top: 7px;
+        color: var(--tone);
+        font: 800 12px/1.3 var(--mono);
+        text-align: right;
+      }
+      .case-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.45fr);
+        gap: 18px;
+        align-items: start;
+      }
+      .visuals {
+        min-width: 0;
+      }
+      .stills {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .stills img {
+        border-radius: 10px;
+      }
+      .stills figcaption {
+        margin-top: 6px;
+        font: 10px/1.4 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .proof {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+      .proof h3 {
+        padding: 18px 20px 0;
+      }
+      table {
+        width: 100%;
+        margin-top: 12px;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 11px 20px;
+        border-top: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--dim);
+        font-size: 10px;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+      th:first-child {
+        width: 34%;
+      }
+      td.value {
+        color: var(--ink);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .good {
+        color: var(--green);
+      }
+      .zero {
+        color: var(--amber);
+      }
+      details {
+        border-top: 1px solid var(--line);
+      }
+      summary {
+        padding: 13px 20px;
+        color: var(--dim);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      details pre {
+        padding: 0 20px 18px;
+        color: #aebaca;
+        font-size: 11px;
+      }
+      .artifacts {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        margin-top: 24px;
+      }
+      .artifact {
+        min-width: 0;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        text-decoration: none;
+      }
+      .artifact:hover {
+        border-color: #4a4a4a;
+        background: var(--panel-2);
+      }
+      .artifact strong,
+      .artifact span {
+        display: block;
+      }
+      .artifact strong {
+        margin-bottom: 6px;
+        font-size: 12px;
+      }
+      .artifact span {
+        color: var(--dim);
+        font: 10px/1.4 var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .checklist {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 24px;
+        padding: 0;
+        counter-reset: check;
+        list-style: none;
+      }
+      .checklist li {
+        min-height: 180px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        counter-increment: check;
+      }
+      .checklist li::before {
+        content: "0" counter(check);
+        display: block;
+        margin-bottom: 20px;
+        color: var(--green);
+        font: 800 12px/1 var(--mono);
+      }
+      .checklist li.refuse::before {
+        color: var(--red);
+      }
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+        margin-top: 24px;
+      }
+      .note {
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+      .note.warn {
+        border-color: #61404a;
+        background: #181116;
+      }
+      .note.ok {
+        border-color: #245841;
+        background: #0d1814;
+      }
+      .note h3 {
+        margin-bottom: 10px;
+      }
+      .note p,
+      .note ul {
+        margin: 0;
+        color: var(--dim);
+        font-size: 14px;
+      }
+      .note li + li {
+        margin-top: 8px;
+      }
+      footer {
+        margin-top: 76px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+        color: var(--dim);
+        font-size: 13px;
+      }
+      @media (max-width: 900px) {
+        .hero,
+        .fixture,
+        .case-layout {
+          grid-template-columns: 1fr;
+        }
+        .toc {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        .commands,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+        .artifacts {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 620px) {
+        .wrap {
+          width: min(100% - 24px, 1160px);
+        }
+        .topbar > span:last-child,
+        .outcome {
+          display: none;
+        }
+        .toc,
+        .checklist {
+          grid-template-columns: 1fr;
+        }
+        .case-head {
+          grid-template-columns: 50px 1fr;
+        }
+        .stills {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="topbar">
+        <div class="brand"><span class="mark">H</span> HyperFrames capture lab</div>
+        <span>Evidence packet · Web Capture v2</span>
+      </header>
+
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Hostile input range</div>
+          <h1>Pretty HTML is the easy case.</h1>
+          <p class="lede">
+            Web Capture v2 proves where expensive browser work may begin, and where it must stop.
+            Every claim below pairs a real Chrome recording with the JSON that landed on disk.
+          </p>
+          <div class="pills">
+            <span class="pill">branch feat/browser-to-studio</span>
+            <span class="pill">@hyperframes/core/web-capture</span>
+            <span class="pill">contract 2.0</span>
+          </div>
+        </div>
+        <figure class="hero-proof">
+          <img src="media/valid-round-trip.after.png" alt="The A1 browser witness after a successful canonical capture" />
+          <figcaption>Real Chrome. Built package. Persisted result.</figcaption>
+        </figure>
+      </header>
+
+      <nav class="toc" aria-label="Showcase sections">
+        <a href="#run">Run it</a>
+        <a href="#fixture">Fixture</a>
+        <a href="#round-trip">Round-trip</a>
+        <a href="#refusals">Refusals</a>
+        <a href="#artifacts">Artifacts</a>
+        <a href="#rough-edges">Rough edges</a>
+      </nav>
+
+      <main>
+        <section id="run">
+          <div class="section-label">Reproduce the witnesses</div>
+          <h2>Run it in two commands</h2>
+          <p class="sub">
+            Run from the repository root in two terminals. The second command uses the Chromium
+            installed by Puppeteer and records every case from a clean fixture.
+          </p>
+          <div class="commands">
+            <div class="command" data-step="Terminal one">
+              <pre>node docs/showcases/browser-capture-v2/bench/serve.mjs</pre>
+            </div>
+            <div class="command" data-step="Terminal two">
+              <pre>PUPPETEER_PKG="$(node -p "require.resolve('puppeteer-core',{paths:['./packages/engine']})")" \
+CHROME_PATH="$(find "$HOME/.cache/puppeteer/chrome" -type f -path '*Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' | sort | tail -1)" \
+node docs/showcases/browser-capture-v2/capture/all.mjs</pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="fixture">
+          <div class="section-label">One bench, five identities</div>
+          <h2>The fixture makes invisible boundaries visible</h2>
+          <p class="sub">
+            Each case owns a code and color. The call meter reveals whether data crossed the costly
+            materialization boundary. The console shows the persisted evidence path, not a synthetic
+            success toast.
+          </p>
+          <div class="fixture">
+            <figure>
+              <img src="media/bench.png" alt="Web Capture v2 bench with five hostile input cases" />
+              <figcaption>
+                A1 through E9 reuse the same four-stage pipeline: envelope, batch preflight,
+                materialize, closed result.
+              </figcaption>
+            </figure>
+            <div class="source">
+              <div>
+                <div class="eyebrow">Shared source</div>
+                <h3>A tiny editable DOM capture</h3>
+                <p class="sub">Only the resource payload changes between witnesses.</p>
+              </div>
+              <pre>artifact: {
+  kind: "editable-dom",
+  html: "&lt;section&gt;Hard case proof&lt;/section&gt;",
+  css: ".capture-proof { color: #72f1b8 }",
+  width: 640,
+  height: 360
+}
+claims: {
+  time: { kind: "locked-frame", atMs: 0 },
+  reflow: "fixed-viewport"
+}</pre>
+            </div>
+          </div>
+        </section>
+
+        <article class="case" id="round-trip" style="--tone: var(--green)">
+          <div class="case-head">
+            <div class="case-id">A1</div>
+            <div>
+              <h2>A real PNG survives both sides</h2>
+              <p class="sub">
+                The producer builds canonical text, the consumer parses it again, and Chrome decodes
+                the resource independently on both passes.
+              </p>
+            </div>
+            <div class="outcome">ok · editable-dom</div>
+          </div>
+          <div class="case-layout">
+            <div class="visuals">
+              <figure>
+                <video src="media/valid-round-trip.mp4" poster="media/valid-round-trip.poster.jpg" aria-label="A1 valid PNG round-trip browser recording" controls muted playsinline loop preload="metadata"></video>
+                <figcaption>One pointer gesture drives the real built package in Chrome.</figcaption>
+              </figure>
+              <div class="stills">
+                <figure><img src="media/valid-round-trip.before.png" alt="A1 bench before the round-trip starts" /><figcaption>Before · ready</figcaption></figure>
+                <figure><img src="media/valid-round-trip.after.png" alt="A1 bench after the canonical round-trip succeeds" /><figcaption>After · persisted</figcaption></figure>
+              </div>
+            </div>
+            <div class="proof">
+              <h3>Fixture to disk</h3>
+              <table>
+                <thead><tr><th>Thing</th><th>Before</th><th>After</th></tr></thead>
+                <tbody>
+                  <tr><td>Capture text</td><td class="value">input object</td><td class="value">v2 · 853 bytes</td></tr>
+                  <tr><td>PNG decode</td><td class="value">not entered</td><td class="value">2 accepted calls</td></tr>
+                  <tr><td>Contract</td><td class="value">pending</td><td class="value good">ok · editable-dom</td></tr>
+                </tbody>
+              </table>
+              <details>
+                <summary>Open persisted witness</summary>
+                <pre>{
+  "result": {
+    "ok": true,
+    "artifactKind": "editable-dom",
+    "version": "2.0",
+    "canonicalUtf8Bytes": 853
+  },
+  "materializerCalls": 2,
+  "decoder": "createImageBitmap"
+}</pre>
+              </details>
+            </div>
+          </div>
+        </article>
+
+        <div id="refusals">
+          <article class="case" style="--tone: var(--amber)">
+            <div class="case-head">
+              <div class="case-id">B7</div>
+              <div>
+                <h2>A late bad SHA stops the whole batch</h2>
+                <p class="sub">
+                  Resource two lies. Resource one never reaches the decoder because all resources
+                  must pass preflight before any materialization begins.
+                </p>
+              </div>
+              <div class="outcome">hash mismatch · 0 calls</div>
+            </div>
+            <div class="case-layout">
+              <div class="visuals">
+                <figure>
+                  <video src="media/late-bad-sha.mp4" poster="media/late-bad-sha.poster.jpg" aria-label="B7 late bad SHA browser recording" controls muted playsinline loop preload="metadata"></video>
+                  <figcaption>The materializer meter remains at zero after the second SHA fails.</figcaption>
+                </figure>
+                <div class="stills">
+                  <figure><img src="media/late-bad-sha.before.png" alt="B7 bench before batch preflight" /><figcaption>Before · two resources</figcaption></figure>
+                  <figure><img src="media/late-bad-sha.after.png" alt="B7 bench after the second SHA is rejected" /><figcaption>After · zero decoder calls</figcaption></figure>
+                </div>
+              </div>
+              <div class="proof">
+                <h3>Fixture to disk</h3>
+                <table>
+                  <thead><tr><th>Thing</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td>Batch</td><td class="value">2 resources</td><td class="value">closed at image-2</td></tr>
+                    <tr><td>Decoder</td><td class="value">not entered</td><td class="value zero">0 calls</td></tr>
+                    <tr><td>Contract</td><td class="value">pending</td><td class="value">resource.hash-mismatch</td></tr>
+                  </tbody>
+                </table>
+                <details>
+                  <summary>Open persisted witness</summary>
+                  <pre>{
+  "result": {
+    "ok": false,
+    "code": "resource.hash-mismatch",
+    "resourceId": "image-2"
+  },
+  "materializerCalls": 0,
+  "decoder": "none"
+}</pre>
+                </details>
+              </div>
+            </div>
+          </article>
+
+          <article class="case" style="--tone: var(--violet)">
+            <div class="case-head">
+              <div class="case-id">C4</div>
+              <div>
+                <h2>Shipping weight cannot hide warehouse volume</h2>
+                <p class="sub">
+                  A 48-byte WOFF2 header claims a 4.29 GB decoded font. The expanded cost is rejected
+                  before allocation and before a decoder call.
+                </p>
+              </div>
+              <div class="outcome">font budget · 0 calls</div>
+            </div>
+            <div class="case-layout">
+              <div class="visuals">
+                <figure>
+                  <video src="media/font-expansion.mp4" poster="media/font-expansion.poster.jpg" aria-label="C4 expanded font quota browser recording" controls muted playsinline loop preload="metadata"></video>
+                  <figcaption>The compact payload cannot smuggle an unbounded decoded allocation.</figcaption>
+                </figure>
+                <div class="stills">
+                  <figure><img src="media/font-expansion.before.png" alt="C4 bench before the expanded font quota check" /><figcaption>Before · 48 bytes shipped</figcaption></figure>
+                  <figure><img src="media/font-expansion.after.png" alt="C4 bench after the decoded font budget refuses the resource" /><figcaption>After · allocation refused</figcaption></figure>
+                </div>
+              </div>
+              <div class="proof">
+                <h3>Fixture to disk</h3>
+                <table>
+                  <thead><tr><th>Thing</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td>Font size</td><td class="value">48 transported</td><td class="value">4,294,967,295 decoded</td></tr>
+                    <tr><td>Decoder</td><td class="value">not entered</td><td class="value zero">0 calls</td></tr>
+                    <tr><td>Contract</td><td class="value">16,000,000 limit</td><td class="value">budget.decoded-font-bytes</td></tr>
+                  </tbody>
+                </table>
+                <details>
+                  <summary>Open persisted witness</summary>
+                  <pre>{
+  "result": {
+    "ok": false,
+    "code": "budget.decoded-font-bytes",
+    "actual": 4294967295,
+    "limit": 16000000
+  },
+  "materializerCalls": 0
+}</pre>
+                </details>
+              </div>
+            </div>
+          </article>
+
+          <article class="case" style="--tone: var(--red)">
+            <div class="case-head">
+              <div class="case-id">D2</div>
+              <div>
+                <h2>A perfect-looking header is not a picture</h2>
+                <p class="sub">
+                  Static metadata and SHA validation pass. Chrome then refuses the truncated image,
+                  and the contract closes the batch as invalid data.
+                </p>
+              </div>
+              <div class="outcome">invalid data · 1 call</div>
+            </div>
+            <div class="case-layout">
+              <div class="visuals">
+                <figure>
+                  <video src="media/corrupt-png.mp4" poster="media/corrupt-png.poster.jpg" aria-label="D2 corrupt PNG browser decoder recording" controls muted playsinline loop preload="metadata"></video>
+                  <figcaption>Static inspection admits the bytes. The browser decoder has the final word.</figcaption>
+                </figure>
+                <div class="stills">
+                  <figure><img src="media/corrupt-png.before.png" alt="D2 bench before Chrome decodes the corrupt PNG" /><figcaption>Before · header accepted</figcaption></figure>
+                  <figure><img src="media/corrupt-png.after.png" alt="D2 bench after Chrome refuses the corrupt PNG" /><figcaption>After · decoder refused</figcaption></figure>
+                </div>
+              </div>
+              <div class="proof">
+                <h3>Fixture to disk</h3>
+                <table>
+                  <thead><tr><th>Thing</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td>Static bytes</td><td class="value">24 · SHA matched</td><td class="value good">preflight passed</td></tr>
+                    <tr><td>Chrome decoder</td><td class="value">not entered</td><td class="value">1 refused call</td></tr>
+                    <tr><td>Contract</td><td class="value">pending</td><td class="value">resource.invalid-data</td></tr>
+                  </tbody>
+                </table>
+                <details>
+                  <summary>Open persisted witness</summary>
+                  <pre>{
+  "result": {
+    "ok": false,
+    "code": "resource.invalid-data",
+    "resourceId": "image-1"
+  },
+  "materializerCalls": 1,
+  "decoder": "createImageBitmap"
+}</pre>
+                </details>
+              </div>
+            </div>
+          </article>
+
+          <article class="case" style="--tone: var(--blue)">
+            <div class="case-head">
+              <div class="case-id">E9</div>
+              <div>
+                <h2>A decoder that never answers still finishes</h2>
+                <p class="sub">
+                  The materializer stalls forever. One shared deadline aborts the exact signal it
+                  received and returns a tagged outcome instead of leaving the capture hung.
+                </p>
+              </div>
+              <div class="outcome">aborted · signal observed</div>
+            </div>
+            <div class="case-layout">
+              <div class="visuals">
+                <figure>
+                  <video src="media/hung-decoder.mp4" poster="media/hung-decoder.poster.jpg" aria-label="E9 hung decoder shared abort recording" controls muted playsinline loop preload="metadata"></video>
+                  <figcaption>The longer hold is real. The result arrives only when the shared deadline fires.</figcaption>
+                </figure>
+                <div class="stills">
+                  <figure><img src="media/hung-decoder.before.png" alt="E9 bench before the decoder intentionally stalls" /><figcaption>Before · valid resource</figcaption></figure>
+                  <figure><img src="media/hung-decoder.after.png" alt="E9 bench after the shared deadline aborts the stalled decoder" /><figcaption>After · abort observed</figcaption></figure>
+                </div>
+              </div>
+              <div class="proof">
+                <h3>Fixture to disk</h3>
+                <table>
+                  <thead><tr><th>Thing</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    <tr><td>Capability</td><td class="value">called once</td><td class="value">intentionally stalled</td></tr>
+                    <tr><td>Shared signal</td><td class="value">active</td><td class="value good">abort observed</td></tr>
+                    <tr><td>Contract</td><td class="value">pending</td><td class="value">resource.materialization-aborted</td></tr>
+                  </tbody>
+                </table>
+                <details>
+                  <summary>Open persisted witness</summary>
+                  <pre>{
+  "result": {
+    "ok": false,
+    "code": "resource.materialization-aborted",
+    "resourceId": "image-1"
+  },
+  "materializerCalls": 1,
+  "abortObserved": true
+}</pre>
+                </details>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <section id="artifacts">
+          <div class="section-label">What the browser wrote</div>
+          <h2>The recordings illustrate. These files prove.</h2>
+          <p class="sub">
+            Each browser gesture POSTed its actual package result to the local evidence writer. Open
+            any witness directly. The page remains usable from <code>file://</code> with no server.
+          </p>
+          <div class="artifacts">
+            <a class="artifact" href="evidence/valid-round-trip.json"><strong>A1 round-trip</strong><span>evidence/valid-round-trip.json</span></a>
+            <a class="artifact" href="evidence/late-bad-sha.json"><strong>B7 bad SHA</strong><span>evidence/late-bad-sha.json</span></a>
+            <a class="artifact" href="evidence/font-expansion.json"><strong>C4 font bomb</strong><span>evidence/font-expansion.json</span></a>
+            <a class="artifact" href="evidence/corrupt-png.json"><strong>D2 corrupt PNG</strong><span>evidence/corrupt-png.json</span></a>
+            <a class="artifact" href="evidence/hung-decoder.json"><strong>E9 hung decoder</strong><span>evidence/hung-decoder.json</span></a>
+          </div>
+        </section>
+
+        <section id="try-it">
+          <div class="section-label">A five-minute review path</div>
+          <h2>Try the boundary, not just the happy path</h2>
+          <ol class="checklist">
+            <li>
+              Open <a href="bench/index.html?case=valid-round-trip">A1</a> through the local server.
+              Run it. Expect two <code>createImageBitmap</code> calls and a canonical v2 result.
+            </li>
+            <li class="refuse">
+              Run <a href="bench/index.html?case=late-bad-sha">B7</a>. It should refuse the second
+              resource and keep the decoder meter at zero. Any call is a batch atomicity failure.
+            </li>
+            <li>
+              Run <a href="bench/index.html?case=hung-decoder">E9</a>. Wait for the deadline. It
+              should finish with <code>resource.materialization-aborted</code>, never spin forever.
+            </li>
+          </ol>
+        </section>
+
+        <section id="rough-edges">
+          <div class="section-label">The honest boundary</div>
+          <h2>What this packet does not prove</h2>
+          <div class="notes">
+            <div class="note warn">
+              <h3>The extension handoff is not in these clips</h3>
+              <p>
+                This bench exercises the shipped core contract directly in Chrome. It does not claim
+                the extension toolbar, target-page clipboard warning, or Studio paste flow is complete.
+                The creator-mode clipboard warning remains the next U2A gate.
+              </p>
+            </div>
+            <div class="note warn">
+              <h3>One browser decoder is represented</h3>
+              <p>
+                The real image capability here is Chromium 152 <code>createImageBitmap</code>. Other
+                browser engines may reject different corrupt payloads and need their own witness run.
+              </p>
+            </div>
+            <div class="note ok">
+              <h3>What was actually verified</h3>
+              <ul>
+                <li>The current <code>packages/core</code> build completed.</li>
+                <li>Five real Chrome gestures persisted five matching JSON witnesses.</li>
+                <li>Every recording was inspected as a filmstrip.</li>
+                <li>Five H.264 MP4s decode at 1280 by 900, 30 fps, with no audio stream.</li>
+              </ul>
+            </div>
+            <div class="note ok">
+              <h3>Why the meter matters</h3>
+              <p>
+                A refusal code alone can hide wasted work. The materializer count proves both safety
+                and ordering: cheap batch checks finish before expensive browser capabilities begin.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        Recorded from a 1500 by 940 headless Chrome viewport against the built
+        <code>@hyperframes/core/web-capture</code> package. The visible cursor is drawn by the capture
+        harness because browser screencasts do not include the operating system cursor.
+      </footer>
+    </div>
+  </body>
+</html>

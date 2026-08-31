@@ -1,0 +1,12 @@
+{
+  "caseId": "corrupt-png",
+  "result": {
+    "ok": false,
+    "code": "resource.invalid-data",
+    "resourceId": "image-1"
+  },
+  "materializerCalls": 1,
+  "decoder": "createImageBitmap",
+  "abortObserved": false,
+  "sourceResourceCount": 1
+}

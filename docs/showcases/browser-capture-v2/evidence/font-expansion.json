@@ -1,0 +1,13 @@
+{
+  "caseId": "font-expansion",
+  "result": {
+    "ok": false,
+    "code": "budget.decoded-font-bytes",
+    "actual": 4294967295,
+    "limit": 16000000
+  },
+  "materializerCalls": 0,
+  "decoder": "none",
+  "abortObserved": false,
+  "sourceResourceCount": 1
+}

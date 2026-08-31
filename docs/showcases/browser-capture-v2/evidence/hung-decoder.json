@@ -1,0 +1,12 @@
+{
+  "caseId": "hung-decoder",
+  "result": {
+    "ok": false,
+    "code": "resource.materialization-aborted",
+    "resourceId": "image-1"
+  },
+  "materializerCalls": 1,
+  "decoder": "intentionally stalled test capability",
+  "abortObserved": true,
+  "sourceResourceCount": 1
+}

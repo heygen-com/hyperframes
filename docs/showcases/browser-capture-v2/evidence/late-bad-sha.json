@@ -1,0 +1,12 @@
+{
+  "caseId": "late-bad-sha",
+  "result": {
+    "ok": false,
+    "code": "resource.hash-mismatch",
+    "resourceId": "image-2"
+  },
+  "materializerCalls": 0,
+  "decoder": "none",
+  "abortObserved": false,
+  "sourceResourceCount": 2
+}

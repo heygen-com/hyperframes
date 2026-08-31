@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web Capture v2 hard-case bench</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07090c;
+        --panel: #0e1218;
+        --panel-2: #131923;
+        --line: #263141;
+        --ink: #f4f7fb;
+        --dim: #8e9bab;
+        --green: #72f1b8;
+        --amber: #ffcf70;
+        --red: #ff7b88;
+        --blue: #72a7ff;
+        --violet: #be8cff;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 12% -10%, #19334a 0, transparent 32%),
+          radial-gradient(circle at 90% 110%, #241733 0, transparent 36%), var(--bg);
+        color: var(--ink);
+      }
+      button {
+        font: inherit;
+      }
+      .shell {
+        width: min(1440px, calc(100vw - 48px));
+        margin: 24px auto;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 2px 22px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .mark {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #75f0ba, #6aa6ff);
+        color: #07100c;
+        font-weight: 900;
+      }
+      .build {
+        color: var(--dim);
+        font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        min-height: 760px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: color-mix(in srgb, var(--panel) 94%, transparent);
+        box-shadow: 0 28px 100px #0009;
+      }
+      aside {
+        padding: 28px 20px;
+        border-right: 1px solid var(--line);
+        background: #0a0e13cc;
+      }
+      aside h1 {
+        margin: 0 8px 7px;
+        font-size: 25px;
+        line-height: 1.1;
+        letter-spacing: -0.035em;
+      }
+      aside > p {
+        margin: 0 8px 24px;
+        color: var(--dim);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .case-list {
+        display: grid;
+        gap: 9px;
+      }
+      .case {
+        display: grid;
+        grid-template-columns: 38px 1fr auto;
+        align-items: center;
+        gap: 11px;
+        width: 100%;
+        padding: 12px;
+        color: var(--ink);
+        border: 1px solid transparent;
+        border-radius: 13px;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .case:hover,
+      .case[aria-current="true"] {
+        border-color: #334156;
+        background: #141b25;
+      }
+      .case-id {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        background: color-mix(in srgb, var(--tone) 18%, transparent);
+        color: var(--tone);
+        font: 800 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .case-name {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .case-rule {
+        display: block;
+        color: var(--dim);
+        font-size: 11px;
+      }
+      .case-state {
+        color: #516174;
+        font-size: 15px;
+      }
+      .case[data-complete="true"] .case-state {
+        color: var(--green);
+      }
+      main {
+        position: relative;
+        padding: 42px 48px 46px;
+        overflow: hidden;
+      }
+      .kicker {
+        color: var(--tone);
+        font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      h2 {
+        max-width: 800px;
+        margin: 12px 0 10px;
+        font-size: clamp(34px, 4vw, 58px);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+      }
+      .lead {
+        max-width: 720px;
+        min-height: 52px;
+        margin: 0;
+        color: #abb6c5;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin: 34px 0 22px;
+      }
+      .stage {
+        position: relative;
+        min-height: 116px;
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: var(--panel-2);
+        transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+      }
+      .stage::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: -11px;
+        width: 11px;
+        height: 1px;
+        background: var(--line);
+      }
+      .stage:last-child::after {
+        display: none;
+      }
+      .stage[data-state="active"] {
+        transform: translateY(-3px);
+        border-color: var(--tone);
+        background: color-mix(in srgb, var(--tone) 10%, var(--panel-2));
+        box-shadow: 0 14px 34px color-mix(in srgb, var(--tone) 12%, transparent);
+      }
+      .stage[data-state="pass"] {
+        border-color: #285b48;
+      }
+      .stage[data-state="skip"] {
+        opacity: 0.48;
+      }
+      .stage[data-state="fail"] {
+        border-color: #7a3941;
+      }
+      .stage-num {
+        color: var(--dim);
+        font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .stage strong {
+        display: block;
+        margin: 18px 0 5px;
+        font-size: 13px;
+      }
+      .stage span:last-child {
+        color: var(--dim);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .console {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 200px;
+        gap: 12px;
+        min-height: 180px;
+        padding: 18px;
+        border: 1px solid #1f2a39;
+        border-radius: 15px;
+        background: #080b10;
+      }
+      pre {
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
+        color: #a9b7c8;
+        font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+      }
+      .meter {
+        display: grid;
+        align-content: center;
+        gap: 7px;
+        padding-left: 16px;
+        border-left: 1px solid #1f2a39;
+      }
+      .meter-label {
+        color: var(--dim);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .meter-value {
+        color: var(--tone);
+        font: 800 28px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .meter-sub {
+        color: var(--dim);
+        font-size: 11px;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 24px;
+      }
+      .run {
+        min-width: 188px;
+        padding: 12px 18px;
+        border: 0;
+        border-radius: 11px;
+        background: var(--tone);
+        color: #07090c;
+        font-weight: 820;
+        cursor: pointer;
+        box-shadow: 0 12px 30px color-mix(in srgb, var(--tone) 20%, transparent);
+      }
+      .run:disabled {
+        cursor: wait;
+        opacity: 0.64;
+      }
+      .expectation {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .expectation b {
+        color: var(--ink);
+      }
+      @media (max-width: 1000px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .case-list {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .pipeline {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="mark">H</span> HyperFrames capture lab</div>
+        <div class="build">@hyperframes/core/web-capture · v2.0</div>
+      </header>
+      <div class="layout" id="bench">
+        <aside>
+          <h1>Hostile input range</h1>
+          <p>Five cases that force the contract to prove where expensive work may begin.</p>
+          <div class="case-list" id="case-list"></div>
+        </aside>
+        <main id="case-detail" data-run-state="idle">
+          <div class="kicker" id="kicker"></div>
+          <h2 id="title"></h2>
+          <p class="lead" id="description"></p>
+          <div class="pipeline">
+            <div class="stage" data-stage="envelope"><span class="stage-num">01</span><strong>Envelope</strong><span>canonical route, schema, size</span></div>
+            <div class="stage" data-stage="preflight"><span class="stage-num">02</span><strong>Batch preflight</strong><span>quotas, headers, every SHA</span></div>
+            <div class="stage" data-stage="materialize"><span class="stage-num">03</span><strong>Materialize</strong><span>real decoder, shared signal</span></div>
+            <div class="stage" data-stage="result"><span class="stage-num">04</span><strong>Closed result</strong><span>one tagged outcome</span></div>
+          </div>
+          <div class="console">
+            <pre id="console">ready\nselect run case to execute the real browser package</pre>
+            <div class="meter">
+              <span class="meter-label">Materializer calls</span>
+              <span class="meter-value" id="calls">0</span>
+              <span class="meter-sub" id="meter-sub">nothing decoded yet</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="run" id="run-case">Run hard case</button>
+            <span class="expectation">Expected: <b id="expected"></b></span>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>
