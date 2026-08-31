@@ -4,6 +4,9 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
+import { retryStudioSave, StudioSaveNetworkError } from "../../utils/studioSaveDiagnostics";
+
+const CAPTION_OVERRIDES_PATH = "caption-overrides.json";
 
 interface CaptionOverrideEntry {
   wordId?: string;
@@ -56,6 +59,10 @@ function buildOverrides(model: {
   return entries;
 }
 
+function captionFileUrl(projectId: string): string {
+  return `/api/projects/${projectId}/files/${encodeURIComponent(CAPTION_OVERRIDES_PATH)}`;
+}
+
 /**
  * Auto-saves caption overrides to caption-overrides.json on every model change.
  * Also provides loadOverrides for reading existing overrides on edit mode entry.
@@ -74,11 +81,11 @@ export function useCaptionSync(projectId: string | null) {
   // when no newer edit re-armed the debounce while it was in flight.
   const editSeqRef = useRef(0);
 
+  // null = file does not exist yet (use If-None-Match: *), string = known ETag.
+  const versionRef = useRef<string | null>(null);
+
   const save = useCallback(() => {
     const state = useCaptionStore.getState();
-    // Note: deliberately no isEditMode guard — exiting caption mode (or any
-    // path that fires the flush) must still write the last edits; the model
-    // survives exit, and after a store reset it is null anyway.
     if (!state.model || !state.sourceFilePath) {
       pendingRef.current = false;
       return;
@@ -91,23 +98,55 @@ export function useCaptionSync(projectId: string | null) {
 
     const seqAtSave = editSeqRef.current;
     const overrides = buildOverrides(state.model);
+    const body = JSON.stringify(overrides, null, 2);
 
-    fetch(`/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain", ...studioWriteHeaders() },
-      body: JSON.stringify(overrides, null, 2),
+    retryStudioSave(async () => {
+      const version = versionRef.current;
+      let response: Response;
+      try {
+        response = await fetch(captionFileUrl(pid), {
+          method: "PUT",
+          headers: {
+            "Content-Type": "text/plain",
+            ...studioWriteHeaders(),
+            ...(version ? { "If-Match": version } : { "If-None-Match": "*" }),
+          },
+          body,
+        });
+      } catch (error) {
+        throw new StudioSaveNetworkError("Failed to save caption overrides: network error", {
+          cause: error,
+        });
+      }
+      if (response.status === 409) {
+        const conflict = (await response.json().catch(() => null)) as {
+          currentVersion?: string | null;
+        } | null;
+        if (conflict?.currentVersion) versionRef.current = conflict.currentVersion;
+        throw new StudioSaveNetworkError("Caption overrides conflict — retrying");
+      }
+      if (response.status === 428) {
+        // Server requires a precondition but we thought we had one — preflight
+        // to learn the current version and retry.
+        const info = (await response.json().catch(() => null)) as {
+          currentVersion?: string | null;
+        } | null;
+        versionRef.current = info?.currentVersion ?? null;
+        throw new StudioSaveNetworkError("Caption overrides precondition required — retrying");
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const result = (await response.json().catch(() => null)) as {
+        version?: string;
+      } | null;
+      versionRef.current = result?.version ?? response.headers.get("etag");
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // A newer edit may have re-armed the debounce while this PUT was in
-        // flight — its beforeunload/unmount flush still needs pending=true.
+      .then(() => {
         if (editSeqRef.current === seqAtSave) pendingRef.current = false;
         const s = useCaptionStore.getState();
         if (s.syncError) s.setSyncError(null);
       })
       .catch((error: unknown) => {
-        // Caption auto-save is a data-loss path: surface it to the user, not
-        // just telemetry. pendingRef stays true so beforeunload still warns.
         trackEvent("studio_caption_autosave_failed", { error: String(error) });
         useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
       });
@@ -168,15 +207,18 @@ export function useCaptionSync(projectId: string | null) {
     const pid = projectIdRef.current;
     if (!pid) return;
 
-    let data: { content?: string };
+    let data: { content?: string; version?: string };
     try {
-      const res = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
-      );
-      if (!res.ok) return; // no overrides file yet — normal
+      const res = await fetch(captionFileUrl(pid));
+      if (res.status === 404) {
+        versionRef.current = null;
+        return;
+      }
+      if (!res.ok) return;
       data = await res.json();
+      versionRef.current = data.version ?? res.headers.get("etag");
     } catch {
-      return; // network failure fetching an optional file — nothing to restore
+      return;
     }
     if (!data.content) return;
 
@@ -227,7 +269,6 @@ export function useCaptionSync(projectId: string | null) {
       suppressSaveRef.current = true;
       useCaptionStore.getState().setModel({ ...model, segments: newSegments });
     } catch {
-      // File exists but is unreadable — previous edits would silently not load.
       useCaptionStore
         .getState()
         .setSyncError("caption-overrides.json is corrupt — earlier caption edits didn't load");
