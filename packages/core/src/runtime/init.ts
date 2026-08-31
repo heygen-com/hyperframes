@@ -67,7 +67,12 @@ import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseNumeric } from "./startExpression";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
-import { clearRuntimeData, setRuntimeData, setRuntimeDataErrorReporter } from "./runtimeData";
+import {
+  clearRuntimeData,
+  setRuntimeData,
+  setRuntimeDataAppliedReporter,
+  setRuntimeDataErrorReporter,
+} from "./runtimeData";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -130,15 +135,41 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // Runtime-data handlers may replace the timeline object they mutate. Keep the
+  // reconciliation callback late-bound because the reporter is installed before
+  // the timeline resolver/binder is declared below. Delivery cannot complete
+  // until after init has installed the final callback.
+  let reconcileTimelineAfterRuntimeData: () => void = () => undefined;
   // Own the analytics bridge before any best-effort runtime installation so
   // early failures are observable instead of disappearing before player setup.
   initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
-  setRuntimeDataErrorReporter((channel, error) => {
+  setRuntimeDataErrorReporter((channel, requestId, error) => {
     postRuntimeMessage({
       source: "hf-preview",
       type: "runtime-data-error",
       channel,
+      requestId,
       message: error instanceof Error ? error.message : String(error),
+    });
+  });
+  setRuntimeDataAppliedReporter((channel, requestId) => {
+    try {
+      reconcileTimelineAfterRuntimeData();
+    } catch (error) {
+      postRuntimeMessage({
+        source: "hf-preview",
+        type: "runtime-data-error",
+        channel,
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    postRuntimeMessage({
+      source: "hf-preview",
+      type: "runtime-data-applied",
+      channel,
+      requestId,
     });
   });
   // SDK moveElement edits must render even when no usable GSAP timeline ever
@@ -1528,11 +1559,37 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
-  (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind = () => {
-    childrenBound = false;
-    bindRootTimelineIfAvailable();
+  const reconcileTimeline = () => {
+    if (state.tornDown) return;
+    const resolution = resolveRootTimelineFromDocument();
+    if (!resolution.timeline) {
+      // A successful clear must not leave the player seeking a killed timeline.
+      state.capturedTimeline = null;
+      childrenBound = false;
+      clock.setDuration(0);
+      syncTimedElementVisibility(state.currentTime);
+      return;
+    }
+
+    // Avoid needlessly invalidating the child-binding cache when a handler
+    // updates data in place. A replacement object is the signal that a rebind
+    // is required.
+    if (state.capturedTimeline !== resolution.timeline) {
+      childrenBound = false;
+      bindRootTimelineIfAvailable();
+    }
     syncTimedElementVisibility(state.currentTime);
   };
+  reconcileTimelineAfterRuntimeData = () => {
+    reconcileTimeline();
+    // The parent treats runtime-data-applied as permission to re-seek immediately. Publish the
+    // replacement duration first; otherwise that seek is clamped by the bootstrap timeline (often
+    // one second) and a style switch appears frozen on the first caption segment until some later
+    // polling tick happens to post the rebuilt timeline.
+    postTimeline();
+  };
+  (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind =
+    reconcileTimeline;
 
   const emitRootStageLayoutDiagnostics = () => {
     const rootNode = resolveRootCompositionElement();
@@ -2752,6 +2809,13 @@ export function initSandboxRuntimeModular(): void {
   }
   let transportTickCount = 0;
   let inTransportTick = false;
+  // A paused transport has no new frame to render. Re-seeking the same GSAP timeline at the
+  // same time on every rAF is not merely redundant: one picker can embed several paused
+  // players, multiplying full timeline traversal and style invalidation across every iframe.
+  // Keep enough identity to render once when time or the asynchronously-bound timeline changes.
+  let lastTransportSeekTime = Number.NaN;
+  let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
+  let pausedSeekDeferredByManualGesture = false;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -3072,10 +3136,23 @@ export function initSandboxRuntimeModular(): void {
       // skipping the re-seek is a no-op for every other element; it resumes
       // the frame the gesture marker clears (drop/cancel). Playback is never
       // affected — the seek runs whenever the clock is playing.
-      if (clock.isPlaying() || !hasActiveStudioManualEditGesture()) {
+      const isPlaying = clock.isPlaying();
+      const manualEditOwnsPausedFrame = !isPlaying && hasActiveStudioManualEditGesture();
+      if (manualEditOwnsPausedFrame) {
+        // Force one reconciliation after drop/cancel even though the playhead did not move.
+        pausedSeekDeferredByManualGesture = true;
+      } else if (
+        isPlaying ||
+        pausedSeekDeferredByManualGesture ||
+        t !== lastTransportSeekTime ||
+        state.capturedTimeline !== lastTransportSeekTimeline
+      ) {
         seekTimelineAndAdapters(t);
+        lastTransportSeekTime = t;
+        lastTransportSeekTimeline = state.capturedTimeline;
+        if (!isPlaying) pausedSeekDeferredByManualGesture = false;
       }
-      if (clock.isPlaying()) {
+      if (isPlaying) {
         colorGrading.redrawAnimated();
       }
 
@@ -3471,6 +3548,7 @@ export function initSandboxRuntimeModular(): void {
     }
     state.injectedCompScripts = [];
     state.capturedTimeline = null;
+    reconcileTimelineAfterRuntimeData = () => undefined;
     if (window.__hfRuntimeTeardown === teardown) {
       window.__hfRuntimeTeardown = null;
     }

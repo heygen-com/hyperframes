@@ -9,6 +9,7 @@ import { RUNTIME_CDN_URL } from "./runtime-url.js";
 
 export const SHADER_CAPTURE_SCALE_ATTR = "shader-capture-scale";
 export const SHADER_LOADING_ATTR = "shader-loading";
+export const RUNTIME_SRC_ATTR = "runtime-src";
 const SHADER_CAPTURE_SCALE_PARAM = "__hf_shader_capture_scale";
 const SHADER_LOADING_PARAM = "__hf_shader_loading";
 
@@ -153,6 +154,25 @@ export function prepareSrcdocForElement(el: Element, srcdoc: string): string {
       normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
       getShaderModeFromElement(el),
     ),
-    RUNTIME_CDN_URL,
+    runtimeSrcFromElement(el),
   );
+}
+
+function runtimeSrcFromElement(el: Element): string {
+  const configured = el.getAttribute(RUNTIME_SRC_ATTR)?.trim();
+  if (!configured) return RUNTIME_CDN_URL;
+  try {
+    const url = new URL(configured, document.baseURI);
+    // A srcdoc frame runs with `allow-same-origin` by default, so it inherits the embedder's
+    // origin. An unrestricted host here would therefore be arbitrary script execution in the
+    // embedding page, reachable through a prop bag since React spreads unknown props onto
+    // custom elements. Loopback and same-origin cover the local rig this exists for; a foreign
+    // origin has to be a deliberate, named opt-in rather than a scheme check falling through.
+    const okScheme = url.protocol === "http:" || url.protocol === "https:";
+    const loopback =
+      url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
+    return okScheme && (loopback || url.origin === location.origin) ? url.href : RUNTIME_CDN_URL;
+  } catch {
+    return RUNTIME_CDN_URL;
+  }
 }

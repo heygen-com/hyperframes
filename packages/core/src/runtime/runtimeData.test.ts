@@ -4,6 +4,7 @@ import {
   registerRuntimeDataHandler,
   resetRuntimeDataForTests,
   setRuntimeData,
+  setRuntimeDataAppliedReporter,
   setRuntimeDataErrorReporter,
 } from "./runtimeData";
 
@@ -48,6 +49,63 @@ describe("runtime data registry", () => {
       throw new Error("attach failed");
     });
     expect(() => setRuntimeData("captions", {})).not.toThrow();
-    expect(reporter).toHaveBeenCalledWith("captions", expect.any(Error));
+    expect(reporter).toHaveBeenCalledWith("captions", expect.any(Number), expect.any(Error));
+  });
+
+  it("reports asynchronous completion and rejection", async () => {
+    const applied = vi.fn();
+    const failed = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    setRuntimeDataErrorReporter(failed);
+    registerRuntimeDataHandler("captions", async (payload) => {
+      await Promise.resolve();
+      if (payload === "bad") throw new Error("async attach failed");
+    });
+
+    setRuntimeData("captions", "good");
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions", expect.any(Number)));
+    setRuntimeData("captions", "bad");
+    await vi.waitFor(() =>
+      expect(failed).toHaveBeenCalledWith("captions", expect.any(Number), expect.any(Error)),
+    );
+  });
+
+  it("reports only the latest concurrent delivery on a channel", async () => {
+    const applied = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    const resolvers: Array<() => void> = [];
+    registerRuntimeDataHandler(
+      "captions",
+      () => new Promise<void>((resolve) => resolvers.push(resolve)),
+    );
+
+    setRuntimeData("captions", "first", 101);
+    setRuntimeData("captions", "latest", 102);
+    resolvers[1]?.();
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledWith("captions", 102));
+    resolvers[0]?.();
+    await Promise.resolve();
+
+    expect(applied).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reports a composition-side delivery under a pending host request id", async () => {
+    const applied = vi.fn();
+    setRuntimeDataAppliedReporter(applied);
+    const resolvers: Array<() => void> = [];
+    registerRuntimeDataHandler(
+      "captions",
+      () => new Promise<void>((resolve) => resolvers.push(resolve)),
+    );
+
+    // The host mints id 1 and waits on it; the composition then calls the two-argument
+    // public form, which mints an id of its own.
+    setRuntimeData("captions", "first", 1);
+    setRuntimeData("captions", "latest");
+    resolvers[1]?.();
+    await vi.waitFor(() => expect(applied).toHaveBeenCalledTimes(1));
+
+    const [, reportedId] = applied.mock.calls[0] ?? [];
+    expect(reportedId).not.toBe(1);
   });
 });

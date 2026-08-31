@@ -132,9 +132,40 @@ player.shaderLoading; // "composition" | "player" | "none" (read/write)
 player.iframeElement; // HTMLIFrameElement (read-only)
 ```
 
+## Runtime data delivery
+
+`setRuntimeData(channel, payload)` clones and retains the payload, then delivers it after the
+composition runtime is ready. Invalid channels and non-cloneable payloads throw synchronously.
+Failures after the call returns are reported with `runtimedataerror`; successful application is
+reported with `runtimedataapplied`. Both events include `{ channel, requestId }`, and errors also
+include `message`. Listen for both outcomes when delivery matters:
+
+```js
+player.addEventListener("runtimedataapplied", ({ detail }) => {
+  console.log("applied", detail.channel, detail.requestId);
+});
+player.addEventListener("runtimedataerror", ({ detail }) => {
+  console.error("not applied", detail.channel, detail.requestId, detail.message);
+});
+player.setRuntimeData("captions", captionData);
+```
+
+Only the latest in-flight update for a channel can emit a completion. A missing runtime response,
+iframe teardown, or bridge delivery failure emits `runtimedataerror` instead of remaining pending
+indefinitely.
+
 ## Advanced: iframe access
 
-The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. For most use cases you don't need direct access — the JavaScript API above is enough. But if you're building an editor, recorder, or custom timeline that needs to inspect the composition's DOM or read its `__player` / `__timelines` runtime objects, use the `iframeElement` getter:
+The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. The default sandbox includes `allow-same-origin` for editor, recorder, and custom-timeline integrations that inspect the composition DOM. That is a trusted-content mode, not an isolation boundary: same-origin composition code can reach the embedding page.
+
+For read-only or message-bridge integrations, set `sandbox-origin="opaque"`. Any non-null value is
+treated as opaque so a typo cannot weaken isolation. Changing the attribute reloads the active
+composition because browser sandbox changes take effect only on navigation. Opaque mode removes
+`allow-same-origin` while retaining scripts, and prevents the composition from reading unrelated
+parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
+unavailable in that mode.
+
+If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
 const player = document.querySelector("hyperframes-player");

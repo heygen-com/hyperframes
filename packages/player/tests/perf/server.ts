@@ -102,6 +102,12 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
       window.__playerReady = false;
       window.__playerReadyAt = null;
       window.__playerNavStart = performance.timeOrigin + performance.now();
+      window.__sandboxProbeResults = [];
+      window.addEventListener("message", function (event) {
+        if (event.data && event.data.source === "hf-sandbox-probe") {
+          window.__sandboxProbeResults.push(event.data.canAccessParent === true);
+        }
+      });
       const player = document.getElementById("player");
       player.addEventListener("ready", function (event) {
         window.__playerReady = true;
