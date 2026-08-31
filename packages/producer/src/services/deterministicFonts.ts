@@ -1198,22 +1198,62 @@ export interface InjectDeterministicFontFacesOptions {
 // collapsing repeated prose and base64 assets to a tiny set.
 const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
 
+const SMALL_TO_FULL_KANA: ReadonlyMap<string, string> = new Map([
+  ["ぁ", "あ"], ["ぃ", "い"], ["ぅ", "う"], ["ぇ", "え"], ["ぉ", "お"],
+  ["っ", "つ"], ["ゃ", "や"], ["ゅ", "ゆ"], ["ょ", "よ"], ["ゎ", "わ"],
+  ["ァ", "ア"], ["ィ", "イ"], ["ゥ", "ウ"], ["ェ", "エ"], ["ォ", "オ"],
+  ["ッ", "ツ"], ["ャ", "ヤ"], ["ュ", "ユ"], ["ョ", "ヨ"], ["ヮ", "ワ"],
+  ["ヵ", "カ"], ["ヶ", "ケ"],
+]);
+
+function collectLangAttributes(document: { querySelectorAll(selector: string): Iterable<{ getAttribute(name: string): string | null }> }): Set<string> {
+  const locales = new Set<string>();
+  for (const element of document.querySelectorAll("[lang]")) {
+    const lang = element.getAttribute("lang");
+    if (lang) {
+      locales.add(lang.split("-")[0]!.toLowerCase());
+    }
+  }
+  return locales;
+}
+
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);
   const decodedBodyText = document.body?.textContent ?? "";
-  // Source + decoded text is an intentional over-approximation: base64, scripts, and class names
-  // collapse in the Set, while decoded entities contribute the glyphs the browser actually paints.
+  const locales = collectLangAttributes(document);
+  const hasFullWidth = html.includes("full-width");
+  const hasFullSizeKana = html.includes("full-size-kana");
+
   const characters = [...Array.from(html), ...Array.from(decodedBodyText)];
   const uniqueCharacters = new Set<string>();
   for (const character of characters) {
     uniqueCharacters.add(character);
-    // This closes locale-independent Unicode casing, including multi-code-point expansions such as
-    // ß -> SS. Locale/context transforms (for example Turkish İ) and CSS full-width/full-size-kana
-    // need a transform-aware follow-up rather than pretending this code-point closure is exhaustive.
     for (const variant of `${character.toUpperCase()}${character.toLowerCase()}`) {
       uniqueCharacters.add(variant);
     }
+    for (const locale of locales) {
+      for (const variant of `${character.toLocaleUpperCase(locale)}${character.toLocaleLowerCase(locale)}`) {
+        uniqueCharacters.add(variant);
+      }
+    }
   }
+
+  if (hasFullWidth) {
+    for (const character of [...uniqueCharacters]) {
+      const code = character.codePointAt(0) ?? 0;
+      if (code >= 0x0021 && code <= 0x007e) {
+        uniqueCharacters.add(String.fromCodePoint(code + 0xfee0));
+      }
+    }
+  }
+
+  if (hasFullSizeKana) {
+    for (const character of [...uniqueCharacters]) {
+      const full = SMALL_TO_FULL_KANA.get(character);
+      if (full) uniqueCharacters.add(full);
+    }
+  }
+
   const fontText = [...uniqueCharacters].join("");
   return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
     ? fontText

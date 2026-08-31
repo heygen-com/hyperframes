@@ -81,4 +81,118 @@ describe("Google Fonts text subsetting", () => {
 
     expect(url.searchParams.has("text")).toBe(false);
   });
+
+  it("includes Turkish İ and ı when lang=tr is present", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html lang="tr"><head><style>
+        h1 { font-family: "Inter", sans-serif; text-transform: uppercase; }
+      </style></head><body><h1>istanbul</h1></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("İ");
+    expect(text).toContain("ı");
+  });
+
+  it("does not include Turkish İ/ı without a Turkish lang attribute", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html lang="en"><head><style>
+        h1 { font-family: "Inter", sans-serif; text-transform: uppercase; }
+      </style></head><body><h1>istanbul</h1></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).not.toContain("İ");
+    expect(text).not.toContain("ı");
+  });
+
+  it("includes Azeri locale variants when lang=az is present", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html lang="az"><head><style>
+        p { font-family: "Inter", sans-serif; }
+      </style></head><body><p>iyi</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("İ");
+    expect(text).toContain("ı");
+  });
+
+  it("maps ASCII to fullwidth equivalents when full-width appears in the source", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html><head><style>
+        p { font-family: "Noto Performance Test", sans-serif; text-transform: full-width; }
+      </style></head><body><p>ABC</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("Ａ");
+    expect(text).toContain("Ｂ");
+    expect(text).toContain("Ｃ");
+  });
+
+  it("does not add fullwidth variants without full-width in the source", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html><head><style>
+        p { font-family: "Noto Performance Test", sans-serif; }
+      </style></head><body><p>ABC</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).not.toContain("Ａ");
+  });
+
+  it("maps small kana to full-size equivalents when full-size-kana appears in the source", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html><head><style>
+        p { font-family: "Noto Performance Test", sans-serif; text-transform: full-size-kana; }
+      </style></head><body><p>ぁっょ</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("あ");
+    expect(text).toContain("つ");
+    expect(text).toContain("よ");
+  });
+
+  it("maps small katakana to full-size when full-size-kana appears in the source", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html><head><style>
+        p { font-family: "Noto Performance Test", sans-serif; text-transform: full-size-kana; }
+      </style></head><body><p>ァヵ</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("ア");
+    expect(text).toContain("カ");
+  });
+
+  it("stays within the URL budget for a realistic mixed-script composition with all transforms", async () => {
+    const latin = "The Quick Brown Fox Jumps Over The Lazy Dog — Your Kidney Transplant: What Happens Next";
+    const cjk = "旅行ランキング東京大阪京都名古屋福岡";
+    const kana = "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ";
+
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html lang="tr"><head><style>
+        h1 { font-family: "Noto Performance Test", sans-serif; text-transform: full-width; }
+        p { font-family: "Noto Performance Test", sans-serif; text-transform: full-size-kana; }
+      </style></head><body><h1>${latin}</h1><p>${cjk}${kana}</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text.length).toBeGreaterThan(0);
+    expect(encodeURIComponent(text).length).toBeLessThanOrEqual(1700);
+  });
+
+  it("collects lang from nested elements, not just the root", async () => {
+    const url = await requestedGoogleFontUrl(
+      `<!doctype html><html lang="en"><head><style>
+        p { font-family: "Inter", sans-serif; }
+      </style></head><body><p>hello</p><p lang="tr">istanbul</p></body></html>`,
+    );
+
+    const text = url.searchParams.get("text") ?? "";
+    expect(text).toContain("İ");
+    expect(text).toContain("ı");
+  });
 });
