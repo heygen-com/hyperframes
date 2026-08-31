@@ -341,7 +341,7 @@ function spawnFfmpeg(
   label: string,
   stdio: StdioTuple,
 ): FfmpegProc {
-  const proc = spawn(ffmpegPath, args, { stdio });
+  const proc = spawn(ffmpegPath, args, { stdio, windowsHide: true });
   let stderrBuf = "";
   proc.stderr?.on("data", (d: Buffer) => {
     stderrBuf += d.toString();

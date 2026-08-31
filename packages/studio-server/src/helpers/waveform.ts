@@ -67,7 +67,7 @@ export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
         "-vn",
         "pipe:1",
       ],
-      { stdio: ["ignore", "pipe", "ignore"] },
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
     );
 
     const chunks: Buffer[] = [];

@@ -89,7 +89,7 @@ function probeWebmAlpha(filePath: string): WebmAlphaProbe {
         "--",
         filePath,
       ],
-      { encoding: "utf-8", timeout: 15_000 },
+      { encoding: "utf-8", timeout: 15_000, windowsHide: true },
     );
     const parsed = JSON.parse(raw) as {
       streams?: Array<{ codec_name?: string; tags?: Record<string, string> }>;
@@ -159,7 +159,12 @@ export function sampledAlphaIsFullyOpaque(filePath: string): boolean | undefined
         "rawvideo",
         "-",
       ],
-      { timeout: 30_000, maxBuffer: 4096, stdio: ["ignore", "pipe", "pipe"] },
+      {
+        timeout: 30_000,
+        maxBuffer: 4096,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
     );
     if (
       buf.length === 0 ||

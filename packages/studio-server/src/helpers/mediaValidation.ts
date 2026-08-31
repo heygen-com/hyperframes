@@ -9,6 +9,7 @@ const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac)$/i;
 type FfprobeRunner = (
   command: string,
   args: string[],
+  options: { windowsHide: boolean },
 ) => {
   status: number | null;
   stdout: string | Buffer;
@@ -26,16 +27,11 @@ export function validateUploadedMedia(
     return { ok: true };
   }
 
-  const result = runner("ffprobe", [
-    "-v",
-    "error",
-    "-show_entries",
-    "stream=codec_type",
-    "-of",
-    "json",
-    "--",
-    filePath,
-  ]);
+  const result = runner(
+    "ffprobe",
+    ["-v", "error", "-show_entries", "stream=codec_type", "-of", "json", "--", filePath],
+    { windowsHide: true },
+  );
 
   if (result.error?.code === "ENOENT") {
     return { ok: true };

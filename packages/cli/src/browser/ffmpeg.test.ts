@@ -75,7 +75,7 @@ describe("resolveH264EncoderMode", () => {
     expect(mockExecFile).toHaveBeenCalledWith(
       "/custom/ffmpeg",
       ["-hide_banner", "-encoders"],
-      expect.objectContaining({ encoding: "utf-8" }),
+      expect.objectContaining({ encoding: "utf-8", windowsHide: true }),
     );
   });
 });

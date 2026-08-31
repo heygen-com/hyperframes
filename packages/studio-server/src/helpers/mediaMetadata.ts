@@ -28,7 +28,7 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      { timeout: options?.timeout, maxBuffer: options?.maxBuffer },
+      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });

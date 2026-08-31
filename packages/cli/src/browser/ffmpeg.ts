@@ -28,6 +28,7 @@ export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean)
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 5000,
+    windowsHide: true,
   });
   return resolveH264EncoderMode(encoders, gpuRequested);
 }

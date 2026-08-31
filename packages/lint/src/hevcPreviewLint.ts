@@ -27,7 +27,7 @@ const PROBE_CONCURRENCY = 8;
 
 function execFileAsync(file: string, args: string[]): Promise<string> {
   return new Promise((resolvePromise, reject) => {
-    execFile(file, args, { timeout: PROBE_TIMEOUT_MS }, (error, stdout) => {
+    execFile(file, args, { timeout: PROBE_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
       if (error) reject(error);
       else resolvePromise(stdout.toString());
     });

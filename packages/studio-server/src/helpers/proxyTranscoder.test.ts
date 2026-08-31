@@ -28,14 +28,15 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnCall = { command: string; args: string[]; proc: FakeProc };
-type SpawnImpl = (command: string, args: string[]) => FakeProc;
+type SpawnOptions = { windowsHide?: boolean };
+type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
+type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
 function createSpawnSpy(): { spawn: SpawnImpl; calls: SpawnCall[] } {
   const calls: SpawnCall[] = [];
-  const spawn: SpawnImpl = (command, args) => {
+  const spawn: SpawnImpl = (command, args, options) => {
     const proc = createFakeProc();
-    calls.push({ command, args, proc });
+    calls.push({ command, args, options, proc });
     return proc;
   };
   return { spawn, calls };
@@ -222,6 +223,7 @@ describe("resolveProxy", () => {
     await flush();
 
     expect(calls[0]!.args).toEqual(["-hide_banner", "-filters"]);
+    expect(calls[0]!.options?.windowsHide).toBe(true);
     calls[0]!.proc.stdout.emit(
       "data",
       Buffer.from(" ..C zscale V->V zimg scale\n T.C tonemap V->V tone map\n"),
@@ -459,6 +461,7 @@ describe("resolveProxy", () => {
     const retry = resolveProxy(projectDir, sourcePath);
     await flush();
     expect(calls).toHaveLength(2);
+    expect(calls[1]!.options?.windowsHide).toBe(true);
     succeed(calls[1]!);
     await expect(retry).resolves.toBeTruthy();
   });

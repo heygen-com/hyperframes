@@ -61,8 +61,11 @@ type ToolVersionResult = { ok: true; detail: string } | { ok: false; detail: str
 function readToolVersion(binaryPath: string): ToolVersionResult {
   try {
     const raw =
-      execFileSync(binaryPath, ["-version"], { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ??
-      "";
+      execFileSync(binaryPath, ["-version"], {
+        encoding: "utf-8",
+        timeout: 5000,
+        windowsHide: true,
+      }).split("\n")[0] ?? "";
     const version = parseToolVersion(raw);
     return { ok: true, detail: version ? `${version} at ${binaryPath}` : binaryPath };
   } catch (error) {

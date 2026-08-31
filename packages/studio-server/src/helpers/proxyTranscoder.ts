@@ -289,6 +289,7 @@ function ensureHdrFilters(ffmpegPath: string): Promise<void> {
   const promise = new Promise<void>((resolveCheck, rejectCheck) => {
     const proc = spawn(ffmpegPath, ["-hide_banner", "-filters"], {
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -411,6 +412,7 @@ async function runFfmpeg(
       stdio: ["ignore", "ignore", "pipe"],
       timeout: TRANSCODE_TIMEOUT_MS,
       killSignal: "SIGKILL",
+      windowsHide: true,
     });
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {

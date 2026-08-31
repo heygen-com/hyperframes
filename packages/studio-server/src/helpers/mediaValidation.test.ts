@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateUploadedMedia, validateUploadedMediaBuffer } from "./mediaValidation.js";
 
 describe("validateUploadedMedia", () => {
@@ -11,13 +11,18 @@ describe("validateUploadedMedia", () => {
   });
 
   it("accepts video files with a video stream", () => {
-    expect(
-      validateUploadedMedia("/tmp/test.mp4", () => ({
-        status: 0,
-        stdout: JSON.stringify({ streams: [{ codec_type: "video" }] }),
-        stderr: "",
-      })),
-    ).toEqual({ ok: true });
+    const runner = vi.fn(() => ({
+      status: 0,
+      stdout: JSON.stringify({ streams: [{ codec_type: "video" }] }),
+      stderr: "",
+    }));
+
+    expect(validateUploadedMedia("/tmp/test.mp4", runner)).toEqual({ ok: true });
+    expect(runner).toHaveBeenCalledWith(
+      "ffprobe",
+      expect.any(Array),
+      expect.objectContaining({ windowsHide: true }),
+    );
   });
 
   it("rejects video files with no supported video stream", () => {

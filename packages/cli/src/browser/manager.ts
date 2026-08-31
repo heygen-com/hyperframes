@@ -254,6 +254,7 @@ function whichBinary(name: string): string | undefined {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
+      windowsHide: true,
     });
     const first = output
       .split(/\r?\n/)

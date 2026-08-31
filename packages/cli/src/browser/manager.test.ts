@@ -210,6 +210,25 @@ describe("findBrowser — cache resolution", () => {
     expect(result).toEqual({ executablePath: HF_BINARY, source: "cache" });
   });
 
+  it("hides the Windows console used by the where lookup", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    installFsMocks({ existing: new Set() });
+    installPuppeteerBrowsersMock();
+    const execSync = vi.fn((command: string) =>
+      command === "where google-chrome" ? "C:\\Chrome\\chrome.exe\n" : "",
+    );
+    vi.doMock("node:child_process", () => ({ execSync, spawnSync: vi.fn() }));
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result).toEqual({ executablePath: "C:\\Chrome\\chrome.exe", source: "system" });
+    expect(execSync).toHaveBeenCalledWith(
+      "where google-chrome",
+      expect.objectContaining({ windowsHide: true }),
+    );
+  });
+
   it("does not resolve to a hyperframes-cache build from an older CHROME_VERSION pin", async () => {
     // A build downloaded by a prior hyperframes version (this pin has moved
     // 131 -> 151 -> 152 across releases) must not satisfy resolution, or an

@@ -510,7 +510,7 @@ export async function runFfmpegOnce(
   timeoutMs: number,
 ): Promise<FfmpegRunResult> {
   return await new Promise((resolvePromise) => {
-    const ff = spawn(ffmpegPath, args);
+    const ff = spawn(ffmpegPath, args, { windowsHide: true });
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {

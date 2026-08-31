@@ -35,6 +35,10 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "FFprobe")?.ok).toBe(true);
     expect(result.ffmpegPath).toBe(process.execPath);
     expect(result.ffprobePath).toBe(process.execPath);
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    for (const call of execFileSync.mock.calls) {
+      expect(call[2]).toEqual(expect.objectContaining({ windowsHide: true }));
+    }
   });
 
   it("reports ffprobe as a render-blocking error when the explicit path is missing", async () => {

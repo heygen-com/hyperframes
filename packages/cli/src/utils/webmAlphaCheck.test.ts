@@ -86,13 +86,14 @@ describe("sampledAlphaIsFullyOpaque", () => {
   }
 
   async function importWithMocks(
-    execImpl: (cmd: string, args: readonly string[], opts?: unknown) => Buffer,
+    execImpl: (cmd: string, args: readonly string[], opts?: unknown) => string | Buffer,
     ffmpegPath: string | null = FAKE_FFMPEG,
+    ffprobePath: string | null = null,
   ) {
     vi.doMock("node:child_process", () => ({ execFileSync: execImpl }));
     vi.doMock("../browser/ffmpeg.js", () => ({
       findFFmpeg: () => ffmpegPath,
-      findFFprobe: () => null,
+      findFFprobe: () => ffprobePath,
     }));
     return await import("./webmAlphaCheck.js");
   }
@@ -165,8 +166,10 @@ describe("sampledAlphaIsFullyOpaque", () => {
     // Without `-c:v libvpx-vp9` BEFORE `-i`, the check would falsely report
     // alpha=255 on WebMs whose alpha is genuinely present.
     let capturedArgs: readonly string[] | undefined;
-    const { sampledAlphaIsFullyOpaque } = await importWithMocks((_cmd, args) => {
+    let capturedOptions: unknown;
+    const { sampledAlphaIsFullyOpaque } = await importWithMocks((_cmd, args, options) => {
       capturedArgs = args;
+      capturedOptions = options;
       return opaqueBuffer(3);
     });
     sampledAlphaIsFullyOpaque(FAKE_WEBM);
@@ -182,5 +185,23 @@ describe("sampledAlphaIsFullyOpaque", () => {
     expect(argList).toContain("-frames:v");
     expect(argList[argList.indexOf("-frames:v") + 1]).toBe("3");
     expect(argList).toContain("rawvideo");
+    expect(capturedOptions).toEqual(expect.objectContaining({ windowsHide: true }));
+  });
+
+  it("hides the ffprobe console window", async () => {
+    let capturedOptions: unknown;
+    const { warnIfWebmAlphaDropped } = await importWithMocks(
+      (_cmd, _args, options) => {
+        capturedOptions = options;
+        return JSON.stringify({ streams: [{ codec_name: "vp9", tags: {} }] });
+      },
+      null,
+      "/fake/bin/ffprobe",
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    warnIfWebmAlphaDropped(FAKE_WEBM, "webm", false);
+
+    expect(capturedOptions).toEqual(expect.objectContaining({ windowsHide: true }));
   });
 });
