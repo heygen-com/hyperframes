@@ -72,7 +72,9 @@ registry/
   components/           → Installable effects and snippets
   examples/             → Starter project templates
 docs/                   → Mintlify documentation site (hyperframes.heygen.com)
+docs/solutions/         → Searchable solved-problem knowledge, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`)
 skills/                 → AI agent skill definitions
+CONCEPTS.md             → Shared domain vocabulary for entities, named processes, and status concepts
 ```
 
 ## Key Conventions
