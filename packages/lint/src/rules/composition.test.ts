@@ -66,6 +66,103 @@ describe("composition rules", () => {
     });
   });
 
+  describe("timed_element_exceeds_composition", () => {
+    const CODE = "timed_element_exceeds_composition";
+    const find = (findings: { code: string }[]) => findings.find((f) => f.code === CODE);
+
+    it("errors when a visible video extends beyond the explicit render window", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="10" data-fps="30">
+          <video id="customer-video" class="clip" src="assets/video.mp4" data-start="0" data-duration="48.47"></video>
+        </div>
+      </body></html>`);
+
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("48.47s");
+      expect(finding?.message).toContain("10s");
+      expect(finding?.fixHint).toContain("extend the root data-duration");
+    });
+
+    it("accepts an element that ends at the composition boundary", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10">
+          <video class="clip" src="assets/video.mp4" data-start="2" data-duration="8"></video>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("allows one frame of floating-point and frame-rounding tolerance", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10" data-fps="25">
+          <div id="within-one-frame" class="clip" data-start="9" data-duration="1.04"></div>
+          <div id="beyond-one-frame" class="clip" data-start="9" data-duration="1.041"></div>
+        </div>
+      </body></html>`);
+
+      const findings = result.findings.filter((finding) => finding.code === CODE);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.elementId).toBe("beyond-one-frame");
+    });
+
+    it("ignores hidden elements and elements inside a hidden ancestor", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10">
+          <video data-hidden src="assets/parked.mp4" data-start="0" data-duration="20"></video>
+          <div data-hidden>
+            <audio src="assets/parked.mp3" data-start="0" data-duration="20"></audio>
+          </div>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not compare against inferred root duration", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main">
+          <video class="clip" src="assets/video.mp4" data-start="0" data-duration="48.47"></video>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not confuse an intentional source trim with timeline overflow", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10">
+          <video class="clip" src="assets/video.mp4" data-media-start="40" data-start="6" data-duration="4"></video>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("skips unresolved relative starts instead of guessing their absolute end", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10">
+          <div id="first" class="clip" data-start="0" data-duration="5"></div>
+          <div class="clip" data-start="first" data-duration="6"></div>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("checks a sub-composition host against its owning composition root", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div id="root" data-composition-id="main" data-duration="10">
+          <div id="scene" data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="4" data-duration="8"></div>
+        </div>
+      </body></html>`);
+
+      expect(find(result.findings)).toBeDefined();
+    });
+  });
+
   describe("subcomposition guidance", () => {
     it("warns when any HTML composition file is over 300 lines", async () => {
       const html = Array.from({ length: 301 }, (_, i) =>

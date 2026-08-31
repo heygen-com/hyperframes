@@ -58,6 +58,7 @@ const HEAVY_OVERLAY_EXEMPT_TAGS = new Set([
 const HEAVY_OVERLAY_CSS_PATTERN =
   /(?:filter\s*:[^;}]*\bblur\s*\()|(?:clip-path\s*:(?!\s*(?:none|inherit|initial|unset)\b)\s*[^;}]+)|(?:radial-gradient\s*\()/i;
 const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
+const DEFAULT_COMPOSITION_FPS = 30;
 
 function readTagTiming(rawTag: string) {
   return readClipTiming({ getAttribute: (name) => readAttr(rawTag, name) });
@@ -256,6 +257,89 @@ function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean 
   );
 }
 
+function isInsideCompositionRoot(tag: OpenTag, rootTag: OpenTag): boolean {
+  return (
+    tag.index > rootTag.index && (rootTag.closeIndex == null || tag.index < rootTag.closeIndex)
+  );
+}
+
+function isHiddenByTimelineAncestor(tag: OpenTag, tags: readonly OpenTag[]): boolean {
+  if (readDecodedAttr(tag.raw, "data-hidden") !== null) return true;
+
+  return tags.some(
+    (candidate) =>
+      candidate.index < tag.index &&
+      candidate.closeIndex != null &&
+      tag.index < candidate.closeIndex &&
+      readDecodedAttr(candidate.raw, "data-hidden") !== null,
+  );
+}
+
+type ExplicitCompositionBoundary = {
+  duration: number;
+  fps: number;
+  lastAllowedEndFrame: number;
+};
+
+function frameAt(seconds: number, fps: number): number {
+  return Math.ceil(seconds * fps - 1e-9);
+}
+
+function readExplicitCompositionBoundary(rootTag: OpenTag): ExplicitCompositionBoundary | null {
+  const rootDurationRaw = readAttr(rootTag.raw, "data-duration");
+  if (rootDurationRaw === null) return null;
+  const duration = Number(rootDurationRaw);
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+
+  const authoredFps = Number(readAttr(rootTag.raw, "data-fps"));
+  const fps =
+    Number.isFinite(authoredFps) && authoredFps > 0 ? authoredFps : DEFAULT_COMPOSITION_FPS;
+  return { duration, fps, lastAllowedEndFrame: frameAt(duration, fps) + 1 };
+}
+
+function readAuthoredTimelineEnd(tag: OpenTag): number | null {
+  if (readAttr(tag.raw, "data-duration") === null) return null;
+  const timing = readTagTiming(tag.raw);
+  return timing.duration === null ? null : timing.end;
+}
+
+function timedElementOverflowFinding(
+  tag: OpenTag,
+  end: number,
+  rootDuration: number,
+): HyperframeLintFinding {
+  const round3 = (value: number) => Math.round(value * 1000) / 1000;
+  const elementId = readAttr(tag.raw, "id") || undefined;
+  const overflow = end - rootDuration;
+  return {
+    code: "timed_element_exceeds_composition",
+    severity: "error",
+    message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> ends at ${round3(end)}s, but the composition ends at ${round3(rootDuration)}s. The final ~${round3(overflow)}s will not be rendered.`,
+    elementId,
+    fixHint: `If the full element is intended, extend the root data-duration to at least ${round3(end)}. If the cutoff is intentional, shorten this element's data-duration so it ends by ${round3(rootDuration)}s; use data-media-start to choose a media source offset.`,
+    snippet: truncateSnippet(tag.raw),
+  };
+}
+
+function lintTimedElementsBeyondComposition({
+  tags,
+  rootTag,
+}: LintContext): HyperframeLintFinding[] {
+  if (!rootTag) return [];
+  const boundary = readExplicitCompositionBoundary(rootTag);
+  if (!boundary) return [];
+
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of tags) {
+    if (!isInsideCompositionRoot(tag, rootTag)) continue;
+    if (isInsideInertTemplate(tag, tags) || isHiddenByTimelineAncestor(tag, tags)) continue;
+    const end = readAuthoredTimelineEnd(tag);
+    if (end === null || frameAt(end, boundary.fps) <= boundary.lastAllowedEndFrame) continue;
+    findings.push(timedElementOverflowFinding(tag, end, boundary.duration));
+  }
+  return findings;
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // duplicate_composition_id catches meta-tag/root collisions that create duplicate composition entries.
   ({ tags }) => {
@@ -296,6 +380,14 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     return findings;
   },
+
+  // timed_element_exceeds_composition
+  // An explicit root data-duration is the hard render window. Any visible
+  // authored timing that ends materially beyond it is unreachable in export,
+  // even though preview/snapshot tooling can still make the extra timeline look
+  // valid. Compare authored timeline slots only — never a media file's natural
+  // source duration, which may intentionally be trimmed with data-media-start.
+  lintTimedElementsBeyondComposition,
 
   // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
   // href, inline-style url(), and <style> url() asset references on
