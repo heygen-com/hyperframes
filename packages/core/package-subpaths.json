@@ -50,6 +50,12 @@
       "types": "./dist/compositionContract.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./web-capture": {
+      "source": "./src/webCaptureContract.ts",
+      "runtime": "./dist/webCaptureContract.js",
+      "types": "./dist/webCaptureContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./editing": {
       "source": "./src/editing/affordances.ts",
       "runtime": "./dist/editing/affordances.js",
