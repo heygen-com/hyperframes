@@ -101,9 +101,9 @@ export function processIdentity(pid: number): string | null {
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CreationDate.ToFileTimeUtc()`,
+          `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.CreationDate.ToFileTimeUtc() }`,
         ],
-        { encoding: "utf8", timeout: 2000 },
+        { encoding: "utf8", timeout: 2000, stdio: ["pipe", "pipe", "ignore"] },
       ).trim();
       return created ? `windows:${created}` : null;
     }
@@ -140,9 +140,9 @@ function processParentPid(pid: number): number | null {
               "-NoProfile",
               "-NonInteractive",
               "-Command",
-              `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').ParentProcessId`,
+              `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.ParentProcessId }`,
             ],
-            { encoding: "utf8", timeout: 2000 },
+            { encoding: "utf8", timeout: 2000, stdio: ["pipe", "pipe", "ignore"] },
           )
         : execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], {
             encoding: "utf8",
