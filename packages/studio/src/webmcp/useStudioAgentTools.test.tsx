@@ -196,16 +196,16 @@ describe("useStudioAgentTools", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("registers nothing when the browser has no WebMCP", async () => {
+  it("boots cleanly when the browser has no native WebMCP", async () => {
     removeModelContext();
 
     await act(async () => {
       mountTools(deps({ getSnapshot: () => snapshot() }));
     });
 
-    // The assertion is that mounting did not throw; a browser without the API
-    // must still boot Studio.
-    expect(document).not.toHaveProperty("modelContext");
+    // The assertion is that mounting did not throw; a browser without the
+    // native API must still boot Studio. The polyfill may install
+    // document.modelContext as a fallback — that is expected.
   });
 
   it("registers nothing when the preference is turned off", async () => {
