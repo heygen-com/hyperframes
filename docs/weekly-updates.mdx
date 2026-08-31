@@ -13,6 +13,72 @@ For exact versioned release notes, see the [Changelog](/changelog).
 {/* New weekly digest entries are prepended by `bun run changelog:weekly --from YYYY-MM-DD --to YYYY-MM-DD --write`. */}
 
 <Update
+  label="Week of August 24, 2026"
+  description="Weekly digest - August 24, 2026 - August 31, 2026"
+  tags={["Weekly update", "Highlights"]}
+>
+Studio learned to take direction from an agent this week. Render and playback also got stricter about failing loudly.
+
+## Agent control for Studio
+
+- Studio exposes its live state to an agentic browser over WebMCP ([94da403d6](https://github.com/heygen-com/hyperframes/commit/94da403d6d9e3bdf23665794572a90918832036d), [#3511](https://github.com/heygen-com/hyperframes/pull/3511)).
+- Studio falls back to a WebMCP polyfill where the browser has none ([097d901d7](https://github.com/heygen-com/hyperframes/commit/097d901d703be01781a47f2a8aa2dc65e0a3e19e), [#3514](https://github.com/heygen-com/hyperframes/pull/3514)).
+- An agent can drive Studio's selection and playhead ([0e558d591](https://github.com/heygen-com/hyperframes/commit/0e558d591658afcba59a84d53d75112b963a9f0a), [#3515](https://github.com/heygen-com/hyperframes/pull/3515)).
+- `studio_frame` gives an agent eyes on the current frame ([3337cc899](https://github.com/heygen-com/hyperframes/commit/3337cc899071c40e0bf3c6bc030d91c499c639d0), [#3516](https://github.com/heygen-com/hyperframes/pull/3516)).
+- An agent can edit text and styles, behind a guard ([f84b4c23d](https://github.com/heygen-com/hyperframes/commit/f84b4c23dcc8b4acbb597e3ad1d293788eaa379b), [#3518](https://github.com/heygen-com/hyperframes/pull/3518)).
+
+## Features
+
+- A write-on block and control surfaces join the handwritten family ([5b45bcc16](https://github.com/heygen-com/hyperframes/commit/5b45bcc16ddc1308fdbadef81f436e56bbc1d559), [#3557](https://github.com/heygen-com/hyperframes/pull/3557)).
+- The player gains retained runtime data channels ([4f00336c9](https://github.com/heygen-com/hyperframes/commit/4f00336c92f6418aab82c060853da604dd832197), [#3471](https://github.com/heygen-com/hyperframes/pull/3471)).
+- A render reports which catalog items it actually used ([045b3a4fd](https://github.com/heygen-com/hyperframes/commit/045b3a4fd7df71b46f4432c114f70fb25d13b551), [#3470](https://github.com/heygen-com/hyperframes/pull/3470)).
+- Automation segments can be dragged in Studio ([7caf4b887](https://github.com/heygen-com/hyperframes/commit/7caf4b887192d90e53fe08460b1e79554b8fe37e), [#3465](https://github.com/heygen-com/hyperframes/pull/3465)).
+- Font localization is now deterministic and exposed directly ([38f8f9250](https://github.com/heygen-com/hyperframes/commit/38f8f9250a3f2a551a2e0a5f685ac4f64109e218)).
+- Localized HTML stamps the font compiler version ([d6de08341](https://github.com/heygen-com/hyperframes/commit/d6de083411d76a0819768b21d30a305500a92048)).
+
+## Fixes: renders now fail loudly
+
+- A video extraction failure fails the render by default ([4d87f8bba](https://github.com/heygen-com/hyperframes/commit/4d87f8bbae3d4cda71f75fa33e8d48ce38a3afc7), [#3526](https://github.com/heygen-com/hyperframes/pull/3526)).
+- A sub-composition script failure fails the render ([e69be30e9](https://github.com/heygen-com/hyperframes/commit/e69be30e985a32a70d04de607763135884246193), [#3528](https://github.com/heygen-com/hyperframes/pull/3528)).
+- Artifacts are checked for duration and frame count before commit ([05275c1e8](https://github.com/heygen-com/hyperframes/commit/05275c1e8ce3bee6d331cca9ff9c8eec02c34977), [#3506](https://github.com/heygen-com/hyperframes/pull/3506)).
+- A cached entry with no frames counts as a miss, not a hit ([dae5b7b90](https://github.com/heygen-com/hyperframes/commit/dae5b7b90b7eefceffc9e64cc532b5cc74eeeedd), [#3434](https://github.com/heygen-com/hyperframes/pull/3434)).
+- Source frame identity survives past 99,999 frames ([c9f43ebcf](https://github.com/heygen-com/hyperframes/commit/c9f43ebcfbc05a83b18f46007f31a5cbd973ebb9), [#3503](https://github.com/heygen-com/hyperframes/pull/3503)).
+- The parallel router trips its circuit breaker on stalls and hangs ([3202f3fb8](https://github.com/heygen-com/hyperframes/commit/3202f3fb87e0f7babfdfe0a9d62703b293abfd80), [#3479](https://github.com/heygen-com/hyperframes/pull/3479)).
+- Capture falls back to a screenshot when the canvas is not initialized ([a7e867475](https://github.com/heygen-com/hyperframes/commit/a7e86747586b5aad0263b6b00bbd9d32c51ff7e6), [#3480](https://github.com/heygen-com/hyperframes/pull/3480)).
+
+## Fixes: playback and audio
+
+- Timelines rebind correctly and paused seeks stay in bounds ([61ba800a5](https://github.com/heygen-com/hyperframes/commit/61ba800a5db0825afb40f061fb6df5498dfdb37d), [#3489](https://github.com/heygen-com/hyperframes/pull/3489)).
+- Runtime delivery errors are reported instead of passing silently ([859ac622c](https://github.com/heygen-com/hyperframes/commit/859ac622c2991250ed28fbdcee4b6d2a8efea6ff), [#3472](https://github.com/heygen-com/hyperframes/pull/3472)).
+- Muxing no longer destroys the AAC priming edit list ([ee64c3b11](https://github.com/heygen-com/hyperframes/commit/ee64c3b1168a3466269344197ba6774f9eb15e14), [#3505](https://github.com/heygen-com/hyperframes/pull/3505)).
+- Cross-origin Web Audio capture no longer silences audio ([cce17da5a](https://github.com/heygen-com/hyperframes/commit/cce17da5a9eb1c6efa21db084d786a1d34b5d8f9)).
+- Long nested media resolves in local time ([3dc185623](https://github.com/heygen-com/hyperframes/commit/3dc18562323c9dd7dfa1f9416d90708677f3652b), [#3535](https://github.com/heygen-com/hyperframes/pull/3535)).
+
+## Fixes: Studio
+
+- Export uses the composition the user selected ([b71f45981](https://github.com/heygen-com/hyperframes/commit/b71f45981c376d3b2b4ae8e07a0837f63a091a8c), [#3550](https://github.com/heygen-com/hyperframes/pull/3550)).
+- A composition activates at any path, not only `compositions/` ([adf9b0cce](https://github.com/heygen-com/hyperframes/commit/adf9b0cceeb561fd5424e8cad73b781f5383a9ef), [#3547](https://github.com/heygen-com/hyperframes/pull/3547)).
+- A failed DOM edit reports that it failed ([21bcd5745](https://github.com/heygen-com/hyperframes/commit/21bcd5745cc0d8bb4c51363ef4183b343cbbd169), [#3510](https://github.com/heygen-com/hyperframes/pull/3510)).
+- Save failure telemetry is correct ([28be8dddf](https://github.com/heygen-com/hyperframes/commit/28be8dddfacefe29b5e25ae2d36fd76ffe4c4852), [#3499](https://github.com/heygen-com/hyperframes/pull/3499)).
+- Repeated selection telemetry is deduped ([9aaa7552f](https://github.com/heygen-com/hyperframes/commit/9aaa7552fc7a41d479e4b4638cd0c47472652ddc), [#3498](https://github.com/heygen-com/hyperframes/pull/3498)).
+
+## Fixes: CLI and fonts
+
+- Snapshots honor the authored playback rate ([d99eeef0b](https://github.com/heygen-com/hyperframes/commit/d99eeef0b27460683831664b4ac68f5cf4f700cd), [#3536](https://github.com/heygen-com/hyperframes/pull/3536)).
+- Keyframe shots no longer overwrite their sources ([e4dabf830](https://github.com/heygen-com/hyperframes/commit/e4dabf830c6cf377734de043d5f5345bcefe7b02), [#3534](https://github.com/heygen-com/hyperframes/pull/3534)).
+- Timeline-free static compositions are respected ([b28747df0](https://github.com/heygen-com/hyperframes/commit/b28747df0f2db9c5e7148e188a6ce6b99bcdda85), [#3533](https://github.com/heygen-com/hyperframes/pull/3533)).
+- Phrase-level CJK and Thai transcripts stay separate cues ([18409c9f2](https://github.com/heygen-com/hyperframes/commit/18409c9f2742e491ef7ff6a1454675a295e5d0a0), [#3436](https://github.com/heygen-com/hyperframes/pull/3436)).
+- Font subsets cover rendered case variants ([744146eb6](https://github.com/heygen-com/hyperframes/commit/744146eb6e71f3c108091fe981a7d63859a6287b)).
+- Overlap waivers stay local to marked text ([e5a5e6b15](https://github.com/heygen-com/hyperframes/commit/e5a5e6b151aaf0dd489456c2681da6d664983de4), [#3464](https://github.com/heygen-com/hyperframes/pull/3464)).
+
+## Releases
+
+v0.8.13 through v0.8.20 shipped this week.
+
+For exact versioned release notes, see the [Changelog](/changelog).
+</Update>
+
+<Update
   label="Week of August 17, 2026"
   description="Weekly digest - August 17, 2026 - August 24, 2026"
   tags={["Weekly update", "Highlights"]}
