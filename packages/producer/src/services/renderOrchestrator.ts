@@ -3950,12 +3950,16 @@ async function executeRenderPipeline(input: {
     }
 
     await artifactTransaction.validate(
-      !isPngSequence && !isGif && Number.isFinite(job.duration) && job.duration > 0
-        ? {
-            expectedDurationSeconds: job.duration,
-            fps: fpsToNumber(job.config.fps),
-            expectedFrames: captureTotalFrames,
-          }
+      Number.isFinite(job.duration) && job.duration > 0
+        ? isPngSequence
+          ? { expectedDurationSeconds: job.duration, expectedFrames: captureTotalFrames }
+          : isGif
+            ? undefined
+            : {
+                expectedDurationSeconds: job.duration,
+                fps: fpsToNumber(job.config.fps),
+                expectedFrames: captureTotalFrames,
+              }
         : undefined,
     );
 

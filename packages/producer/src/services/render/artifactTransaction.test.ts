@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   lstatSync,
@@ -272,7 +272,7 @@ describe("ArtifactTransaction", () => {
     // ffprobe rounds the container duration down by one sample.
     const dir = tempDir();
     const destination = join(dir, "render.mp4");
-    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 10.0 });
+    const probe: ArtifactDurationProbe = async () => ({ durationSeconds: 10.0, frames: 300 });
     const transaction = new ArtifactTransaction(destination, "file", undefined, probe);
     writeFileSync(transaction.stagingPath, "fake-mp4-bytes-that-are-non-empty");
 
@@ -333,6 +333,87 @@ describe("ArtifactTransaction", () => {
       }),
     ).rejects.toThrow(/duration probe failed/);
 
+    transaction.rollback();
+  });
+
+  // ── #3484: validate() must catch a truncated PNG sequence ──────────────
+  // PNG-sequence outputs use the same multi-worker capture path as MP4 but
+  // bypassed the frame-count gate entirely. A worker silently dropping N
+  // frames produces (expected−N) PNGs on disk; the existing "directory is
+  // empty" check only catches total failure.
+
+  it("rejects a PNG sequence with fewer frames than expected", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "frames");
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "frame_000001.png"), "frame-1");
+    writeFileSync(join(transaction.stagingPath, "frame_000002.png"), "frame-2");
+
+    await expect(
+      transaction.validate({ expectedDurationSeconds: 5, expectedFrames: 10 }),
+    ).rejects.toThrow(/truncated/);
+
+    transaction.rollback();
+  });
+
+  it("accepts a PNG sequence with the expected frame count", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "frames");
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
+    mkdirSync(transaction.stagingPath);
+    for (let i = 1; i <= 30; i++) {
+      writeFileSync(join(transaction.stagingPath, `frame_${String(i).padStart(6, "0")}.png`), `f${i}`);
+    }
+
+    await expect(
+      transaction.validate({ expectedDurationSeconds: 1, expectedFrames: 30 }),
+    ).resolves.toBeUndefined();
+
+    transaction.rollback();
+  });
+
+  it("accepts a PNG sequence when no expectedFrames is provided", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "frames");
+    const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
+    mkdirSync(transaction.stagingPath);
+    writeFileSync(join(transaction.stagingPath, "frame_000001.png"), "frame");
+
+    await expect(
+      transaction.validate({ expectedDurationSeconds: 5 }),
+    ).resolves.toBeUndefined();
+
+    transaction.rollback();
+  });
+
+  // ── #3484 Gap 2: frame-count gate warns when probe returns no frames ──
+
+  it("warns when frame-count gate is skipped due to missing probe data", async () => {
+    const dir = tempDir();
+    const destination = join(dir, "render.webm");
+    const probe: ArtifactDurationProbe = async () => ({
+      durationSeconds: 10.0,
+      frames: undefined,
+    });
+    const transaction = new ArtifactTransaction(destination, "file", undefined, probe);
+    writeFileSync(transaction.stagingPath, "fake-webm-bytes");
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(
+      transaction.validate({
+        expectedDurationSeconds: 10.0,
+        fps: 30,
+        expectedFrames: 300,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Frame-count gate skipped"),
+    );
+
+    warnSpy.mockRestore();
     transaction.rollback();
   });
 
