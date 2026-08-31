@@ -931,6 +931,93 @@ describe("ffprobe option separator", () => {
   });
 });
 
+describe("analyzeKeyframeIntervals — single-keyframe videos", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("reports single-keyframe video as problematic when duration exceeds threshold", async () => {
+    const { spawn } = createSpawnSpy([
+      // First call: keyframe probe returns a single timestamp
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      // Second call: stream duration probe
+      { kind: "exit", code: 0, stdout: "10.5\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/single-gop.mp4");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 10.5,
+      maxIntervalSeconds: 10.5,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("reports single-keyframe short video as non-problematic", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      { kind: "exit", code: 0, stdout: "1.5\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/short-single-gop.mp4");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 1.5,
+      maxIntervalSeconds: 1.5,
+      keyframeCount: 1,
+      isProblematic: false,
+    });
+  });
+
+  it("falls back to format duration when stream duration is unavailable", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "0.000000\n" },
+      // Stream duration probe fails
+      { kind: "exit", code: 1, stdout: "" },
+      // Format duration probe succeeds
+      { kind: "exit", code: 0, stdout: "8.0\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/no-stream-duration.mp4");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 8,
+      maxIntervalSeconds: 8,
+      keyframeCount: 1,
+      isProblematic: true,
+    });
+  });
+
+  it("returns non-problematic for zero keyframes (still image)", async () => {
+    const { spawn } = createSpawnSpy([
+      { kind: "exit", code: 0, stdout: "\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    const result = await analyzeKeyframeIntervals("/tmp/still-image.png");
+
+    expect(result).toEqual({
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: 0,
+      isProblematic: false,
+    });
+  });
+});
+
 describe("parseFrameRate", () => {
   // Direct against the exported function. The previous table drove this
   // through extractMediaMetadata behind a spawn mock, which cost a
