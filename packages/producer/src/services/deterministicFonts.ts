@@ -754,14 +754,17 @@ function fontCacheDir(slug: string): string {
     try {
       mkdirSync(dir, { recursive: true });
     } catch {
+      const firstFallback = ephemeralFontCacheRoot === undefined;
       ephemeralFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
       const fallback = join(ephemeralFontCacheRoot, slug);
       mkdirSync(fallback, { recursive: true });
-      defaultLogger.warn(
-        `Font cache directory is unwritable (${dir}). ` +
-          `Using temporary fallback — fonts will re-download each run. ` +
-          `Fix with: chmod 755 ${resolveFontCacheRoot()}`,
-      );
+      if (firstFallback) {
+        defaultLogger.warn(
+          `Font cache directory is unwritable (${dir}). ` +
+            `Using temporary fallback — fonts will re-download each run. ` +
+            `Fix with: chmod 755 ${resolveFontCacheRoot()}`,
+        );
+      }
       return fallback;
     }
   }
