@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "fb089c68adca459318a6d28b88c09a3ea9ead77d58ef8459bcf90ec79d0b61d9",
+  "revision": "2611d04335aacf5a70649019f948e5ba2f474c38bc45cd59e179d71294cd8cb8",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -146,6 +146,7 @@
     "hw-text-cloud",
     "hw-title",
     "hw-underline",
+    "hw-write-title",
     "icon-morph-beat",
     "icon-swap",
     "ink-bleed-reveal",
