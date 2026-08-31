@@ -50,10 +50,12 @@ describe("installRuntimeControlBridge", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
     const payload = { version: 3, segments: [] };
-    handler(makeControlMessage("set-runtime-data", { channel: "captions", payload }));
-    handler(makeControlMessage("clear-runtime-data", { channel: "captions" }));
-    expect(deps.onSetRuntimeData).toHaveBeenCalledWith("captions", payload);
-    expect(deps.onClearRuntimeData).toHaveBeenCalledWith("captions");
+    handler(
+      makeControlMessage("set-runtime-data", { channel: "captions", payload, requestId: 41 }),
+    );
+    handler(makeControlMessage("clear-runtime-data", { channel: "captions", requestId: 42 }));
+    expect(deps.onSetRuntimeData).toHaveBeenCalledWith("captions", payload, 41);
+    expect(deps.onClearRuntimeData).toHaveBeenCalledWith("captions", 42);
   });
 
   it("dispatches stop-media command", () => {

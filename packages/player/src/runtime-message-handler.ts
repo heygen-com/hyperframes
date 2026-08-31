@@ -40,6 +40,8 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
   onRuntimeReady: () => void;
+  onRuntimeDataApplied?: (channel: unknown, requestId: unknown) => void;
+  onRuntimeDataError?: (channel: unknown, requestId: unknown, message: unknown) => void;
   /** Invoked when the runtime posts a finite positive timeline duration. The
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
@@ -93,11 +95,12 @@ export function handleRuntimeMessage(
   }
 
   if (data["type"] === "runtime-data-error") {
-    callbacks.dispatchEvent(
-      new CustomEvent("runtimedataerror", {
-        detail: { channel: data["channel"], message: data["message"] },
-      }),
-    );
+    callbacks.onRuntimeDataError?.(data["channel"], data["requestId"], data["message"]);
+    return;
+  }
+
+  if (data["type"] === "runtime-data-applied") {
+    callbacks.onRuntimeDataApplied?.(data["channel"], data["requestId"]);
     return;
   }
 

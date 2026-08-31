@@ -5,6 +5,11 @@ import { initSandboxRuntimeModular } from "./init";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
 import type { RuntimeTimelineLike } from "./types";
+import {
+  registerRuntimeDataHandler,
+  resetRuntimeDataForTests,
+  setRuntimeData,
+} from "./runtimeData";
 
 it("schedules WebAudio element gain from author volume without bridge volume", () => {
   const source = readFileSync("src/runtime/init.ts", "utf8");
@@ -107,6 +112,7 @@ describe("initSandboxRuntimeModular", () => {
   const originalCancelAnimationFrame = window.cancelAnimationFrame;
 
   beforeEach(() => {
+    resetRuntimeDataForTests();
     document.body.innerHTML = "";
     (globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS ??= {};
     globalThis.CSS.escape ??= (value: string) => value;
@@ -174,6 +180,7 @@ describe("initSandboxRuntimeModular", () => {
 
   afterEach(() => {
     window.__hfRuntimeTeardown?.();
+    resetRuntimeDataForTests();
     document.body.innerHTML = "";
     window.__timelines = {} as Record<string, RuntimeTimelineLike>;
     delete window.__player;
@@ -2725,6 +2732,117 @@ describe("initSandboxRuntimeModular", () => {
     expect(clipControl?.style.visibility).toBe("visible");
   });
 
+  it("rebinds the injected player before reporting runtime-data applied", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const first = createMockTimeline(10);
+    const replacement = createMockTimeline(10);
+    window.__timelines = { main: first };
+    const applied: Array<Record<string, unknown>> = [];
+    const deliveryOrder: string[] = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "timeline" || payload.type === "runtime-data-applied") {
+        deliveryOrder.push(String(payload.type));
+      }
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    deliveryOrder.length = 0;
+    window.__player?.seek(0.25);
+    registerRuntimeDataHandler("captions", async () => {
+      await Promise.resolve();
+      window.__timelines = { main: replacement };
+    });
+
+    setRuntimeData("captions", { style: "replacement" }, 7);
+    await vi.waitFor(() => expect(applied).toHaveLength(1));
+
+    // Runtime seeks are canonicalized to the configured frame rate.
+    expect(replacement.time()).toBeCloseTo(7 / 30, 5);
+    expect(first.time()).toBeCloseTo(7 / 30, 5);
+
+    window.__player?.seek(1.25);
+
+    expect(first.time()).toBeCloseTo(7 / 30, 5);
+    expect(replacement.time()).toBeCloseTo(37 / 30, 5);
+    expect(applied[0]).toMatchObject({ channel: "captions", requestId: 7 });
+    expect(deliveryOrder.slice(0, 2)).toEqual(["timeline", "runtime-data-applied"]);
+  });
+
+  it("does not seek a removed timeline after runtime data is cleared", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const first = createMockTimeline(10);
+    window.__timelines = { main: first };
+    const applied: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(0.25);
+    registerRuntimeDataHandler("captions", () => {
+      window.__timelines = {};
+    });
+
+    setRuntimeData("captions", undefined, 8);
+    await vi.waitFor(() => expect(applied).toHaveLength(1));
+    const timeAtClear = first.time();
+
+    window.__player?.seek(1.25);
+
+    expect(first.time()).toBe(timeAtClear);
+  });
+
+  it("does not report applied when a runtime-data handler rejects", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    window.__timelines = { main: createMockTimeline(10) };
+
+    const applied: Array<Record<string, unknown>> = [];
+    const errors: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      if (payload.type === "runtime-data-applied") applied.push(payload);
+      if (payload.type === "runtime-data-error") errors.push(payload);
+    });
+
+    initSandboxRuntimeModular();
+    registerRuntimeDataHandler("captions", async () => {
+      await Promise.resolve();
+      throw new Error("attach failed");
+    });
+
+    setRuntimeData("captions", { style: "broken" }, 9);
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
+
+    expect(applied).toHaveLength(0);
+    expect(errors[0]).toMatchObject({ channel: "captions", requestId: 9 });
+  });
+
   it("onSetMuted preserves authored muted attribute on video elements", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");
@@ -2912,11 +3030,74 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes.length).toBeGreaterThan(beforePlaying);
     player?.pause();
 
-    // (3) Paused + marker cleared (drop/cancel) → the per-frame re-seek resumes.
+    // (3) Paused + marker cleared (drop/cancel) → one reconciliation seek runs.
     document.getElementById("dragged")?.removeAttribute("data-hf-studio-manual-edit-gesture");
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  it("does not re-seek an unchanged paused timeline on every animation frame", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const seekTimes: number[] = [];
+    const tl = createMockTimeline(5);
+    const origTotalTime = tl.totalTime;
+    tl.totalTime = ((time: number, ...rest: unknown[]) => {
+      seekTimes.push(time);
+      (origTotalTime as Function).call(tl, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    window.__timelines = { root: tl };
+    initSandboxRuntimeModular();
+
+    // The first transport frame reconciles the initial timeline at the paused playhead.
+    raf.step(16);
+    const afterInitialFrame = seekTimes.length;
+    expect(afterInitialFrame).toBeGreaterThan(0);
+
+    // No time or timeline change means there is no new frame to render.
+    raf.step(16);
+    raf.step(16);
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterInitialFrame);
+
+    // An explicit paused seek still renders immediately, then settles again after the transport
+    // records the new playhead on its next frame.
+    window.__player?.seek(2);
+    expect(seekTimes.some((time) => time === 2)).toBe(true);
+    raf.step(16);
+    const afterPausedSeek = seekTimes.length;
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterPausedSeek);
+
+    // A runtime-data rebuild can replace the timeline without moving the paused playhead. The
+    // identity check must render that new object once instead of treating it as the old frame.
+    const replacementSeekTimes: number[] = [];
+    const replacement = createMockTimeline(5);
+    const replacementTotalTime = replacement.totalTime;
+    replacement.totalTime = ((time: number, ...rest: unknown[]) => {
+      replacementSeekTimes.push(time);
+      (replacementTotalTime as Function).call(replacement, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+    window.__timelines = { root: replacement };
+    window.__hfForceTimelineRebind?.();
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBeGreaterThan(0);
+    const afterReplacementFrame = replacementSeekTimes.length;
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBe(afterReplacementFrame);
+
+    // Playback still traverses the timeline every frame.
+    window.__player?.play();
+    raf.step(16);
+    expect(replacementSeekTimes.length).toBeGreaterThan(afterReplacementFrame);
   });
 
   it("redraws animated grading from the transport clock only during playback", () => {

@@ -32,23 +32,43 @@ function alreadyHasRuntime(html: string, runtimeUrl: string): boolean {
   return /hyperframe\.runtime\.iife\.js|__hyperframes\s*=/.test(html);
 }
 
+type OpeningTag = { index: number; end: number };
+const OPENING_TAG_BOUNDARIES = new Set<string | undefined>([">", " ", "\t", "\n", "\r", "\f"]);
+
+/** Find an opening tag in one linear pass, without a backtracking regex over caller-owned HTML. */
+function findOpeningTag(html: string, tagName: string): OpeningTag | null {
+  const lower = html.toLowerCase();
+  const prefix = `<${tagName}`;
+  let from = 0;
+  while (from < lower.length) {
+    const index = lower.indexOf(prefix, from);
+    if (index < 0) return null;
+    const boundary = lower[index + prefix.length];
+    if (OPENING_TAG_BOUNDARIES.has(boundary)) {
+      const close = lower.indexOf(">", index + prefix.length);
+      if (close < 0) return null;
+      return { index, end: close + 1 };
+    }
+    from = index + prefix.length;
+  }
+  return null;
+}
+
 export function ensureRuntimeBeforeBodyScripts(html: string, runtimeUrl: string): string {
   if (!html || alreadyHasRuntime(html, runtimeUrl)) return html;
 
   const tag = `<script src="${runtimeUrl}"></script>`;
-  const head = /<head[^>]*>/i.exec(html);
+  const head = findOpeningTag(html, "head");
   if (head) {
-    const at = head.index + head[0].length;
-    return html.slice(0, at) + tag + html.slice(at);
+    return html.slice(0, head.end) + tag + html.slice(head.end);
   }
   // No head: get in before <body> so body scripts still see the runtime. A
   // fragment with neither lands at the front, which is the same guarantee.
-  const body = /<body[^>]*>/i.exec(html);
+  const body = findOpeningTag(html, "body");
   if (body) return html.slice(0, body.index) + tag + html.slice(body.index);
-  const htmlTag = /<html[^>]*>/i.exec(html);
+  const htmlTag = findOpeningTag(html, "html");
   if (htmlTag) {
-    const at = htmlTag.index + htmlTag[0].length;
-    return html.slice(0, at) + tag + html.slice(at);
+    return html.slice(0, htmlTag.end) + tag + html.slice(htmlTag.end);
   }
   return tag + html;
 }

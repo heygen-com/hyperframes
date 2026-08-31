@@ -28,8 +28,8 @@ type BridgeDeps = {
   ) => void;
   onEnablePickMode: () => void;
   onDisablePickMode: () => void;
-  onSetRuntimeData?: (channel: string, payload: unknown) => void;
-  onClearRuntimeData?: (channel: string) => void;
+  onSetRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
+  onClearRuntimeData?: (channel: string, requestId?: number) => void;
   getCanonicalFps: () => number;
 };
 
@@ -78,10 +78,11 @@ const CONTROL_HANDLERS: Record<string, ControlHandler> = {
   "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
   "flash-elements": (data) => handleFlashElements(data),
   "set-runtime-data": (data, deps) => {
-    if (typeof data.channel === "string") deps.onSetRuntimeData?.(data.channel, data.payload);
+    if (typeof data.channel === "string")
+      deps.onSetRuntimeData?.(data.channel, data.payload, data.requestId);
   },
   "clear-runtime-data": (data, deps) => {
-    if (typeof data.channel === "string") deps.onClearRuntimeData?.(data.channel);
+    if (typeof data.channel === "string") deps.onClearRuntimeData?.(data.channel, data.requestId);
   },
 };
 
