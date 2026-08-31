@@ -1,10 +1,18 @@
 <!doctype html>
-<!-- Demo plate for the catalog preview. Identical to hw-box-label.html except the
-     root background, which is opaque here so the transparent overlay reads.
+<!-- Demo plate for the catalog preview. Same helpers as hw-box-label.html;
+     the root background is opaque here so the transparent overlay reads, and
+     the plate exercises the control surface with NON-DEFAULT states side by
+     side (per the control-surface convention's demo requirement):
+       - entrance "drop" (landing squash, label counter-scaled)
+       - strokeType "spray" (seeded deterministic dots)
+       - labelPos "inside"
+       - boil "lively"
      Not installed by `hyperframes add` - registry-item.json lists hw-box-label.html only. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Hand-Drawn Box Label — Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       @font-face {
@@ -26,17 +34,30 @@
       }
       /* ---- hw-box-label ----------------------------------------------------
          Rounded hand-drawn box + marker label (map-label style annotations).
-         Requires the hw-boil helpers in the host. */
+         Requires the hw-boil helpers in the host.
+         Wrapper anatomy (outer to inner): .hw-box = position/move wrapper
+         (entrances/exits target THIS, never the boil element) > .hw-bx-deform
+         = deform wrapper (g21 squash scale, transform-origin 50% 100%) >
+         .hw-bx-boil = boil target (hwBoilPose owns its x/y/rotation) >
+         content (svg + label). */
       .hw-box {
         position: absolute;
         pointer-events: none;
+      }
+      .hw-box .hw-bx-deform,
+      .hw-box .hw-bx-boil {
+        position: absolute;
+        inset: 0;
       }
       .hw-box svg {
         width: 100%;
         height: 100%;
         overflow: visible;
       }
-      .hw-box path {
+      /* :not([stroke]) keeps texture machinery out of the ink rule: the
+         stroke-matrix mask clone carries a stroke="#fff" attribute and must
+         not inherit the ink color/width (CSS would beat its attributes). */
+      .hw-box path:not([stroke]) {
         fill: none;
         stroke: var(--hw-box-ink, var(--hw-ink, #f4f2ec));
         stroke-width: var(--hw-box-w, 6);
@@ -55,8 +76,8 @@
         opacity: 0;
         text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
       }
-      /* self-preview scene */
-      #hw-bx-scene {
+      /* demo scene */
+      #hw-bxd-scene {
         position: absolute;
         inset: 0;
         background: linear-gradient(140deg, #4a3560 0%, #1c1423 100%);
@@ -64,37 +85,72 @@
     </style>
   </head>
   <body>
-    <!-- Self-preview. WIRING: copy the .hw-box CSS + markup pattern, the
-         hwWobbleRect / hwBoxBuild / hwBoxOn / hwBoxOff helpers, AND the
-         hw-boil helpers. Size the wrapper over your target, then:
-
-           hwBoxBuild("#hw-my-box", { seed: 3, label: "Europe", labelPos: "above" });
-           hwBoxOn(tl, "#hw-my-box", 2.0);
-           hwBoil(tl, "#hw-my-box", { frameDrop: 3, seed: 3 });
-           hwBoxOff(tl, "#hw-my-box", 8.0);
-    -->
     <div
-      id="hw-bx-root"
-      data-composition-id="hw-box-label"
+      id="hw-bxd-root"
+      data-composition-id="hw-box-label-demo"
       data-start="0"
-      data-duration="4"
+      data-duration="6"
       data-width="1920"
       data-height="1080"
     >
-      <div id="hw-bx-scene"></div>
+      <div id="hw-bxd-scene"></div>
+      <!-- entrance: "drop" (non-default) -->
       <div
         class="hw-box"
-        id="hw-bx-demo"
-        style="left: 700px; top: 420px; width: 420px; height: 230px"
+        id="hw-bxd-drop"
+        style="left: 170px; top: 260px; width: 380px; height: 210px"
       >
-        <svg viewBox="0 0 420 230"><path id="hw-bx-demo-path"></path></svg>
-        <div class="hw-bx-label" id="hw-bx-demo-label"></div>
+        <div class="hw-bx-deform">
+          <div class="hw-bx-boil">
+            <svg viewBox="0 0 380 210"><path id="hw-bxd-drop-path"></path></svg>
+            <div class="hw-bx-label" id="hw-bxd-drop-label"></div>
+          </div>
+        </div>
+      </div>
+      <!-- strokeType: "spray" (non-default) -->
+      <div
+        class="hw-box"
+        id="hw-bxd-spray"
+        style="left: 1220px; top: 260px; width: 480px; height: 240px"
+      >
+        <div class="hw-bx-deform">
+          <div class="hw-bx-boil">
+            <svg viewBox="0 0 480 240"><path id="hw-bxd-spray-path"></path></svg>
+            <div class="hw-bx-label" id="hw-bxd-spray-label"></div>
+          </div>
+        </div>
+      </div>
+      <!-- labelPos: "inside" (non-default) -->
+      <div
+        class="hw-box"
+        id="hw-bxd-inside"
+        style="left: 170px; top: 680px; width: 420px; height: 230px"
+      >
+        <div class="hw-bx-deform">
+          <div class="hw-bx-boil">
+            <svg viewBox="0 0 420 230"><path id="hw-bxd-inside-path"></path></svg>
+            <div class="hw-bx-label" id="hw-bxd-inside-label"></div>
+          </div>
+        </div>
+      </div>
+      <!-- boil: "lively" (non-default) -->
+      <div
+        class="hw-box"
+        id="hw-bxd-lively"
+        style="left: 1250px; top: 680px; width: 430px; height: 240px"
+      >
+        <div class="hw-bx-deform">
+          <div class="hw-bx-boil">
+            <svg viewBox="0 0 430 240"><path id="hw-bxd-lively-path"></path></svg>
+            <div class="hw-bx-label" id="hw-bxd-lively-label"></div>
+          </div>
+        </div>
       </div>
       <div
-        id="hw-bx-drv"
+        id="hw-bxd-drv"
         class="clip"
         data-start="0"
-        data-duration="4"
+        data-duration="6"
         data-track-index="0"
         style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
       ></div>
@@ -102,6 +158,25 @@
     <script>
       (function () {
         window.__timelines = window.__timelines || {};
+
+        var CONFIG = {
+          // ── Content (freely editable — not counted) ─────────────────────
+          // per-instance content rides hwBoxBuild(target, opts):
+          //   opts.label (the label text) · opts.seed (which wobble pose the
+          //   box gets — an identity pick, not a feel lever)
+
+          // ── Controls (family base + 3 item-specific; comment grammar is the published-parameter list) ──
+          entrance: "draw", //   variant: "draw" | "drop" — draw = stroke draw-on + label fade (the shipped entrance); drop = landing squash: box+label drop in, contact squash on the deform wrapper, bouncy spring recovery; travel/duration derived, never exposed
+          strokeType: "plain", // variant: "plain" | "soft" | "sharp" | "spray" — authored stroke texture on the box path (constants per type; draw-on composes via the mask clone)
+          labelPos: "above", //  variant: "above" | "inside" — label above the box or vertically centered inside it
+          boil: "calm", //       variant: "off" | "calm" | "lively" — authored amp/rot pairs over the family-locked frameDrop 3; seed locked
+
+          // ── Locked (edit the item source to change) ─────────────────────
+          // draw duration/ease, drop travel/duration derivation (≈1.9× box
+          // height into ~0.5s, power2.in), softness tier 0.11 (UI card),
+          // spring registers, stroke-type constants, boil pose tables,
+          // label fade timing, wobble amplitude
+        };
 
         /* ---- hw-boil helpers (shared family runtime — copy once per host) ---- */
         window.hwOnUpdate = function (tl, fn) {
@@ -137,6 +212,252 @@
             }
           });
         };
+        // boil control: authored poses over the family-locked frameDrop.
+        // Unknown pose → default + console error (bounded-controls law).
+        window.hwBoilPose = function (tl, target, pose, opts) {
+          opts = opts || {};
+          var poses = { calm: { amp: 1.6, rot: 0.5 }, lively: { amp: 2.6, rot: 0.9 } };
+          if (pose === "off") return;
+          var p = poses[pose];
+          if (!p) {
+            console.error('hw: unknown boil pose "' + pose + '" — falling back to "calm"');
+            p = poses.calm;
+          }
+          window.hwBoil(tl, target, { amp: p.amp, rot: p.rot, frameDrop: 3, seed: opts.seed || 1 });
+        };
+
+        /* ---- spring library (authored feel registers) -------------------
+           The factory owns the recovery duration — consume rec.duration
+           verbatim, never scale or multiply it. */
+        var LN1000 = Math.log(1000);
+        var FEELS = {
+          snappy: { zeta: 0.9, response: 0.22 },
+          bouncy: { zeta: 0.5, response: 0.4 },
+        };
+        window.springEase = function (opts) {
+          var f = opts.feel ? FEELS[opts.feel] : opts;
+          var zeta = f.zeta,
+            response = f.response;
+          var w0 = (2 * Math.PI) / response;
+          var T = LN1000 / (zeta * w0);
+          var x;
+          if (zeta < 1) {
+            var wd = w0 * Math.sqrt(1 - zeta * zeta);
+            x = function (t) {
+              return (
+                1 -
+                Math.exp(-zeta * w0 * t) *
+                  (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t))
+              );
+            };
+          } else {
+            x = function (t) {
+              return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+            };
+          }
+          var xT = x(T);
+          return {
+            ease: function (p) {
+              return p >= 1 ? 1 : x(p * T) / xT;
+            },
+            duration: T,
+            zeta: zeta,
+            response: response,
+          };
+        };
+
+        /* ---- stroke matrix: plain | soft | sharp | spray ----------------
+           strokeType is a g09 variant control. Authored constants per type;
+           unknown value → default ("plain") + console error (bounded-controls
+           law). sharp = micro stroke-dasharray gaps (dry marker) — draw-on
+           must therefore ride a MASK clone (the visible dasharray never
+           animates). spray = index-seeded deterministic dots along the path
+           via hwHash: position a pure function of path parameter + seed; NO
+           feTurbulence anywhere.
+           Returns { draw: pathToDashAnimate, group: maskedGroupOrNull } */
+        window.hwStrokeTypes = {
+          plain: {},
+          soft: { blur: 0.6 },
+          sharp: { dash: [3.0, 1.55] }, // × stroke-width
+          spray: {
+            coreOpacity: 0.5,
+            coreBlur: 0.4,
+            density: 0.16,
+            scatter: 2.6,
+            rMin: 1.1,
+            rMax: 2.6,
+          },
+        };
+        window.hwStrokeApply = function (pathEl, type, opts) {
+          opts = opts || {};
+          var cfg = window.hwStrokeTypes[type];
+          if (!cfg) {
+            console.error('hw: unknown strokeType "' + type + '" — falling back to "plain"');
+            type = "plain";
+            cfg = window.hwStrokeTypes.plain;
+          }
+          var svg = pathEl.ownerSVGElement;
+          var ns = "http://www.w3.org/2000/svg";
+          var w = parseFloat(getComputedStyle(pathEl).strokeWidth) || 6;
+          if (type === "plain") return { draw: pathEl, group: null, type: type };
+          if (type === "soft") {
+            pathEl.style.filter = "blur(" + cfg.blur + "px)";
+            return { draw: pathEl, group: null, type: type };
+          }
+          // sharp + spray: wrap in a masked group, draw-on animates the mask clone
+          var id =
+            opts.id ||
+            "hwsm-" + Math.abs(Math.round(window.hwHash((opts.seed || 1) * 13.7, 5) * 1e6));
+          var defs = svg.querySelector("defs");
+          if (!defs) {
+            defs = document.createElementNS(ns, "defs");
+            svg.insertBefore(defs, svg.firstChild);
+          }
+          var mask = document.createElementNS(ns, "mask");
+          mask.setAttribute("id", id);
+          mask.setAttribute("maskUnits", "userSpaceOnUse");
+          var clone = document.createElementNS(ns, "path");
+          clone.setAttribute("d", pathEl.getAttribute("d"));
+          clone.setAttribute("fill", "none");
+          clone.setAttribute("stroke", "#fff");
+          clone.setAttribute(
+            "stroke-width",
+            w * (type === "spray" ? 2 + (cfg.scatter * 2) / w : 1.7),
+          );
+          clone.setAttribute("stroke-linecap", "round");
+          clone.setAttribute("stroke-linejoin", "round");
+          mask.appendChild(clone);
+          defs.appendChild(mask);
+          var group = document.createElementNS(ns, "g");
+          group.setAttribute("mask", "url(#" + id + ")");
+          pathEl.parentNode.insertBefore(group, pathEl);
+          group.appendChild(pathEl);
+          if (type === "sharp") {
+            pathEl.setAttribute(
+              "stroke-dasharray",
+              (cfg.dash[0] * w).toFixed(1) + " " + (cfg.dash[1] * w).toFixed(1),
+            );
+          } else {
+            // spray: faint core + seeded dots
+            pathEl.setAttribute("stroke-opacity", cfg.coreOpacity);
+            pathEl.style.filter = "blur(" + cfg.coreBlur + "px)";
+            var len = pathEl.getTotalLength();
+            var n = Math.round(len * cfg.density * (opts.densityScale || 1));
+            var seed = opts.seed || 1;
+            var dots = document.createElementNS(ns, "g");
+            for (var i = 0; i < n; i++) {
+              var t = Math.min(
+                1,
+                Math.max(0, (i + 0.5) / n + (window.hwHash(i * 7, seed) * 0.35) / n),
+              );
+              var pt = pathEl.getPointAtLength(t * len);
+              var pt2 = pathEl.getPointAtLength(Math.min(len, t * len + 0.5));
+              var tx = pt2.x - pt.x,
+                ty = pt2.y - pt.y;
+              var tl2 = Math.hypot(tx, ty) || 1;
+              var nx = -ty / tl2,
+                nyv = tx / tl2;
+              var off = window.hwHash(i * 7 + 1, seed) * (cfg.scatter + w * 0.55);
+              var r = cfg.rMin + Math.abs(window.hwHash(i * 7 + 2, seed)) * (cfg.rMax - cfg.rMin);
+              var c = document.createElementNS(ns, "circle");
+              c.setAttribute("cx", (pt.x + nx * off).toFixed(1));
+              c.setAttribute("cy", (pt.y + nyv * off).toFixed(1));
+              c.setAttribute("r", r.toFixed(2));
+              c.setAttribute("fill", getComputedStyle(pathEl).stroke);
+              dots.appendChild(c);
+            }
+            group.appendChild(dots);
+          }
+          return { draw: clone, group: group, type: type };
+        };
+
+        /* Draw-on across the stroke matrix: dash-animate whatever
+           hwStrokeApply says. (opts.pen requires the hwPenEase helper from
+           the write-on items — not bundled here, never passed here.) */
+        window.hwDrawOn = function (tl, applied, at, dur, opts) {
+          opts = opts || {};
+          var p = applied.draw;
+          var len = p.getTotalLength();
+          // the draw target is always solid (plain/soft: the path itself; sharp/spray:
+          // the mask clone — the visible path keeps its texture dasharray untouched)
+          p.setAttribute("stroke-dasharray", len + " " + len);
+          p.setAttribute("stroke-dashoffset", len);
+          gsap.set(p, { opacity: 0 }); // kill the round-cap start nub pre-draw
+          var ease = opts.pen ? window.hwPenEase(p, opts).ease : opts.ease || "power2.inOut";
+          tl.set(p, { opacity: 1 }, at);
+          tl.to(
+            p,
+            { strokeDashoffset: 0, duration: dur === undefined ? 0.7 : dur, ease: ease },
+            at,
+          );
+        };
+
+        /* ---- g21 volume squash-stretch on hw impacts ----------------------
+           S = min(SOFTNESS × v/V_REF, 0.25), v measured numerically from the
+           entrance ease end-slope; scaleAlong × scalePerp ≈ 1 every frame
+           (one proxy drives both); in-flight stretch E = 0.55 × SOFTNESS,
+           velocity term clamped; contact squash ≤2 frames + 1-frame hold;
+           recovery on a spring register with the factory duration consumed
+           verbatim. Deformation lives on a WRAPPER (boil owns x/y/rotation of
+           its own target; type counter-scaled to net identity inside). All
+           per-frame application runs through hwOnUpdate.
+           Volume assertion: |along×perp − 1| > 0.01 → console.error (fails check). */
+        window.hwImpactSquash = function (tl, opts) {
+          var wrap = opts.wrap; // deform wrapper (transform-origin 50% 100%)
+          var label = opts.label || null; // counter-scaled type inside
+          var travel = opts.travel;
+          var at = opts.at;
+          var dur = opts.dur;
+          var softness = opts.softness !== undefined ? opts.softness : 0.11;
+          var V_REF = 2000;
+          var E = 0.55 * softness;
+          var FPS = opts.fps || 30;
+          var dropEase = opts.dropEase || gsap.parseEase("power2.in");
+          // measured impact velocity (px/s) from the entrance ease end-slope
+          var eps = 1e-4;
+          var v = ((dropEase(1) - dropEase(1 - eps)) / eps) * (travel / dur);
+          var S = Math.min(softness * (v / V_REF), 0.25);
+          var rec = window.springEase({ feel: opts.feel || "bouncy" });
+          var st = { ph: 0, s: 0 }; // ph: flight progress (linear), s: contact squash
+          gsap.set(wrap, { transformOrigin: "50% 100%" });
+          var setBoth = function (along) {
+            gsap.set(wrap, { scaleY: along, scaleX: 1 / along });
+            if (label) gsap.set(label, { scaleY: 1 / along, scaleX: along });
+            // assert on the APPLIED transforms — catches any competing tween that
+            // breaks the one-proxy-drives-both-axes law
+            var ay = parseFloat(gsap.getProperty(wrap, "scaleY"));
+            var ax = parseFloat(gsap.getProperty(wrap, "scaleX"));
+            if (Math.abs(ax * ay - 1) > 0.01)
+              console.error("hw volume law violated: scaleX*scaleY=" + (ax * ay).toFixed(4));
+          };
+          window.hwOnUpdate(tl, function () {
+            if (st.ph > 0 && st.ph < 1) {
+              var p = st.ph;
+              var vp = ((dropEase(Math.min(p + eps, 1)) - dropEase(p)) / eps) * (travel / dur);
+              setBoth(1 + E * Math.min(Math.abs(vp) / V_REF, 1));
+            } else {
+              setBoth(1 - st.s);
+            }
+          });
+          // flight: wrapper position tween + linear proxy (same window)
+          gsap.set(opts.moveTarget || wrap, { y: -travel }); // off-stage until entrance
+          tl.fromTo(
+            opts.moveTarget || wrap,
+            { y: -travel },
+            { y: 0, duration: dur, ease: dropEase, immediateRender: false },
+            at,
+          );
+          tl.fromTo(st, { ph: 0 }, { ph: 1, duration: dur, ease: "none" }, at);
+          // contact: squash in 2 frames, 1-frame hold, spring home (factory duration verbatim)
+          tl.to(st, { s: S, duration: 2 / FPS, ease: "power3.out" }, at + dur);
+          tl.to(st, { s: 0, duration: rec.duration, ease: rec.ease }, at + dur + 3 / FPS);
+          return {
+            v: Math.round(v),
+            S: +S.toFixed(3),
+            T: +rec.duration.toFixed(3),
+            feel: opts.feel || "bouncy",
+          };
+        };
 
         // ---- hw-box helpers (copy these too) ----
         // Wobbled rounded-rect path in a w x h box.
@@ -168,6 +489,13 @@
           d += " Q " + wob(31) + " " + wob(32) + " " + (r + wob(33)) + " " + wob(34);
           return d;
         };
+        // bounded variant resolution (g09): unknown value → declared default
+        // + console error. strokeType/boil bound inside their own helpers.
+        function hwBxPick(name, val, values, dflt) {
+          if (values.indexOf(val) !== -1) return val;
+          console.error("hw: unknown " + name + ' "' + val + '" — falling back to "' + dflt + '"');
+          return dflt;
+        }
         window.hwBoxBuild = function (target, opts) {
           opts = opts || {};
           var el = document.querySelector(target);
@@ -175,13 +503,35 @@
           var vb = svg.getAttribute("viewBox").split(" ");
           var W = parseFloat(vb[2]),
             H = parseFloat(vb[3]);
-          el.querySelector("path").setAttribute(
-            "d",
-            window.hwWobbleRect(W, H, Math.min(26, W * 0.1), opts.seed || 1),
-          );
+          var path = el.querySelector("path");
+          path.setAttribute("d", window.hwWobbleRect(W, H, Math.min(26, W * 0.1), opts.seed || 1));
+          // resolve the control set: CONFIG defaults; per-instance opts
+          // overrides accepted (declared enum values only — bounded the same)
+          var cfg = {
+            seed: opts.seed || 1,
+            entrance: hwBxPick(
+              "entrance",
+              opts.entrance !== undefined ? opts.entrance : CONFIG.entrance,
+              ["draw", "drop"],
+              "draw",
+            ),
+            labelPos: hwBxPick(
+              "labelPos",
+              opts.labelPos !== undefined ? opts.labelPos : CONFIG.labelPos,
+              ["above", "inside"],
+              "above",
+            ),
+            strokeType: opts.strokeType !== undefined ? opts.strokeType : CONFIG.strokeType,
+            boil: opts.boil !== undefined ? opts.boil : CONFIG.boil,
+          };
+          el.__hwCfg = cfg;
+          el.__hwApplied = window.hwStrokeApply(path, cfg.strokeType, {
+            seed: cfg.seed,
+            id: "hw-bx-m-" + target.replace(/[^a-zA-Z0-9_-]/g, ""),
+          });
           var label = el.querySelector(".hw-bx-label");
           label.textContent = opts.label || "";
-          if ((opts.labelPos || "above") === "above") {
+          if (cfg.labelPos === "above") {
             label.style.top = "-64px";
           } else {
             label.style.top = "50%";
@@ -189,28 +539,57 @@
           }
         };
         window.hwBoxOn = function (tl, target, at) {
-          var p = document.querySelector(target + " path");
-          var len = p.getTotalLength();
-          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
-          tl.to(p, { strokeDashoffset: 0, duration: 0.75, ease: "power2.inOut" }, at);
-          tl.to(
-            document.querySelector(target + " .hw-bx-label"),
-            { opacity: 1, duration: 0.4, ease: "power2.out" },
-            at + 0.55,
-          );
+          var el = document.querySelector(target);
+          var cfg = el.__hwCfg;
+          var label = el.querySelector(".hw-bx-label");
+          if (cfg.entrance === "drop") {
+            // landing squash: the whole box+label drops in and lands with a
+            // contact squash on the deform wrapper; the label is counter-
+            // scaled to net identity inside the shared apply (type NEVER
+            // takes a non-uniform scale). Travel/duration derivation LOCKED:
+            // ≈1.9× box height into ~0.5s of power2.in.
+            gsap.set(label, { opacity: 1 }); // the label rides the drop
+            gsap.set(el, { opacity: 0 }); // hidden until the entrance
+            tl.set(el, { opacity: 1 }, at);
+            window.hwImpactSquash(tl, {
+              wrap: el.querySelector(".hw-bx-deform"),
+              moveTarget: el,
+              label: label,
+              travel: Math.round(el.offsetHeight * 1.9),
+              at: at,
+              dur: 0.5,
+              softness: 0.11, // UI-card tier
+              feel: "bouncy",
+            });
+          } else {
+            // "draw" — the shipped entrance, routed through hwDrawOn so
+            // sharp/spray textures compose (the mask clone animates; the
+            // visible texture dasharray never does)
+            window.hwDrawOn(tl, el.__hwApplied, at, 0.75);
+            tl.to(label, { opacity: 1, duration: 0.4, ease: "power2.out" }, at + 0.55);
+          }
+          window.hwBoilPose(tl, target + " .hw-bx-boil", cfg.boil, { seed: cfg.seed });
         };
         window.hwBoxOff = function (tl, target, at) {
           tl.to(target, { opacity: 0, duration: 0.35, ease: "power2.in" }, at);
         };
 
-        // ---- self-preview ----
-        window.hwBoxBuild("#hw-bx-demo", { seed: 3, label: "Europe", labelPos: "above" });
+        // ---- demo choreography: four instances, one non-default state each ----
+        window.hwBoxBuild("#hw-bxd-drop", { seed: 3, label: "drop entrance", entrance: "drop" });
+        window.hwBoxBuild("#hw-bxd-spray", { seed: 5, label: "spray stroke", strokeType: "spray" });
+        window.hwBoxBuild("#hw-bxd-inside", { seed: 7, label: "label inside", labelPos: "inside" });
+        window.hwBoxBuild("#hw-bxd-lively", { seed: 9, label: "boil lively", boil: "lively" });
         var tl = gsap.timeline({ paused: true });
-        window.hwBoxOn(tl, "#hw-bx-demo", 0.4);
-        window.hwBoil(tl, "#hw-bx-demo", { amp: 1.8, rot: 0.4, frameDrop: 3, seed: 3 });
-        window.hwBoxOff(tl, "#hw-bx-demo", 3.4);
-        tl.set("#hw-bx-root", { visibility: "hidden" }, 3.98);
-        window.__timelines["hw-box-label"] = tl;
+        window.hwBoxOn(tl, "#hw-bxd-drop", 0.5);
+        window.hwBoxOn(tl, "#hw-bxd-spray", 0.7);
+        window.hwBoxOn(tl, "#hw-bxd-inside", 1.0);
+        window.hwBoxOn(tl, "#hw-bxd-lively", 1.3);
+        window.hwBoxOff(tl, "#hw-bxd-drop", 5.2);
+        window.hwBoxOff(tl, "#hw-bxd-spray", 5.2);
+        window.hwBoxOff(tl, "#hw-bxd-inside", 5.2);
+        window.hwBoxOff(tl, "#hw-bxd-lively", 5.2);
+        tl.set("#hw-bxd-root", { visibility: "hidden" }, 5.98);
+        window.__timelines["hw-box-label-demo"] = tl;
       })();
     </script>
   </body>

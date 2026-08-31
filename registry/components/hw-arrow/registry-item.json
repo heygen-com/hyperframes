@@ -3,7 +3,7 @@
   "name": "hw-arrow",
   "type": "hyperframes:component",
   "title": "Hand-Drawn Arrow",
-  "description": "Wobbled draw-on arrow with straight, gentle, and swoop curve presets; boils while on screen",
+  "description": "Wobbled draw-on arrow with straight, gentle, and swoop curve poses, a four-way stroke texture matrix (plain/soft/sharp/spray), and a travel-aligned head-arrival stretch pulse with spring recovery; boils while on screen",
   "tags": ["handwritten", "annotation", "arrow", "overlay"],
   "files": [
     {
@@ -15,6 +15,29 @@
       "path": "assets/fonts/Caveat-700-latin.woff2",
       "target": "assets/fonts/Caveat-700-latin.woff2",
       "type": "hyperframes:asset"
+    }
+  ],
+  "controls": [
+    {
+      "name": "arrowStyle",
+      "type": "variant",
+      "values": ["straight", "gentle", "swoop"],
+      "default": "gentle",
+      "drives": "curve bend pose over the seeded wobble math (bend constant + both cubic control points)"
+    },
+    {
+      "name": "strokeType",
+      "type": "variant",
+      "values": ["plain", "soft", "sharp", "spray"],
+      "default": "plain",
+      "drives": "curve texture via hwStrokeApply (soft blur / dry-marker dasharray on a mask clone / seeded deterministic spray dots); the head stays plain"
+    },
+    {
+      "name": "boil",
+      "type": "variant",
+      "values": ["off", "calm", "lively"],
+      "default": "calm",
+      "drives": "boil amp/rot as authored pairs over the family-locked frameDrop 3; seed locked"
     }
   ]
 }

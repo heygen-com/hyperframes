@@ -300,6 +300,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-write-title",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },
@@ -1529,6 +1533,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "fb089c68adca459318a6d28b88c09a3ea9ead77d58ef8459bcf90ec79d0b61d9"
+    "revision": "2611d04335aacf5a70649019f948e5ba2f474c38bc45cd59e179d71294cd8cb8"
   }
 }
