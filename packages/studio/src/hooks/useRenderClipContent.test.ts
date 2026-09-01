@@ -241,4 +241,31 @@ describe("useRenderClipContent", () => {
       });
     }
   });
+
+  it("forwards persisted content revision to mounted composition thumbnails", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      timelineSessionEpoch: 7,
+      thumbnailContentRevision: 11,
+    });
+
+    const content = renderClipContent({
+      id: "nested",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      compositionSrc: "compositions/nested.html",
+    });
+
+    expect(isValidElement(content)).toBe(true);
+    if (isValidElement(content)) {
+      expect(content.type).toBe(CompositionThumbnail);
+      expect(content.props).toMatchObject({
+        projectId: "my-project",
+        sessionEpoch: 7,
+        contentRevision: 11,
+      });
+    }
+  });
 });

@@ -32,7 +32,7 @@ import {
   patchElementBatches,
   readErrorResponseBody,
 } from "./useDomEditCommitsHelpers";
-import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
+import type { CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 interface RecordEditInput {
   label: string;
@@ -139,11 +139,18 @@ export function useDomEditCommits({
   const reportedUnresolvableRef = useRef(new Set<string>());
 
   // fallow-ignore-next-line complexity
-  const persistDomEditOperations: PersistDomEditOperations = useCallback(
+  const performPersistDomEditOperations = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection, operations, options) => {
-      const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
+    async (
+      selection: DomEditSelection,
+      operations: PatchOperation[],
+      options: Parameters<PersistDomEditOperations>[2],
+      expectedProjectId: string,
+    ) => {
+      if (projectIdRef.current !== expectedProjectId) {
+        throw new Error("Active project changed before the edit could be saved");
+      }
+      const pid = expectedProjectId;
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -158,6 +165,10 @@ export function useDomEditCommits({
       const originalContent = readData.content;
       if (typeof originalContent !== "string") {
         throw new Error(`Missing file contents for ${targetPath}`);
+      }
+
+      if (projectIdRef.current !== expectedProjectId) {
+        throw new Error("Active project changed before the edit could be saved");
       }
 
       if (options?.shouldSave && !options.shouldSave()) return;
@@ -186,10 +197,11 @@ export function useDomEditCommits({
           coalesceKey: options?.coalesceKey,
           skipRefresh: options?.skipRefresh,
         });
-        if (cutoverCommittedOrThrow(cutover)) {
+        if (cutover.status === "failed") throw cutover.error;
+        if (cutover.status === "committed") {
           // SDK handled it — its in-memory doc is already current, so do NOT
           // forceReload (that would echo-reload the session we just wrote).
-          return;
+          return { sourceFile: targetPath, version: cutover.version, changed: true };
         }
       }
 
@@ -218,6 +230,8 @@ export function useDomEditCommits({
         changed?: boolean;
         matched?: boolean;
         content?: string;
+        path?: string;
+        version?: string;
       };
 
       if (!patchData.changed) {
@@ -235,7 +249,9 @@ export function useDomEditCommits({
           throw new DomEditPersistUnresolvableError(targetPath);
         }
         warnDomEditPersistNoOp(selection, operations);
-        return;
+        return typeof patchData.path === "string" && typeof patchData.version === "string"
+          ? { sourceFile: patchData.path, version: patchData.version, changed: false }
+          : undefined;
       }
 
       const patchedContent =
@@ -273,6 +289,11 @@ export function useDomEditCommits({
       if (!options?.skipRefresh) {
         reloadPreview();
       }
+      return finalContent === patchedContent &&
+        typeof patchData.path === "string" &&
+        typeof patchData.version === "string"
+        ? { sourceFile: patchData.path, version: patchData.version, changed: true }
+        : undefined;
     },
     [
       activeCompPath,
@@ -287,15 +308,30 @@ export function useDomEditCommits({
     ],
   );
 
+  const persistDomEditOperations: PersistDomEditOperations = useCallback(
+    (selection, operations, options) => {
+      const expectedProjectId = projectIdRef.current;
+      if (!expectedProjectId) return Promise.reject(new Error("No active project"));
+      return queueDomEditSave(() =>
+        performPersistDomEditOperations(selection, operations, options, expectedProjectId),
+      );
+    },
+    [performPersistDomEditOperations, projectIdRef, queueDomEditSave],
+  );
+
   const commitDomEditPatchBatches: CommitDomEditPatchBatches = useCallback(
-    (batches, options) =>
-      queueDomEditSave(
+    (batches, options) => {
+      const expectedProjectId = projectIdRef.current;
+      if (!expectedProjectId) return Promise.reject(new Error("No active project"));
+      return queueDomEditSave(
         // One queued transaction owns validation, persistence, history, reload,
         // and its durable result; splitting those phases risks partial commits.
         // fallow-ignore-next-line complexity
         async () => {
-          const pid = projectIdRef.current;
-          if (!pid) throw new Error("No active project");
+          if (projectIdRef.current !== expectedProjectId) {
+            throw new Error("Active project changed before the edit could be saved");
+          }
+          const pid = expectedProjectId;
           const unsafeFields = batches.flatMap((batch) =>
             batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
           );
@@ -357,7 +393,8 @@ export function useDomEditCommits({
           label: options.label,
         });
         throw error;
-      }),
+      });
+    },
     [
       domEditSaveTimestampRef,
       editHistory,
@@ -373,12 +410,14 @@ export function useDomEditCommits({
 
   const {
     handleDomStyleCommit,
+    handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomTextCommitForSelection,
     handleDomRichTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,
@@ -401,7 +440,6 @@ export function useDomEditCommits({
   const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
     activeCompPath,
     persistDomEditOperations,
-    queueDomEditSave,
     showToast,
   });
 
@@ -439,12 +477,14 @@ export function useDomEditCommits({
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomTextCommitForSelection,
     handleDomRichTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,

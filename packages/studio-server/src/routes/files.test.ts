@@ -437,16 +437,57 @@ describe("registerFileRoutes", () => {
     const payload = (await response.json()) as {
       changed?: boolean;
       path?: string;
+      version?: string;
       backupPath?: string;
     };
 
     expect(payload.changed).toBe(true);
     expect(payload.path).toBe("index.html");
+    expect(payload.version).toBe(
+      fileContentVersion(readFileSync(join(projectDir, "index.html"), "utf-8")),
+    );
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(
       '<div id="title">Before</div>',
     );
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
+  });
+
+  it("returns the current durable version for a matched no-op element patch", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="title">Before</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "text-content", property: "textContent", value: "Before" }],
+        }),
+      },
+    );
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      matched?: boolean;
+      path?: string;
+      version?: string;
+      backupPath?: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      changed: false,
+      matched: true,
+      path: "index.html",
+      version: fileContentVersion(original),
+    });
+    expect(payload.backupPath).toBeUndefined();
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
   // Without the receipt the client cannot recognise its own edit in the watcher
@@ -1290,6 +1331,30 @@ const tl = gsap.timeline({ paused: true });
     const res = await postGsapMutationBatch(app, "index.html", body);
 
     expect(res.status).toBe(400);
+  });
+
+  it("rejects raw JavaScript expressions at the GSAP mutation boundary", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const animation = await getFirstAnimation(app, "comp.html");
+
+    const response = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "update-meta",
+        animationId: animation.id,
+        updates: { ease: "__raw:(()=>alert(1))()" },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "raw JavaScript expressions are not accepted",
+    });
+    expect(readFileSync(join(projectDir, "comp.html"), "utf8")).toBe(FROMTO_COMP);
   });
 
   it("update-from-property updates a fromTo start value in place", async () => {

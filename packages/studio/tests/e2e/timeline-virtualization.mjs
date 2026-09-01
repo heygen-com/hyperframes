@@ -21,10 +21,9 @@
  * rather than trusting the caller: the server is configured by whoever started
  * it, and a mismatch would otherwise pass silently against the wrong build.
  */
-import { existsSync, readdirSync } from "node:fs";
-import { homedir, platform, arch } from "node:os";
-import { join } from "node:path";
+import { platform, arch } from "node:os";
 import puppeteer from "puppeteer-core";
+import { resolveChromeExecutable } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -60,26 +59,6 @@ if (ROW_VIRTUALIZATION === "off" && ELEMENT_COUNT === 50_000) {
       "the unvirtualized build mounts every clip and cannot settle at 50000",
   );
   process.exit(2);
-}
-
-function resolveChromeExecutable() {
-  const chromeRoot = join(homedir(), ".cache", "puppeteer", "chrome");
-  const builds = existsSync(chromeRoot) ? readdirSync(chromeRoot).sort().reverse() : [];
-  const installedCandidates = builds.flatMap((build) =>
-    [
-      "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-linux64/chrome",
-    ].map((relative) => join(chromeRoot, build, relative)),
-  );
-  return [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    ...installedCandidates,
-  ].find((candidate) => candidate && existsSync(candidate));
 }
 
 function percentile(values, ratio) {

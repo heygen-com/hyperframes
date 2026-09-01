@@ -210,6 +210,7 @@ export function useDomSelection({
       options?: {
         preferClipAncestor?: boolean;
         skipSourceProbe?: boolean;
+        exactTarget?: boolean;
         // Override the drill-in scope (used by canvas double-click to resolve the
         // child inside a group before the activeGroupElement state has re-rendered).
         activeGroupElement?: HTMLElement | null;
@@ -220,6 +221,7 @@ export function useDomSelection({
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
         skipSourceProbe: options?.skipSourceProbe,
+        exactTarget: options?.exactTarget,
         activeGroupElement:
           options && "activeGroupElement" in options
             ? options.activeGroupElement

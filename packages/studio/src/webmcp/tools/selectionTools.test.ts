@@ -7,20 +7,37 @@ import {
   type StudioSeekResult,
   type StudioSelectResult,
 } from "./selectionTools";
-import { expectFailure, expectOk, previewDoc, selectionFor } from "../webmcpTestUtils";
+import {
+  expectFailure,
+  expectOk,
+  previewDoc,
+  selectionFor,
+  selectionToolDeps,
+  sourceHandle,
+} from "../webmcpTestUtils";
 
 function selectionDeps(overrides: Partial<SelectionToolDeps> = {}): SelectionToolDeps {
-  return {
-    getPreviewDocument: () => null,
-    buildSelection: async (element) => selectionFor(element),
-    applySelection: () => undefined,
-    requestSeek: () => undefined,
-    readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
-    ...overrides,
-  };
+  return selectionToolDeps(overrides);
 }
 
 describe("studioSelect", () => {
+  it("refuses a scoped handle from another project before selecting", async () => {
+    const doc = previewDoc('<h1 id="headline">Ship it</h1>');
+    const applySelection = vi.fn();
+
+    const result = await studioSelect(
+      selectionDeps({ getPreviewDocument: () => doc, applySelection }),
+      sourceHandle("headline", "project-b"),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: "invalid",
+      reason: "the handle belongs to a different project",
+    });
+    expect(applySelection).not.toHaveBeenCalled();
+  });
+
   it("applies the selection a click would produce and reports it back", async () => {
     const doc = previewDoc('<h1 id="headline" data-hf-id="abc">Ship it</h1>');
     const applySelection = vi.fn();
@@ -36,6 +53,85 @@ describe("studioSelect", () => {
     expect(ok.box.width).toBe(880);
     // Reveals the inspector, which is what makes the human see what the agent did.
     expect(applySelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the exact source-safe handle it resolved", async () => {
+    const doc = previewDoc(
+      '<main data-composition-id="root" data-composition-file="index.html"><h1 id="headline">Ship it</h1></main>',
+    );
+    const handle = "dom:v1:index.html:index.html:headline";
+
+    const ok = expectOk<StudioSelectResult>(
+      await studioSelect(selectionDeps({ getPreviewDocument: () => doc }), handle),
+    );
+
+    expect(ok.handle).toBe(handle);
+  });
+
+  it("reacquires once when the preview document reloads during selection resolution", async () => {
+    const firstDoc = previewDoc('<h1 data-hf-id="abc">Old preview</h1>');
+    const nextDoc = previewDoc('<h1 data-hf-id="abc">Current preview</h1>');
+    let currentDoc = firstDoc;
+    const buildSelection = vi.fn(async (element: HTMLElement) => {
+      if (element.ownerDocument === firstDoc) {
+        currentDoc = nextDoc;
+        return selectionFor(element, { boundingBox: { x: 0, y: 0, width: 0, height: 0 } });
+      }
+      return selectionFor(element, {
+        boundingBox: { x: 98, y: 206, width: 304, height: 50 },
+      });
+    });
+    const applySelection = vi.fn();
+
+    const ok = expectOk<StudioSelectResult>(
+      await studioSelect(
+        selectionDeps({
+          getPreviewDocument: () => currentDoc,
+          buildSelection,
+          applySelection,
+        }),
+        "hf:abc",
+      ),
+    );
+
+    expect(ok.box).toEqual({ x: 98, y: 206, width: 304, height: 50 });
+    expect(buildSelection).toHaveBeenCalledTimes(2);
+    expect(applySelection).toHaveBeenCalledWith(
+      expect.objectContaining({ element: nextDoc.querySelector("h1") }),
+    );
+  });
+
+  it("refuses when the preview changes again during the bounded reacquire", async () => {
+    const documents = [
+      previewDoc('<h1 data-hf-id="abc">First preview</h1>'),
+      previewDoc('<h1 data-hf-id="abc">Second preview</h1>'),
+      previewDoc('<h1 data-hf-id="abc">Third preview</h1>'),
+    ];
+    let currentIndex = 0;
+    const buildSelection = vi.fn(async (element: HTMLElement) => {
+      currentIndex += 1;
+      return selectionFor(element);
+    });
+    const applySelection = vi.fn();
+
+    const failure = expectFailure(
+      await studioSelect(
+        selectionDeps({
+          getPreviewDocument: () => documents[currentIndex] ?? documents.at(-1)!,
+          buildSelection,
+          applySelection,
+        }),
+        "hf:abc",
+      ),
+    );
+
+    expect(failure).toMatchObject({
+      kind: "invalid",
+      reason: "the target changed while it was resolving",
+      hint: "Call studio_look again.",
+    });
+    expect(buildSelection).toHaveBeenCalledTimes(2);
+    expect(applySelection).not.toHaveBeenCalled();
   });
 
   it("distinguishes a preview that is not mounted from a handle that does not match", async () => {

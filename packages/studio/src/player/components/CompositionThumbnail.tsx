@@ -17,6 +17,7 @@ interface CompositionThumbnailProps {
   height?: number;
   projectId?: string;
   sessionEpoch?: number;
+  contentRevision?: number;
   priority?: ThumbnailPriority;
   rich?: boolean;
 }
@@ -32,6 +33,7 @@ export function buildCompositionThumbnailUrl({
   selectorIndex,
   origin,
   output,
+  contentRevision = 0,
 }: {
   previewUrl: string;
   seekTime?: number;
@@ -46,6 +48,7 @@ export function buildCompositionThumbnailUrl({
    * high-density review size; `"source"` uses the composition's own dimensions.
    */
   output?: "source" | "storyboard";
+  contentRevision?: number;
 }): string {
   const thumbnailBase = previewUrl
     .replace("/preview/comp/", "/thumbnail/")
@@ -53,6 +56,7 @@ export function buildCompositionThumbnailUrl({
   const thumbnailUrl = new URL(thumbnailBase, origin);
   thumbnailUrl.searchParams.set("t", (seekTime + duration / 2).toFixed(2));
   thumbnailUrl.searchParams.set("v", THUMBNAIL_URL_VERSION);
+  thumbnailUrl.searchParams.set("revision", String(contentRevision));
   if (output) thumbnailUrl.searchParams.set("output", output);
   if (selector) {
     thumbnailUrl.searchParams.set("selector", selector);
@@ -96,6 +100,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   duration = 5,
   projectId = previewUrl,
   sessionEpoch = 0,
+  contentRevision = 0,
   priority = "visible",
 }: CompositionThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
@@ -107,6 +112,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selector,
     selectorIndex,
     origin: window.location.origin,
+    contentRevision,
   });
   const request = useMemo(
     () => ({

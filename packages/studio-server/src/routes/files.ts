@@ -1186,6 +1186,9 @@ function validateGsapMutationRequest(
   if (!body || typeof body !== "object" || !("type" in body) || !body.type) {
     return c.json({ error: "mutation type required" }, 400);
   }
+  if (containsRawGsapExpression(body)) {
+    return c.json({ error: "raw JavaScript expressions are not accepted" }, 400);
+  }
   const unsafeFields = findUnsafeMutationValues(body);
   if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
   if (
@@ -1195,6 +1198,13 @@ function validateGsapMutationRequest(
     return c.json({ error: "shift-positions-batch requires a `shifts` array" }, 400);
   }
   return null;
+}
+
+function containsRawGsapExpression(value: unknown): boolean {
+  if (typeof value === "string") return value.startsWith("__raw:");
+  if (Array.isArray(value)) return value.some(containsRawGsapExpression);
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value).some(containsRawGsapExpression);
 }
 
 async function prepareGsapMutationScript(
@@ -2769,27 +2779,32 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       parsed.body.operations,
     );
     if (patched === originalContent) {
+      const version = fileContentVersion(originalContent);
+      c.header("ETag", version);
       return c.json({
         ok: true,
         changed: false,
         matched,
         content: originalContent,
         path: ctx.filePath,
+        version,
       });
     }
-    const { backupPath } = writeMutationResult(
+    const { backupPath, version } = writeMutationResult(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       patched,
     );
+    c.header("ETag", version);
     return c.json({
       ok: true,
       changed: true,
       matched,
       content: patched,
       path: ctx.filePath,
+      version,
       backupPath,
     });
   });

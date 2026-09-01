@@ -30,6 +30,30 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("thumbnail content revision", () => {
+    it("advances once per accepted persisted file event", () => {
+      const before = usePlayerStore.getState().thumbnailContentRevision;
+
+      usePlayerStore.getState().bumpThumbnailContentRevision();
+
+      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(before + 1);
+    });
+
+    it("remains monotonic across soft resets while project identity stays with the session epoch", () => {
+      const store = usePlayerStore.getState();
+      store.beginTimelineSession("project-a");
+      store.bumpThumbnailContentRevision();
+      const revision = usePlayerStore.getState().thumbnailContentRevision;
+      const firstEpoch = usePlayerStore.getState().timelineSessionEpoch;
+
+      store.reset();
+      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(revision);
+      store.beginTimelineSession("project-b");
+      expect(usePlayerStore.getState().thumbnailContentRevision).toBe(revision);
+      expect(usePlayerStore.getState().timelineSessionEpoch).toBe(firstEpoch + 1);
+    });
+  });
+
   describe("expandedClipIds", () => {
     it("toggles clip membership", () => {
       const store = usePlayerStore.getState();

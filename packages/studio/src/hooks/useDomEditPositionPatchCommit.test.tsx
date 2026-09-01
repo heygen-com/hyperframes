@@ -55,14 +55,13 @@ function renderCommit(params: Parameters<typeof useDomEditPositionPatchCommit>[0
   return captured.commit;
 }
 
-function paramsWith(queueDomEditSave: (save: () => Promise<void>) => Promise<void>) {
+function paramsWith(persistDomEditOperations: () => Promise<undefined>) {
   const showToast = vi.fn();
   return {
     showToast,
     params: {
       activeCompPath: "index.html",
-      persistDomEditOperations: vi.fn().mockResolvedValue(undefined),
-      queueDomEditSave,
+      persistDomEditOperations,
       showToast,
     },
   };
@@ -104,7 +103,7 @@ describe("useDomEditPositionPatchCommit", () => {
   });
 
   it("resolves when the write lands", async () => {
-    const { showToast, params } = paramsWith((save) => save());
+    const { showToast, params } = paramsWith(() => Promise.resolve(undefined));
     const commit = renderCommit(params);
 
     await act(async () => {

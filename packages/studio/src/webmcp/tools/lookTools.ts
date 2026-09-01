@@ -8,10 +8,19 @@
  * values. Gathering the snapshot is the React layer's job.
  */
 
-import type { DomEditSelection } from "../../components/editor/domEditingTypes";
+import { collectDomEditLayerItems } from "../../components/editor/domEditingLayers";
+import type { DomEditLayerItem, DomEditSelection } from "../../components/editor/domEditingTypes";
 import type { TimelineElement } from "../../player/store/timelineElement";
 import { mintElementHandle, patchTargetAddress, timelineElementAddress } from "../handles";
 import { toolOk, type ToolResult } from "../toolResult";
+
+export type StudioLookSceneSnapshot =
+  | { status: "loading" }
+  | {
+      status: "ready";
+      items: readonly DomEditLayerItem[];
+      drillInItem: DomEditLayerItem | null;
+    };
 
 export interface StudioLookSnapshot {
   projectId: string | null;
@@ -20,6 +29,7 @@ export interface StudioLookSnapshot {
   duration: number;
   isPlaying: boolean;
   elements: readonly TimelineElement[];
+  scene: StudioLookSceneSnapshot;
   selection: DomEditSelection | null;
   /** Live animations for the current selection arrive outside DomEditSelection. */
   selectionAnimationCount: number;
@@ -41,16 +51,24 @@ export interface StudioLookSnapshot {
   };
 }
 
-interface LookElement {
-  /** Pass back to any tool that takes a handle. Null means unaddressable. */
-  handle: string | null;
-  label: string | null;
-  tag: string;
-  kind: string | null;
+interface LookTimeline {
   start: number;
   duration: number;
   track: number;
   zIndex: number | null;
+  kind: string | null;
+}
+
+interface LookElement {
+  /** Pass back unchanged to tools that take a handle. */
+  handle: string;
+  parentHandle: string | null;
+  label: string;
+  tag: string;
+  depth: number;
+  childCount: number;
+  sourceFile: string;
+  timeline: LookTimeline | null;
 }
 
 interface LookSelection {
@@ -84,7 +102,10 @@ export interface StudioLook {
   isPlaying: boolean;
   history: StudioLookSnapshot["history"];
   selection: LookSelection | null;
+  sceneStatus: StudioLookSceneSnapshot["status"];
+  drillIn: { handle: string; label: string; sourceFile: string } | null;
   elementCount: number;
+  truncated: boolean;
   elements: LookElement[];
 }
 
@@ -98,23 +119,25 @@ export interface StudioLookInput {
 const DEFAULT_LIMIT = 200;
 const MAX_FILTER_LENGTH = 128;
 
-function describeElement(element: TimelineElement): LookElement {
+function describeTimeline(element: TimelineElement): LookTimeline {
   return {
-    handle: mintElementHandle(timelineElementAddress(element)),
-    label: element.label ?? null,
-    tag: element.tag,
-    kind: element.kind ?? null,
     start: element.start,
     duration: element.duration,
     track: element.track,
     zIndex: element.zIndex ?? null,
+    kind: element.kind ?? null,
   };
 }
 
-function describeSelection(selection: DomEditSelection, animationCount: number): LookSelection {
+function describeSelection(
+  selection: DomEditSelection,
+  animationCount: number,
+  activeCompositionPath: string,
+  projectId: string | null,
+): LookSelection {
   const { capabilities } = selection;
   return {
-    handle: mintElementHandle(patchTargetAddress(selection)),
+    handle: mintElementHandle(patchTargetAddress(selection, activeCompositionPath, projectId)),
     label: selection.label,
     tagName: selection.tagName,
     sourceFile: selection.sourceFile,
@@ -133,21 +156,102 @@ function describeSelection(selection: DomEditSelection, animationCount: number):
 
 function matchesFilter(element: LookElement, needle: string): boolean {
   return (
-    (element.label?.toLowerCase().includes(needle) ?? false) ||
+    element.label.toLowerCase().includes(needle) ||
     element.tag.toLowerCase().includes(needle) ||
-    (element.handle?.toLowerCase().includes(needle) ?? false)
+    element.handle.toLowerCase().includes(needle)
   );
+}
+
+/** Gather the live scene once per tool call. The response never retains DOM nodes. */
+export function collectStudioLookScene(
+  doc: Document | null,
+  activeCompositionPath: string | null,
+  activeGroupElement: HTMLElement | null,
+): StudioLookSceneSnapshot {
+  if (!doc) return { status: "loading" };
+
+  const root = doc.querySelector<HTMLElement>("[data-composition-id]");
+  if (!root) return { status: "loading" };
+
+  const options = {
+    activeCompositionPath,
+    isMasterView: !activeCompositionPath || activeCompositionPath === "index.html",
+    activeGroupElement: null,
+  };
+  const items = collectDomEditLayerItems(root, options);
+  const liveGroup =
+    activeGroupElement?.isConnected && activeGroupElement.ownerDocument === doc
+      ? activeGroupElement
+      : null;
+  return {
+    status: "ready",
+    items,
+    drillInItem: liveGroup ? (items.find((item) => item.element === liveGroup) ?? null) : null,
+  };
+}
+
+function describeScene(snapshot: StudioLookSnapshot): {
+  elements: LookElement[];
+  drillIn: StudioLook["drillIn"];
+} {
+  if (snapshot.scene.status === "loading") return { elements: [], drillIn: null };
+
+  const activeCompositionPath = snapshot.compositionPath ?? "index.html";
+  const timelineByHandle = new Map<string, LookTimeline>();
+  for (const element of snapshot.elements) {
+    const handle = mintElementHandle(
+      timelineElementAddress(element, activeCompositionPath, snapshot.projectId),
+    );
+    if (handle) timelineByHandle.set(handle, describeTimeline(element));
+  }
+
+  const parentHandles: string[] = [];
+  const elements = snapshot.scene.items.map((item) => {
+    const handle = mintElementHandle(
+      patchTargetAddress(item, activeCompositionPath, snapshot.projectId),
+    );
+    if (!handle) throw new Error("collectDomEditLayerItems returned an unaddressable layer");
+    const parentHandle = item.depth > 0 ? (parentHandles[item.depth - 1] ?? null) : null;
+    parentHandles[item.depth] = handle;
+    parentHandles.length = item.depth + 1;
+    return {
+      handle,
+      parentHandle,
+      label: item.label,
+      tag: item.tagName,
+      depth: item.depth,
+      childCount: item.childCount,
+      sourceFile: item.sourceFile,
+      timeline: timelineByHandle.get(handle) ?? null,
+    };
+  });
+
+  const drillInItem = snapshot.scene.drillInItem;
+  const drillInHandle = drillInItem
+    ? mintElementHandle(patchTargetAddress(drillInItem, activeCompositionPath, snapshot.projectId))
+    : null;
+  return {
+    elements,
+    drillIn:
+      drillInItem && drillInHandle
+        ? {
+            handle: drillInHandle,
+            label: drillInItem.label,
+            sourceFile: drillInItem.sourceFile,
+          }
+        : null,
+  };
 }
 
 export function buildStudioLook(
   snapshot: StudioLookSnapshot,
   input: StudioLookInput = {},
 ): ToolResult<StudioLook> {
-  const described = snapshot.elements.map(describeElement);
+  const scene = describeScene(snapshot);
   const needle = input.filter?.slice(0, MAX_FILTER_LENGTH).trim().toLowerCase();
   const matched = needle
-    ? described.filter((element) => matchesFilter(element, needle))
-    : described;
+    ? scene.elements.filter((element) => matchesFilter(element, needle))
+    : scene.elements;
 
   // Clamp rather than reject: a bad limit should not cost the agent a round trip
   // when the answer it wants is right here.
@@ -163,11 +267,19 @@ export function buildStudioLook(
     isPlaying: snapshot.isPlaying,
     history: snapshot.history,
     selection: snapshot.selection
-      ? describeSelection(snapshot.selection, snapshot.selectionAnimationCount)
+      ? describeSelection(
+          snapshot.selection,
+          snapshot.selectionAnimationCount,
+          snapshot.compositionPath ?? "index.html",
+          snapshot.projectId,
+        )
       : null,
+    sceneStatus: snapshot.scene.status,
+    drillIn: scene.drillIn,
     // The count is of everything that MATCHED, so a truncated list is visible
     // as a truncated list rather than reading as "that is all there is".
     elementCount: matched.length,
+    truncated: matched.length > limit,
     elements: matched.slice(0, limit),
   });
 }
@@ -193,7 +305,8 @@ export const STUDIO_LOOK_INPUT_SCHEMA = {
 export const STUDIO_LOOK_DESCRIPTION = [
   "Read HyperFrames Studio's live state in one call: the open project and composition,",
   "the playhead and duration, what the human currently has selected (including what that",
-  "element will and will not accept), and the timeline's elements with a handle for each.",
+  "element will and will not accept), and the live nested scene in DOM preorder.",
+  "Each scene element includes source ownership, hierarchy, and optional timeline timing.",
   "Pass a handle back to any tool that edits an element.",
   "Returns an object with `ok: true`, or `ok: false` with `kind`, `reason` and often a `hint`.",
   "`history.undoLabel` is worth checkpointing before a batch: if it later names something",

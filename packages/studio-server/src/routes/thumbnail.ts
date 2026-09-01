@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
+import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
@@ -78,8 +79,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!adapter.generateThumbnail) {
       return c.json({ error: "Thumbnails not available" }, 501);
     }
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature: projectSignature } = resolved;
 
     let compPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
@@ -162,6 +164,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
+    const projectSignatureKey = `_${createHash("sha1").update(projectSignature).digest("hex").slice(0, 16)}`;
     const outputScale =
       outputMode === "source"
         ? 1
@@ -174,7 +177,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
     const outputWidth = Math.max(1, Math.round(compW * outputScale));
     const outputHeight = Math.max(1, Math.round(compH * outputScale));
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${projectSignatureKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
     if (!prunedCacheDirs.has(cacheDir)) {
       prunedCacheDirs.add(cacheDir);
@@ -209,6 +212,19 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             signal,
           });
           if (!generated) return null;
+          const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
+          const freshSignature = createProjectSignature(project.dir);
+          if (
+            !afterGeneration ||
+            afterGeneration.project.dir !== project.dir ||
+            afterGeneration.signature !== projectSignature ||
+            freshSignature !== projectSignature
+          ) {
+            // The browser may have rendered content written after this request
+            // captured its cache identity. Return the pixels to this caller,
+            // but never file them under a signature they do not prove.
+            return generated;
+          }
           if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
           writeThumbnailAtomically(cachePath, generated);
           return generated;

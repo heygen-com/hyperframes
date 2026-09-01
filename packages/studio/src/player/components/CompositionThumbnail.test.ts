@@ -73,7 +73,7 @@ describe("buildCompositionThumbnailUrl", () => {
         origin: "http://localhost:3000",
       }),
     ).toBe(
-      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&selector=.card&selectorIndex=2",
+      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&revision=0&selector=.card&selectorIndex=2",
     );
   });
 
@@ -90,6 +90,16 @@ describe("buildCompositionThumbnailUrl", () => {
     expect(buildCompositionThumbnailUrl({ ...base, output: "storyboard" })).toContain(
       "output=storyboard",
     );
+  });
+
+  it("includes the persisted content revision in the cache identity", () => {
+    const url = buildCompositionThumbnailUrl({
+      previewUrl: "/api/projects/demo/preview",
+      origin: "http://localhost:3000",
+      contentRevision: 7,
+    });
+
+    expect(new URL(url).searchParams.get("revision")).toBe("7");
   });
 });
 
@@ -147,5 +157,60 @@ describe("CompositionThumbnail", () => {
     expect(probe.onerror).toBeNull();
     expect(probe.src).toBe("");
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:composition-thumbnail");
+  });
+
+  it("releases the old request and ignores its late result when persisted content changes", async () => {
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(response: Response) => void> = [];
+    globalThis.fetch = vi.fn((_url, init) => {
+      signals.push(init?.signal as AbortSignal);
+      return new Promise<Response>((resolve) => resolveFetches.push(resolve));
+    });
+    root = createRoot(host);
+
+    await act(async () => {
+      root!.render(
+        React.createElement(CompositionThumbnail, {
+          previewUrl: "/api/projects/demo/preview",
+          label: "",
+          labelColor: "#fff",
+          projectId: "demo",
+          contentRevision: 0,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      root!.render(
+        React.createElement(CompositionThumbnail, {
+          previewUrl: "/api/projects/demo/preview",
+          label: "",
+          labelColor: "#fff",
+          projectId: "demo",
+          contentRevision: 1,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1]?.[0]).toContain(
+      "revision=1",
+    );
+
+    await act(async () => {
+      resolveFetches[0]?.(new Response(new Blob(["stale"]), { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(MockImage.instances).toHaveLength(0);
+
+    await act(async () => {
+      resolveFetches[1]?.(new Response(new Blob(["fresh"]), { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(MockImage.instances).toHaveLength(1);
+    expect(MockImage.instances[0]?.src).toBe("blob:composition-thumbnail");
   });
 });

@@ -1,6 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  closeSync,
+  fstatSync,
+  ftruncateSync,
+  futimesSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { affectsProjectSignature } from "./projectSignature.js";
+import { affectsProjectSignature, createProjectSignature } from "./projectSignature.js";
+
+const temporaryProjects: string[] = [];
+
+afterEach(() => {
+  for (const project of temporaryProjects.splice(0)) rmSync(project, { recursive: true });
+});
 
 const PROJECT = resolve("/projects/demo");
 const affects = (relativePath: string) =>
@@ -40,5 +57,27 @@ describe("affectsProjectSignature", () => {
   it("rejects a path outside the project", () => {
     expect(affectsProjectSignature(PROJECT, resolve("/projects/other/index.html"))).toBe(false);
     expect(affectsProjectSignature(PROJECT, PROJECT)).toBe(false);
+  });
+});
+
+describe("createProjectSignature", () => {
+  it("changes after same-size content is written with the original mtime restored", () => {
+    const project = mkdtempSync(resolve(tmpdir(), "hf-signature-"));
+    temporaryProjects.push(project);
+    const file = resolve(project, "index.html");
+    const descriptor = openSync(file, "w+");
+    try {
+      writeSync(descriptor, "first");
+      const originalMtime = fstatSync(descriptor).mtime;
+      const before = createProjectSignature(project);
+
+      ftruncateSync(descriptor, 0);
+      writeSync(descriptor, "other", 0, "utf8");
+      futimesSync(descriptor, originalMtime, originalMtime);
+
+      expect(createProjectSignature(project)).not.toBe(before);
+    } finally {
+      closeSync(descriptor);
+    }
   });
 });

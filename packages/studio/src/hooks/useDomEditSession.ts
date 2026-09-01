@@ -227,12 +227,14 @@ export function useDomEditSession({
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
     handleDomTextCommit,
+    handleDomTextCommitForSelection,
     handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -478,6 +480,7 @@ export function useDomEditSession({
     onClickToSource,
   });
   const {
+    getGsapAnimationsForSelection,
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareGroupPathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
@@ -506,7 +509,6 @@ export function useDomEditSession({
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   return {
-    // State
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
@@ -515,7 +517,6 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
-    // Refs
     domEditSelectionRef,
     // Callbacks
     handleTimelineElementSelect,
@@ -525,6 +526,7 @@ export function useDomEditSession({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomAttributeQuietCommit,
@@ -537,10 +539,12 @@ export function useDomEditSession({
     handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,
     handleDomTextCommit,
+    handleDomTextCommitForSelection,
     handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
+    getGsapAnimationsForSelection,
     handleAskAgent,
     handleAgentModalSubmit,
     handleBlockedDomMove,

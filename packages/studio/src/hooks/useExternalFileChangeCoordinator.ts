@@ -56,6 +56,7 @@ interface ExternalFileChangeCoordinatorOptions {
   readProjectFile: (path: string) => Promise<string>;
   onUseExternalFile?: (path: string, content: string) => void;
   resetSaveQueues?: () => void;
+  onAcceptedPersistedFileChange: (path: string) => void;
 }
 
 export interface ExternalFileChangeCoordinatorHandle {
@@ -126,6 +127,7 @@ export function useExternalFileChangeCoordinator({
   readProjectFile,
   onUseExternalFile,
   resetSaveQueues,
+  onAcceptedPersistedFileChange,
 }: ExternalFileChangeCoordinatorOptions): ExternalFileChangeCoordinatorHandle {
   const [blocked, setBlocked] = useState<ExternalFileChangeBlockedState | null>(null);
   const generationRef = useRef(0);
@@ -225,21 +227,24 @@ export function useExternalFileChangeCoordinator({
       const content = readFileChangeContent(payload);
       const token = readFileChangeWriteToken(payload);
       logReload("file-change", { path, token: token ?? null, hasContent: content != null });
-      if (consumeStudioWriteToken(token)) {
-        logReload("suppressed", { path, why: "own write token" });
-        return;
-      }
-      if (content != null && isSelfWriteEcho(path, content)) {
-        logReload("suppressed", { path, why: "own content echo" });
-        return;
-      }
-
       const identity = eventIdentity(path, payload);
       if (!allowDuplicate && identity != null && identity === lastEventIdentityRef.current) {
         logReload("suppressed", { path, why: "duplicate event" });
         return;
       }
       lastEventIdentityRef.current = identity;
+
+      const ownWriteToken = consumeStudioWriteToken(token);
+      const ownContentEcho = content != null && isSelfWriteEcho(path, content);
+      if (ownWriteToken || ownContentEcho) {
+        onAcceptedPersistedFileChange(path);
+        logReload("suppressed", {
+          path,
+          why: ownWriteToken ? "own write token" : "own content echo",
+        });
+        return;
+      }
+
       const generation = ++generationRef.current;
       const result = await drainPendingChanges();
       if (!mountedRef.current || generation !== generationRef.current) return;
@@ -258,6 +263,7 @@ export function useExternalFileChangeCoordinator({
         }
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
+        onAcceptedPersistedFileChange(path);
         reloadAcceptedGeneration(path);
         return;
       }
@@ -326,6 +332,7 @@ export function useExternalFileChangeCoordinator({
       persistFailureSnapshot,
       persistSnapshotInOrder,
       reloadAcceptedGeneration,
+      onAcceptedPersistedFileChange,
     ],
   );
 
@@ -369,12 +376,14 @@ export function useExternalFileChangeCoordinator({
       onUseExternalFile?.(path, external);
       await deleteConflictSnapshot?.(projectId, path);
       setBlocked(null);
+      onAcceptedPersistedFileChange(path);
       reloadAcceptedGeneration(path);
     },
     [
       deleteConflictSnapshot,
       discardPendingChanges,
       onUseExternalFile,
+      onAcceptedPersistedFileChange,
       projectId,
       readProjectFile,
       reloadAcceptedGeneration,

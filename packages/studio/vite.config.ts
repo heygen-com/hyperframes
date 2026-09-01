@@ -6,6 +6,7 @@ import { readNodeRequestBody } from "./vite.request-body.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
+import { loadStudioServerDevModule } from "./vite.studio-server-module";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -115,8 +116,13 @@ function devProjectApi(): Plugin {
       } | null = null;
       const getApi = async () => {
         if (!_api) {
-          const mod = await server.ssrLoadModule("@hyperframes/studio-server");
-          _studioServerModule = mod as typeof _studioServerModule;
+          // The package's `node` condition resolves to ignored dist output,
+          // which may predate the source under test. Studio dev owns a source
+          // workspace, so load that producer explicitly.
+          const mod = (await loadStudioServerDevModule(server, __dirname)) as NonNullable<
+            typeof _studioServerModule
+          >;
+          _studioServerModule = mod;
           const adapter = createViteAdapter(dataDir, server, signatureCache);
           _api = mod.createStudioApi(adapter);
         }

@@ -1,28 +1,36 @@
 /**
  * `studio_set_text` and `studio_set_style`: the first tools that change the file.
  *
- * Both operate on the CURRENT selection and take no handle. That is not an
- * omission. `handleDomTextCommit(value, fieldKey?)` and
- * `handleDomStyleCommit(property, value)` read the ambient React selection, and
- * `applyDomSelection` only schedules a state update, so selecting and
- * committing inside one call would write to whatever was selected before.
- * Two tool calls are separated by a render. Select first, then edit.
- *
- * Every write here is guarded before dispatch and verified after. Studio has
- * several paths where a failed commit resolves anyway, so "the function did not
- * throw" proves nothing; the outcome the handler now returns is what proves it.
+ * The explicit source-safe handle is resolved to one selection per invocation.
+ * That captured selection is passed into Studio's existing commit actor; visible
+ * selection is presentation only and cannot redirect the write.
  */
 
 import type { DomEditCommitOutcome } from "../../hooks/domEditCommitRunner";
 import type { DomEditSelection } from "../../components/editor/domEditingTypes";
-import { toolFailure, toolOk, type ToolFailure, type ToolResult } from "../toolResult";
+import { toolFailure, type ToolFailure } from "../toolResult";
+import {
+  dispatched,
+  runTargetedWrite,
+  saved,
+  type StudioWriteAdapterSuccess,
+  type StudioWriteEvidence,
+  type StudioWriteResult,
+  type TargetedWriteDeps,
+  WRITE_RECEIPT_DESCRIPTION,
+} from "../writeCoordinator";
 
-export interface ContentToolDeps {
-  getCurrentSelection: () => DomEditSelection | null;
-  /** Why a write would be refused right now, or null. Checked BEFORE dispatch. */
-  getWriteBlockedReason: () => string | null;
-  setText: (value: string, fieldKey?: string) => Promise<DomEditCommitOutcome>;
-  setStyle: (property: string, value: string) => Promise<DomEditCommitOutcome>;
+export interface ContentToolDeps extends TargetedWriteDeps {
+  setText: (
+    selection: DomEditSelection,
+    value: string,
+    fieldKey?: string,
+  ) => Promise<DomEditCommitOutcome>;
+  setStyle: (
+    selection: DomEditSelection,
+    property: string,
+    value: string,
+  ) => Promise<DomEditCommitOutcome>;
 }
 
 /**
@@ -53,20 +61,6 @@ function fromOutcome(outcome: DomEditCommitOutcome, what: string): ToolFailure |
   return toolFailure(mapped.kind, `${what} was not applied: ${outcome.reason}`, mapped.hint);
 }
 
-function guardWrite(deps: ContentToolDeps): ToolFailure | null {
-  // Both blocked states are banners in Studio's UI with no lock behind them, so
-  // nothing else stops a programmatic write from landing on top of a conflict
-  // the user has been asked to adjudicate.
-  const blocked = deps.getWriteBlockedReason();
-  if (blocked) {
-    return toolFailure("blocked", blocked, "Resolve it in Studio, then retry.");
-  }
-  if (!deps.getCurrentSelection()) {
-    return toolFailure("invalid", "nothing is selected", "Call studio_select first.");
-  }
-  return null;
-}
-
 export interface StudioSetTextResult {
   text: string;
   changed: boolean;
@@ -74,107 +68,147 @@ export interface StudioSetTextResult {
 
 export async function studioSetText(
   deps: ContentToolDeps,
-  input: { text?: unknown; field?: unknown },
-): Promise<ToolResult<StudioSetTextResult>> {
+  input: { handle?: unknown; text?: unknown; field?: unknown },
+  signal: AbortSignal = new AbortController().signal,
+): Promise<StudioWriteResult<StudioSetTextResult>> {
   if (typeof input.text !== "string") {
-    return toolFailure("invalid", "text must be a string");
+    return preDispatchFailure("set-text", toolFailure("invalid", "text must be a string"));
   }
+  const text = input.text;
 
-  const blocked = guardWrite(deps);
-  if (blocked) return blocked;
-
-  const selection = deps.getCurrentSelection();
-  if (!selection) return toolFailure("invalid", "nothing is selected");
-
-  const fields = selection.textFields;
   const requested = typeof input.field === "string" && input.field ? input.field : undefined;
-  if (requested && !fields.some((candidate) => candidate.key === requested)) {
-    return toolFailure(
-      "invalid",
-      `this element has no text field "${requested}"`,
-      `Its fields are: ${fields.map((candidate) => candidate.key).join(", ") || "none"}.`,
-    );
-  }
-
-  // Resolving the field is NOT optional. An element's text usually lives in a
-  // child field keyed like `child:0:h1`, not in one called `self`, and passing
-  // no key plans zero operations. The server then rejects the empty patch with
-  // "target and operations required", which surfaces as a persist failure that
-  // looks like a server problem and is not.
-  const field = requested ?? (fields.length === 1 ? fields[0]?.key : undefined);
-  if (!field) {
-    if (fields.length === 0) {
+  let field: string | undefined;
+  return runTargetedWrite(deps, {
+    handle: input.handle,
+    operation: "set-text",
+    signal,
+    preflight: (selection) => {
+      const fields = selection.textFields;
+      if (requested && !fields.some((candidate) => candidate.key === requested)) {
+        return toolFailure(
+          "invalid",
+          `this element has no text field "${requested}"`,
+          `Its fields are: ${fields.map((candidate) => candidate.key).join(", ") || "none"}.`,
+        );
+      }
+      field = requested ?? (fields.length === 1 ? fields[0]?.key : undefined);
+      if (field) return null;
+      if (fields.length === 0) {
+        return toolFailure(
+          "blocked",
+          "this element has no editable text field",
+          "studio_inspect lists an element's textFields.",
+        );
+      }
       return toolFailure(
-        "blocked",
-        "this element has no editable text field",
-        "studio_inspect lists an element's textFields.",
+        "invalid",
+        `this element has ${fields.length} text fields, so one must be named`,
+        `Pass field as one of: ${fields.map((candidate) => candidate.key).join(", ")}.`,
       );
-    }
-    return toolFailure(
-      "invalid",
-      `this element has ${fields.length} text fields, so one must be named`,
-      `Pass field as one of: ${fields.map((candidate) => candidate.key).join(", ")}.`,
-    );
-  }
-
-  const before = selection.textContent ?? null;
-  const outcome = await deps.setText(input.text, field);
-  const failure = fromOutcome(outcome, "the text");
-  if (failure) return failure;
-
-  return toolOk<StudioSetTextResult>({ text: input.text, changed: before !== input.text });
+    },
+    write: async (selection) => {
+      const before = selection.element.textContent;
+      const outcome = await deps.setText(selection, text, field);
+      if (!outcome.ok) return fromOutcome(outcome, "the text")!;
+      const value = { text, changed: selection.element.textContent !== before };
+      return outcome.persistence
+        ? saved(value, outcome.persistence)
+        : dispatched(value, value.changed);
+    },
+  });
 }
 
 export interface StudioSetStyleResult {
   applied: Record<string, string>;
   /** Properties the element refused, with the reason. Empty when all landed. */
   rejected: Record<string, string>;
+  partial: boolean;
+  propertyReceipts: Record<
+    string,
+    { stage: "dispatched" | "saved"; changed: boolean; evidence: StudioWriteEvidence }
+  >;
 }
 
 export async function studioSetStyle(
   deps: ContentToolDeps,
-  input: { styles?: unknown },
-): Promise<ToolResult<StudioSetStyleResult>> {
+  input: { handle?: unknown; styles?: unknown },
+  signal: AbortSignal = new AbortController().signal,
+): Promise<StudioWriteResult<StudioSetStyleResult>> {
   const styles = input.styles;
   if (typeof styles !== "object" || styles === null || Array.isArray(styles)) {
-    return toolFailure("invalid", "styles must be an object of CSS property to value");
+    return preDispatchFailure(
+      "set-style",
+      toolFailure("invalid", "styles must be an object of CSS property to value"),
+    );
   }
   const entries = Object.entries(styles).filter(
     (entry): entry is [string, string] => typeof entry[1] === "string",
   );
   if (entries.length === 0) {
     // An empty commit would report success having done nothing.
-    return toolFailure("invalid", "styles must contain at least one string value");
+    return preDispatchFailure(
+      "set-style",
+      toolFailure("invalid", "styles must contain at least one string value"),
+    );
   }
 
-  const blocked = guardWrite(deps);
-  if (blocked) return blocked;
+  return runTargetedWrite(deps, {
+    handle: input.handle,
+    operation: "set-style",
+    signal,
+    preflight: (selection) =>
+      selection.capabilities.canEditStyles
+        ? null
+        : toolFailure(
+            "blocked",
+            "this element's styles are not editable",
+            "studio_inspect reports why, in can.reasonIfDisabled.",
+          ),
+    write: async (selection) => {
+      const applied: Record<string, string> = {};
+      const rejected: Record<string, string> = {};
+      const propertyReceipts: StudioSetStyleResult["propertyReceipts"] = {};
+      let weakest: StudioWriteAdapterSuccess<object> | null = null;
+      for (const [property, value] of entries) {
+        const outcome = await deps.setStyle(selection, property, value);
+        if (!outcome.ok) {
+          rejected[property] = outcome.reason;
+          continue;
+        }
+        applied[property] = value;
+        const receipt = outcome.persistence ? saved({}, outcome.persistence) : dispatched({}, true);
+        propertyReceipts[property] = {
+          stage: receipt.stage,
+          changed: receipt.changed,
+          evidence: receipt.evidence,
+        };
+        if (!weakest || weakest.stage !== "dispatched") weakest = receipt;
+      }
 
-  // `handleDomStyleCommit` is one property per call, so N properties are N
-  // commits and N undo entries. Sequential, not concurrent: two commits racing
-  // through Studio's client-side read-modify-write can record undo entries that
-  // both claim the same starting content.
-  const applied: Record<string, string> = {};
-  const rejected: Record<string, string> = {};
-  for (const [property, value] of entries) {
-    const outcome = await deps.setStyle(property, value);
-    if (outcome.ok) applied[property] = value;
-    else rejected[property] = outcome.reason;
-  }
-
-  if (Object.keys(applied).length === 0) {
-    const reasons = Object.entries(rejected)
-      .map(([property, reason]) => `${property}: ${reason}`)
-      .join(", ");
-    return toolFailure("blocked", `no style was applied (${reasons})`);
-  }
-
-  return toolOk<StudioSetStyleResult>({ applied, rejected });
+      if (!weakest) {
+        const reasons = Object.entries(rejected)
+          .map(([property, reason]) => `${property}: ${reason}`)
+          .join(", ");
+        return toolFailure("blocked", `no style was applied (${reasons})`);
+      }
+      const value: StudioSetStyleResult = {
+        applied,
+        rejected,
+        partial: Object.keys(rejected).length > 0,
+        propertyReceipts,
+      };
+      const changed = Object.values(propertyReceipts).some((receipt) => receipt.changed);
+      return weakest.stage === "dispatched"
+        ? dispatched(value, changed)
+        : { ...weakest, ...value, changed };
+    },
+  });
 }
 
 export const STUDIO_SET_TEXT_INPUT_SCHEMA = {
   type: "object",
   properties: {
+    handle: { type: "string", description: "A source-safe element handle from studio_look." },
     text: { type: "string", description: "The new text content." },
     field: {
       type: "string",
@@ -182,36 +216,46 @@ export const STUDIO_SET_TEXT_INPUT_SCHEMA = {
         "Which text field to write, from studio_inspect. Omit for the element's own text.",
     },
   },
-  required: ["text"],
+  required: ["handle", "text"],
   additionalProperties: false,
 } as const;
 
 export const STUDIO_SET_TEXT_DESCRIPTION = [
-  "Set the text of the CURRENTLY SELECTED element. Call studio_select first.",
+  "Set one element's text using its source-safe handle from studio_look.",
   "This is the edit a synthetic double-click cannot reach, because Studio's canvas",
   "takes pointer capture and recognises the double press itself.",
   "Returns `ok: true` with the resulting text and whether it changed, or `ok: false`",
   "with `kind`, `reason` and usually a `hint` naming what to do instead.",
+  WRITE_RECEIPT_DESCRIPTION,
 ].join(" ");
 
 export const STUDIO_SET_STYLE_INPUT_SCHEMA = {
   type: "object",
   properties: {
+    handle: { type: "string", description: "A source-safe element handle from studio_look." },
     styles: {
       type: "object",
       description: 'CSS property to value, for example {"color": "red", "font-size": "48px"}.',
       additionalProperties: { type: "string" },
     },
   },
-  required: ["styles"],
+  required: ["handle", "styles"],
   additionalProperties: false,
 } as const;
 
 export const STUDIO_SET_STYLE_DESCRIPTION = [
-  "Set inline styles on the CURRENTLY SELECTED element. Call studio_select first.",
+  "Set inline styles on one element using its source-safe handle from studio_look.",
   "Each property is a separate commit, so N properties produce N undo entries.",
   "Position and size properties (left, top, width, height) are refused here on purpose;",
   "they belong to the transform tools.",
   "Returns `ok: true` with `applied` and `rejected` maps, so a partial success is visible",
   "as a partial success rather than reported as a whole one.",
+  WRITE_RECEIPT_DESCRIPTION,
 ].join(" ");
+
+function preDispatchFailure<T extends object>(
+  operation: "set-text" | "set-style",
+  failure: ToolFailure,
+): StudioWriteResult<T> {
+  return { ...failure, stage: "refused", operation };
+}

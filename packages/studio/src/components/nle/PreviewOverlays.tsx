@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { useCaptionStore } from "../../captions/store";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
+import { TopologyLens } from "../editor/TopologyLens";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { SnapToolbar } from "../editor/SnapToolbar";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
@@ -191,30 +192,34 @@ export function PreviewOverlays({
 
   if (blockPreview) {
     return (
-      <div className="absolute inset-0 z-30 bg-black pointer-events-none">
-        {blockPreview.videoUrl ? (
-          <video
-            src={blockPreview.videoUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full h-full object-contain"
-          />
-        ) : blockPreview.posterUrl ? (
-          <img
-            src={blockPreview.posterUrl}
-            alt={blockPreview.title}
-            className="w-full h-full object-contain"
-          />
-        ) : null}
-      </div>
+      <>
+        <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
+        <div className="absolute inset-0 z-30 bg-black pointer-events-none">
+          {blockPreview.videoUrl ? (
+            <video
+              src={blockPreview.videoUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full h-full object-contain"
+            />
+          ) : blockPreview.posterUrl ? (
+            <img
+              src={blockPreview.posterUrl}
+              alt={blockPreview.title}
+              className="w-full h-full object-contain"
+            />
+          ) : null}
+        </div>
+      </>
     );
   }
 
   if (captionEditMode) {
     return (
       <>
+        <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
         <CaptionOverlay iframeRef={previewIframeRef} />
         {/* Mode indicator + explicit exit */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 rounded-full border border-studio-accent/40 bg-black/70 px-2.5 py-1">
@@ -257,6 +262,7 @@ export function PreviewOverlays({
 
   return (
     <>
+      <TopologyLens iframeRef={previewIframeRef} activeCompositionPath={activeCompPath} />
       <DomEditOverlay
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}

@@ -124,6 +124,44 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
+  it("keeps concurrent text commit ownership isolated by target", async () => {
+    const { iframe, element: firstElement } = previewElement(
+      "<div id='first'>First</div><div id='second'>Second</div>",
+      "first",
+    );
+    const secondElement = iframe.contentDocument?.getElementById("second") as HTMLElement;
+    const firstSelection = selectionFor(firstElement);
+    const secondSelection = selectionFor(secondElement);
+    const firstPersist = createDeferred<void>();
+    const persistDomEditOperations = vi
+      .fn()
+      .mockImplementationOnce(() => firstPersist.promise)
+      .mockResolvedValueOnce(undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: firstSelection,
+        persistDomEditOperations,
+      }),
+    );
+
+    let firstCommit: Promise<unknown> | undefined;
+    act(() => {
+      firstCommit = hook.handleDomTextCommitForSelection(firstSelection, "Pending first", "self");
+    });
+    await act(async () => {
+      await hook.handleDomTextCommitForSelection(secondSelection, "Saved second", "self");
+    });
+    firstPersist.reject(new Error("first target failed"));
+    await act(async () => {
+      await firstCommit;
+    });
+
+    expect(firstElement.textContent).toBe("First");
+    expect(secondElement.textContent).toBe("Saved second");
+  });
+
   it("does not let a stale failed fields commit revert newer text", async () => {
     const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -183,8 +221,17 @@ describe("useDomEditTextCommits", () => {
   it("reports a successful style commit", async () => {
     const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
     const selection = selectionFor(element);
+    const persistence = {
+      sourceFile: "index.html",
+      version: '"sha256:after"',
+      changed: true,
+    } as const;
     const hook = renderTextCommitHook(
-      commitParams({ previewIframeRef: { current: iframe }, domEditSelection: selection }),
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: selection,
+        persistDomEditOperations: vi.fn().mockResolvedValue(persistence),
+      }),
     );
 
     let outcome: unknown;
@@ -192,7 +239,7 @@ describe("useDomEditTextCommits", () => {
       outcome = await hook.handleDomStyleCommit("color", "red");
     });
 
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, persistence });
   });
 
   it("declines a style commit with no selection, without reaching the writer", async () => {
@@ -285,5 +332,42 @@ describe("useDomEditTextCommits", () => {
 
     expect(outcome).toEqual({ ok: false, reason: "no-selection" });
     expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
+  it("preserves text persistence evidence for an explicit selection", async () => {
+    const { iframe, element: ambientElement } = previewElement(
+      "<div id='ambient'>Ambient</div><div id='agent'>Agent</div>",
+      "ambient",
+    );
+    const agentElement = iframe.contentDocument?.getElementById("agent") as HTMLElement;
+    const ambientSelection = selectionFor(ambientElement);
+    const agentSelection = selectionFor(agentElement);
+    const persistence = {
+      sourceFile: "index.html",
+      version: '"sha256:text"',
+      changed: true,
+    } as const;
+    const persistDomEditOperations = vi.fn().mockResolvedValue(persistence);
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: ambientSelection,
+        persistDomEditOperations,
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomTextCommitForSelection(agentSelection, "Edited", "self");
+    });
+
+    expect(outcome).toEqual({ ok: true, persistence });
+    expect(persistDomEditOperations).toHaveBeenCalledWith(
+      agentSelection,
+      expect.any(Array),
+      expect.any(Object),
+    );
+    expect(ambientElement.textContent).toBe("Ambient");
+    expect(agentElement.textContent).toBe("Edited");
   });
 });

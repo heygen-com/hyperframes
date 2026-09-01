@@ -135,7 +135,7 @@ export function useDomEditAttributeCommits({
   refreshDomEditSelectionFromPreview,
   persistDomEditOperations,
 }: UseDomEditAttributeCommitsParams) {
-  const domAttributeCommitVersionRef = useRef(new Map<string, number>());
+  const domAttributeCommitVersionRef = useRef(new Map<string, symbol>());
 
   const commitDataAttribute = useCallback(
     async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {
@@ -200,6 +200,7 @@ export function useDomEditAttributeCommits({
           syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
         },
         onSettled: options.onSettled,
+        onFinally: isLatestCommit.release,
       });
     },
     [
@@ -288,6 +289,7 @@ export function useDomEditAttributeCommits({
         shouldResync: () => isLatestCommit() && !!options.refreshAfter,
         resync: () => refreshDomEditSelectionFromPreview(selection),
         onSettled: options.onSettled,
+        onFinally: isLatestCommit.release,
       });
     },
     [
@@ -420,6 +422,7 @@ export function useDomEditAttributeCommits({
           // shipped without one.
           syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
         },
+        onFinally: isLatestCommit.release,
       });
     },
     [

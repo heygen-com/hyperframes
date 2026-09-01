@@ -8,6 +8,8 @@ import {
   previewDoc,
   previewElement,
   selectionFor,
+  selectionToolDeps,
+  sourceHandle,
 } from "../webmcpTestUtils";
 
 function animation(overrides: Partial<GsapAnimation> = {}): GsapAnimation {
@@ -25,11 +27,8 @@ function animation(overrides: Partial<GsapAnimation> = {}): GsapAnimation {
 
 function inspectDeps(overrides: Partial<InspectToolDeps> = {}): InspectToolDeps {
   return {
-    getPreviewDocument: () => null,
-    buildSelection: async (element) => selectionFor(element),
-    applySelection: () => undefined,
-    requestSeek: () => undefined,
-    readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
+    ...selectionToolDeps(),
+    getProjectId: () => "project-a",
     getCurrentSelection: () => null,
     getGsapDiagnostics: () => ({
       animations: [],
@@ -41,6 +40,20 @@ function inspectDeps(overrides: Partial<InspectToolDeps> = {}): InspectToolDeps 
 }
 
 describe("studioInspect", () => {
+  it("refuses a scoped handle from another project before inspecting", async () => {
+    const doc = previewDoc('<h1 id="headline">Ship it</h1>');
+
+    const result = await studioInspect(inspectDeps({ getPreviewDocument: () => doc }), {
+      handle: sourceHandle("headline", "project-b"),
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: "invalid",
+      reason: "the handle belongs to a different project",
+    });
+  });
+
   it("returns the resolved styles, not the authored ones", async () => {
     const element = previewElement('<h1 id="headline">Ship it</h1>', "headline");
     const selection = selectionFor(element);
@@ -171,6 +184,35 @@ describe("studioInspect", () => {
     expect(result.ok).toBe(true);
     // Inspecting is a read. It must not steal the human's selection.
     expect(applySelection).not.toHaveBeenCalled();
+  });
+
+  it("keeps a resolved source-safe handle instead of weakening it", async () => {
+    const doc = previewDoc(
+      '<main data-composition-id="root" data-composition-file="index.html"><h1 id="headline">A</h1></main>',
+    );
+    const handle = "dom:v1:index.html:index.html:headline";
+
+    const ok = expectOk<StudioInspectResult>(
+      await studioInspect(inspectDeps({ getPreviewDocument: () => doc }), { handle }),
+    );
+
+    expect(ok.handle).toBe(handle);
+  });
+
+  it("mints a source-safe handle for the current selection", async () => {
+    const element = previewElement('<h1 id="headline">A</h1>', "headline");
+    const current = selectionFor(element, { sourceFile: "compositions/hero.html" });
+
+    const ok = expectOk<StudioInspectResult>(
+      await studioInspect(
+        inspectDeps({
+          getCompositionPath: () => "index.html",
+          getCurrentSelection: () => current,
+        }),
+      ),
+    );
+
+    expect(ok.handle).toBe("dom:v2:project-a:index.html:compositions%2Fhero.html:headline");
   });
 
   it("fails rather than returning an empty result when nothing is selected", async () => {

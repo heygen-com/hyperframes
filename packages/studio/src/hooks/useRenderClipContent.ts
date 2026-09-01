@@ -110,6 +110,7 @@ export function useRenderClipContent({
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const effectiveMode = effectiveThumbnailMode(thumbnailMode);
   const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
+  const contentRevision = usePlayerStore((s) => s.thumbnailContentRevision);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
     // fallow-ignore-next-line complexity
@@ -153,6 +154,7 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
+          contentRevision,
           priority: context.priority,
           rich: context.rich,
         });
@@ -179,6 +181,7 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
+          contentRevision,
           priority: context.priority,
           rich: context.rich,
         });
@@ -232,6 +235,7 @@ export function useRenderClipContent({
           duration: el.duration,
           projectId: pid,
           sessionEpoch,
+          contentRevision,
           priority: context.priority,
           rich: context.rich,
         });
@@ -246,6 +250,7 @@ export function useRenderClipContent({
       effectiveTimelineDuration,
       effectiveMode,
       sessionEpoch,
+      contentRevision,
     ],
   );
 }

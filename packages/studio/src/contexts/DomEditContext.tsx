@@ -14,6 +14,7 @@ export interface DomEditActionsValue extends Pick<
   | "applyDomSelection"
   | "clearDomSelection"
   | "handleDomStyleCommit"
+  | "handleDomStyleCommitForSelection"
   | "handleDomAttributeCommit"
   | "handleDomAttributeLiveCommit"
   | "handleDomAttributeQuietCommit"
@@ -26,10 +27,12 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
   | "handleDomTextCommit"
+  | "handleDomTextCommitForSelection"
   | "handleDomRichTextCommit"
   | "handleDomTextFieldStyleCommit"
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
+  | "getGsapAnimationsForSelection"
   | "handleAskAgent"
   | "handleAgentModalSubmit"
   | "handleBlockedDomMove"
@@ -153,6 +156,7 @@ export function DomEditProvider({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomAttributeQuietCommit,
@@ -166,10 +170,12 @@ export function DomEditProvider({
     handleDomManualEditsReset,
 
     handleDomTextCommit,
+    handleDomTextCommitForSelection,
     handleDomRichTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
+    getGsapAnimationsForSelection,
     handleAskAgent,
     handleAgentModalSubmit,
     handleBlockedDomMove,
@@ -243,6 +249,7 @@ export function DomEditProvider({
       applyDomSelection,
       clearDomSelection,
       handleDomStyleCommit,
+      handleDomStyleCommitForSelection,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
       handleDomAttributeQuietCommit,
@@ -255,10 +262,12 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomTextCommitForSelection,
       handleDomRichTextCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,
+      getGsapAnimationsForSelection,
       handleAskAgent,
       handleAgentModalSubmit,
       handleBlockedDomMove,
@@ -314,6 +323,7 @@ export function DomEditProvider({
       applyDomSelection,
       clearDomSelection,
       handleDomStyleCommit,
+      handleDomStyleCommitForSelection,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
       handleDomAttributeQuietCommit,
@@ -326,10 +336,12 @@ export function DomEditProvider({
       handleDomRotationCommit,
       handleDomManualEditsReset,
       handleDomTextCommit,
+      handleDomTextCommitForSelection,
       handleDomRichTextCommit,
       handleDomTextFieldStyleCommit,
       handleDomAddTextField,
       handleDomRemoveTextField,
+      getGsapAnimationsForSelection,
       handleAskAgent,
       handleAgentModalSubmit,
       handleBlockedDomMove,
