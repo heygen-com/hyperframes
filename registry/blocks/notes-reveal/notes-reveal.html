@@ -1015,9 +1015,9 @@
         document.getElementById("title-l1").textContent = t(
           vars.titleL1,
           "Things nobody told me",
-          40,
+          34,
         );
-        document.getElementById("title-l2").textContent = t(vars.titleL2, "about video.", 40);
+        document.getElementById("title-l2").textContent = t(vars.titleL2, "about video.", 34);
 
         // Body: build the per-character spans the reveal animation addresses by id, instead of
         // shipping them pre-split. Pre-split spans made the note's seven lines -- 46% of the
@@ -1033,7 +1033,7 @@
           "I ship videos weekly.",
         ];
         BODY_DEFAULTS.forEach(function (fallback, li) {
-          var text = t(vars["noteLine" + (li + 1)], fallback, 60);
+          var text = t(vars["noteLine" + (li + 1)], fallback, 52);
           NOTE_LINES.push(text);
           var host = document.getElementById("line-" + li);
           host.textContent = "";
@@ -1048,11 +1048,11 @@
 
         // Card headline. `cardMid` and `cardBottom` were literals until now, which is why a
         // remix could only ever change the first of the three lines.
-        document.getElementById("hl1").textContent = t(vars.cardTop, "THE POWER", 18);
+        document.getElementById("hl1").textContent = t(vars.cardTop, "THE POWER", 16);
         document.getElementById("hl2").textContent = t(vars.cardMid, "OF", 6);
         // The ring is a sibling of the text, so the words go in their own spans: the first one
         // is what the ring is drawn around.
-        var bottom = t(vars.cardBottom, "ONE FILE", 18);
+        var bottom = t(vars.cardBottom, "ONE FILE", 16);
         var cut = bottom.indexOf(" ");
         var head = cut === -1 ? bottom : bottom.slice(0, cut);
         var tail = cut === -1 ? "" : bottom.slice(cut + 1);
@@ -1415,7 +1415,12 @@
       // they leave the canvas vertically by design. Note that `hyperframes check` only ever sees
       // the declared defaults -- it takes no variable values -- so the checker guards the
       // template and the fit is what guards a remix.
-      const FIT_FLOOR = 0.6; // below this the copy stops reading as the design; the caps hold it here
+      // The floor and the character caps have to agree: a cap that admits a string still too wide
+      // at the floor size puts the text back outside its box, which is the bug this whole pass is
+      // about. Measured against the packaged copy -- "Things nobody told me" is 21 characters and
+      // 900px at 88px, so 42.9px per character -- 0.45 leaves every declared cap satisfiable with
+      // room to spare, and only absurd input ever gets near it.
+      const FIT_FLOOR = 0.45;
 
       // Measure with `offset*`, never `getBoundingClientRect()`. The card is rotated -3.03deg, so
       // a rect is the axis-aligned box of the rotated element and overstates the width by about
