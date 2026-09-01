@@ -1064,12 +1064,12 @@
 
         var labels = document.querySelectorAll(".cl-label");
         var values = document.querySelectorAll(".cl-value");
-        labels[0].textContent = t(vars.check1Label, "WRITE", 8);
-        values[0].textContent = t(vars.check1Value, "HTML", 8);
-        labels[1].textContent = t(vars.check2Label, "RENDER", 8);
-        values[1].textContent = t(vars.check2Value, "IN 4K", 8);
-        labels[2].textContent = t(vars.check3Label, "SHIP", 8);
-        values[2].textContent = t(vars.check3Value, "TODAY", 8);
+        labels[0].textContent = t(vars.check1Label, "WRITE", 18);
+        values[0].textContent = t(vars.check1Value, "HTML", 18);
+        labels[1].textContent = t(vars.check2Label, "RENDER", 18);
+        values[1].textContent = t(vars.check2Value, "IN 4K", 18);
+        labels[2].textContent = t(vars.check3Label, "SHIP", 18);
+        values[2].textContent = t(vars.check3Value, "TODAY", 18);
         document.getElementById("brand-domain").textContent = t(
           vars.brandDomain,
           "hyperframes.heygen.com",
@@ -1447,6 +1447,13 @@
         HL2_MAX = 840 - 48,
         HL3_MAX = 840 - 155 - 24,
         NOTE_MAX = 1080 - TEXT_X - 40;
+      // Checklist columns, read off the authored markup: the label sits at x=72-74 under a
+      // scaleX(0.86), the marker value at x=389-390, and the tick at x=715.
+      const CL_LABEL_X = 74,
+        CL_VALUE_X = 389,
+        CL_CHECK_X = 715,
+        CL_GAP = 16,
+        CL_LABEL_SCALE = 0.86;
 
       function markSpan(id, text) {
         const el = document.createElement("span");
@@ -1463,6 +1470,17 @@
         for (let li = 0; li < 7; li++) {
           fitWidth(document.getElementById("line-" + li), NOTE_MAX, 52.5);
         }
+
+        // The checklist cells had no fit, so their character cap was the only thing keeping a
+        // value inside its column -- and a cap counts characters where the column measures
+        // pixels. A gamma.com remix delivered "DIRECT MEE" and the cap of 8 rendered "DIRECT M".
+        // Fit them like every other text slot so the cap can go back to being a backstop.
+        // A label is scaleX(0.86), so its column has to be divided back out of the visual gap
+        // before comparing against the untransformed offsetWidth fitWidth measures.
+        const CL_LABEL_MAX = (CL_VALUE_X - CL_LABEL_X - CL_GAP) / CL_LABEL_SCALE;
+        const CL_VALUE_MAX = CL_CHECK_X - CL_VALUE_X - CL_GAP;
+        document.querySelectorAll(".cl-label").forEach((el) => fitWidth(el, CL_LABEL_MAX, 44));
+        document.querySelectorAll(".cl-value").forEach((el) => fitWidth(el, CL_VALUE_MAX, 50));
 
         // hl1: split into leading words and the last word, because the underline is drawn under
         // the last word. Rebuilt from the stored text each pass, so this is idempotent.
