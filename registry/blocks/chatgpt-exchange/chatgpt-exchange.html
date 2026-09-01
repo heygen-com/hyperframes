@@ -1385,15 +1385,23 @@
       // composition. The caret has 35px of clearance to the button, which is the real boundary.
       const compStopEl = composer.querySelector("#cge-blue-btn");
       const CARET_PAD = 8;
-      let caretScrollTweens = [];
+      // The rebuild below has to discard exactly what the previous pass added, and `tl.to()`
+      // returns the TIMELINE, not the tween it just created -- so collecting those return values
+      // and killing them on the second pass kills the master timeline, and the composition stops
+      // dead. It only bites when there are keyframes to discard, i.e. an overflowing prompt: the
+      // exact remix this scroll exists for, and why a packaged-defaults render never saw it.
+      // One nested child timeline is a real object that can be killed and replaced, and killing
+      // it cannot reach `tl`.
+      let caretTl = null;
       const layoutCaretScroll = () => {
-        const hadTweens = caretScrollTweens.length > 0;
-        caretScrollTweens.forEach((tw) => tw.kill());
-        caretScrollTweens = [];
-        // Only ever touch typedEl when there is scrolling to do. A zero translate — or even a
-        // clearProps on an untouched element — stamps and removes a transform, which changes how
-        // the text rasterizes and makes the packaged render differ from before for no reason.
-        if (hadTweens) gsap.set(typedEl, { clearProps: "transform" });
+        if (caretTl) {
+          caretTl.kill();
+          caretTl = null;
+          // Only ever touch typedEl when there was scrolling to undo. A zero translate — or even
+          // a clearProps on an untouched element — stamps and removes a transform, which changes
+          // how the text rasterizes and makes the packaged render differ for no reason.
+          gsap.set(typedEl, { clearProps: "transform" });
+        }
         if (!compTextEl || !compStopEl) return;
         // Rects live in the scaled .screen space while offsets are layout px, so convert with the
         // element's own ratio rather than reading --scale -- this then survives a change to it.
@@ -1415,11 +1423,15 @@
           }
         });
         if (!steps.length) return;
+        // Children sit at the same absolute times as before, and the nest is added at 0, so the
+        // nested timeline's local clock is the master's -- the motion is unchanged.
+        caretTl = gsap.timeline();
         steps.forEach(([at, x]) => {
-          caretScrollTweens.push(tl.to(typedEl, { x, duration: 0.08, ease: "none" }, at));
+          caretTl.to(typedEl, { x, duration: 0.08, ease: "none" }, at);
         });
         // Back to the start when the composer empties, so the collapse animates from x=0.
-        caretScrollTweens.push(tl.to(typedEl, { x: 0, duration: 0.01 }, tGo));
+        caretTl.to(typedEl, { x: 0, duration: 0.01 }, tGo);
+        tl.add(caretTl, 0);
       };
       layoutCaretScroll();
       // This composition builds its timeline once, so the first pass measures whatever font was
