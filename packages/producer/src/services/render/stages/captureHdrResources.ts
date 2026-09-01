@@ -52,6 +52,7 @@ import {
 } from "../../hdrCompositor.js";
 import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 
 const NO_FOLLOW_FLAG = constants.O_NOFOLLOW ?? 0;
 
@@ -496,10 +497,10 @@ export async function extractHdrVideoFrames(args: {
           srcPath,
           stderr: result.stderr.slice(-400),
         });
-        throw new Error(
-          `HDR frame extraction failed for video "${videoId}". ` +
-            `Aborting render to avoid shipping black HDR layers.`,
-        );
+        throw encoderFailureError(`HDR frame extraction failed for video "${videoId}"`, {
+          error: `Aborting render to avoid shipping black HDR layers: ${result.stderr.slice(-400)}`,
+          failureReason: result.failureReason,
+        });
       }
       const frameSize = dims.width * dims.height * 6;
       const fd = openSync(rawPath, constants.O_RDONLY | NO_FOLLOW_FLAG);
