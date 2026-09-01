@@ -548,6 +548,24 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(result.error).toContain("Encoder error");
   });
 
+  it("classifies ffmpeg's handled SIGTERM as an external interruption", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-interrupted-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+    const proc = calls[0]!.proc;
+    proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    process.nextTick(() => proc.emit("close", 255));
+
+    const result = await encoder.close();
+    expect(result.success).toBe(false);
+    expect(result.failureReason).toBe("external_interruption");
+    expect(encoder.getExitFailureReason?.()).toBe("external_interruption");
+  });
+
   it("getExitError surfaces the ffmpeg failure reason after a non-zero exit", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -694,6 +712,27 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     });
 
     expect(await encoder.writeFrame(Buffer.from([0]))).toBe(false);
+  });
+
+  it("waits for child close when stdin dies first so the interruption reason is observable", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-epipe-before-close-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+    const proc = calls[0]!.proc;
+    proc.stdin.destroyed = true;
+
+    const writePromise = encoder.writeFrame(Buffer.from([0]));
+    await expect(resolveWithin(writePromise, 10)).resolves.toBe("timeout");
+
+    proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    proc.emit("close", 255);
+
+    await expect(writePromise).resolves.toBe(false);
+    expect(encoder.getExitFailureReason?.()).toBe("external_interruption");
   });
 
   it("writeFrame waits for stdin drain when FFmpeg applies back-pressure", async () => {

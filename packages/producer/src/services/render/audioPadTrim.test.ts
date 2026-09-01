@@ -115,7 +115,11 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
   function harness(opts: {
     video: ProbeVideoFrameInfo | "throw";
     audio: AudioProbeInfo | "throw";
-    ffmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
+    ffmpeg?: (args: string[]) => Promise<{
+      success: boolean;
+      error?: string;
+      failureReason?: "external_interruption";
+    }>;
   }): { input: PadTrimAudioInput; captured: { args: string[][] } } {
     const captured = { args: [] as string[][] };
     const input: PadTrimAudioInput = {
@@ -268,6 +272,25 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.error).toBe("synthetic ffmpeg failure");
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
+  });
+
+  it("preserves an external interruption from the audio pad/trim ffmpeg pass", async () => {
+    const { input } = harness({
+      video: { frameCount: 180, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 5.0 },
+      ffmpeg: async () => ({
+        success: false,
+        error: "synthetic interruption diagnostics",
+        failureReason: "external_interruption",
+      }),
+    });
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result).toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
   });
 });
 

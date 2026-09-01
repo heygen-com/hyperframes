@@ -17,7 +17,7 @@ import {
 } from "../utils/gpuEncoder.js";
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
-import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
+import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpeg } from "../utils/runFfmpeg.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -518,6 +518,7 @@ export async function encodeFramesFromDir(
         result.terminationReason === "deadline",
         encodeTimeout,
       ),
+      failureReason: isExternalFfmpegInterruption(result) ? "external_interruption" : undefined,
     };
   }
   const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
@@ -612,6 +613,9 @@ export async function encodeFramesChunkedConcat(
         framesEncoded: 0,
         fileSize: 0,
         error: chunkResult.error,
+        failureReason: isExternalFfmpegInterruption(processResult)
+          ? "external_interruption"
+          : undefined,
       };
     }
     chunkPaths.push(chunkPath);
@@ -650,6 +654,9 @@ export async function encodeFramesChunkedConcat(
       framesEncoded: 0,
       fileSize: 0,
       error: concatResult.error,
+      failureReason: isExternalFfmpegInterruption(concatProcessResult)
+        ? "external_interruption"
+        : undefined,
     };
   }
 
@@ -739,6 +746,7 @@ export async function muxVideoWithAudio(
     outputPath,
     durationMs: result.durationMs,
     error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    failureReason: result.failureReason,
   };
 }
 
@@ -781,5 +789,6 @@ export async function applyFaststart(
     outputPath,
     durationMs: result.durationMs,
     error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
+    failureReason: result.failureReason,
   };
 }

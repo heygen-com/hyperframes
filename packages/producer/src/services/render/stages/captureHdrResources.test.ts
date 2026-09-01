@@ -33,6 +33,7 @@ import {
   resolveHdrExtractionWindow,
 } from "./captureHdrResources.js";
 import type { CompositionMetadata } from "../shared.js";
+import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -488,6 +489,26 @@ describe("reserveHdrExtractionBytes", () => {
 });
 
 describe("extractHdrVideoFrames", () => {
+  it("preserves an external FFmpeg interruption as the structured retry signal", async () => {
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-interrupted-"));
+    const fixture = hdrExtractionFixture([hdrVideo("interrupted")], framesDir);
+
+    try {
+      await expect(
+        extractHdrVideoFrames({
+          ...fixture,
+          runFfmpegImpl: async () => ({
+            ...ffmpegResult(false),
+            exitCode: 255,
+            failureReason: "external_interruption",
+          }),
+        }),
+      ).rejects.toBeInstanceOf(EncoderInterruptedError);
+    } finally {
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
   it("pins FFmpeg seek/duration, raw frame count, and reservation lifetime", async () => {
     const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-extract-"));
     const video = hdrVideo("preroll", { start: -60, end: 120, mediaStart: 0 });

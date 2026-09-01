@@ -374,6 +374,45 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
 });
 
 describe("muxVideoWithAudio audio codec handling", () => {
+  it("preserves an external interruption from mux", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.aac",
+      "/tmp/output.mp4",
+    );
+
+    await flushMuxCodecResolution();
+    calls[0]!.proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    emitClose(calls[0]!.proc, 255);
+
+    await expect(muxPromise).resolves.toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
+  });
+
+  it("preserves an external interruption from faststart", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { applyFaststart } = await import("./chunkEncoder.js");
+    const faststartPromise = applyFaststart("/tmp/video-only.mp4", "/tmp/output.mp4");
+
+    calls[0]!.proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    emitClose(calls[0]!.proc, 255);
+
+    await expect(faststartPromise).resolves.toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
+  });
+
   it("copies HyperFrames AAC sidecars into MP4 instead of re-encoding", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

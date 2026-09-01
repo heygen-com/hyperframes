@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractSafeRenderErrorCode, extractSafeRenderErrorMetadata } from "./server.js";
 import { VideoExtractionStageError } from "./services/render/stages/extractVideosStage.js";
 import { AssetMediaTypeMismatchError } from "./services/assetMediaType.js";
+import { EncoderInterruptedError } from "./services/render/encoderInterruption.js";
 
 describe("extractSafeRenderErrorCode", () => {
   it("preserves allowlisted typed extraction codes", () => {
@@ -38,6 +39,16 @@ describe("extractSafeRenderErrorCode", () => {
       errorOwner: "user",
       retryable: false,
     });
+  });
+
+  it("transports the bounded encoder interruption contract", () => {
+    const error = new EncoderInterruptedError("Encoding failed", "private ffmpeg stderr");
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "ENCODER_INTERRUPTED",
+      errorOwner: "system",
+      retryable: true,
+    });
+    expect(error.message).not.toContain("private ffmpeg stderr");
   });
 
   it("does not forward arbitrary codes or parse message text", () => {

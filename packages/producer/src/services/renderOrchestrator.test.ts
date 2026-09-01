@@ -2563,6 +2563,18 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
       }),
     ).toBe(false);
   });
+
+  it("never hides an encoder host interruption behind the same-host pinned fallback", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isEncoderInterrupted: true,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {

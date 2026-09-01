@@ -14,6 +14,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
 });
 
 import { runAudioStage } from "./audioStage.js";
+import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 // Regression: hasAudio flipping to false used to be indistinguishable from
 // "no audio was authored" — processCompositionAudio's error (per-element
@@ -112,6 +113,26 @@ describe("runAudioStage", () => {
 
     expect(result.hasAudio).toBe(true);
     expect(result.audioError).toBeUndefined();
+  });
+
+  it("throws a structured retry signal when audio ffmpeg is externally interrupted", async () => {
+    processCompositionAudioMock.mockResolvedValue({
+      success: false,
+      outputPath: "audio.m4a",
+      durationMs: 1,
+      tracksProcessed: 0,
+      failures: [
+        {
+          stage: "mix",
+          reason: "external_interruption",
+          owner: "system",
+          retryable: true,
+          detail: "ffmpeg handled signal 15",
+        },
+      ],
+    });
+
+    await expect(runAudioStage(makeInput())).rejects.toBeInstanceOf(EncoderInterruptedError);
   });
 
   it("does not set audioError when there is no audio to mix", async () => {

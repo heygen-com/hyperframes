@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { CaptureStageError, getCaptureStageBrowserConsole } from "./captureStageError.js";
+import {
+  CaptureStageError,
+  getCaptureStageBrowserConsole,
+  wrapCaptureStageError,
+} from "./captureStageError.js";
+import { EncoderInterruptedError } from "./encoderInterruption.js";
 import {
   computeCompositionObservabilityHash,
   observeRenderStage,
@@ -82,6 +87,11 @@ describe("sanitizeObservationMessage", () => {
 });
 
 describe("CaptureStageError", () => {
+  it("preserves a typed encoder interruption through capture wrapping", () => {
+    const cause = new EncoderInterruptedError("Streaming encode failed", "private stderr");
+    expect(wrapCaptureStageError(cause, ["console output"])).toBe(cause);
+  });
+
   it("preserves the original message and browser console diagnostics", () => {
     const cause = new Error("Navigation timeout of 60000 ms exceeded");
     const browserConsole = ["[FrameCapture:ERROR] page.goto failed"];

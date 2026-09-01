@@ -51,6 +51,7 @@ import {
   type GifEncodeArgsInput,
 } from "./gifEncodeArgs.js";
 import { updateJobStatus } from "../shared.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 
 export interface EncodeStageInput {
   job: RenderJob;
@@ -165,6 +166,7 @@ async function encodeGifFromDir(
         framesEncoded: 0,
         fileSize: 0,
         error: formatFfmpegError(paletteResult.exitCode, paletteResult.stderr),
+        failureReason: paletteResult.failureReason,
       };
     }
 
@@ -180,6 +182,7 @@ async function encodeGifFromDir(
         framesEncoded: 0,
         fileSize: 0,
         error: formatFfmpegError(gifResult.exitCode, gifResult.stderr),
+        failureReason: gifResult.failureReason,
       };
     }
 
@@ -276,7 +279,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     });
     assertNotAborted();
     if (!encodeResult.success) {
-      throw new Error(`Encoding failed: ${encodeResult.error}`);
+      throw encoderFailureError("Encoding failed", encodeResult);
     }
     return { encodeMs: Date.now() - stage5Start };
   }
@@ -335,7 +338,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
   assertNotAborted();
 
   if (!encodeResult.success) {
-    throw new Error(`Encoding failed: ${encodeResult.error}`);
+    throw encoderFailureError("Encoding failed", encodeResult);
   }
 
   return { encodeMs: Date.now() - stage5Start };
