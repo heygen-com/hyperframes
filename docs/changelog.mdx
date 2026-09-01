@@ -9,6 +9,31 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.23"
+  description="Released - 2026-09-01"
+  tags={["Release", "Registry", "Capture", "CLI"]}
+>
+Server deployments can now caption captured assets with Vertex credentials, and promoted templates identify the brand each slot represents.
+Caption-zone checks catch overlapping text, while safer timeline lint prevents a class of broken template playback.
+
+## Fixes
+
+- **Capture:** Authenticate vision captioning with Vertex service accounts and keep SVG rasterization safe ([8eea3c913](https://github.com/heygen-com/hyperframes/commit/8eea3c913f1584b769cc38e8a91bd70f600f352a), [#3561](https://github.com/heygen-com/hyperframes/pull/3561)).
+- **CLI:** Flag text whenever its DOM box overlaps the reserved caption zone ([45cc34352](https://github.com/heygen-com/hyperframes/commit/45cc3435254c44abe7b21bc8e996bbef32365fe6), [#3580](https://github.com/heygen-com/hyperframes/pull/3580)).
+- **Lint:** Reject timeline return values used as child tweens before they can detach template playback ([254fe4bd8](https://github.com/heygen-com/hyperframes/commit/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590), [#3562](https://github.com/heygen-com/hyperframes/pull/3562)).
+
+## Catalog
+
+- **Registry:** Mark identity-bearing slots across eight promoted templates and keep long prompts visible in exchange composers ([254fe4bd8](https://github.com/heygen-com/hyperframes/commit/254fe4bd8a3f00c1e70ac5e38a1bce25060f7590), [#3562](https://github.com/heygen-com/hyperframes/pull/3562)).
+
+## Internal
+
+- Optimize Windows test lanes ([f42b5ce86](https://github.com/heygen-com/hyperframes/commit/f42b5ce86c23268a533217e012cd228434c84e02), [#3579](https://github.com/heygen-com/hyperframes/pull/3579)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.22...v0.8.23).
+</Update>
+
+<Update
   label="HyperFrames v0.8.22"
   description="Released - 2026-09-01"
   tags={["Release", "Rendering", "CLI"]}
