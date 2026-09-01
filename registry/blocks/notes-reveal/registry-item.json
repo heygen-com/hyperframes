@@ -83,6 +83,24 @@
       "label": "Checklist 3 value",
       "description": "Marker value of the third checklist row.",
       "default": "TODAY"
+    },
+    {
+      "id": "brandLogo",
+      "type": "image",
+      "role": "content",
+      "label": "Brand logo",
+      "description": "Transparent mark of the brand this video promotes, in the sign-off strip under the card.",
+      "portrays": ["subject_logo"],
+      "default": "assets/hyperframes-logo-black.svg"
+    },
+    {
+      "id": "brandDomain",
+      "type": "string",
+      "role": "content",
+      "label": "Sign-off domain",
+      "description": "Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.",
+      "portrays": ["subject_domain"],
+      "default": "hyperframes.heygen.com"
     }
   ],
   "files": [
@@ -104,6 +122,11 @@
     {
       "path": "assets/courier-prime-700.woff2",
       "target": "assets/courier-prime-700.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/hyperframes-logo-black.svg",
+      "target": "assets/hyperframes-logo-black.svg",
       "type": "hyperframes:asset"
     },
     {
