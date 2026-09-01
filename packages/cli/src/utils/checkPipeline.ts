@@ -240,19 +240,19 @@ function geometryIssueAnchor(candidate: CheckGeometryCandidate, time: number) {
   };
 }
 
-function captionCenterInZone(
-  rect: CheckGeometryCandidate["rect"],
+function captionBoxOverlapsZone(
+  box: CheckGeometryCandidate["elementRect"],
   zone: NonNullable<CheckOptions["captionZone"]>,
   canvas: Canvas,
-): { inside: boolean; cy: number } {
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const inside =
-    cx >= zone.x0 * canvas.width &&
-    cx <= zone.x1 * canvas.width &&
-    cy >= zone.y0 * canvas.height &&
-    cy <= zone.y1 * canvas.height;
-  return { inside, cy };
+): { overlaps: boolean; cy: number } {
+  const zx0 = zone.x0 * canvas.width;
+  const zy0 = zone.y0 * canvas.height;
+  const zx1 = zone.x1 * canvas.width;
+  const zy1 = zone.y1 * canvas.height;
+  const bx1 = box.left + box.width;
+  const by1 = box.top + box.height;
+  const overlaps = box.left < zx1 && bx1 > zx0 && box.top < zy1 && by1 > zy0;
+  return { overlaps, cy: box.top + box.height / 2 };
 }
 
 function captionFinding(
@@ -265,8 +265,8 @@ function captionFinding(
   if (!zone || candidate.kind !== "text" || !candidateIsSized(candidate, canvas)) return null;
   // Backstop for mocks/non-browser sources; browser already strips via closest() (own attrs only here).
   if ("data-layout-allow-caption-zone" in candidate.dataAttributes) return null;
-  const { inside, cy } = captionCenterInZone(candidate.rect, zone, canvas);
-  if (!inside) return null;
+  const { overlaps, cy } = captionBoxOverlapsZone(candidate.elementRect, zone, canvas);
+  if (!overlaps) return null;
   const text = candidate.text.slice(0, 48);
   const pctFromBottom = Math.round(((canvas.height - cy) / canvas.height) * 100);
   return {
@@ -276,7 +276,7 @@ function captionFinding(
       code: "caption_zone_collision",
       severity: zone.severity === "error" ? "error" : "warning",
       text,
-      message: `<${candidate.tag}> "${text}" is centred in the reserved caption band (~${pctFromBottom}% up from the bottom).`,
+      message: `<${candidate.tag}> "${text}" overlaps the reserved caption band (~${pctFromBottom}% up from the bottom).`,
       fixHint:
         "Keep main content outside the configured caption band, or mark intentional lower-third copy with data-layout-allow-caption-zone.",
     },

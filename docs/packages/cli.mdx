@@ -624,7 +624,7 @@ drift), `*.motion.json` assertions, and WCAG AA contrast.
 | `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 3000)                                   |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
-| `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags content whose centre sits inside the fractional band. Optional `severity` and `seek`.               |
+| `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
 | `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
 | `--browser-gpu` / `--no-browser-gpu`         | Hardware GPU capture, or deterministic SwiftShader (default: auto-detect)                                                   |

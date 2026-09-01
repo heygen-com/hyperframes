@@ -461,7 +461,7 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 });
 
-it("flags only text whose center is inside the caption band at the default end seek", async () => {
+it("flags text whose DOM box overlaps the caption band at the default end seek", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
       kind: "text",
@@ -507,8 +507,56 @@ it("flags only text whose center is inside the caption band at the default end s
       text: "Centered title",
       time: 10,
     }),
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "warning",
+      selector: "#overlap-only",
+      text: "Overlap only",
+      time: 10,
+    }),
   ]);
   expect(report.ok).toBe(true);
+});
+
+it("rejects a 1920×1080 card centered at y=.860 that overlaps the 5% keepout", async () => {
+  const collectGeometryCandidates = vi.fn(async (time: number) => [
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Demand card",
+      selector: "#at-860",
+      rect: fixtureRect(200, 889, 400, 80),
+      time,
+    }),
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Clear above keepout",
+      selector: "#tiny-860",
+      rect: fixtureRect(200, 919, 400, 20),
+      time,
+    }),
+  ]);
+  const { report } = await runScenario(
+    fakeDriver({
+      getDuration: vi.fn(async () => 10),
+      collectGeometryCandidates,
+    }),
+    {
+      samples: 1,
+      contrast: false,
+      captionZone: { x0: 0.118, y0: 0.875, x1: 0.882, y1: 0.925, severity: "error" },
+    },
+  );
+
+  expect(report.layout.findings).toEqual([
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "error",
+      selector: "#at-860",
+    }),
+  ]);
+  expect(report.ok).toBe(false);
 });
 
 it("skips caption_zone_collision when data-layout-allow-caption-zone is set", async () => {
@@ -574,7 +622,7 @@ it("keeps overlap waivers from suppressing changelog caption-rail collisions", a
   expect(report.ok).toBe(false);
 });
 
-it("filters caption candidates by the element box while centering the text rect", async () => {
+it("skips full-frame and tiny wrappers when measuring the caption box", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
       kind: "text",
