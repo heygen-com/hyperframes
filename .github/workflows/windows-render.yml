@@ -185,9 +185,18 @@ jobs:
         # --frozen-lockfile.
         run: bun install --frozen-lockfile --linker=hoisted
 
-      - name: Build all packages
+      # The CLI bundle consumes Engine and Producer from source, but copies the
+      # built Studio and Player artifacts. Build only that dependency chain;
+      # cloud adapters, SDK playground, and other publish-only packages are not
+      # exercised by this Windows render smoke test.
+      - name: Build render prerequisites
         shell: pwsh
-        run: bun run build
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+          bun run --filter @hyperframes/player build
+          bun run --filter @hyperframes/studio build
+          bun run --filter @hyperframes/cli build
 
       # -----------------------------------------------------------------
       # Prove the PR #336 fix: hyperframes doctor exercises findFFmpeg()
@@ -375,12 +384,28 @@ jobs:
   # trips a bun-on-Windows workspace-symlink quirk reading the
   # producer's transitive `hono` dep.
   # -------------------------------------------------------------------
-  test-windows:
-    name: Tests on windows-latest
+  test-windows-lane:
+    name: "Tests on windows-latest: ${{ matrix.lane }}"
     needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Latest successful main run: each half of Studio is roughly 168s.
+          # Adding Core's 81s to one lane and Engine's 102s plus the 45s runtime
+          # contract to the other keeps elapsed work close without running
+          # Studio concurrently with the process-heavy Engine and CLI suites.
+          - lane: studio-core
+            studio_shard: 1/2
+            packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
+            runtime_contract: false
+          - lane: studio-engine-cli
+            studio_shard: 2/2
+            packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            runtime_contract: true
 
     steps:
       - name: Disable Windows Defender real-time monitoring
@@ -431,20 +456,40 @@ jobs:
         # --frozen-lockfile.
         run: bun install --frozen-lockfile --linker=hoisted
 
-      - name: Build
+      # Vitest loads these workspace packages through their Node dist exports.
+      # No tested package needs the full publish build used by `bun run build`.
+      - name: Build test prerequisites
         shell: pwsh
-        run: bun run build
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
 
-      - name: Run tests (all packages except producer + aws-lambda)
+      - name: Run Studio shard ${{ matrix.studio_shard }}
         shell: pwsh
-        # Enumerate the packages we want to test instead of negating —
-        # `bun run --filter "!a" --filter "!b"` composes as a union (any
-        # package matching either negation runs), not an intersection.
-        # That meant `@hyperframes/producer` was effectively still being
-        # tested on Windows, which is what we explicitly want skipped
-        # (Docker / LFS-baseline tooling).
-        run: bun run --filter @hyperframes/core --filter @hyperframes/engine --filter @hyperframes/player --filter @hyperframes/cli --filter @hyperframes/studio --filter @hyperframes/shader-transitions test
+        run: bun run --cwd packages/studio test -- --shard=${{ matrix.studio_shard }} --maxWorkers=2
+
+      - name: Run ${{ matrix.lane }} package tests
+        shell: pwsh
+        # Each package starts its own Vitest pool. Bound every pool so concurrent
+        # package scripts cannot oversubscribe the hosted Windows runner.
+        run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
 
       - name: Run runtime contract test
+        if: matrix.runtime_contract
         shell: pwsh
         run: bun run --filter "@hyperframes/core" test:hyperframe-runtime-ci
+
+  # Preserve the existing required check name while the two balanced lanes stay
+  # independently visible and rerunnable.
+  test-windows:
+    name: Tests on windows-latest
+    needs: [changes, test-windows-lane]
+    if: always() && (needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all Windows test lanes
+        if: needs.test-windows-lane.result != 'success'
+        run: |
+          echo "::error::One or more Windows test lanes did not succeed."
+          exit 1
