@@ -67,24 +67,29 @@ test("the executable checkout guard cannot be conditionally disabled", () => {
   );
 });
 
-test("the release build finishes core before building its dependents in parallel", () => {
-  const stages = rootPackage.scripts.build.split(/\s*&&\s*/);
-  const coreStage = "bun run --filter @hyperframes/core build";
-  const coreIndex = stages.indexOf(coreStage);
+test("the release build orders generated artifacts before their consumers", () => {
+  const packagesByStage = rootPackage.scripts.build.split(/\s*&&\s*/).map((stage) => {
+    const filter = stage.match(/@hyperframes\/(?:\{([^}]+)\}|([a-z0-9-]+))/);
+    const packages = filter?.[1]?.split(",") ?? [filter?.[2]].filter(Boolean);
+    return new Set(packages);
+  });
+  const firstStageWith = (packageName) =>
+    packagesByStage.findIndex((packages) => packages.has(packageName));
 
-  assert.notEqual(coreIndex, -1, "root build must have one explicit Core build stage");
-  assert.equal(
-    stages.filter((stage) => stage === coreStage).length,
-    1,
-    "Core must be built exactly once",
+  const coreIndex = firstStageWith("core");
+  const producerIndex = firstStageWith("producer");
+  const cloudRunIndex = firstStageWith("gcp-cloud-run");
+
+  assert.notEqual(coreIndex, -1, "root build must include Core");
+  assert.notEqual(producerIndex, -1, "root build must include Producer");
+  assert.notEqual(cloudRunIndex, -1, "root build must include GCP Cloud Run");
+  assert.ok(
+    packagesByStage.slice(coreIndex + 1).every((packages) => !packages.has("core")),
+    "Core rewrites generated source and must not rebuild in a later parallel group",
   );
-
-  const dependentStage = stages[coreIndex + 1] ?? "";
-  assert.match(dependentStage, /@hyperframes\/\{[^}]*gcp-cloud-run[^}]*\}/);
-  assert.doesNotMatch(
-    dependentStage,
-    /@hyperframes\/\{[^}]*\bcore\b[^}]*\}/,
-    "Core rewrites generated source; rebuilding it beside dependent declaration emit creates a read/write race",
+  assert.ok(
+    producerIndex < cloudRunIndex,
+    "Producer declaration emit must finish before GCP Cloud Run consumes it",
   );
 });
 
