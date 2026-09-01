@@ -509,10 +509,13 @@ export async function captionImagesWithGemini(
         reportOutcome();
         return geminiCaptions;
       }
-      // Bound libvips' worker pool. Left at its default it sizes itself to the host's core
-      // count, and several concurrent SVG renders then multiply that — the combination
-      // corrupted the heap in production (see the serialized rasterize loop below).
-      sharp.concurrency(1);
+      // libvips' worker pool sizes itself to the host's core count, and several concurrent SVG
+      // renders then multiply that — the combination corrupted the heap in production (see the
+      // serialized rasterize loop below). `sharp.concurrency` is process-global and outlives this
+      // function, so remember the host's value and bound the pool only around the renders that
+      // need it: captioning must not leave every later sharp caller in this process — none of
+      // which asked for captioning — pinned to a single thread for the rest of its life.
+      const hostConcurrency = sharp.concurrency();
       progress("design", `Rasterizing + captioning ${svgFiles.length} SVGs via vision API...`);
       const SVG_BATCH = 20;
       const SVG_RENDER_SIZE = 256; // px — enough resolution for Gemini to read wordmarks, small enough to keep payload sub-MB
@@ -534,38 +537,45 @@ export async function captionImagesWithGemini(
         // the concurrency has to go rather than be handled. Rasterizing is local and cheap;
         // the vision request is the slow leg and stays parallel, so throughput barely moves.
         const rasterized: { relPath: string; pngBase64: string | null }[] = [];
-        for (const { relPath } of batch) {
-          const filePath = join(assetsDir, relPath);
-          try {
-            // Flatten against a contrasting background — white-on-white SVGs render invisible to Vision.
-            const svgSource = readFileSync(filePath, "utf-8");
-            const lightFillHits = (
-              svgSource.match(/fill\s*=\s*["'](#fff(fff)?|white|#[ef][ef][ef]|#[ef]{6})["']/gi) ||
-              []
-            ).length;
-            const darkFillHits = (
-              svgSource.match(/fill\s*=\s*["'](#000(000)?|black|#[0-3]{6}|#[0-3]{3})["']/gi) || []
-            ).length;
-            const bg =
-              lightFillHits > darkFillHits
-                ? { r: 32, g: 32, b: 32 } // dark slate behind light glyphs
-                : { r: 255, g: 255, b: 255 }; // white behind dark glyphs (default)
-            const pngBuffer = await sharp(filePath)
-              .resize({
-                width: SVG_RENDER_SIZE,
-                height: SVG_RENDER_SIZE,
-                fit: "inside",
-                withoutEnlargement: false,
-              })
-              .flatten({ background: bg })
-              .png()
-              .toBuffer();
-            rasterized.push({ relPath, pngBase64: pngBuffer.toString("base64") });
-          } catch {
-            // exotic SVG features may break sharp; skip caption rather than block
-            svgsSkipped++;
-            rasterized.push({ relPath, pngBase64: null });
+        sharp.concurrency(1);
+        try {
+          for (const { relPath } of batch) {
+            const filePath = join(assetsDir, relPath);
+            try {
+              // Flatten against a contrasting background — white-on-white SVGs render invisible to Vision.
+              const svgSource = readFileSync(filePath, "utf-8");
+              const lightFillHits = (
+                svgSource.match(/fill\s*=\s*["'](#fff(fff)?|white|#[ef][ef][ef]|#[ef]{6})["']/gi) ||
+                []
+              ).length;
+              const darkFillHits = (
+                svgSource.match(/fill\s*=\s*["'](#000(000)?|black|#[0-3]{6}|#[0-3]{3})["']/gi) || []
+              ).length;
+              const bg =
+                lightFillHits > darkFillHits
+                  ? { r: 32, g: 32, b: 32 } // dark slate behind light glyphs
+                  : { r: 255, g: 255, b: 255 }; // white behind dark glyphs (default)
+              const pngBuffer = await sharp(filePath)
+                .resize({
+                  width: SVG_RENDER_SIZE,
+                  height: SVG_RENDER_SIZE,
+                  fit: "inside",
+                  withoutEnlargement: false,
+                })
+                .flatten({ background: bg })
+                .png()
+                .toBuffer();
+              rasterized.push({ relPath, pngBase64: pngBuffer.toString("base64") });
+            } catch {
+              // exotic SVG features may break sharp; skip caption rather than block
+              svgsSkipped++;
+              rasterized.push({ relPath, pngBase64: null });
+            }
           }
+        } finally {
+          // Hand the pool back even if a rasterize threw: the vision requests below are network
+          // work that gains nothing from a pinned pool, and the process outlives this capture.
+          sharp.concurrency(hostConcurrency);
         }
         const results = await Promise.allSettled(
           rasterized.map(async ({ relPath, pngBase64 }) => {

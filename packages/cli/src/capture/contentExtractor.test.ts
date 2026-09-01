@@ -19,6 +19,10 @@ const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
     inFlight: 0,
     maxInFlight: 0,
     concurrencyCalls: [] as number[],
+    // Stands in for the host core count sharp reports before anything touches it, so a failure
+    // to restore shows up as a wrong value rather than as a coincidental match with 1.
+    HOST_CONCURRENCY: 8,
+    concurrency: 8,
     renders: [] as string[],
   },
 }));
@@ -42,9 +46,15 @@ vi.mock("sharp", () => {
     return chain;
   };
   const sharp = Object.assign(pipeline, {
-    concurrency: (value: number) => {
-      sharpState.concurrencyCalls.push(value);
-      return value;
+    // Real `sharp.concurrency()` is a getter when called with no argument and a process-global
+    // setter otherwise. The mock has to be both, or code that saves and restores the host value
+    // cannot be tested at all.
+    concurrency: (value?: number) => {
+      if (typeof value === "number") {
+        sharpState.concurrencyCalls.push(value);
+        sharpState.concurrency = value;
+      }
+      return sharpState.concurrency;
     },
   });
   return { default: sharp };
@@ -623,6 +633,7 @@ describe("captionImagesWithGemini — SVG rasterization", () => {
     sharpState.inFlight = 0;
     sharpState.maxInFlight = 0;
     sharpState.concurrencyCalls.length = 0;
+    sharpState.concurrency = sharpState.HOST_CONCURRENCY;
     sharpState.renders.length = 0;
     clientOptions.length = 0;
   });
@@ -678,9 +689,11 @@ describe("captionImagesWithGemini — SVG rasterization", () => {
     expect(Object.keys(captions)).toHaveLength(6);
   });
 
-  it("bounds libvips' own worker pool as well", async () => {
+  it("bounds libvips' own worker pool for the renders, then hands it back", async () => {
     // Left at its default the pool sizes itself to the host's core count, so serializing the
-    // loop alone still leaves one render fanning out across every core.
+    // loop alone still leaves one render fanning out across every core. But `sharp.concurrency`
+    // is process-global: leaving it at 1 pins every later sharp caller in this process, none of
+    // which asked for captioning, so the bound has to be given back when the renders are done.
     const dir = makeProjectWithSvgs(1);
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "or-key");
@@ -697,7 +710,33 @@ describe("captionImagesWithGemini — SVG rasterization", () => {
 
     await captionImagesWithGemini(dir, () => {}, []);
 
-    expect(sharpState.concurrencyCalls).toEqual([1]);
+    expect(sharpState.concurrencyCalls).toEqual([1, sharpState.HOST_CONCURRENCY]);
+    expect(sharpState.concurrency).toBe(sharpState.HOST_CONCURRENCY);
+  });
+
+  it("hands the worker pool back even when a rasterize throws", async () => {
+    // The restore is in a `finally`, because a skipped SVG must not cost the rest of the process
+    // its threads.
+    const dir = makeProjectWithSvgs(2);
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ choices: [{ message: { content: "A glyph." } }] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    // Unreadable, which is how an exotic SVG behaves through sharp.
+    rmSync(join(dir, "assets", "svgs", "logo-0.svg"));
+    mkdirSync(join(dir, "assets", "svgs", "logo-0.svg"));
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(sharpState.concurrency).toBe(sharpState.HOST_CONCURRENCY);
   });
 
   it("keeps captioning the rest when one SVG cannot be rasterized", async () => {
