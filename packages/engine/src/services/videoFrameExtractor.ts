@@ -36,6 +36,7 @@ import {
 import {
   downloadToTemp,
   isHttpUrl,
+  safeDownloadUrlIdentity,
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
@@ -280,12 +281,90 @@ export interface VideoExtractionFailure {
   kind?: VideoExtractionFailureKind;
   /** Always populated by this engine version; absent legacy values fail closed. */
   retryable?: boolean;
+  /** Bounded, path-free grouping data safe for producer-owned error metadata. */
+  group?: VideoExtractionFailureGroupDetails;
   /**
    * Operator diagnostic retained inside the engine result. Producer-facing
    * errors must summarize `kind`/counts and must not forward this field: it
    * can contain a local path or a signed source URL.
    */
   error: string;
+}
+
+export type VideoExtractionFailureStatusClass =
+  | "http_4xx"
+  | "http_5xx"
+  | "timeout"
+  | "network"
+  | "other";
+
+export interface VideoExtractionFailureRetry {
+  phase: "download";
+  used: 0 | 1;
+  budget: 1;
+}
+
+export interface VideoExtractionFailureGroupDetails {
+  sourceFingerprint?: string;
+  host?: string;
+  statusClass?: VideoExtractionFailureStatusClass;
+  retry?: VideoExtractionFailureRetry;
+}
+
+export interface SafeVideoExtractionSourceIdentity {
+  sourceFingerprint: string;
+  host: string;
+}
+
+const SAFE_EXTRACTION_HOST_SUFFIXES = ["heygen.ai", "heygen.com", "imagekit.io"] as const;
+
+function allowlistedExtractionHost(host: string | undefined): string {
+  if (!host) return "other";
+  return SAFE_EXTRACTION_HOST_SUFFIXES.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`),
+  )
+    ? host
+    : "other";
+}
+
+/** Query/fragment-free remote identity safe for extraction logs and wire metadata. */
+export function safeVideoExtractionSourceIdentity(
+  source: string,
+): SafeVideoExtractionSourceIdentity | null {
+  if (!isHttpUrl(source)) return null;
+  const identity = safeDownloadUrlIdentity(source);
+  return {
+    sourceFingerprint: `sha256:${identity.urlFingerprint}`,
+    host: allowlistedExtractionHost(identity.host),
+  };
+}
+
+function downloadStatusClass(error: UrlDownloadError): VideoExtractionFailureStatusClass {
+  const status = error.status ?? error.telemetry?.status;
+  if (typeof status === "number" && status >= 400 && status < 500) return "http_4xx";
+  if (typeof status === "number" && status >= 500 && status < 600) return "http_5xx";
+  if (error.kind === "timeout") return "timeout";
+  if (error.kind === "network") return "network";
+  return "other";
+}
+
+function downloadFailureGroup(
+  source: string,
+  error: UrlDownloadError,
+): VideoExtractionFailureGroupDetails {
+  const sourceIdentity = safeVideoExtractionSourceIdentity(source);
+  const failureHost = error.telemetry?.finalHost ?? error.telemetry?.initialHost;
+  const attempt = error.telemetry?.attempt;
+  return {
+    ...(sourceIdentity ? { sourceFingerprint: sourceIdentity.sourceFingerprint } : {}),
+    host: allowlistedExtractionHost(failureHost ?? sourceIdentity?.host),
+    statusClass: downloadStatusClass(error),
+    retry: {
+      phase: "download",
+      used: typeof attempt === "number" && attempt >= 2 ? 1 : 0,
+      budget: 1,
+    },
+  };
 }
 
 export class VideoSourceExtractionError extends Error {
@@ -1546,6 +1625,7 @@ export async function extractAllVideoFrames(
         videoId: video.id,
         kind: classified.kind,
         retryable: classified.retryable,
+        ...(err instanceof UrlDownloadError ? { group: downloadFailureGroup(video.src, err) } : {}),
         error: classified.diagnostic,
       });
     }

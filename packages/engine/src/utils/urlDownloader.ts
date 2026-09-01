@@ -1113,7 +1113,22 @@ async function downloadWithRetry(
       return await runDownloadAttempt(url, localPath, timeoutMs, attempt + 1, options, signal);
     } catch (error) {
       const classified = classifyDownloadFailure(error);
-      if (!classified.locallyRetryable || attempt >= maxTransientRetries) throw classified;
+      if (!classified.locallyRetryable || attempt >= maxTransientRetries) {
+        const identity = safeDownloadUrlIdentity(url);
+        throw new UrlDownloadError(
+          classified.kind,
+          classified.retryable,
+          classified.message,
+          classified.status,
+          {
+            ...classified.telemetry,
+            urlFingerprint: identity.urlFingerprint,
+            initialHost: identity.host,
+            attempt: attempt + 1,
+          },
+          classified.locallyRetryable,
+        );
+      }
       if (classified.retryable) onTransientRetry?.(classified);
       const identity = safeDownloadUrlIdentity(url);
       emitDownloadTelemetry(options, {

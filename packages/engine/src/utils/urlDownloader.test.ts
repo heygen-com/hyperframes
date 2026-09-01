@@ -447,6 +447,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "length_mismatch",
       retryable: true,
+      telemetry: expect.objectContaining({ attempt: 2 }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(readdirSync(dir).filter((name) => name.startsWith("download_"))).toEqual([]);
@@ -802,6 +803,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     ).rejects.toMatchObject({
       kind: "invalid_payload",
       retryable: false,
+      telemetry: expect.objectContaining({ attempt: 1 }),
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(temporaryDownloadEntries(dir)).toEqual([]);

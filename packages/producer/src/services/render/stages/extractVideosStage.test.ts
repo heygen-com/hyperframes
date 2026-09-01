@@ -14,6 +14,7 @@ import {
   assertVideoExtractionSucceeded,
   buildHdrProbeStageError,
   resolveVideoExtractionPolicy,
+  safeVideoExtractionSourceLogMetadata,
   shouldCopyExtractedFrames,
   VideoExtractionStageError,
 } from "./extractVideosStage.js";
@@ -249,6 +250,27 @@ describe("resolveVideoExtractionPolicy", () => {
   });
 });
 
+describe("safeVideoExtractionSourceLogMetadata", () => {
+  it("logs only a query-free fingerprint and allowlisted host for a signed remote source", () => {
+    const source = "https://MEDIA.HEYGEN.AI/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
+    const metadata = safeVideoExtractionSourceLogMetadata(source);
+
+    expect(metadata).toMatchObject({
+      sourceType: "remote",
+      sourceFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      host: "media.heygen.ai",
+    });
+    expect(JSON.stringify(metadata)).not.toContain("super-secret");
+    expect(JSON.stringify(metadata)).not.toContain("/private/clip.mp4");
+  });
+
+  it("uses a non-sensitive marker for local sources", () => {
+    expect(safeVideoExtractionSourceLogMetadata("/private/render/clip.mp4")).toEqual({
+      sourceType: "local",
+    });
+  });
+});
+
 describe("assertVideoExtractionSucceeded", () => {
   it("accepts a complete extraction", () => {
     expect(() => assertVideoExtractionSucceeded(extractionResult([]))).not.toThrow();
@@ -317,6 +339,57 @@ describe("assertVideoExtractionSucceeded", () => {
         failures: [{ kind: "download_transient", count: 2 }],
       }),
     );
+  });
+
+  it("attaches bounded, deterministic v1 groups while keeping kind counts exhaustive", () => {
+    const errors: VideoExtractionFailure[] = Array.from({ length: 9 }, (_, index) => ({
+      videoId: `private-${index}`,
+      kind: "download_transient",
+      retryable: true,
+      group: {
+        sourceFingerprint: `sha256:${index.toString(16).padStart(64, "0")}`,
+        host: index % 2 === 0 ? "media.heygen.ai" : "other",
+        statusClass: "http_5xx",
+        retry: { phase: "download", used: 1, budget: 1 },
+      },
+      error: `https://media.heygen.ai/private/${index}.mp4?signature=secret`,
+    }));
+    errors.push(
+      {
+        videoId: "bad-a",
+        kind: "invalid_media",
+        retryable: false,
+        error: "/tmp/private-a.mp4",
+      },
+      {
+        videoId: "bad-b",
+        kind: "invalid_media",
+        retryable: false,
+        error: "/tmp/private-b.mp4",
+      },
+    );
+
+    let caught: unknown;
+    try {
+      assertVideoExtractionSucceeded(extractionResult(errors));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(VideoExtractionStageError);
+    if (!(caught instanceof VideoExtractionStageError)) return;
+
+    expect(caught.extractionFailure.schemaVersion).toBe(1);
+    expect(caught.extractionFailure.kindCounts).toEqual([
+      { kind: "download_transient", affectedElementCount: 9 },
+      { kind: "invalid_media", affectedElementCount: 2 },
+    ]);
+    expect(caught.extractionFailure.groups).toHaveLength(8);
+    expect(caught.extractionFailure.omittedGroupCount).toBe(2);
+    expect(caught.extractionFailure.groups.map((group) => group.sourceFingerprint)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `sha256:${index.toString(16).padStart(64, "0")}`),
+    );
+    expect(JSON.stringify(caught.extractionFailure)).not.toContain("signature=secret");
+    expect(JSON.stringify(caught.extractionFailure)).not.toContain("private-");
   });
 
   it("fails closed for legacy failures without a kind or retryability", () => {

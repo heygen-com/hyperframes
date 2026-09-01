@@ -1,5 +1,11 @@
-import { resolveConfig, type ExtractionResult, type VideoElement } from "@hyperframes/engine";
+import {
+  resolveConfig,
+  safeDownloadUrlIdentity,
+  type ExtractionResult,
+  type VideoElement,
+} from "@hyperframes/engine";
 import { describe, expect, it, vi } from "vitest";
+import type { ProducerLogger } from "../../../logger.js";
 
 const extractionCalls = vi.hoisted(
   () => new Array<{ timelineEnd: number | undefined; durationSeconds: number }>(),
@@ -61,13 +67,17 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
 import { createRenderJob } from "../../renderOrchestrator.js";
 import { runExtractVideosStage } from "./extractVideosStage.js";
 
-async function runStage(compositionDuration: number, materializeSymlinks: boolean): Promise<void> {
+async function runStage(
+  compositionDuration: number,
+  materializeSymlinks: boolean,
+  options: { source?: string; log?: ProducerLogger } = {},
+): Promise<void> {
   const composition = {
     duration: compositionDuration,
     videos: [
       {
         id: "root-video",
-        src: "long.mp4",
+        src: options.source ?? "long.mp4",
         start: 0,
         end: Number.POSITIVE_INFINITY,
         mediaStart: 0,
@@ -89,6 +99,7 @@ async function runStage(compositionDuration: number, materializeSymlinks: boolea
       hdrMode: "force-sdr",
     }),
     cfg: resolveConfig(),
+    log: options.log,
     composition,
     abortSignal: undefined,
     assertNotAborted: () => {},
@@ -116,5 +127,35 @@ describe.each([
     await runStage(10, materializeSymlinks);
 
     expect(extractionCalls).toEqual([{ timelineEnd: 10, durationSeconds: 2 }]);
+  });
+});
+
+describe("video extraction source logging", () => {
+  it("keeps the actual logger message source-free and emits only safe remote metadata", async () => {
+    const source = "https://media.heygen.ai/private/clip.mp4?X-Amz-Signature=must-not-log#fragment";
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    } satisfies ProducerLogger;
+
+    await runStage(2, false, { source, log });
+
+    const extractionCall = log.info.mock.calls.find(([message]) =>
+      message.startsWith("Extracting frames from video"),
+    );
+    expect(extractionCall).toEqual([
+      "Extracting frames from video 1/1",
+      {
+        sourceType: "remote",
+        sourceFingerprint: `sha256:${safeDownloadUrlIdentity(source).urlFingerprint}`,
+        host: "media.heygen.ai",
+      },
+    ]);
+    const serializedCall = JSON.stringify(extractionCall);
+    expect(serializedCall).not.toContain(source);
+    expect(serializedCall).not.toContain("must-not-log");
+    expect(serializedCall).not.toContain("/private/clip.mp4");
   });
 });
