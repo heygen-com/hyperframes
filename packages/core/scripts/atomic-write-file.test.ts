@@ -7,24 +7,12 @@ import { atomicWriteFileSync } from "./atomic-write-file.js";
 
 type FileSystemError = Error & { syscall: string; path: string; dest: string };
 
-function isFileSystemError(error: unknown): error is FileSystemError {
-  return (
-    error instanceof Error &&
-    "syscall" in error &&
-    typeof error.syscall === "string" &&
-    "path" in error &&
-    typeof error.path === "string" &&
-    "dest" in error &&
-    typeof error.dest === "string"
-  );
-}
-
 function captureFileSystemError(operation: () => void): FileSystemError {
   try {
     operation();
   } catch (error) {
-    assert.ok(isFileSystemError(error));
-    return error;
+    assert.ok(error instanceof Error);
+    return error as FileSystemError;
   }
   assert.fail("expected filesystem operation to fail");
 }
