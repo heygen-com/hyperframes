@@ -36,6 +36,7 @@ import {
   timeHdrPhase,
   timeHdrPhaseAsync,
 } from "../hdrPerf.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 
 // ─── Hybrid path gating + partitioning ─────────────────────────────────────
 
@@ -363,12 +364,18 @@ export async function captureTransitionFrameOnWorker(
 export function ensureFrameWritten(
   frameWritten: boolean,
   frameIndex: number,
-  encoder?: { getExitError: () => string | undefined },
+  encoder?: {
+    getExitError: () => string | undefined;
+    getExitFailureReason?: () => "external_interruption" | undefined;
+  },
 ): void {
   if (frameWritten) return;
   const reason = encoder?.getExitError();
   const base = `Streaming encoder exited before frame ${frameIndex} was written`;
-  throw new Error(reason ? `${base}: ${reason}` : base);
+  throw encoderFailureError(base, {
+    error: reason,
+    failureReason: encoder?.getExitFailureReason?.(),
+  });
 }
 
 // ─── HDR video raw-frame cleanup (sequential path only) ────────────────────

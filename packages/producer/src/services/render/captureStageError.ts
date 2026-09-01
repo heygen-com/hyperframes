@@ -1,5 +1,6 @@
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { CaptureFailure, classifyCaptureFailure } from "@hyperframes/engine";
+import { EncoderInterruptedError } from "./encoderInterruption.js";
 
 export class CaptureStageError extends CaptureFailure {
   readonly browserConsole: string[];
@@ -20,8 +21,11 @@ export class CaptureStageError extends CaptureFailure {
   }
 }
 
-export function wrapCaptureStageError(error: unknown, browserConsole: string[]): CaptureStageError {
-  if (error instanceof CaptureStageError) return error;
+export function wrapCaptureStageError(
+  error: unknown,
+  browserConsole: string[],
+): CaptureStageError | EncoderInterruptedError {
+  if (error instanceof CaptureStageError || error instanceof EncoderInterruptedError) return error;
   return new CaptureStageError({ cause: error, browserConsole });
 }
 

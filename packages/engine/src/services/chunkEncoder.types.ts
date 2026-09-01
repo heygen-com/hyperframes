@@ -50,6 +50,8 @@ export interface EncodeResult {
   framesEncoded: number;
   fileSize: number;
   error?: string;
+  /** Stable machine-readable cause for failures safe to retry on a fresh host. */
+  failureReason?: "external_interruption";
 }
 
 export interface MuxResult {
@@ -57,4 +59,6 @@ export interface MuxResult {
   outputPath: string;
   durationMs: number;
   error?: string;
+  /** Stable machine-readable cause for failures safe to retry on a fresh host. */
+  failureReason?: "external_interruption";
 }

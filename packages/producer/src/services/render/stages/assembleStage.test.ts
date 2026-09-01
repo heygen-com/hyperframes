@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssembleStageInput } from "./assembleStage.js";
 
-const { muxVideoWithAudioMock, padOrTrimAudioMock } = vi.hoisted(() => ({
+const { applyFaststartMock, muxVideoWithAudioMock, padOrTrimAudioMock } = vi.hoisted(() => ({
+  applyFaststartMock: vi.fn(),
   muxVideoWithAudioMock: vi.fn(),
   padOrTrimAudioMock: vi.fn(),
 }));
 
 vi.mock("@hyperframes/engine", () => ({
-  applyFaststart: vi.fn(),
+  applyFaststart: applyFaststartMock,
   muxVideoWithAudio: muxVideoWithAudioMock,
 }));
 
@@ -20,6 +21,7 @@ vi.mock("../shared.js", () => ({
 }));
 
 import { runAssembleStage } from "./assembleStage.js";
+import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageInput {
   return {
@@ -44,8 +46,10 @@ function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageIn
 
 describe("runAssembleStage audio duration parity", () => {
   beforeEach(() => {
+    applyFaststartMock.mockReset();
     muxVideoWithAudioMock.mockReset();
     padOrTrimAudioMock.mockReset();
+    applyFaststartMock.mockResolvedValue({ success: true });
     muxVideoWithAudioMock.mockResolvedValue({ success: true });
     padOrTrimAudioMock.mockResolvedValue({
       success: true,
@@ -63,6 +67,7 @@ describe("runAssembleStage audio duration parity", () => {
       videoPath: "/tmp/video-only.mp4",
       audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
+      signal: undefined,
     });
     expect(muxVideoWithAudioMock).toHaveBeenCalledWith(
       "/tmp/video-only.mp4",
@@ -81,6 +86,7 @@ describe("runAssembleStage audio duration parity", () => {
       videoPath: "/tmp/video-only.mp4",
       audioPath: "/tmp/audio.m4a",
       outputPath: "/tmp/audio.duration-normalized.m4a",
+      signal: undefined,
     });
   });
 
@@ -98,5 +104,37 @@ describe("runAssembleStage audio duration parity", () => {
       "Audio duration normalization failed: ffmpeg trim failed",
     );
     expect(muxVideoWithAudioMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves an external interruption from final audio mux", async () => {
+    muxVideoWithAudioMock.mockResolvedValue({
+      success: false,
+      error: "FFmpeg exited with code 255\nprivate stderr",
+      failureReason: "external_interruption",
+    });
+
+    await expect(runAssembleStage(makeInput())).rejects.toBeInstanceOf(EncoderInterruptedError);
+  });
+
+  it("preserves an external interruption from audio duration normalization", async () => {
+    padOrTrimAudioMock.mockResolvedValue({
+      success: false,
+      error: "FFmpeg exited with code 255\nprivate stderr",
+      failureReason: "external_interruption",
+    });
+
+    await expect(runAssembleStage(makeInput())).rejects.toBeInstanceOf(EncoderInterruptedError);
+  });
+
+  it("preserves an external interruption from MP4 faststart", async () => {
+    applyFaststartMock.mockResolvedValue({
+      success: false,
+      error: "FFmpeg exited with code 255\nprivate stderr",
+      failureReason: "external_interruption",
+    });
+
+    await expect(runAssembleStage(makeInput({ hasAudio: false }))).rejects.toBeInstanceOf(
+      EncoderInterruptedError,
+    );
   });
 });

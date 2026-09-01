@@ -77,6 +77,7 @@ import { wrapCaptureStageError } from "../captureStageError.js";
 import { pushWorkerDedupPerfs } from "../perfSummary.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
 /**
@@ -867,7 +868,7 @@ export async function runCaptureStreamingStage(
     assertNotAborted();
 
     if (!encodeResult.success) {
-      throw new Error(`Streaming encode failed: ${encodeResult.error}`);
+      throw encoderFailureError("Streaming encode failed", encodeResult);
     }
 
     return {

@@ -111,6 +111,7 @@ import {
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
+import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
 import { ArtifactTransaction } from "./render/artifactTransaction.js";
 import {
@@ -1842,10 +1843,11 @@ export function resolveParallelRouterRetryPlan(args: {
 export function shouldRetryViaPinnedFallback(args: {
   isVerifyError: boolean;
   isCancellation: boolean;
+  isEncoderInterrupted?: boolean;
   deWorkerInversion: "inverted" | "reverted" | undefined;
   deParallelRouter: "routed" | "reverted" | undefined;
 }): boolean {
-  if (args.isCancellation) return false;
+  if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
@@ -3601,6 +3603,7 @@ async function executeRenderPipeline(input: {
             !shouldRetryViaPinnedFallback({
               isVerifyError,
               isCancellation,
+              isEncoderInterrupted: err instanceof EncoderInterruptedError,
               deWorkerInversion,
               deParallelRouter,
             })
@@ -4052,6 +4055,12 @@ async function executeRenderPipeline(input: {
       throw error instanceof RenderCancelledError
         ? error
         : new RenderCancelledError("render_cancelled");
+    }
+    if (error instanceof EncoderInterruptedError) {
+      log.warn("[Render] encoder process interrupted by host lifecycle", {
+        code: error.code,
+        diagnostic: error.diagnosticMessage.slice(-2_000),
+      });
     }
     const memoryGuidance = describeMemoryExhaustion(error, {
       width: captureCompositionWidth,

@@ -73,7 +73,11 @@ export interface PadTrimAudioInput {
    */
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
   probeAudioInfo?: (audioPath: string, signal?: AbortSignal) => Promise<AudioProbeInfo>;
-  runFfmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
+  runFfmpeg?: (args: string[]) => Promise<{
+    success: boolean;
+    error?: string;
+    failureReason?: "external_interruption";
+  }>;
 }
 
 export type PadTrimOperation = "pad" | "trim" | "copy";
@@ -89,6 +93,8 @@ export interface PadTrimAudioResult {
   operation: PadTrimOperation;
   /** Populated only when `success === false`. */
   error?: string;
+  /** Stable machine-readable cause for failures safe to retry on a fresh host. */
+  failureReason?: "external_interruption";
 }
 
 export type PadTrimAudioStepKind = "copy" | "trim" | "normalize";
@@ -322,6 +328,7 @@ export async function padOrTrimAudioToVideoFrameCount(
           sourceDurationSeconds: audioInfo.durationSeconds,
           operation: plan.operation,
           error: ffmpegResult.error,
+          failureReason: ffmpegResult.failureReason,
         };
       }
     }
@@ -457,12 +464,17 @@ async function defaultProbeAudioInfo(
 async function defaultRunFfmpeg(
   args: string[],
   signal?: AbortSignal,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{
+  success: boolean;
+  error?: string;
+  failureReason?: "external_interruption";
+}> {
   const result = await runFfmpeg(args, { signal });
   if (result.success) return { success: true };
   return {
     success: false,
     error: `[audioPadTrim] ${formatFfmpegError(result.exitCode, result.stderr)}`,
+    failureReason: result.failureReason,
   };
 }
 

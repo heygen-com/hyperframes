@@ -309,6 +309,7 @@ export {
 export {
   runFfmpeg,
   formatFfmpegError,
+  isExternalFfmpegInterruption,
   type RunFfmpegOptions,
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";

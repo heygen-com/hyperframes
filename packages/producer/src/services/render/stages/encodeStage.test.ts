@@ -171,6 +171,76 @@ describe("gif encode args", () => {
 });
 
 describe("runEncodeStage config plumbing", () => {
+  it("throws a typed retryable error when the GIF encoder is externally interrupted", async () => {
+    const { EncoderInterruptedError } = await import("../encoderInterruption.js");
+    const { runEncodeStage } = await import("./encodeStage.js");
+    runFfmpegMock.mockImplementationOnce(async () => ({
+      success: false,
+      exitCode: 255,
+      stderr: "Exiting normally, received signal 15.\nprivate stderr",
+      durationMs: 1,
+      failureReason: "external_interruption" as const,
+    }));
+    const paths = createFramesDir("jpg");
+
+    try {
+      await runEncodeStage(
+        makeInput({
+          framesDir: paths.framesDir,
+          outputPath: join(paths.root, "out.gif"),
+          videoOnlyPath: join(paths.root, "video-only.mp4"),
+          isGif: true,
+        }),
+      );
+      throw new Error("expected runEncodeStage to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EncoderInterruptedError);
+      expect(String(error)).not.toContain("private stderr");
+    }
+  });
+
+  it("throws a typed retryable error for an external encoder interruption", async () => {
+    const { EncoderInterruptedError } = await import("../encoderInterruption.js");
+    const { runEncodeStage } = await import("./encodeStage.js");
+    encodeFramesFromDirMock.mockImplementationOnce(async (_framesDir, _pattern, outputPath) => ({
+      success: false,
+      outputPath,
+      durationMs: 12,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: "FFmpeg exited with code 255\nprivate stderr",
+      failureReason: "external_interruption" as const,
+    }));
+
+    try {
+      await runEncodeStage(makeInput());
+      throw new Error("expected runEncodeStage to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EncoderInterruptedError);
+      expect(error).toMatchObject({
+        code: "ENCODER_INTERRUPTED",
+        owner: "system",
+        retryable: true,
+      });
+      expect(String(error)).not.toContain("private stderr");
+    }
+  });
+
+  it("keeps a generic exit 255 untyped", async () => {
+    const { EncoderInterruptedError } = await import("../encoderInterruption.js");
+    const { runEncodeStage } = await import("./encodeStage.js");
+    encodeFramesFromDirMock.mockImplementationOnce(async (_framesDir, _pattern, outputPath) => ({
+      success: false,
+      outputPath,
+      durationMs: 12,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: "FFmpeg exited with code 255: invalid encoder settings",
+    }));
+
+    await expect(runEncodeStage(makeInput())).rejects.not.toBeInstanceOf(EncoderInterruptedError);
+  });
+
   it("scales the encode timeout for long compositions", async () => {
     const { runEncodeStage } = await import("./encodeStage.js");
 
