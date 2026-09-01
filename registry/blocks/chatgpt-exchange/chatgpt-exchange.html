@@ -1369,6 +1369,63 @@
         tRead + T.readbackDur - 0.35,
       );
 
+      /* ---- caret-following scroll in the composer.
+         `prompt` is an editable slot, but `.comp-text` is a fixed-width single line with
+         `white-space: pre` inside a composer that clips, and the packaged prompt already reaches
+         the mic. A longer one therefore slides under the mic and the send button and loses its
+         tail, with the caret hidden behind them -- the remix looks like it typed into nowhere.
+         A real single-line input scrolls its text left to keep the caret in view; this does the
+         same, on the very times the reveal already uses. Shrinking the type instead was the other
+         option and it is worse: it would shrink the packaged prompt too, since that prompt has no
+         headroom, and it still cannot absorb a prompt twice as long without becoming unreadable.
+         A prompt that fits emits no keyframes at all, so the packaged composition is untouched. */
+      const compTextEl = composer.querySelector("#cge-comp-text");
+      // The obstacle is the opaque round button, not the mic: the packaged prompt's caret already
+      // sits 2px past the mic's left edge, so measuring to the mic would scroll the packaged
+      // composition. The caret has 35px of clearance to the button, which is the real boundary.
+      const compStopEl = composer.querySelector("#cge-blue-btn");
+      const CARET_PAD = 8;
+      let caretScrollTweens = [];
+      const layoutCaretScroll = () => {
+        const hadTweens = caretScrollTweens.length > 0;
+        caretScrollTweens.forEach((tw) => tw.kill());
+        caretScrollTweens = [];
+        // Only ever touch typedEl when there is scrolling to do. A zero translate — or even a
+        // clearProps on an untouched element — stamps and removes a transform, which changes how
+        // the text rasterizes and makes the packaged render differ from before for no reason.
+        if (hadTweens) gsap.set(typedEl, { clearProps: "transform" });
+        if (!compTextEl || !compStopEl) return;
+        // Rects live in the scaled .screen space while offsets are layout px, so convert with the
+        // element's own ratio rather than reading --scale -- this then survives a change to it.
+        const box = compTextEl.getBoundingClientRect();
+        const ratio = compTextEl.offsetWidth ? box.width / compTextEl.offsetWidth : 1;
+        const limit =
+          (compStopEl.getBoundingClientRect().left - box.left) / (ratio || 1) - CARET_PAD;
+        if (!(limit > 0)) return;
+        // Collect the steps first, so a prompt that fits leaves typedEl alone entirely.
+        const steps = [];
+        let shift = 0;
+        chars.forEach((c, i) => {
+          const caret = curEls[i + 1];
+          if (!caret) return;
+          const want = Math.max(0, caret.offsetLeft - limit);
+          if (want > shift + 0.5) {
+            shift = want;
+            steps.push([charT[i], -shift]);
+          }
+        });
+        if (!steps.length) return;
+        steps.forEach(([at, x]) => {
+          caretScrollTweens.push(tl.to(typedEl, { x, duration: 0.08, ease: "none" }, at));
+        });
+        // Back to the start when the composer empties, so the collapse animates from x=0.
+        caretScrollTweens.push(tl.to(typedEl, { x: 0, duration: 0.01 }, tGo));
+      };
+      layoutCaretScroll();
+      // This composition builds its timeline once, so the first pass measures whatever font was
+      // live then. Re-measure when the embedded faces are ready.
+      document.fonts.ready.then(layoutCaretScroll);
+
       window.__timelines["chatgpt-exchange"] = tl;
     </script>
   </body>
