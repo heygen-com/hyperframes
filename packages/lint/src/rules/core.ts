@@ -312,7 +312,12 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       let root: postcss.Root;
       try {
         root = postcss.parse(style.content);
-      } catch {
+      } catch (error) {
+        findings.push({
+          code: "css_parse_error",
+          severity: "error",
+          message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+        });
         continue;
       }
       root.walkRules((rule) => {

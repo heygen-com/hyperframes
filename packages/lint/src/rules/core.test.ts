@@ -777,4 +777,20 @@ describe("core rules", () => {
       expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeDefined();
     });
   });
+
+  describe("css_parse_error — malformed CSS is reported instead of silently swallowed", () => {
+    it("reports a css_parse_error finding for unparseable CSS", async () => {
+      const html = `<html><body>
+        <style>.stage { transform: xPercent: -10; }</style>
+        <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"></div>
+        <script src="gsap.min.js"></script>
+        <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "css_parse_error");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("Missed semicolon");
+    });
+  });
 });

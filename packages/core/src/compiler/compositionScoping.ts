@@ -230,7 +230,12 @@ export function scopeCssToComposition(
   const scope =
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
-  const root = postcss.parse(css);
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return css;
+  }
 
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
