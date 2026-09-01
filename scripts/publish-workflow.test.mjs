@@ -7,6 +7,7 @@ import test from "node:test";
 import { parse } from "yaml";
 
 const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8");
+const rootPackage = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const config = parse(workflow);
 const publish = config.jobs.publish;
 const checkout = publish.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -63,6 +64,27 @@ test("the executable checkout guard cannot be conditionally disabled", () => {
       "  exit 1",
       "fi",
     ].join("\n"),
+  );
+});
+
+test("the release build finishes core before building its dependents in parallel", () => {
+  const stages = rootPackage.scripts.build.split(/\s*&&\s*/);
+  const coreStage = "bun run --filter @hyperframes/core build";
+  const coreIndex = stages.indexOf(coreStage);
+
+  assert.notEqual(coreIndex, -1, "root build must have one explicit Core build stage");
+  assert.equal(
+    stages.filter((stage) => stage === coreStage).length,
+    1,
+    "Core must be built exactly once",
+  );
+
+  const dependentStage = stages[coreIndex + 1] ?? "";
+  assert.match(dependentStage, /@hyperframes\/\{[^}]*gcp-cloud-run[^}]*\}/);
+  assert.doesNotMatch(
+    dependentStage,
+    /@hyperframes\/\{[^}]*\bcore\b[^}]*\}/,
+    "Core rewrites generated source; rebuilding it beside dependent declaration emit creates a read/write race",
   );
 });
 
