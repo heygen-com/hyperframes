@@ -69,6 +69,7 @@ export type AudioFailureReason =
   | "ffmpeg_unsupported"
   | "ffmpeg_timeout"
   | "ffmpeg_unavailable"
+  | "external_interruption"
   | "ffmpeg_failed"
   | "cancelled"
   | "internal";

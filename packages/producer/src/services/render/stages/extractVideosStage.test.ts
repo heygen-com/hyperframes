@@ -17,6 +17,7 @@ import {
   shouldCopyExtractedFrames,
   VideoExtractionStageError,
 } from "./extractVideosStage.js";
+import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 function makeVideo(overrides: Partial<VideoElement> = {}): VideoElement {
   return {
@@ -77,6 +78,21 @@ function extractionResult(errors: VideoExtractionFailure[]): ExtractionResult {
     },
   };
 }
+
+describe("encoder interruption classification", () => {
+  it("preserves an external ffmpeg interruption as the structured retry signal", () => {
+    const result = extractionResult([
+      {
+        videoId: "v1",
+        kind: "external_interruption",
+        retryable: true,
+        error: "ffmpeg handled signal 15",
+      },
+    ]);
+
+    expect(() => assertVideoExtractionSucceeded(result)).toThrow(EncoderInterruptedError);
+  });
+});
 
 describe("appendAutoDetectedVideoAudio", () => {
   it("adds audio for an audible video whose file has an audio track", () => {

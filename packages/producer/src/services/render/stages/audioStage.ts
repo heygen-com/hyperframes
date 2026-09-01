@@ -25,6 +25,7 @@ import {
 } from "@hyperframes/engine";
 import type { CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 
 export interface AudioStageInput {
   projectDir: string;
@@ -129,6 +130,16 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
       };
     }
     assertNotAborted();
+
+    const interrupted = audioResult.failures?.find(
+      (failure) => failure.reason === "external_interruption",
+    );
+    if (interrupted) {
+      throw encoderFailureError("Audio processing failed", {
+        error: interrupted.detail,
+        failureReason: "external_interruption",
+      });
+    }
 
     hasAudio = audioResult.success;
     audioFailures = audioResult.failures;

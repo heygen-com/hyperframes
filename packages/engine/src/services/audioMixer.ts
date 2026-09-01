@@ -383,7 +383,10 @@ function ffmpegFailure(
   let owner: AudioProcessingFailure["owner"] = "system";
   let retryable = false;
 
-  if (result.terminationReason === "abort") {
+  if (result.failureReason === "external_interruption") {
+    reason = "external_interruption";
+    retryable = true;
+  } else if (result.terminationReason === "abort") {
     reason = "cancelled";
     owner = "user";
   } else if (result.terminationReason === "deadline" || result.terminationReason === "inactivity") {
@@ -862,7 +865,12 @@ async function mixAudioTracks(
   // dropped from the output entirely — a missing fade beats missing audio.
   let degradedAutomation = false;
   const hasAutomation = tracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
-  if (!result.success && !signal?.aborted && hasAutomation) {
+  if (
+    !result.success &&
+    result.failureReason !== "external_interruption" &&
+    !signal?.aborted &&
+    hasAutomation
+  ) {
     const retry = await runMix(true);
     if (retry.success) {
       result = retry;

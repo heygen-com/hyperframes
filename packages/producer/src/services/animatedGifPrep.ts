@@ -14,6 +14,7 @@ import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
 import { DEFAULT_VP9_CPU_USED, runFfmpeg } from "@hyperframes/engine";
 import { isHttpUrl } from "../utils/urlDownloader.js";
+import { encoderFailureError } from "./render/encoderInterruption.js";
 
 const PREPARED_GIF_SUBDIR = "_animated_gif";
 const CACHE_SCHEMA = "hfgif-v1";
@@ -249,6 +250,12 @@ async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Pr
   const timeout = request.timeoutMs ?? 300_000;
   const result = await runFfmpeg(request.args, { timeout });
   if (result.success) return;
+  if (result.failureReason === "external_interruption") {
+    throw encoderFailureError("Animated GIF transcode failed", {
+      error: `exit ${result.exitCode}: ${result.stderr.slice(-500)}`,
+      failureReason: result.failureReason,
+    });
+  }
   if (result.terminationReason === "deadline") {
     throw new Error(`Animated GIF transcode timed out after ${timeout}ms`);
   }

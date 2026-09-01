@@ -260,6 +260,7 @@ export interface ExtractionPhaseBreakdown {
 
 export type VideoExtractionFailureKind =
   | "cancelled"
+  | "external_interruption"
   | "source_missing"
   | "source_rejected"
   | "download_not_found"
@@ -785,6 +786,14 @@ export async function extractVideoFramesRange(
   args.push("-y", outputPattern);
 
   const processResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  if (processResult.failureReason === "external_interruption") {
+    throw new VideoSourceExtractionError(
+      "external_interruption",
+      true,
+      "Video frame extraction interrupted by host lifecycle",
+      `FFmpeg exited with code ${processResult.exitCode}: ${processResult.stderr.slice(-500)}`,
+    );
+  }
   if (processResult.terminationReason === "abort") {
     throw new VideoSourceExtractionError("cancelled", false, "Video extraction cancelled");
   }
