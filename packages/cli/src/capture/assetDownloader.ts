@@ -13,6 +13,43 @@ import type { CatalogedAsset } from "./assetCataloger.js";
 
 interface DownloadBudgetOptions {
   remainingMs?: () => number;
+  /**
+   * The page's final URL, used to resolve the well-known icon paths when the page declares
+   * no icon link at all. Omit it and a page with no declared icon simply gets no favicon.
+   */
+  pageUrl?: string;
+}
+
+/**
+ * The paths a browser requests on its own when a document declares no `<link rel="icon">`.
+ * Order is the browser's preference order, and the first one that answers wins.
+ *
+ * This exists because "the page declared no icon" and "the site has no icon" are different
+ * facts, and only the first is visible in the DOM. A large site can serve a perfectly good
+ * `/favicon.ico` while declaring none of the ~150 `<link>` tags in its head as an icon;
+ * scraping only declared links returns nothing for it and, worse, attempts nothing, so not
+ * even a drop reason gets recorded.
+ */
+const WELL_KNOWN_ICON_PATHS = ["/favicon.ico", "/apple-touch-icon.png"];
+
+/**
+ * Declared icon links if the page has any, otherwise the site root's well-known paths.
+ * Declared links always win: the page vouched for them, a well-known path is a guess.
+ */
+function iconCandidates(
+  declared: Array<{ rel: string; href: string }>,
+  pageUrl: string | undefined,
+): Array<{ rel: string; href: string }> {
+  if (declared.length > 0) return declared;
+  if (!pageUrl) return [];
+  try {
+    return WELL_KNOWN_ICON_PATHS.map((path) => ({
+      rel: "icon",
+      href: new URL(path, pageUrl).href,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -134,7 +171,10 @@ export async function downloadAssets(
   }
 
   // 2. Favicon
-  const icons = faviconLinks || [];
+  // `fetchBuffer` already refuses an HTML or XML body served under a 200, which is exactly
+  // how a site with no icon answers a well-known path, so a guess that misses lands in
+  // `unavailable` rather than writing a login page to `assets/favicon.ico`.
+  const icons = iconCandidates(faviconLinks || [], options.pageUrl);
   for (const [index, icon] of icons.entries()) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
     if (remainingMs <= 0) {

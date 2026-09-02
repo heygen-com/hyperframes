@@ -208,6 +208,12 @@ Three of those are decisions the capture made and one is a failure it hit, so a
 run that is thin with an all-zero `dropped` is a thin page, and a run that is
 thin with counts on it was cut short.
 
+A page that declares no `<link rel="icon">` still gets a favicon: capture falls
+back to `/favicon.ico` and then `/apple-touch-icon.png` at the site root, the
+same paths a browser requests on its own, and keeps the first that answers with
+an image. A declared icon link always wins, and a fallback that answers with
+nothing usable is counted under `unavailable`.
+
 ```json
 {
   "assets": 45,

@@ -580,6 +580,10 @@ export async function captureWebsite(
       return iconEls.map(function(l) { return { rel: l.rel, href: l.href }; });
     })()`)) as Array<{ rel: string; href: string }>;
 
+    // Read the FINAL url (after any redirect) before the page goes away: it is what the
+    // well-known icon paths must resolve against when the page declared no icon link.
+    const finalPageUrl = page1.url();
+
     await page1.close();
 
     phase("core-extraction", "completed");
@@ -664,6 +668,7 @@ export async function captureWebsite(
       progress("assets", "Downloading assets...");
       const assetPass = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
         remainingMs,
+        pageUrl: finalPageUrl,
       });
       assets = assetPass.assets;
       assetDrops = assetPass.drops;

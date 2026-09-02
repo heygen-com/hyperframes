@@ -312,6 +312,85 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
     });
   });
 
+  it("falls back to the site root's well-known icon paths when the page declares none", async () => {
+    // The case that used to produce no favicon AND no drop reason: a page whose head declares
+    // no icon link, on a site that serves `/favicon.ico` perfectly well.
+    await withTempDir(async (dir) => {
+      const fetchMock = vi.fn(
+        async (url: string) =>
+          new Response(new Uint8Array([0, 0, 1, 0]), {
+            status: url.endsWith("/favicon.ico") ? 200 : 404,
+            headers: { "content-type": "image/x-icon" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { assets, drops } = await downloadAssets(tokensWithNoSvgs(), dir, [], [], {
+        pageUrl: "https://brand.example/pricing?ref=x",
+      });
+      expect(assets).toEqual([
+        {
+          url: "https://brand.example/favicon.ico",
+          localPath: "assets/favicon.ico",
+          type: "favicon",
+        },
+      ]);
+      expect(drops.unavailable).toBe(0);
+    });
+  });
+
+  it("counts a well-known icon path that answers with a page, never drops it silently", async () => {
+    // A site with no icon answers `/favicon.ico` with its 200 HTML shell. Nothing is kept and
+    // both guesses are on the record.
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response("<!doctype html><html></html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            }),
+        ),
+      );
+      const { assets, drops } = await downloadAssets(tokensWithNoSvgs(), dir, [], [], {
+        pageUrl: "https://brand.example/",
+      });
+      expect(assets).toEqual([]);
+      expect(drops.unavailable).toBe(2);
+    });
+  });
+
+  it("keeps a declared icon link ahead of the well-known paths", async () => {
+    // The control: when the page vouches for an icon, the guess must not be attempted at all.
+    await withTempDir(async (dir) => {
+      const fetchMock = vi.fn(
+        async (_url: string) =>
+          new Response(new Uint8Array([137, 80, 78, 71]), {
+            status: 200,
+            headers: { "content-type": "image/png" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { assets } = await downloadAssets(
+        tokensWithNoSvgs(),
+        dir,
+        [],
+        [{ rel: "icon", href: "https://cdn.example/brand/icon-512.png" }],
+        { pageUrl: "https://brand.example/" },
+      );
+      expect(assets).toEqual([
+        {
+          url: "https://cdn.example/brand/icon-512.png",
+          localPath: "assets/favicon.png",
+          type: "favicon",
+        },
+      ]);
+      expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+        "https://cdn.example/brand/icon-512.png",
+      ]);
+    });
+  });
+
   it("counts the inline SVGs the 30-per-run cap refused", async () => {
     // 34 inline SVGs on the page, 30 kept: the four the cap dropped are now countable.
     await withTempDir(async (dir) => {
