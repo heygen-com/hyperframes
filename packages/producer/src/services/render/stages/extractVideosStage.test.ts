@@ -251,14 +251,15 @@ describe("resolveVideoExtractionPolicy", () => {
 });
 
 describe("safeVideoExtractionSourceLogMetadata", () => {
-  it("logs only a query-free fingerprint and allowlisted host for a signed remote source", () => {
-    const source = "https://MEDIA.HEYGEN.AI/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
+  it("logs only a query-free fingerprint and normalized host for a signed remote source", () => {
+    const source =
+      "https://MEDIA.CUSTOMER-CDN.EXAMPLE/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
     const metadata = safeVideoExtractionSourceLogMetadata(source);
 
     expect(metadata).toMatchObject({
       sourceType: "remote",
       sourceFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
-      host: "media.heygen.ai",
+      host: "media.customer-cdn.example",
     });
     expect(JSON.stringify(metadata)).not.toContain("super-secret");
     expect(JSON.stringify(metadata)).not.toContain("/private/clip.mp4");
@@ -348,11 +349,11 @@ describe("assertVideoExtractionSucceeded", () => {
       retryable: true,
       group: {
         sourceFingerprint: `sha256:${index.toString(16).padStart(64, "0")}`,
-        host: index % 2 === 0 ? "media.heygen.ai" : "other",
+        host: index % 2 === 0 ? "media.customer-cdn.example" : "other",
         statusClass: "http_5xx",
         retry: { phase: "download", used: 1, budget: 1 },
       },
-      error: `https://media.heygen.ai/private/${index}.mp4?signature=secret`,
+      error: `https://media.customer-cdn.example/private/${index}.mp4?signature=secret`,
     }));
     errors.push(
       {

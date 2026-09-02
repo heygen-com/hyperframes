@@ -60,7 +60,8 @@ describe("classifyVideoExtractionError download integrity", () => {
 
 describe("extractAllVideoFrames download failure metadata", () => {
   it("threads a query-free fingerprint, allowlisted host, and zero used retries", async () => {
-    const source = "https://media.heygen.ai/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
+    const source =
+      "https://media.customer-cdn.example/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response("<!doctype html><html><body>denied</body></html>")),
@@ -86,7 +87,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.group).toEqual({
       sourceFingerprint: `sha256:${safeDownloadUrlIdentity(source).urlFingerprint}`,
-      host: "media.heygen.ai",
+      host: "media.customer-cdn.example",
       statusClass: "other",
       retry: { phase: "download", used: 0, budget: 1 },
     });

@@ -132,7 +132,8 @@ describe.each([
 
 describe("video extraction source logging", () => {
   it("keeps the actual logger message source-free and emits only safe remote metadata", async () => {
-    const source = "https://media.heygen.ai/private/clip.mp4?X-Amz-Signature=must-not-log#fragment";
+    const source =
+      "https://media.customer-cdn.example/private/clip.mp4?X-Amz-Signature=must-not-log#fragment";
     const log = {
       error: vi.fn(),
       warn: vi.fn(),
@@ -150,7 +151,7 @@ describe("video extraction source logging", () => {
       {
         sourceType: "remote",
         sourceFingerprint: `sha256:${safeDownloadUrlIdentity(source).urlFingerprint}`,
-        host: "media.heygen.ai",
+        host: "media.customer-cdn.example",
       },
     ]);
     const serializedCall = JSON.stringify(extractionCall);
