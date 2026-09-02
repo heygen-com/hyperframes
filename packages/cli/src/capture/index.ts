@@ -16,7 +16,13 @@ import { extractHtml } from "./htmlExtractor.js";
 // captureScreenshots removed — full-page screenshot replaces per-section shots
 import { extractTokens } from "./tokenExtractor.js";
 import { extractDesignStyles } from "./designStyleExtractor.js";
-import { downloadAssets, downloadAndRewriteFonts } from "./assetDownloader.js";
+import {
+  downloadAssets,
+  downloadAndRewriteFonts,
+  mergeDrops,
+  noDrops,
+  totalDrops,
+} from "./assetDownloader.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
@@ -578,23 +584,22 @@ export async function captureWebsite(
 
     phase("core-extraction", "completed");
 
-    // Download fonts and rewrite URLs to local paths
-    if (remainingMs() > 0) {
-      phase("fonts", "started");
-      extracted.headHtml = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
-        remainingMs,
-      });
-      phase(
-        "fonts",
-        remainingMs() > 0 ? "completed" : "degraded",
-        remainingMs() > 0 ? undefined : "budget-exhausted",
-      );
-    } else {
-      warnings.push(
-        "Capture budget exhausted before font downloads; extracted font tokens were preserved.",
-      );
-      phase("fonts", "degraded", "budget-exhausted");
-    }
+    // Download fonts and rewrite URLs to local paths.
+    //
+    // Called even with the budget already gone, which is the point: its own loop is the only
+    // thing that knows how many faces the page declared, so letting it run and record
+    // `budget-exhausted` for every one of them replaces a warning string that could only ever
+    // say "some". A zero budget means it breaks on the first url, so this costs no network.
+    phase("fonts", "started");
+    const fontPass = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
+      remainingMs,
+    });
+    extracted.headHtml = fontPass.css;
+    phase(
+      "fonts",
+      remainingMs() > 0 ? "completed" : "degraded",
+      remainingMs() > 0 ? undefined : "budget-exhausted",
+    );
 
     // Identify each downloaded font by reading its OpenType name table.
     // Modern frameworks hash font filenames; this manifest tells the
@@ -651,24 +656,39 @@ export async function captureWebsite(
 
     // Download assets — single pass using the catalog for best image quality
     let assets: CaptureResult["assets"] = [];
+    let assetDrops = noDrops();
     if (!skipAssets) {
-      if (remainingMs() > 0) {
-        phase("assets", "started");
-        progress("assets", "Downloading assets...");
-        assets = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
-          remainingMs,
-        });
-        phase(
-          "assets",
-          remainingMs() > 0 ? "completed" : "degraded",
-          remainingMs() > 0 ? undefined : "budget-exhausted",
-        );
-      } else {
-        warnings.push("Capture budget exhausted before asset downloads; extraction continued.");
-        phase("assets", "degraded", "budget-exhausted");
-      }
+      // Called even with the budget already gone, for the reason the font pass is: the loop that
+      // skips an asset is the only thing that can say how many it skipped.
+      phase("assets", "started");
+      progress("assets", "Downloading assets...");
+      const assetPass = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
+        remainingMs,
+      });
+      assets = assetPass.assets;
+      assetDrops = assetPass.drops;
+      phase(
+        "assets",
+        remainingMs() > 0 ? "completed" : "degraded",
+        remainingMs() > 0 ? undefined : "budget-exhausted",
+      );
     } else {
       phase("assets", "degraded", "disabled");
+    }
+    // One capture-wide tally, summed from the two passes that own the drops. The warning is
+    // DERIVED from it rather than written alongside it, so the prose and the number cannot
+    // disagree the way two separately-authored budget strings could.
+    const dropped = mergeDrops(fontPass.drops, assetDrops);
+    const droppedTotal = totalDrops(dropped);
+    if (droppedTotal > 0) {
+      const breakdown = Object.entries(dropped)
+        .filter(([, n]) => n > 0)
+        .map(([reason, n]) => `${n} ${reason}`)
+        .join(", ");
+      warnings.push(
+        `${droppedTotal} referenced asset(s) are not in this capture (${breakdown}). ` +
+          "A thin capture with no drops is a thin page; this one was truncated.",
+      );
     }
 
     // Join in-section media URLs → downloaded local paths, then re-write
@@ -885,6 +905,7 @@ export async function captureWebsite(
       screenshots,
       tokens,
       assets,
+      dropped,
       animationCatalog,
       warnings,
       lastPhase,
