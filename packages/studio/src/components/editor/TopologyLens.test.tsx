@@ -82,6 +82,16 @@ function finish(
   act(() => studioEditLifecycle.finish(callId, result));
 }
 
+function finishFastWrite(
+  callId: string,
+  stage: "dispatched" | "saved" | "verified" | "failed",
+  changed = true,
+): void {
+  finish(callId, stage, changed);
+  expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
+  act(() => vi.advanceTimersByTime(240));
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   geometryMock.measure.mockReset().mockReturnValue({
@@ -136,6 +146,10 @@ describe("TopologyLens", () => {
     expect(host?.querySelector('[data-topology-scan="true"]')).not.toBeNull();
 
     finish(callId, "saved");
+    expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
+    expect(host?.querySelector("[data-topology-seal]")).toBeNull();
+
+    act(() => vi.advanceTimersByTime(240));
     expect(host?.querySelector('[data-topology-lens="sealing"]')).not.toBeNull();
     expect(
       host
@@ -179,6 +193,7 @@ describe("TopologyLens", () => {
     expect(host?.querySelector<HTMLElement>("[data-topology-target]")?.style.left).toBe("10px");
 
     finish(callId, "verified");
+    act(() => vi.advanceTimersByTime(240));
 
     const sealedTarget = host?.querySelector<HTMLElement>("[data-topology-target]");
     expect(sealedTarget?.style.left).toBe("70px");
@@ -202,8 +217,7 @@ describe("TopologyLens", () => {
     mount();
     const callId = begin();
 
-    finish(callId, stage);
-
+    finishFastWrite(callId, stage);
     expect(host?.querySelector('[data-topology-lens="localizing"]')).not.toBeNull();
     expect(host?.querySelector("[data-topology-seal]")).toBeNull();
     act(() => vi.advanceTimersByTime(180));
@@ -215,8 +229,7 @@ describe("TopologyLens", () => {
     mount();
     const callId = begin();
 
-    finish(callId, stage, false);
-
+    finishFastWrite(callId, stage, false);
     expect(host?.querySelector('[data-topology-lens="localizing"]')).not.toBeNull();
     expect(host?.querySelector('[data-topology-terminal="no-change"]')).not.toBeNull();
     expect(host?.querySelector("[data-topology-seal]")).toBeNull();
@@ -228,6 +241,8 @@ describe("TopologyLens", () => {
     mount();
     const callId = begin();
     finish(callId, "saved");
+    act(() => vi.advanceTimersByTime(240));
+    expect(host?.querySelector('[data-topology-lens="sealing"]')).not.toBeNull();
     act(() => vi.advanceTimersByTime(240));
     expect(studioEditLifecycle.getSnapshot()).toEqual({ phase: "idle" });
 
@@ -254,14 +269,15 @@ describe("TopologyLens", () => {
     expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
   });
 
-  it("clears on iframe reload and project switch", () => {
+  it("remeasures through iframe reload and clears on project switch", () => {
     mount();
     begin();
+    expect(geometryMock.measure).toHaveBeenCalledTimes(1);
 
     act(() => iframe?.dispatchEvent(new Event("load")));
-    expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
+    expect(host?.querySelector('[data-topology-lens="acquiring"]')).not.toBeNull();
+    expect(geometryMock.measure).toHaveBeenCalledTimes(2);
 
-    begin();
     act(() => studioEditLifecycle.activateProject("project-b"));
     expect(host?.querySelector('[data-topology-lens="hidden"]')).not.toBeNull();
   });

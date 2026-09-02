@@ -37,13 +37,18 @@ describe("Topology Lens state", () => {
     ).toMatchObject({ phase: "localizing", callId: "call-repeat" });
   });
 
-  it("lets a fast durable receipt interrupt acquisition and seal once", () => {
+  it("holds a fast durable receipt until acquisition finishes, then seals once", () => {
     const acquiring = reduceTopologyLens(hidden(), { type: "lifecycle", value: lifecycle() });
-    const sealing = reduceTopologyLens(acquiring, {
+    const waiting = reduceTopologyLens(acquiring, {
       type: "lifecycle",
       value: lifecycle({ phase: "verified" }),
     });
+    const sealing = reduceTopologyLens(waiting, {
+      type: "acquisition-elapsed",
+      callId: "call-a",
+    });
 
+    expect(waiting).toMatchObject({ phase: "acquiring" });
     expect(sealing).toMatchObject({ phase: "sealing", receiptStage: "verified" });
     expect(reduceTopologyLens(sealing, { type: "lifecycle", value: { phase: "idle" } })).toEqual(
       hidden(),

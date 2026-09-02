@@ -86,6 +86,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
   const state = useTopologyLensState();
   const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => false);
   const [measured, setMeasured] = useState<MeasuredLens | null>(null);
+  const [iframeRevision, remeasureIframe] = useReducer((revision: number) => revision + 1, 0);
   const callId = state.phase === "hidden" ? null : state.callId;
   const handle = state.phase === "hidden" ? null : state.target.handle;
   const phase = state.phase;
@@ -111,14 +112,13 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
       handle,
     });
     setMeasured(geometry ? { callId, geometry } : null);
-  }, [activeCompositionPath, callId, handle, iframeRef, phase]);
+  }, [activeCompositionPath, callId, handle, iframeRef, iframeRevision, phase]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !callId) return;
-    const dismiss = () => studioEditLifecycle.dismiss(callId);
-    iframe.addEventListener("load", dismiss);
-    return () => iframe.removeEventListener("load", dismiss);
+    iframe.addEventListener("load", remeasureIframe);
+    return () => iframe.removeEventListener("load", remeasureIframe);
   }, [callId, iframeRef]);
 
   useEffect(() => {
