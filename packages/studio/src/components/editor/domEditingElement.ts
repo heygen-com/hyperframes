@@ -9,6 +9,7 @@ import type {
   TimelineElementDomTarget,
   TimelineElementDomTargetOptions,
 } from "./domEditingTypes";
+import { elementPaintsInk } from "@hyperframes/sdk/adapters/iframe";
 import {
   buildStableSelector,
   escapeCssString,
@@ -32,15 +33,8 @@ const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);
 function hasVisualPresence(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return false;
+  if (elementPaintsInk(el, win)) return true;
   const cs = win.getComputedStyle(el);
-  if (cs.backgroundImage !== "none") return true;
-  if (
-    cs.backgroundColor &&
-    cs.backgroundColor !== "transparent" &&
-    cs.backgroundColor !== "rgba(0, 0, 0, 0)"
-  )
-    return true;
-  if (cs.borderWidth && parseFloat(cs.borderWidth) > 0 && cs.borderStyle !== "none") return true;
   if (cs.boxShadow && cs.boxShadow !== "none") return true;
   return false;
 }

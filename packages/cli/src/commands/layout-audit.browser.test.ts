@@ -3,9 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareBrowserScript } from "../utils/browserScript";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const script = readFileSync(join(__dirname, "layout-audit.browser.js"), "utf-8");
+const script = prepareBrowserScript(
+  "layout-audit.browser.js",
+  readFileSync(join(__dirname, "layout-audit.browser.js"), "utf-8"),
+);
 const contrastScript = readFileSync(join(__dirname, "contrast-audit.browser.js"), "utf-8");
 
 interface RectInput {
@@ -1747,6 +1751,14 @@ describe("layout-audit.browser occlusion", () => {
   it("ignores low-opacity overlays such as scrims and grain", () => {
     const issues = auditOcclusionScene({
       overlayStyle: { backgroundColor: "rgb(10, 10, 10)", opacity: "0.3" },
+      topmostId: "overlay",
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("ignores zero-alpha HSL overlays", () => {
+    const issues = auditOcclusionScene({
+      overlayStyle: { backgroundColor: "hsl(0 0% 100% / 0%)" },
       topmostId: "overlay",
     });
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
