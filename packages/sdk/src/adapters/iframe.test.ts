@@ -1032,7 +1032,7 @@ function paintDoc(nodes: object[], readyState = "complete"): Document {
 }
 
 /** OffscreenCanvas stub that counts pixel reads, for the lazy-sampling guard. */
-function stubCountingCanvas(): { restore: () => void; reads: () => number } {
+function stubCountingCanvas(alpha = 255): { restore: () => void; reads: () => number } {
   const orig = globalThis.OffscreenCanvas as typeof OffscreenCanvas | undefined;
   let reads = 0;
   globalThis.OffscreenCanvas = class {
@@ -1045,7 +1045,7 @@ function stubCountingCanvas(): { restore: () => void; reads: () => number } {
         drawImage() {},
         getImageData() {
           reads++;
-          return { data: new Uint8ClampedArray([255, 0, 0, 255]), width: 1, height: 1 };
+          return { data: new Uint8ClampedArray([255, 0, 0, alpha]), width: 1, height: 1 };
         },
       };
     }
@@ -1400,6 +1400,17 @@ describe("compositionPaintsAt", () => {
     expect(compositionPaintsAt(paintDoc([root(), wrapper, child]), paintWin(), 50, 50)).toBe(false);
   });
 
+  it("keeps ancestor memoization iterative for a deeply nested DOM", () => {
+    let parent: PaintNode | null = null;
+    for (let depth = 0; depth < 12_000; depth++) parent = pnode({ parent });
+    const leaf = pnode({
+      style: { backgroundColor: "#f00" },
+      rect: { left: 0, top: 0, width: 10, height: 10 },
+      parent,
+    });
+    expect(compositionPaintsAt(paintDoc([leaf]), paintWin(), 5, 5)).toBe(true);
+  });
+
   it("addressableOnly:false picks up a node the stamping pass never saw", () => {
     // Runtime-generated nodes (split-text word spans, clones) carry no data-hf-id.
     const generated = pnode({
@@ -1432,6 +1443,180 @@ describe("compositionPaintsAt", () => {
       ];
       expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 50, 50)).toBe(true);
       expect(canvas.reads()).toBe(1);
+    } finally {
+      canvas.restore();
+    }
+  });
+
+  it("keeps the deeper candidate first when boxes have exactly the same area", () => {
+    const compositionRoot = root();
+    const shallow = pnode({
+      style: { backgroundColor: "#f00" },
+      rect: { left: 0, top: 0, width: 10, height: 10 },
+      parent: compositionRoot,
+    });
+    const wrapper = pnode({ parent: compositionRoot });
+    const deep = pnode({
+      style: { backgroundColor: "#0f0" },
+      rect: { left: 0, top: 0, width: 10, height: 10 },
+      parent: wrapper,
+    });
+    const checked: PaintNode[] = [];
+    const baseWin = paintWin();
+    const orderedWin = {
+      HTMLImageElement: baseWin.HTMLImageElement,
+      getComputedStyle(element: Element) {
+        if (element === el(shallow) || element === el(deep))
+          checked.push(element as unknown as PaintNode);
+        return baseWin.getComputedStyle(element);
+      },
+    } as unknown as Window & typeof globalThis;
+
+    expect(
+      compositionPaintsAt(paintDoc([compositionRoot, shallow, wrapper, deep]), orderedWin, 5, 5),
+    ).toBe(true);
+    expect(checked[0]).toBe(deep);
+  });
+
+  it("continues past a non-painting minimum instead of treating one tracked minimum as final", () => {
+    const nodes = [
+      root(),
+      pnode({ rect: { left: 0, top: 0, width: 10, height: 10 } }),
+      pnode({
+        style: { backgroundColor: "#f00" },
+        rect: { left: 0, top: 0, width: 20, height: 20 },
+      }),
+    ];
+    expect(compositionPaintsAt(paintDoc(nodes), paintWin(), 5, 5)).toBe(true);
+  });
+
+  it("does not retain frame geometry across calls when an animated root moves", () => {
+    const outer = root();
+    const inner = pnode({
+      attrs: { "data-composition-id": "inner" },
+      rect: { left: 0, top: 0, width: 300, height: 300 },
+    });
+    let innerRect = domRect({ left: 0, top: 0, width: 300, height: 300 });
+    inner.getBoundingClientRect = () => innerRect;
+    const painter = pnode({
+      style: { backgroundColor: "#f00" },
+      rect: { left: 0, top: 0, width: 300, height: 300 },
+    });
+    const doc = paintDoc([outer, inner, painter]);
+
+    expect(compositionPaintsAt(doc, paintWin(), 150, 150, { fullBleedFraction: 0.9 })).toBe(false);
+
+    innerRect = domRect({ left: 600, top: 600, width: 300, height: 300 });
+    expect(compositionPaintsAt(doc, paintWin(), 150, 150, { fullBleedFraction: 0.9 })).toBe(true);
+  });
+
+  it("bounds the work of a 1000-node paint query while preserving lazy alpha sampling", () => {
+    // Captured on the pre-optimization implementation at b1f7d8881. These are deterministic
+    // DOM-operation counts, not wall-clock thresholds that become flaky under CI load.
+    const baseline = {
+      rectReads: 1002,
+      computedStyleReads: 3004,
+      ancestorReads: 4000,
+      selectorQueries: 2,
+      alphaReads: 1,
+    };
+    const metrics = {
+      rectReads: 0,
+      computedStyleReads: 0,
+      ancestorReads: 0,
+      selectorQueries: 0,
+    };
+
+    const instrument = (node: PaintNode, parent: PaintNode | null): void => {
+      const readRect = node.getBoundingClientRect.bind(node);
+      node.getBoundingClientRect = () => {
+        metrics.rectReads++;
+        return readRect();
+      };
+      Object.defineProperty(node, "parentElement", {
+        configurable: true,
+        get() {
+          metrics.ancestorReads++;
+          return parent;
+        },
+      });
+    };
+
+    const benchmarkRoot = pnode({ attrs: { "data-composition-id": "main" }, rect: FRAME });
+    instrument(benchmarkRoot, null);
+
+    const winner = pimg(
+      "hf-winner",
+      { left: 0, top: 0, width: 10, height: 10 },
+      { parent: benchmarkRoot, src: "http://x/winner.png" },
+    );
+    const winnerRect = winner.getBoundingClientRect.bind(winner);
+    winner.getBoundingClientRect = () => {
+      metrics.rectReads++;
+      return winnerRect();
+    };
+    Object.defineProperty(winner, "parentElement", {
+      configurable: true,
+      get() {
+        metrics.ancestorReads++;
+        return benchmarkRoot;
+      },
+    });
+
+    const cssWinner = pnode({
+      attrs: { "data-hf-id": "hf-css-winner" },
+      style: { backgroundColor: "#f00" },
+      rect: { left: 0, top: 0, width: 20, height: 20 },
+      parent: benchmarkRoot,
+    });
+    instrument(cssWinner, benchmarkRoot);
+
+    const nodes: object[] = [benchmarkRoot, winner, cssWinner];
+    for (let index = 0; index < 997; index++) {
+      const size = 30 + index / 2;
+      const node = pnode({
+        attrs: { "data-hf-id": `hf-wrapper-${index}` },
+        rect: { left: 0, top: 0, width: size, height: size },
+        parent: benchmarkRoot,
+      });
+      instrument(node, benchmarkRoot);
+      nodes.push(node);
+    }
+
+    const baseWin = paintWin();
+    const benchmarkWin = {
+      HTMLImageElement: baseWin.HTMLImageElement,
+      DOMMatrix: class {},
+      getComputedStyle(element: Element) {
+        metrics.computedStyleReads++;
+        return baseWin.getComputedStyle(element);
+      },
+    } as unknown as Window & typeof globalThis;
+    const baseDoc = paintDoc(nodes);
+    const benchmarkDoc = {
+      readyState: baseDoc.readyState,
+      querySelectorAll(selector: string) {
+        metrics.selectorQueries++;
+        return baseDoc.querySelectorAll(selector);
+      },
+    } as unknown as Document;
+
+    const canvas = stubCountingCanvas(0);
+    try {
+      expect(
+        compositionPaintsAt(benchmarkDoc, benchmarkWin, 5, 5, { fullBleedFraction: 0.9 }),
+      ).toBe(true);
+      expect(metrics).toEqual({
+        rectReads: 1000,
+        computedStyleReads: 3,
+        ancestorReads: 1005,
+        selectorQueries: 2,
+      });
+      expect(metrics.rectReads).toBeLessThan(baseline.rectReads);
+      expect(metrics.computedStyleReads).toBeLessThan(baseline.computedStyleReads);
+      expect(metrics.ancestorReads).toBeLessThan(baseline.ancestorReads);
+      expect(metrics.selectorQueries).toBe(baseline.selectorQueries);
+      expect(canvas.reads()).toBe(baseline.alphaReads);
     } finally {
       canvas.restore();
     }
