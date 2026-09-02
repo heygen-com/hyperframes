@@ -290,6 +290,15 @@ export function resolveReloadSeekTime(input: {
   return Math.min(target, input.duration);
 }
 
+type SeekablePreview = Pick<PlaybackAdapter, "seek">;
+
+/** Re-run the current frame even when the runtime already reports that time. */
+export function reseekPreviewAtTime(preview: SeekablePreview, time: number): void {
+  const target = Number.isFinite(time) && time > 0 ? time : 0;
+  preview.seek(target > 0.001 ? Math.max(0, target - 0.001) : 0.001);
+  preview.seek(target);
+}
+
 export function seekAdapterToRestorePoint(
   adapter: PlaybackAdapter,
   pendingSeekRef: { current: number | null },
@@ -303,8 +312,7 @@ export function seekAdapterToRestorePoint(
   });
   pendingSeekRef.current = null;
   if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-  adapter.seek(startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001);
-  adapter.seek(startTime);
+  reseekPreviewAtTime(adapter, startTime);
   return startTime;
 }
 

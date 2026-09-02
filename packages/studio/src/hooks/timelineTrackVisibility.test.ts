@@ -316,10 +316,15 @@ describe("toggleTimelineElementHidden", () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     const seek = vi.fn();
+    const forceTimelineRebind = vi.fn();
     const win = iframe.contentWindow;
     if (!win) throw new Error("Expected iframe contentWindow");
-    const playerWindow: Window & { __player?: { seek?: (time: number) => void } } = win;
+    const playerWindow: Window & {
+      __player?: { seek?: (time: number) => void };
+      __hfForceTimelineRebind?: () => void;
+    } = win;
     playerWindow.__player = { seek };
+    playerWindow.__hfForceTimelineRebind = forceTimelineRebind;
 
     const files = new Map([
       [
@@ -369,6 +374,7 @@ describe("toggleTimelineElementHidden", () => {
     expect(recordEdit).toHaveBeenCalledTimes(1);
     expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Hide element");
     expect(seek).toHaveBeenCalledWith(1.25);
+    expect(forceTimelineRebind).toHaveBeenCalledTimes(1);
     expect(
       usePlayerStore.getState().elements.find((el) => el.key === "index.html:#hero")?.hidden,
     ).toBe(true);

@@ -34,6 +34,7 @@ import {
 } from "./useDomEditCommitsHelpers";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
+import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -154,6 +155,10 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const completePersistence = <T>(result: T, changed: boolean): T => {
+        if (options?.skipRefresh && changed) reseekPreviewRuntime(previewIframeRef.current);
+        return result;
+      };
 
       const readResponse = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
@@ -201,7 +206,10 @@ export function useDomEditCommits({
         if (cutover.status === "committed") {
           // SDK handled it — its in-memory doc is already current, so do NOT
           // forceReload (that would echo-reload the session we just wrote).
-          return { sourceFile: targetPath, version: cutover.version, changed: true };
+          return completePersistence(
+            { sourceFile: targetPath, version: cutover.version, changed: true },
+            true,
+          );
         }
       }
 
@@ -249,9 +257,12 @@ export function useDomEditCommits({
           throw new DomEditPersistUnresolvableError(targetPath);
         }
         warnDomEditPersistNoOp(selection, operations);
-        return typeof patchData.path === "string" && typeof patchData.version === "string"
-          ? { sourceFile: patchData.path, version: patchData.version, changed: false }
-          : undefined;
+        return completePersistence(
+          typeof patchData.path === "string" && typeof patchData.version === "string"
+            ? { sourceFile: patchData.path, version: patchData.version, changed: false }
+            : undefined,
+          false,
+        );
       }
 
       const patchedContent =
@@ -289,11 +300,14 @@ export function useDomEditCommits({
       if (!options?.skipRefresh) {
         reloadPreview();
       }
-      return finalContent === patchedContent &&
-        typeof patchData.path === "string" &&
-        typeof patchData.version === "string"
-        ? { sourceFile: patchData.path, version: patchData.version, changed: true }
-        : undefined;
+      return completePersistence(
+        finalContent === patchedContent &&
+          typeof patchData.path === "string" &&
+          typeof patchData.version === "string"
+          ? { sourceFile: patchData.path, version: patchData.version, changed: true }
+          : undefined,
+        true,
+      );
     },
     [
       activeCompPath,
@@ -305,6 +319,7 @@ export function useDomEditCommits({
       showToast,
       forceReloadSdkSession,
       onTrySdkPersist,
+      previewIframeRef,
     ],
   );
 
