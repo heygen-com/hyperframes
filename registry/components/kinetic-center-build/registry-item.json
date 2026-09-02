@@ -1,0 +1,85 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "kinetic-center-build",
+  "type": "hyperframes:component",
+  "title": "Kinetic Center Build",
+  "description": "Words enter from the right and push the growing phrase left until the final line locks centered.",
+  "tags": ["motion-primitive", "text-effects", "kinetic-type", "reveal", "remocn-port"],
+  "jobs": ["reveal"],
+  "family": "text-effects",
+  "profile": "build",
+  "author": "Remocn",
+  "authorUrl": "https://github.com/Remocn/remocn",
+  "license": "MIT",
+  "syncPoints": [
+    {
+      "id": "phrase-locked",
+      "phase": "in",
+      "offset": 1.2,
+      "description": "Calibrated to the default three-word text; custom word counts change the lock time."
+    }
+  ],
+  "files": [
+    {
+      "path": "kinetic-center-build.html",
+      "target": "compositions/components/kinetic-center-build.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Short phrase that builds one word at a time.",
+      "default": "Words push left."
+    },
+    {
+      "id": "font_size",
+      "type": "number",
+      "role": "style",
+      "label": "Font size",
+      "description": "Maximum text size in pixels. Longer phrases shrink to stay inside the frame.",
+      "default": 72,
+      "min": 36,
+      "max": 160,
+      "step": 2,
+      "unit": "px"
+    },
+    {
+      "id": "entry_offset",
+      "type": "number",
+      "role": "motion",
+      "label": "Entry offset",
+      "description": "Horizontal distance each new word travels before it lands.",
+      "default": 88,
+      "min": 20,
+      "max": 160,
+      "step": 4,
+      "unit": "px"
+    },
+    {
+      "id": "color",
+      "type": "color",
+      "role": "style",
+      "label": "Color",
+      "description": "Text color for the full phrase.",
+      "default": "#171717"
+    },
+    {
+      "id": "font_weight",
+      "type": "enum",
+      "role": "style",
+      "label": "Font weight",
+      "description": "Weight used by every word in the phrase.",
+      "default": "600",
+      "options": [
+        { "value": "500", "label": "Medium" },
+        { "value": "600", "label": "Semibold" },
+        { "value": "700", "label": "Bold" },
+        { "value": "800", "label": "Extra bold" }
+      ]
+    }
+  ]
+}

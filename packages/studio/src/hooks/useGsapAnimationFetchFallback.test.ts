@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
-import { selectElementAnimationsOrRetry } from "./useGsapAnimationFetchFallback";
+import {
+  gsapSourceFileForSelection,
+  selectElementAnimationsOrRetry,
+} from "./useGsapAnimationFetchFallback";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+
+describe("gsapSourceFileForSelection", () => {
+  it("uses the explicit target source instead of ambient selection state", () => {
+    expect(
+      gsapSourceFileForSelection({ sourceFile: "compositions/card.html" } as DomEditSelection),
+    ).toBe("compositions/card.html");
+  });
+});
 
 const anim = (targetSelector: string): GsapAnimation =>
   ({ id: targetSelector, targetSelector, properties: {} }) as unknown as GsapAnimation;

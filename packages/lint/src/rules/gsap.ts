@@ -2156,6 +2156,61 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
+  // gsap_timeline_return_used_as_tween — `tl.to()` returns the TIMELINE, not the tween it just
+  // created. `gsap.to()` returns a Tween, so the two read identically and behave nothing alike.
+  // Capturing the timeline's return and later treating it as an individual animation aims a
+  // tween-scoped call at the whole composition: `.kill()` on it interrupts the master timeline
+  // and detaches it from its parent, which stops a parent-driven seek dead while leaving an
+  // explicit `tl.progress()` still working -- so a render of the packaged defaults looks fine
+  // and only live playback breaks. A rebuild that collected these to discard them also leaves
+  // every previous keyframe in place and stacks the new ones on top.
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const source = stripJsComments(script.content);
+      const timelineVars = collectTimelineVarNames(source);
+      if (timelineVars.length === 0) continue;
+      const receivers = timelineVars.map(escapeRegExp).join("|");
+      // Two capture shapes: collecting into an array, or binding to a name. Keying on the
+      // known timeline handles is what keeps `gsap.to()` -- and `Array.from()` -- out of it.
+      const pattern = new RegExp(
+        String.raw`(?:\.push\s*\(\s*|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*)(?:${receivers})\s*\.\s*(to|from|fromTo|set|call|add)\s*\(`,
+        "g",
+      );
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(source)) !== null) {
+        const boundName = match[1];
+        const method = match[2]!;
+        // A bound name is only a problem once something tween-scoped is aimed at it; pushing
+        // into an array is already the collect-to-discard shape this exists to stop.
+        if (boundName) {
+          const treatedAsTween = new RegExp(
+            String.raw`\b${escapeRegExp(boundName)}\s*\.\s*(?:kill|revert|invalidate|pause|resume|restart|seek|progress|timeScale)\s*\(`,
+          );
+          if (!treatedAsTween.test(source)) continue;
+        }
+        const contextStart = Math.max(0, match.index - 40);
+        findings.push({
+          code: "gsap_timeline_return_used_as_tween",
+          severity: "error",
+          message:
+            `\`${match[0].includes(".push") ? "push" : boundName}\` captures the return of \`.${method}()\` on timeline \`${timelineVars[0]}\`, ` +
+            "but a timeline's `.to()`/`.from()`/`.set()` returns THE TIMELINE ITSELF, not the tween it created. " +
+            "Every captured value is the same master timeline, so a tween-scoped call on it — `.kill()` above all — " +
+            "hits the whole composition: it interrupts the timeline and detaches it from its parent, which freezes a " +
+            "parent-driven seek while an explicit `tl.progress()` keeps working. Only `gsap.to()` returns a tween.",
+          fixHint:
+            "To build a group of keyframes you can later discard, put them in a nested timeline: " +
+            "`const nested = gsap.timeline(); nested.to(...); tl.add(nested, 0);` — then `nested.kill()` " +
+            "replaces exactly those keyframes and cannot reach `tl`. Children keep their absolute times when the " +
+            "nest is added at 0. To hold a single real tween, create it with `gsap.to(...)` and place it with `tl.add(tween, at)`.",
+          snippet: truncateSnippet(source.slice(contextStart, match.index + match[0].length + 60)),
+        });
+      }
+    }
+    return findings;
+  },
+
   // gsap_group_selector_keyframes
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];

@@ -1,9 +1,49 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePlayerStore } from "../player";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
-import type { StudioLookSnapshot } from "./tools/lookTools";
+import { collectStudioLookScene, type StudioLookSnapshot } from "./tools/lookTools";
+import { studioEditLifecycle } from "./writeCoordinator";
+import { findElementForSelection } from "../components/editor/domEditingElement";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import {
+  applyStudioBoxSizeDraft,
+  captureStudioBoxSize,
+  restoreStudioBoxSize,
+} from "../components/editor/manualEdits";
+
+export function readLiveSelectionBox(
+  doc: Document | null | undefined,
+  selection: DomEditSelection,
+  activeCompositionPath: string | null,
+) {
+  const liveElement = doc
+    ? findElementForSelection(doc, selection, activeCompositionPath)
+    : selection.element;
+  if (!liveElement) throw new Error("the target is missing from the current Studio preview");
+  const rect = liveElement.getBoundingClientRect();
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+}
+
+type ResizeCommit = (
+  selection: DomEditSelection,
+  next: { width: number; height: number },
+  offset?: { x: number; y: number },
+  restore?: () => void,
+) => Promise<void>;
+
+export function resizeSelectionFromAgent(
+  selection: DomEditSelection,
+  next: { width: number; height: number },
+  commit: ResizeCommit,
+): Promise<void> {
+  const previous = captureStudioBoxSize(selection.element);
+  applyStudioBoxSizeDraft(selection.element, next);
+  return commit(selection, next, undefined, () => {
+    restoreStudioBoxSize(selection.element, previous);
+  });
+}
 
 /**
  * Mounts Studio's WebMCP tool surface. Renders nothing.
@@ -20,6 +60,7 @@ export function StudioAgentTools() {
   const { projectId, activeCompPath, editHistory, writeBlockedReason } = useStudioShellContext();
   const {
     domEditSelection,
+    activeGroupElement,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -28,8 +69,8 @@ export function StudioAgentTools() {
     previewIframeRef,
     buildDomSelectionFromTarget,
     applyDomSelection,
-    handleDomTextCommit,
-    handleDomStyleCommit,
+    handleDomTextCommitForSelection,
+    handleDomStyleCommitForSelection,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -37,7 +78,13 @@ export function StudioAgentTools() {
     handleGsapUpdateMeta,
     handleGsapAddKeyframeBatch,
     handleGsapDeleteAnimation,
+    getGsapAnimationsForSelection,
   } = useDomEditActionsContext();
+
+  useEffect(() => {
+    studioEditLifecycle.activateProject(projectId);
+    return () => studioEditLifecycle.reset();
+  }, [projectId]);
 
   const getSnapshot = useCallback((): StudioLookSnapshot => {
     const player = usePlayerStore.getState();
@@ -48,6 +95,11 @@ export function StudioAgentTools() {
       duration: player.duration,
       isPlaying: player.isPlaying,
       elements: player.elements,
+      scene: collectStudioLookScene(
+        previewIframeRef.current?.contentDocument ?? null,
+        activeCompPath,
+        activeGroupElement,
+      ),
       selection: domEditSelection,
       selectionAnimationCount: selectedGsapAnimations.length,
       history: {
@@ -57,13 +109,21 @@ export function StudioAgentTools() {
         redoLabel: editHistory.redoLabel ?? null,
       },
     };
-  }, [projectId, activeCompPath, domEditSelection, selectedGsapAnimations, editHistory]);
+  }, [
+    projectId,
+    activeCompPath,
+    domEditSelection,
+    activeGroupElement,
+    selectedGsapAnimations,
+    editHistory,
+    previewIframeRef,
+  ]);
 
   const deps = useMemo<StudioAgentToolsDeps>(
     () => ({
       getSnapshot,
       getPreviewDocument: () => previewIframeRef.current?.contentDocument ?? null,
-      buildSelection: (element) => buildDomSelectionFromTarget(element),
+      buildSelection: (element) => buildDomSelectionFromTarget(element, { exactTarget: true }),
       applySelection: (selection) => applyDomSelection(selection, { revealPanel: true }),
       requestSeek: (time) => usePlayerStore.getState().requestSeek(time),
       readPlayhead: () => {
@@ -90,22 +150,29 @@ export function StudioAgentTools() {
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       getCurrentSelection: () => domEditSelection,
       getWriteBlockedReason: () => writeBlockedReason,
-      setText: (value, fieldKey) => handleDomTextCommit(value, fieldKey),
-      setStyle: (property, value) => handleDomStyleCommit(property, value),
+      setText: (selection, value, fieldKey) =>
+        handleDomTextCommitForSelection(selection, value, fieldKey),
+      setStyle: (selection, property, value) =>
+        handleDomStyleCommitForSelection(selection, property, value),
       // Measured, not authored: the tool compares this before and after to
-      // tell a real change from a handler that did nothing and resolved.
-      readBox: (selection) => {
-        const rect = selection.element.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      },
+      // tell a real change from a handler that did nothing and resolved. A
+      // successful commit may replace the preview document, so re-resolve the
+      // source-safe selection instead of measuring its detached old node.
+      readBox: (selection) =>
+        readLiveSelectionBox(previewIframeRef.current?.contentDocument, selection, activeCompPath),
       moveTo: (selection, next) => handleDomPathOffsetCommit(selection, next),
-      resizeTo: (selection, next) => handleDomBoxSizeCommit(selection, next),
+      resizeTo: (selection, next) =>
+        resizeSelectionFromAgent(selection, next, handleDomBoxSizeCommit),
       rotateTo: (selection, next) => handleDomRotationCommit(selection, next),
-      addAnimation: (method) => handleGsapAddAnimation(method),
-      updateAnimation: (animationId, updates) => handleGsapUpdateMeta(animationId, updates),
-      addKeyframe: (animationId, percent, properties) =>
-        handleGsapAddKeyframeBatch(animationId, percent, properties),
-      deleteAnimation: (animationId) => handleGsapDeleteAnimation(animationId),
+      addAnimation: (selection, method) => handleGsapAddAnimation(method, selection),
+      updateAnimation: (selection, animationId, updates) =>
+        handleGsapUpdateMeta(animationId, updates, selection),
+      addKeyframe: (selection, animationId, percent, properties) =>
+        handleGsapAddKeyframeBatch(animationId, percent, properties, undefined, selection),
+      deleteAnimation: (selection, animationId) =>
+        handleGsapDeleteAnimation(animationId, selection),
+      getAnimationsForSelection: async (selection) =>
+        await getGsapAnimationsForSelection(selection),
       getGsapDiagnostics: () => ({
         animations: selectedGsapAnimations,
         multipleTimelines: gsapMultipleTimelines,
@@ -120,8 +187,8 @@ export function StudioAgentTools() {
       projectId,
       activeCompPath,
       writeBlockedReason,
-      handleDomTextCommit,
-      handleDomStyleCommit,
+      handleDomTextCommitForSelection,
+      handleDomStyleCommitForSelection,
       handleDomPathOffsetCommit,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
@@ -129,6 +196,7 @@ export function StudioAgentTools() {
       handleGsapUpdateMeta,
       handleGsapAddKeyframeBatch,
       handleGsapDeleteAnimation,
+      getGsapAnimationsForSelection,
       domEditSelection,
       selectedGsapAnimations,
       gsapMultipleTimelines,

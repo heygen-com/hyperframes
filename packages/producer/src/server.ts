@@ -142,9 +142,14 @@ export interface SafeRenderErrorMetadata {
   errorCode: string;
   errorOwner?: "system" | "user";
   retryable?: boolean;
+  /** Public, producer-authored data whose schema and policy belong to callers. */
+  errorMetadata?: Readonly<Record<string, unknown>>;
 }
 
-/** Additive bounded metadata for typed producer failures. */
+/**
+ * Additive public metadata for typed producer failures. The producer server
+ * only transports it; callers own schema validation and policy decisions.
+ */
 export function extractSafeRenderErrorMetadata(
   error: unknown,
 ): SafeRenderErrorMetadata | undefined {
@@ -152,10 +157,12 @@ export function extractSafeRenderErrorMetadata(
   if (!errorCode || typeof error !== "object" || error === null) return undefined;
   const owner = "owner" in error ? error.owner : undefined;
   const retryable = "retryable" in error ? error.retryable : undefined;
+  const publicMetadata = "publicMetadata" in error ? error.publicMetadata : undefined;
   return {
     errorCode,
     errorOwner: owner === "user" || owner === "system" ? owner : undefined,
     retryable: typeof retryable === "boolean" ? retryable : undefined,
+    ...(isPlainObject(publicMetadata) ? { errorMetadata: publicMetadata } : {}),
   };
 }
 
@@ -625,6 +632,7 @@ async function writeRenderStreamFailure(input: {
       errorCode: safeError?.errorCode,
       errorOwner: safeError?.errorOwner,
       retryable: safeError?.retryable,
+      errorMetadata: safeError?.errorMetadata,
       stage: job.currentStage,
       elapsedMs,
       errorDetails: job.errorDetails ?? null,
@@ -788,6 +796,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           errorCode: safeError?.errorCode,
           errorOwner: safeError?.errorOwner,
           retryable: safeError?.retryable,
+          errorMetadata: safeError?.errorMetadata,
           stage: job.currentStage,
           durationMs,
           errorDetails: job.errorDetails ?? null,

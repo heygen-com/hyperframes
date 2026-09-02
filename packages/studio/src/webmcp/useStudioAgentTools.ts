@@ -177,8 +177,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_SET_TEXT_DESCRIPTION,
       inputSchema: STUDIO_SET_TEXT_INPUT_SCHEMA,
       annotations: { readOnlyHint: false, untrustedContentHint: true },
-      execute: (input): Promise<ToolResult<StudioSetTextResult>> =>
-        runToolBody("studio_set_text", () => studioSetText(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioSetTextResult>> =>
+        runToolBody<StudioSetTextResult>("studio_set_text", () =>
+          studioSetText(depsRef.current, input, signal),
+        ),
     },
     {
       name: "studio_set_style",
@@ -186,8 +188,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_SET_STYLE_DESCRIPTION,
       inputSchema: STUDIO_SET_STYLE_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioSetStyleResult>> =>
-        runToolBody("studio_set_style", () => studioSetStyle(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioSetStyleResult>> =>
+        runToolBody<StudioSetStyleResult>("studio_set_style", () =>
+          studioSetStyle(depsRef.current, input, signal),
+        ),
     },
     {
       name: "studio_transform",
@@ -195,9 +199,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_TRANSFORM_DESCRIPTION,
       inputSchema: STUDIO_TRANSFORM_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioTransformResult>> =>
-        runToolBody("studio_transform", () =>
-          studioTransform(depsRef.current, input as StudioTransformInput),
+      execute: (input, { signal }): Promise<ToolResult<StudioTransformResult>> =>
+        runToolBody<StudioTransformResult>("studio_transform", () =>
+          studioTransform(depsRef.current, input as StudioTransformInput, signal),
         ),
     },
     {
@@ -206,8 +210,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_ADD_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_ADD_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioAddAnimationResult>> =>
-        runToolBody("studio_add_animation", () => studioAddAnimation(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioAddAnimationResult>> =>
+        runToolBody<StudioAddAnimationResult>("studio_add_animation", () =>
+          studioAddAnimation(depsRef.current, input, signal),
+        ),
     },
     {
       name: "studio_update_animation",
@@ -215,8 +221,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_UPDATE_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_UPDATE_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioUpdateAnimationResult>> =>
-        runToolBody("studio_update_animation", () => studioUpdateAnimation(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioUpdateAnimationResult>> =>
+        runToolBody<StudioUpdateAnimationResult>("studio_update_animation", () =>
+          studioUpdateAnimation(depsRef.current, input, signal),
+        ),
     },
     {
       name: "studio_add_keyframe",
@@ -224,8 +232,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_ADD_KEYFRAME_DESCRIPTION,
       inputSchema: STUDIO_ADD_KEYFRAME_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioAddKeyframeResult>> =>
-        runToolBody("studio_add_keyframe", () => studioAddKeyframe(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioAddKeyframeResult>> =>
+        runToolBody<StudioAddKeyframeResult>("studio_add_keyframe", () =>
+          studioAddKeyframe(depsRef.current, input, signal),
+        ),
     },
     {
       name: "studio_delete_animation",
@@ -233,8 +243,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_DELETE_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_DELETE_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input): Promise<ToolResult<StudioDeleteAnimationResult>> =>
-        runToolBody("studio_delete_animation", () => studioDeleteAnimation(depsRef.current, input)),
+      execute: (input, { signal }): Promise<ToolResult<StudioDeleteAnimationResult>> =>
+        runToolBody<StudioDeleteAnimationResult>("studio_delete_animation", () =>
+          studioDeleteAnimation(depsRef.current, input, signal),
+        ),
     },
   ];
 }

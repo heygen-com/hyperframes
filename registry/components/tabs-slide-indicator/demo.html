@@ -35,6 +35,7 @@
       }
       .hf-transition-tabs-slide-indicator {
         --hf-tab-x: 0px;
+        --hf-tab-offset: var(--hf-tab-x);
         position: relative;
         display: inline-grid;
         grid-template-columns: repeat(3, 86px);
@@ -52,20 +53,35 @@
         height: 36px;
         border-radius: 999px;
         background: #18181b;
-        transform: translateX(var(--hf-tab-x));
+        transform: translateX(var(--hf-tab-offset));
         box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
       }
       .hf-transition-tabs-slide-indicator button {
+        --hf-tab-highlight-start: clamp(
+          0px,
+          calc(var(--hf-tab-offset) - var(--hf-tab-index) * 86px),
+          86px
+        );
+        --hf-tab-highlight-end: clamp(
+          0px,
+          calc(var(--hf-tab-offset) + 86px - var(--hf-tab-index) * 86px),
+          86px
+        );
         position: relative;
         z-index: 1;
         height: 36px;
         border: 0;
-        background: transparent;
-        color: #71717a;
+        background-color: transparent;
+        background-image: linear-gradient(
+          to right,
+          #6f6f78 0 var(--hf-tab-highlight-start),
+          #fff var(--hf-tab-highlight-start) var(--hf-tab-highlight-end),
+          #6f6f78 var(--hf-tab-highlight-end) 100%
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
         font-weight: 600;
-      }
-      .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
-        color: #fff;
       }
     </style>
   </head>
@@ -88,8 +104,9 @@
     { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "The tab names, separated by commas. Two or more names rebuild the row.", "default": "Plan,Debug,Ask" }
   ]'
         >
-          <span class="indicator"></span><button>Plan</button><button>Debug</button
-          ><button>Ask</button>
+          <span class="indicator"></span><button style="--hf-tab-index: 0">Plan</button
+          ><button style="--hf-tab-index: 1">Debug</button
+          ><button style="--hf-tab-index: 2">Ask</button>
         </div>
       </div>
       <script>
@@ -147,6 +164,7 @@
               for (var k = 0; k < labels.length; k += 1) {
                 var button = document.createElement("button");
                 button.textContent = labels[k];
+                button.style.setProperty("--hf-tab-index", String(k));
                 roots[i].appendChild(button);
               }
               roots[i].style.setProperty("--hf-tab-count", String(labels.length));
@@ -158,12 +176,11 @@
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
         tl.fromTo(
-          ".hf-transition-tabs-slide-indicator .indicator",
+          ".hf-transition-tabs-slide-indicator",
           { "--hf-tab-x": "0px" },
           { "--hf-tab-x": "86px", duration: 0.42, ease: "power3.inOut" },
           startTime,
         );
-        tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};
         window.__timelines["tabs-slide-indicator-demo"] = tl;
       </script>
@@ -171,6 +188,7 @@
     <style>
       .hf-transition-tabs-slide-indicator {
         --hf-tab-x: 0px;
+        --hf-tab-offset: calc(var(--hf-tab-x) * var(--hf-tab-step, 1));
         position: relative;
         display: inline-grid;
         grid-template-columns: repeat(var(--hf-tab-count, 3), var(--hf-tab-width, 86px));
@@ -188,20 +206,38 @@
         height: 36px;
         border-radius: var(--hf-tab-radius, 999px);
         background: var(--hf-tab-fill, #18181b);
-        transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1)));
+        transform: translateX(var(--hf-tab-offset));
         box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
       }
       .hf-transition-tabs-slide-indicator button {
+        --hf-tab-highlight-start: clamp(
+          0px,
+          calc(var(--hf-tab-offset) - var(--hf-tab-index) * var(--hf-tab-width, 86px)),
+          var(--hf-tab-width, 86px)
+        );
+        --hf-tab-highlight-end: clamp(
+          0px,
+          calc(
+            var(--hf-tab-offset) + var(--hf-tab-width, 86px) - var(--hf-tab-index) *
+              var(--hf-tab-width, 86px)
+          ),
+          var(--hf-tab-width, 86px)
+        );
         position: relative;
         z-index: 1;
         height: 36px;
         border: 0;
-        background: transparent;
-        color: #71717a;
+        background-color: transparent;
+        background-image: linear-gradient(
+          to right,
+          #6f6f78 0 var(--hf-tab-highlight-start),
+          #fff var(--hf-tab-highlight-start) var(--hf-tab-highlight-end),
+          #6f6f78 var(--hf-tab-highlight-end) 100%
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
         font-weight: 850;
-      }
-      .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
-        color: #fff;
       }
     </style>
   </body>

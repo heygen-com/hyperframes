@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
 import type { StudioApiAdapter } from "../types";
+import { createProjectSignature } from "../helpers/projectSignature.js";
 
 const tempProjectDirs: string[] = [];
 
@@ -317,6 +318,98 @@ describe("registerThumbnailRoutes", () => {
     writeFileSync(indexPath, `<div id="box">after</div>`);
     await app.request(url);
 
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates a parent thumbnail when nested composition HTML changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    writeFileSync(
+      join(project.dir, "index.html"),
+      `<div data-width="640" data-height="360" data-composition-src="compositions/nested.html"></div>`,
+    );
+    const compositionsDir = join(project.dir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    const nestedPath = join(compositionsDir, "nested.html");
+    writeFileSync(nestedPath, `<div>before</div>`);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=2&v=test";
+
+    await app.request(url);
+    writeFileSync(nestedPath, `<div>after with a different size</div>`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates a thumbnail when imported CSS changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    writeFileSync(
+      join(project.dir, "index.html"),
+      `<link rel="stylesheet" href="./styles.css"><div data-width="640" data-height="360"></div>`,
+    );
+    const stylesPath = join(project.dir, "styles.css");
+    writeFileSync(stylesPath, `.card { color: red; }`);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=2&v=test";
+
+    await app.request(url);
+    writeFileSync(stylesPath, `.card { color: rebeccapurple; }`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the adapter-cached project signature for disk reuse and in-flight dedupe", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const getProjectSignature = vi.fn(() => createProjectSignature(project.dir));
+    adapter.getProjectSignature = getProjectSignature;
+    let resolve!: (buffer: Buffer) => void;
+    const generated = new Promise<Buffer>((done) => (resolve = done));
+    adapter.generateThumbnail = vi.fn(async () => generated);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+
+    const first = app.request(url);
+    const duplicate = app.request(url);
+    await vi.waitFor(() => expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1));
+    resolve(Buffer.from("shared"));
+    expect(await (await first).text()).toBe("shared");
+    expect(await (await duplicate).text()).toBe("shared");
+    expect(await (await app.request(url)).text()).toBe("shared");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+    expect(getProjectSignature).toHaveBeenCalledTimes(4);
+    expect(getProjectSignature).toHaveBeenNthCalledWith(1, project.dir);
+  });
+
+  it("does not cache generated pixels under a signature that changed in flight", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const signatures = ["old", "new", "old", "old"];
+    adapter.getProjectSignature = vi.fn(() => signatures.shift() ?? "old");
+    adapter.generateThumbnail = vi
+      .fn()
+      .mockResolvedValueOnce(Buffer.from("rendered-after-change"))
+      .mockResolvedValueOnce(Buffer.from("rendered-old"));
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+
+    expect(await (await app.request(url)).text()).toBe("rendered-after-change");
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect(await (await app.request(url)).text()).toBe("rendered-old");
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
   });
 

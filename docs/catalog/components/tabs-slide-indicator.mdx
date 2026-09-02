@@ -42,8 +42,8 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
       commas. Two or more names rebuild the row, one name or none leaves the
       authored markup alone, since a single tab has nowhere to slide to.
 
-  On every default the result is identical to the original: three 86px tabs in
-  a light pill track, a near-black pill sliding from the first to the second.
+  With the defaults, this renders three 86px tabs in a light pill track. The
+  near-black pill and white active label move from the first tab to the second.
 -->
 
 <div
@@ -55,12 +55,14 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "The tab names, separated by commas. Two or more names rebuild the row.", "default": "Plan,Debug,Ask" }
   ]'
 >
-  <span class="indicator"></span><button>Plan</button><button>Debug</button><button>Ask</button>
+  <span class="indicator"></span><button style="--hf-tab-index: 0">Plan</button
+  ><button style="--hf-tab-index: 1">Debug</button><button style="--hf-tab-index: 2">Ask</button>
 </div>
 
 <style>
   .hf-transition-tabs-slide-indicator {
     --hf-tab-x: 0px;
+    --hf-tab-offset: calc(var(--hf-tab-x) * var(--hf-tab-step, 1));
     position: relative;
     display: inline-grid;
     grid-template-columns: repeat(var(--hf-tab-count, 3), var(--hf-tab-width, 86px));
@@ -78,20 +80,38 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     height: 36px;
     border-radius: var(--hf-tab-radius, 999px);
     background: var(--hf-tab-fill, #18181b);
-    transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1)));
+    transform: translateX(var(--hf-tab-offset));
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
   }
   .hf-transition-tabs-slide-indicator button {
+    --hf-tab-highlight-start: clamp(
+      0px,
+      calc(var(--hf-tab-offset) - var(--hf-tab-index) * var(--hf-tab-width, 86px)),
+      var(--hf-tab-width, 86px)
+    );
+    --hf-tab-highlight-end: clamp(
+      0px,
+      calc(
+        var(--hf-tab-offset) + var(--hf-tab-width, 86px) - var(--hf-tab-index) *
+          var(--hf-tab-width, 86px)
+      ),
+      var(--hf-tab-width, 86px)
+    );
     position: relative;
     z-index: 1;
     height: 36px;
     border: 0;
-    background: transparent;
-    color: #71717a;
+    background-color: transparent;
+    background-image: linear-gradient(
+      to right,
+      #6f6f78 0 var(--hf-tab-highlight-start),
+      #fff var(--hf-tab-highlight-start) var(--hf-tab-highlight-end),
+      #6f6f78 var(--hf-tab-highlight-end) 100%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
     font-weight: 850;
-  }
-  .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
-    color: #fff;
   }
 </style>
 
@@ -150,6 +170,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
         for (var k = 0; k < labels.length; k += 1) {
           var button = document.createElement("button");
           button.textContent = labels[k];
+          button.style.setProperty("--hf-tab-index", String(k));
           roots[i].appendChild(button);
         }
         roots[i].style.setProperty("--hf-tab-count", String(labels.length));
@@ -160,7 +181,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-transition-tabs-slide-indicator .indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
+  tl.fromTo('.hf-transition-tabs-slide-indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
 -->
 ```
 
@@ -228,8 +249,8 @@ defaults, so this behaves exactly like the preview above until you change one:
       commas. Two or more names rebuild the row, one name or none leaves the
       authored markup alone, since a single tab has nowhere to slide to.
 
-  On every default the result is identical to the original: three 86px tabs in
-  a light pill track, a near-black pill sliding from the first to the second.
+  With the defaults, this renders three 86px tabs in a light pill track. The
+  near-black pill and white active label move from the first tab to the second.
 -->
 
 <div
@@ -241,12 +262,14 @@ defaults, so this behaves exactly like the preview above until you change one:
     { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "The tab names, separated by commas. Two or more names rebuild the row.", "default": "Plan,Debug,Ask" }
   ]'
 >
-  <span class="indicator"></span><button>Plan</button><button>Debug</button><button>Ask</button>
+  <span class="indicator"></span><button style="--hf-tab-index: 0">Plan</button
+  ><button style="--hf-tab-index: 1">Debug</button><button style="--hf-tab-index: 2">Ask</button>
 </div>
 
 <style>
   .hf-transition-tabs-slide-indicator {
     --hf-tab-x: 0px;
+    --hf-tab-offset: calc(var(--hf-tab-x) * var(--hf-tab-step, 1));
     position: relative;
     display: inline-grid;
     grid-template-columns: repeat(var(--hf-tab-count, 3), var(--hf-tab-width, 86px));
@@ -264,20 +287,38 @@ defaults, so this behaves exactly like the preview above until you change one:
     height: 36px;
     border-radius: var(--hf-tab-radius, 999px);
     background: var(--hf-tab-fill, #18181b);
-    transform: translateX(calc(var(--hf-tab-x) * var(--hf-tab-step, 1)));
+    transform: translateX(var(--hf-tab-offset));
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
   }
   .hf-transition-tabs-slide-indicator button {
+    --hf-tab-highlight-start: clamp(
+      0px,
+      calc(var(--hf-tab-offset) - var(--hf-tab-index) * var(--hf-tab-width, 86px)),
+      var(--hf-tab-width, 86px)
+    );
+    --hf-tab-highlight-end: clamp(
+      0px,
+      calc(
+        var(--hf-tab-offset) + var(--hf-tab-width, 86px) - var(--hf-tab-index) *
+          var(--hf-tab-width, 86px)
+      ),
+      var(--hf-tab-width, 86px)
+    );
     position: relative;
     z-index: 1;
     height: 36px;
     border: 0;
-    background: transparent;
-    color: #71717a;
+    background-color: transparent;
+    background-image: linear-gradient(
+      to right,
+      #6f6f78 0 var(--hf-tab-highlight-start),
+      #fff var(--hf-tab-highlight-start) var(--hf-tab-highlight-end),
+      #6f6f78 var(--hf-tab-highlight-end) 100%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
     font-weight: 850;
-  }
-  .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
-    color: #fff;
   }
 </style>
 
@@ -336,6 +377,7 @@ defaults, so this behaves exactly like the preview above until you change one:
         for (var k = 0; k < labels.length; k += 1) {
           var button = document.createElement("button");
           button.textContent = labels[k];
+          button.style.setProperty("--hf-tab-index", String(k));
           roots[i].appendChild(button);
         }
         roots[i].style.setProperty("--hf-tab-count", String(labels.length));
@@ -346,7 +388,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-transition-tabs-slide-indicator .indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
+  tl.fromTo('.hf-transition-tabs-slide-indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
 -->
 ```
 

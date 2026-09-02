@@ -107,7 +107,7 @@ describe("processCompositionAudio", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    runFfmpegMock.mockClear();
+    runFfmpegMock.mockReset();
     extractAudioMetadataMock.mockReset();
     extractAudioMetadataMock.mockResolvedValue({
       durationSeconds: 2,
@@ -1098,7 +1098,9 @@ describe("processCompositionAudio", () => {
     // indefinite `apad` to cap the padded stream at composition duration.
     expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount * 2);
     expect((filter?.match(/apad,/g) ?? []).length).toBe(trackCount);
-  });
+    // 150 real files + 150 existence checks: ~60ms on Linux, but well past the 5s
+    // default on the Windows lane, where each file create is orders slower.
+  }, 30_000);
 
   it("renumbers timestamps between apad and atrim on every mixed branch", async () => {
     // Regression: `apad` then `atrim` is the portable pad-to-length shape --

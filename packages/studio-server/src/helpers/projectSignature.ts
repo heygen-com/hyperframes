@@ -70,6 +70,7 @@ export function affectsProjectSignature(projectDir: string, changedPath: string)
 interface ProjectSignatureFile {
   file: string;
   mtimeMs: number;
+  ctimeMs: number;
   size: number;
   textContentEligible: boolean;
 }
@@ -124,6 +125,7 @@ function collectProjectSignatureFiles(
       files.push({
         file,
         mtimeMs: stat.mtimeMs,
+        ctimeMs: stat.ctimeMs,
         size: stat.size,
         textContentEligible: isTextContentEligible(file, stat.size),
       });
@@ -149,6 +151,7 @@ function collectProjectSignatureManifestFiles(
     files.push({
       file,
       mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
       size: stat.size,
       textContentEligible: isTextContentEligible(file, stat.size),
     });
@@ -164,6 +167,8 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
     hash.update(String(entry.size));
     hash.update("\0");
     hash.update(String(entry.mtimeMs));
+    hash.update("\0");
+    hash.update(String(entry.ctimeMs));
     hash.update("\0");
     hash.update(entry.textContentEligible ? "text" : "binary");
     hash.update("\0");

@@ -51,7 +51,7 @@ describe("dom edit save queue", () => {
     queue.destroy();
   });
 
-  it("keeps an open breaker paused even when already queued work succeeds", async () => {
+  it("stops already queued work when the preceding save opens the breaker", async () => {
     const onOpen = vi.fn();
     const onReset = vi.fn();
     const queue = createDomEditSaveQueue({
@@ -72,13 +72,15 @@ describe("dom edit save queue", () => {
           resolveFirstStarted?.();
         }),
     );
-    const second = queue.enqueue(async () => {});
+    const secondSave = vi.fn(async () => undefined);
+    const second = queue.enqueue(secondSave);
 
     await firstStarted;
     expect(rejectFirst).toBeTypeOf("function");
     rejectFirst?.(new StudioSaveHttpError("Server down", 503));
     await expect(first).rejects.toThrow("Server down");
-    await expect(second).resolves.toBeUndefined();
+    await expect(second).rejects.toThrow("Auto-save is paused");
+    expect(secondSave).not.toHaveBeenCalled();
 
     expect(onOpen).toHaveBeenCalledOnce();
     expect(onReset).not.toHaveBeenCalled();

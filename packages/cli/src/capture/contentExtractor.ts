@@ -266,22 +266,38 @@ export async function captionImagesWithGemini(
   }
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!openRouterKey && !geminiKey) {
+  // Vertex authenticates with a service account and a project instead of an API key. Server
+  // deployments have those; they often do not have a working Gemini API key, and a rejected
+  // key is indistinguishable from an unset one in the output — every request simply returns
+  // nothing and the capture reports "0 images captioned".
+  const vertexProject = process.env.HYPERFRAMES_VERTEX_PROJECT_ID;
+  const vertexServiceAccount = process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT;
+  const useVertex = Boolean(vertexProject && vertexServiceAccount);
+  if (!openRouterKey && !useVertex && !geminiKey) {
     reportOutcome();
     return geminiCaptions;
   }
 
-  // OpenRouter takes priority when both keys are set — it's the explicit opt-in
-  // for users without Google access. Both providers satisfy the same
-  // single-image → one-line-caption contract (`captionOne`), so the batching and
-  // SVG-rasterization loops below stay provider-agnostic.
-  const useOpenRouter = Boolean(openRouterKey);
-  const providerName = useOpenRouter ? "OpenRouter" : "Gemini";
-  // Default mirrors the Gemini path's tier (3.x flash-lite). Override per
-  // provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_GEMINI_MODEL.
-  const model = useOpenRouter
-    ? process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite"
-    : process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+  // OpenRouter takes priority — it's the explicit opt-in for users without Google access.
+  // Vertex outranks the bare API key because it is the credential a deployment actually
+  // holds. All three satisfy the same single-image → one-line-caption contract
+  // (`captionOne`), so the batching and SVG-rasterization loops stay provider-agnostic.
+  const provider: "openrouter" | "vertex" | "gemini" = openRouterKey
+    ? "openrouter"
+    : useVertex
+      ? "vertex"
+      : "gemini";
+  const providerName = { openrouter: "OpenRouter", vertex: "Vertex AI", gemini: "Gemini" }[
+    provider
+  ];
+  // Override per provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_VERTEX_MODEL /
+  // HYPERFRAMES_GEMINI_MODEL. Vertex publishes a different model set than the Gemini API —
+  // the API's flash-lite preview id is not resolvable there — so it carries its own default.
+  const model = {
+    openrouter: process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite",
+    vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-2.5-flash",
+    gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
+  }[provider];
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
 
   progress("design", `Captioning images with ${providerName} vision...`);
@@ -297,7 +313,7 @@ export async function captionImagesWithGemini(
     }) => Promise<string>;
 
     let captionOne: CaptionOne;
-    if (openRouterKey) {
+    if (provider === "openrouter") {
       captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
         return runBoundedVisionRequest(async (signal) => {
           const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -335,10 +351,33 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
-      // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
-      if (!geminiKey) return geminiCaptions;
       const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      let ai: InstanceType<typeof GoogleGenAI>;
+      if (provider === "vertex") {
+        // Re-narrow for TS; `useVertex` already guaranteed both are set.
+        if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
+        let credentials: Record<string, unknown>;
+        try {
+          credentials = JSON.parse(vertexServiceAccount) as Record<string, unknown>;
+        } catch {
+          warnings.push(
+            "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.",
+          );
+          internalError = true;
+          reportOutcome();
+          return geminiCaptions;
+        }
+        ai = new GoogleGenAI({
+          vertexai: true,
+          project: vertexProject,
+          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
+          googleAuthOptions: { credentials },
+        });
+      } else {
+        // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
+        if (!geminiKey) return geminiCaptions;
+        ai = new GoogleGenAI({ apiKey: geminiKey });
+      }
       captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
         const response = await runBoundedVisionRequest(
           (signal) =>
@@ -352,6 +391,12 @@ export async function captionImagesWithGemini(
               ],
               config: {
                 maxOutputTokens: maxTokens,
+                // A one-line factual caption needs no reasoning, and leaving thinking on is
+                // not merely wasteful: thinking tokens are drawn from maxOutputTokens, so the
+                // model can spend the whole budget and return empty text. That surfaces as a
+                // successful request with no caption — the capture then logs "Captioned N/N
+                // images" followed by "0 images captioned", which is what production shows.
+                thinkingConfig: { thinkingBudget: 0 },
                 abortSignal: signal,
                 httpOptions: { timeout: timeoutMs },
               },
@@ -464,6 +509,13 @@ export async function captionImagesWithGemini(
         reportOutcome();
         return geminiCaptions;
       }
+      // libvips' worker pool sizes itself to the host's core count, and several concurrent SVG
+      // renders then multiply that — the combination corrupted the heap in production (see the
+      // serialized rasterize loop below). `sharp.concurrency` is process-global and outlives this
+      // function, so remember the host's value and bound the pool only around the renders that
+      // need it: captioning must not leave every later sharp caller in this process — none of
+      // which asked for captioning — pinned to a single thread for the rest of its life.
+      const hostConcurrency = sharp.concurrency();
       progress("design", `Rasterizing + captioning ${svgFiles.length} SVGs via vision API...`);
       const SVG_BATCH = 20;
       const SVG_RENDER_SIZE = 256; // px — enough resolution for Gemini to read wordmarks, small enough to keep payload sub-MB
@@ -476,10 +528,19 @@ export async function captionImagesWithGemini(
         }
         const timeoutMs = Math.max(1, Math.min(requestTimeoutMs, remainingMs));
         const batch = svgFiles.slice(i, i + SVG_BATCH);
-        const results = await Promise.allSettled(
-          batch.map(async ({ relPath }) => {
+        // Rasterize the batch one file at a time, then caption it in parallel.
+        //
+        // Rasterizing the whole batch concurrently drove up to SVG_BATCH simultaneous librsvg
+        // renders through libvips, and that corrupts the heap: production captures aborted
+        // with `free(): unaligned chunk detected in tcache 2` (SIGABRT) during this phase and
+        // lost the entire capture. A native abort cannot be caught by the try/catch below, so
+        // the concurrency has to go rather than be handled. Rasterizing is local and cheap;
+        // the vision request is the slow leg and stays parallel, so throughput barely moves.
+        const rasterized: { relPath: string; pngBase64: string | null }[] = [];
+        sharp.concurrency(1);
+        try {
+          for (const { relPath } of batch) {
             const filePath = join(assetsDir, relPath);
-            let pngBase64: string;
             try {
               // Flatten against a contrasting background — white-on-white SVGs render invisible to Vision.
               const svgSource = readFileSync(filePath, "utf-8");
@@ -504,12 +565,21 @@ export async function captionImagesWithGemini(
                 .flatten({ background: bg })
                 .png()
                 .toBuffer();
-              pngBase64 = pngBuffer.toString("base64");
+              rasterized.push({ relPath, pngBase64: pngBuffer.toString("base64") });
             } catch {
               // exotic SVG features may break sharp; skip caption rather than block
               svgsSkipped++;
-              return { file: relPath, caption: "" };
+              rasterized.push({ relPath, pngBase64: null });
             }
+          }
+        } finally {
+          // Hand the pool back even if a rasterize threw: the vision requests below are network
+          // work that gains nothing from a pinned pool, and the process outlives this capture.
+          sharp.concurrency(hostConcurrency);
+        }
+        const results = await Promise.allSettled(
+          rasterized.map(async ({ relPath, pngBase64 }) => {
+            if (pngBase64 === null) return { file: relPath, caption: "" };
             const caption = await captionOne({
               mimeType: "image/png",
               base64: pngBase64,

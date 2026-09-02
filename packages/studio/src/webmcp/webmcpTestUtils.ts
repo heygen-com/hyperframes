@@ -8,6 +8,9 @@
 import { expect } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { ToolFailure, ToolResult } from "./toolResult";
+import type { SelectionToolDeps } from "./tools/selectionTools";
+import { mintElementHandle } from "./handles";
+import type { TargetedWriteDeps } from "./writeCoordinator";
 
 /**
  * An element inside a real iframe, which is where Studio's chrome expects to
@@ -75,6 +78,40 @@ export function selectionFor(
       canApplyManualRotation: true,
     },
     ...overrides,
+  };
+}
+
+export function selectionToolDeps(overrides: Partial<SelectionToolDeps> = {}): SelectionToolDeps {
+  return {
+    getPreviewDocument: () => null,
+    getCompositionPath: () => "index.html",
+    getProjectId: () => "project-a",
+    buildSelection: async (element) => selectionFor(element),
+    applySelection: () => undefined,
+    requestSeek: () => undefined,
+    readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
+    ...overrides,
+  };
+}
+
+export function sourceHandle(domId: string, projectId = "project-a"): string {
+  const handle = mintElementHandle({
+    projectId,
+    domId,
+    sourceFile: "index.html",
+    activeCompositionPath: "index.html",
+  });
+  if (!handle) throw new Error(`expected source handle for #${domId}`);
+  return handle;
+}
+
+export function targetedWriteDeps(selection: DomEditSelection): TargetedWriteDeps {
+  return {
+    getPreviewDocument: () => selection.element.ownerDocument,
+    getProjectId: () => "project-a",
+    getWriteBlockedReason: () => null,
+    buildSelection: async () => selection,
+    applySelection: () => undefined,
   };
 }
 

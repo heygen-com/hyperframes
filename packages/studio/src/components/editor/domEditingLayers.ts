@@ -281,10 +281,6 @@ export function resolveDomEditCapabilities(args: {
   ).capabilities;
 }
 
-// ─── Element label ────────────────────────────────────────────────────────────
-
-// ─── Source probe ────────────────────────────────────────────────────────────
-
 async function probeSourceElement(
   projectId: string,
   sourceFile: string,
@@ -310,17 +306,21 @@ async function probeSourceElement(
   }
 }
 
-// ─── Selection resolution ────────────────────────────────────────────────────
-
 // fallow-ignore-next-line complexity
 export async function resolveDomEditSelection(
   startEl: HTMLElement | null,
-  options: DomEditContextOptions & { projectId?: string | null; skipSourceProbe?: boolean },
+  options: DomEditContextOptions & {
+    projectId?: string | null;
+    skipSourceProbe?: boolean;
+    exactTarget?: boolean;
+  },
 ): Promise<DomEditSelection | null> {
   if (!startEl) return null;
   const doc = startEl.ownerDocument;
 
-  let capture = resolveGroupCapture(startEl, options.activeGroupElement ?? null);
+  let capture = options.exactTarget
+    ? ({ kind: "unit", element: startEl } as const)
+    : resolveGroupCapture(startEl, options.activeGroupElement ?? null);
   if (capture.kind === "out-of-scope") {
     // Drill-in is non-sticky: clicking/hovering OUTSIDE the drilled-into group
     // exits it and resolves the target normally, rather than selecting nothing

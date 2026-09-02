@@ -4,13 +4,24 @@
   data-composition-variables='[
     { "id": "titleL1", "type": "string", "role": "content", "label": "Note title line 1", "description": "First line of the note title.", "default": "Things nobody told me" },
     { "id": "titleL2", "type": "string", "role": "content", "label": "Note title line 2", "description": "Second line of the note title.", "default": "about video." },
-    { "id": "cardTop", "type": "string", "role": "content", "label": "Card headline top", "description": "First marker line on the closing card.", "default": "THE POWER" },
+    { "id": "noteLine1", "type": "string", "role": "content", "label": "Note body line 1", "description": "First typed line of the note. The seven body lines are the bulk of the video: they must be about the brand this video promotes, not about video-making.", "default": "my videos sucked" },
+    { "id": "noteLine2", "type": "string", "role": "content", "label": "Note body line 2", "description": "Second typed line of the note.", "default": "my tools cost $$$" },
+    { "id": "noteLine3", "type": "string", "role": "content", "label": "Note body line 3", "description": "Third typed line of the note.", "default": "and re-edits never end." },
+    { "id": "noteLine4", "type": "string", "role": "content", "label": "Note body line 4", "description": "Fourth typed line of the note — the turn, where the brand enters.", "default": "then i tried writing html only" },
+    { "id": "noteLine5", "type": "string", "role": "content", "label": "Note body line 5", "description": "Fifth typed line of the note — name the brand here.", "default": "started HyperFrames three weeks ago" },
+    { "id": "noteLine6", "type": "string", "role": "content", "label": "Note body line 6", "description": "Sixth typed line of the note.", "default": "the grind is gone, but more than that —" },
+    { "id": "noteLine7", "type": "string", "role": "content", "label": "Note body line 7", "description": "Last typed line of the note — the payoff.", "default": "I ship videos weekly." },
+    { "id": "cardTop", "type": "string", "role": "content", "label": "Card headline top", "description": "First marker line on the closing card. The underline follows its last word.", "default": "THE POWER" },
+    { "id": "cardMid", "type": "string", "role": "content", "label": "Card headline middle", "description": "Short connector line between the two headline lines, centred on the card.", "default": "OF" },
+    { "id": "cardBottom", "type": "string", "role": "content", "label": "Card headline bottom", "description": "Last marker line on the closing card. Its first word is ringed.", "default": "ONE FILE" },
     { "id": "check1Label", "type": "string", "role": "content", "label": "Checklist 1 label", "description": "Typewriter label of the first checklist row.", "default": "WRITE" },
     { "id": "check1Value", "type": "string", "role": "content", "label": "Checklist 1 value", "description": "Marker value of the first checklist row.", "default": "HTML" },
     { "id": "check2Label", "type": "string", "role": "content", "label": "Checklist 2 label", "description": "Typewriter label of the second checklist row.", "default": "RENDER" },
     { "id": "check2Value", "type": "string", "role": "content", "label": "Checklist 2 value", "description": "Marker value of the second checklist row.", "default": "IN 4K" },
     { "id": "check3Label", "type": "string", "role": "content", "label": "Checklist 3 label", "description": "Typewriter label of the third checklist row.", "default": "SHIP" },
-    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" }
+    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, in the sign-off strip under the card.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-black.svg" },
+    { "id": "brandDomain", "type": "string", "role": "content", "label": "Sign-off domain", "description": "Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.", "portrays": ["subject_domain"], "default": "hyperframes.heygen.com" }
   ]'
 >
   <head>
@@ -126,6 +137,34 @@
         background: #602640;
         opacity: 0.92;
       }
+      /* Sign-off strip: the card ends at y=1708, leaving 212px of dotted scene. The
+         advertiser's identity lives here rather than inside the card, so the hand-lettered
+         headline and checklist keep the geometry they were designed with. */
+      #brand-strip {
+        position: absolute;
+        left: 0;
+        top: 1742px;
+        width: 1080px;
+        height: 132px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      #brand-mark {
+        display: block;
+        height: 52px;
+        width: auto;
+      }
+      #brand-domain {
+        font-family: "Courier Prime", monospace;
+        font-weight: 700;
+        font-size: 27px;
+        letter-spacing: 4px;
+        color: #602640;
+        opacity: 0.62;
+      }
       #nrv-video {
         position: absolute;
         left: 380px;
@@ -235,7 +274,10 @@
         font-weight: 400;
         letter-spacing: 0em;
         color: #191919;
-        white-space: nowrap;
+        /* `pre`, not `nowrap`: the per-character spans are built at runtime from the line
+           variables, and a leading or trailing space in a supplied line would collapse under
+           `nowrap` — the caret then stalls on a zero-width span. */
+        white-space: pre;
       }
       #caret {
         position: absolute;
@@ -330,7 +372,6 @@
             <div
               class="mk"
               id="hl1"
-              data-layout-allow-overflow
               data-layout-allow-overlap
               data-layout-allow-occlusion
               style="left: 116px; top: 72px"
@@ -341,7 +382,6 @@
             <div
               class="mk"
               id="hl2"
-              data-layout-allow-overflow
               data-layout-allow-overlap
               data-layout-allow-occlusion
               style="left: 356px; top: 181px"
@@ -351,7 +391,6 @@
             <div
               class="mk"
               id="hl3"
-              data-layout-allow-overflow
               data-layout-allow-overlap
               data-layout-allow-occlusion
               style="left: 155px; top: 329px"
@@ -372,8 +411,19 @@
                   stroke="#602640"
                   stroke-width="8"
                 /></svg
-              ><span style="padding-left: 24px">ONE</span
-              ><span style="padding-left: 52px">FILE</span>
+              ><span
+                id="hl3-head"
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="padding-left: 24px"
+                >ONE</span
+              ><span
+                id="hl3-tail"
+                data-layout-allow-overlap
+                data-layout-allow-occlusion
+                style="padding-left: 52px"
+                >FILE</span
+              >
             </div>
 
             <div class="cl-label" style="left: 74px; top: 1073px">WRITE</div>
@@ -430,6 +480,10 @@
               />
             </svg>
             <div class="cl-rule" style="left: 58px; top: 1412px"></div>
+          </div>
+          <div id="brand-strip">
+            <img id="brand-mark" src="assets/hyperframes-logo-black.svg" alt="" />
+            <div id="brand-domain">hyperframes.heygen.com</div>
           </div>
           <div id="nrv-video">
             <div id="nrv-play">
@@ -612,16 +666,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 283px"
-              >
-                <span class="ch" id="ch-0-0">m</span><span class="ch" id="ch-0-1">y</span
-                ><span class="ch" id="ch-0-2"> </span><span class="ch" id="ch-0-3">v</span
-                ><span class="ch" id="ch-0-4">i</span><span class="ch" id="ch-0-5">d</span
-                ><span class="ch" id="ch-0-6">e</span><span class="ch" id="ch-0-7">o</span
-                ><span class="ch" id="ch-0-8">s</span><span class="ch" id="ch-0-9"> </span
-                ><span class="ch" id="ch-0-10">s</span><span class="ch" id="ch-0-11">u</span
-                ><span class="ch" id="ch-0-12">c</span><span class="ch" id="ch-0-13">k</span
-                ><span class="ch" id="ch-0-14">e</span><span class="ch" id="ch-0-15">d</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-1"
@@ -629,17 +674,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 433px"
-              >
-                <span class="ch" id="ch-1-0">m</span><span class="ch" id="ch-1-1">y</span
-                ><span class="ch" id="ch-1-2"> </span><span class="ch" id="ch-1-3">t</span
-                ><span class="ch" id="ch-1-4">o</span><span class="ch" id="ch-1-5">o</span
-                ><span class="ch" id="ch-1-6">l</span><span class="ch" id="ch-1-7">s</span
-                ><span class="ch" id="ch-1-8"> </span><span class="ch" id="ch-1-9">c</span
-                ><span class="ch" id="ch-1-10">o</span><span class="ch" id="ch-1-11">s</span
-                ><span class="ch" id="ch-1-12">t</span><span class="ch" id="ch-1-13"> </span
-                ><span class="ch" id="ch-1-14">$</span><span class="ch" id="ch-1-15">$</span
-                ><span class="ch" id="ch-1-16">$</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-2"
@@ -647,20 +682,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 583px"
-              >
-                <span class="ch" id="ch-2-0">a</span><span class="ch" id="ch-2-1">n</span
-                ><span class="ch" id="ch-2-2">d</span><span class="ch" id="ch-2-3"> </span
-                ><span class="ch" id="ch-2-4">r</span><span class="ch" id="ch-2-5">e</span
-                ><span class="ch" id="ch-2-6">-</span><span class="ch" id="ch-2-7">e</span
-                ><span class="ch" id="ch-2-8">d</span><span class="ch" id="ch-2-9">i</span
-                ><span class="ch" id="ch-2-10">t</span><span class="ch" id="ch-2-11">s</span
-                ><span class="ch" id="ch-2-12"> </span><span class="ch" id="ch-2-13">n</span
-                ><span class="ch" id="ch-2-14">e</span><span class="ch" id="ch-2-15">v</span
-                ><span class="ch" id="ch-2-16">e</span><span class="ch" id="ch-2-17">r</span
-                ><span class="ch" id="ch-2-18"> </span><span class="ch" id="ch-2-19">e</span
-                ><span class="ch" id="ch-2-20">n</span><span class="ch" id="ch-2-21">d</span
-                ><span class="ch" id="ch-2-22">.</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-3"
@@ -668,23 +690,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 733px"
-              >
-                <span class="ch" id="ch-3-0">t</span><span class="ch" id="ch-3-1">h</span
-                ><span class="ch" id="ch-3-2">e</span><span class="ch" id="ch-3-3">n</span
-                ><span class="ch" id="ch-3-4"> </span><span class="ch" id="ch-3-5">i</span
-                ><span class="ch" id="ch-3-6"> </span><span class="ch" id="ch-3-7">t</span
-                ><span class="ch" id="ch-3-8">r</span><span class="ch" id="ch-3-9">i</span
-                ><span class="ch" id="ch-3-10">e</span><span class="ch" id="ch-3-11">d</span
-                ><span class="ch" id="ch-3-12"> </span><span class="ch" id="ch-3-13">w</span
-                ><span class="ch" id="ch-3-14">r</span><span class="ch" id="ch-3-15">i</span
-                ><span class="ch" id="ch-3-16">t</span><span class="ch" id="ch-3-17">i</span
-                ><span class="ch" id="ch-3-18">n</span><span class="ch" id="ch-3-19">g</span
-                ><span class="ch" id="ch-3-20"> </span><span class="ch" id="ch-3-21">h</span
-                ><span class="ch" id="ch-3-22">t</span><span class="ch" id="ch-3-23">m</span
-                ><span class="ch" id="ch-3-24">l</span><span class="ch" id="ch-3-25"> </span
-                ><span class="ch" id="ch-3-26">o</span><span class="ch" id="ch-3-27">n</span
-                ><span class="ch" id="ch-3-28">l</span><span class="ch" id="ch-3-29">y</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-4"
@@ -692,26 +698,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 883px"
-              >
-                <span class="ch" id="ch-4-0">s</span><span class="ch" id="ch-4-1">t</span
-                ><span class="ch" id="ch-4-2">a</span><span class="ch" id="ch-4-3">r</span
-                ><span class="ch" id="ch-4-4">t</span><span class="ch" id="ch-4-5">e</span
-                ><span class="ch" id="ch-4-6">d</span><span class="ch" id="ch-4-7"> </span
-                ><span class="ch" id="ch-4-8">H</span><span class="ch" id="ch-4-9">y</span
-                ><span class="ch" id="ch-4-10">p</span><span class="ch" id="ch-4-11">e</span
-                ><span class="ch" id="ch-4-12">r</span><span class="ch" id="ch-4-13">F</span
-                ><span class="ch" id="ch-4-14">r</span><span class="ch" id="ch-4-15">a</span
-                ><span class="ch" id="ch-4-16">m</span><span class="ch" id="ch-4-17">e</span
-                ><span class="ch" id="ch-4-18">s</span><span class="ch" id="ch-4-19"> </span
-                ><span class="ch" id="ch-4-20">t</span><span class="ch" id="ch-4-21">h</span
-                ><span class="ch" id="ch-4-22">r</span><span class="ch" id="ch-4-23">e</span
-                ><span class="ch" id="ch-4-24">e</span><span class="ch" id="ch-4-25"> </span
-                ><span class="ch" id="ch-4-26">w</span><span class="ch" id="ch-4-27">e</span
-                ><span class="ch" id="ch-4-28">e</span><span class="ch" id="ch-4-29">k</span
-                ><span class="ch" id="ch-4-30">s</span><span class="ch" id="ch-4-31"> </span
-                ><span class="ch" id="ch-4-32">a</span><span class="ch" id="ch-4-33">g</span
-                ><span class="ch" id="ch-4-34">o</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-5"
@@ -719,28 +706,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 1033px"
-              >
-                <span class="ch" id="ch-5-0">t</span><span class="ch" id="ch-5-1">h</span
-                ><span class="ch" id="ch-5-2">e</span><span class="ch" id="ch-5-3"> </span
-                ><span class="ch" id="ch-5-4">g</span><span class="ch" id="ch-5-5">r</span
-                ><span class="ch" id="ch-5-6">i</span><span class="ch" id="ch-5-7">n</span
-                ><span class="ch" id="ch-5-8">d</span><span class="ch" id="ch-5-9"> </span
-                ><span class="ch" id="ch-5-10">i</span><span class="ch" id="ch-5-11">s</span
-                ><span class="ch" id="ch-5-12"> </span><span class="ch" id="ch-5-13">g</span
-                ><span class="ch" id="ch-5-14">o</span><span class="ch" id="ch-5-15">n</span
-                ><span class="ch" id="ch-5-16">e</span><span class="ch" id="ch-5-17">,</span
-                ><span class="ch" id="ch-5-18"> </span><span class="ch" id="ch-5-19">b</span
-                ><span class="ch" id="ch-5-20">u</span><span class="ch" id="ch-5-21">t</span
-                ><span class="ch" id="ch-5-22"> </span><span class="ch" id="ch-5-23">m</span
-                ><span class="ch" id="ch-5-24">o</span><span class="ch" id="ch-5-25">r</span
-                ><span class="ch" id="ch-5-26">e</span><span class="ch" id="ch-5-27"> </span
-                ><span class="ch" id="ch-5-28">t</span><span class="ch" id="ch-5-29">h</span
-                ><span class="ch" id="ch-5-30">a</span><span class="ch" id="ch-5-31">n</span
-                ><span class="ch" id="ch-5-32"> </span><span class="ch" id="ch-5-33">t</span
-                ><span class="ch" id="ch-5-34">h</span><span class="ch" id="ch-5-35">a</span
-                ><span class="ch" id="ch-5-36">t</span><span class="ch" id="ch-5-37"> </span
-                ><span class="ch" id="ch-5-38">—</span>
-              </div>
+              ></div>
               <div
                 class="bodyline"
                 id="line-6"
@@ -748,19 +714,7 @@
                 data-layout-allow-overlap
                 data-layout-allow-occlusion
                 style="top: 1183px"
-              >
-                <span class="ch" id="ch-6-0">I</span><span class="ch" id="ch-6-1"> </span
-                ><span class="ch" id="ch-6-2">s</span><span class="ch" id="ch-6-3">h</span
-                ><span class="ch" id="ch-6-4">i</span><span class="ch" id="ch-6-5">p</span
-                ><span class="ch" id="ch-6-6"> </span><span class="ch" id="ch-6-7">v</span
-                ><span class="ch" id="ch-6-8">i</span><span class="ch" id="ch-6-9">d</span
-                ><span class="ch" id="ch-6-10">e</span><span class="ch" id="ch-6-11">o</span
-                ><span class="ch" id="ch-6-12">s</span><span class="ch" id="ch-6-13"> </span
-                ><span class="ch" id="ch-6-14">w</span><span class="ch" id="ch-6-15">e</span
-                ><span class="ch" id="ch-6-16">e</span><span class="ch" id="ch-6-17">k</span
-                ><span class="ch" id="ch-6-18">l</span><span class="ch" id="ch-6-19">y</span
-                ><span class="ch" id="ch-6-20">.</span>
-              </div>
+              ></div>
               <div id="caret"></div>
             </div>
           </div>
@@ -1039,12 +993,19 @@
 
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
+      // The text every slot resolved to, kept for the timeline: the typewriter has to know how
+      // many characters each body line ended up with.
+      const NOTE_LINES = [];
+
       // variables: every override falls back to its declared default
       (function () {
         var vars =
           window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
             ? window.__hyperframes.getVariables()
             : {};
+        // `mx` is a backstop, not the layout rule. Every text slot below is width-fitted at
+        // build time, so the cap only has to be low enough that the fit floor can still hold
+        // the string inside its box -- it is not what keeps the design intact.
         function t(v, fb, mx) {
           if (typeof v !== "string") return fb;
           var s = v.trim();
@@ -1054,18 +1015,72 @@
         document.getElementById("title-l1").textContent = t(
           vars.titleL1,
           "Things nobody told me",
-          26,
+          34,
         );
-        document.getElementById("title-l2").textContent = t(vars.titleL2, "about video.", 26);
-        document.getElementById("hl1").textContent = t(vars.cardTop, "THE POWER", 12);
+        document.getElementById("title-l2").textContent = t(vars.titleL2, "about video.", 34);
+
+        // Body: build the per-character spans the reveal animation addresses by id, instead of
+        // shipping them pre-split. Pre-split spans made the note's seven lines -- 46% of the
+        // running time, and the only place the note says anything -- permanently unwritable,
+        // so every remix of this template kept HyperFrames' own copy about making videos.
+        var BODY_DEFAULTS = [
+          "my videos sucked",
+          "my tools cost $$$",
+          "and re-edits never end.",
+          "then i tried writing html only",
+          "started HyperFrames three weeks ago",
+          "the grind is gone, but more than that —",
+          "I ship videos weekly.",
+        ];
+        BODY_DEFAULTS.forEach(function (fallback, li) {
+          var text = t(vars["noteLine" + (li + 1)], fallback, 52);
+          NOTE_LINES.push(text);
+          var host = document.getElementById("line-" + li);
+          host.textContent = "";
+          for (var ri = 0; ri < text.length; ri++) {
+            var ch = document.createElement("span");
+            ch.className = "ch";
+            ch.id = "ch-" + li + "-" + ri;
+            ch.textContent = text.charAt(ri);
+            host.appendChild(ch);
+          }
+        });
+
+        // Card headline. `cardMid` and `cardBottom` were literals until now, which is why a
+        // remix could only ever change the first of the three lines.
+        document.getElementById("hl1").textContent = t(vars.cardTop, "THE POWER", 16);
+        document.getElementById("hl2").textContent = t(vars.cardMid, "OF", 6);
+        // The ring is a sibling of the text, so the words go in their own spans: the first one
+        // is what the ring is drawn around.
+        var bottom = t(vars.cardBottom, "ONE FILE", 16);
+        var cut = bottom.indexOf(" ");
+        var head = cut === -1 ? bottom : bottom.slice(0, cut);
+        var tail = cut === -1 ? "" : bottom.slice(cut + 1);
+        var hl3Head = document.getElementById("hl3-head");
+        var hl3Tail = document.getElementById("hl3-tail");
+        hl3Head.textContent = head;
+        hl3Tail.textContent = tail;
+        hl3Tail.style.display = tail ? "" : "none";
+
         var labels = document.querySelectorAll(".cl-label");
         var values = document.querySelectorAll(".cl-value");
-        labels[0].textContent = t(vars.check1Label, "WRITE", 8);
-        values[0].textContent = t(vars.check1Value, "HTML", 8);
-        labels[1].textContent = t(vars.check2Label, "RENDER", 8);
-        values[1].textContent = t(vars.check2Value, "IN 4K", 8);
-        labels[2].textContent = t(vars.check3Label, "SHIP", 8);
-        values[2].textContent = t(vars.check3Value, "TODAY", 8);
+        labels[0].textContent = t(vars.check1Label, "WRITE", 18);
+        values[0].textContent = t(vars.check1Value, "HTML", 18);
+        labels[1].textContent = t(vars.check2Label, "RENDER", 18);
+        values[1].textContent = t(vars.check2Value, "IN 4K", 18);
+        labels[2].textContent = t(vars.check3Label, "SHIP", 18);
+        values[2].textContent = t(vars.check3Value, "TODAY", 18);
+        document.getElementById("brand-domain").textContent = t(
+          vars.brandDomain,
+          "hyperframes.heygen.com",
+          30,
+        );
+        // An image slot arrives as a URL. Leave the packaged mark in place when it is absent,
+        // so a remix that could not resolve a logo signs off with no claim rather than a
+        // broken image.
+        if (typeof vars.brandLogo === "string" && vars.brandLogo.trim()) {
+          document.getElementById("brand-mark").setAttribute("src", vars.brandLogo.trim());
+        }
       })();
       const FPS = 30;
       const EV = [
@@ -1384,6 +1399,196 @@
       const TEXT_X = 62,
         VIEW_TOP = 272;
 
+      // ---------- width fitting ----------
+      // Every text slot sits at a fixed left edge with `white-space` holding it on one line, so
+      // a value one word longer than the packaged default simply runs off its box. The only
+      // protection used to be a character cap, which is the wrong unit: `cardTop` allowed 12
+      // characters, "THE POWER" (9) fits, and "CREATE DECKS" (12) does not -- so both reported
+      // gamma remixes shipped with the closing headline over the edge of the card.
+      // Fitting shrinks the type until it fits and never grows it past the designed size, so a
+      // value the length of the default renders exactly as drawn.
+      //
+      // The card headlines also carried `data-layout-allow-overflow`, which switched off the one
+      // check that would have caught this; those waivers are gone. `#hl1`/`#hl2`/`#hl3` are
+      // fixed on a card that never moves, so any overflow there is a defect. The note's title
+      // and body lines keep theirs: `#note-body` is translated upward across the whole scene, so
+      // they leave the canvas vertically by design. Note that `hyperframes check` only ever sees
+      // the declared defaults -- it takes no variable values -- so the checker guards the
+      // template and the fit is what guards a remix.
+      // The floor and the character caps have to agree: a cap that admits a string still too wide
+      // at the floor size puts the text back outside its box, which is the bug this whole pass is
+      // about. Measured against the packaged copy -- "Things nobody told me" is 21 characters and
+      // 900px at 88px, so 42.9px per character -- 0.45 leaves every declared cap satisfiable with
+      // room to spare, and only absurd input ever gets near it.
+      const FIT_FLOOR = 0.45;
+
+      // Measure with `offset*`, never `getBoundingClientRect()`. The card is rotated -3.03deg, so
+      // a rect is the axis-aligned box of the rotated element and overstates the width by about
+      // 7px -- enough to push the packaged "THE POWER" past its own limit and shrink a headline
+      // that was already correct. `offsetWidth`/`offsetLeft` are layout values: no transform, no
+      // render scale, and `offsetLeft` on a child is relative to the positioned ancestor, which
+      // is exactly the coordinate space the baked-in decoration positions were authored in.
+      function fitWidth(el, maxWidth, basePx) {
+        el.style.fontSize = basePx + "px";
+        const floor = Math.max(8, basePx * FIT_FLOOR);
+        let px = basePx;
+        // Integer steps: the renderer screenshots frames, so the result has to be identical on
+        // every pass rather than converge to a fractional size.
+        while (px > floor && el.offsetWidth > maxWidth) {
+          px -= 1;
+          el.style.fontSize = px + "px";
+        }
+        return px;
+      }
+
+      // Room each slot has before it leaves its box. The card is 840 wide and each headline keeps
+      // its own left inset; the note is 1080 wide behind an overflow-hidden viewport.
+      const HL1_MAX = 840 - 116 - 24,
+        HL2_MAX = 840 - 48,
+        HL3_MAX = 840 - 155 - 24,
+        NOTE_MAX = 1080 - TEXT_X - 40;
+      // Checklist columns, read off the authored markup: the label sits at x=72-74 under a
+      // scaleX(0.86), the marker value at x=389-390, and the tick at x=715.
+      const CL_LABEL_X = 74,
+        CL_VALUE_X = 389,
+        CL_CHECK_X = 715,
+        CL_GAP = 16,
+        CL_LABEL_SCALE = 0.86;
+
+      function markSpan(id, text) {
+        const el = document.createElement("span");
+        el.id = id;
+        el.textContent = text;
+        el.setAttribute("data-layout-allow-overlap", "");
+        el.setAttribute("data-layout-allow-occlusion", "");
+        return el;
+      }
+
+      function fitAll() {
+        fitWidth(document.getElementById("title-l1"), NOTE_MAX, 88);
+        fitWidth(document.getElementById("title-l2"), NOTE_MAX, 88);
+        for (let li = 0; li < 7; li++) {
+          fitWidth(document.getElementById("line-" + li), NOTE_MAX, 52.5);
+        }
+
+        // The checklist cells had no fit, so their character cap was the only thing keeping a
+        // value inside its column -- and a cap counts characters where the column measures
+        // pixels. A gamma.com remix delivered "DIRECT MEE" and the cap of 8 rendered "DIRECT M".
+        // Fit them like every other text slot so the cap can go back to being a backstop.
+        // A label is scaleX(0.86), so its column has to be divided back out of the visual gap
+        // before comparing against the untransformed offsetWidth fitWidth measures.
+        const CL_LABEL_MAX = (CL_VALUE_X - CL_LABEL_X - CL_GAP) / CL_LABEL_SCALE;
+        const CL_VALUE_MAX = CL_CHECK_X - CL_VALUE_X - CL_GAP;
+        document.querySelectorAll(".cl-label").forEach((el) => fitWidth(el, CL_LABEL_MAX, 44));
+        document.querySelectorAll(".cl-value").forEach((el) => fitWidth(el, CL_VALUE_MAX, 50));
+
+        // hl1: split into leading words and the last word, because the underline is drawn under
+        // the last word. Rebuilt from the stored text each pass, so this is idempotent.
+        const hl1 = document.getElementById("hl1");
+        const hl1Text = hl1.dataset.text || hl1.textContent.trim();
+        hl1.dataset.text = hl1Text;
+        const lastSpace = hl1Text.lastIndexOf(" ");
+        hl1.textContent = "";
+        // The card and the note both exist during the 21.375-21.66s crossfade, so the headline
+        // legitimately overlaps the note text there. hl1 carries the waiver for that; its child
+        // spans have to carry it too, or the checker reports the crossfade as a defect.
+        const hl1Head = markSpan(
+          "hl1-head",
+          lastSpace === -1 ? "" : hl1Text.slice(0, lastSpace + 1),
+        );
+        const hl1Tail = markSpan(
+          "hl1-tail",
+          lastSpace === -1 ? hl1Text : hl1Text.slice(lastSpace + 1),
+        );
+        hl1.appendChild(hl1Head);
+        hl1.appendChild(hl1Tail);
+        fitWidth(hl1, HL1_MAX, 110);
+
+        // Underline: follow the last word instead of sitting at a baked-in x. Every constant
+        // below is read off the packaged geometry -- underline left 333, width 415, top 196,
+        // under a 110px "THE POWER" whose box is left 116, top 72, height 160 and whose last
+        // word measures left 261, width 411 inside it. Written this way the packaged copy lands
+        // on exactly its authored pixels, and any other copy keeps the same relationship.
+        // The stroke leads into the word rather than starting at it, which is why LEAD is large
+        // and TAIL is not.
+        const UL_LEAD = 44 / 110; // per em, before the word starts
+        const UL_TAIL = 4 / 110; // per em, past where the word ends
+        const UL_DROP = 124 / 160; // down the line box
+        const ul = document.getElementById("hl-ul");
+        const hl1Px = parseFloat(hl1.style.fontSize);
+        ul.style.left = hl1.offsetLeft + hl1Tail.offsetLeft - UL_LEAD * hl1Px + "px";
+        ul.style.width = Math.max(24, hl1Tail.offsetWidth + UL_TAIL * hl1Px) + "px";
+        ul.style.top = hl1.offsetTop + UL_DROP * hl1.offsetHeight + "px";
+
+        // hl2 is a connector word, so centre it rather than trusting a baked-in left. The card
+        // is rotated -3.03deg, which puts the optical centre a couple of pixels right of the
+        // geometric one -- the packaged "OF" sits at 356 where geometry alone would say 354.
+        const hl2 = document.getElementById("hl2");
+        fitWidth(hl2, HL2_MAX, 100);
+        hl2.style.left = Math.round((840 - hl2.offsetWidth) / 2) + 2 + "px";
+
+        // hl3: fit, then ring its first word. The ring is an SVG element and has no offset*
+        // metrics, so it is placed from the head span's -- minus that span's padding, which is
+        // leading space rather than glyph. Constants again reproduce the packaged ring: 220x150
+        // at left -20, top -8, around a 110px "ONE" whose glyphs measure 226 wide, 157 tall.
+        const hl3 = document.getElementById("hl3");
+        fitWidth(hl3, HL3_MAX, 110);
+        const head = document.getElementById("hl3-head");
+        const headPad = parseFloat(getComputedStyle(head).paddingLeft) || 0;
+        const glyphW = head.offsetWidth - headPad;
+        const hl3Px = parseFloat(hl3.style.fontSize);
+        const ringW = Math.max(40, glyphW - (6 / 110) * hl3Px);
+        const ringH = Math.max(40, head.offsetHeight * (150 / 157));
+        const ring = document.getElementById("hl-circle");
+        ring.setAttribute("width", ringW);
+        ring.setAttribute("height", ringH);
+        ring.setAttribute("viewBox", "0 0 " + ringW + " " + ringH);
+        ring.style.left = head.offsetLeft + headPad - (44 / 110) * hl3Px + "px";
+        ring.style.top = head.offsetTop - (9 / 110) * hl3Px + "px";
+        const ellipse = ring.querySelector("ellipse");
+        ellipse.setAttribute("cx", ringW / 2 - (5 / 110) * hl3Px);
+        ellipse.setAttribute("cy", ringH / 2 - (3 / 110) * hl3Px);
+        ellipse.setAttribute("rx", ringW / 2 - (8 / 110) * hl3Px);
+        ellipse.setAttribute("ry", ringH / 2 - (14 / 110) * hl3Px);
+      }
+
+      // ---------- typewriter timing ----------
+      // EV is the packaged per-character rhythm. Its per-line first/last frames are the window
+      // JUMPS and SCROLLS were hand-tuned against, so the actual characters are distributed
+      // across each line's own window rather than the table being regenerated: a line of any
+      // length finishes before the caret jumps, and the composition's 24.867s and every scroll
+      // curve stay exactly as designed.
+      // EV is ordered line-major, so a per-line slice keeps its frames in typing order.
+      const LINE_FRAMES = (() => {
+        const byLine = [];
+        EV.forEach(([li, , f]) => (byLine[li] = byLine[li] || []).push(f));
+        return byLine;
+      })();
+
+      function typingEvents(lines) {
+        const out = [];
+        lines.forEach((text, li) => {
+          const packaged = LINE_FRAMES[li];
+          if (!packaged || !packaged.length || !text.length) return;
+          if (text.length === packaged.length) {
+            // A line the same length as the packaged copy keeps its hand-tuned rhythm frame for
+            // frame, so the template with its own defaults still renders bit-identically.
+            for (let ri = 0; ri < text.length; ri++) out.push([li, ri, packaged[ri]]);
+            return;
+          }
+          const f0 = packaged[0];
+          const f1 = packaged[packaged.length - 1];
+          const span = Math.max(1, f1 - f0);
+          for (let ri = 0; ri < text.length; ri++) {
+            const f = text.length === 1 ? f0 : f0 + Math.round((span * ri) / (text.length - 1));
+            out.push([li, ri, f]);
+          }
+        });
+        return out;
+      }
+
+      const EVENTS = typingEvents(NOTE_LINES);
+
       const tl = gsap.timeline({ paused: true });
       const body = document.getElementById("note-body");
       const caret = document.getElementById("caret");
@@ -1397,6 +1602,9 @@
       // gate-scale corrected (bodyRect.width / 1080) per renderer-traps.
       function build() {
         tl.clear();
+        // Fit first: the caret rides each character's measured right edge, so the type has to be
+        // at its final size before anything is measured.
+        fitAll();
         const bodyRect = body.getBoundingClientRect();
         const scale = bodyRect.width / 1080;
 
@@ -1405,8 +1613,9 @@
         document.querySelectorAll(".ch").forEach((el) => tl.set(el, { autoAlpha: 0 }, 0));
 
         // typing reveals + caret rides the revealed span's right edge
-        EV.forEach(([li, ri, f]) => {
+        EVENTS.forEach(([li, ri, f]) => {
           const el = document.getElementById(`ch-${li}-${ri}`);
+          if (!el) return;
           const r = el.getBoundingClientRect();
           const cx = (r.right - bodyRect.left) / scale + CARET_GAP;
           const cy = LINE_TOPS[li] - 8;

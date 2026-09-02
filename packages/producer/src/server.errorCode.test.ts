@@ -30,10 +30,6 @@ describe("extractSafeRenderErrorCode", () => {
     const error = new AssetMediaTypeMismatchError([
       { expected: "video", detected: "image", elementFingerprint: "0123456789abcdef" },
     ]);
-    expect(error.code).toBe("ASSET_MEDIA_TYPE_MISMATCH");
-    expect(error.owner).toBe("user");
-    expect(error.retryable).toBe(false);
-    expect(extractSafeRenderErrorCode(error)).toBe("ASSET_MEDIA_TYPE_MISMATCH");
     expect(extractSafeRenderErrorMetadata(error)).toEqual({
       errorCode: "ASSET_MEDIA_TYPE_MISMATCH",
       errorOwner: "user",
@@ -49,6 +45,51 @@ describe("extractSafeRenderErrorCode", () => {
       retryable: true,
     });
     expect(error.message).not.toContain("private ffmpeg stderr");
+  });
+
+  it("transports producer-authored public metadata without interpreting its schema", () => {
+    const error = new VideoExtractionStageError(
+      "VIDEO_EXTRACTION_FAILED",
+      true,
+      [{ kind: "download_transient", count: 1 }],
+      {
+        schemaVersion: 1,
+        kindCounts: [{ kind: "download_transient", affectedElementCount: 1 }],
+        groups: [
+          {
+            kind: "download_transient",
+            affectedElementCount: 1,
+            sourceFingerprint: `sha256:${"0".repeat(64)}`,
+            host: "media.customer-cdn.example",
+            statusClass: "http_5xx",
+            retry: { phase: "download", used: 1, budget: 1 },
+          },
+        ],
+        omittedGroupCount: 0,
+      },
+    );
+
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "VIDEO_EXTRACTION_FAILED",
+      errorOwner: undefined,
+      retryable: true,
+      errorMetadata: error.publicMetadata,
+    });
+  });
+
+  it("does not transport arbitrary private fields or non-object public metadata", () => {
+    expect(
+      extractSafeRenderErrorMetadata({
+        code: "VIDEO_EXTRACTION_FAILED",
+        retryable: true,
+        publicMetadata: "https://media.example/private.mp4?signature=secret",
+        localPath: "/tmp/private.mp4",
+      }),
+    ).toEqual({
+      errorCode: "VIDEO_EXTRACTION_FAILED",
+      errorOwner: undefined,
+      retryable: true,
+    });
   });
 
   it("does not forward arbitrary codes or parse message text", () => {

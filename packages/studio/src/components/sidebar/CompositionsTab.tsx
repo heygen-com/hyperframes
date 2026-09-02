@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
+import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -120,6 +121,7 @@ function CompCard({
   isRendering,
   lintInfo,
   onAddToTimeline,
+  contentRevision,
 }: {
   projectId: string;
   comp: string;
@@ -129,11 +131,12 @@ function CompCard({
   isRendering?: boolean;
   lintInfo?: { count: number; messages: string[] };
   onAddToTimeline?: () => void;
+  contentRevision: number;
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const [livePreviewLoaded, setLivePreviewLoaded] = useState(false);
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -176,7 +179,9 @@ function CompCard({
     seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
     duration: 0,
     origin: window.location.origin,
+    contentRevision,
   });
+  const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
     cardHeight: CARD_H,
@@ -246,7 +251,7 @@ function CompCard({
             draggable={false}
             loading="lazy"
             decoding="async"
-            onError={() => setThumbnailFailed(true)}
+            onError={() => setFailedThumbnailUrl(thumbnailUrl)}
             className={`absolute inset-0 h-full w-full object-contain transition-opacity ${
               livePreviewLoaded ? "opacity-0" : "opacity-100"
             }`}
@@ -368,6 +373,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
+  const contentRevision = usePlayerStore((state) => state.thumbnailContentRevision);
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -389,6 +395,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}
           isRendering={isRendering}
           lintInfo={lintFindingsByFile?.get(comp)}
+          contentRevision={contentRevision}
         />
       ))}
     </div>

@@ -75,6 +75,39 @@ Supported declared types are:
 The type lets Studio show the right control and lets rendering catch invalid
 values.
 
+### Say what a slot means, not where it sits
+
+`label` and `description` are read by people and by agents. A description that
+only gives a position ("small credit in the corner of every banner") leaves the
+slot's meaning to be guessed; one that gives the meaning ("name of the brand this
+video promotes") can be filled correctly without opening the HTML.
+
+For a template that will be remixed against someone else's brand, add
+`portrays` — a list naming what the slot stands for. It is optional metadata,
+ignored by rendering, and it tells an editing agent which slots carry identity
+and must not be filled with invented copy:
+
+```html compositions/card.html
+{"id":"appName","type":"string","label":"App name",
+ "description":"Name of the brand this video promotes, credited in the corner of every banner.",
+ "portrays":["subject_name"],"default":"HyperFrames"}
+```
+
+| Value                  | The slot stands for                                                        |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `subject_name`         | The promoted brand's own name                                              |
+| `subject_domain`       | Its domain, URL, or handle                                                 |
+| `subject_tagline`      | Its own positioning line                                                   |
+| `subject_logo`         | Its mark or wordmark                                                       |
+| `recommended_position` | The winning or featured slot in a ranking, so the promoted brand goes there |
+| `competitor_name`      | A real product other than the promoted brand                               |
+| `authority_badge`      | A claim of endorsement, ranking authority, rating, or source               |
+| `host_identity`        | The depicted application's own identity, which a remix leaves alone        |
+
+`portrays` is orthogonal to `role`: `role` says which aspect of the composition a
+knob affects (`content`, `style`, `timing`, `motion`, `layout`), while `portrays`
+says what the value means to a viewer.
+
 ## Bind common values without a script
 
 Use direct bindings for the normal cases:

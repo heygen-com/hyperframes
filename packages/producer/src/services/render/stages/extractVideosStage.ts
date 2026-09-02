@@ -38,6 +38,7 @@ import {
   type FrameLookupTable,
   type HdrTransfer,
   type VideoExtractionFailureKind,
+  type VideoExtractionFailureGroupDetails,
   type VideoColorSpace,
   classifyVideoExtractionError,
   createFrameLookupTable,
@@ -47,6 +48,7 @@ import {
   isHdrColorSpace,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
+  safeVideoExtractionSourceIdentity,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
@@ -56,6 +58,11 @@ import {
 import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import {
+  compareExtractionFailureGroups,
+  extractionFailureGroupIdentityKey,
+  type ExtractionFailureMetadataV1,
+} from "../extractionFailureMetadata.js";
 
 export interface ExtractVideosStageInput {
   projectDir: string;
@@ -124,6 +131,60 @@ export interface VideoExtractionStageFailureSummary {
   count: number;
 }
 
+const MAX_EXTRACTION_FAILURE_GROUPS = 8;
+
+interface ExtractionFailureAggregateInput extends VideoExtractionFailureGroupDetails {
+  kind: VideoExtractionFailureKind;
+  affectedElementCount: number;
+}
+
+function buildExtractionFailureMetadata(
+  inputs: readonly ExtractionFailureAggregateInput[],
+): ExtractionFailureMetadataV1 {
+  const kindCounts = new Map<VideoExtractionFailureKind, number>();
+  const grouped = new Map<string, ExtractionFailureAggregateInput>();
+  for (const input of inputs) {
+    kindCounts.set(input.kind, (kindCounts.get(input.kind) ?? 0) + input.affectedElementCount);
+    const key = extractionFailureGroupIdentityKey(input);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.affectedElementCount += input.affectedElementCount;
+    } else {
+      grouped.set(key, { ...input });
+    }
+  }
+
+  const allGroups = [...grouped.values()].sort(compareExtractionFailureGroups);
+  return {
+    schemaVersion: 1,
+    kindCounts: [...kindCounts]
+      .map(([kind, affectedElementCount]) => ({
+        kind,
+        affectedElementCount,
+      }))
+      .sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    groups: allGroups.slice(0, MAX_EXTRACTION_FAILURE_GROUPS),
+    omittedGroupCount: Math.max(0, allGroups.length - MAX_EXTRACTION_FAILURE_GROUPS),
+  };
+}
+
+function extractionFailureMetadataFromResult(
+  result: ExtractionResult,
+): ExtractionFailureMetadataV1 {
+  return buildExtractionFailureMetadata(
+    result.errors.map((failure) => ({
+      kind: failure.kind ?? "internal",
+      affectedElementCount: 1,
+      ...failure.group,
+    })),
+  );
+}
+
+export function safeVideoExtractionSourceLogMetadata(source: string): Record<string, unknown> {
+  const identity = safeVideoExtractionSourceIdentity(source);
+  return identity ? { sourceType: "remote", ...identity } : { sourceType: "local" };
+}
+
 export type VideoExtractionFailureMode = "off" | "observe" | "enforce";
 
 export interface VideoExtractionPolicy {
@@ -157,15 +218,29 @@ export function resolveVideoExtractionPolicy(
  * the cause without leaking those values.
  */
 export class VideoExtractionStageError extends Error {
+  /**
+   * Producer servers may expose this explicitly public, JSON-compatible data
+   * without knowing its schema. Boundary adapters remain responsible for
+   * validating and applying policy to it.
+   */
+  readonly publicMetadata: Readonly<Record<string, unknown>>;
+
   constructor(
     readonly code: VideoExtractionStageErrorCode,
     readonly retryable: boolean,
     readonly failures: readonly VideoExtractionStageFailureSummary[],
+    readonly extractionFailure: ExtractionFailureMetadataV1 = buildExtractionFailureMetadata(
+      failures.map((failure) => ({
+        kind: failure.kind,
+        affectedElementCount: failure.count,
+      })),
+    ),
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
     super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]`);
     this.name = "VideoExtractionStageError";
+    this.publicMetadata = { extractionFailure };
   }
 }
 
@@ -202,6 +277,7 @@ function buildVideoExtractionStageError(
     retryable ? "VIDEO_EXTRACTION_FAILED" : "VIDEO_SOURCE_UNRENDERABLE",
     retryable,
     failures,
+    extractionFailureMetadataFromResult(result),
   );
 }
 
@@ -220,6 +296,12 @@ export function buildHdrProbeStageError(
     retryable ? "VIDEO_EXTRACTION_FAILED" : "VIDEO_SOURCE_UNRENDERABLE",
     retryable,
     summary,
+    buildExtractionFailureMetadata(
+      failures.map((failure) => ({
+        kind: failure.kind,
+        affectedElementCount: 1,
+      })),
+    ),
   );
 }
 
@@ -411,7 +493,10 @@ export async function runExtractVideosStage(
     const totalVideos = composition.videos.length;
     for (let i = 0; i < totalVideos; i++) {
       const v = composition.videos[i]!;
-      log?.info(`Extracting frames from video ${i + 1}/${totalVideos}: ${v.src}`);
+      log?.info(
+        `Extracting frames from video ${i + 1}/${totalVideos}`,
+        safeVideoExtractionSourceLogMetadata(v.src),
+      );
     }
     extractionResult = await extractAllVideoFrames(
       composition.videos,

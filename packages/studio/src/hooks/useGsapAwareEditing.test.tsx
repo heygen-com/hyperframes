@@ -45,7 +45,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mountResizeHandler(animations: GsapAnimation[]) {
+function mountResizeHandler(
+  animations: GsapAnimation[],
+  targetAnimations: GsapAnimation[] = animations,
+) {
   const element = document.createElement("div");
   const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
   const fallback = vi.fn().mockResolvedValue(undefined);
@@ -66,7 +69,7 @@ function mountResizeHandler(animations: GsapAnimation[]) {
       previewIframeRef: { current: null },
       showToast: vi.fn(),
       bumpGsapCache: vi.fn(),
-      makeFetchFallback: () => vi.fn().mockResolvedValue(animations),
+      makeFetchFallback: () => vi.fn().mockResolvedValue(targetAnimations),
       trackGsapInteractionFailure: vi.fn(),
       handleDomBoxSizeCommit: fallback,
       addGsapAnimation: vi.fn(),
@@ -112,6 +115,31 @@ function mountGroupHandler({
 }
 
 describe("useGsapAwareEditing anchored resize", () => {
+  it("uses the explicit target's animations instead of the human selection cache", async () => {
+    const humanAnimation = { id: "human", propertyGroup: "scale" } as GsapAnimation;
+    const targetAnimation = { id: "target", propertyGroup: "size" } as GsapAnimation;
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    const h = mountResizeHandler([humanAnimation], [targetAnimation]);
+    const target = {
+      ...h.selection,
+      element: document.createElement("div"),
+      id: "agent-target",
+      selector: "#agent-target",
+    } as DomEditSelection;
+
+    await act(() => h.resize(target, { width: 300, height: 200 }));
+
+    expect(mocks.resize).toHaveBeenCalledWith(
+      target,
+      { width: 300, height: 200 },
+      [targetAnimation],
+      null,
+      expect.any(Function),
+      expect.any(Function),
+    );
+    act(() => h.root.unmount());
+  });
+
   it("rejects a blocked resize instead of falling through to a competing DOM write", async () => {
     mocks.resize.mockResolvedValue({ status: "blocked", reason: "source-uneditable" });
     const h = mountResizeHandler([]);

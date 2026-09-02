@@ -223,7 +223,7 @@ export function useDomEditWiring({
   // ── Telemetry & fallback ──
 
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
-  const makeFetchFallback = useGsapAnimationFetchFallback(projectId, gsapSourceFile);
+  const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
 
   // ── GSAP selection handlers ──
 

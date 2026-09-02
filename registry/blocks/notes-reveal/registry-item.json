@@ -29,12 +29,84 @@
       "default": "about video."
     },
     {
+      "id": "noteLine1",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 1",
+      "description": "First typed line of the note. The seven body lines are the bulk of the video: they must be about the brand this video promotes, not about video-making.",
+      "default": "my videos sucked"
+    },
+    {
+      "id": "noteLine2",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 2",
+      "description": "Second typed line of the note.",
+      "default": "my tools cost $$$"
+    },
+    {
+      "id": "noteLine3",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 3",
+      "description": "Third typed line of the note.",
+      "default": "and re-edits never end."
+    },
+    {
+      "id": "noteLine4",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 4",
+      "description": "Fourth typed line of the note — the turn, where the brand enters.",
+      "default": "then i tried writing html only"
+    },
+    {
+      "id": "noteLine5",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 5",
+      "description": "Fifth typed line of the note — name the brand here.",
+      "default": "started HyperFrames three weeks ago"
+    },
+    {
+      "id": "noteLine6",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 6",
+      "description": "Sixth typed line of the note.",
+      "default": "the grind is gone, but more than that —"
+    },
+    {
+      "id": "noteLine7",
+      "type": "string",
+      "role": "content",
+      "label": "Note body line 7",
+      "description": "Last typed line of the note — the payoff.",
+      "default": "I ship videos weekly."
+    },
+    {
       "id": "cardTop",
       "type": "string",
       "role": "content",
       "label": "Card headline top",
-      "description": "First marker line on the closing card.",
+      "description": "First marker line on the closing card. The underline follows its last word.",
       "default": "THE POWER"
+    },
+    {
+      "id": "cardMid",
+      "type": "string",
+      "role": "content",
+      "label": "Card headline middle",
+      "description": "Short connector line between the two headline lines, centred on the card.",
+      "default": "OF"
+    },
+    {
+      "id": "cardBottom",
+      "type": "string",
+      "role": "content",
+      "label": "Card headline bottom",
+      "description": "Last marker line on the closing card. Its first word is ringed.",
+      "default": "ONE FILE"
     },
     {
       "id": "check1Label",
@@ -83,6 +155,24 @@
       "label": "Checklist 3 value",
       "description": "Marker value of the third checklist row.",
       "default": "TODAY"
+    },
+    {
+      "id": "brandLogo",
+      "type": "image",
+      "role": "content",
+      "label": "Brand logo",
+      "description": "Transparent mark of the brand this video promotes, in the sign-off strip under the card.",
+      "portrays": ["subject_logo"],
+      "default": "assets/hyperframes-logo-black.svg"
+    },
+    {
+      "id": "brandDomain",
+      "type": "string",
+      "role": "content",
+      "label": "Sign-off domain",
+      "description": "Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.",
+      "portrays": ["subject_domain"],
+      "default": "hyperframes.heygen.com"
     }
   ],
   "files": [
@@ -104,6 +194,11 @@
     {
       "path": "assets/courier-prime-700.woff2",
       "target": "assets/courier-prime-700.woff2",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/hyperframes-logo-black.svg",
+      "target": "assets/hyperframes-logo-black.svg",
       "type": "hyperframes:asset"
     },
     {

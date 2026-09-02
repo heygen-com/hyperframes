@@ -10,7 +10,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
   previewSrc="/public/catalog/blocks/notes-reveal.json"
   compositionId="notes-reveal"
   compositionSrc="compositions/notes-reveal.html"
-  variables={[{"id":"titleL1","type":"string","role":"content","label":"Note title line 1","description":"First line of the note title.","default":"Things nobody told me"},{"id":"titleL2","type":"string","role":"content","label":"Note title line 2","description":"Second line of the note title.","default":"about video."},{"id":"cardTop","type":"string","role":"content","label":"Card headline top","description":"First marker line on the closing card.","default":"THE POWER"},{"id":"check1Label","type":"string","role":"content","label":"Checklist 1 label","description":"Typewriter label of the first checklist row.","default":"WRITE"},{"id":"check1Value","type":"string","role":"content","label":"Checklist 1 value","description":"Marker value of the first checklist row.","default":"HTML"},{"id":"check2Label","type":"string","role":"content","label":"Checklist 2 label","description":"Typewriter label of the second checklist row.","default":"RENDER"},{"id":"check2Value","type":"string","role":"content","label":"Checklist 2 value","description":"Marker value of the second checklist row.","default":"IN 4K"},{"id":"check3Label","type":"string","role":"content","label":"Checklist 3 label","description":"Typewriter label of the third checklist row.","default":"SHIP"},{"id":"check3Value","type":"string","role":"content","label":"Checklist 3 value","description":"Marker value of the third checklist row.","default":"TODAY"}]}
+  variables={[{"id":"titleL1","type":"string","role":"content","label":"Note title line 1","description":"First line of the note title.","default":"Things nobody told me"},{"id":"titleL2","type":"string","role":"content","label":"Note title line 2","description":"Second line of the note title.","default":"about video."},{"id":"cardTop","type":"string","role":"content","label":"Card headline top","description":"First marker line on the closing card.","default":"THE POWER"},{"id":"check1Label","type":"string","role":"content","label":"Checklist 1 label","description":"Typewriter label of the first checklist row.","default":"WRITE"},{"id":"check1Value","type":"string","role":"content","label":"Checklist 1 value","description":"Marker value of the first checklist row.","default":"HTML"},{"id":"check2Label","type":"string","role":"content","label":"Checklist 2 label","description":"Typewriter label of the second checklist row.","default":"RENDER"},{"id":"check2Value","type":"string","role":"content","label":"Checklist 2 value","description":"Marker value of the second checklist row.","default":"IN 4K"},{"id":"check3Label","type":"string","role":"content","label":"Checklist 3 label","description":"Typewriter label of the third checklist row.","default":"SHIP"},{"id":"check3Value","type":"string","role":"content","label":"Checklist 3 value","description":"Marker value of the third checklist row.","default":"TODAY"},{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Transparent mark of the brand this video promotes, in the sign-off strip under the card.","portrays":["subject_logo"],"default":"assets/hyperframes-logo-black.svg"},{"id":"brandDomain","type":"string","role":"content","label":"Sign-off domain","description":"Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.","portrays":["subject_domain"],"default":"hyperframes.heygen.com"}]}
 >
 
 ```html notes-reveal.html
@@ -26,7 +26,9 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
     { "id": "check2Label", "type": "string", "role": "content", "label": "Checklist 2 label", "description": "Typewriter label of the second checklist row.", "default": "RENDER" },
     { "id": "check2Value", "type": "string", "role": "content", "label": "Checklist 2 value", "description": "Marker value of the second checklist row.", "default": "IN 4K" },
     { "id": "check3Label", "type": "string", "role": "content", "label": "Checklist 3 label", "description": "Typewriter label of the third checklist row.", "default": "SHIP" },
-    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" }
+    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, in the sign-off strip under the card.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-black.svg" },
+    { "id": "brandDomain", "type": "string", "role": "content", "label": "Sign-off domain", "description": "Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.", "portrays": ["subject_domain"], "default": "hyperframes.heygen.com" }
   ]'
 >
   <head>
@@ -141,6 +143,34 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
         height: 2.5px;
         background: #602640;
         opacity: 0.92;
+      }
+      /* Sign-off strip: the card ends at y=1708, leaving 212px of dotted scene. The
+         advertiser's identity lives here rather than inside the card, so the hand-lettered
+         headline and checklist keep the geometry they were designed with. */
+      #brand-strip {
+        position: absolute;
+        left: 0;
+        top: 1742px;
+        width: 1080px;
+        height: 132px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      #brand-mark {
+        display: block;
+        height: 52px;
+        width: auto;
+      }
+      #brand-domain {
+        font-family: "Courier Prime", monospace;
+        font-weight: 700;
+        font-size: 27px;
+        letter-spacing: 4px;
+        color: #602640;
+        opacity: 0.62;
       }
       #nrv-video {
         position: absolute;
@@ -446,6 +476,10 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
               />
             </svg>
             <div class="cl-rule" style="left: 58px; top: 1412px"></div>
+          </div>
+          <div id="brand-strip">
+            <img id="brand-mark" src="assets/hyperframes-logo-black.svg" alt="" />
+            <div id="brand-domain">hyperframes.heygen.com</div>
           </div>
           <div id="nrv-video">
             <div id="nrv-play">
@@ -1082,6 +1116,17 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
         values[1].textContent = t(vars.check2Value, "IN 4K", 8);
         labels[2].textContent = t(vars.check3Label, "SHIP", 8);
         values[2].textContent = t(vars.check3Value, "TODAY", 8);
+        document.getElementById("brand-domain").textContent = t(
+          vars.brandDomain,
+          "hyperframes.heygen.com",
+          30,
+        );
+        // An image slot arrives as a URL. Leave the packaged mark in place when it is absent,
+        // so a remix that could not resolve a logo signs off with no claim rather than a
+        // broken image.
+        if (typeof vars.brandLogo === "string" && vars.brandLogo.trim()) {
+          document.getElementById("brand-mark").setAttribute("src", vars.brandLogo.trim());
+        }
       })();
       const FPS = 30;
       const EV = [
@@ -1474,7 +1519,7 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 <InstallCommand command="npx hyperframes add notes-reveal" item="notes-reveal" />
 
-That writes `compositions/notes-reveal.html`, plus 4 supporting files under `assets/`.
+That writes `compositions/notes-reveal.html`, plus 5 supporting files under `assets/`.
 
 ## Add it to your video
 
@@ -1511,6 +1556,8 @@ want to change on the element:
 | `check2Value` | `IN 4K` | string | Marker value of the second checklist row. |
 | `check3Label` | `SHIP` | string | Typewriter label of the third checklist row. |
 | `check3Value` | `TODAY` | string | Marker value of the third checklist row. |
+| `brandLogo` | `assets/hyperframes-logo-black.svg` | image | Transparent mark of the brand this video promotes, in the sign-off strip under the card. |
+| `brandDomain` | `hyperframes.heygen.com` | string | Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:
@@ -1519,7 +1566,7 @@ defaults, so this behaves exactly like the preview above until you change one:
 <div
   data-composition-id="notes-reveal"
   data-composition-src="compositions/notes-reveal.html"
-  data-variable-values='{"titleL1":"Things nobody told me","titleL2":"about video.","cardTop":"THE POWER","check1Label":"WRITE","check1Value":"HTML","check2Label":"RENDER","check2Value":"IN 4K","check3Label":"SHIP","check3Value":"TODAY"}'
+  data-variable-values='{"titleL1":"Things nobody told me","titleL2":"about video.","cardTop":"THE POWER","check1Label":"WRITE","check1Value":"HTML","check2Label":"RENDER","check2Value":"IN 4K","check3Label":"SHIP","check3Value":"TODAY","brandLogo":"assets/hyperframes-logo-black.svg","brandDomain":"hyperframes.heygen.com"}'
 ></div>
 ```
 
@@ -1540,7 +1587,9 @@ defaults, so this behaves exactly like the preview above until you change one:
     { "id": "check2Label", "type": "string", "role": "content", "label": "Checklist 2 label", "description": "Typewriter label of the second checklist row.", "default": "RENDER" },
     { "id": "check2Value", "type": "string", "role": "content", "label": "Checklist 2 value", "description": "Marker value of the second checklist row.", "default": "IN 4K" },
     { "id": "check3Label", "type": "string", "role": "content", "label": "Checklist 3 label", "description": "Typewriter label of the third checklist row.", "default": "SHIP" },
-    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" }
+    { "id": "check3Value", "type": "string", "role": "content", "label": "Checklist 3 value", "description": "Marker value of the third checklist row.", "default": "TODAY" },
+    { "id": "brandLogo", "type": "image", "role": "content", "label": "Brand logo", "description": "Transparent mark of the brand this video promotes, in the sign-off strip under the card.", "portrays": ["subject_logo"], "default": "assets/hyperframes-logo-black.svg" },
+    { "id": "brandDomain", "type": "string", "role": "content", "label": "Sign-off domain", "description": "Domain of the brand this video promotes, closing the sign-off strip. Use the real domain, or a call to action when no domain fits.", "portrays": ["subject_domain"], "default": "hyperframes.heygen.com" }
   ]'
 >
   <head>
@@ -1655,6 +1704,34 @@ defaults, so this behaves exactly like the preview above until you change one:
         height: 2.5px;
         background: #602640;
         opacity: 0.92;
+      }
+      /* Sign-off strip: the card ends at y=1708, leaving 212px of dotted scene. The
+         advertiser's identity lives here rather than inside the card, so the hand-lettered
+         headline and checklist keep the geometry they were designed with. */
+      #brand-strip {
+        position: absolute;
+        left: 0;
+        top: 1742px;
+        width: 1080px;
+        height: 132px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      #brand-mark {
+        display: block;
+        height: 52px;
+        width: auto;
+      }
+      #brand-domain {
+        font-family: "Courier Prime", monospace;
+        font-weight: 700;
+        font-size: 27px;
+        letter-spacing: 4px;
+        color: #602640;
+        opacity: 0.62;
       }
       #nrv-video {
         position: absolute;
@@ -1960,6 +2037,10 @@ defaults, so this behaves exactly like the preview above until you change one:
               />
             </svg>
             <div class="cl-rule" style="left: 58px; top: 1412px"></div>
+          </div>
+          <div id="brand-strip">
+            <img id="brand-mark" src="assets/hyperframes-logo-black.svg" alt="" />
+            <div id="brand-domain">hyperframes.heygen.com</div>
           </div>
           <div id="nrv-video">
             <div id="nrv-play">
@@ -2596,6 +2677,17 @@ defaults, so this behaves exactly like the preview above until you change one:
         values[1].textContent = t(vars.check2Value, "IN 4K", 8);
         labels[2].textContent = t(vars.check3Label, "SHIP", 8);
         values[2].textContent = t(vars.check3Value, "TODAY", 8);
+        document.getElementById("brand-domain").textContent = t(
+          vars.brandDomain,
+          "hyperframes.heygen.com",
+          30,
+        );
+        // An image slot arrives as a URL. Leave the packaged mark in place when it is absent,
+        // so a remix that could not resolve a logo signs off with no claim rather than a
+        // broken image.
+        if (typeof vars.brandLogo === "string" && vars.brandLogo.trim()) {
+          document.getElementById("brand-mark").setAttribute("src", vars.brandLogo.trim());
+        }
       })();
       const FPS = 30;
       const EV = [

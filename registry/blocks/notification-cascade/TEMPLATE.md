@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This is a generic notification presentation with a HyperFrames-branded payoff. The notification geometry, backdrop, stacking behavior, typography, and motion belong to the template. The supplied website is the subject brand placed into declared slots.
+This is a generic notification presentation with a HyperFrames-branded payoff. The notification geometry, backdrop, stacking behavior, typography, and motion belong to the template. The supplied website is the subject brand placed into declared slots. The remix is an advertisement for that brand, so its real name, its real domain, and its own mark belong in the declared identity slots.
 
 ## Editable slots
 

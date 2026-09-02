@@ -113,7 +113,9 @@ describe("useGsapSelectionHandlers save failures", () => {
       makeParams({ addGsapAnimation: vi.fn().mockRejectedValue(error), showToast }),
     );
 
-    act(() => rendered.handlers().handleGsapAddAnimation("to"));
+    act(() => {
+      void rendered.handlers().handleGsapAddAnimation("to");
+    });
     await flushRejection();
 
     expect(showToast).not.toHaveBeenCalled();

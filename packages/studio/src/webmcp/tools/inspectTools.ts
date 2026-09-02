@@ -14,7 +14,12 @@
 
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "../../components/editor/domEditingTypes";
-import { mintElementHandle, patchTargetAddress, resolveElementHandle } from "../handles";
+import {
+  elementHandleMatchesProject,
+  mintElementHandle,
+  patchTargetAddress,
+  resolveLiveHandleSelection,
+} from "../handles";
 import { toolFailure, toolOk, type ToolResult } from "../toolResult";
 import type { SelectionToolDeps } from "./selectionTools";
 
@@ -94,10 +99,23 @@ function describeAnimation(animation: GsapAnimation): InspectAnimation {
   };
 }
 
+function getAnimationEditingBlock(
+  isCurrentSelection: boolean,
+  diagnostics: ReturnType<InspectToolDeps["getGsapDiagnostics"]>,
+): string | null {
+  if (!isCurrentSelection) return "animations are only readable for the current selection";
+  if (diagnostics.multipleTimelines) return "this composition has multiple GSAP timelines";
+  if (diagnostics.unsupportedTimelinePattern) {
+    return "this composition's timeline pattern is not editable by Studio";
+  }
+  return null;
+}
+
 function describe(
   selection: DomEditSelection,
   deps: InspectToolDeps,
   isCurrentSelection: boolean,
+  resolvedHandle?: string,
 ): ToolResult<StudioInspectResult> {
   const { capabilities } = selection;
   const gsap = deps.getGsapDiagnostics();
@@ -107,17 +125,18 @@ function describe(
   // which is worse than reporting none.
   const animations = isCurrentSelection ? gsap.animations.map(describeAnimation) : [];
 
-  let animationEditingBlocked: string | null = null;
-  if (!isCurrentSelection) {
-    animationEditingBlocked = "animations are only readable for the current selection";
-  } else if (gsap.multipleTimelines) {
-    animationEditingBlocked = "this composition has multiple GSAP timelines";
-  } else if (gsap.unsupportedTimelinePattern) {
-    animationEditingBlocked = "this composition's timeline pattern is not editable by Studio";
-  }
+  const animationEditingBlocked = getAnimationEditingBlock(isCurrentSelection, gsap);
 
   return toolOk<StudioInspectResult>({
-    handle: mintElementHandle(patchTargetAddress(selection)),
+    handle:
+      resolvedHandle ??
+      mintElementHandle(
+        patchTargetAddress(
+          selection,
+          deps.getCompositionPath() ?? "index.html",
+          deps.getProjectId(),
+        ),
+      ),
     label: selection.label,
     tagName: selection.tagName,
     sourceFile: selection.sourceFile,
@@ -165,25 +184,46 @@ export async function studioInspect(
     }
     return describe(current, deps, true);
   }
+  if (!elementHandleMatchesProject(input.handle, deps.getProjectId())) {
+    return toolFailure(
+      "invalid",
+      "the handle belongs to a different project",
+      "Call studio_look in the active project.",
+    );
+  }
 
-  const doc = deps.getPreviewDocument();
-  if (!doc) return toolFailure("blocked", "the preview is not mounted yet");
-
-  const element = resolveElementHandle(doc, input.handle);
-  if (!element) {
+  const resolved = await resolveLiveHandleSelection(
+    deps.getPreviewDocument,
+    input.handle,
+    deps.buildSelection,
+  );
+  if (resolved.status === "preview-unavailable") {
+    return toolFailure("blocked", "the preview is not mounted yet");
+  }
+  if (resolved.status === "not-found") {
     return toolFailure(
       "invalid",
       `no element matches handle ${input.handle}`,
       "Call studio_look for current handles.",
     );
   }
-
-  const selection = await deps.buildSelection(element);
-  if (!selection) {
+  if (resolved.status === "unsupported") {
     return toolFailure("blocked", `${input.handle} resolved to an element Studio cannot inspect`);
   }
+  if (resolved.status === "changed") {
+    return toolFailure(
+      "invalid",
+      "the target changed while it was resolving",
+      "Call studio_look again.",
+    );
+  }
 
-  return describe(selection, deps, current?.element === element);
+  return describe(
+    resolved.selection,
+    deps,
+    current?.element === resolved.selection.element,
+    input.handle,
+  );
 }
 
 export const STUDIO_INSPECT_INPUT_SCHEMA = {

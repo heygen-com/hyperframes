@@ -64,9 +64,9 @@ Move it in time with `data-start`. Put it on a different timeline row with
     { "id": "request10Text", "type": "string", "role": "content", "label": "Request 10 message", "description": "Tenth Slack notification message.", "default": "investor update needs a quick video walkthrough" },
     { "id": "request11Title", "type": "string", "role": "content", "label": "Request 11 sender", "description": "Eleventh Slack notification sender or channel.", "default": "Ben Liu" },
     { "id": "request11Text", "type": "string", "role": "content", "label": "Request 11 message", "description": "Eleventh Slack notification message.", "default": "one more: Product Hunt launch video" },
-    { "id": "payoffTitle", "type": "string", "role": "content", "label": "Payoff sender", "description": "Final brand payoff title.", "default": "HeyGen" },
-    { "id": "payoffText", "type": "string", "role": "content", "label": "Payoff message", "description": "Final brand payoff message.", "default": "Heard you needed some videos?" },
-    { "id": "payoffIcon", "type": "image", "role": "content", "label": "Payoff logo", "description": "Logo shown only in the final payoff notification.", "default": "assets/img/heygen-mark.svg" }
+    { "id": "payoffTitle", "type": "string", "role": "content", "label": "Payoff sender", "description": "Sender of the final payoff notification: the brand this video promotes, by its real name.", "portrays": ["subject_name", "recommended_position"], "default": "HeyGen" },
+    { "id": "payoffText", "type": "string", "role": "content", "label": "Payoff message", "description": "Payoff message from the brand this video promotes.", "default": "Heard you needed some videos?" },
+    { "id": "payoffIcon", "type": "image", "role": "content", "label": "Payoff logo", "description": "Mark of the brand this video promotes, shown only in the final payoff notification.", "portrays": ["subject_logo"], "default": "assets/img/heygen-mark.svg" }
   ]'
 >
   <head>

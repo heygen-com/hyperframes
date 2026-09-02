@@ -126,6 +126,15 @@ describe("resolveDomEditSelection — data-hf-group capture", () => {
     expect(selection?.selector).toBe('[data-hf-group="Group 1"]');
   });
 
+  it("resolves an explicit agent target without promoting it to the group", async () => {
+    const { parent, child } = buildNestedGroups();
+    const selection = await resolveDomEditSelection(child, { ...opts, exactTarget: true });
+    document.body.removeChild(parent);
+
+    expect(selection?.element).toBe(child);
+    expect(selection?.id).toBe("child");
+  });
+
   it("selects the next nested group when drilled into the outer group", async () => {
     const { parent, outer, inner, child } = buildNestedGroups();
     const selection = await resolveDomEditSelection(child, { ...opts, activeGroupElement: outer });

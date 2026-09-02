@@ -3070,4 +3070,104 @@ describe("SVG draw-on rules", () => {
       ).toBeDefined();
     });
   });
+  describe("gsap_timeline_return_used_as_tween", () => {
+    const composition = (body: string) => `
+<html><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    ${body}
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+
+    it("errors when a rebuild collects tl.to() returns to kill them later", async () => {
+      // The real shape this exists for: a caret-follow scroll rebuilt on document.fonts.ready.
+      // Every pushed value is `tl`, so the rebuild called kill() on the master timeline 49 times
+      // and then stacked its new keyframes on top of the ones it meant to replace.
+      const result = await lintHyperframeHtml(
+        composition(`
+    let scrollTweens = [];
+    const layout = () => {
+      scrollTweens.forEach((tw) => tw.kill());
+      scrollTweens = [];
+      scrollTweens.push(tl.to("#typed", { x: -40, duration: 0.08 }, 1));
+    };
+    layout();
+    document.fonts.ready.then(layout);`),
+      );
+      const finding = result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("returns THE TIMELINE ITSELF");
+    });
+
+    it("errors when a bound tl.to() return is killed", async () => {
+      const result = await lintHyperframeHtml(
+        composition(`
+    const fade = tl.to("#card", { opacity: 1, duration: 0.5 }, 0);
+    document.fonts.ready.then(() => fade.kill());`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween"),
+      ).toBeDefined();
+    });
+
+    it("accepts a nested timeline, which is what the fix hint prescribes", async () => {
+      // A nested child is a real object: killing it replaces exactly its own keyframes and
+      // cannot reach the parent. Adding it at 0 keeps every child's absolute time.
+      const result = await lintHyperframeHtml(
+        composition(`
+    let caretTl = null;
+    const layout = () => {
+      if (caretTl) caretTl.kill();
+      caretTl = gsap.timeline();
+      caretTl.to("#typed", { x: -40, duration: 0.08 }, 1);
+      tl.add(caretTl, 0);
+    };
+    layout();
+    document.fonts.ready.then(layout);`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween"),
+      ).toBeUndefined();
+    });
+
+    it("accepts gsap.to(), which really does return a tween", async () => {
+      const result = await lintHyperframeHtml(
+        composition(`
+    const tween = gsap.to("#card", { opacity: 1, duration: 0.5, paused: true });
+    tl.add(tween, 0);
+    document.fonts.ready.then(() => tween.kill());`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag Array.from or a chained tl.to() that is never captured", async () => {
+      const result = await lintHyperframeHtml(
+        composition(`
+    const words = Array.from(document.querySelectorAll(".w"));
+    tl.to(words, { opacity: 1, duration: 0.3 }, 0).to(words, { y: 0, duration: 0.3 }, 0.3);`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag a bound return that is never treated as a tween", async () => {
+      // Pointless but harmless: the value is just `tl` again, and nothing tween-scoped is
+      // aimed at it. Flagging this would be noise.
+      const result = await lintHyperframeHtml(
+        composition(`
+    const chain = tl.to("#card", { opacity: 1, duration: 0.5 }, 0);
+    chain.to("#card2", { opacity: 1, duration: 0.5 }, 1);`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_timeline_return_used_as_tween"),
+      ).toBeUndefined();
+    });
+  });
 });

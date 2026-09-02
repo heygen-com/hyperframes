@@ -25,7 +25,8 @@
       "type": "string",
       "role": "content",
       "label": "Sender",
-      "description": "Bold name in the sheet subtitle.",
+      "description": "Name of the brand this video promotes, shown as the sender offering the item. Use the real name of that brand.",
+      "portrays": ["subject_name"],
       "default": "HyperFrames"
     },
     {
@@ -41,7 +42,8 @@
       "type": "string",
       "role": "content",
       "label": "Brand strip",
-      "description": "Small-caps line under the preview, beside the logo.",
+      "description": "Positioning line of the brand this video promotes, in small caps beside its logo.",
+      "portrays": ["subject_tagline"],
       "default": "OPEN-SOURCE VIDEO ENGINE · SHIP FROM HTML"
     },
     {
@@ -97,7 +99,8 @@
       "type": "image",
       "role": "content",
       "label": "Brand logo",
-      "description": "Transparent horizontal wordmark in the preview strip.",
+      "description": "Transparent horizontal wordmark of the brand this video promotes, in the preview strip.",
+      "portrays": ["subject_logo"],
       "default": "assets/hyperframes-logo-black.svg"
     }
   ],

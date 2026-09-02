@@ -1,4 +1,5 @@
 import { useCallback, type MutableRefObject } from "react";
+import { usePlayerStore } from "../player/store/playerStore";
 import {
   deleteExternalConflictSnapshot,
   loadExternalConflictSnapshot,
@@ -48,6 +49,9 @@ export function useStudioExternalFileChanges({
 }: UseStudioExternalFileChangesOptions) {
   const { flushPendingSourceSave, discardPendingSourceSave } = fileManager;
   const { drainPendingDomEditSaves, resetDomEditSaveQueueBreaker } = previewPersistence;
+  const bumpThumbnailContentRevision = usePlayerStore(
+    (state) => state.bumpThumbnailContentRevision,
+  );
   const drainPendingChanges = useCallback(async () => {
     const source = await flushPendingSourceSave();
     if (source.status !== "clean") return source;
@@ -77,5 +81,6 @@ export function useStudioExternalFileChanges({
     readProjectFile: fileManager.readProjectFile,
     onUseExternalFile: fileManager.updateEditingFileContent,
     resetSaveQueues: resetDomEditSaveQueueBreaker,
+    onAcceptedPersistedFileChange: bumpThumbnailContentRevision,
   });
 }

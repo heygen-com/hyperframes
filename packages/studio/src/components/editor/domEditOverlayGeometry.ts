@@ -107,6 +107,20 @@ export function toVisibleOverlayRect(
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
+/** Batch transient chrome through one shared iframe-to-overlay coordinate basis. */
+export function toVisibleOverlayRects(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  elements: readonly HTMLElement[],
+): Array<OverlayRect | null> {
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  if (!scale) return elements.map(() => null);
+  return elements.map((element) => {
+    const rect = toOverlayRect(overlayEl, iframe, element, scale);
+    return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
+  });
+}
+
 /**
  * getComputedStyle(element).transform decomposed into a DOMMatrix, read ONCE.
  * Shared by orientedOverlayRect's rotation gate and elementCornerOverlayPoints

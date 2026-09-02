@@ -144,6 +144,7 @@ That writes one file: `compositions/flowchart.html`.
               />
             </svg>
           </div>
+          <div class="selection-border"></div>
         </div>
         <div id="node-nocode" class="node blue" style="left: 800px; top: 500px">
           Try no-code first
@@ -335,7 +336,6 @@ That writes one file: `compositions/flowchart.html`.
         (function () {
           const tl = gsap.timeline({ paused: true });
           const S = '[data-composition-id="flowchart"]';
-          const nodePython = document.querySelector(S + " #node-python");
           const pythonText = document.querySelector(S + " #python-text");
 
           // 1. Root node scales in
@@ -406,15 +406,7 @@ That writes one file: `compositions/flowchart.html`.
           tl.to(S + " #cursor", { x: -1470, y: -540, duration: 1, ease: "power1.inOut" }, "hold3");
 
           // 10. Cursor clicks — selection border
-          tl.add(() => {
-            if (!nodePython) return;
-            if (!nodePython.querySelector(".selection-border")) {
-              const border = document.createElement("div");
-              border.className = "selection-border";
-              nodePython.appendChild(border);
-            }
-            gsap.set(S + " .selection-border", { opacity: 1 });
-          }, "hold3+=1");
+          tl.set(S + " .selection-border", { opacity: 1 }, "hold3+=1");
 
           tl.to(
             S + " #cursor",

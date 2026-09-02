@@ -21,7 +21,19 @@
  */
 
 import type { DomEditSelection } from "../../components/editor/domEditingTypes";
-import { toolFailure, toolOk, type ToolFailure, type ToolResult } from "../toolResult";
+import type { DomEditCommitOutcome } from "../../hooks/domEditCommitRunner";
+import type { DomEditPersistOutcome } from "../../hooks/domEditCommitTypes";
+import { toolFailure, type ToolFailure } from "../toolResult";
+import {
+  dispatched,
+  runTargetedWrite,
+  saved,
+  verified,
+  type StudioWriteAdapterSuccess,
+  type StudioWriteResult,
+  type TargetedWriteDeps,
+  WRITE_RECEIPT_DESCRIPTION,
+} from "../writeCoordinator";
 
 export interface ElementBox {
   x: number;
@@ -30,17 +42,25 @@ export interface ElementBox {
   height: number;
 }
 
-export interface TransformToolDeps {
-  getCurrentSelection: () => DomEditSelection | null;
-  getWriteBlockedReason: () => string | null;
+export interface TransformToolDeps extends TargetedWriteDeps {
   /** The element's box as it renders right now. */
   readBox: (selection: DomEditSelection) => ElementBox;
-  moveTo: (selection: DomEditSelection, next: { x: number; y: number }) => Promise<void>;
-  resizeTo: (selection: DomEditSelection, next: { width: number; height: number }) => Promise<void>;
-  rotateTo: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
+  moveTo: (
+    selection: DomEditSelection,
+    next: { x: number; y: number },
+  ) => Promise<DomEditCommitOutcome | void>;
+  resizeTo: (
+    selection: DomEditSelection,
+    next: { width: number; height: number },
+  ) => Promise<DomEditCommitOutcome | void>;
+  rotateTo: (
+    selection: DomEditSelection,
+    next: { angle: number },
+  ) => Promise<DomEditCommitOutcome | void>;
 }
 
 export interface StudioTransformInput {
+  handle?: unknown;
   x?: unknown;
   y?: unknown;
   width?: unknown;
@@ -54,6 +74,9 @@ export interface StudioTransformResult {
   applied: string[];
   /** Requested operations whose effect could not be observed, with why. */
   unchanged: Record<string, string>;
+  /** Present when earlier operations landed before a later operation failed. */
+  partial?: true;
+  failed?: Partial<Record<TransformOperation, string>>;
 }
 
 const NO_OP_HINT =
@@ -61,15 +84,6 @@ const NO_OP_HINT =
 
 function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function guard(deps: TransformToolDeps): ToolFailure | null {
-  const blocked = deps.getWriteBlockedReason();
-  if (blocked) return toolFailure("blocked", blocked, "Resolve it in Studio, then retry.");
-  if (!deps.getCurrentSelection()) {
-    return toolFailure("invalid", "nothing is selected", "Call studio_select first.");
-  }
-  return null;
 }
 
 interface TransformRequest {
@@ -126,75 +140,219 @@ function parseRequest(input: StudioTransformInput): TransformRequest | ToolFailu
   };
 }
 
+type TransformOperation = "resize" | "move" | "rotate";
+
+interface TransformObservation {
+  operation: TransformOperation;
+  changed: boolean;
+  unchangedReason?: string;
+  persistence?: DomEditPersistOutcome;
+}
+
+function transformPreflight(
+  request: TransformRequest,
+  selection: DomEditSelection,
+): ToolFailure | null {
+  if (
+    request.size &&
+    !selection.capabilities.canResize &&
+    !selection.capabilities.canApplyManualSize
+  ) {
+    return toolFailure("blocked", "this target cannot be resized");
+  }
+  if (
+    request.move &&
+    !selection.capabilities.canMove &&
+    !selection.capabilities.canApplyManualOffset
+  ) {
+    return toolFailure("blocked", "this target cannot be moved");
+  }
+  if (request.rotate !== null && !selection.capabilities.canApplyManualRotation) {
+    return toolFailure("blocked", "this target cannot be rotated");
+  }
+  return null;
+}
+
+async function observeResize(
+  deps: TransformToolDeps,
+  selection: DomEditSelection,
+  size: NonNullable<TransformRequest["size"]>,
+): Promise<TransformObservation | ToolFailure> {
+  const before = deps.readBox(selection);
+  const outcome = await deps.resizeTo(selection, size);
+  if (outcome && !outcome.ok) return outcomeFailure(outcome.reason);
+  const after = deps.readBox(selection);
+  const changed = after.width !== before.width || after.height !== before.height;
+  return {
+    operation: "resize",
+    changed,
+    ...(!changed ? { unchangedReason: "the element's size did not change" } : {}),
+    ...(outcome?.ok && outcome.persistence ? { persistence: outcome.persistence } : {}),
+  };
+}
+
+async function observeMove(
+  deps: TransformToolDeps,
+  selection: DomEditSelection,
+  move: NonNullable<TransformRequest["move"]>,
+): Promise<TransformObservation | ToolFailure> {
+  const before = deps.readBox(selection);
+  const outcome = await deps.moveTo(selection, move);
+  if (outcome && !outcome.ok) return outcomeFailure(outcome.reason);
+  const after = deps.readBox(selection);
+  const changed = after.x !== before.x || after.y !== before.y;
+  return {
+    operation: "move",
+    changed,
+    ...(!changed ? { unchangedReason: `the element did not move. ${NO_OP_HINT}` } : {}),
+    ...(outcome?.ok && outcome.persistence ? { persistence: outcome.persistence } : {}),
+  };
+}
+
+async function observeRotation(
+  deps: TransformToolDeps,
+  selection: DomEditSelection,
+  rotate: number,
+): Promise<TransformObservation | ToolFailure> {
+  const outcome = await deps.rotateTo(selection, { angle: rotate });
+  if (outcome && !outcome.ok) return outcomeFailure(outcome.reason);
+  if (!outcome || !outcome.persistence) {
+    return {
+      operation: "rotate",
+      changed: false,
+      unchangedReason: "rotation was dispatched but not independently observed",
+    };
+  }
+  if (!outcome.persistence.changed) {
+    return {
+      operation: "rotate",
+      changed: false,
+      unchangedReason: "the durable write reported no rotation change",
+      persistence: outcome.persistence,
+    };
+  }
+  return { operation: "rotate", changed: true, persistence: outcome.persistence };
+}
+
+function requestMatchesBox(request: TransformRequest, box: ElementBox): boolean {
+  const sizeMatches =
+    !request.size || (box.width === request.size.width && box.height === request.size.height);
+  const moveMatches = !request.move || (box.x === request.move.x && box.y === request.move.y);
+  return sizeMatches && moveMatches;
+}
+
+function transformReceipt(
+  request: TransformRequest,
+  initial: ElementBox,
+  box: ElementBox,
+  observations: TransformObservation[],
+  failure?: { operation: TransformOperation; reason: string },
+): StudioWriteAdapterSuccess<StudioTransformResult> {
+  const applied = observations.filter((item) => item.changed).map((item) => item.operation);
+  const unchanged = Object.fromEntries(
+    observations.flatMap((item) => {
+      if (!item.unchangedReason) return [];
+      const key = item.operation === "rotate" ? "rotation" : item.operation;
+      return [[key, item.unchangedReason]];
+    }),
+  );
+  const value: StudioTransformResult = {
+    box,
+    applied,
+    unchanged,
+    ...(failure ? { partial: true, failed: { [failure.operation]: failure.reason } } : {}),
+  };
+  const changed = observations.some((item) => item.changed) || !boxesEqual(initial, box);
+  const allDurable = observations.every((item) => item.persistence !== undefined);
+  const persistence = observations.at(-1)?.persistence;
+  if (!allDurable || !persistence) return dispatched(value, changed);
+  if (!failure && requestMatchesBox(request, box) && request.rotate === null) {
+    return { ...verified(value, persistence, { before: initial, after: box }), changed };
+  }
+  return { ...saved(value, persistence), changed };
+}
+
+async function writeTransform(
+  deps: TransformToolDeps,
+  selection: DomEditSelection,
+  request: TransformRequest,
+): Promise<StudioWriteAdapterSuccess<StudioTransformResult> | ToolFailure> {
+  const initial = deps.readBox(selection);
+  const observations: TransformObservation[] = [];
+  if (request.size) {
+    const observation = await observeResize(deps, selection, request.size);
+    if (isFailure(observation)) return observation;
+    observations.push(observation);
+  }
+  if (request.move) {
+    const observation = await observeMove(deps, selection, request.move);
+    if (isFailure(observation)) {
+      if (observations.length === 0) return observation;
+      return transformReceipt(request, initial, deps.readBox(selection), observations, {
+        operation: "move",
+        reason: observation.reason,
+      });
+    }
+    observations.push(observation);
+  }
+  if (request.rotate !== null) {
+    const observation = await observeRotation(deps, selection, request.rotate);
+    if (isFailure(observation)) {
+      if (observations.length === 0) return observation;
+      return transformReceipt(request, initial, deps.readBox(selection), observations, {
+        operation: "rotate",
+        reason: observation.reason,
+      });
+    }
+    observations.push(observation);
+  }
+  return transformReceipt(request, initial, deps.readBox(selection), observations);
+}
+
 export async function studioTransform(
   deps: TransformToolDeps,
   input: StudioTransformInput,
-): Promise<ToolResult<StudioTransformResult>> {
+  signal: AbortSignal = new AbortController().signal,
+): Promise<StudioWriteResult<StudioTransformResult>> {
   const request = parseRequest(input);
-  if (isFailure(request)) return request;
-
-  const blocked = guard(deps);
-  if (blocked) return blocked;
-
-  const selection = deps.getCurrentSelection();
-  if (!selection) return toolFailure("invalid", "nothing is selected");
-
-  const applied: string[] = [];
-  const unchanged: Record<string, string> = {};
-
-  // Sequential, and each one re-reads first, so a move is judged against the box
-  // AFTER a resize in the same call rather than against the original.
-  if (request.size) {
-    const before = deps.readBox(selection);
-    await deps.resizeTo(selection, request.size);
-    const after = deps.readBox(selection);
-    if (after.width !== before.width || after.height !== before.height) applied.push("resize");
-    else unchanged.resize = "the element's size did not change";
+  if (isFailure(request)) {
+    return { ...request, stage: "refused", operation: "transform" };
   }
 
-  if (request.move) {
-    const before = deps.readBox(selection);
-    await deps.moveTo(selection, request.move);
-    const after = deps.readBox(selection);
-    if (after.x !== before.x || after.y !== before.y) applied.push("move");
-    else unchanged.move = `the element did not move. ${NO_OP_HINT}`;
-  }
+  return runTargetedWrite(deps, {
+    handle: input.handle,
+    operation: "transform",
+    signal,
+    preflight: (selection) => transformPreflight(request, selection),
+    write: (selection) => writeTransform(deps, selection, request),
+  });
+}
 
-  if (request.rotate !== null) {
-    // Rotation is written as the CSS `rotate` property, an individual transform
-    // property that does NOT appear in getComputedStyle().transform. There is no
-    // reliable box-derived signal, so this is reported as dispatched rather than
-    // verified, and the description says so.
-    await deps.rotateTo(selection, { angle: request.rotate });
-    applied.push("rotate");
-  }
+function boxesEqual(a: ElementBox, b: ElementBox): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
 
-  if (applied.length === 0) {
-    return toolFailure(
-      "blocked",
-      `nothing changed: ${Object.values(unchanged).join("; ")}`,
-      NO_OP_HINT,
-    );
-  }
-
-  return toolOk<StudioTransformResult>({ box: deps.readBox(selection), applied, unchanged });
+function outcomeFailure(reason: string): ToolFailure {
+  return toolFailure("failed", `the transform was not applied: ${reason}`);
 }
 
 export const STUDIO_TRANSFORM_INPUT_SCHEMA = {
   type: "object",
   properties: {
+    handle: { type: "string", description: "A source-safe element handle from studio_look." },
     x: { type: "number", description: "New x offset in pixels. Must be paired with y." },
     y: { type: "number", description: "New y offset in pixels. Must be paired with x." },
     width: { type: "number", minimum: 0, description: "New width. Must be paired with height." },
     height: { type: "number", minimum: 0, description: "New height. Must be paired with width." },
     rotate: { type: "number", description: "Rotation in degrees." },
   },
+  required: ["handle"],
   additionalProperties: false,
 } as const;
 
 export const STUDIO_TRANSFORM_DESCRIPTION = [
-  "Move, resize or rotate the CURRENTLY SELECTED element, the way a drag would.",
-  "Call studio_select first. Give x with y, and width with height.",
+  "Move, resize or rotate one element using its source-safe handle from studio_look.",
+  "Give x with y, and width with height.",
   "The result's `box` is READ BACK after the write, not echoed from your request, and",
   "`applied` lists what actually took effect. Check it.",
   "Move and rotate are written as GSAP code, so in a composition with no GSAP timeline they",
@@ -202,4 +360,5 @@ export const STUDIO_TRANSFORM_DESCRIPTION = [
   "Rotation is reported as dispatched rather than verified, because the CSS `rotate` property",
   "does not appear in the element's computed transform.",
   "Returns `ok: true`, or `ok: false` with `kind`, `reason` and a `hint`.",
+  WRITE_RECEIPT_DESCRIPTION,
 ].join(" ");

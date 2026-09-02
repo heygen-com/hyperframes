@@ -14,14 +14,16 @@ Studio registers its own capabilities as WebMCP tools, so an AI agent running in
 
 ## What it looks like
 
-With the tools available, an agent can do this without touching your files:
+With the tools available, an agent can inspect the source-backed scene, make one targeted edit, and
+check the result:
 
 ```text
-studio_look                      -> the project, playhead, selection, and every element
-studio_select   hf:abc123        -> selects the headline, same as clicking it
-studio_inspect                   -> its resolved styles, text, and animations
-studio_set_style {"color":"red"} -> writes it, through Studio's own commit path
-studio_frame    2.4              -> a PNG of the composition at 2.4 seconds
+studio_look                                      -> find the headline and copy its handle
+studio_select    {"handle":"hf:abc123"}          -> share the target with the person in Studio
+studio_inspect   {"handle":"hf:abc123"}          -> read its styles, text, and capabilities
+studio_set_style {"handle":"hf:abc123",
+                  "styles":{"color":"red"}}     -> write that source-backed element
+studio_frame     {"time":2.4}                    -> capture the composition at 2.4 seconds
 ```
 
 The last one matters most. It is what lets an agent judge a change instead of guessing at it.
@@ -63,8 +65,9 @@ console.log(tools.map((tool) => tool.name));
   feature-detecting it will mislead you.
 </Warning>
 
-On browsers without native support, Studio loads a polyfill so a WebMCP bridge extension can still
-connect. Nothing is downloaded on a browser that has the API already.
+On browsers without native support, Studio loads a bundled polyfill so a WebMCP bridge extension can
+still connect. Nothing is downloaded on a browser that has the API already. When the Studio
+preference is disabled, it registers no tools.
 
 ## What an agent can do
 
@@ -72,11 +75,14 @@ connect. Nothing is downloaded on a browser that has the API already.
 
 | Tool | Answers |
 | --- | --- |
-| `studio_look` | The open project and composition, the playhead, what you have selected, and every element with a handle |
+| `studio_look` | The open project and composition, the playhead, selection, undo state, and a bounded source-backed scene in nested order |
 | `studio_inspect` | One element in full: resolved styles, text fields, box, animations, and what it will accept |
 | `studio_frame` | A PNG of the composition at any time |
 
-`studio_look` gives every element a **handle**. Pass it back to any tool that edits an element.
+Each element returned by `studio_look` has a **handle**. It also reports `sourceFile`, `parentHandle`,
+`depth`, and `childCount`, so an agent can distinguish the same authored ID in two nested scene
+files. Pass a handle back unchanged to every element write. Handles are source-safe addresses, not
+CSS selectors.
 
 ### Change
 
@@ -92,29 +98,49 @@ connect. Nothing is downloaded on a browser that has the API already.
 | `studio_add_keyframe` | Adds a keyframe to an animation |
 | `studio_delete_animation` | Removes an animation |
 
-Every edit runs through the same commit path a mouse gesture uses, so it lands in your file with the
-same undo entry and the same save behaviour. There is no separate agent write path.
+Element writes run through the same commit actors Studio uses. When that actor forwards versioned
+durability evidence, the receipt names the source file and content version, and the edit enters the
+same undo history. Actors without that evidence stay at `dispatched`.
 
 ## Two rules worth knowing
 
-**Select first, then edit.** Most editing tools act on the current selection rather than taking an
-element. That is how Studio itself works: click, then type. An agent that edits without selecting
-gets an error telling it to select.
+**Show intent, then address every write explicitly.** Before the first write to a target, call
+`studio_select` so the person in Studio sees the same selection box and inspector as the agent.
+Selection communicates intent; it does not grant write authority. `studio_set_text`,
+`studio_set_style`, `studio_transform`, and the animation tools still require that target's handle
+from `studio_look`, so a later human click cannot redirect an already-addressed write.
 
-**Check what came back.** Tools report what actually happened, not what was asked for.
-`studio_transform` reads the element's box back after writing and tells you which operations took
-effect. `studio_frame` reports the time it actually captured. When something could not be verified,
-the tool says so rather than claiming success.
+**Read the receipt stage.** A write result separates acceptance from proof:
+
+| Stage | What it proves |
+| --- | --- |
+| `refused` | No commit actor ran. Fix the handle, input, capability, or Studio state before retrying. |
+| `dispatched` | The actor accepted the request, but the tool has no durable version or independent readback. Follow with `studio_inspect` or `studio_frame`. |
+| `saved` | Studio received versioned evidence that the named source file persisted the write. |
+| `verified` | The write was saved and an independent readback observed the result. |
+| `failed` | A commit actor ran and then failed. Inspect `kind`, `reason`, and any `hint`. |
+
+`changed` is separate from the stage. A saved no-op is still truthful: the file accepted the request,
+but the value was already present. Style writes include a receipt per property and can be partial.
+Animation handlers currently report `dispatched` after their persistence and live-preview sync
+settle; they do not claim versioned durability or independent readback when the underlying handler
+cannot provide that evidence. A late cancellation request also does not undo an edit that was
+already dispatched or saved.
 
 ## Working alongside an agent
 
-This is built for you and an agent looking at the same composition. Studio shows you every change as
-it happens: an agent selecting an element draws the same selection box, and an edit appears in your
-undo history under its own name.
+This is built for you and an agent looking at the same composition. Studio shows selection normally
+and adds a **Topology Lens** around the addressed element while a transaction is resolving. A new
+target is acquired, repeated edits localize more quickly, and a durable result seals. The lens is
+Studio-only transaction feedback: it is not added to authored HTML, the preview iframe, captured
+frames, or thumbnails.
 
-That shared view is doing real work. Some of Studio's write paths report a failure through a toast
-rather than a return value, so **you** are the one who sees it. Leave Studio visible while an agent
-is working.
+When a write tool finishes successfully, the open Studio preview has already synchronized that
+edit. The person watching does not need to scrub the timeline or refresh the browser to see it.
+
+After an accepted source-file change, Studio advances the project thumbnail revision and regenerates
+visible composition thumbnails. This lets the sidebar converge on the saved project instead of
+continuing to show cached pre-edit pixels.
 
 <Note>
   Studio refuses agent writes while auto-save is paused or an external change to the file is waiting

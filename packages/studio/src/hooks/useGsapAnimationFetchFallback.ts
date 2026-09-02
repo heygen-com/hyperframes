@@ -37,6 +37,10 @@ export interface GsapAnimationFetchOptions {
   fresh?: boolean;
 }
 
+export function gsapSourceFileForSelection(selection: DomEditSelection): string {
+  return selection.sourceFile || "index.html";
+}
+
 /**
  * Classify a parse result for one element. Differentiates a hard fetch failure
  * (`parsed === null`) from a warm-but-empty cold parse (`animations.length === 0`)
@@ -82,7 +86,7 @@ async function fetchElementAnimationsWithRetry(
   }
 }
 
-export function useGsapAnimationFetchFallback(projectId: string | null, gsapSourceFile: string) {
+export function useGsapAnimationFetchFallback(projectId: string | null) {
   return useCallback(
     (selection: DomEditSelection, options?: GsapAnimationFetchOptions) =>
       async (): Promise<GsapAnimation[]> => {
@@ -90,12 +94,12 @@ export function useGsapAnimationFetchFallback(projectId: string | null, gsapSour
         const target = { id: selection.id ?? null, selector: selection.selector ?? null };
         return fetchElementAnimationsWithRetry(
           projectId,
-          gsapSourceFile,
+          gsapSourceFileForSelection(selection),
           target,
           options?.failOnFetchError === true,
           options?.fresh === true,
         );
       },
-    [projectId, gsapSourceFile],
+    [projectId],
   );
 }

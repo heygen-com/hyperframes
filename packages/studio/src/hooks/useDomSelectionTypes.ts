@@ -16,6 +16,8 @@ export interface ResolveDomSelectionOptions {
   preferClipAncestor?: boolean;
   skipSourceProbe?: boolean;
   activeGroupElement?: HTMLElement | null;
+  /** Resolve this node itself instead of applying human group-capture behavior. */
+  exactTarget?: boolean;
 }
 
 export interface UseDomSelectionParams {

@@ -55,7 +55,7 @@ export function useGsapAnimationOps({
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
-      commitMutationSafely(
+      return commitMutationSafely(
         selection,
         { type: "update-meta", animationId, updates },
         { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta`, softReload: true },
@@ -77,10 +77,10 @@ export function useGsapAnimationOps({
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
-      commitMutationSafely(
+      return commitMutationSafely(
         selection,
         { type: "delete", animationId, stripStudioEdits: true },
-        { label: "Delete GSAP animation" },
+        { label: "Delete GSAP animation", softReload: true },
       );
     },
     [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],
@@ -178,7 +178,7 @@ export function useGsapAnimationOps({
           properties: toDefaults[method] ?? { opacity: 1 },
           fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
         },
-        { label: `Add GSAP ${method} animation` },
+        { label: `Add GSAP ${method} animation`, softReload: true },
       );
     },
     [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],

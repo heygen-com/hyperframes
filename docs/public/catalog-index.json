@@ -2242,6 +2242,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/keyframe-scrub-stack.png"
   },
   {
+    "name": "kinetic-center-build",
+    "type": "component",
+    "title": "Kinetic Center Build",
+    "description": "Words enter from the right and push the growing phrase left until the final line locks centered.",
+    "tags": [
+      "motion-primitive",
+      "text-effects",
+      "kinetic-type",
+      "reveal",
+      "remocn-port"
+    ],
+    "href": "/catalog/components/kinetic-center-build",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-center-build.png"
+  },
+  {
     "name": "kinetic-type-swap",
     "type": "component",
     "title": "Kinetic Type Swap",

@@ -2,7 +2,7 @@
   "model": "bge-small-en-v1.5",
   "modelRevision": "ea104dacec62c0de699686887e3f920caeb4f3e3",
   "dimensions": 384,
-  "revision": "2611d04335aacf5a70649019f948e5ba2f474c38bc45cd59e179d71294cd8cb8",
+  "revision": "fa440b4e9cf8dd760a65776d39a118a57e02fb52c1b0efd9c1d2e9ec04b11930",
   "names": [
     "ai-chat-reveal",
     "animated-bar-chart",
@@ -156,6 +156,7 @@
     "ios26-liquid-glass",
     "iris-reveal",
     "keyframe-scrub-stack",
+    "kinetic-center-build",
     "kinetic-type-swap",
     "light-leak",
     "light-sweep-pass",

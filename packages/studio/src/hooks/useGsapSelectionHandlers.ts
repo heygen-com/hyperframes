@@ -200,8 +200,13 @@ export function useGsapSelectionHandlers({
   const handleGsapDeleteAnimation = useCallback(
     (animId: string, selectionOverride?: DomEditSelection | null) => {
       const sel = resolveWriteSelection(selectionOverride);
-      if (!sel) return;
-      observeGsapMutation(deleteGsapAnimation(sel, animId), sel, "delete", "Delete GSAP animation");
+      if (!sel) return Promise.resolve(false);
+      return observeGsapMutation(
+        deleteGsapAnimation(sel, animId),
+        sel,
+        "delete",
+        "Delete GSAP animation",
+      );
     },
     [resolveWriteSelection, deleteGsapAnimation, observeGsapMutation],
   );
@@ -222,20 +227,25 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapAddAnimation = useCallback(
-    (method: "to" | "from" | "set" | "fromTo") => {
-      if (!domEditSelection) return;
-      void addGsapAnimation(domEditSelection, method, usePlayerStore.getState().currentTime).catch(
-        (error) => {
-          trackGsapHandlerFailure(error, domEditSelection, "add", `Add GSAP ${method} animation`);
-        },
+    (method: "to" | "from" | "set" | "fromTo", selectionOverride?: DomEditSelection | null) => {
+      const selection = resolveWriteSelection(selectionOverride);
+      if (!selection) return Promise.resolve(false);
+      const landed = observeGsapMutation(
+        addGsapAnimation(selection, method, usePlayerStore.getState().currentTime),
+        selection,
+        "add",
+        `Add GSAP ${method} animation`,
       );
-      if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
+      if (selection.element.hasAttribute("data-hf-studio-path-offset")) {
         // The reset owns rollback and the position commit already owns user and
         // telemetry reporting. This is only the fire-and-forget UI boundary.
-        void handleDomManualEditsReset(domEditSelection).catch(() => undefined);
+        void landed.then((didLand) => {
+          if (didLand) void handleDomManualEditsReset(selection).catch(() => undefined);
+        });
       }
+      return landed;
     },
-    [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
+    [resolveWriteSelection, addGsapAnimation, handleDomManualEditsReset, observeGsapMutation],
   );
 
   const handleGsapAddProperty = useCallback(

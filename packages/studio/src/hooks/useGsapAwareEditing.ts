@@ -125,6 +125,14 @@ export function useGsapAwareEditing({
 }: UseGsapAwareEditingParams) {
   // ── GSAP-aware geometry commits ──
 
+  const getGsapAnimationsForSelection = useCallback(
+    (selection: DomEditSelection): GsapAnimation[] | Promise<GsapAnimation[]> => {
+      if (domEditSelection?.element === selection.element) return selectedGsapAnimations;
+      return makeFetchFallback(selection, { failOnFetchError: true })();
+    },
+    [domEditSelection, selectedGsapAnimations, makeFetchFallback],
+  );
+
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (
       selection: DomEditSelection,
@@ -133,10 +141,14 @@ export function useGsapAwareEditing({
     ) => {
       if (gsapCommitMutation) {
         try {
+          const ownedAnimations = getGsapAnimationsForSelection(selection);
+          const targetAnimations = Array.isArray(ownedAnimations)
+            ? ownedAnimations
+            : await ownedAnimations;
           const outcome = await tryGsapDragIntercept(
             selection,
             next,
-            selectedGsapAnimations,
+            targetAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
@@ -150,11 +162,11 @@ export function useGsapAwareEditing({
       }
     },
     [
-      selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      getGsapAnimationsForSelection,
     ],
   );
 
@@ -286,7 +298,11 @@ export function useGsapAwareEditing({
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
     ) => {
-      const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
+      const ownedAnimations = getGsapAnimationsForSelection(selection);
+      const targetAnimations = Array.isArray(ownedAnimations)
+        ? ownedAnimations
+        : await ownedAnimations;
+      const scaleRoute = targetAnimations.some((anim) => anim.propertyGroup === "scale");
       const selector = selectorFromSelection(selection);
       const hasLivePositionTween = selector
         ? hasNonHoldTweenForElement(
@@ -300,8 +316,8 @@ export function useGsapAwareEditing({
         next,
         offset: offset ?? null,
         scaleRoute,
-        animCount: selectedGsapAnimations.length,
-        animGroups: selectedGsapAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
+        animCount: targetAnimations.length,
+        animGroups: targetAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
       });
       return runGestureTransaction({
         element: selection.element,
@@ -325,7 +341,7 @@ export function useGsapAwareEditing({
               const outcome = await tryGsapResizeIntercept(
                 selection,
                 next,
-                selectedGsapAnimations,
+                targetAnimations,
                 previewIframeRef.current,
                 commitMutation,
                 makeFetchFallback(selection),
@@ -349,7 +365,7 @@ export function useGsapAwareEditing({
                 const dragOutcome = await tryGsapDragIntercept(
                   selection,
                   offset,
-                  selectedGsapAnimations,
+                  targetAnimations,
                   previewIframeRef.current,
                   commitMutation,
                   makeFetchFallback(selection),
@@ -377,11 +393,11 @@ export function useGsapAwareEditing({
     },
     [
       handleDomBoxSizeCommit,
-      selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      getGsapAnimationsForSelection,
     ],
   );
 
@@ -389,6 +405,10 @@ export function useGsapAwareEditing({
     async (selection: DomEditSelection, next: { angle: number }) => {
       if (gsapCommitMutation) {
         try {
+          const ownedAnimations = getGsapAnimationsForSelection(selection);
+          const targetAnimations = Array.isArray(ownedAnimations)
+            ? ownedAnimations
+            : await ownedAnimations;
           // Single source of truth for rotation too: tryGsapRotationIntercept handles
           // tweened elements (keyframes) and static ones (a tl.set), so there's no
           // CSS-var fallback. Selectorless/computed source rejects so the gesture
@@ -396,7 +416,7 @@ export function useGsapAwareEditing({
           const outcome = await tryGsapRotationIntercept(
             selection,
             next.angle,
-            selectedGsapAnimations,
+            targetAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
@@ -409,11 +429,11 @@ export function useGsapAwareEditing({
       }
     },
     [
-      selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      getGsapAnimationsForSelection,
     ],
   );
 
@@ -507,6 +527,7 @@ export function useGsapAwareEditing({
   }, [commitMutation]);
 
   return {
+    getGsapAnimationsForSelection,
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareGroupPathOffsetCommit,
     handleGsapAwareBoxSizeCommit,

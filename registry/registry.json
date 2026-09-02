@@ -996,6 +996,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "kinetic-center-build",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "kinetic-type-swap",
       "type": "hyperframes:component"
     },
@@ -1533,6 +1537,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "2611d04335aacf5a70649019f948e5ba2f474c38bc45cd59e179d71294cd8cb8"
+    "revision": "fa440b4e9cf8dd760a65776d39a118a57e02fb52c1b0efd9c1d2e9ec04b11930"
   }
 }
