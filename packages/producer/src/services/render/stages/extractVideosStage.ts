@@ -218,6 +218,13 @@ export function resolveVideoExtractionPolicy(
  * the cause without leaking those values.
  */
 export class VideoExtractionStageError extends Error {
+  /**
+   * Producer servers may expose this explicitly public, JSON-compatible data
+   * without knowing its schema. Boundary adapters remain responsible for
+   * validating and applying policy to it.
+   */
+  readonly publicMetadata: Readonly<Record<string, unknown>>;
+
   constructor(
     readonly code: VideoExtractionStageErrorCode,
     readonly retryable: boolean,
@@ -233,6 +240,7 @@ export class VideoExtractionStageError extends Error {
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
     super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]`);
     this.name = "VideoExtractionStageError";
+    this.publicMetadata = { extractionFailure };
   }
 }
 

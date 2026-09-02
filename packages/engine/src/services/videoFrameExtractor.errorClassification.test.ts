@@ -94,7 +94,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
     expect(JSON.stringify(result.errors[0]?.group)).not.toContain("private-video-id");
   });
 
-  it("collapses an exhausted HTTP retry to status class and external host", async () => {
+  it("collapses an exhausted HTTP retry to status class and normalized host", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -102,7 +102,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
       [
         {
           id: "v1",
-          src: "https://untrusted.example/clip.mp4?token=secret",
+          src: "https://customer-cdn.example/clip.mp4?token=secret",
           start: 0,
           end: 1,
           mediaStart: 0,
@@ -120,7 +120,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
       kind: "download_transient",
       retryable: true,
       group: {
-        host: "other",
+        host: "customer-cdn.example",
         statusClass: "http_5xx",
         retry: { phase: "download", used: 1, budget: 1 },
       },

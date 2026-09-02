@@ -9,23 +9,21 @@ const safeExtractionFailure = vi.hoisted(() => ({
       kind: "download_transient",
       affectedElementCount: 1,
       sourceFingerprint: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      host: "media.heygen.ai",
+      host: "media.customer-cdn.example",
       statusClass: "http_5xx",
       retry: { phase: "download", used: 1, budget: 1 },
     },
   ],
   omittedGroupCount: 0,
 }));
-const overlongAllowedSuffixHost = `${`${"a".repeat(63)}.`.repeat(4)}heygen.com`;
-
 vi.mock("./services/renderOrchestrator.js", () => {
   class RenderCancelledError extends Error {}
   class MockVideoExtractionStageError extends Error {
     readonly code = "VIDEO_EXTRACTION_FAILED";
     readonly retryable = true;
-    readonly extractionFailure = safeExtractionFailure;
+    readonly publicMetadata = { extractionFailure: safeExtractionFailure };
     readonly source =
-      "https://media.heygen.ai/private/clip.mp4?X-Amz-Signature=must-not-reach-wire";
+      "https://media.customer-cdn.example/private/clip.mp4?X-Amz-Signature=must-not-reach-wire";
     readonly videoId = "private-video-id";
     readonly statusText = "upstream private status text";
     readonly localPath = "/tmp/private-render/clip.mp4";
@@ -78,7 +76,7 @@ function expectPrivateDiagnosticsAbsent(body: string): void {
 
 describe("server extraction failure metadata", () => {
   beforeEach(() => {
-    safeExtractionFailure.groups[0]!.host = "media.heygen.ai";
+    safeExtractionFailure.groups[0]!.host = "media.customer-cdn.example";
   });
 
   it("emits the bounded top-level contract in blocking JSON", async () => {
@@ -90,7 +88,7 @@ describe("server extraction failure metadata", () => {
       success: false,
       errorCode: "VIDEO_EXTRACTION_FAILED",
       retryable: true,
-      extractionFailure: safeExtractionFailure,
+      errorMetadata: { extractionFailure: safeExtractionFailure },
     });
     expectPrivateDiagnosticsAbsent(body);
   });
@@ -102,27 +100,16 @@ describe("server extraction failure metadata", () => {
     expect(response.status).toBe(200);
     expect(body).toContain('"errorCode":"VIDEO_EXTRACTION_FAILED"');
     expect(body).toContain('"retryable":true');
-    expect(body).toContain(`"extractionFailure":${JSON.stringify(safeExtractionFailure)}`);
+    expect(body).toContain(
+      `"errorMetadata":{"extractionFailure":${JSON.stringify(safeExtractionFailure)}}`,
+    );
     expectPrivateDiagnosticsAbsent(body);
   });
 
-  it.each([
-    ["blocking JSON", "/v1/render", "https://evil.heygen.com"],
-    ["blocking JSON", "/v1/render", "a/b.heygen.com"],
-    ["blocking JSON", "/v1/render", "media.heygen.com?signature=secret"],
-    ["blocking JSON", "/v1/render", overlongAllowedSuffixHost],
-    ["SSE", "/v1/render-stream", "https://evil.heygen.com"],
-    ["SSE", "/v1/render-stream", "a/b.heygen.com"],
-    ["SSE", "/v1/render-stream", "media.heygen.com?signature=secret"],
-    ["SSE", "/v1/render-stream", overlongAllowedSuffixHost],
-  ])("drops a malformed host from %s at %s: %s", async (_transport, path, host) => {
-    safeExtractionFailure.groups[0]!.host = host;
-
-    const response = await request(path);
-    const body = await response.text();
-
-    expect(body).not.toContain('"extractionFailure"');
-    expect(body).not.toContain(host);
-    expect(body).not.toContain("signature=secret");
+  it("does not impose a caller-specific schema on public metadata", async () => {
+    Object.assign(safeExtractionFailure, { callerDefinedField: "v2" });
+    const body = await (await request("/v1/render")).text();
+    expect(body).toContain('"callerDefinedField":"v2"');
+    delete (safeExtractionFailure as Record<string, unknown>).callerDefinedField;
   });
 });

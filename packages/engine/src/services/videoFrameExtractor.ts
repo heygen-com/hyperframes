@@ -316,17 +316,6 @@ export interface SafeVideoExtractionSourceIdentity {
   host: string;
 }
 
-const SAFE_EXTRACTION_HOST_SUFFIXES = ["heygen.ai", "heygen.com", "imagekit.io"] as const;
-
-function allowlistedExtractionHost(host: string | undefined): string {
-  if (!host) return "other";
-  return SAFE_EXTRACTION_HOST_SUFFIXES.some(
-    (suffix) => host === suffix || host.endsWith(`.${suffix}`),
-  )
-    ? host
-    : "other";
-}
-
 /** Query/fragment-free remote identity safe for extraction logs and wire metadata. */
 export function safeVideoExtractionSourceIdentity(
   source: string,
@@ -335,7 +324,7 @@ export function safeVideoExtractionSourceIdentity(
   const identity = safeDownloadUrlIdentity(source);
   return {
     sourceFingerprint: `sha256:${identity.urlFingerprint}`,
-    host: allowlistedExtractionHost(identity.host),
+    host: identity.host ?? "other",
   };
 }
 
@@ -357,7 +346,7 @@ function downloadFailureGroup(
   const attempt = error.telemetry?.attempt;
   return {
     ...(sourceIdentity ? { sourceFingerprint: sourceIdentity.sourceFingerprint } : {}),
-    host: allowlistedExtractionHost(failureHost ?? sourceIdentity?.host),
+    ...((failureHost ?? sourceIdentity?.host) ? { host: failureHost ?? sourceIdentity?.host } : {}),
     statusClass: downloadStatusClass(error),
     retry: {
       phase: "download",

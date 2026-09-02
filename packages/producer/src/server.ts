@@ -50,12 +50,6 @@ import {
   type CanvasResolution,
 } from "@hyperframes/core";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
-import {
-  compareExtractionFailureGroups,
-  type ExtractionFailureGroup,
-  type ExtractionFailureKindCount,
-  type ExtractionFailureMetadataV1,
-} from "./services/render/extractionFailureMetadata.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -148,227 +142,14 @@ export interface SafeRenderErrorMetadata {
   errorCode: string;
   errorOwner?: "system" | "user";
   retryable?: boolean;
-  extractionFailure?: ExtractionFailureMetadataV1;
+  /** Public, producer-authored data whose schema and policy belong to callers. */
+  errorMetadata?: Readonly<Record<string, unknown>>;
 }
 
-const SAFE_EXTRACTION_FAILURE_KINDS = new Set([
-  "cancelled",
-  "external_interruption",
-  "source_missing",
-  "source_rejected",
-  "download_not_found",
-  "download_transient",
-  "invalid_media",
-  "media_start_out_of_range",
-  "ffmpeg_unavailable",
-  "ffmpeg_timeout",
-  "ffmpeg_transient",
-  "ffmpeg_failed",
-  "zero_output",
-  "internal",
-]);
-const SAFE_EXTRACTION_STATUS_CLASSES = new Set([
-  "http_4xx",
-  "http_5xx",
-  "timeout",
-  "network",
-  "other",
-]);
-const SAFE_EXTRACTION_FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
-const SAFE_EXTRACTION_HOSTNAME =
-  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const SAFE_EXTRACTION_HOST_SUFFIXES = ["heygen.ai", "heygen.com", "imagekit.io"] as const;
-const MAX_EXTRACTION_FAILURE_COUNT = 10_000;
-const MAX_EXTRACTION_FAILURE_KIND_COUNTS = 14;
-const MAX_EXTRACTION_FAILURE_GROUPS = 8;
-
-function hasOnlyKeys(candidate: Record<string, unknown>, allowed: readonly string[]): boolean {
-  const allowedKeys = new Set(allowed);
-  return Object.keys(candidate).every((key) => allowedKeys.has(key));
-}
-
-function hasExactKeys(candidate: Record<string, unknown>, expected: readonly string[]): boolean {
-  return Object.keys(candidate).length === expected.length && hasOnlyKeys(candidate, expected);
-}
-
-function isSafeExtractionFailureKind(value: unknown): value is ExtractionFailureKindCount["kind"] {
-  return typeof value === "string" && SAFE_EXTRACTION_FAILURE_KINDS.has(value);
-}
-
-function isSafeExtractionStatusClass(
-  value: unknown,
-): value is NonNullable<ExtractionFailureGroup["statusClass"]> {
-  return typeof value === "string" && SAFE_EXTRACTION_STATUS_CLASSES.has(value);
-}
-
-function safeExtractionHost(value: unknown): string | undefined {
-  if (value === "other") return value;
-  if (
-    typeof value !== "string" ||
-    value !== value.toLowerCase() ||
-    !SAFE_EXTRACTION_HOSTNAME.test(value)
-  ) {
-    return undefined;
-  }
-  return SAFE_EXTRACTION_HOST_SUFFIXES.some(
-    (suffix) => value === suffix || value.endsWith(`.${suffix}`),
-  )
-    ? value
-    : undefined;
-}
-
-function safeAffectedElementCount(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0 &&
-    value <= MAX_EXTRACTION_FAILURE_COUNT
-    ? value
-    : undefined;
-}
-
-function safeExtractionFailureKindCount(value: unknown): ExtractionFailureKindCount | undefined {
-  if (!isPlainObject(value) || !hasExactKeys(value, ["kind", "affectedElementCount"])) {
-    return undefined;
-  }
-  const candidate = value;
-  const count = safeAffectedElementCount(candidate.affectedElementCount);
-  if (!isSafeExtractionFailureKind(candidate.kind)) return undefined;
-  if (count === undefined) return undefined;
-  return {
-    kind: candidate.kind,
-    affectedElementCount: count,
-  };
-}
-
-function safeExtractionFailureGroup(value: unknown): ExtractionFailureGroup | undefined {
-  if (
-    !isPlainObject(value) ||
-    !hasOnlyKeys(value, [
-      "kind",
-      "affectedElementCount",
-      "sourceFingerprint",
-      "host",
-      "statusClass",
-      "retry",
-    ])
-  ) {
-    return undefined;
-  }
-  const candidate = value;
-  const count = safeAffectedElementCount(candidate.affectedElementCount);
-  if (!isSafeExtractionFailureKind(candidate.kind) || count === undefined) return undefined;
-  const sourceFingerprint = candidate.sourceFingerprint;
-  if (
-    sourceFingerprint !== undefined &&
-    (typeof sourceFingerprint !== "string" || !SAFE_EXTRACTION_FINGERPRINT.test(sourceFingerprint))
-  ) {
-    return undefined;
-  }
-  const host = candidate.host === undefined ? undefined : safeExtractionHost(candidate.host);
-  if (candidate.host !== undefined && host === undefined) return undefined;
-  const statusClass = candidate.statusClass;
-  if (statusClass !== undefined && !isSafeExtractionStatusClass(statusClass)) return undefined;
-
-  let retry: ExtractionFailureGroup["retry"];
-  if (candidate.retry !== undefined) {
-    if (
-      !isPlainObject(candidate.retry) ||
-      !hasExactKeys(candidate.retry, ["phase", "used", "budget"])
-    ) {
-      return undefined;
-    }
-    const retryCandidate = candidate.retry;
-    if (
-      retryCandidate.phase !== "download" ||
-      (retryCandidate.used !== 0 && retryCandidate.used !== 1) ||
-      retryCandidate.budget !== 1
-    ) {
-      return undefined;
-    }
-    retry = { phase: "download", used: retryCandidate.used, budget: 1 };
-  }
-
-  return {
-    kind: candidate.kind,
-    affectedElementCount: count,
-    ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
-    ...(host === undefined ? {} : { host }),
-    ...(statusClass === undefined ? {} : { statusClass }),
-    ...(retry === undefined ? {} : { retry }),
-  };
-}
-
-function isStrictlyOrdinalSorted(values: readonly string[]): boolean {
-  return values.every((value, index) => index === 0 || values[index - 1]! < value);
-}
-
-function areGroupsStrictlySorted(groups: readonly ExtractionFailureGroup[]): boolean {
-  return groups.every(
-    (group, index) => index === 0 || compareExtractionFailureGroups(groups[index - 1]!, group) < 0,
-  );
-}
-
-function safeExtractionFailureMetadata(value: unknown): ExtractionFailureMetadataV1 | undefined {
-  if (
-    !isPlainObject(value) ||
-    !hasExactKeys(value, ["schemaVersion", "kindCounts", "groups", "omittedGroupCount"])
-  ) {
-    return undefined;
-  }
-  const candidate = value;
-  if (
-    candidate.schemaVersion !== 1 ||
-    !Array.isArray(candidate.kindCounts) ||
-    candidate.kindCounts.length === 0 ||
-    candidate.kindCounts.length > MAX_EXTRACTION_FAILURE_KIND_COUNTS ||
-    !Array.isArray(candidate.groups) ||
-    candidate.groups.length > MAX_EXTRACTION_FAILURE_GROUPS ||
-    typeof candidate.omittedGroupCount !== "number" ||
-    !Number.isSafeInteger(candidate.omittedGroupCount) ||
-    candidate.omittedGroupCount < 0 ||
-    candidate.omittedGroupCount > MAX_EXTRACTION_FAILURE_COUNT
-  ) {
-    return undefined;
-  }
-  const kindCounts = candidate.kindCounts.map(safeExtractionFailureKindCount);
-  const groups = candidate.groups.map(safeExtractionFailureGroup);
-  if (
-    kindCounts.some((entry) => entry === undefined) ||
-    groups.some((entry) => entry === undefined)
-  ) {
-    return undefined;
-  }
-  const safeKindCounts = kindCounts.filter((entry) => entry !== undefined);
-  const safeGroups = groups.filter((entry) => entry !== undefined);
-  if (
-    !isStrictlyOrdinalSorted(safeKindCounts.map((entry) => entry.kind)) ||
-    !areGroupsStrictlySorted(safeGroups)
-  ) {
-    return undefined;
-  }
-  const kindCountByKind = new Map(
-    safeKindCounts.map((entry) => [entry.kind, entry.affectedElementCount]),
-  );
-  const groupedCountByKind = new Map<ExtractionFailureKindCount["kind"], number>();
-  for (const group of safeGroups) {
-    if (!kindCountByKind.has(group.kind)) return undefined;
-    groupedCountByKind.set(
-      group.kind,
-      (groupedCountByKind.get(group.kind) ?? 0) + group.affectedElementCount,
-    );
-  }
-  if ([...groupedCountByKind].some(([kind, count]) => count > (kindCountByKind.get(kind) ?? 0))) {
-    return undefined;
-  }
-  return {
-    schemaVersion: 1,
-    kindCounts: safeKindCounts,
-    groups: safeGroups,
-    omittedGroupCount: candidate.omittedGroupCount,
-  };
-}
-
-/** Additive bounded metadata for typed producer failures. */
+/**
+ * Additive public metadata for typed producer failures. The producer server
+ * only transports it; callers own schema validation and policy decisions.
+ */
 export function extractSafeRenderErrorMetadata(
   error: unknown,
 ): SafeRenderErrorMetadata | undefined {
@@ -376,15 +157,12 @@ export function extractSafeRenderErrorMetadata(
   if (!errorCode || typeof error !== "object" || error === null) return undefined;
   const owner = "owner" in error ? error.owner : undefined;
   const retryable = "retryable" in error ? error.retryable : undefined;
-  const extractionFailure =
-    "extractionFailure" in error
-      ? safeExtractionFailureMetadata(error.extractionFailure)
-      : undefined;
+  const publicMetadata = "publicMetadata" in error ? error.publicMetadata : undefined;
   return {
     errorCode,
     errorOwner: owner === "user" || owner === "system" ? owner : undefined,
     retryable: typeof retryable === "boolean" ? retryable : undefined,
-    ...(extractionFailure ? { extractionFailure } : {}),
+    ...(isPlainObject(publicMetadata) ? { errorMetadata: publicMetadata } : {}),
   };
 }
 
@@ -854,7 +632,7 @@ async function writeRenderStreamFailure(input: {
       errorCode: safeError?.errorCode,
       errorOwner: safeError?.errorOwner,
       retryable: safeError?.retryable,
-      extractionFailure: safeError?.extractionFailure,
+      errorMetadata: safeError?.errorMetadata,
       stage: job.currentStage,
       elapsedMs,
       errorDetails: job.errorDetails ?? null,
@@ -1018,7 +796,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           errorCode: safeError?.errorCode,
           errorOwner: safeError?.errorOwner,
           retryable: safeError?.retryable,
-          extractionFailure: safeError?.extractionFailure,
+          errorMetadata: safeError?.errorMetadata,
           stage: job.currentStage,
           durationMs,
           errorDetails: job.errorDetails ?? null,
