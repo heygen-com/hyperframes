@@ -214,63 +214,107 @@ const BUDGET = new Map([
   ["packages/studio/src/webmcp/useStudioAgentTools.ts", 1],
 ]);
 
-function sources() {
+/** Studio source the ban applies to: TypeScript, minus the ambient declarations. */
+function isScannedSource(name) {
+  return /\.tsx?$/.test(name) && !name.endsWith(".d.ts");
+}
+
+/** Every file under SCANNED the ban applies to, repo-relative and sorted. */
+export function sources() {
   const found = [];
   const walk = (dir) => {
     for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) found.push(path);
+      else if (isScannedSource(entry.name)) found.push(path);
     }
   };
   walk(SCANNED);
   return found.sort();
 }
 
-/** Local names in one file that refer to a banned hook, plus the React namespace names. */
-function reactBindings(root) {
-  const direct = new Set();
-  const namespaces = new Set();
-  for (const statement of root.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    if (statement.moduleSpecifier.text !== "react") continue;
-    const clause = statement.importClause;
-    if (!clause) continue;
-    if (clause.name) namespaces.add(clause.name.text); // import React from "react"
-    const named = clause.namedBindings;
-    if (named && ts.isNamespaceImport(named)) namespaces.add(named.name.text);
-    if (named && ts.isNamedImports(named)) {
-      for (const spec of named.elements) {
-        if (BANNED.has((spec.propertyName ?? spec.name).text)) direct.add(spec.name.text);
-      }
-    }
-  }
-  return { direct, namespaces };
+/**
+ * The import clause of `import ... from "react"`, or undefined for any other statement. A hook
+ * imported from anywhere else is a different function that merely shares a name, so the module
+ * specifier has to match before any name in the clause means anything.
+ */
+function reactImportClause(statement) {
+  if (!ts.isImportDeclaration(statement)) return undefined;
+  if (!ts.isStringLiteral(statement.moduleSpecifier)) return undefined;
+  if (statement.moduleSpecifier.text !== "react") return undefined;
+  return statement.importClause;
 }
 
-/** Line numbers of every banned-hook call in one file. */
-function callSites(file, text = readFileSync(join(ROOT, file), "utf8")) {
-  const root = ts.createSourceFile(
+/** The local name of `import * as React from "react"`, if the clause has one. */
+function namespaceImportName(named) {
+  return named && ts.isNamespaceImport(named) ? named.name.text : undefined;
+}
+
+/** Names standing for the whole React namespace: the default import and the star import. */
+function namespaceNames(clause) {
+  return [clause.name?.text, namespaceImportName(clause.namedBindings)].filter(
+    (name) => name !== undefined,
+  );
+}
+
+/** Local names a `{ ... }` clause binds to a banned hook, following `useEffect as x` aliases. */
+function bannedLocalNames(named) {
+  if (!named || !ts.isNamedImports(named)) return [];
+  return named.elements
+    .filter((spec) => BANNED.has((spec.propertyName ?? spec.name).text))
+    .map((spec) => spec.name.text);
+}
+
+/** Local names in one file that refer to a banned hook, plus the React namespace names. */
+export function reactBindings(root) {
+  const direct = [];
+  const namespaces = [];
+  for (const statement of root.statements) {
+    const clause = reactImportClause(statement);
+    if (!clause) continue;
+    namespaces.push(...namespaceNames(clause));
+    direct.push(...bannedLocalNames(clause.namedBindings));
+  }
+  return { direct: new Set(direct), namespaces: new Set(namespaces) };
+}
+
+/**
+ * One source file as an AST. Exported so a test parses exactly the way the scan does, rather than
+ * keeping a second copy of these options that can drift from the one that actually runs.
+ */
+export function parse(file, text) {
+  return ts.createSourceFile(
     file,
     text,
     ts.ScriptTarget.Latest,
     true,
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+}
+
+/** `React.useEffect(...)`, where the object is a name bound to the React namespace. */
+function isNamespacedCallee(callee, namespaces) {
+  return (
+    ts.isPropertyAccessExpression(callee) &&
+    ts.isIdentifier(callee.expression) &&
+    namespaces.has(callee.expression.text) &&
+    BANNED.has(callee.name.text)
+  );
+}
+
+/** Whether what is being called resolves to a banned hook, by either spelling. */
+function isBannedCallee(callee, direct, namespaces) {
+  return ts.isIdentifier(callee) ? direct.has(callee.text) : isNamespacedCallee(callee, namespaces);
+}
+
+/** Line numbers of every banned-hook call in one file. */
+export function callSites(file, text = readFileSync(join(ROOT, file), "utf8")) {
+  const root = parse(file, text);
   const { direct, namespaces } = reactBindings(root);
   const lines = [];
   const visit = (node) => {
-    if (ts.isCallExpression(node)) {
-      const callee = node.expression;
-      const hit = ts.isIdentifier(callee)
-        ? direct.has(callee.text)
-        : ts.isPropertyAccessExpression(callee) &&
-          ts.isIdentifier(callee.expression) &&
-          namespaces.has(callee.expression.text) &&
-          BANNED.has(callee.name.text);
-      if (hit) lines.push(root.getLineAndCharacterOfPosition(node.getStart(root)).line + 1);
-    }
+    if (ts.isCallExpression(node) && isBannedCallee(node.expression, direct, namespaces))
+      lines.push(root.getLineAndCharacterOfPosition(node.getStart(root)).line + 1);
     ts.forEachChild(node, visit);
   };
   visit(root);
@@ -288,38 +332,48 @@ function scan() {
   return found;
 }
 
-function listBudgetIssues(found, budget = BUDGET) {
-  const problems = [];
-  for (const [file, lines] of found) {
-    const allowed = budget.get(file);
-    if (allowed === undefined) {
-      problems.push(
-        `NEW banned effect hook: ${file}:${lines.join(", :")}\n` +
-          `    The ban is absolute. Use useMountEffect() for a one-time external sync, or derive\n` +
-          `    the value during render. See CLAUDE.md > React Rules.`,
-      );
-    } else if (lines.length > allowed) {
-      problems.push(
-        `OVER BUDGET: ${file} has ${lines.length}, budget allows ${allowed}\n` +
-          `    Lines: ${lines.join(", ")}. The budget is debt, not headroom.`,
-      );
-    }
-  }
-  for (const [file, allowed] of budget) {
-    const actual = found.get(file)?.length ?? 0;
-    if (actual >= allowed) continue;
-    problems.push(
-      `STALE budget entry: ${file} now has ${actual}, budget still says ${allowed}\n` +
-        `    ${actual === 0 ? "Delete the entry." : `Lower it to ${actual}.`} Thanks for paying the debt down.`,
+/** What is wrong with one offending file, or null when it is within its budget. */
+function budgetProblem(file, lines, budget) {
+  const allowed = budget.get(file);
+  if (allowed === undefined)
+    return (
+      `NEW banned effect hook: ${file}:${lines.join(", :")}\n` +
+      `    The ban is absolute. Use useMountEffect() for a one-time external sync, or derive\n` +
+      `    the value during render. See CLAUDE.md > React Rules.`
     );
-  }
-  return problems;
+  if (lines.length > allowed)
+    return (
+      `OVER BUDGET: ${file} has ${lines.length}, budget allows ${allowed}\n` +
+      `    Lines: ${lines.join(", ")}. The budget is debt, not headroom.`
+    );
+  return null;
+}
+
+/** What is wrong with one budget entry the file has since paid down, or null when it is honest. */
+function staleProblem(file, allowed, actual) {
+  if (actual >= allowed) return null;
+  const fix = actual === 0 ? "Delete the entry." : `Lower it to ${actual}.`;
+  return (
+    `STALE budget entry: ${file} now has ${actual}, budget still says ${allowed}\n` +
+    `    ${fix} Thanks for paying the debt down.`
+  );
+}
+
+/** Every way the scan disagrees with the register, in file order then budget order. */
+export function listBudgetIssues(found, budget = BUDGET) {
+  return [
+    ...[...found].map(([file, lines]) => budgetProblem(file, lines, budget)),
+    ...[...budget].map(([file, allowed]) =>
+      staleProblem(file, allowed, found.get(file)?.length ?? 0),
+    ),
+  ].filter((problem) => problem !== null);
 }
 
 function main() {
   const problems = listBudgetIssues(scan());
+  const scanned = sources();
   for (const file of SANCTIONED.keys()) {
-    if (!sources().includes(file))
+    if (!scanned.includes(file))
       problems.push(`SANCTIONED lists a file that no longer exists: ${file}`);
   }
   const debt = [...BUDGET.values()].reduce((total, count) => total + count, 0);
