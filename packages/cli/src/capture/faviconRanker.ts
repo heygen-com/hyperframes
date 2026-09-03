@@ -68,7 +68,15 @@ function isIco(c: IconCandidate): boolean {
 function declaredSize(c: IconCandidate): number {
   const parsed = parseSizes(c.sizes);
   if (parsed > 0) return parsed;
-  return c.rel.toLowerCase().split(/\s+/).includes("apple-touch-icon") ? APPLE_TOUCH_DEFAULT_PX : 0;
+  // `startsWith`, not an exact-token match: `apple-touch-icon-precomposed` is the same
+  // 180px default, one spelling later. Exact match is right for `mask-icon` (isMaskIcon),
+  // where a longer rel really would be a different asset.
+  return c.rel
+    .toLowerCase()
+    .split(/\s+/)
+    .some((t) => t.startsWith("apple-touch-icon"))
+    ? APPLE_TOUCH_DEFAULT_PX
+    : 0;
 }
 
 function tierOf(c: IconCandidate): number {

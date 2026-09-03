@@ -108,6 +108,24 @@ describe("rankIconCandidates", () => {
     expect(hrefs([{ rel: "icon", href: "" }, ...NOTION])).toHaveLength(2);
   });
 
+  it("scores apple-touch-icon-precomposed at the same 180px default as apple-touch-icon", () => {
+    // Precomposed is one token longer, not a different rel: it must win against a small
+    // sized png the same way a plain apple-touch-icon would.
+    const precomposed: IconCandidate[] = [
+      {
+        rel: "apple-touch-icon-precomposed",
+        href: "https://x.test/apple-touch-icon-precomposed.png",
+        sizes: null,
+        type: null,
+      },
+      { rel: "icon", href: "https://x.test/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ];
+    expect(hrefs(precomposed)).toEqual([
+      "https://x.test/apple-touch-icon-precomposed.png",
+      "https://x.test/favicon-32.png",
+    ]);
+  });
+
   it("keeps DOM order between candidates of equal rank", () => {
     const same: IconCandidate[] = [
       { rel: "icon", href: "https://x.test/a.png", sizes: "32x32" },
