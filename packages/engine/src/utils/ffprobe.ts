@@ -1102,12 +1102,7 @@ async function probeStreamDurationSeconds(filePath: string): Promise<number> {
     // Fall through to format-level probe.
   }
   try {
-    const out = await runFfprobe(filePath, [
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "csv=p=0",
-    ]);
+    const out = await runFfprobe(filePath, ["-show_entries", "format=duration", "-of", "csv=p=0"]);
     const d = parseFloat(out.trim());
     return Number.isFinite(d) && d > 0 ? d : 0;
   } catch {

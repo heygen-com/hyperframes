@@ -1000,9 +1000,7 @@ describe("analyzeKeyframeIntervals — single-keyframe videos", () => {
   });
 
   it("returns non-problematic for zero keyframes (still image)", async () => {
-    const { spawn } = createSpawnSpy([
-      { kind: "exit", code: 0, stdout: "\n" },
-    ]);
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "\n" }]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
