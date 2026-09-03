@@ -1199,14 +1199,33 @@ export interface InjectDeterministicFontFacesOptions {
 const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
 
 const SMALL_TO_FULL_KANA: ReadonlyMap<string, string> = new Map([
-  ["ぁ", "あ"], ["ぃ", "い"], ["ぅ", "う"], ["ぇ", "え"], ["ぉ", "お"],
-  ["っ", "つ"], ["ゃ", "や"], ["ゅ", "ゆ"], ["ょ", "よ"], ["ゎ", "わ"],
-  ["ァ", "ア"], ["ィ", "イ"], ["ゥ", "ウ"], ["ェ", "エ"], ["ォ", "オ"],
-  ["ッ", "ツ"], ["ャ", "ヤ"], ["ュ", "ユ"], ["ョ", "ヨ"], ["ヮ", "ワ"],
-  ["ヵ", "カ"], ["ヶ", "ケ"],
+  ["ぁ", "あ"],
+  ["ぃ", "い"],
+  ["ぅ", "う"],
+  ["ぇ", "え"],
+  ["ぉ", "お"],
+  ["っ", "つ"],
+  ["ゃ", "や"],
+  ["ゅ", "ゆ"],
+  ["ょ", "よ"],
+  ["ゎ", "わ"],
+  ["ァ", "ア"],
+  ["ィ", "イ"],
+  ["ゥ", "ウ"],
+  ["ェ", "エ"],
+  ["ォ", "オ"],
+  ["ッ", "ツ"],
+  ["ャ", "ヤ"],
+  ["ュ", "ユ"],
+  ["ョ", "ヨ"],
+  ["ヮ", "ワ"],
+  ["ヵ", "カ"],
+  ["ヶ", "ケ"],
 ]);
 
-function collectLangAttributes(document: { querySelectorAll(selector: string): Iterable<{ getAttribute(name: string): string | null }> }): Set<string> {
+function collectLangAttributes(document: {
+  querySelectorAll(selector: string): Iterable<{ getAttribute(name: string): string | null }>;
+}): Set<string> {
   const locales = new Set<string>();
   for (const element of document.querySelectorAll("[lang]")) {
     const lang = element.getAttribute("lang");
@@ -1217,42 +1236,46 @@ function collectLangAttributes(document: { querySelectorAll(selector: string): I
   return locales;
 }
 
+function addCaseClosure(out: Set<string>, character: string, locales: ReadonlySet<string>): void {
+  out.add(character);
+  for (const variant of `${character.toUpperCase()}${character.toLowerCase()}`) {
+    out.add(variant);
+  }
+  for (const locale of locales) {
+    for (const variant of `${character.toLocaleUpperCase(locale)}${character.toLocaleLowerCase(locale)}`) {
+      out.add(variant);
+    }
+  }
+}
+
+function addFullwidthVariants(chars: Set<string>): void {
+  for (const character of [...chars]) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code >= 0x0021 && code <= 0x007e) {
+      chars.add(String.fromCodePoint(code + 0xfee0));
+    }
+  }
+}
+
+function addFullSizeKanaVariants(chars: Set<string>): void {
+  for (const character of [...chars]) {
+    const full = SMALL_TO_FULL_KANA.get(character);
+    if (full) chars.add(full);
+  }
+}
+
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);
   const decodedBodyText = document.body?.textContent ?? "";
   const locales = collectLangAttributes(document);
-  const hasFullWidth = html.includes("full-width");
-  const hasFullSizeKana = html.includes("full-size-kana");
 
-  const characters = [...Array.from(html), ...Array.from(decodedBodyText)];
   const uniqueCharacters = new Set<string>();
-  for (const character of characters) {
-    uniqueCharacters.add(character);
-    for (const variant of `${character.toUpperCase()}${character.toLowerCase()}`) {
-      uniqueCharacters.add(variant);
-    }
-    for (const locale of locales) {
-      for (const variant of `${character.toLocaleUpperCase(locale)}${character.toLocaleLowerCase(locale)}`) {
-        uniqueCharacters.add(variant);
-      }
-    }
+  for (const character of [...Array.from(html), ...Array.from(decodedBodyText)]) {
+    addCaseClosure(uniqueCharacters, character, locales);
   }
 
-  if (hasFullWidth) {
-    for (const character of [...uniqueCharacters]) {
-      const code = character.codePointAt(0) ?? 0;
-      if (code >= 0x0021 && code <= 0x007e) {
-        uniqueCharacters.add(String.fromCodePoint(code + 0xfee0));
-      }
-    }
-  }
-
-  if (hasFullSizeKana) {
-    for (const character of [...uniqueCharacters]) {
-      const full = SMALL_TO_FULL_KANA.get(character);
-      if (full) uniqueCharacters.add(full);
-    }
-  }
+  if (html.includes("full-width")) addFullwidthVariants(uniqueCharacters);
+  if (html.includes("full-size-kana")) addFullSizeKanaVariants(uniqueCharacters);
 
   const fontText = [...uniqueCharacters].join("");
   return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
