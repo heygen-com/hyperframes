@@ -49,6 +49,15 @@ function isSvg(c: IconCandidate): boolean {
   return c.type?.toLowerCase() === "image/svg+xml" || pathnameOf(c.href).endsWith(".svg");
 }
 
+/**
+ * `rel="mask-icon"` is Safari's pinned-tab asset: a single-colour silhouette, drawn in whatever
+ * tint the browser picks. It is not the site mark, and it is served as an SVG, so ranking by
+ * format alone would promote a monochrome outline over the page's real colour favicon.
+ */
+function isMaskIcon(c: IconCandidate): boolean {
+  return c.rel.toLowerCase().split(/\s+/).includes("mask-icon");
+}
+
 function isIco(c: IconCandidate): boolean {
   const t = c.type?.toLowerCase();
   return (
@@ -62,14 +71,22 @@ function declaredSize(c: IconCandidate): number {
   return c.rel.toLowerCase().split(/\s+/).includes("apple-touch-icon") ? APPLE_TOUCH_DEFAULT_PX : 0;
 }
 
+function tierOf(c: IconCandidate): number {
+  // ponytail: mask-icon is ranked last rather than filtered out, so a page that declares
+  // nothing else still lands an icon instead of none.
+  if (isMaskIcon(c)) return 3;
+  if (isSvg(c)) return 0;
+  return isIco(c) ? 2 : 1;
+}
+
 /**
- * Best-first order: SVG, then largest declared size, then `.ico` last.
- * Stable within a tier, so DOM order breaks ties.
+ * Best-first order: SVG, then largest declared size, then `.ico`, then a pinned-tab `mask-icon`
+ * as a last resort. Stable within a tier, so DOM order breaks ties.
  */
 export function rankIconCandidates(candidates: IconCandidate[]): IconCandidate[] {
   return candidates
     .filter((c) => !!c.href)
-    .map((c, i) => ({ c, i, tier: isSvg(c) ? 0 : isIco(c) ? 2 : 1, size: declaredSize(c) }))
+    .map((c, i) => ({ c, i, tier: tierOf(c), size: declaredSize(c) }))
     .sort((a, b) => a.tier - b.tier || b.size - a.size || a.i - b.i)
     .map((e) => e.c);
 }

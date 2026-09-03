@@ -84,6 +84,26 @@ describe("rankIconCandidates", () => {
     ]);
   });
 
+  it("does not let a Safari pinned-tab silhouette beat the real favicon", () => {
+    // A mask-icon is an SVG, so ranking on format alone would promote the silhouette.
+    const masked: IconCandidate[] = [
+      { rel: "mask-icon", href: "https://x.test/pinned.svg", sizes: null, type: null },
+      { rel: "icon", href: "https://x.test/favicon.png", sizes: "32x32", type: "image/png" },
+      { rel: "icon", href: "https://x.test/favicon.svg", sizes: null, type: "image/svg+xml" },
+    ];
+    expect(hrefs(masked)).toEqual([
+      "https://x.test/favicon.svg",
+      "https://x.test/favicon.png",
+      "https://x.test/pinned.svg",
+    ]);
+  });
+
+  it("still returns a mask-icon when the page declares nothing else", () => {
+    // Ranked last, not dropped: a silhouette on disk beats no icon at all.
+    const only: IconCandidate[] = [{ rel: "mask-icon", href: "https://x.test/pinned.svg" }];
+    expect(hrefs(only)).toEqual(["https://x.test/pinned.svg"]);
+  });
+
   it("drops candidates with no href", () => {
     expect(hrefs([{ rel: "icon", href: "" }, ...NOTION])).toHaveLength(2);
   });
