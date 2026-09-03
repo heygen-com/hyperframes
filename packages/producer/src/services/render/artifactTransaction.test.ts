@@ -363,7 +363,10 @@ describe("ArtifactTransaction", () => {
     const transaction = new ArtifactTransaction(destination, "directory", undefined, neverCalled);
     mkdirSync(transaction.stagingPath);
     for (let i = 1; i <= 30; i++) {
-      writeFileSync(join(transaction.stagingPath, `frame_${String(i).padStart(6, "0")}.png`), `f${i}`);
+      writeFileSync(
+        join(transaction.stagingPath, `frame_${String(i).padStart(6, "0")}.png`),
+        `f${i}`,
+      );
     }
 
     await expect(
@@ -380,9 +383,7 @@ describe("ArtifactTransaction", () => {
     mkdirSync(transaction.stagingPath);
     writeFileSync(join(transaction.stagingPath, "frame_000001.png"), "frame");
 
-    await expect(
-      transaction.validate({ expectedDurationSeconds: 5 }),
-    ).resolves.toBeUndefined();
+    await expect(transaction.validate({ expectedDurationSeconds: 5 })).resolves.toBeUndefined();
 
     transaction.rollback();
   });
@@ -409,9 +410,7 @@ describe("ArtifactTransaction", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Frame-count gate skipped"),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Frame-count gate skipped"));
 
     warnSpy.mockRestore();
     transaction.rollback();
