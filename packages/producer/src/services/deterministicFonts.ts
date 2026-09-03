@@ -746,10 +746,27 @@ function fontSlug(familyName: string): string {
     .replace(/^-|-$/g, "");
 }
 
+let ephemeralFontCacheRoot: string | undefined;
+
 function fontCacheDir(slug: string): string {
   const dir = join(resolveFontCacheRoot(), slug);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      const firstFallback = ephemeralFontCacheRoot === undefined;
+      ephemeralFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
+      const fallback = join(ephemeralFontCacheRoot, slug);
+      mkdirSync(fallback, { recursive: true });
+      if (firstFallback) {
+        defaultLogger.warn(
+          `Font cache directory is unwritable (${dir}). ` +
+            `Using temporary fallback — fonts will re-download each run. ` +
+            `Fix with: chmod 755 ${resolveFontCacheRoot()}`,
+        );
+      }
+      return fallback;
+    }
   }
   return dir;
 }
