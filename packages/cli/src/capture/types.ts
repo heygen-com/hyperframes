@@ -79,6 +79,13 @@ export interface CaptureResult {
   tokens: DesignTokens;
   /** Downloaded asset paths (relative to projectDir) */
   assets: DownloadedAsset[];
+  /**
+   * How many referenced assets are NOT here, by reason.
+   *
+   * Without this, a capture of a page with three images and a capture truncated to three images
+   * are the same object. All zeroes means the capture kept everything it was offered.
+   */
+  dropped: import("./assetDownloader.js").AssetDropCounts;
   /** Animation catalog (captured during full-JS page load) */
   animationCatalog?: import("./animationCataloger.js").AnimationCatalog;
   /** Errors/warnings encountered during capture */

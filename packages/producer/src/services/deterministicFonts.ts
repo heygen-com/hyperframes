@@ -746,10 +746,27 @@ function fontSlug(familyName: string): string {
     .replace(/^-|-$/g, "");
 }
 
+let ephemeralFontCacheRoot: string | undefined;
+
 function fontCacheDir(slug: string): string {
   const dir = join(resolveFontCacheRoot(), slug);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      const firstFallback = ephemeralFontCacheRoot === undefined;
+      ephemeralFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
+      const fallback = join(ephemeralFontCacheRoot, slug);
+      mkdirSync(fallback, { recursive: true });
+      if (firstFallback) {
+        defaultLogger.warn(
+          `Font cache directory is unwritable (${dir}). ` +
+            `Using temporary fallback — fonts will re-download each run. ` +
+            `Fix with: chmod 755 ${resolveFontCacheRoot()}`,
+        );
+      }
+      return fallback;
+    }
   }
   return dir;
 }
@@ -1198,22 +1215,127 @@ export interface InjectDeterministicFontFacesOptions {
 // collapsing repeated prose and base64 assets to a tiny set.
 const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
 
+const SMALL_TO_FULL_KANA: ReadonlyMap<string, string> = new Map([
+  ["ぁ", "あ"],
+  ["ぃ", "い"],
+  ["ぅ", "う"],
+  ["ぇ", "え"],
+  ["ぉ", "お"],
+  ["っ", "つ"],
+  ["ゃ", "や"],
+  ["ゅ", "ゆ"],
+  ["ょ", "よ"],
+  ["ゎ", "わ"],
+  ["ァ", "ア"],
+  ["ィ", "イ"],
+  ["ゥ", "ウ"],
+  ["ェ", "エ"],
+  ["ォ", "オ"],
+  ["ッ", "ツ"],
+  ["ャ", "ヤ"],
+  ["ュ", "ユ"],
+  ["ョ", "ヨ"],
+  ["ヮ", "ワ"],
+  ["ヵ", "カ"],
+  ["ヶ", "ケ"],
+]);
+
+function collectLangAttributes(document: {
+  querySelectorAll(selector: string): Iterable<{ getAttribute(name: string): string | null }>;
+}): Set<string> {
+  const locales = new Set<string>();
+  for (const element of document.querySelectorAll("[lang]")) {
+    const lang = element.getAttribute("lang");
+    if (!lang) continue;
+    const primary = lang.split("-")[0]!.toLowerCase();
+    try {
+      Intl.getCanonicalLocales(primary);
+      locales.add(primary);
+    } catch {
+      // Invalid BCP-47 tag (e.g. lang="en_US", lang="x") — skip silently.
+    }
+  }
+  return locales;
+}
+
+function addCaseClosure(out: Set<string>, character: string, locales: ReadonlySet<string>): void {
+  out.add(character);
+  for (const variant of `${character.toUpperCase()}${character.toLowerCase()}`) {
+    out.add(variant);
+  }
+  for (const locale of locales) {
+    for (const variant of `${character.toLocaleUpperCase(locale)}${character.toLocaleLowerCase(locale)}`) {
+      out.add(variant);
+    }
+  }
+}
+
+function addFullwidthVariants(chars: Set<string>): void {
+  for (const character of [...chars]) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code >= 0x0021 && code <= 0x007e) {
+      chars.add(String.fromCodePoint(code + 0xfee0));
+    }
+  }
+}
+
+function addFullSizeKanaVariants(chars: Set<string>): void {
+  for (const character of [...chars]) {
+    const full = SMALL_TO_FULL_KANA.get(character);
+    if (full) chars.add(full);
+  }
+}
+
+const FULL_WIDTH_KEYWORD_RE = /\bfull-width\b/;
+const FULL_SIZE_KANA_KEYWORD_RE = /\bfull-size-kana\b/;
+const DECLARATION_BOUNDARY_RE = /[;{}]/;
+
+function skipWhitespace(s: string, pos: number): number {
+  while (pos < s.length && " \t\n\r\f\v".includes(s[pos]!)) pos += 1;
+  return pos;
+}
+
+function findDeclarationEnd(s: string, pos: number): number {
+  const match = DECLARATION_BOUNDARY_RE.exec(s.slice(pos));
+  return match ? pos + match.index : s.length;
+}
+
+// Linear indexOf/slice scan: a `text-transform\s*:[^;{}]*\bkw\b` regex backtracks
+// O(n²) on input with many `text-transform:` runs (js/polynomial-redos).
+function hasTextTransformKeyword(html: string, keyword: RegExp): boolean {
+  const haystack = html.toLowerCase();
+  const property = "text-transform";
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(property, from);
+    if (at === -1) return false;
+    const afterProp = skipWhitespace(haystack, at + property.length);
+    if (haystack[afterProp] !== ":") {
+      from = at + property.length;
+      continue;
+    }
+    const end = findDeclarationEnd(haystack, afterProp + 1);
+    if (keyword.test(haystack.slice(afterProp + 1, end))) return true;
+    from = end;
+  }
+}
+
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);
   const decodedBodyText = document.body?.textContent ?? "";
-  // Source + decoded text is an intentional over-approximation: base64, scripts, and class names
-  // collapse in the Set, while decoded entities contribute the glyphs the browser actually paints.
-  const characters = [...Array.from(html), ...Array.from(decodedBodyText)];
+  const locales = collectLangAttributes(document);
+
+  // Intentional over-approximation: raw html includes base64, scripts, and
+  // class names, but they collapse in the Set and the budget gate catches bloat.
   const uniqueCharacters = new Set<string>();
-  for (const character of characters) {
-    uniqueCharacters.add(character);
-    // This closes locale-independent Unicode casing, including multi-code-point expansions such as
-    // ß -> SS. Locale/context transforms (for example Turkish İ) and CSS full-width/full-size-kana
-    // need a transform-aware follow-up rather than pretending this code-point closure is exhaustive.
-    for (const variant of `${character.toUpperCase()}${character.toLowerCase()}`) {
-      uniqueCharacters.add(variant);
-    }
+  for (const character of new Set([...Array.from(html), ...Array.from(decodedBodyText)])) {
+    addCaseClosure(uniqueCharacters, character, locales);
   }
+
+  if (hasTextTransformKeyword(html, FULL_WIDTH_KEYWORD_RE)) addFullwidthVariants(uniqueCharacters);
+  if (hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE))
+    addFullSizeKanaVariants(uniqueCharacters);
+
   const fontText = [...uniqueCharacters].join("");
   return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
     ? fontText

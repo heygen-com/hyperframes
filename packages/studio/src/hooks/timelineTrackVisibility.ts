@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
+import { reseekPreviewAtTime } from "../player/hooks/timelineSyncHydration";
 import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
+import { applySoftReloadFinalization } from "../utils/gsapSoftReload";
 import {
   timelineTrackOrder,
   trackDisplayNumber,
@@ -106,11 +108,9 @@ function patchLiveHiddenState(
 }
 
 export function reseekPreviewRuntime(iframe: HTMLIFrameElement | null): void {
-  try {
-    const win: (Window & { __player?: { seek?: (time: number) => void } }) | null =
-      iframe?.contentWindow ?? null;
-    win?.__player?.seek?.(usePlayerStore.getState().currentTime);
-  } catch {}
+  const store = usePlayerStore.getState();
+  if (applySoftReloadFinalization(iframe, store.currentTime)) return;
+  reseekPreviewAtTime({ seek: store.requestSeek }, store.currentTime);
 }
 
 export function groupElementsByTargetPath(

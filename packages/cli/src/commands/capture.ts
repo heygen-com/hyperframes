@@ -207,6 +207,7 @@ export default defineCommand({
               title: result.title,
               screenshots: result.screenshots.length,
               assets: result.assets.length,
+              dropped: result.dropped,
               detectedSections: result.tokens.sections.length,
               fonts: result.tokens.fonts.map((f) => f.family),
               fontsDetailed: result.tokens.fonts,
@@ -225,6 +226,18 @@ export default defineCommand({
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
+        const droppedTotal = Object.values(result.dropped).reduce((sum, n) => sum + n, 0);
+        if (droppedTotal > 0) {
+          const breakdown = Object.entries(result.dropped)
+            .filter(function (entry) {
+              return entry[1] > 0;
+            })
+            .map(function (entry) {
+              return entry[1] + " " + entry[0];
+            })
+            .join(", ");
+          console.log(`  ${c.dim("Dropped:")} ${droppedTotal} (${breakdown})`);
+        }
         console.log(`  ${c.dim("Sections:")} ${result.tokens.sections.length}`);
         console.log(
           `  ${c.dim("Fonts:")} ${result.tokens.fonts

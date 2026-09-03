@@ -1054,4 +1054,13 @@ describe("wrapInlineScriptWithErrorBoundary — <script> breakout", () => {
     expect(body).not.toContain("</script");
     expect(scriptsAfterRoundTrip(body)).toHaveLength(1);
   });
+
+  it("drops the entire stylesheet when PostCSS cannot parse it", () => {
+    const malformedCss = `body { margin: 0; overflow: hidden; }
+:root { --accent: #5ef17c; }
+.stage { position: absolute; inset: 0; }
+.broken { transform: xPercent: -10; }`;
+    const result = scopeCssToComposition(malformedCss, "scene-bad");
+    expect(result).toBe("");
+  });
 });

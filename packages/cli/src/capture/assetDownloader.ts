@@ -10,9 +10,51 @@ import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
+import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
 
 interface DownloadBudgetOptions {
   remainingMs?: () => number;
+}
+
+/**
+ * Why an asset the page referenced is not in the capture.
+ *
+ * Three of these are DECISIONS this downloader made and one is a FAILURE it hit, which is the
+ * split a reader actually needs: a capture that is thin because the page is thin looks exactly
+ * like a capture that is thin because a limit truncated it, and neither used to say so.
+ *
+ * Every member is counted at the single line that performs the drop, so a count can never
+ * disagree with the branch it describes.
+ */
+export type AssetDropReason =
+  /** Fetched, then judged too small to be a real asset rather than a spacer or tracking pixel. */
+  | "size-floor"
+  /** The post-navigation clock ran out before this one was reached. */
+  | "budget-exhausted"
+  /** A per-run or per-family limit was already met. */
+  | "cap-reached"
+  /** The request or the write failed: network error, timeout, refused address, bad status, disk. */
+  | "unavailable";
+
+export type AssetDropCounts = Record<AssetDropReason, number>;
+
+/** A tally with every reason at zero — the shape a caller merges into. */
+export function noDrops(): AssetDropCounts {
+  return { "size-floor": 0, "budget-exhausted": 0, "cap-reached": 0, unavailable: 0 };
+}
+
+/** Sum two tallies. Used to fold the font pass and the asset pass into one capture-wide count. */
+export function mergeDrops(a: AssetDropCounts, b: AssetDropCounts): AssetDropCounts {
+  const total = noDrops();
+  for (const reason of Object.keys(total) as AssetDropReason[]) {
+    total[reason] = a[reason] + b[reason];
+  }
+  return total;
+}
+
+/** How many assets were dropped in total, for a caller deciding whether to say anything at all. */
+export function totalDrops(drops: AssetDropCounts): number {
+  return Object.values(drops).reduce((sum, n) => sum + n, 0);
 }
 
 // SVGs: hash-of-bytes filename so it can't drift from content; label-derived names mis-assigned brands.
@@ -52,20 +94,26 @@ export async function downloadAssets(
   tokens: DesignTokens,
   outputDir: string,
   catalogedAssets?: CatalogedAsset[],
-  faviconLinks?: Array<{ rel: string; href: string }>,
+  faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
-): Promise<DownloadedAsset[]> {
+): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts }> {
   const assetsDir = join(outputDir, "assets");
   mkdirSync(assetsDir, { recursive: true });
 
   const assets: DownloadedAsset[] = [];
+  const drops = noDrops();
   const downloadedUrls = new Set<string>();
 
   mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
   const usedSvgNames = new Set<string>();
-  for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
+  const MAX_INLINE_SVGS = 30;
+  drops["cap-reached"] += Math.max(0, tokens.svgs.length - MAX_INLINE_SVGS);
+  for (let i = 0; i < tokens.svgs.length && i < MAX_INLINE_SVGS; i++) {
     const svg = tokens.svgs[i]!;
-    if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
+    if (!svg.outerHTML || svg.outerHTML.length < 50) {
+      drops["size-floor"]++;
+      continue;
+    }
     // Hash the bytes that actually land on disk, so the filename still can't drift from content.
     const svgFile = toStandaloneSvg(svg.outerHTML);
     const slug = svgContentHashSlug(svgFile, !!svg.isLogo);
@@ -82,14 +130,18 @@ export async function downloadAssets(
       writeFileSync(join(outputDir, localPath), svgFile, "utf-8");
       assets.push({ url: "", localPath, type: "svg" });
     } catch {
-      /* skip */
+      drops.unavailable++;
     }
   }
 
-  // 2. Favicon
-  for (const icon of faviconLinks || []) {
+  // 2. Favicon — best declared candidate first, falling back through the rest on failure.
+  const icons = rankIconCandidates(faviconLinks || []);
+  for (const [index, icon] of icons.entries()) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
-    if (remainingMs <= 0) break;
+    if (remainingMs <= 0) {
+      drops["budget-exhausted"] += icons.length - index;
+      break;
+    }
     if (!icon.href) continue;
     try {
       const ext = extname(new URL(icon.href).pathname) || ".ico";
@@ -101,8 +153,9 @@ export async function downloadAssets(
         assets.push({ url: icon.href, localPath, type: "favicon" });
         break;
       }
+      drops.unavailable++;
     } catch {
-      /* skip */
+      drops.unavailable++;
     }
   }
 
@@ -158,7 +211,10 @@ export async function downloadAssets(
   const usedNames = new Set<string>();
   for (let i = 0; i < toDownload.length; i += BATCH_SIZE) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
-    if (remainingMs <= 0) break;
+    if (remainingMs <= 0) {
+      drops["budget-exhausted"] += toDownload.length - i;
+      break;
+    }
     const batch = toDownload.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async ({ url, isPoster, catalog }) => {
@@ -166,15 +222,27 @@ export async function downloadAssets(
         const pathExt = extname(parsedUrl.pathname);
         const ext = pathExt && pathExt.length <= 5 ? pathExt : ".jpg";
         const buffer = await fetchBuffer(url, Math.min(10_000, remainingMs));
-        if (!buffer) return null;
+        if (!buffer) {
+          drops.unavailable++;
+          return null;
+        }
         const isSvg = ext === ".svg" || url.includes(".svg");
         const minSize = isSvg ? 200 : 10000;
-        if (buffer.length < minSize) return null;
+        if (buffer.length < minSize) {
+          drops["size-floor"]++;
+          return null;
+        }
         return { url, isPoster, parsedUrl, ext, buffer, catalog };
       }),
     );
     for (const result of results) {
-      if (result.status !== "fulfilled" || !result.value) continue;
+      // A rejection never reached a drop site of its own, so it is counted here. A fulfilled
+      // `null` already counted itself above; counting it again here would double it.
+      if (result.status === "rejected") {
+        drops.unavailable++;
+        continue;
+      }
+      if (!result.value) continue;
       const { url, isPoster, parsedUrl, ext, buffer, catalog } = result.value;
       try {
         let slug: string;
@@ -201,7 +269,7 @@ export async function downloadAssets(
         assets.push({ url, localPath, type: "image" });
         imgIdx++;
       } catch {
-        /* skip */
+        drops.unavailable++;
       }
     }
   }
@@ -212,18 +280,25 @@ export async function downloadAssets(
     try {
       const ext = extname(new URL(tokens.ogImage).pathname) || ".jpg";
       const localPath = `assets/og-image${ext}`;
-      const buffer =
-        remainingMs > 0 ? await fetchBuffer(tokens.ogImage, Math.min(10_000, remainingMs)) : null;
-      if (buffer && buffer.length > 5000) {
-        writeFileSync(join(outputDir, localPath), buffer);
-        assets.push({ url: tokens.ogImage, localPath, type: "image" });
+      if (remainingMs <= 0) {
+        drops["budget-exhausted"]++;
+      } else {
+        const buffer = await fetchBuffer(tokens.ogImage, Math.min(10_000, remainingMs));
+        if (!buffer) {
+          drops.unavailable++;
+        } else if (buffer.length <= 5000) {
+          drops["size-floor"]++;
+        } else {
+          writeFileSync(join(outputDir, localPath), buffer);
+          assets.push({ url: tokens.ogImage, localPath, type: "image" });
+        }
       }
     } catch {
-      /* skip */
+      drops.unavailable++;
     }
   }
 
-  return assets;
+  return { assets, drops };
 }
 
 /** Normalize URL for deduplication — unwrap Next.js image proxy, strip w/q params */
@@ -251,9 +326,10 @@ export async function downloadAndRewriteFonts(
   css: string,
   outputDir: string,
   options: DownloadBudgetOptions = {},
-): Promise<string> {
+): Promise<{ css: string; drops: AssetDropCounts }> {
   const assetsDir = join(outputDir, "assets", "fonts");
   mkdirSync(assetsDir, { recursive: true });
+  const drops = noDrops();
 
   const fontUrlRegex = /url\(['"]?(https?:\/\/[^'")\s]+\.(?:woff2?|ttf|otf)[^'")\s]*?)['"]?\)/g;
   const fontUrls = new Set<string>();
@@ -262,7 +338,7 @@ export async function downloadAndRewriteFonts(
     if (match[1]) fontUrls.add(match[1]);
   }
 
-  if (fontUrls.size === 0) return css;
+  if (fontUrls.size === 0) return { css, drops };
 
   // Limit font download attempts to bound worst-case egress and latency. Google Fonts serves
   // 20+ unicode-range subsets per weight, so successes alone cannot be the bound: six transient
@@ -293,13 +369,22 @@ export async function downloadAndRewriteFonts(
   let rewritten = css;
   let count = 0;
 
-  for (const fontUrl of sortedUrls) {
+  for (const [index, fontUrl] of sortedUrls.entries()) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
-    if (remainingMs <= 0) break;
-    if (count >= MAX_TOTAL_FONTS) break;
+    if (remainingMs <= 0) {
+      drops["budget-exhausted"] += sortedUrls.length - index;
+      break;
+    }
+    if (count >= MAX_TOTAL_FONTS) {
+      drops["cap-reached"] += sortedUrls.length - index;
+      break;
+    }
     const family = getFamilyForUrl(fontUrl);
     const familyCount = familyCounts.get(family) || 0;
-    if (familyCount >= MAX_FONTS_PER_FAMILY) continue;
+    if (familyCount >= MAX_FONTS_PER_FAMILY) {
+      drops["cap-reached"]++;
+      continue;
+    }
     familyCounts.set(family, familyCount + 1);
     count++;
 
@@ -313,13 +398,15 @@ export async function downloadAndRewriteFonts(
       if (buffer) {
         writeFileSync(localPath, buffer);
         rewritten = rewritten.split(fontUrl).join(relativePath);
+      } else {
+        drops.unavailable++;
       }
     } catch {
-      /* skip */
+      drops.unavailable++;
     }
   }
 
-  return rewritten;
+  return { css: rewritten, drops };
 }
 
 // Reserved/loopback/private IPv4 blocks as [firstOctet, secondOctetLo, secondOctetHi].

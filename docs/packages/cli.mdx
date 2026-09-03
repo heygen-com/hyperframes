@@ -186,8 +186,33 @@ npx hyperframes capture https://example.com --json
 
   Screenshots: 12
   Assets: 45
+  Dropped: 9 (6 size-floor, 3 cap-reached)
   Sections: 15
   Fonts: sohne-var
+```
+
+`Dropped` is how many assets the page referenced that are **not** in the
+folder, and why. It is printed only when it is non-zero, and `--json` always
+carries it as a `dropped` object. Without it, a capture of a spare page and a
+capture that a limit truncated are the same three-line summary, and the only
+way to tell them apart is to open the page yourself.
+
+| Reason             | What it means                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `size-floor`       | Fetched, then judged too small to be a real asset rather than a spacer or tracking pixel.               |
+| `budget-exhausted` | `--capture-budget` ran out before this one was reached. Raise it, or pass `--skip-vision` to buy time.  |
+| `cap-reached`      | A per-run or per-family limit was already met: 30 inline SVGs, 30 fonts, 6 faces per family.            |
+| `unavailable`      | The request or the write failed: network error, timeout, refused address, bad status, disk.             |
+
+Three of those are decisions the capture made and one is a failure it hit, so a
+run that is thin with an all-zero `dropped` is a thin page, and a run that is
+thin with counts on it was cut short.
+
+```json
+{
+  "assets": 45,
+  "dropped": { "size-floor": 6, "budget-exhausted": 0, "cap-reached": 3, "unavailable": 0 }
+}
 ```
 
 | Flag                | Description                                                                                                                                       |
@@ -207,7 +232,8 @@ metadata, and contact sheets — plus whatever Lottie, video, and WebGL context
 the page exposed. It is raw material for an agent, not a finished composition;
 the `/product-launch-video` workflow uses it when a real product has to appear
 on screen. Dynamic sites, protected pages, and unusual media loaders produce
-partial results, so read the warnings and contact sheets before you build.
+partial results, so read `dropped`, the warnings, and the contact sheets before
+you build.
 
 For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 (~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
