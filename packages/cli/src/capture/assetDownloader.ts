@@ -10,6 +10,7 @@ import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
+import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
 
 interface DownloadBudgetOptions {
   remainingMs?: () => number;
@@ -93,7 +94,7 @@ export async function downloadAssets(
   tokens: DesignTokens,
   outputDir: string,
   catalogedAssets?: CatalogedAsset[],
-  faviconLinks?: Array<{ rel: string; href: string }>,
+  faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts }> {
   const assetsDir = join(outputDir, "assets");
@@ -133,8 +134,8 @@ export async function downloadAssets(
     }
   }
 
-  // 2. Favicon
-  const icons = faviconLinks || [];
+  // 2. Favicon — best declared candidate first, falling back through the rest on failure.
+  const icons = rankIconCandidates(faviconLinks || []);
   for (const [index, icon] of icons.entries()) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
     if (remainingMs <= 0) {

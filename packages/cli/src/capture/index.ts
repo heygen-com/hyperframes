@@ -23,6 +23,7 @@ import {
   noDrops,
   totalDrops,
 } from "./assetDownloader.js";
+import type { IconCandidate } from "./faviconRanker.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
@@ -575,10 +576,20 @@ export async function captureWebsite(
     const visibleTextContent = await extractVisibleText(page1);
 
     // Extract favicon links before closing page (removed from tokens to reduce noise)
+    // `sizes` and `type` are the only evidence of icon quality: page.html on disk does not
+    // keep the <link> tags, and the bytes are only fetched for the candidate that wins, so
+    // dropping these attributes here makes the choice unrecoverable downstream.
     const faviconLinks = (await page1.evaluate(`(() => {
       var iconEls = Array.from(document.querySelectorAll('link[rel*="icon"], link[rel="apple-touch-icon"]'));
-      return iconEls.map(function(l) { return { rel: l.rel, href: l.href }; });
-    })()`)) as Array<{ rel: string; href: string }>;
+      return iconEls.map(function(l) {
+        return {
+          rel: l.rel,
+          href: l.href,
+          sizes: l.getAttribute('sizes'),
+          type: l.getAttribute('type'),
+        };
+      });
+    })()`)) as IconCandidate[];
 
     await page1.close();
 
