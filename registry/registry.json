@@ -1152,6 +1152,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "panels-join",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "parallax-device-dive",
       "type": "hyperframes:component"
     },
