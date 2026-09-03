@@ -1269,8 +1269,8 @@ function addFullSizeKanaVariants(chars: Set<string>): void {
   }
 }
 
-const TEXT_TRANSFORM_FULL_WIDTH_RE = /text-transform\s*:[^;]*full-width/;
-const TEXT_TRANSFORM_FULL_SIZE_KANA_RE = /text-transform\s*:[^;]*full-size-kana/;
+const TEXT_TRANSFORM_FULL_WIDTH_RE = /text-transform\s*:\s*[^;{}]*\bfull-width\b/i;
+const TEXT_TRANSFORM_FULL_SIZE_KANA_RE = /text-transform\s*:\s*[^;{}]*\bfull-size-kana\b/i;
 
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);

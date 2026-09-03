@@ -210,13 +210,24 @@ describe("Google Fonts text subsetting", () => {
     expect(text).toContain("h");
   });
 
-  it("does not trigger fullwidth expansion from a CSS class named full-width", async () => {
+  it("does not trigger fullwidth from an unrelated text-transform plus a full-width class", async () => {
     const text = await subsetTextFor(
       `<!doctype html><html><head><style>
-        .full-width { font-family: "Noto Performance Test", sans-serif; width: 100%; }
-      </style></head><body><div class="full-width">ABC</div></body></html>`,
+        h1 { font-family: "Noto Performance Test", sans-serif; text-transform: uppercase }
+        .full-width { width: 100% }
+      </style></head><body><div class="full-width"><h1>ABC</h1></div></body></html>`,
     );
 
     expect(text).not.toContain("Ａ");
+  });
+
+  it("triggers fullwidth for case-insensitive text-transform: FULL-WIDTH", async () => {
+    const text = await subsetTextFor(
+      `<!doctype html><html><head><style>
+        p { font-family: "Noto Performance Test", sans-serif; text-transform: FULL-WIDTH; }
+      </style></head><body><p>ABC</p></body></html>`,
+    );
+
+    expect(text).toContain("Ａ");
   });
 });
