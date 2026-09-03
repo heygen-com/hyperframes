@@ -24,6 +24,33 @@
 // is resolved rather than assumed away: `import { useEffect as x }`, `React.useEffect` and a
 // namespace import all resolve to the same call and all count. Both banned hooks share one
 // budget, so neither can be smuggled in by spelling it the other way.
+//
+// Spellings, and how far resolution reaches. Every form below is either DETECTED or listed as OUT
+// OF SCOPE with its reason; none is silently unhandled.
+//
+//   DETECTED  `import { useEffect }`, `import { useEffect as x }`, `import React from "react"` +
+//             `React.useEffect`, `import * as R from "react"` + `R.useLayoutEffect`.
+//   DETECTED  computed namespace access: `React["useEffect"]`.
+//   DETECTED  runtime loads of the module -- `require` and dynamic `import`, awaited or not --
+//             with the namespace either bound (`const R = await import(<react>)`) or destructured
+//             (`const { useEffect } = require(<react>)`). `<react>` stands for the literal module
+//             specifier: spelling it out inside these parentheses makes the repository's
+//             dependency audit read this comment as a real import of react.
+//   DETECTED  local aliases, transitively: `const e = useEffect`, then `const f = e`, and
+//             `const e = React["useEffect"]`.
+//   DETECTED  a barrel re-export written UNDER the scanned tree: `export { useEffect } from "react"`
+//             and `export * from "react"` fail in the barrel itself, so importing the hook through
+//             a local barrel cannot launder it. The barrel is the file that has to exist for the
+//             bypass, and it is in scope, so the bypass is closed where it is written.
+//   DETECTED  `.js` and `.jsx` sources, on the same terms as `.ts` and `.tsx`.
+//   OUT OF SCOPE  a barrel OUTSIDE the scanned tree -- another workspace package re-exporting react.
+//             Catching it needs cross-package module resolution: a resolver plus a whole-program
+//             parse, to close a route that does not exist today (no file under `packages/`
+//             re-exports react at all). If one is ever written, ban it where it is written, the way
+//             the in-scope rule above already does.
+//   OUT OF SCOPE  indirection no static pass can follow: `React[flag ? "useEffect" : "useMemo"]`, a
+//             hook pulled out of a data structure, `eval`. A ratchet resists drift, not an author
+//             deliberately defeating it -- that author can equally well edit BUDGET below.
 
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
@@ -214,9 +241,9 @@ const BUDGET = new Map([
   ["packages/studio/src/webmcp/useStudioAgentTools.ts", 1],
 ]);
 
-/** Studio source the ban applies to: TypeScript, minus the ambient declarations. */
-function isScannedSource(name) {
-  return /\.tsx?$/.test(name) && !name.endsWith(".d.ts");
+/** Studio source the ban applies to: JavaScript and TypeScript, minus the ambient declarations. */
+export function isScannedSource(name) {
+  return /\.[jt]sx?$/.test(name) && !name.endsWith(".d.ts");
 }
 
 /** Every file under SCANNED the ban applies to, repo-relative and sorted. */
@@ -265,6 +292,122 @@ function bannedLocalNames(named) {
     .map((spec) => spec.name.text);
 }
 
+/** Whether a callee loads a module at runtime: the `import` keyword, or `require`. */
+function isModuleLoader(callee) {
+  if (callee.kind === ts.SyntaxKind.ImportKeyword) return true;
+  return ts.isIdentifier(callee) && callee.text === "require";
+}
+
+/** The literal module specifier a call loads, or undefined when it is not a literal. */
+function loadedModule(node) {
+  const [specifier] = node.arguments;
+  return specifier && ts.isStringLiteralLike(specifier) ? specifier.text : undefined;
+}
+
+/** Whether a call loads the react module, by `require` or by dynamic `import`. */
+function isReactModuleCall(node) {
+  return isModuleLoader(node.expression) && loadedModule(node) === "react";
+}
+
+/** The expression under any number of `await` and parenthesis wrappers. */
+function unwrap(expression) {
+  let node = expression;
+  while (ts.isAwaitExpression(node) || ts.isParenthesizedExpression(node)) node = node.expression;
+  return node;
+}
+
+/** Whether an expression evaluates to the React namespace, by name or by loading the module. */
+function isReactNamespace(wrapped, namespaces) {
+  const expression = unwrap(wrapped);
+  if (ts.isIdentifier(expression)) return namespaces.has(expression.text);
+  return ts.isCallExpression(expression) && isReactModuleCall(expression);
+}
+
+/** The property a member access reads, spelled either `x.y` or `x["y"]`. */
+function memberName(expression) {
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (
+    ts.isElementAccessExpression(expression) &&
+    ts.isStringLiteralLike(expression.argumentExpression)
+  )
+    return expression.argumentExpression.text;
+  return undefined;
+}
+
+/** Whether an expression resolves to a banned hook: a bound local, or React's member by any spelling. */
+function isBannedExpression(expression, direct, namespaces) {
+  if (ts.isIdentifier(expression)) return direct.has(expression.text);
+  const name = memberName(expression);
+  return (
+    name !== undefined && BANNED.has(name) && isReactNamespace(expression.expression, namespaces)
+  );
+}
+
+/** The banned names a `const { useEffect } = <react>` pattern binds, in their local spelling. */
+function destructuredNames(pattern) {
+  return pattern.elements
+    .filter((element) => ts.isIdentifier(element.propertyName ?? element.name))
+    .filter((element) => BANNED.has((element.propertyName ?? element.name).text))
+    .filter((element) => ts.isIdentifier(element.name))
+    .map((element) => ({ kind: "direct", name: element.name.text }));
+}
+
+/** What `const x = ...` contributes: a hook alias, a React namespace alias, or nothing. */
+function nameBindings(name, initializer, direct, namespaces) {
+  if (isBannedExpression(initializer, direct, namespaces)) return [{ kind: "direct", name }];
+  if (isReactNamespace(initializer, namespaces)) return [{ kind: "namespaces", name }];
+  return [];
+}
+
+/** What `const { useEffect } = ...` contributes: the banned names it pulls off React. */
+function patternBindings(pattern, initializer, namespaces) {
+  return isReactNamespace(initializer, namespaces) ? destructuredNames(pattern) : [];
+}
+
+/** What one variable declaration adds to the bindings, whichever way it is written. */
+function declaredBindings(declaration, direct, namespaces) {
+  const { name, initializer } = declaration;
+  if (!initializer) return [];
+  if (ts.isObjectBindingPattern(name)) return patternBindings(name, initializer, namespaces);
+  return ts.isIdentifier(name) ? nameBindings(name.text, initializer, direct, namespaces) : [];
+}
+
+/** Every node of one kind in a file, in source order. */
+function collect(root, matches) {
+  const found = [];
+  const visit = (node) => {
+    if (matches(node)) found.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+/** One resolution pass: every alias visible from the bindings as they currently stand. */
+function addAliases(declarations, bindings) {
+  for (const declaration of declarations)
+    for (const found of declaredBindings(declaration, bindings.direct, bindings.namespaces))
+      bindings[found.kind].add(found.name);
+}
+
+/** How many names the bindings hold: the only thing a pass can change. */
+function bindingCount(bindings) {
+  return bindings.direct.size + bindings.namespaces.size;
+}
+
+/**
+ * Grow the bindings by every alias of them until a pass adds nothing, so a chain like
+ * `const b = a; const a = useEffect;` resolves whatever order the declarations are written in.
+ */
+function resolveAliases(root, bindings) {
+  const declarations = collect(root, ts.isVariableDeclaration);
+  for (let previous = -1; previous !== bindingCount(bindings); ) {
+    previous = bindingCount(bindings);
+    addAliases(declarations, bindings);
+  }
+  return bindings;
+}
+
 /** Local names in one file that refer to a banned hook, plus the React namespace names. */
 export function reactBindings(root) {
   const direct = [];
@@ -275,7 +418,7 @@ export function reactBindings(root) {
     namespaces.push(...namespaceNames(clause));
     direct.push(...bannedLocalNames(clause.namedBindings));
   }
-  return { direct: new Set(direct), namespaces: new Set(namespaces) };
+  return resolveAliases(root, { direct: new Set(direct), namespaces: new Set(namespaces) });
 }
 
 /**
@@ -288,37 +431,70 @@ export function parse(file, text) {
     text,
     ts.ScriptTarget.Latest,
     true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
 }
 
-/** `React.useEffect(...)`, where the object is a name bound to the React namespace. */
-function isNamespacedCallee(callee, namespaces) {
-  return (
-    ts.isPropertyAccessExpression(callee) &&
-    ts.isIdentifier(callee.expression) &&
-    namespaces.has(callee.expression.text) &&
-    BANNED.has(callee.name.text)
-  );
-}
-
-/** Whether what is being called resolves to a banned hook, by either spelling. */
-function isBannedCallee(callee, direct, namespaces) {
-  return ts.isIdentifier(callee) ? direct.has(callee.text) : isNamespacedCallee(callee, namespaces);
-}
-
-/** Line numbers of every banned-hook call in one file. */
-export function callSites(file, text = readFileSync(join(ROOT, file), "utf8")) {
-  const root = parse(file, text);
+/** Every banned-hook call in one parsed file, as nodes. */
+export function bannedCalls(root) {
   const { direct, namespaces } = reactBindings(root);
-  const lines = [];
-  const visit = (node) => {
-    if (ts.isCallExpression(node) && isBannedCallee(node.expression, direct, namespaces))
-      lines.push(root.getLineAndCharacterOfPosition(node.getStart(root)).line + 1);
-    ts.forEachChild(node, visit);
-  };
-  visit(root);
-  return lines;
+  return collect(
+    root,
+    (node) => ts.isCallExpression(node) && isBannedExpression(node.expression, direct, namespaces),
+  );
+}
+
+/** The module a re-export pulls from, or undefined when the statement is not one. */
+function reExportedModule(statement) {
+  if (!ts.isExportDeclaration(statement)) return undefined;
+  const specifier = statement.moduleSpecifier;
+  return specifier && ts.isStringLiteral(specifier) ? specifier.text : undefined;
+}
+
+/** Whether an export clause hands out a banned hook. No clause is `export *`, which hands out all. */
+function exportsBannedName(clause) {
+  if (!clause) return true;
+  return (
+    ts.isNamedExports(clause) &&
+    clause.elements.some((spec) => BANNED.has((spec.propertyName ?? spec.name).text))
+  );
+}
+
+/** Whether a re-export hands a banned hook to other files: `export { useEffect } from "react"`. */
+function isReactReExport(statement) {
+  return reExportedModule(statement) === "react" && exportsBannedName(statement.exportClause);
+}
+
+/** Line numbers of every banned-hook call and every react re-export in one file. */
+export function violations(file, text = readFileSync(join(ROOT, file), "utf8")) {
+  const root = parse(file, text);
+  const line = (node) => root.getLineAndCharacterOfPosition(node.getStart(root)).line + 1;
+  const found = [...bannedCalls(root), ...root.statements.filter(isReactReExport)];
+  return found.map(line).sort((a, b) => a - b);
+}
+
+/** The shape the sanctioned wrapper must keep: one `useEffect(effect, [])` and nothing else. */
+function isMountEffectCall(node) {
+  const [, deps] = node.arguments;
+  return (
+    node.arguments.length === 2 && ts.isArrayLiteralExpression(deps) && deps.elements.length === 0
+  );
+}
+
+/**
+ * How the sanctioned file departs from useMountEffect(), or null when it still matches. Skipping
+ * the file wholesale would make it a hiding place: any effect, any dependency array, unchecked.
+ */
+export function sanctionedProblem(file, text = readFileSync(join(ROOT, file), "utf8")) {
+  const calls = bannedCalls(parse(file, text));
+  if (calls.length !== 1)
+    return `SANCTIONED file drifted: ${file} has ${calls.length} banned hook calls, expected 1.`;
+  if (!isMountEffectCall(calls[0]))
+    return (
+      `SANCTIONED file drifted: ${file} must call useEffect(effect, []) and nothing else.\n` +
+      `    Its one effect now takes a different dependency array, which is a general effect.`
+    );
+  return null;
 }
 
 /** Every offending file under SCANNED, mapped to the lines its banned hooks sit on. */
@@ -326,7 +502,7 @@ function scan() {
   const found = new Map();
   for (const file of sources()) {
     if (SANCTIONED.has(file)) continue;
-    const lines = callSites(file);
+    const lines = violations(file);
     if (lines.length > 0) found.set(file, lines);
   }
   return found;
@@ -369,13 +545,19 @@ export function listBudgetIssues(found, budget = BUDGET) {
   ].filter((problem) => problem !== null);
 }
 
+/** Every way a sanctioned file fails to be the thing it was sanctioned for. */
+export function listSanctionedIssues(scanned, sanctioned = SANCTIONED) {
+  return [...sanctioned.keys()]
+    .map((file) =>
+      scanned.includes(file)
+        ? sanctionedProblem(file)
+        : `SANCTIONED lists a file that no longer exists: ${file}`,
+    )
+    .filter((problem) => problem !== null);
+}
+
 function main() {
-  const problems = listBudgetIssues(scan());
-  const scanned = sources();
-  for (const file of SANCTIONED.keys()) {
-    if (!scanned.includes(file))
-      problems.push(`SANCTIONED lists a file that no longer exists: ${file}`);
-  }
+  const problems = [...listBudgetIssues(scan()), ...listSanctionedIssues(sources())];
   const debt = [...BUDGET.values()].reduce((total, count) => total + count, 0);
   if (problems.length === 0) {
     console.log(
