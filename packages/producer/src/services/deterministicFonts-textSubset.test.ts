@@ -168,15 +168,24 @@ describe("Google Fonts text subsetting", () => {
     const cjk = "旅行ランキング東京大阪京都名古屋福岡";
     const kana = "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ";
 
-    const text = await subsetTextFor(
+    const withTransforms = await subsetTextFor(
       `<!doctype html><html lang="tr"><head><style>
         h1 { font-family: "Noto Performance Test", sans-serif; text-transform: full-width; }
         p { font-family: "Noto Performance Test", sans-serif; text-transform: full-size-kana; }
       </style></head><body><h1>${latin}</h1><p>${cjk}${kana}</p></body></html>`,
     );
 
-    expect(text.length).toBeGreaterThan(0);
-    expect(encodeURIComponent(text).length).toBeLessThanOrEqual(1700);
+    const withoutTransforms = await subsetTextFor(
+      `<!doctype html><html lang="tr"><head><style>
+        h1 { font-family: "Noto Performance Test", sans-serif; }
+        p { font-family: "Noto Performance Test", sans-serif; }
+      </style></head><body><h1>${latin}</h1><p>${cjk}${kana}</p></body></html>`,
+    );
+
+    const transformCost =
+      encodeURIComponent(withTransforms).length - encodeURIComponent(withoutTransforms).length;
+    expect(transformCost).toBeLessThan(900);
+    expect(encodeURIComponent(withTransforms).length).toBeLessThanOrEqual(1700);
   });
 
   it("collects lang from nested elements, not just the root", async () => {
@@ -188,5 +197,26 @@ describe("Google Fonts text subsetting", () => {
 
     expect(text).toContain("İ");
     expect(text).toContain("ı");
+  });
+
+  it("skips invalid lang attributes without crashing", async () => {
+    const text = await subsetTextFor(
+      `<!doctype html><html lang="en_US"><head><style>
+        p { font-family: "Inter", sans-serif; }
+      </style></head><body><p lang="x">hello</p><p lang="123">world</p></body></html>`,
+    );
+
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toContain("h");
+  });
+
+  it("does not trigger fullwidth expansion from a CSS class named full-width", async () => {
+    const text = await subsetTextFor(
+      `<!doctype html><html><head><style>
+        .full-width { font-family: "Noto Performance Test", sans-serif; width: 100%; }
+      </style></head><body><div class="full-width">ABC</div></body></html>`,
+    );
+
+    expect(text).not.toContain("Ａ");
   });
 });

@@ -1229,8 +1229,13 @@ function collectLangAttributes(document: {
   const locales = new Set<string>();
   for (const element of document.querySelectorAll("[lang]")) {
     const lang = element.getAttribute("lang");
-    if (lang) {
-      locales.add(lang.split("-")[0]!.toLowerCase());
+    if (!lang) continue;
+    const primary = lang.split("-")[0]!.toLowerCase();
+    try {
+      Intl.getCanonicalLocales(primary);
+      locales.add(primary);
+    } catch {
+      // Invalid BCP-47 tag (e.g. lang="en_US", lang="x") — skip silently.
     }
   }
   return locales;
@@ -1264,18 +1269,23 @@ function addFullSizeKanaVariants(chars: Set<string>): void {
   }
 }
 
+const TEXT_TRANSFORM_FULL_WIDTH_RE = /text-transform\s*:[^;]*full-width/;
+const TEXT_TRANSFORM_FULL_SIZE_KANA_RE = /text-transform\s*:[^;]*full-size-kana/;
+
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);
   const decodedBodyText = document.body?.textContent ?? "";
   const locales = collectLangAttributes(document);
 
+  // Intentional over-approximation: raw html includes base64, scripts, and
+  // class names, but they collapse in the Set and the budget gate catches bloat.
   const uniqueCharacters = new Set<string>();
-  for (const character of [...Array.from(html), ...Array.from(decodedBodyText)]) {
+  for (const character of new Set([...Array.from(html), ...Array.from(decodedBodyText)])) {
     addCaseClosure(uniqueCharacters, character, locales);
   }
 
-  if (html.includes("full-width")) addFullwidthVariants(uniqueCharacters);
-  if (html.includes("full-size-kana")) addFullSizeKanaVariants(uniqueCharacters);
+  if (TEXT_TRANSFORM_FULL_WIDTH_RE.test(html)) addFullwidthVariants(uniqueCharacters);
+  if (TEXT_TRANSFORM_FULL_SIZE_KANA_RE.test(html)) addFullSizeKanaVariants(uniqueCharacters);
 
   const fontText = [...uniqueCharacters].join("");
   return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
