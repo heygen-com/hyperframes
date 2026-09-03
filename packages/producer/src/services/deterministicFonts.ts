@@ -1269,8 +1269,39 @@ function addFullSizeKanaVariants(chars: Set<string>): void {
   }
 }
 
-const TEXT_TRANSFORM_FULL_WIDTH_RE = /text-transform\s*:[^;{}]*\bfull-width\b/i;
-const TEXT_TRANSFORM_FULL_SIZE_KANA_RE = /text-transform\s*:[^;{}]*\bfull-size-kana\b/i;
+const FULL_WIDTH_KEYWORD_RE = /\bfull-width\b/;
+const FULL_SIZE_KANA_KEYWORD_RE = /\bfull-size-kana\b/;
+const DECLARATION_BOUNDARY_RE = /[;{}]/;
+
+function skipWhitespace(s: string, pos: number): number {
+  while (pos < s.length && " \t\n\r\f\v".includes(s[pos]!)) pos += 1;
+  return pos;
+}
+
+function findDeclarationEnd(s: string, pos: number): number {
+  const match = DECLARATION_BOUNDARY_RE.exec(s.slice(pos));
+  return match ? pos + match.index : s.length;
+}
+
+// Linear indexOf/slice scan: a `text-transform\s*:[^;{}]*\bkw\b` regex backtracks
+// O(n²) on input with many `text-transform:` runs (js/polynomial-redos).
+function hasTextTransformKeyword(html: string, keyword: RegExp): boolean {
+  const haystack = html.toLowerCase();
+  const property = "text-transform";
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(property, from);
+    if (at === -1) return false;
+    const afterProp = skipWhitespace(haystack, at + property.length);
+    if (haystack[afterProp] !== ":") {
+      from = at + property.length;
+      continue;
+    }
+    const end = findDeclarationEnd(haystack, afterProp + 1);
+    if (keyword.test(haystack.slice(afterProp + 1, end))) return true;
+    from = end;
+  }
+}
 
 function extractGoogleFontsText(html: string): string | undefined {
   const { document } = parseHTML(html);
@@ -1284,8 +1315,9 @@ function extractGoogleFontsText(html: string): string | undefined {
     addCaseClosure(uniqueCharacters, character, locales);
   }
 
-  if (TEXT_TRANSFORM_FULL_WIDTH_RE.test(html)) addFullwidthVariants(uniqueCharacters);
-  if (TEXT_TRANSFORM_FULL_SIZE_KANA_RE.test(html)) addFullSizeKanaVariants(uniqueCharacters);
+  if (hasTextTransformKeyword(html, FULL_WIDTH_KEYWORD_RE)) addFullwidthVariants(uniqueCharacters);
+  if (hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE))
+    addFullSizeKanaVariants(uniqueCharacters);
 
   const fontText = [...uniqueCharacters].join("");
   return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
