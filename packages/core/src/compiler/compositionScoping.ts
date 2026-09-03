@@ -234,7 +234,7 @@ export function scopeCssToComposition(
   try {
     root = postcss.parse(css);
   } catch {
-    return css;
+    return "";
   }
 
   root.walkRules((rule) => {
