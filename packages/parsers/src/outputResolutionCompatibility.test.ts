@@ -81,18 +81,15 @@ describe("checkOutputResolutionCompatibility", () => {
     });
   });
 
-  describe("alpha / HDR incompatibility", () => {
-    it("flags alpha output combined with outputResolution", () => {
+  describe("alpha / HDR compatibility", () => {
+    it("allows alpha output to use integer deviceScaleFactor supersampling", () => {
       const result = checkOutputResolutionCompatibility({
         compositionWidth: 1920,
         compositionHeight: 1080,
         outputResolution: "landscape-4k",
         alphaRequested: true,
       });
-      expect(result.ok).toBe(false);
-      expect(result.kind).toBe("alpha-incompatible");
-      expect(result.message).toContain("alpha output");
-      expect(result.message).toContain("--format mp4");
+      expect(result).toEqual({ ok: true });
     });
 
     it("flags HDR combined with outputResolution", () => {

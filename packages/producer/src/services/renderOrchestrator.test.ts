@@ -1598,14 +1598,14 @@ describe("resolveDeviceScaleFactor", () => {
     ).toThrow(/hdrMode='force-hdr'/);
   });
 
-  it("rejects alpha + outputResolution (the alpha capture path doesn't apply DPR yet)", () => {
-    expect(() =>
+  it("returns the requested DPR for alpha + outputResolution", () => {
+    expect(
       resolveDeviceScaleFactor({
         ...defaults,
         outputResolution: "landscape-4k",
         alphaRequested: true,
       }),
-    ).toThrow(/alpha output/);
+    ).toBe(2);
   });
 
   it("rejects orientation mismatch (landscape comp → portrait-4k)", () => {

@@ -1283,16 +1283,15 @@ describe("checkRenderResolutionPreflight", () => {
     ).toBeUndefined();
   });
 
-  it("flags alpha output combined with outputResolution", async () => {
+  it("allows alpha output combined with an integer outputResolution scale", async () => {
     const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape-4k", {
       alphaRequested: true,
       hdrRequested: false,
     });
-    expect(result?.message).toContain("alpha output");
-    expect(result?.kind).toBe("alpha-incompatible");
+    expect(result).toBeUndefined();
   });
 
-  // The three remaining kinds share the same rejection sink (→ one emit each);
+  // The remaining kinds share the same rejection sink (→ one emit each);
   // guard their classification so the telemetry dimension stays accurate.
   it("classifies an HDR + outputResolution combination as hdr-incompatible", async () => {
     const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape", {
@@ -1357,16 +1356,13 @@ describe("checkRenderResolutionPreflight", () => {
       ).toBeUndefined();
     });
 
-    it("still flags alpha + aspect-agnostic (orientation isn't the issue)", async () => {
-      // alpha-incompatible is orthogonal to aspect: the alpha capture path
-      // can't apply deviceScaleFactor regardless of orientation. The
-      // aspect-agnostic downgrade must NOT swallow this.
+    it("allows alpha + aspect-agnostic after adapting the orientation", async () => {
       const result = await checkRenderResolutionPreflight(portraitHtml, "landscape", {
         aspectAgnostic: true,
         alphaRequested: true,
         hdrRequested: false,
       });
-      expect(result?.kind).toBe("alpha-incompatible");
+      expect(result).toBeUndefined();
     });
 
     it("still flags HDR + aspect-agnostic", async () => {

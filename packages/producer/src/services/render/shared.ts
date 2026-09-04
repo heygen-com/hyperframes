@@ -119,10 +119,10 @@ export function resolveDeviceScaleFactor(input: {
   alphaRequested: boolean;
 }): number {
   if (!input.outputResolution) return 1;
-  // Single source of truth for the aspect/alpha/HDR/scale constraints, shared
+  // Single source of truth for the aspect/HDR/scale constraints, shared
   // with the CLI render pre-flight so both raise the identical, actionable
   // message. This is the deep defense-in-depth throw; the pre-flight aborts
-  // long before this runs on the common (aspect/alpha) mistakes.
+  // long before this runs on common compatibility mistakes.
   const compat = checkOutputResolutionCompatibility({
     compositionWidth: input.compositionWidth,
     compositionHeight: input.compositionHeight,

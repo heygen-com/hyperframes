@@ -648,10 +648,10 @@ export function identifyUser(distinctId: string): void {
   trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
 }
 
-// A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
+// A render was rejected by the output-resolution/HDR pre-flight (P1-3)
 // before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
 // 1783183, distinct from deep render failures. `kind` is the low-cardinality
-// `OutputResolutionIssueKind` (aspect-mismatch / alpha-incompatible / etc.),
+// `OutputResolutionIssueKind` (aspect-mismatch / hdr-incompatible / etc.),
 // typed to the union so the metric can never carry free text.
 export function trackRenderPreflightRejected(props: { kind: OutputResolutionIssueKind }): void {
   trackEvent("render_preflight_rejected", { kind: props.kind });

@@ -27,7 +27,6 @@ import { CANVAS_DIMENSIONS, VALID_CANVAS_RESOLUTIONS, type CanvasResolution } fr
 
 export type OutputResolutionIssueKind =
   | "hdr-incompatible"
-  | "alpha-incompatible"
   | "aspect-mismatch"
   | "downsampling"
   | "non-integer-scale";
@@ -124,7 +123,7 @@ function buildAspectMismatch(
 
 /**
  * Check whether rendering a composition of the given dimensions with the given
- * `outputResolution` preset (and alpha/HDR modes) is supported.
+ * `outputResolution` preset (and HDR mode) is supported.
  *
  * Pure and dependency-free — the single source of truth for the constraints
  * `resolveDeviceScaleFactor` enforces, so the CLI can run the exact same check
@@ -151,18 +150,6 @@ export function checkOutputResolutionCompatibility(input: {
         `outputResolution cannot be combined with hdrMode='force-hdr'. ` +
         `HDR rendering composites at composition dimensions and does not yet ` +
         `support supersampling. Pick one or render in two passes.`,
-    };
-  }
-
-  if (input.alphaRequested) {
-    return {
-      ok: false,
-      kind: "alpha-incompatible",
-      message:
-        `outputResolution cannot be combined with alpha output (--format webm|mov|png-sequence). ` +
-        `The alpha screenshot path does not yet apply deviceScaleFactor and would silently ` +
-        `produce composition-resolution frames. Render alpha at composition resolution and ` +
-        `upscale separately, or use --format mp4.`,
     };
   }
 
