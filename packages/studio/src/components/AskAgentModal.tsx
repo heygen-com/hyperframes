@@ -64,8 +64,8 @@ export function AskAgentModal({
     <div
       className={
         anchorPoint
-          ? "hf-backdrop-in fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-          : "hf-backdrop-in fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          ? "hf-backdrop-in fixed inset-0 z-100 bg-black/60 backdrop-blur-xs"
+          : "hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
       }
       onClick={requestClose}
     >
@@ -75,7 +75,7 @@ export function AskAgentModal({
         aria-modal="true"
         aria-label="Copy prompt to AI agent"
         tabIndex={-1}
-        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-none ${
+        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-hidden ${
           anchorPoint ? "fixed" : ""
         }`}
         style={modalPositionStyle}
@@ -110,7 +110,7 @@ export function AskAgentModal({
         <div className="px-5 py-4 space-y-3">
           <textarea
             ref={inputRef}
-            className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-hidden focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
             placeholder="Describe what you want to change…"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -125,7 +125,7 @@ export function AskAgentModal({
               <summary className="text-[11px] text-neutral-500 cursor-pointer select-none hover:text-neutral-400">
                 Context included in prompt
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-neutral-900/80 px-3 py-2 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-words border border-neutral-800/50">
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-neutral-900/80 px-3 py-2 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap wrap-break-word border border-neutral-800/50">
                 {contextPreview}
               </pre>
             </details>

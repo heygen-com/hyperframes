@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
@@ -232,7 +233,7 @@ function devProjectApi(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), devProjectApi()],
+  plugins: [react(), tailwindcss(), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },

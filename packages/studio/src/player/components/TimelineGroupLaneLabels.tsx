@@ -64,7 +64,7 @@ export function TimelineGroupLaneLabels({
             key={lane.target}
             data-group-lane-label={lane.target}
             aria-label={`Show ${groupLabel} ${parts.name}${parts.param ? ` ${parts.param}` : ""} in the effect rack`}
-            className="absolute left-0 flex items-center gap-1.5 overflow-hidden border-0 px-1.5 text-left text-[10px] text-white/65 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+            className="absolute left-0 flex items-center gap-1.5 overflow-hidden border-0 px-1.5 text-left text-[10px] text-white/65 hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
             style={{
               top: top + index * AUTOMATION_LANE_H,
               width: columnWidth,

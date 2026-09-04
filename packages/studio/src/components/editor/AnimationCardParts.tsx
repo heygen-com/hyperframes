@@ -46,7 +46,7 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title: string }
     <button
       type="button"
       onClick={onClick}
-      className="relative flex-shrink-0 rounded p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400 active:scale-[0.95]"
+      className="relative shrink-0 rounded-sm p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400 active:scale-[0.95]"
       title={title}
       aria-label={title}
     >
@@ -91,7 +91,7 @@ export function PropertyRow({
             role="switch"
             aria-checked={isVisible}
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
-            className="flex-shrink-0 rounded-full transition-colors duration-200 relative"
+            className="shrink-0 rounded-full transition-colors duration-200 relative"
             style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
             title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
           >
@@ -117,13 +117,13 @@ export function PropertyRow({
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1">
           <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
-            <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">
+            <span className="shrink-0 text-[11px] font-medium text-neutral-500">
               {PROP_LABELS[prop] ?? prop}
             </span>
             <input
               type="text"
               defaultValue={String(val)}
-              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-none"
+              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-hidden"
               onBlur={(e) => onCommit(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.currentTarget.blur();
@@ -139,7 +139,7 @@ export function PropertyRow({
                 key={p.value}
                 type="button"
                 onClick={() => onCommit(p.value)}
-                className="px-1.5 py-0.5 rounded text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
+                className="px-1.5 py-0.5 rounded-sm text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
               >
                 {p.label}
               </button>
@@ -190,7 +190,7 @@ export function AddPropertyTrigger({
     return (
       <select
         autoFocus
-        className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-none"
+        className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-hidden"
         defaultValue=""
         onChange={(e) => {
           if (e.target.value) onAdd(e.target.value);

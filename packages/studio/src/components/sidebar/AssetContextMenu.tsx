@@ -95,11 +95,11 @@ export function ContextMenu({
   }, [renameDraft, asset, onRename, onClose]);
 
   const itemCls =
-    "w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-none active:bg-neutral-700/70 transition-colors";
+    "w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden active:bg-neutral-700/70 transition-colors";
 
   return (
     <div
-      className="fixed inset-0 z-[200]"
+      className="fixed inset-0 z-200"
       onClick={onClose}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -181,19 +181,19 @@ export function ContextMenu({
                 }
               }}
               aria-label={`Rename ${filename(asset)}`}
-              className="w-full bg-neutral-800 border border-neutral-600 rounded px-1.5 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-none"
+              className="w-full bg-neutral-800 border border-neutral-600 rounded-sm px-1.5 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
             />
             {renameError && <span className="text-[10px] text-red-400">{renameError}</span>}
             <div className="flex items-center justify-end gap-1">
               <button
                 onClick={() => setMode("menu")}
-                className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={commitRename}
-                className="px-2 py-0.5 text-[10px] rounded bg-studio-accent/80 hover:bg-studio-accent text-white transition-colors"
+                className="px-2 py-0.5 text-[10px] rounded-sm bg-studio-accent/80 hover:bg-studio-accent text-white transition-colors"
               >
                 Rename
               </button>
@@ -217,16 +217,16 @@ function DeleteConfirm({
   return (
     <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
       <span className="text-[10px] text-red-400 truncate">Delete {name}?</span>
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={onConfirm}
-          className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
+          className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
         >
           Delete
         </button>
         <button
           onClick={onCancel}
-          className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 transition-colors"
         >
           Cancel
         </button>

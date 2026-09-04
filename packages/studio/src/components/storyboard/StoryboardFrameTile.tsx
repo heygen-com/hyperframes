@@ -75,7 +75,7 @@ export function StoryboardFrameTile({
         <span
           title={meta.tooltip}
           aria-label={`Status: ${meta.label} — ${meta.tooltip}`}
-          className={`shrink-0 cursor-default rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.chipClass}`}
+          className={`shrink-0 cursor-default rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.chipClass}`}
         >
           {meta.label}
         </span>
@@ -96,7 +96,7 @@ export function StoryboardFrameTile({
         rows={2}
         placeholder="Comment on this frame…"
         aria-label={`Comment on ${title}`}
-        className="mt-2 w-full resize-none rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-sky-700 focus:outline-none"
+        className="mt-2 w-full resize-none rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-sky-700 focus:outline-hidden"
       />
       {pendingComment && (
         <p className="mt-1 text-[11px] text-sky-400/90">

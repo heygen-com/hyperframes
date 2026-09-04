@@ -253,7 +253,7 @@ function StoryboardWarnings({
       <button
         type="button"
         onClick={onOpenSource}
-        className="mt-2 rounded text-amber-100 underline underline-offset-2 hover:text-white"
+        className="mt-2 rounded-sm text-amber-100 underline underline-offset-2 hover:text-white"
       >
         Open source to fix
       </button>
@@ -293,7 +293,7 @@ function SubViewToggle({ value, onChange }: { value: SubView; onChange: (next: S
           aria-selected={value === option.value}
           tabIndex={value === option.value ? 0 : -1}
           onClick={() => onChange(option.value)}
-          className={`rounded px-3 py-1 text-xs font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
+          className={`rounded px-3 py-1 text-xs font-medium transition-colors active:scale-[0.98] outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent ${
             value === option.value
               ? "bg-neutral-700 text-neutral-100"
               : "text-neutral-400 hover:text-neutral-200"

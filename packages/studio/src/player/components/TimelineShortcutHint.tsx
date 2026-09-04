@@ -12,7 +12,7 @@ export function TimelineShortcutHint({ theme }: TimelineShortcutHintProps) {
         style={{ background: "rgba(17,23,35,0.84)", borderColor: theme.gutterBorder }}
       >
         <kbd
-          className="text-[9px] font-mono px-1 py-0.5 rounded"
+          className="text-[9px] font-mono px-1 py-0.5 rounded-sm"
           style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.06)" }}
         >
           Shift

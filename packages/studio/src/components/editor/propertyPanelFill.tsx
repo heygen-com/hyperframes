@@ -132,7 +132,7 @@ export function ImageFillField({
                 : "cursor-pointer hover:border-neutral-600 hover:text-white"
             }`}
           >
-            <Plus size={12} className="flex-shrink-0" />
+            <Plus size={12} className="shrink-0" />
             <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
           </button>
           <input
@@ -177,7 +177,7 @@ export function ImageFillField({
                   }
                   onCommit(`url("${toProjectRootAssetPath(next)}")`);
                 }}
-                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
               >
                 <option value="">None</option>
                 {imageAssets.map((asset) => (
@@ -287,7 +287,7 @@ export function GradientField({
                   position: Math.max(0, Math.min(100, Math.round(stop.position + delta))),
                 });
               }}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-none focus-visible:ring-2 focus-visible:ring-studio-accent"
+              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-hidden focus-visible:ring-2 focus-visible:ring-studio-accent"
               style={{
                 left: `calc(${stop.position}% - 8px)`,
                 backgroundColor: stop.color,
@@ -338,7 +338,7 @@ export function GradientField({
                 track("toggle", "Repeat gradient");
                 patch({ repeating: e.target.checked });
               }}
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
+              className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
             />
             Repeat
           </label>

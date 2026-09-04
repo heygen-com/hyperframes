@@ -172,7 +172,7 @@ export const AnimationCard = memo(function AnimationCard({
     return (
       <div className="border-b border-neutral-800 pb-2">
         <div className="flex items-center gap-2 py-1.5">
-          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+          <span className="rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
             Position
           </span>
           <span className="text-[11px] text-neutral-500">
@@ -201,7 +201,7 @@ export const AnimationCard = memo(function AnimationCard({
         className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
       >
         <span
-          className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
+          className="rounded-sm bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
           title={METHOD_TOOLTIPS[animation.method]}
         >
           {methodLabel}
@@ -226,7 +226,7 @@ export const AnimationCard = memo(function AnimationCard({
           height="10"
           viewBox="0 0 10 10"
           fill="currentColor"
-          className={`flex-shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
+          className={`shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>
@@ -262,7 +262,7 @@ export const AnimationCard = memo(function AnimationCard({
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
-                className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+                className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
                 title="Copy description to clipboard — paste into agent prompts"
               >
                 {copied ? "Copied" : "Copy"}

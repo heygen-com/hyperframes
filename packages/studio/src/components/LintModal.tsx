@@ -58,7 +58,7 @@ export function LintModal({
 
   return (
     <div
-      className="hf-backdrop-in fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="hf-backdrop-in fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
       onClick={requestClose}
     >
       <div
@@ -67,7 +67,7 @@ export function LintModal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden outline-none"
+        className="bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden outline-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -130,20 +130,13 @@ export function LintModal({
           {errors.map((f, i) => (
             <div key={`e-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
               <div className="flex items-start gap-2">
-                <WarningIcon
-                  size={14}
-                  className="text-red-400 flex-shrink-0 mt-0.5"
-                  weight="fill"
-                />
+                <WarningIcon size={14} className="text-red-400 shrink-0 mt-0.5" weight="fill" />
                 <div className="min-w-0">
                   <p className="text-sm text-neutral-200">{f.message}</p>
                   {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
                   {f.fixHint && (
                     <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon
-                        size={10}
-                        className="text-studio-accent flex-shrink-0 mt-0.5"
-                      />
+                      <CaretRightIcon size={10} className="text-studio-accent shrink-0 mt-0.5" />
                       <p className="text-xs text-studio-accent">{f.fixHint}</p>
                     </div>
                   )}
@@ -154,16 +147,13 @@ export function LintModal({
           {warnings.map((f, i) => (
             <div key={`w-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
               <div className="flex items-start gap-2">
-                <WarningIcon size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                <WarningIcon size={14} className="text-amber-400 shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="text-sm text-neutral-300">{f.message}</p>
                   {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
                   {f.fixHint && (
                     <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon
-                        size={10}
-                        className="text-studio-accent flex-shrink-0 mt-0.5"
-                      />
+                      <CaretRightIcon size={10} className="text-studio-accent shrink-0 mt-0.5" />
                       <p className="text-xs text-studio-accent">{f.fixHint}</p>
                     </div>
                   )}

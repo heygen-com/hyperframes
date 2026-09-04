@@ -116,7 +116,7 @@ const FullscreenButton = memo(function FullscreenButton({
           trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
           onToggleFullscreen();
         }}
-        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
           isFullscreen ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}

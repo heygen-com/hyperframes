@@ -90,11 +90,11 @@ export function SlideList({
               checked={isSlide}
               onChange={() => onToggle(scene.id)}
               onClick={(e) => e.stopPropagation()}
-              className="accent-studio-accent flex-shrink-0"
+              className="accent-studio-accent shrink-0"
             />
             <span className="flex-1 truncate">{scene.label || scene.id}</span>
             {isSlide && (
-              <span className="flex gap-0.5 flex-shrink-0">
+              <span className="flex gap-0.5 shrink-0">
                 <button
                   type="button"
                   aria-label="Move slide up"
@@ -162,7 +162,7 @@ export function SlideInspector({
       <div className="flex flex-col gap-1">
         <label className="text-[11px] text-neutral-400">Notes</label>
         <textarea
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[11px] text-white resize-none placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-none"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1.5 text-[11px] text-white resize-none placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           rows={3}
           placeholder="Speaker notes or script..."
           value={slide?.notes ?? ""}
@@ -174,7 +174,7 @@ export function SlideInspector({
           <span className="text-[11px] text-neutral-400">Fragment hold-points</span>
           <button
             type="button"
-            className="text-[10px] px-2 py-0.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-200 transition-colors"
+            className="text-[10px] px-2 py-0.5 rounded-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 transition-colors"
             onClick={onMarkFragment}
             title={`Mark ${currentTime.toFixed(2)}s as hold-point`}
           >
@@ -186,7 +186,7 @@ export function SlideInspector({
             {fragments.map((t, i) => (
               <span
                 key={`frag-${i}`}
-                className="inline-flex items-center gap-1 bg-neutral-700 rounded px-1.5 py-0.5 text-[10px] text-neutral-200"
+                className="inline-flex items-center gap-1 bg-neutral-700 rounded-sm px-1.5 py-0.5 text-[10px] text-neutral-200"
               >
                 {t.toFixed(2)}s
                 <button
@@ -249,7 +249,7 @@ export function BranchTree({
         <input
           id={inputId}
           type="text"
-          className="flex-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-none"
+          className="flex-1 bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           placeholder="New branch name..."
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
@@ -260,7 +260,7 @@ export function BranchTree({
         />
         <button
           type="button"
-          className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-[11px] text-neutral-200 transition-colors flex-shrink-0"
+          className="px-2 py-1 rounded-sm bg-neutral-700 hover:bg-neutral-600 text-[11px] text-neutral-200 transition-colors shrink-0"
           onClick={handleCreate}
         >
           Add
@@ -322,11 +322,11 @@ function BranchItem({
   }, [draft, onRename, seq.id, seq.label]);
 
   return (
-    <div className="border border-neutral-700/60 rounded p-2 flex flex-col gap-2">
+    <div className="border border-neutral-700/60 rounded-sm p-2 flex flex-col gap-2">
       <div className="flex items-center gap-1">
         {editing ? (
           <input
-            className="flex-1 bg-neutral-800 border border-neutral-600 rounded px-1.5 py-0.5 text-[11px] text-white focus:border-studio-accent/60 focus:outline-none"
+            className="flex-1 bg-neutral-800 border border-neutral-600 rounded-sm px-1.5 py-0.5 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
             value={draft}
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
@@ -364,7 +364,7 @@ function BranchItem({
         </button>
       </div>
       {confirmingDelete && (
-        <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex flex-col gap-1 rounded-sm">
+        <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex flex-col gap-1 rounded-xs">
           <span className="text-[10px] text-red-400">
             Delete branch &ldquo;{seq.label}&rdquo;
             {seq.slides.length > 0
@@ -379,14 +379,14 @@ function BranchItem({
                 setConfirmingDelete(false);
                 onDelete(seq.id);
               }}
-              className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
+              className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white hover:bg-red-500 active:bg-red-700 transition-colors"
             >
               Delete
             </button>
             <button
               type="button"
               onClick={() => setConfirmingDelete(false)}
-              className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+              className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 transition-colors"
             >
               Cancel
             </button>
@@ -407,7 +407,7 @@ function BranchItem({
                 aria-label={`Assign ${scene.label || scene.id} to branch ${seq.label}`}
                 checked={assigned}
                 onChange={(e) => onAssign(seq.id, scene.id, e.target.checked)}
-                className="accent-studio-accent flex-shrink-0"
+                className="accent-studio-accent shrink-0"
               />
               {assigned ? (
                 <button
@@ -497,7 +497,7 @@ export function HotspotTool({
         <label className="text-[11px] text-neutral-400">Hotspot label</label>
         <input
           type="text"
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-none"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white placeholder-neutral-600 focus:border-studio-accent/60 focus:outline-hidden"
           placeholder="Button label..."
           value={hotspotLabel}
           onChange={(e) => setHotspotLabel(e.target.value)}
@@ -505,7 +505,7 @@ export function HotspotTool({
         />
         <label className="text-[11px] text-neutral-400">Target branch</label>
         <select
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-none"
+          className="bg-neutral-800 border border-neutral-700 rounded-sm px-2 py-1 text-[11px] text-white focus:border-studio-accent/60 focus:outline-hidden"
           value={targetSequenceId}
           onChange={(e) => setTargetSequenceId(e.target.value)}
           aria-label="Target branch sequence"
@@ -527,7 +527,7 @@ export function HotspotTool({
                 ? "Choose a target branch first"
                 : undefined
           }
-          className="px-3 py-1.5 rounded bg-studio-accent/80 enabled:hover:bg-studio-accent enabled:active:scale-[0.98] text-white text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-sm bg-studio-accent/80 enabled:hover:bg-studio-accent enabled:active:scale-[0.98] text-white text-[11px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={handleMakeHotspot}
         >
           Make hotspot
@@ -540,7 +540,10 @@ export function HotspotTool({
           {hotspots.map((h) => {
             const seqLabel = sequences.find((s) => s.id === h.target)?.label ?? h.target;
             return (
-              <div key={h.id} className="flex items-center gap-2 bg-neutral-800 rounded px-2 py-1">
+              <div
+                key={h.id}
+                className="flex items-center gap-2 bg-neutral-800 rounded-sm px-2 py-1"
+              >
                 <span className="flex-1 text-[11px] text-neutral-200 truncate">
                   {h.label} → <span className="text-neutral-400">{seqLabel}</span>
                 </span>

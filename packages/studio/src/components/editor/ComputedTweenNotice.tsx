@@ -29,7 +29,7 @@ export function ComputedTweenNotice({
         <button
           type="button"
           onClick={onUnroll}
-          className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium text-panel-accent hover:bg-neutral-800"
+          className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-panel-accent hover:bg-neutral-800"
           title="Rewrite the helper/loop into explicit tweens so this keyframe edits directly"
         >
           Unroll to edit

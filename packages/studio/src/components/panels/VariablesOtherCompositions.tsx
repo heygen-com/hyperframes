@@ -51,7 +51,7 @@ function CompositionSection({
               <span className="truncate text-[10px] font-medium text-neutral-300">
                 {decl.label}
               </span>
-              <span className="rounded bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
+              <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
                 {decl.type}
               </span>
               <span className="ml-auto flex items-center gap-1">
