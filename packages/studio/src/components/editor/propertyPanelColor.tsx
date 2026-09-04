@@ -259,7 +259,7 @@ export function ColorField({
     updatePanelPosition();
     const handlePositionInvalidated = () => updatePanelPosition();
     window.addEventListener("resize", handlePositionInvalidated);
-    window.addEventListener("scroll", handlePositionInvalidated, true);
+    window.addEventListener("scroll", handlePositionInvalidated, { capture: true, passive: true });
     return () => {
       window.removeEventListener("resize", handlePositionInvalidated);
       window.removeEventListener("scroll", handlePositionInvalidated, true);
