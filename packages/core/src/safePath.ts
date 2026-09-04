@@ -1,5 +1,21 @@
 import { resolve, sep, join, dirname, basename } from "node:path";
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
+
+// realpath also fails for dangling/cyclic symlinks. Existing entries must not
+// become missing segments: writes could follow them outside the project.
+function isMissingPath(path: string): boolean {
+  try {
+    lstatSync(path);
+    return false;
+  } catch (error) {
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR"),
+    );
+  }
+}
 
 /**
  * Reject paths that escape the `base` directory — including via symlinks.
@@ -41,6 +57,7 @@ export function isSafePath(base: string, resolved: string): boolean {
     try {
       ancestorReal = realpathSync(probe);
     } catch {
+      if (!isMissingPath(probe)) return false;
       const parent = dirname(probe);
       if (parent === probe) return false; // walked past the filesystem root
       trailing.push(basename(probe));
