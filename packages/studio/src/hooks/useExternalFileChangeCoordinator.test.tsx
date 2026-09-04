@@ -180,7 +180,7 @@ describe("external file change coordinator", () => {
     const { options } = await mountCoordinator({
       drainPendingChanges: () => new Promise((resolve) => drains.push(resolve)),
     });
-    act(() => {
+    await act(async () => {
       handler?.({ path: "index.html", content: "first", version: "v2" });
       handler?.({ path: "index.html", content: "second", version: "v3" });
     });
@@ -195,6 +195,28 @@ describe("external file change coordinator", () => {
     await act(async () => drains[1]?.({ status: "clean" }));
     expect(options.reloadPreview).toHaveBeenCalledTimes(2);
     expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a stale drain that completes after a project switch", async () => {
+    let resolveDrain: ((result: { status: "clean" }) => void) | null = null;
+    const drainPendingChanges = vi.fn(
+      () =>
+        new Promise<{ status: "clean" }>((resolve) => {
+          resolveDrain = resolve;
+        }),
+    );
+    const reloadPreview = vi.fn();
+    await mountCoordinator({
+      drainPendingChanges,
+      reloadPreview,
+    });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(drainPendingChanges).toHaveBeenCalledOnce();
+    // Simulate a project switch by unmounting and remounting — bumps generationRef
+    while (roots.length > 0) await act(async () => roots.pop()?.unmount());
+    // Now resolve the stale drain
+    await act(async () => resolveDrain?.({ status: "clean" }));
+    expect(reloadPreview).not.toHaveBeenCalled();
   });
 
   it("restores a durable unresolved conflict after remount", async () => {
@@ -305,7 +327,7 @@ describe("external file change coordinator", () => {
     });
 
     // Fire three events in rapid succession (simulates generator + check + snapshot)
-    act(() => {
+    await act(async () => {
       handler?.({ path: "index.html", content: "write-1", version: "v1" });
       handler?.({ path: "index.html", content: "write-2", version: "v2" });
       handler?.({ path: "index.html", content: "write-3", version: "v3" });

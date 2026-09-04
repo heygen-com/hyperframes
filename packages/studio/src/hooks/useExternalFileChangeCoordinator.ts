@@ -253,7 +253,7 @@ export function useExternalFileChangeCoordinator({
       // generation check after the await then kills every in-flight drain,
       // so no reload ever completes and Studio freezes on stale content.
       if (drainingRef.current) {
-        pendingPayloadRef.current = { payload, allowDuplicate };
+        pendingPayloadRef.current = { payload, allowDuplicate: true };
         return;
       }
       drainingRef.current = true;
