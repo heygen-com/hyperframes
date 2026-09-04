@@ -1,4 +1,5 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { replaceSelectorIdTokens } from "./selectorIdTokens";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -23,68 +24,13 @@ function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {
   return Array.from(new Set([trimmed, escapeCssIdentifier(trimmed)])).filter(Boolean);
 }
 
-function isSelectorNameChar(char: string | undefined): boolean {
-  return !!char && /[\w-]/.test(char);
-}
-
 function replaceAuthoredRootIdSelectors(
   selector: string,
   authoredRootId: string,
   replacement: string,
 ): string {
-  const forms = getAuthoredRootIdSelectorForms(authoredRootId).sort((a, b) => b.length - a.length);
-  if (forms.length === 0) return selector;
-
-  let result = "";
-  let bracketDepth = 0;
-  let quote: '"' | "'" | null = null;
-
-  for (let index = 0; index < selector.length; index += 1) {
-    const char = selector[index];
-    const previousChar = index > 0 ? selector[index - 1] : "";
-
-    if (quote) {
-      result += char;
-      if (char === quote && previousChar !== "\\") {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      result += char;
-      continue;
-    }
-
-    if (char === "[") {
-      bracketDepth += 1;
-      result += char;
-      continue;
-    }
-
-    if (char === "]") {
-      bracketDepth = Math.max(0, bracketDepth - 1);
-      result += char;
-      continue;
-    }
-
-    if (char === "#" && bracketDepth === 0) {
-      const matchedForm = forms.find((form) => selector.startsWith(form, index + 1));
-      if (matchedForm) {
-        const nextChar = selector[index + 1 + matchedForm.length];
-        if (!isSelectorNameChar(nextChar)) {
-          result += replacement;
-          index += matchedForm.length;
-          continue;
-        }
-      }
-    }
-
-    result += char;
-  }
-
-  return result;
+  const forms = getAuthoredRootIdSelectorForms(authoredRootId);
+  return replaceSelectorIdTokens(selector, forms, () => replacement);
 }
 
 function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: string | null): string {
