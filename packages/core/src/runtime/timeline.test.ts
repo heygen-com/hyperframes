@@ -130,6 +130,52 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].kind).toBe("element");
   });
 
+  it.each(["data-end", "data-hf-authored-end"])(
+    "sizes end-only clips from %s before inherited or media duration",
+    (endAttribute) => {
+      document.body.innerHTML = `<div data-composition-id="main" data-duration="20">
+        <div id="text" data-start="2" ${endAttribute}="8"></div>
+        <video id="video" data-start="3" ${endAttribute}="7"></video>
+      </div>`;
+      const video = document.querySelector("video")!;
+      Object.defineProperty(video, "duration", { value: 15 });
+      const result = collectRuntimeTimelinePayload(defaultParams);
+      expect(result.clips.find((clip) => clip.id === "text")).toMatchObject({
+        start: 2,
+        duration: 6,
+      });
+      expect(result.clips.find((clip) => clip.id === "video")).toMatchObject({
+        start: 3,
+        duration: 4,
+      });
+    },
+  );
+
+  it("resolves nested end-only clips in their parent's local clock", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="30">
+      <div data-composition-id="host" data-start="10" data-duration="15">
+        <div id="text" data-start="2" data-end="8"></div>
+      </div>
+    </div>`;
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips.find((clip) => clip.id === "text")).toMatchObject({
+      start: 12,
+      duration: 6,
+    });
+  });
+
+  it("keeps duration precedence and falls back from invalid ends to preserved ends", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="20">
+      <div id="duration" data-start="2" data-duration="3" data-end="10"></div>
+      <div id="preserved" data-start="4" data-end="3" data-hf-authored-end="8"></div>
+      <div id="invalid" data-start="2" data-end="NaN"></div>
+    </div>`;
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips.find((clip) => clip.id === "duration")?.duration).toBe(3);
+    expect(result.clips.find((clip) => clip.id === "preserved")?.duration).toBe(4);
+    expect(result.clips.find((clip) => clip.id === "invalid")?.duration).toBe(18);
+  });
+
   it("parses inline z-index for timeline clips", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

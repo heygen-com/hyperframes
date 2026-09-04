@@ -362,6 +362,15 @@ export function collectRuntimeTimelinePayload(params: {
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseElementDurationAttr(node);
+    if (duration == null) {
+      // End attributes use the same parent-composition clock as authored starts.
+      duration =
+        resolveAuthoredTimingWindow({
+          start: start - (compositionContext.inheritedStart ?? 0),
+          end: node.getAttribute("data-end"),
+          authoredEnd: node.getAttribute("data-hf-authored-end"),
+        })?.duration ?? null;
+    }
     if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
