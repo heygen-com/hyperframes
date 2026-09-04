@@ -722,6 +722,7 @@ Capture specific frames as PNGs, without waiting for a full render.
 npx hyperframes snapshot my-project --at 2.9,10.4,18.7
 npx hyperframes snapshot my-project --frames 10
 npx hyperframes snapshot my-project --zoom '#headline'
+npx hyperframes snapshot my-project --at 1.5,4.3 --against ref.mp4
 ```
 
 ```
@@ -740,6 +741,7 @@ npx hyperframes snapshot my-project --zoom '#headline'
 | `--output, -o`          | Where the PNGs go (default `<project>/snapshots`)                                                                                                                   |
 | `--end` / `--no-end`    | Always add a readable end-of-timeline frame (default: on). `--no-end` captures only your `--at` times.                                                              |
 | `--zoom`                | Crop to a CSS selector or an exact `x,y,w,h` region, using a raised device scale factor. Layout is untouched — never CSS zoom or a resized viewport. A selector that matches nothing is an error. |
+| `--against`             | A reference video, such as footage you are rebuilding. For every captured time also saves its frame-exact frame (`ref-XX-…png`) and a labelled render / reference pair (`pair-XX-…jpg`). |
 | `--zoom-scale`          | Pixel density for `--zoom` crops (default 3)                                                                                                                        |
 | `--angle`               | Orthogonal 3D camera for depth and occlusion checks: `front`, `iso`, `top`, `side`, or `yaw,pitch` in degrees. Tilts the whole stage, so you get real pixels.        |
 | `--describe`            | Gemini vision analysis of each frame. Runs by default when `GEMINI_API_KEY` is set. Pass a question to override the prompt, or `--describe false` to opt out.        |

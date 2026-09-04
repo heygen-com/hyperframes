@@ -137,6 +137,7 @@ async function extractVideoFrameToBuffer(
   videoPath: string,
   timeSeconds: number,
   useVp9AlphaDecoder = false,
+  accurateSeek = false,
 ): Promise<Buffer | null> {
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
@@ -144,15 +145,15 @@ async function extractVideoFrameToBuffer(
     const ffmpegPath = requireSnapshotFfmpeg(findFFmpeg());
     // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
     // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
+    // `accurateSeek` puts `-ss` after `-i` (decode from the start) for frame-exact
+    // reference pairs, where ±1 frame would read as a real mismatch.
     const args = ["-hide_banner", "-loglevel", "error"];
     if (useVp9AlphaDecoder) {
       args.push("-c:v", "libvpx-vp9");
     }
+    const seek = ["-ss", String(Math.max(0, timeSeconds))];
     args.push(
-      "-ss",
-      String(Math.max(0, timeSeconds)),
-      "-i",
-      videoPath,
+      ...(accurateSeek ? ["-i", videoPath, ...seek] : [...seek, "-i", videoPath]),
       "-frames:v",
       "1",
       "-q:v",
@@ -180,6 +181,10 @@ export const examples: Example[] = [
   [
     "Zoom into an exact pixel region at 2x density",
     "snapshot --zoom 100,50,400,300 --zoom-scale 2",
+  ],
+  [
+    "Pair each frame with the reference footage at the same time",
+    "snapshot --at 1.5,4.3,8.1 --against ref.mp4",
   ],
 ];
 
@@ -264,6 +269,8 @@ async function captureSnapshots(
     zoomScale?: number;
     autoProxy?: boolean;
     browserGpuMode?: BrowserGpuMode;
+    /** Reference video: save its frame at each captured time plus a render|reference pair. */
+    against?: string;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -559,7 +566,8 @@ async function captureSnapshots(
         }
 
         const timeLabel = formatSnapshotTimestamp(time);
-        const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
+        const index = String(i).padStart(2, "0");
+        const filename = `frame-${index}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
         if (opts.zoom) {
@@ -585,8 +593,34 @@ async function captureSnapshots(
         } else {
           await page.screenshot({ path: framePath, type: "png", omitBackground: true });
         }
-        const rel = relative(projectDir, framePath);
-        savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
+        const saved = [framePath];
+        if (opts.against) {
+          // Frame-exact reference frame beside the render, so a rebuild can be
+          // checked against its footage without hand-rolled ffmpeg + montage.
+          const refPng = await extractVideoFrameToBuffer(opts.against, time, false, true);
+          if (!refPng) {
+            console.error(
+              `   ${c.warn("⚠")} --against has no frame at ${timeLabel} — reference pair skipped`,
+            );
+          } else {
+            const refPath = join(snapshotDir, `ref-${index}-at-${timeLabel}.png`);
+            writeFileSync(refPath, refPng);
+            const pairPath = join(snapshotDir, `pair-${index}-at-${timeLabel}.jpg`);
+            const { createContactSheet } = await import("../capture/contactSheet.js");
+            await createContactSheet([framePath, refPath], pairPath, {
+              cols: 2,
+              maxImages: 2,
+              cellWidth: 960,
+              labelMode: "custom",
+              labels: ["render", "reference"],
+            });
+            saved.push(pairPath);
+          }
+        }
+        for (const path of saved) {
+          const rel = relative(projectDir, path);
+          savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? path : rel);
+        }
       }
     } finally {
       await chromeBrowser.close();
@@ -648,6 +682,11 @@ export default defineCommand({
       type: "string",
       description: "Device-scale-factor density for --zoom crops (default: 3)",
       default: "3",
+    },
+    against: {
+      type: "string",
+      description:
+        "Reference video (e.g. footage being rebuilt): also save its frame at each captured time and a render|reference pair sheet",
     },
     describe: {
       type: "string",
@@ -718,6 +757,11 @@ export default defineCommand({
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
     const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;
     const zoomScale = parseZoomScale(args["zoom-scale"]);
+    const against = args.against ? resolve(String(args.against)) : undefined;
+    if (against && !existsSync(against)) {
+      console.log(`${c.error("✗")} --against video not found: ${against}`);
+      failCommand();
+    }
 
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map(formatSnapshotTimestamp).join(", ")}]`
@@ -743,6 +787,7 @@ export default defineCommand({
         zoomScale,
         autoProxy: args.proxy as boolean | undefined,
         browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+        against,
       });
 
       if (paths.length === 0) {
