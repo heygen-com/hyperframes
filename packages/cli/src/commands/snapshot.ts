@@ -593,7 +593,6 @@ async function captureSnapshots(
         } else {
           await page.screenshot({ path: framePath, type: "png", omitBackground: true });
         }
-        const saved = [framePath];
         if (opts.against) {
           // Frame-exact reference frame beside the render, so a rebuild can be
           // checked against its footage without hand-rolled ffmpeg + montage.
@@ -614,13 +613,13 @@ async function captureSnapshots(
               labelMode: "custom",
               labels: ["render", "reference"],
             });
-            saved.push(pairPath);
           }
         }
-        for (const path of saved) {
-          const rel = relative(projectDir, path);
-          savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? path : rel);
-        }
+        // Only the capture itself is a "snapshot": the reference frame and the
+        // pair sheet are derived artifacts, like contact-sheet.jpg, so they stay
+        // out of savedPaths (count, listing, and --describe all read it).
+        const rel = relative(projectDir, framePath);
+        savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
       }
     } finally {
       await chromeBrowser.close();
@@ -802,6 +801,11 @@ export default defineCommand({
       );
       for (const p of paths) {
         console.log(`   ${p}`);
+      }
+      if (against) {
+        console.log(
+          `   ${c.dim("ref-*.png + pair-*.jpg")} beside each frame (reference frame, render | reference sheet)`,
+        );
       }
 
       // Generate contact sheet for quick AI review
