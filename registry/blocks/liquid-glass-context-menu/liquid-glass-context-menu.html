@@ -238,6 +238,8 @@
         color: rgb(0, 7, 14);
         cursor: default;
         text-shadow: 0 1px 0 rgba(255, 255, 255, 0.26);
+        text-align: start;
+        unicode-bidi: plaintext;
       }
       .menu-item svg {
         width: 22px;
@@ -283,7 +285,7 @@
         stroke-linejoin: round;
       }
       .menu-kbd {
-        margin-left: auto;
+        margin-inline-start: auto;
         font-size: 14px;
         font-weight: 650;
         color: rgba(0, 7, 14, 0.82);
@@ -292,7 +294,7 @@
       .submenu-preview {
         position: absolute;
         top: 456px;
-        left: 1980px;
+        inset-inline-start: 1980px;
         z-index: 2;
         width: 230px;
         height: 58px;

@@ -11,27 +11,35 @@
   - --shimmer-width: highlight band width as % (default 20%)
   - --shimmer-angle: sweep angle (default 120deg)
   - Timeline duration/ease: adjust in the script below
+  - RTL: animate from --shimmer-start to --shimmer-end; defaults flip in rtl
 -->
 
 <style>
   .shimmer-sweep-target {
     position: relative;
     display: inline-block;
+    --shimmer-start: -20%;
+    --shimmer-end: 120%;
+  }
+
+  :dir(rtl) .shimmer-sweep-target {
+    --shimmer-start: 120%;
+    --shimmer-end: -20%;
   }
 
   .shimmer-sweep-target .shimmer-mask {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 100%;
     pointer-events: none;
     background: linear-gradient(
       var(--shimmer-angle, 120deg),
       transparent 0%,
-      transparent calc(var(--shimmer-pos, -20%) - var(--shimmer-width, 20%) / 2),
-      var(--shimmer-color, rgba(255, 255, 255, 0.6)) var(--shimmer-pos, -20%),
-      transparent calc(var(--shimmer-pos, -20%) + var(--shimmer-width, 20%) / 2),
+      transparent calc(var(--shimmer-pos, var(--shimmer-start)) - var(--shimmer-width, 20%) / 2),
+      var(--shimmer-color, rgba(255, 255, 255, 0.6)) var(--shimmer-pos, var(--shimmer-start)),
+      transparent calc(var(--shimmer-pos, var(--shimmer-start)) + var(--shimmer-width, 20%) / 2),
       transparent 100%
     );
     mix-blend-mode: overlay;
@@ -54,11 +62,13 @@
 <!--
   Timeline integration example (add to your composition's GSAP timeline):
 
-  // Single sweep from left to right
+  // Single sweep from reading start to reading end
+  const shimmerTarget = document.querySelector(".shimmer-sweep-target");
+  const shimmerStyle = getComputedStyle(shimmerTarget);
   tl.fromTo(".shimmer-sweep-target", {
-    "--shimmer-pos": "-20%",
+    "--shimmer-pos": shimmerStyle.getPropertyValue("--shimmer-start").trim(),
   }, {
-    "--shimmer-pos": "120%",
+    "--shimmer-pos": shimmerStyle.getPropertyValue("--shimmer-end").trim(),
     duration: 1.2,
     ease: "power2.inOut",
     stagger: 0.15,

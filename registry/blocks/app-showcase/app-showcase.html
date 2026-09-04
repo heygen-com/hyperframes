@@ -114,7 +114,7 @@
                 </svg>
               </div>
               <div class="left-bottom">
-                <div class="left-tagline" id="s3Tagline">Unleash Full Potential</div>
+                <div class="left-tagline" id="s3Tagline" dir="auto">Unleash Full Potential</div>
                 <div class="left-cta">START NOW</div>
               </div>
             </div>
@@ -131,9 +131,9 @@
               <!-- Header -->
               <div class="center-header">
                 <div class="center-avatar">JM</div>
-                <div class="center-user-info">
-                  <div class="center-name">James Medrano</div>
-                  <div class="center-subtitle">Premium Member</div>
+                <div class="center-user-info" dir="auto">
+                  <div class="center-name" dir="auto">James Medrano</div>
+                  <div class="center-subtitle" dir="auto">Premium Member</div>
                 </div>
                 <div class="center-bell">
                   <svg viewBox="0 0 20 20" width="20" height="20" fill="none">
@@ -523,6 +523,8 @@
         }
         [data-composition-id="app-showcase"] .center-user-info {
           flex: 1;
+          text-align: start;
+          unicode-bidi: plaintext;
         }
         [data-composition-id="app-showcase"] .center-name {
           font-size: 18px;
@@ -554,7 +556,8 @@
           font-size: 15px;
           font-weight: 500;
           color: #7c857c;
-          align-self: flex-start;
+          align-self: self-start;
+          text-align: start;
         }
         [data-composition-id="app-showcase"] .goal-ring-wrap {
           position: relative;
@@ -625,6 +628,7 @@
           display: flex;
           justify-content: space-between;
           align-items: center;
+          text-align: start;
         }
         [data-composition-id="app-showcase"] .progress-title {
           font-size: 15px;

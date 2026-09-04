@@ -48,7 +48,7 @@
         text-transform: uppercase;
         color: #ffffff;
         position: absolute;
-        left: 0;
+        inset-inline-start: 0;
         width: 100%;
         text-align: center;
         top: 50%;
@@ -76,6 +76,7 @@
     <script>
       (function () {
         window.__timelines = window.__timelines || {};
+        var inlineSign = getComputedStyle(document.documentElement).direction === "rtl" ? -1 : 1;
 
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
@@ -160,14 +161,14 @@
           } else if (entranceMode === 1) {
             tl.fromTo(
               el,
-              { x: -300, opacity: 0 },
+              { x: -300 * inlineSign, opacity: 0 },
               { x: 0, opacity: 1, duration: 0.2, ease: "expo.out" },
               w.start,
             );
           } else if (entranceMode === 2) {
             tl.fromTo(
               el,
-              { x: 300, opacity: 0 },
+              { x: 300 * inlineSign, opacity: 0 },
               { x: 0, opacity: 1, duration: 0.2, ease: "expo.out" },
               w.start,
             );

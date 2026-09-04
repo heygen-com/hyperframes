@@ -56,7 +56,7 @@
       .hl-group {
         position: absolute;
         bottom: 140px;
-        left: 0;
+        inset-inline-start: 0;
         width: 100%;
         display: flex;
         flex-wrap: wrap;
@@ -92,6 +92,9 @@
         transform: scaleX(0);
         transform-origin: 0% 50%;
         z-index: -1;
+      }
+      :dir(rtl) .hl-word-bg {
+        transform-origin: 100% 50%;
       }
       .hl-word-text {
         position: relative;

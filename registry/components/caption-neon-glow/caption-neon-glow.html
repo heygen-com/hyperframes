@@ -49,7 +49,7 @@
       .ne-group {
         position: absolute;
         bottom: 120px;
-        left: 0;
+        inset-inline-start: 0;
         width: 100%;
         display: flex;
         flex-wrap: wrap;
@@ -90,6 +90,7 @@
     <script>
       (function () {
         window.__timelines = window.__timelines || {};
+        var inlineSign = getComputedStyle(document.documentElement).direction === "rtl" ? -1 : 1;
 
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
@@ -180,7 +181,12 @@
 
           tl.set(grp, { visibility: "visible", opacity: 0 }, g.start);
           tl.fromTo(grp, { opacity: 0 }, { opacity: 1, duration: 0.05, ease: "steps(1)" }, g.start);
-          tl.fromTo(grp, { x: -8 }, { x: 0, duration: 0.14, ease: "power3.out" }, g.start + 0.05);
+          tl.fromTo(
+            grp,
+            { x: -8 * inlineSign },
+            { x: 0, duration: 0.14, ease: "power3.out" },
+            g.start + 0.05,
+          );
 
           groupWords.forEach(function (w, i) {
             var wi = g.wordStart + i;
@@ -205,7 +211,11 @@
             tl.to(el, { color: "rgba(0,255,240,0.14)", textShadow: "none", duration: 0.06 }, w.end);
           });
 
-          tl.to(grp, { opacity: 0, x: 6, duration: 0.1, ease: "steps(1)" }, g.end - 0.1);
+          tl.to(
+            grp,
+            { opacity: 0, x: 6 * inlineSign, duration: 0.1, ease: "steps(1)" },
+            g.end - 0.1,
+          );
           tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
         });
 

@@ -419,7 +419,7 @@
 
       .placeholder {
         position: absolute;
-        left: 54px;
+        inset-inline-start: 54px;
         top: 48px;
         color: var(--muted);
         font-size: 34px;
@@ -429,8 +429,8 @@
 
       .prompt-text {
         position: absolute;
-        left: 54px;
-        right: 56px;
+        inset-inline-start: 54px;
+        inset-inline-end: 56px;
         top: 42px;
         bottom: 110px;
         color: var(--ink);
@@ -438,6 +438,8 @@
         font-weight: 400;
         line-height: 1.16;
         letter-spacing: -0.035em;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       .prompt-text span {
@@ -446,7 +448,7 @@
 
       .panel-plus {
         position: absolute;
-        left: 52px;
+        inset-inline-start: 52px;
         bottom: 44px;
         width: 42px;
         height: 42px;
@@ -470,7 +472,7 @@
 
       .model {
         position: absolute;
-        right: 126px;
+        inset-inline-end: 126px;
         bottom: 48px;
         display: flex;
         align-items: center;
@@ -482,7 +484,7 @@
       }
 
       .panel-empty .model {
-        right: 78px;
+        inset-inline-end: 78px;
       }
 
       .model .muted {
@@ -492,14 +494,14 @@
       .chevron {
         width: 14px;
         height: 14px;
-        border-right: 2px solid var(--muted);
+        border-inline-end: 2px solid var(--muted);
         border-bottom: 2px solid var(--muted);
         transform: rotate(45deg) translateY(-5px);
       }
 
       .send-button {
         position: absolute;
-        right: 42px;
+        inset-inline-end: 42px;
         bottom: 38px;
         display: grid;
         place-items: center;
@@ -523,7 +525,7 @@
 
       .thinking-line {
         position: absolute;
-        left: 54px;
+        inset-inline-start: 54px;
         top: 48px;
         display: flex;
         align-items: center;

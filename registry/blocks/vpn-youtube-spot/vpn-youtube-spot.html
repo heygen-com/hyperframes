@@ -43,7 +43,7 @@
 
       .headline {
         position: absolute;
-        left: 118px;
+        inset-inline-start: 118px;
         top: 104px;
         width: 580px;
         display: flex;
@@ -51,6 +51,8 @@
         gap: 2px;
         z-index: 2;
         pointer-events: none;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       .headline span {
@@ -76,7 +78,7 @@
 
       .ambient-word {
         position: absolute;
-        right: 78px;
+        inset-inline-end: 78px;
         bottom: 64px;
         color: rgba(17, 17, 17, 0.05);
         font-size: 208px;
@@ -190,6 +192,8 @@
         line-height: 1;
         font-weight: 900;
         letter-spacing: 0;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       .avatar {
@@ -227,7 +231,7 @@
       .search-icon::after {
         content: "";
         position: absolute;
-        right: -8px;
+        inset-inline-end: -8px;
         bottom: -5px;
         width: 9px;
         height: 3px;

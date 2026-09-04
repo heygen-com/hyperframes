@@ -235,6 +235,8 @@
         gap: 7px;
         flex: 1;
         min-width: 0;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
       .media-title {
         font-size: 22px;
@@ -279,8 +281,8 @@
         display: flex;
         align-items: center;
         gap: 24px;
-        margin-left: auto;
-        padding-right: 4px;
+        margin-inline-start: auto;
+        padding-inline-end: 4px;
       }
       .transport svg {
         width: 28px;
@@ -329,7 +331,7 @@
       .slider-fill {
         position: absolute;
         top: 0;
-        left: 0;
+        inset-inline-start: 0;
         width: 34%;
         height: 100%;
         background: #fff;
@@ -342,7 +344,7 @@
         color: rgba(255, 255, 255, 0.9);
         font-variant-numeric: tabular-nums;
         width: 42px;
-        text-align: right;
+        text-align: end;
         text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
       }
       #text-slider {
@@ -392,10 +394,10 @@
       <div id="text-media" class="text-overlay media-text">
         <div class="album-art"><span id="album-sheen" class="album-sheen"></span></div>
         <div class="media-info">
-          <div class="media-title">Midnight Drive</div>
+          <div class="media-title" dir="auto">Midnight Drive</div>
           <div class="media-meta-row">
             <span id="live-dot" class="live-dot"></span>
-            <div class="media-artist">Glass Resonance</div>
+            <div class="media-artist" dir="auto">Glass Resonance</div>
             <div id="sound-wave" class="sound-wave">
               <span></span><span></span><span></span><span></span>
             </div>
