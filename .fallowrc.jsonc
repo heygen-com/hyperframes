@@ -4,6 +4,10 @@
     // Vitest collects .test.mjs, but fallow's default test-entry detection only
     // knows the .ts/.tsx spellings, so this one reads as an unreachable file.
     "packages/studio/scripts/*.test.mjs",
+    // The KTD6 dismiss-spike fixture. scripts/menu-dismiss-spike.mjs injects it
+    // into a running Studio by importing it from the Vite dev server by URL, so
+    // no TypeScript import reaches its mount function.
+    "packages/studio/src/components/ui/menuDismissSpikeMount.tsx",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",
