@@ -95,8 +95,17 @@ describe("token gate", () => {
     // Covers AE1. `rounded-hologram` is shaped exactly like a token name and
     // is defined nowhere, which is the whole failure mode: it reads as real in
     // review and renders as nothing at runtime.
+    //
+    // The map is called `buttonSizes`, not `sizeStyles`: what puts a string in
+    // front of the gate is the `cn()` that consumes it, not its variable name.
     const failures = await unresolved(
-      new Map([["ui/Button.tsx", `const sizeStyles = { md: "h-8 rounded-hologram text-mega" };`]]),
+      new Map([
+        [
+          "ui/Button.tsx",
+          `const buttonSizes = { md: "h-8 rounded-hologram text-mega" };
+           const Button = ({ size }) => <button className={cn(buttonSizes[size])} />;`,
+        ],
+      ]),
     );
 
     expect(failures).toEqual(["ui/Button.tsx: rounded-hologram", "ui/Button.tsx: text-mega"]);

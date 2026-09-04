@@ -31,6 +31,32 @@ describe("extractClassCandidates", () => {
     expect(bases(source)).toEqual(["h-7", "px-2.5", "rounded-button"]);
   });
 
+  it("reads a class map whose name says nothing about classes", () => {
+    // The defect this replaced: candidate-ness was decided by the binding's
+    // name, so the same classes were gated in `sizeStyles` and invisible in
+    // `buttonSizes`. What makes them classes is where they are used.
+    const source = `const fooSizes = { md: "h-ctl rounded-hologram" };
+      const Foo = ({ size }) => <span className={cn(fooSizes[size])} />;`;
+
+    expect(bases(source)).toEqual(["h-ctl", "rounded-hologram"]);
+  });
+
+  it("does not read a lookup key's default value as a class", () => {
+    // `variant` is the key, not the class list, so the default it falls back
+    // to is a map entry name and never reaches markup.
+    const source = `const map = { ghost: "bg-transparent" };
+      const Foo = ({ variant = "ghost" }) => <span className={map[variant]} />;`;
+
+    expect(bases(source)).toEqual(["bg-transparent"]);
+  });
+
+  it("leaves a lookup table alone when nothing uses it as a class", () => {
+    const source = `const labels = { md: "Medium size" };
+      const Foo = () => <span title={labels.md} />;`;
+
+    expect(bases(source)).toEqual([]);
+  });
+
   it("drops the template chunk that touches an interpolation", () => {
     expect(bases("<div className={`w-${i} flex`} />")).toEqual(["flex"]);
   });
