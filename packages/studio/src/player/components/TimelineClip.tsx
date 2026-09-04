@@ -71,7 +71,6 @@ export const TimelineClip = memo(function TimelineClip({
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
-    showDefaultText ? "" : "is-micro",
     isAudioTimelineElement(el) ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
