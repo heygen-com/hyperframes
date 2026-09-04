@@ -36,6 +36,7 @@
  * the stages can import them without reaching back into the orchestrator.
  */
 
+import { statfsSync } from "node:fs";
 import {
   type BeforeCaptureHook,
   type CaptureOptions,
@@ -136,6 +137,42 @@ export function shouldAllowAdaptiveCaptureRetry(
   return workerCount > 1;
 }
 
+export function estimateDiskCaptureBytes(
+  totalFrames: number,
+  captureOptions: CaptureOptions,
+): number {
+  const scale = captureOptions.deviceScaleFactor ?? 1;
+  const outputWidth = Math.ceil(captureOptions.width * scale);
+  const outputHeight = Math.ceil(captureOptions.height * scale);
+  return Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
+}
+
+export function assertDiskCaptureHeadroom(
+  framesDir: string,
+  totalFrames: number,
+  captureOptions: CaptureOptions,
+  freeDiskBytes: (path: string) => number | null = (path) => {
+    try {
+      const stat = statfsSync(path);
+      return stat.bavail * stat.bsize;
+    } catch {
+      return null;
+    }
+  },
+): void {
+  const freeBytes = freeDiskBytes(framesDir);
+  if (freeBytes === null) return;
+  const estimatedBytes = estimateDiskCaptureBytes(totalFrames, captureOptions);
+  if (estimatedBytes <= freeBytes * 0.9) return;
+  throw new Error(
+    `Disk capture may need ~${(estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
+      `but only ${(freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
+      "Re-run with --low-memory-mode to stream frames, raise " +
+      "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming is supported, " +
+      "or free up disk space.",
+  );
+}
+
 export async function runCaptureStage(input: CaptureStageInput): Promise<CaptureStageResult> {
   const {
     fileServer,
@@ -194,6 +231,9 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     }
   }
 
+  const captureOptions = buildCaptureOptions();
+  assertDiskCaptureHeadroom(framesDir, totalFrames, captureOptions);
+
   if (workerCount > 1) {
     // Parallel capture. When `frameRange` is set (distributed chunk), pass
     // `frameRangeStart` so workers land on absolute composition frame indices
@@ -206,7 +246,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       initialWorkerCount: workerCount,
       allowRetry: shouldAllowAdaptiveCaptureRetry(workerCount, job.config.workers !== undefined),
       frameExt: needsAlpha ? "png" : "jpg",
-      captureOptions: buildCaptureOptions(),
+      captureOptions,
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,
       frameRangeStart: frameRange?.startFrame,
@@ -252,7 +292,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       (await createCaptureSession(
         fileServer.url,
         framesDir,
-        buildCaptureOptions(),
+        captureOptions,
         videoInjector,
         captureCfg,
       ));
