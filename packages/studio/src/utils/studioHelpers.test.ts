@@ -165,9 +165,13 @@ describe("resolveDroppedAssetDimensions", () => {
       naturalWidth: 0,
       src: "",
     };
+    // Vitest 4 refuses to `new` an arrow-function mock, and the code under test
+    // constructs the probe with `new Image()`.
     vi.stubGlobal(
       "Image",
-      vi.fn(() => probe),
+      vi.fn(function () {
+        return probe;
+      }),
     );
 
     const result = resolveDroppedAssetDimensions("demo", "assets/hung.png", "image");

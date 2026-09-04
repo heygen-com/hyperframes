@@ -47,7 +47,7 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "dev": "bun --bun ./node_modules/.bin/vite --host 127.0.0.1",
+    "dev": "vite --host 127.0.0.1",
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -90,17 +90,18 @@
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^25.0.10",
     "@types/react": "19",
     "@types/react-dom": "19",
-    "@vitejs/plugin-react": "^4.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "chokidar": "^4.0.3",
     "fake-indexeddb": "^6.2.5",
     "puppeteer-core": "^25.2.1",
     "tailwindcss": "^4.3.3",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vite": "^6.4.2",
-    "vitest": "^3.2.4",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
     "zustand": "^5.0.0"
   },
   "peerDependencies": {
