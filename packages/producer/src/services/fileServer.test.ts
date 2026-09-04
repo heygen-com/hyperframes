@@ -316,6 +316,36 @@ describe("parseRangeHeader", () => {
 });
 
 describe("createFileServer", () => {
+  it.each([
+    ["avif", "image/avif"],
+    ["flac", "audio/flac"],
+    ["M4A", "audio/mp4"],
+    ["mov", "video/quicktime"],
+    ["ico", "image/vnd.microsoft.icon"],
+  ])("serves .%s media with its content type for full and range requests", async (ext, type) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-media-content-type-"));
+    const bytes = new Uint8Array([0, 255, 128, 64, 32]);
+    try {
+      writeFileSync(join(projectDir, `asset.${ext}`), bytes);
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}/asset.${ext}`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe(type);
+        expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+
+        const partial = await fetch(`${server.url}/asset.${ext}`, {
+          headers: { Range: "bytes=1-3" },
+        });
+        expect(partial.status).toBe(206);
+        expect(partial.headers.get("content-type")).toBe(type);
+        expect(partial.headers.get("content-range")).toBe("bytes 1-3/5");
+        expect(new Uint8Array(await partial.arrayBuffer())).toEqual(bytes.slice(1, 4));
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("marks producer pages as render capture before the runtime loads", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-render-mode-"));
     try {
