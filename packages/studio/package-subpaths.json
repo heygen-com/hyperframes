@@ -13,6 +13,12 @@
       "types": "./dist/styles/tailwind-preset.d.ts",
       "environments": ["bun", "node"]
     },
+    "./theme.css": {
+      "source": "./src/styles/theme.css",
+      "runtime": "./src/styles/theme.css",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
     "./package.json": {
       "source": "./package.json",
       "runtime": "./package.json",

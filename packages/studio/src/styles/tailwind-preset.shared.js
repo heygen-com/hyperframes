@@ -1,3 +1,13 @@
+/**
+ * @deprecated Studio's tokens now live in `src/styles/theme.css`, published as
+ * `@hyperframes/studio/theme.css`. This preset is kept one more major so a
+ * Tailwind v3 consumer of `@hyperframes/studio/tailwind-preset` keeps building;
+ * it carries only the old `studio.*` and `panel.*` colour names and no new
+ * token ever lands here.
+ *
+ * The values below are byte-identical to the ones the theme file holds, and
+ * `theme.css` is the source of truth: `theme.test.ts` fails if the two drift.
+ */
 const studioPreset = {
   theme: {
     extend: {
