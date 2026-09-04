@@ -175,7 +175,7 @@ describe("external file change coordinator", () => {
     expect(options.reloadSdkSession).toHaveBeenCalledOnce();
   });
 
-  it("ignores stale drain completion after a newer generation", async () => {
+  it("serializes drains and processes stashed events", async () => {
     const drains: Array<(result: { status: "clean" }) => void> = [];
     const { options } = await mountCoordinator({
       drainPendingChanges: () => new Promise((resolve) => drains.push(resolve)),
@@ -184,11 +184,17 @@ describe("external file change coordinator", () => {
       handler?.({ path: "index.html", content: "first", version: "v2" });
       handler?.({ path: "index.html", content: "second", version: "v3" });
     });
+    // Only one drain runs — the second event is stashed
+    expect(drains).toHaveLength(1);
     await act(async () => drains[0]?.({ status: "clean" }));
-    expect(options.reloadPreview).not.toHaveBeenCalled();
-    await act(async () => drains[1]?.({ status: "clean" }));
+    // First drain completed → reload triggered
     expect(options.reloadPreview).toHaveBeenCalledOnce();
-    expect(options.reloadSdkSession).toHaveBeenCalledOnce();
+    // Stashed event starts a second drain
+    await act(async () => {});
+    expect(drains).toHaveLength(2);
+    await act(async () => drains[1]?.({ status: "clean" }));
+    expect(options.reloadPreview).toHaveBeenCalledTimes(2);
+    expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
   });
 
   it("restores a durable unresolved conflict after remount", async () => {
@@ -287,34 +293,36 @@ describe("external file change coordinator", () => {
   });
 
   it("completes a reload after a burst of rapid external writes", async () => {
-    let drainResolve: (() => void) | null = null;
-    const drainPendingChanges = vi.fn(
-      () =>
-        new Promise<{ status: "clean" }>((resolve) => {
-          drainResolve = () => resolve({ status: "clean" });
-        }),
-    );
+    const drains: Array<(result: { status: "clean" }) => void> = [];
     const reloadPreview = vi.fn();
     const onAcceptedPersistedFileChange = vi.fn();
-    await mountCoordinator({ drainPendingChanges, reloadPreview, onAcceptedPersistedFileChange });
+    await mountCoordinator({
+      drainPendingChanges: vi.fn(
+        () => new Promise<{ status: "clean" }>((resolve) => drains.push(resolve)),
+      ),
+      reloadPreview,
+      onAcceptedPersistedFileChange,
+    });
 
     // Fire three events in rapid succession (simulates generator + check + snapshot)
-    await act(async () => {
+    act(() => {
       handler?.({ path: "index.html", content: "write-1", version: "v1" });
       handler?.({ path: "index.html", content: "write-2", version: "v2" });
       handler?.({ path: "index.html", content: "write-3", version: "v3" });
     });
 
-    // Only one drain should be in flight — the other two are stashed
-    expect(drainPendingChanges).toHaveBeenCalledTimes(1);
+    // Only one drain runs — events 2 and 3 are stashed (last one wins)
+    expect(drains).toHaveLength(1);
 
-    // Complete the first drain — the last stashed event should trigger a new drain
-    await act(async () => drainResolve?.());
-    expect(drainPendingChanges).toHaveBeenCalledTimes(2);
+    // Complete the first drain — triggers reload, then stashed event starts a second drain
+    await act(async () => drains[0]?.({ status: "clean" }));
+    expect(reloadPreview).toHaveBeenCalledOnce();
+    await act(async () => {});
+    expect(drains).toHaveLength(2);
 
-    // Complete the second drain — this one processes the final write
-    await act(async () => drainResolve?.());
-    expect(reloadPreview).toHaveBeenCalled();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalled();
+    // Complete the second drain — processes the final write
+    await act(async () => drains[1]?.({ status: "clean" }));
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledTimes(2);
   });
 });
