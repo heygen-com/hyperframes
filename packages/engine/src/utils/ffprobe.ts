@@ -1050,12 +1050,22 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
+    };
+  }
+
+  if (timestamps.length === 1) {
+    const duration = await probeStreamDurationSeconds(filePath);
+    return {
+      avgIntervalSeconds: Math.round(duration * 100) / 100,
+      maxIntervalSeconds: Math.round(duration * 100) / 100,
+      keyframeCount: 1,
+      isProblematic: duration > 2,
     };
   }
 
@@ -1074,4 +1084,28 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     keyframeCount: timestamps.length,
     isProblematic: maxInterval > 2,
   };
+}
+
+async function probeStreamDurationSeconds(filePath: string): Promise<number> {
+  try {
+    const out = await runFfprobe(filePath, [
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=duration",
+      "-of",
+      "csv=p=0",
+    ]);
+    const d = parseFloat(out.trim());
+    if (Number.isFinite(d) && d > 0) return d;
+  } catch {
+    // Fall through to format-level probe.
+  }
+  try {
+    const out = await runFfprobe(filePath, ["-show_entries", "format=duration", "-of", "csv=p=0"]);
+    const d = parseFloat(out.trim());
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  } catch {
+    return 0;
+  }
 }
