@@ -240,6 +240,32 @@ export function evaluateMotion(
  * Selectors and liveness scopes the in-page sampler must read for a spec.
  * Selectors feed the per-element matrix; scopes feed keepsMoving liveness.
  */
+/**
+ * What one assertion resolves against: `selectors` are preflighted for ambiguity
+ * and sampled per element, `scopes` drive liveness. Exhaustive by design — a new
+ * assertion kind must declare its targets here or fail to compile, because a
+ * kind missing from this map would have its ambiguous selector reported AND
+ * still evaluated against an arbitrary first match.
+ */
+export function assertionTargets(assertion: MotionAssertion): {
+  selectors: string[];
+  scopes: string[];
+} {
+  switch (assertion.kind) {
+    case "appearsBy":
+    case "staysInFrame":
+      return { selectors: [assertion.selector], scopes: [] };
+    case "before":
+      return { selectors: [assertion.a, assertion.b], scopes: [] };
+    case "keepsMoving":
+      return { selectors: [], scopes: [assertion.withinSelector ?? "*"] };
+    default: {
+      const exhaustive: never = assertion;
+      return exhaustive;
+    }
+  }
+}
+
 export function collectSamplingTargets(assertions: MotionAssertion[]): {
   selectors: string[];
   livenessScopes: string[];
@@ -247,19 +273,9 @@ export function collectSamplingTargets(assertions: MotionAssertion[]): {
   const selectors = new Set<string>();
   const scopes = new Set<string>();
   for (const assertion of assertions) {
-    switch (assertion.kind) {
-      case "appearsBy":
-      case "staysInFrame":
-        selectors.add(assertion.selector);
-        break;
-      case "before":
-        selectors.add(assertion.a);
-        selectors.add(assertion.b);
-        break;
-      case "keepsMoving":
-        scopes.add(assertion.withinSelector ?? "*");
-        break;
-    }
+    const targets = assertionTargets(assertion);
+    for (const selector of targets.selectors) selectors.add(selector);
+    for (const scope of targets.scopes) scopes.add(scope);
   }
   return { selectors: [...selectors], livenessScopes: [...scopes] };
 }
