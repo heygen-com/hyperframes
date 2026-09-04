@@ -180,3 +180,4 @@ Use this to define inside/ring/outside zones for glass effects. Negative values 
 - Do not use an autonomous `requestAnimationFrame` simulation loop. Render in response to `hf-seek`; HyperFrames owns the paused-presentation heartbeat and may re-present the same time.
 - No `performance.now()` for animation time — read `window.__hfTypegpuTime` or `e.detail.time`.
 - Register GPU completion with `e.detail.waitUntil(device.queue.onSubmittedWorkDone())` before the event listener returns.
+- For particle fields, position must be a pure function of `uTime` and per-index seeds — no compute-pass state carried between frames. Recipe: `../rules/gpu-particle-field.md`.
