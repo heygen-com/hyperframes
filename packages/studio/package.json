@@ -58,6 +58,7 @@
     "test:timeline-default": "bun run test:timeline-virtualization"
   },
   "dependencies": {
+    "@base-ui/react": "1.7.0",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-css": "^6.3.1",
@@ -78,6 +79,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",
+    "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
     "mediabunny": "^1.45.3"
