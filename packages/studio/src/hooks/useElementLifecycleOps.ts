@@ -180,12 +180,6 @@ export function useElementLifecycleOps({
         }
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
-        // ponytail: the server remove-element route (removeElementFromHtml) strips
-        // only the element node — it does NOT cascade-remove GSAP tweens targeting
-        // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This
-        // fallback runs only when the element isn't in the SDK doc (e.g. runtime-
-        // generated / unaddressable), where targeting tweens are unlikely. Upgrade
-        // path: cascade in removeElementFromHtml by selector/hf-id to fully match.
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete element",

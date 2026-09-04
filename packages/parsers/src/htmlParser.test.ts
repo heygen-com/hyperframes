@@ -580,6 +580,19 @@ describe("removeElementFromHtml", () => {
     expect(updated).toContain('id="el2"');
   });
 
+  it("cascades DOM and stable ids for every descendant", () => {
+    const html = `<!doctype html><html><body>
+      <div id="parent"><div id="box" data-hf-id="hf-box"></div></div>
+      <script>const tl = gsap.timeline();
+        tl.to("#parent", { x: 10 }); tl.to("#box", { x: 20 });
+        tl.to('[data-hf-id="hf-box"]', { x: 30 });
+      </script></body></html>`;
+    const updated = removeElementFromHtml(html, "parent");
+    expect(updated).not.toContain("#parent");
+    expect(updated).not.toContain("#box");
+    expect(updated).not.toContain("hf-box");
+  });
+
   it("strips ALL gsap tweens for the removed element, not just the first", () => {
     // Two tweens on the same element → count-based ids renumber when the first is
     // removed, so a single up-front parse left the second tween orphaned.

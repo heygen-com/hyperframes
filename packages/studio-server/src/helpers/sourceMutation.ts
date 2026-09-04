@@ -1,4 +1,5 @@
 import { parseHTML } from "linkedom";
+import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
@@ -132,7 +133,7 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
   const element = findTargetElement(document, target);
   if (!element) return source;
 
-  element.remove();
+  removeElementWithGsapCascade(document, element);
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 

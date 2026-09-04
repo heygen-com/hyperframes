@@ -28,6 +28,55 @@ describe("removeElementFromHtml", () => {
     expect(updated).toContain(`data-composition-id="scene-b"`);
   });
 
+  it("removes tweens for both DOM ids and stable ids throughout the deleted subtree", () => {
+    const html = `<!doctype html><html><body>
+      <div id="parent"><div id="box" data-hf-id="hf-box"><span id="leaf"></span></div></div>
+      <div id="keep"></div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#parent", { x: 10 });
+        tl.to("#box", { x: 20 });
+        tl.to('[data-hf-id="hf-box"]', { x: 30 });
+        tl.to("#leaf", { x: 40 });
+        tl.to("#box", { x: 50 });
+        tl.to("#keep", { x: 60 });
+      </script></body></html>`;
+    const updated = removeElementFromHtml(html, { id: "parent" });
+    expect(updated).not.toContain("#parent");
+    expect(updated).not.toContain("#box");
+    expect(updated).not.toContain("hf-box");
+    expect(updated).not.toContain("#leaf");
+    expect(updated).toContain('tl.to("#keep", { x: 60 })');
+  });
+
+  it("cascades a stable-id deletion into nested composition template scripts", () => {
+    const html = `<div id="box" data-hf-id="hf-box"></div>
+      <template data-composition-id="outer"><template data-composition-id="inner">
+        <script>const tl = gsap.timeline(); tl.to("#box", { x: 10 });</script>
+      </template></template>`;
+    const updated = removeElementFromHtml(html, { hfId: "hf-box" });
+    expect(updated).not.toContain("#box");
+    expect(updated).not.toContain('id="box"');
+  });
+
+  it("retains shared selectors used by a surviving composition instance", () => {
+    const html = `<div data-hf-id="remove"><span id="box" data-hf-id="hf-box"></span></div>
+      <template data-composition-id="keep"><div id="box" data-hf-id="hf-box"></div>
+        <script>const tl = gsap.timeline();
+          tl.to("#box", { x: 10 }); tl.to('[data-hf-id="hf-box"]', { x: 20 });
+        </script>
+      </template>`;
+    const updated = removeElementFromHtml(html, { hfId: "remove" });
+    expect(updated).not.toContain('data-hf-id="remove"');
+    expect(updated).toContain('tl.to("#box", { x: 10 })');
+    expect(updated).toContain(`tl.to('[data-hf-id="hf-box"]', { x: 20 })`);
+  });
+
+  it("does not strip scripts when the requested element is absent", () => {
+    const html = `<script>const tl = gsap.timeline(); tl.to("#missing", { x: 10 });</script>`;
+    expect(removeElementFromHtml(html, { id: "missing" })).toBe(html);
+  });
+
   it("supports fragment html by returning updated body markup", () => {
     const html = `<div id="photo"></div><div id="rest"></div>`;
 
