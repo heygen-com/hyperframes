@@ -301,7 +301,10 @@ export interface UpdateSkillsResult {
  *   - the requested names (a workflow being routed to, e.g. `pr-to-video`),
  *   - the core set (entry router + shared domain skills — see skillsManifest),
  *   - with `refreshInstalled`, whatever is already installed (refreshed, so an
- *     update never *expands* a deliberate partial install).
+ *     update never *expands* a deliberate partial install),
+ *   - with `all`, every skill the manifest publishes — never the upstream `*`
+ *     wildcard, which also sweeps up the repo-internal skills under
+ *     `.claude/skills` (26 installed vs 20 published, observed 2026-09-04).
  *
  * Only targets that are actually missing or outdated are passed to
  * `skills add` (one spawn, one `--skill` flag per name); when everything is
@@ -313,6 +316,8 @@ export async function updateSkills(
   opts: {
     requested?: readonly string[];
     refreshInstalled?: boolean;
+    /** Every skill the manifest publishes (bare `hyperframes skills`). */
+    all?: boolean;
     strict?: boolean;
     cwd?: string;
   } = {},
@@ -347,7 +352,14 @@ export async function updateSkills(
     }
     check = null; // manifest unreachable (offline / rate-limited) — presence mode below
   }
-  if (!check) return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
+  if (!check) {
+    if (opts.all) {
+      // Offline the published set is unknowable; fall back to the upstream wildcard.
+      await installSkills("*", { cwd: opts.cwd, strict });
+      return { targets: [], installed: [], current: [], unknown: [], presenceOnly: true };
+    }
+    return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
+  }
 
   // "removed" entries are lock-attributed leftovers, not manifest skills —
   // they are `skills update`'s prune concern, never an update target.
@@ -365,6 +377,7 @@ export async function updateSkills(
 
   const targets = manifestSkills.filter(
     (s) =>
+      opts.all === true ||
       requested.includes(s.name) ||
       isCoreSkill(s.name) ||
       (opts.refreshInstalled === true && s.status !== "missing"),
@@ -785,7 +798,7 @@ export default defineCommand({
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
     if (!args._?.[0]) {
-      await installSkills("*");
+      await updateSkills({ all: true });
       // Same as updateSkills: a full install supersedes the background
       // nudge's cached pre-install verdict.
       invalidateSkillsCache();
