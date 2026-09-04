@@ -26,6 +26,7 @@
       "import": "./src/styles/tailwind-preset.ts",
       "types": "./src/styles/tailwind-preset.ts"
     },
+    "./theme.css": "./src/styles/theme.css",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -39,6 +40,7 @@
         "import": "./dist/styles/tailwind-preset.js",
         "types": "./dist/styles/tailwind-preset.d.ts"
       },
+      "./theme.css": "./src/styles/theme.css",
       "./package.json": "./package.json"
     },
     "main": "./dist/index.js",
