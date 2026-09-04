@@ -811,6 +811,30 @@ describe("hyperframes skills update <names>", () => {
     expect(await commandExitCode()).toBe(0);
   });
 
+  it("bare `skills` offline never falls back to the wildcard: warns and installs the pinned core set", async () => {
+    setPlatform("linux");
+    const { checkSkills, presentSkills, FALLBACK_CORE_SKILLS } =
+      await import("../utils/skillsManifest.js");
+    const clack = await import("@clack/prompts");
+    vi.mocked(clack.log.warn).mockClear();
+    vi.mocked(checkSkills).mockRejectedValue(new Error("offline"));
+    vi.mocked(presentSkills)
+      .mockImplementationOnce(() => [])
+      .mockImplementation((names: readonly string[]) => [...names]);
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+    const args = state.spawnCalls[0]?.args ?? [];
+    // The upstream `*` would rediscover the repo-internal skills (26 vs 20).
+    expect(skillFlagValues(args)).not.toContain("*");
+    expect(skillFlagValues(args).sort()).toEqual([...FALLBACK_CORE_SKILLS].sort());
+    expect(vi.mocked(clack.log.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("published skill set"),
+    );
+    expect(await commandExitCode()).toBe(0);
+  });
+
   // The `check || update` CI contract: offline, a bare update can't verify
   // freshness — exiting 0 would let the chain pass while everything stays
   // stale. It must fail loudly instead.

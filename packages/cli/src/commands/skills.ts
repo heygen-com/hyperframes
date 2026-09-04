@@ -302,9 +302,11 @@ export interface UpdateSkillsResult {
  *   - the core set (entry router + shared domain skills — see skillsManifest),
  *   - with `refreshInstalled`, whatever is already installed (refreshed, so an
  *     update never *expands* a deliberate partial install),
- *   - with `all`, every skill the manifest publishes — never the upstream `*`
- *     wildcard, which also sweeps up the repo-internal skills under
- *     `.claude/skills` (26 installed vs 20 published, observed 2026-09-04).
+ *   - with `all`, every skill the manifest publishes. The upstream `*` wildcard
+ *     is not used on any path: it also sweeps up the repo-internal skills under
+ *     `.claude/skills` / `.agents/skills` (26 installed vs 20 published,
+ *     observed 2026-09-04). Offline, where the published set is unknowable, the
+ *     full install warns and degrades to the pinned core set instead.
  *
  * Only targets that are actually missing or outdated are passed to
  * `skills add` (one spawn, one `--skill` flag per name); when everything is
@@ -354,9 +356,14 @@ export async function updateSkills(
   }
   if (!check) {
     if (opts.all) {
-      // Offline the published set is unknowable; fall back to the upstream wildcard.
-      await installSkills("*", { cwd: opts.cwd, strict });
-      return { targets: [], installed: [], current: [], unknown: [], presenceOnly: true };
+      // The published set is unknowable offline. Say so and degrade to the
+      // pinned core set — never the upstream wildcard, which would quietly
+      // reinstate the 26-skill sweep this path exists to avoid.
+      clack.log.warn(
+        c.warn(
+          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. Re-run `hyperframes skills` online for the full set.",
+        ),
+      );
     }
     return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
   }
