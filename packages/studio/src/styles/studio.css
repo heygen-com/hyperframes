@@ -1,4 +1,5 @@
 @import "tailwindcss" source(none);
+@import "./theme.css";
 
 /*
  * Explicit sources: Studio's own TypeScript and its shell HTML. Automatic
@@ -8,33 +9,6 @@
 @source "../**/*.{ts,tsx}";
 @source "../../index.html";
 
-@theme {
-  --color-studio-bg: #0a0a0a;
-  --color-studio-surface: #141414;
-  --color-studio-border: #262626;
-  --color-studio-text: #e5e5e5;
-  --color-studio-muted: #737373;
-  --color-studio-accent: #3ce6ac;
-
-  --color-panel-bg: #0c0c0e;
-  --color-panel-bg-inset: #121214;
-  --color-panel-input: #161618;
-  --color-panel-surface: #18181b;
-  --color-panel-hover: #27272a;
-  --color-panel-border: #1e1e1e;
-  --color-panel-border-input: #27272a;
-  --color-panel-hairline: #1a1a1c;
-  --color-panel-text-0: #fafafa;
-  --color-panel-text-1: #e4e4e7;
-  --color-panel-text-2: #a1a1aa;
-  --color-panel-text-3: #71717a;
-  --color-panel-text-4: #52525b;
-  --color-panel-text-5: #3f3f46;
-  --color-panel-accent: #3ce6ac;
-  --color-panel-danger: #ef4444;
-  --color-panel-media: #00e3ff;
-  --color-panel-container: #f5a623;
-}
 
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
@@ -48,9 +22,9 @@
 body {
   margin: 0;
   padding: 0;
-  background: #0a0a0a;
-  color: #e5e5e5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-bg-0);
+  color: var(--color-text-body);
+  font-family: var(--font-sans);
   overflow: hidden;
 }
 
@@ -324,7 +298,7 @@ body {
   left: 12px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.34);
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -362,7 +336,7 @@ body {
 }
 
 .cm-editor .cm-scroller {
-  font-family: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .cm-editor.cm-focused {
@@ -419,12 +393,7 @@ body {
 }
 
 .hf-loader-title {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -440,12 +409,7 @@ body {
   min-height: 2.5rem;
   overflow: hidden;
   color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   line-height: 1.6;
 }
@@ -457,7 +421,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
-  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
