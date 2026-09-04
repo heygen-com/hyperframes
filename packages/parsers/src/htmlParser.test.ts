@@ -748,6 +748,35 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables[1].type).toBe("number");
   });
 
+  it("extracts metadata from a composition root inside a template", () => {
+    const variables = JSON.stringify([
+      { id: "headline", type: "string", label: "Headline", default: "Launch" },
+    ]);
+    const html = `<!DOCTYPE html>
+<html>
+<body>
+  <template id="scene-template">
+    <section
+      data-composition-id="scene"
+      data-composition-duration="6.5"
+      data-composition-variables='${variables}'
+    ></section>
+  </template>
+</body>
+</html>`;
+
+    const meta = extractCompositionMetadata(html);
+
+    expect(meta.compositionId).toBe("scene");
+    expect(meta.compositionDuration).toBe(6.5);
+    expect(meta.variables).toHaveLength(1);
+    expect(meta.variables[0]).toMatchObject({
+      id: "headline",
+      type: "string",
+      default: "Launch",
+    });
+  });
+
   // T9 — CompositionVariable font/image parse (WS-B R1 implemented).
 
   it("parses a font variable (type: font) with name and source", () => {
