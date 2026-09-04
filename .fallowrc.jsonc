@@ -1,6 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/config-schema.json",
   "entry": [
+    // Vitest collects .test.mjs, but fallow's default test-entry detection only
+    // knows the .ts/.tsx spellings, so this one reads as an unreachable file.
+    "packages/studio/scripts/*.test.mjs",
+    // The KTD6 dismiss-spike fixture. scripts/menu-dismiss-spike.mjs injects it
+    // into a running Studio by importing it from the Vite dev server by URL, so
+    // no TypeScript import reaches its mount function.
+    "packages/studio/src/components/ui/menuDismissSpikeMount.tsx",
+    // The shared-primitive barrel. Studio's panels move onto Button, IconButton,
+    // Tabs and Tooltip folder by folder, so a primitive is exported here before
+    // its first consumer exists. Treating the barrel as an entry point is what
+    // the alternative (an inline suppression per export, deleted again a week
+    // later) was pretending to be.
+    "packages/studio/src/components/ui/index.ts",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",

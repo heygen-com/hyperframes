@@ -51,6 +51,8 @@
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "design:shots": "node scripts/design-shots.mjs",
+    "spike:menu-dismiss": "node scripts/menu-dismiss-spike.mjs",
     "test:webmcp-edit-loop": "node tests/e2e/webmcp-edit-loop.mjs",
     "test:timeline-virtualization": "TIMELINE_ROW_VIRTUALIZATION=on TIMELINE_ELEMENT_COUNT=50000 node tests/e2e/timeline-virtualization.mjs",
     "test:watch": "vitest",
@@ -58,6 +60,7 @@
     "test:timeline-default": "bun run test:timeline-virtualization"
   },
   "dependencies": {
+    "@base-ui/react": "1.7.0",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-css": "^6.3.1",
@@ -78,6 +81,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",
+    "cn": "0.2.4",
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",
     "marked": "^14.1.4",

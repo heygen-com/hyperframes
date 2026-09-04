@@ -1,98 +1,106 @@
 /**
- * Button & IconButton — The most important primitive.
+ * Button — a native `<button>` wearing Studio's tokens.
  *
- * Absorbs: active state (scale 0.98), hit target (min 32px),
- * shadow anatomy (primary), focus ring, disabled state,
- * loading state, reduced motion, proper timing tokens.
+ * Everything visual comes from `theme.css`: the three control heights, the
+ * radius scale, the semantic colours, the motion durations. No value is decided
+ * here, so a button cannot drift from the rest of the system.
  *
- * Rules applied:
- * - physics-active-state: scale(0.98) on :active
- * - ux-fitts-target-size: min 32px hit target
- * - visual-button-shadow-anatomy: 6-layer shadow on primary
- * - duration-press-hover: 120ms press, 150ms hover
+ * Two conventions run through the file:
+ *
+ *  - Classes are merged with `cn`, so a caller's `className` beats the
+ *    variant's and the size's classes from the same group.
+ *  - Every interactive look is written twice, once as the real state
+ *    (`enabled:hover:…`) and once as `data-[preview-state=hover]:…`. The
+ *    attribute is read by CSS only and changes no behaviour: it exists so a
+ *    story or a screenshot can show the hover, active and focus looks without a
+ *    pointer. `Button.test.tsx` asserts the two lists stay in step.
  */
 
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { cn } from "./cn";
 
-// -- Button --
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonSize = "sm" | "md" | "lg";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
+/** Forces one interactive look for a gallery shot. CSS-only; see the header. */
+export type PreviewState = "hover" | "active" | "focus";
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonBaseProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  "data-preview-state"?: PreviewState;
+}
+
+interface ButtonProps extends ButtonBaseProps {
   loading?: boolean;
   icon?: ReactNode;
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
-  primary: [
-    "bg-white text-neutral-950 font-medium",
-    "shadow-btn-primary",
-    "enabled:hover:bg-neutral-200",
-    "enabled:active:scale-[0.97]",
-  ].join(" "),
-  secondary: [
-    "bg-transparent text-neutral-300 font-medium",
-    "border border-border",
-    "enabled:hover:bg-surface-hover enabled:hover:text-white enabled:hover:border-border-strong",
-    "enabled:active:scale-[0.98]",
-  ].join(" "),
-  danger: [
-    "bg-accent-red text-white font-medium",
-    "enabled:hover:bg-red-600",
-    "enabled:active:scale-[0.97]",
-  ].join(" "),
-  ghost: [
-    "bg-transparent text-neutral-400",
-    "enabled:hover:bg-surface-hover enabled:hover:text-white",
-    "enabled:active:scale-[0.98]",
-  ].join(" "),
+/**
+ * Shared by Button and IconButton. `disabled:` keeps pointer events alive so a
+ * wrapping Tooltip can still explain why the control is disabled.
+ */
+export const buttonBase = cn(
+  "inline-flex items-center justify-center select-none cursor-pointer whitespace-nowrap",
+  "transition-[background-color,border-color,color,filter,transform] ease-out-quint duration-press",
+  "disabled:opacity-40 disabled:cursor-not-allowed",
+  "outline-hidden",
+  "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+  "data-[preview-state=focus]:outline-solid data-[preview-state=focus]:outline-2 data-[preview-state=focus]:outline-offset-1 data-[preview-state=focus]:outline-accent",
+);
+
+/**
+ * One entry per variant. The `data-[preview-state=…]` half of each string
+ * repeats the `hover:` and `active:` half exactly; the test pairs them.
+ */
+export const buttonVariants: Record<ButtonVariant, string> = {
+  primary: cn(
+    "bg-accent text-bg-0 font-semibold",
+    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
+    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+  ),
+  secondary: cn(
+    "bg-transparent text-text-1 font-medium border border-border-strong",
+    "enabled:hover:bg-hover enabled:hover:text-text-0 data-[preview-state=hover]:bg-hover data-[preview-state=hover]:text-text-0",
+    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+  ),
+  danger: cn(
+    "bg-danger text-text-0 font-medium",
+    "enabled:hover:brightness-110 data-[preview-state=hover]:brightness-110",
+    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+  ),
+  ghost: cn(
+    "bg-transparent text-text-2 font-medium",
+    "enabled:hover:bg-hover enabled:hover:text-text-0 data-[preview-state=hover]:bg-hover data-[preview-state=hover]:text-text-0",
+    "enabled:active:scale-[0.98] data-[preview-state=active]:scale-[0.98]",
+  ),
 };
 
+/** The three control heights, 24 / 28 / 32 px, from `--spacing-ctl-*`. */
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: "h-7 px-2.5 text-xs gap-1.5 rounded-button",
-  md: "h-8 px-3 text-sm gap-1.5 rounded-button",
-  lg: "h-9 px-4 text-base gap-2 rounded-button",
+  sm: "h-ctl-sm px-2 gap-1 rounded-sm text-step-11",
+  md: "h-ctl px-3 gap-1.5 rounded-md text-step-12",
+  lg: "h-ctl-lg px-4 gap-2 rounded-md text-step-13",
 };
 
-// Imported by the shell/renders PRs later in this stack.
-// fallow-ignore-next-line unused-export
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    {
-      variant = "secondary",
-      size = "md",
-      loading,
-      icon,
-      children,
-      className = "",
-      disabled,
-      ...props
-    },
+    { variant = "secondary", size = "md", loading, icon, children, className, disabled, ...props },
     ref,
   ) => {
+    const isDisabled = disabled || loading;
     return (
       <button
         ref={ref}
-        disabled={disabled || loading}
-        className={[
-          "inline-flex items-center justify-center",
-          "transition-all duration-press ease-standard",
-          // No pointer-events-none: disabled buttons must still receive hover
-          // so a wrapping Tooltip can explain WHY they're disabled (A5).
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          "select-none cursor-pointer",
-          "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
-          variantStyles[variant],
-          sizeStyles[size],
-          className,
-        ].join(" ")}
+        disabled={isDisabled}
+        // `aria-disabled` as well as `disabled`: assistive tech announces the
+        // state even where the native attribute is filtered out of the tree.
+        aria-disabled={isDisabled || undefined}
+        className={cn(buttonBase, buttonVariants[variant], sizeStyles[size], className)}
         {...props}
       >
         {loading ? (
-          <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+          <svg className="animate-spin size-3.5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle
               className="opacity-25"
               cx="12"
@@ -116,44 +124,3 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   },
 );
 Button.displayName = "Button";
-
-// -- IconButton --
-// For icon-only buttons. Enforces min 32px hit target.
-
-interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  icon: ReactNode;
-  size?: ButtonSize;
-  variant?: ButtonVariant;
-  "aria-label": string; // REQUIRED for accessibility
-}
-
-const iconSizeStyles: Record<ButtonSize, string> = {
-  sm: "min-w-7 min-h-7 rounded-button", // 28px
-  md: "min-w-8 min-h-8 rounded-button", // 32px — minimum recommended
-  lg: "min-w-9 min-h-9 rounded-button", // 36px
-};
-
-// fallow-ignore-next-line unused-export
-export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ icon, size = "md", variant = "ghost", className = "", ...props }, ref) => {
-    return (
-      <button
-        ref={ref}
-        className={[
-          "inline-flex items-center justify-center",
-          "transition-all duration-press ease-standard",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          "select-none cursor-pointer",
-          "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
-          variantStyles[variant],
-          iconSizeStyles[size],
-          className,
-        ].join(" ")}
-        {...props}
-      >
-        {icon}
-      </button>
-    );
-  },
-);
-IconButton.displayName = "IconButton";

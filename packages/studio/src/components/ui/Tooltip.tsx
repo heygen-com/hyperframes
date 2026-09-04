@@ -1,127 +1,68 @@
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useId,
-  type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
-import { clampCentredLeft } from "../editor/floatingPanel";
+/**
+ * Tooltip — Base UI's tooltip wearing Studio's tokens.
+ *
+ * The props are the ones Studio's own tooltip had (`label`, `delay`, `side`),
+ * so the call sites did not change. What changed underneath is who owns the
+ * hard parts: the portal, the viewport flip and the shift away from a collision
+ * edge are the library's now, not a hand-rolled clamp against an approximated
+ * bubble height.
+ *
+ * Two accessibility details stay ours, because Base UI 1.7.0 does not add them:
+ *
+ *  - WCAG 4.1.2: the popup carries `role="tooltip"` and an id, and the trigger
+ *    points at that id with `aria-describedby` while it is open. That is why
+ *    the open state is controlled here rather than left to the library.
+ *  - WCAG 1.4.13: Escape dismisses. This one Base UI does provide, through its
+ *    dismiss interaction, and `Tooltip.test.tsx` holds it to that.
+ *
+ * The trigger renders the caller's own element (Base UI's `render` prop) rather
+ * than wrapping it. A wrapper would need a box to be positioned against, and
+ * the old `display: contents` wrapper had none.
+ */
+
+import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
+import { useId, useState, type ReactElement } from "react";
 
 interface TooltipProps {
   label: string;
-  children: ReactNode;
+  /** A single element. It becomes the trigger; no wrapper is added around it. */
+  children: ReactElement;
+  /** Hover delay in ms. */
   delay?: number;
-  side?: "top" | "bottom";
+  side?: "top" | "bottom" | "left" | "right";
 }
 
-// Rough bubble height (padding + one text line) used to decide flipping
-// before the bubble has rendered; exact height isn't needed for the guard.
-const APPROX_BUBBLE_H = 28;
+/** Matches the old bubble's gap from its trigger, and its viewport margin. */
+const SIDE_OFFSET = 6;
 const VIEWPORT_MARGIN = 8;
 
 export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
-  const [visible, setVisible] = useState(false);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [resolvedSide, setResolvedSide] = useState<"top" | "bottom">(side);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const triggerRef = useRef<HTMLSpanElement>(null);
-  const bubbleRef = useRef<HTMLDivElement>(null);
-  const [bubbleWidth, setBubbleWidth] = useState(0);
-  // WCAG 4.1.2: programmatically associate the bubble with its trigger.
+  const [open, setOpen] = useState(false);
   const tooltipId = useId();
 
-  const show = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      const el = triggerRef.current;
-      if (!el) return;
-      const child = el.firstElementChild as HTMLElement | null;
-      const rect = (child ?? el).getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return;
-      // Flip when the preferred side would clip the viewport edge.
-      let nextSide = side;
-      if (side === "top" && rect.top - APPROX_BUBBLE_H - 6 < VIEWPORT_MARGIN) {
-        nextSide = "bottom";
-      } else if (
-        side === "bottom" &&
-        rect.bottom + APPROX_BUBBLE_H + 6 > window.innerHeight - VIEWPORT_MARGIN
-      ) {
-        nextSide = "top";
-      }
-      setResolvedSide(nextSide);
-      setPos({
-        // Raw trigger centre; clamped to the viewport at render, once the
-        // bubble's own width is known (see clampedX).
-        x: rect.left + rect.width / 2,
-        y: nextSide === "top" ? rect.top - 6 : rect.bottom + 6,
-      });
-      setVisible(true);
-    }, delay);
-  }, [delay, side]);
-
-  const hide = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setVisible(false);
-  }, []);
-
-  // Measure before paint so a wide bubble near a viewport edge is clamped in
-  // the same commit it appears in (no visible jump).
-  useLayoutEffect(() => {
-    setBubbleWidth(visible ? (bubbleRef.current?.offsetWidth ?? 0) : 0);
-  }, [visible, label]);
-
-  // WCAG 1.4.13: tooltip content must be dismissible with Escape.
-  useEffect(() => {
-    if (!visible) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") hide();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [visible, hide]);
-
-  const clampedX = clampCentredLeft(pos.x, bubbleWidth, window.innerWidth, VIEWPORT_MARGIN);
-
   return (
-    <>
-      <span
-        ref={triggerRef}
-        onPointerEnter={show}
-        onPointerLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        aria-describedby={visible ? tooltipId : undefined}
-        className="contents"
-      >
-        {children}
-      </span>
-      {visible &&
-        createPortal(
-          <div
-            className="fixed z-200 pointer-events-none"
-            style={{
-              left: clampedX,
-              top: pos.y,
-              transform: resolvedSide === "top" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
-            }}
+    <BaseTooltip.Root open={open} onOpenChange={setOpen}>
+      <BaseTooltip.Trigger
+        delay={delay}
+        aria-describedby={open ? tooltipId : undefined}
+        render={children}
+      />
+      <BaseTooltip.Portal>
+        <BaseTooltip.Positioner
+          side={side}
+          sideOffset={SIDE_OFFSET}
+          collisionPadding={VIEWPORT_MARGIN}
+          className="z-200"
+        >
+          <BaseTooltip.Popup
+            id={tooltipId}
+            role="tooltip"
+            className="pointer-events-none rounded-md border border-border-input bg-surface px-2 py-1 text-step-10 font-medium text-text-1 whitespace-nowrap shadow-menu"
           >
-            <div
-              ref={bubbleRef}
-              role="tooltip"
-              id={tooltipId}
-              className="px-2 py-1 rounded-md bg-neutral-800 border border-neutral-700/50 text-[10px] font-medium text-neutral-200 whitespace-nowrap shadow-lg"
-            >
-              {label}
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
+            {label}
+          </BaseTooltip.Popup>
+        </BaseTooltip.Positioner>
+      </BaseTooltip.Portal>
+    </BaseTooltip.Root>
   );
 }
