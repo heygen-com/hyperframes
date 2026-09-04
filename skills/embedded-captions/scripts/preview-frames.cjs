@@ -23,6 +23,21 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const crypto = require("crypto");
+const { pathToFileURL } = require("url");
+
+function sriSha384(source) {
+  return `sha384-${crypto.createHash("sha384").update(source).digest("base64")}`;
+}
+
+function withPreviewGsapSri(html, gsapSource) {
+  const integrity = sriSha384(gsapSource);
+  return html.replace(/<script\b(?=[^>]*\bsrc=["'][^"']*gsap[^"']*["'])[^>]*>/gi, (tag) =>
+    tag
+      .replace(/\s+integrity\s*=\s*(?:"[^"]*"|'[^']*')/gi, "")
+      .replace(/>$/, ` integrity="${integrity}">`),
+  );
+}
 
 const HF_ROOTS = [
   process.env.HYPERFRAMES_ROOT,
@@ -63,10 +78,10 @@ for (const r of HF_ROOTS) {
   }
   if (!gsapSource) {
     const g = findInBun(r, "gsap", path.join("dist", "gsap.min.js"));
-    if (g) gsapSource = fs.readFileSync(g, "utf8");
+    if (g) gsapSource = fs.readFileSync(g);
   }
 }
-if (!puppeteer || !sharp) {
+if (require.main === module && (!puppeteer || !sharp)) {
   console.error("[preview] need puppeteer+sharp — set HYPERFRAMES_ROOT");
   process.exit(0);
 }
@@ -80,9 +95,15 @@ async function shotAt(browser, file, W, H, t) {
     // evaluation runs while document.head is still null, and gsap's init then
     // throws "appendChild of null" — which killed previews for theme projects.
     await page.setRequestInterception(true);
+    const documentUrl = pathToFileURL(file).href;
+    const documentHtml = gsapSource
+      ? withPreviewGsapSri(fs.readFileSync(file, "utf8"), gsapSource)
+      : fs.readFileSync(file, "utf8");
     page.on("request", (req) => {
       const u = req.url();
-      if (req.resourceType() === "script" && /gsap/i.test(u) && /^https?:/i.test(u)) {
+      if (req.isNavigationRequest() && u === documentUrl) {
+        req.respond({ status: 200, contentType: "text/html", body: documentHtml });
+      } else if (req.resourceType() === "script" && /gsap/i.test(u) && /^https?:/i.test(u)) {
         if (gsapSource)
           req.respond({ status: 200, contentType: "application/javascript", body: gsapSource });
         else req.continue(); // no local bundle — let the CDN load (online machines)
@@ -90,7 +111,7 @@ async function shotAt(browser, file, W, H, t) {
         req.abort(); // a-roll pixels come from frames_bg
       else req.continue();
     });
-    await page.goto(`file://${file}`, { waitUntil: "load", timeout: 15000 });
+    await page.goto(documentUrl, { waitUntil: "load", timeout: 15000 });
     const t0 = Date.now();
     let tlReady = false;
     while (Date.now() - t0 < 15000) {
@@ -260,9 +281,13 @@ async function main() {
     await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
   }
 }
-main()
-  .then(() => process.exit(0))
-  .catch((e) => {
-    console.error("[preview]", e.message);
-    process.exit(1);
-  });
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error("[preview]", e.message);
+      process.exit(1);
+    });
+}
+
+module.exports = { sriSha384, withPreviewGsapSri };
