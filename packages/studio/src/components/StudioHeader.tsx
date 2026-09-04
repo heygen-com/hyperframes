@@ -174,7 +174,7 @@ export function StudioHeader({
   const ffmpegMissing = renderQueue.ffmpegMissing;
 
   return (
-    <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
+    <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 shrink-0">
       {/* Left: logo + project name */}
       <div className="flex items-center gap-3">
         <HyperframesLogo />

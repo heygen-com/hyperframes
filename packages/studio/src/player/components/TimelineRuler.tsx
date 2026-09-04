@@ -85,7 +85,7 @@ export const TimelineRuler = memo(function TimelineRuler({
         style={{ height: RULER_H, width: contentOrigin + trackContentWidth, zIndex: 70 }}
       >
         <div
-          className="sticky left-0 z-[12] flex-shrink-0"
+          className="sticky left-0 z-12 shrink-0"
           style={{
             width: contentOrigin,
             // Ruler corner uses the panel surface — same as the ruler strip itself.

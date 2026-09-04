@@ -73,7 +73,7 @@ export const ImageThumbnail = memo(function ImageThumbnail({
           {Array.from({ length: frameCount }, (_, index) => (
             <div
               key={index}
-              className="relative h-full flex-shrink-0 overflow-hidden bg-neutral-900"
+              className="relative h-full shrink-0 overflow-hidden bg-neutral-900"
               style={{ width: frameW }}
             >
               <img

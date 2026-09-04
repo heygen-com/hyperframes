@@ -227,7 +227,7 @@ export function VariablesBindElement({
             <button
               type="button"
               onClick={() => setActiveKey(null)}
-              className="h-6 rounded px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
+              className="h-6 rounded-sm px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
             >
               Cancel
             </button>
@@ -238,7 +238,7 @@ export function VariablesBindElement({
                 setActiveKey(null);
                 onBind(active, trimmedId);
               }}
-              className="h-6 rounded bg-neutral-800 px-2 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="h-6 rounded-sm bg-neutral-800 px-2 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {existingDecl ? "Bind anyway" : "Bind"}
             </button>

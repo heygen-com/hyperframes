@@ -485,7 +485,7 @@ export const LayersPanel = memo(function LayersPanel() {
                   onClick={(e) => toggleCollapse(layer.key, e)}
                   aria-expanded={!isCollapsed}
                   aria-label={isCollapsed ? "Expand children" : "Collapse children"}
-                  className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-neutral-500 hover:text-neutral-300 before:absolute before:-inset-1.5 before:content-['']"
+                  className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-neutral-500 hover:text-neutral-300 before:absolute before:-inset-1.5 before:content-['']"
                 >
                   <svg
                     width="8"
@@ -498,10 +498,10 @@ export const LayersPanel = memo(function LayersPanel() {
                   </svg>
                 </button>
               ) : (
-                <span className="w-4 flex-shrink-0" />
+                <span className="w-4 shrink-0" />
               )}
               <span
-                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
                   selected
                     ? "bg-panel-accent/18 text-panel-accent"
                     : isCompHost
