@@ -134,6 +134,37 @@ if (!result.isValid) {
 For the full composition lint result, use [`@hyperframes/lint`](/packages/lint)
 or run `npx hyperframes lint`.
 
+## Lower music under speech
+
+`duck()` adds music volume ramps around voice clips on your paused GSAP timeline:
+
+```ts
+import { duck } from "@hyperframes/core";
+
+const timeline = gsap.timeline({ paused: true });
+const music = document.querySelector<HTMLAudioElement>("#music");
+const voice = document.querySelector<HTMLAudioElement>("#voice");
+if (music && voice) {
+  duck(music, voice, { timeline, amount: "-12dB", fade: 0.3 });
+}
+window.__timelines["my-composition"] = timeline;
+```
+
+Pass media elements with resolved composition timing (`data-start` and
+`data-duration` or `data-end`). When duration comes from loaded media metadata,
+source trimming and playback rate are respected. Register the timeline under
+your composition ID so preview and export can probe its volume changes.
+
+`amount` accepts a linear multiplier or a dB string; `fade` is seconds on each
+side of speech. Both default to the values shown above. With `fade: 0`, timeline
+changes use steps; the returned linear envelope represents each step across one
+microsecond. Preview and export still use their existing sampling resolution.
+
+Plain timing objects (`{ start, duration, volume }`) return composition-time
+keyframes for offline use. They do not change playback. Ducking owns the music
+volume during its generated windows; avoid overlapping hand-authored volume
+tweens on the same track.
+
 ## Build a frame adapter
 
 Frame adapters make an animation runtime seekable by frame. Core includes the

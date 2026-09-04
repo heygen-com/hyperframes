@@ -293,6 +293,14 @@ export { formatRenderOutputTimestamp } from "./utils/renderOutputTimestamp.js";
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
 export {
+  duck,
+  type DuckAmount,
+  type DuckOptions,
+  type DuckTimelineLike,
+  type DuckTrack,
+  type DuckTrackTiming,
+} from "./runtime/audioDucking.js";
+export {
   parseStartExpression,
   parseNumeric,
   type ReferenceExpression,

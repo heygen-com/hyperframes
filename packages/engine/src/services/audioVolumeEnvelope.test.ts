@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { duck } from "@hyperframes/core";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -68,6 +69,20 @@ describe("applyVolumeEnvelopeToWav", () => {
     expect(sampleAt(path, 0)).toBe(0); // gain 0
     expect(sampleAt(path, frames / 2)).toBeCloseTo(5000, -2); // gain ~0.5
     expect(sampleAt(path, frames - 1)).toBeGreaterThan(9900); // gain ~1
+  });
+
+  it.each([0, 0.25])("bakes ducking and restores boosted music with fade=%s", (fade) => {
+    const path = join(tmp(), "duck.wav");
+    writeConstantWav(path, SAMPLE_RATE * 4, 1000);
+    const keyframes = duck(
+      { start: 5, duration: 4, volume: 2 },
+      { start: 6, duration: 1 },
+      { amount: 0.25, fade },
+    );
+    expect(applyVolumeEnvelopeToWav(path, keyframes, 5, 2)).toBe(true);
+    expect(sampleAt(path, SAMPLE_RATE / 2)).toBe(2000);
+    expect(sampleAt(path, SAMPLE_RATE * 1.5)).toBe(500);
+    expect(sampleAt(path, SAMPLE_RATE * 2.5)).toBe(2000);
   });
 
   it("offsets keyframes by the track start (composition time -> track-relative)", () => {
