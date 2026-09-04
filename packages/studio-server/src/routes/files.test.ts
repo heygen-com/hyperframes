@@ -311,6 +311,27 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "assets/image.png"))).toEqual(bytes);
   });
 
+  it("does not overwrite a file created while a POST body is being read", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const path = join(projectDir, "raced.bin");
+    const existing = Buffer.from([0xff, 0, 0x80]);
+    const request = new Request("http://localhost/projects/demo/files/raced.bin", {
+      method: "POST",
+      body: "upload",
+    });
+    const readBody = request.arrayBuffer.bind(request);
+    vi.spyOn(request, "arrayBuffer").mockImplementation(async () => {
+      expect(existsSync(path)).toBe(false);
+      writeFileSync(path, existing);
+      return readBody();
+    });
+    const response = await app.request(request);
+    expect(response.status).toBe(409);
+    expect(readFileSync(path)).toEqual(existing);
+  });
+
   it("versions binary bytes exactly while preserving conflicts, backups, and write receipts", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

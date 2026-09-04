@@ -2375,10 +2375,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    if (existsSync(res.absPath)) {
-      return c.json({ error: "already exists" }, 409);
-    }
-
     ensureDir(res.absPath);
     const body = Buffer.from(await c.req.arrayBuffer());
     try {
