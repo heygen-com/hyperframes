@@ -470,6 +470,19 @@ export function fontFormatHint(src: string): "collection" | "woff2" {
   return src.startsWith("data:font/collection;") ? "collection" : "woff2";
 }
 
+// generate-font-data.ts embeds Fontsource's -latin- subset for every family.
+const BUNDLED_SUBSET_UNICODE_RANGE =
+  "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, " +
+  "U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD";
+
+function isBundledSubsetRange(unicodeRange: string | undefined): boolean {
+  const normalize = (range: string) => range.toLowerCase().replace(/\s+/g, "");
+  return (
+    unicodeRange !== undefined &&
+    normalize(unicodeRange) === normalize(BUNDLED_SUBSET_UNICODE_RANGE)
+  );
+}
+
 function buildFontFaceRule(
   familyName: string,
   src: string,
@@ -584,17 +597,26 @@ async function buildFontFaceCss(
 
   for (const [normalizedFamily, originalCaseFamily] of requestedFamilies) {
     // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
-    // then fetch from Google Fonts to fill any weights not in the bundle.
+    // then fetch from Google Fonts to fill missing weights and character subsets.
     const canonicalKey = FONT_ALIASES[normalizedFamily];
     if (canonicalKey) {
       const canonical = CANONICAL_FONTS[canonicalKey];
       if (!canonical) continue;
 
       const coveredWeights = new Set<string>();
+      const bundledRules: string[] = [];
       for (const face of canonical.faces) {
         const style = face.style || "normal";
         const src = fontDataUri(canonical.packageName, face.weight, style);
-        rules.push(buildFontFaceRule(originalCaseFamily, src, face.weight, style));
+        bundledRules.push(
+          buildFontFaceRule(
+            originalCaseFamily,
+            src,
+            face.weight,
+            style,
+            BUNDLED_SUBSET_UNICODE_RANGE,
+          ),
+        );
         coveredWeights.add(coverageKey(face.weight, style));
       }
 
@@ -612,11 +634,12 @@ async function buildFontFaceCss(
         ? await fetchGoogleFont(canonicalFamily, options, fontText)
         : [];
 
-      // A weight covered by the embedded bundle is already full-coverage —
-      // skip it. For weights the bundle lacks, keep EVERY subset face (a
-      // weight has one face per unicode-range subset), not just the first.
+      // Bundled weights only cover Latin. Keep other subsets (including
+      // text= responses without a range), even for weights already embedded.
       const supplementary = googleFaces.filter(
-        (face) => !coveredWeights.has(coverageKey(face.weight, face.style)),
+        (face) =>
+          !coveredWeights.has(coverageKey(face.weight, face.style)) ||
+          !isBundledSubsetRange(face.unicodeRange),
       );
       const runs = groupFacesBySource(supplementary).flatMap((group) =>
         partitionWeightRuns(group, coveredWeights),
@@ -641,6 +664,9 @@ async function buildFontFaceCss(
           ),
         );
       }
+      // Broader or text-subset responses can overlap Latin. Emit the bundle
+      // last so existing Latin glyphs keep their deterministic bundled source.
+      rules.push(...bundledRules);
       continue;
     }
 
