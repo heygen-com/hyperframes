@@ -396,6 +396,7 @@ function FormatExportButton({
       <Button
         variant="primary"
         size="md"
+        data-testid="renders-export"
         loading={isRendering}
         disabled={missingFfmpeg !== null}
         title={missingFfmpeg ? "Install FFmpeg to export. See the note above." : undefined}
