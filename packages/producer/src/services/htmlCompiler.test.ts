@@ -633,6 +633,32 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  it("rebases a direct nested entry's sibling assets without changing project-root assets", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-direct-entry-base-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(join(compositionsDir, "sibling.png"), "sibling");
+    writeFileSync(join(projectDir, "root.png"), "root");
+    const entryPath = join(compositionsDir, "scene.html");
+    writeFileSync(
+      entryPath,
+      `<!doctype html><html><body>
+  <div data-composition-id="scene" data-width="100" data-height="100" data-duration="1">
+    <img id="sibling" src="sibling.png" />
+    <img id="root" src="root.png" />
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, entryPath, projectDir);
+    const { document } = parseHTML(compiled.html);
+
+    expect(document.querySelector("#sibling")?.getAttribute("src")).toBe(
+      "compositions/sibling.png",
+    );
+    expect(document.querySelector("#root")?.getAttribute("src")).toBe("root.png");
+  });
+
   // Shared fixture builder for the assertSubCompositionsUsable / EmptyCompositionError
   // pre-flight tests below. `subCompFiles` is a map of compositions/-relative
   // filename to raw file content (empty string / malformed text / valid HTML).

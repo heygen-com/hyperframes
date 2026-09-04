@@ -11,7 +11,7 @@
  */
 
 import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
-import { join, dirname, resolve, basename } from "path";
+import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
   compileTimingAttrs,
@@ -25,6 +25,9 @@ import {
   readMediaStart,
   redactTelemetryString,
   resolveNaturalMediaTimelineDurationFromValues,
+  rewriteAssetPaths,
+  rewriteCssAssetUrls,
+  rewriteInlineStyleAssetUrls,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -1846,6 +1849,38 @@ function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string 
 }
 
 /**
+ * Preserve a nested entry document's browser URL base when compilation moves
+ * it to compiled/index.html. Use the same sibling-first/project-root-fallback
+ * rule as mounted sub-compositions so both supported entry modes agree.
+ */
+function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath: string): string {
+  if (!isPathInside(htmlPath, projectDir)) return html;
+  const entryPath = relative(projectDir, htmlPath).replace(/\\/g, "/");
+  if (!entryPath.includes("/")) return html;
+
+  const { document } = parseHTML(html);
+  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
+  rewriteAssetPaths(
+    document.querySelectorAll("[src], [href]"),
+    entryPath,
+    (el: Element, attr: string) => el.getAttribute(attr),
+    (el: Element, attr: string, value: string) => el.setAttribute(attr, value),
+    assetExists,
+  );
+  rewriteInlineStyleAssetUrls(
+    document.querySelectorAll("[style]"),
+    entryPath,
+    (el: Element) => el.getAttribute("style"),
+    (el: Element, value: string) => el.setAttribute("style", value),
+    assetExists,
+  );
+  for (const style of document.querySelectorAll("style")) {
+    style.textContent = rewriteCssAssetUrls(style.textContent || "", entryPath, assetExists);
+  }
+  return document.toString();
+}
+
+/**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
@@ -1856,7 +1891,12 @@ export async function compileForRender(
   downloadDir: string,
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
-  const rawHtml = rewriteUnresolvableGsapToCdn(readFileSync(htmlPath, "utf-8"), projectDir);
+  const entryHtml = rebaseDirectEntryAssetPaths(
+    readFileSync(htmlPath, "utf-8"),
+    projectDir,
+    htmlPath,
+  );
+  const rawHtml = rewriteUnresolvableGsapToCdn(entryHtml, projectDir);
 
   // Pre-flight: every data-composition-src reference must resolve to a
   // usable file before we spend any time compiling, launching a browser, or
