@@ -1,0 +1,6 @@
+node_modules/
+chunk-worker.mjs
+.wrangler/
+dist/
+.dev.vars
+runtime/

@@ -1,0 +1,16 @@
+{
+  "name": "hf-render-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:chunk-worker": "bun build ../src/services/distributed/renderChunkCli.ts --outfile chunk-worker.mjs --target bun && mkdir -p runtime && cp ../../core/dist/hyperframe.manifest.json ../../core/dist/hyperframe.runtime.iife.js runtime/",
+    "dev": "bun run build:chunk-worker && wrangler dev",
+    "deploy": "bun run build:chunk-worker && wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "^0.12.5"
+  },
+  "devDependencies": {
+    "wrangler": "^4.83.0"
+  }
+}

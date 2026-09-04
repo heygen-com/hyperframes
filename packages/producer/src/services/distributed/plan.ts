@@ -180,7 +180,7 @@ export interface DistributedRenderConfig {
    */
   targetChunkFrames?: number;
   /** Runtime hint; consumed by future per-runtime budget checks. The current implementation records the value but does not enforce. */
-  runtimeCap?: "lambda" | "temporal" | "cloud-run-job" | "k8s-job" | "none";
+  runtimeCap?: "lambda" | "temporal" | "cloud-run-job" | "k8s-job" | "cloudflare-sandbox" | "none";
 
   /**
    * Reject compositions whose primary font-family resolves to a host-OS /

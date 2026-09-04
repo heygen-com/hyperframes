@@ -14,6 +14,8 @@
     "packages/producer/src/perf-gate.ts",
     "packages/producer/src/runtime-conformance.ts",
     "packages/producer/src/benchmark.ts",
+    "packages/producer/src/cloudflareSandboxBench.ts",
+    "packages/producer/src/services/distributed/renderChunkCli.ts",
     "packages/producer/scripts/generate-font-data.ts",
     "packages/producer/we-render.mjs",
     "packages/producer/scripts/validate-fast-video.ts",
@@ -66,6 +68,8 @@
     "packages/engine/spikes/**",
     "packages/producer/de-*.mjs",
     "packages/producer/tests/**",
+    // Nested Cloudflare worker + generated sandbox image artifacts.
+    "packages/producer/cloudflare-sandbox/**",
     "packages/player/tests/**",
     "packages/engine/tests/**",
     "skills/**/test-corpus/**",
@@ -934,6 +938,9 @@
       // stage's runCompileStage under the cyclo/cognitive thresholds.
       "packages/producer/src/server.ts",
       "packages/producer/src/services/distributed/plan.ts",
+      // Standalone sandbox bench harness: CLI parse + retry loops trip CRAP
+      // without coverage mapping. Not library code.
+      "packages/producer/src/cloudflareSandboxBench.ts",
       // Sibling-surface fix (PR #2529 R2): lambda.ts's top-level `run`
       // (cyclo 39, CRAP 1560) is the big subcommand switch that pre-dates
       // this PR. The change threads two additional variables through the

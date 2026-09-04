@@ -39,6 +39,9 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     expect(distributedSubpath.DEFAULT_CHUNK_SIZE).toBe(240);
     expect(distributedSubpath.DEFAULT_MAX_PARALLEL_CHUNKS).toBe(16);
     expect(distributedSubpath.PLAN_DIR_SIZE_LIMIT_BYTES).toBe(2 * 1024 * 1024 * 1024);
+    expect(typeof distributedSubpath.resolveSandboxFanout).toBe("function");
+    expect(distributedSubpath.SANDBOX_MAX_INSTANCES).toBe(10);
+    expect(distributedSubpath.CLOUDFLARE_ACCOUNT_ID).toBe("86bb57b655af7915f42b29dfc2d8807d");
   });
 
   it("exports the non-retryable error codes + classes", () => {
