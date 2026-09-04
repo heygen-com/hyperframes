@@ -746,8 +746,16 @@ export function initSandboxRuntimeModular(): void {
     }
     const computedEnd =
       duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+    const frameAlignedStart = window.__HF_EXPORT_RENDER_SEEK_CONFIG
+      ? quantizeTimeToFrame(start, state.canonicalFps)
+      : start;
+    const frameAlignedEnd =
+      window.__HF_EXPORT_RENDER_SEEK_CONFIG && Number.isFinite(computedEnd)
+        ? quantizeTimeToFrame(computedEnd, state.canonicalFps)
+        : computedEnd;
     return (
-      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime < computedEnd : true)
+      currentTime >= frameAlignedStart &&
+      (Number.isFinite(frameAlignedEnd) ? currentTime < frameAlignedEnd : true)
     );
   };
 

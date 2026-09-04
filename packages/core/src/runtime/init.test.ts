@@ -597,6 +597,40 @@ describe("initSandboxRuntimeModular", () => {
     );
   });
 
+  it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const outro = document.createElement("div");
+    outro.setAttribute("data-composition-id", "outro");
+    outro.setAttribute("data-start", "19.466666666667");
+    outro.setAttribute("data-duration", "0.533333333333");
+    root.appendChild(outro);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-duration", "0.533333333333");
+    outro.appendChild(video);
+
+    window.__timelines = {
+      main: createMockTimeline(20),
+      outro: createMockTimeline(0.533333333333),
+    };
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 30, fpsSource: "render-options" };
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(584 / 30);
+
+    expect(outro.style.visibility).toBe("visible");
+    expect(video.style.visibility).toBe("visible");
+  });
+
   it("surfaces unknown export render fps sources without collapsing them to render-options", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const root = document.createElement("div");
