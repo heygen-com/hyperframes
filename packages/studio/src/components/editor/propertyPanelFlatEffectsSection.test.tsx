@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS,
   HF_COLOR_GRADING_EFFECT_APPLY_DEFAULTS,
@@ -38,7 +38,7 @@ function renderInto(node: React.ReactElement) {
 
 function sectionProps(
   grading: ReturnType<typeof neutralGrading>,
-  onCommitColorGrading: ReturnType<typeof vi.fn> = vi.fn(),
+  onCommitColorGrading: Mock = vi.fn(),
 ) {
   return {
     grading,

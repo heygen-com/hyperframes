@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { RenderQueue } from "./RenderQueue";
 import type { FfmpegStatus } from "./useFfmpegStatus";
 
@@ -26,7 +26,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function mountRenderQueue(onStartRender: ReturnType<typeof vi.fn>) {
+function mountRenderQueue(onStartRender: Mock) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
