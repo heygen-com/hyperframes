@@ -135,6 +135,28 @@ describe("file route containment", () => {
     expect(existsSync(join(outside, "new"))).toBe(false);
   });
 
+  it("updates internal rename references without following an external file symlink", async (context) => {
+    const { app, project, outside } = fixture();
+    const external = join(outside, "victim.html");
+    const internal = join(project, "index.html");
+    writeFileSync(external, "reference: inside.txt");
+    writeFileSync(internal, "reference: inside.txt");
+    linkOrSkip(context, external, join(project, "external.html"), "file");
+
+    const response = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPath: "moved.txt" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(readFileSync(external, "utf8")).toBe("reference: inside.txt");
+    expect(readFileSync(internal, "utf8")).toBe("reference: moved.txt");
+    expect(readFileSync(join(project, "moved.txt"), "utf8")).toBe("inside");
+    expect(existsSync(join(project, "inside.txt"))).toBe(false);
+    expect((await response.json()).updatedReferences).toBe(1);
+  });
+
   it("blocks upload directory traversal and skips unsafe filenames", async () => {
     const { app, project, outside } = fixture();
     expect((await upload(app, relative(project, outside))).status).toBe(403);
