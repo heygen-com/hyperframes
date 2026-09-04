@@ -8,7 +8,8 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set — workflows install on demand
-npx skills add heygen-com/hyperframes   # interactive picker (terminal only — non-interactive without --skill installs everything)
+npx hyperframes skills                  # all 20 published skills at once
+npx skills add heygen-com/hyperframes   # interactive picker (terminal only; --all also pulls the repo-internal skills under .claude/skills)
 ```
 
 **Creation workflows** route through one entry skill — read `/hyperframes` first: it orients you to the whole surface, confirms the brief up front (the intent layer), and maps "make me a…" intent — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`) — to a concrete workflow. Consult it before invoking a specific workflow:
