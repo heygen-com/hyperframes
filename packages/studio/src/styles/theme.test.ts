@@ -16,10 +16,8 @@
  * cover the `@import` wiring in `studio.css` as well as `theme.css` itself.
  */
 
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Gear, IconContext } from "@phosphor-icons/react";
@@ -27,17 +25,9 @@ import { compile } from "tailwindcss";
 import { afterEach, describe, expect, it } from "vitest";
 import studioPreset from "./tailwind-preset.shared.js";
 import { readIconTokens } from "./iconTokens";
+import { loadStylesheet, STYLES_DIR, TAILWIND_DIR } from "./styleSources";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const STYLES_DIR = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-const TAILWIND_DIR = path.dirname(require.resolve("tailwindcss/package.json"));
-
-function loadStylesheet(id: string, base: string) {
-  const file = id === "tailwindcss" ? path.join(TAILWIND_DIR, "index.css") : path.resolve(base, id);
-  return { path: file, base: path.dirname(file), content: readFileSync(file, "utf8") };
-}
 
 async function build(entry: string, candidates: string[]): Promise<string> {
   const compiled = await compile(readFileSync(path.join(STYLES_DIR, entry), "utf8"), {
