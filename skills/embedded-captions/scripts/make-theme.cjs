@@ -8574,7 +8574,9 @@ if (!bodyInBg || fx.html || fx.js || setp.fgHtml) {
 }
 
 // _postfx.sh: plate reaction after the matte composite (subject+text move as one)
-const P = HEROLESS ? { grain: (dna.plate || {}).grain || 5 } : dna.plate || {};
+const P = HEROLESS ? { grain: dna.plate?.grain ?? 5 } : dna.plate || {};
+const grain = P.grain ?? 5;
+const noise = grain === 0 ? "" : `,noise=alls=${grain}:allf=t+u`;
 // punchOffset: themes whose impact is NOT the hero onset (e.g. flapboard's
 // lock-complete clack) shift the plate punch anchor; default keeps onset+2f
 const anchorT = (heroIn + (P.punchOffset ?? 0.045)).toFixed(3);
@@ -8606,8 +8608,7 @@ fs.writeFileSync(
 set -euo pipefail
 cd "$(dirname "$0")"
 ffmpeg -y -v error -i final.mp4 -filter_complex "
-  [0:v]${filter}${rgba},
-  noise=alls=${P.grain || 5}:allf=t+u[v]" \\
+  [0:v]${filter}${rgba}${noise}[v]" \\
   -map "[v]" -map 0:a -c:v libx264 -crf 14 -preset slow -profile:v high -c:a copy \\
   final_fx.mp4
 echo "[postfx] ${dna.name} → final_fx.mp4"

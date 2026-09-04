@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -80,3 +88,44 @@ test("every embedded-caption theme compiles a sane heroless body timeline", asyn
     });
   }
 });
+
+for (const heroless of [false, true]) {
+  for (const grain of [0, 3, undefined]) {
+    test(`postfx preserves grain ${grain} with heroless=${heroless}`, (t) => {
+      const workspace = mkdtempSync(join(tmpdir(), "embedded-captions-grain-"));
+      t.after(() => rmSync(workspace, { recursive: true, force: true }));
+      const project = join(workspace, "project");
+      cpSync(fixturesDir, project, { recursive: true });
+      mkdirSync(join(workspace, "scripts"));
+      mkdirSync(join(workspace, "themes"));
+      const compiler = join(workspace, "scripts", "make-theme.cjs");
+      cpSync(makeTheme, compiler);
+      const dna = JSON.parse(readFileSync(join(skillDir, "themes", "anchor.json"), "utf8"));
+      dna.plate.grain = grain;
+      writeFileSync(join(workspace, "themes", "anchor.json"), JSON.stringify(dna));
+      writeFileSync(
+        join(project, "theme.json"),
+        JSON.stringify({
+          ...fixtureTheme,
+          dna: "anchor",
+          ...(heroless
+            ? {}
+            : {
+                hero: { match: "hero" },
+                lines: fixtureTheme.lines.map((line) => line.filter((word) => word !== "hero")),
+              }),
+        }),
+      );
+      const result = spawnSync(process.execPath, [compiler, project], {
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      const postfx = readFileSync(join(project, "_postfx.sh"), "utf8");
+      if (grain === 0) assert.doesNotMatch(postfx, /noise=/);
+      else assert.match(postfx, new RegExp(`noise=alls=${grain ?? 5}:allf=t\\+u`));
+      assert.doesNotMatch(postfx, /,\s*\[v\]/);
+      assert.match(postfx, heroless ? /\[0:v\]null/ : /zoompan=/);
+    });
+  }
+}
