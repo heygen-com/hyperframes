@@ -61,6 +61,11 @@ function readWavChunks(buf: Buffer): {
       head.channels = buf.readUInt16LE(body + 2);
       head.sampleRate = buf.readUInt32LE(body + 4);
       head.bits = buf.readUInt16LE(body + 14);
+      // FFmpeg writes mono pcm_f32le as WAVE_FORMAT_EXTENSIBLE. Its subformat
+      // tag carries the actual PCM kind in the first two GUID bytes.
+      if (head.format === 0xfffe && size >= 40) {
+        head.format = buf.readUInt16LE(body + 24);
+      }
     } else if (id === "data") {
       data = buf.subarray(body, Math.min(buf.length, body + size));
       // The payload is the rest of the file for anything the mixer writes, and

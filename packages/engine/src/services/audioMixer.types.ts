@@ -40,6 +40,8 @@ export interface AudioTrack {
   end: number;
   mediaStart: number;
   duration: number;
+  /** Prepared PCM channel count. Mono is preserved until the final mix. */
+  channels: number;
   volume: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
   /**
