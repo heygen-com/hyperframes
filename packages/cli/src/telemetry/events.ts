@@ -337,6 +337,17 @@ export function trackRenderComplete(
     extractPhase3Ms?: number;
     extractCacheHits?: number;
     extractCacheMisses?: number;
+    /**
+     * Frame-cache health. `cachePublishFailures` is the one to alert on: the
+     * render still succeeded from the partial dir, so nothing surfaces, but
+     * every later render re-extracts — warm renders going cold with no signal.
+     * The GC counters give it a denominator (was the entry evicted, or did the
+     * publish fail?).
+     */
+    extractCachePublishFailures?: number;
+    extractCacheGcEvictions?: number;
+    extractCacheGcBytesFreed?: number;
+    extractCacheAgedPartialsCleared?: number;
     // Attribute this event to a specific user (e.g. the browser user who
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
@@ -431,6 +442,10 @@ export function trackRenderComplete(
       extract_phase3_ms: props.extractPhase3Ms,
       extract_cache_hits: props.extractCacheHits,
       extract_cache_misses: props.extractCacheMisses,
+      extract_cache_publish_failures: props.extractCachePublishFailures,
+      extract_cache_gc_evictions: props.extractCacheGcEvictions,
+      extract_cache_gc_bytes_freed: props.extractCacheGcBytesFreed,
+      extract_cache_aged_partials_cleared: props.extractCacheAgedPartialsCleared,
     },
     props.distinctId,
   );
