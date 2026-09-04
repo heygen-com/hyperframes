@@ -135,6 +135,8 @@ export function useExternalFileChangeCoordinator({
   const lastEventIdentityRef = useRef<string | null>(null);
   const blockedRef = useRef(blocked);
   const snapshotWriteTailRef = useRef<Promise<void>>(Promise.resolve());
+  const drainingRef = useRef(false);
+  const pendingPayloadRef = useRef<{ payload: unknown; allowDuplicate: boolean } | null>(null);
   blockedRef.current = blocked;
 
   useEffect(() => {
@@ -245,82 +247,104 @@ export function useExternalFileChangeCoordinator({
         return;
       }
 
-      const generation = ++generationRef.current;
-      const result = await drainPendingChanges();
-      if (!mountedRef.current || generation !== generationRef.current) return;
+      // When a drain is already in progress, stash this event so the
+      // completion handler picks it up. Without this guard, rapid external
+      // writes each increment generationRef and start a new drain; the
+      // generation check after the await then kills every in-flight drain,
+      // so no reload ever completes and Studio freezes on stale content.
+      if (drainingRef.current) {
+        pendingPayloadRef.current = { payload, allowDuplicate };
+        return;
+      }
+      drainingRef.current = true;
 
-      if (result.status === "clean") {
-        const previousBlocked = blockedRef.current;
-        if (previousBlocked?.status === "failed" && deleteConflictSnapshot) {
-          try {
-            await deleteConflictSnapshot(projectId, path);
-          } catch (error) {
-            if (mountedRef.current && generation === generationRef.current) {
-              setBlocked({ ...previousBlocked, generation, error });
-            }
-            return;
-          }
-        }
-        if (!mountedRef.current || generation !== generationRef.current) return;
-        setBlocked(null);
-        onAcceptedPersistedFileChange(path);
-        reloadAcceptedGeneration(path);
-        return;
-      }
-      if (result.status === "failed") {
-        const candidate = getPendingCandidate?.();
-        const studioContent = candidate?.path === path ? candidate.content : null;
-        let error = result.error;
-        if (studioContent != null && persistFailureSnapshot) {
-          try {
-            await persistSnapshotInOrder(() =>
-              persistFailureSnapshot(
-                projectId,
-                path,
-                studioContent,
-                readFileChangeVersion(payload),
-                content,
-                result.error,
-              ),
-            );
-          } catch (snapshotError) {
-            error = new Error(
-              `Studio could not save the edit or its recovery snapshot: ${
-                snapshotError instanceof Error ? snapshotError.message : String(snapshotError)
-              }`,
-              { cause: result.error },
-            );
-          }
-        }
-        if (!mountedRef.current || generation !== generationRef.current) return;
-        setBlocked({
-          status: "failed",
-          generation,
-          path,
-          error,
-          payload,
-          studioContent,
-          recovered: false,
-        });
-        return;
-      }
       try {
-        await persistSnapshotInOrder(() => persistConflictSnapshot(projectId, result.error));
-      } catch (error) {
+        const generation = ++generationRef.current;
+        const result = await drainPendingChanges();
         if (!mountedRef.current || generation !== generationRef.current) return;
-        setBlocked({
-          status: "failed",
-          generation,
-          path,
-          error,
-          payload,
-          studioContent: result.error.attemptedContent,
-          recovered: false,
-        });
-        return;
+
+        if (result.status === "clean") {
+          const previousBlocked = blockedRef.current;
+          if (previousBlocked?.status === "failed" && deleteConflictSnapshot) {
+            try {
+              await deleteConflictSnapshot(projectId, path);
+            } catch (error) {
+              if (mountedRef.current && generation === generationRef.current) {
+                setBlocked({ ...previousBlocked, generation, error });
+              }
+              return;
+            }
+          }
+          if (!mountedRef.current || generation !== generationRef.current) return;
+          setBlocked(null);
+          onAcceptedPersistedFileChange(path);
+          reloadAcceptedGeneration(path);
+          return;
+        }
+        if (result.status === "failed") {
+          const candidate = getPendingCandidate?.();
+          const studioContent = candidate?.path === path ? candidate.content : null;
+          let error = result.error;
+          if (studioContent != null && persistFailureSnapshot) {
+            try {
+              await persistSnapshotInOrder(() =>
+                persistFailureSnapshot(
+                  projectId,
+                  path,
+                  studioContent,
+                  readFileChangeVersion(payload),
+                  content,
+                  result.error,
+                ),
+              );
+            } catch (snapshotError) {
+              error = new Error(
+                `Studio could not save the edit or its recovery snapshot: ${
+                  snapshotError instanceof Error ? snapshotError.message : String(snapshotError)
+                }`,
+                { cause: result.error },
+              );
+            }
+          }
+          if (!mountedRef.current || generation !== generationRef.current) return;
+          setBlocked({
+            status: "failed",
+            generation,
+            path,
+            error,
+            payload,
+            studioContent,
+            recovered: false,
+          });
+          return;
+        }
+        try {
+          await persistSnapshotInOrder(() => persistConflictSnapshot(projectId, result.error));
+        } catch (error) {
+          if (!mountedRef.current || generation !== generationRef.current) return;
+          setBlocked({
+            status: "failed",
+            generation,
+            path,
+            error,
+            payload,
+            studioContent: result.error.attemptedContent,
+            recovered: false,
+          });
+          return;
+        }
+        if (!mountedRef.current || generation !== generationRef.current) return;
+        setBlocked({ status: "conflict", generation, error: result.error, payload });
+      } finally {
+        drainingRef.current = false;
+        if (mountedRef.current) {
+          const pending = pendingPayloadRef.current;
+          if (pending) {
+            pendingPayloadRef.current = null;
+            void processChange(pending.payload, pending.allowDuplicate);
+          }
+        }
       }
-      if (!mountedRef.current || generation !== generationRef.current) return;
-      setBlocked({ status: "conflict", generation, error: result.error, payload });
     },
     [
       projectId,

@@ -790,9 +790,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       };
       // Re-applied here because the watcher now also emits the signature
       // manifest files, which must not trigger a browser reload.
-      watcher.addListener((changedPath) => {
+      const wrappedListener = (changedPath: string) => {
         if (shouldWatchProjectFile(changedPath)) listener(changedPath);
-      });
+      };
+      watcher.addListener(wrappedListener);
+      stream.onAbort(() => watcher.removeListener(wrappedListener));
       while (true) {
         await stream.sleep(30000);
       }

@@ -285,4 +285,36 @@ describe("external file change coordinator", () => {
     );
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
   });
+
+  it("completes a reload after a burst of rapid external writes", async () => {
+    let drainResolve: (() => void) | null = null;
+    const drainPendingChanges = vi.fn(
+      () =>
+        new Promise<{ status: "clean" }>((resolve) => {
+          drainResolve = () => resolve({ status: "clean" });
+        }),
+    );
+    const reloadPreview = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    await mountCoordinator({ drainPendingChanges, reloadPreview, onAcceptedPersistedFileChange });
+
+    // Fire three events in rapid succession (simulates generator + check + snapshot)
+    await act(async () => {
+      handler?.({ path: "index.html", content: "write-1", version: "v1" });
+      handler?.({ path: "index.html", content: "write-2", version: "v2" });
+      handler?.({ path: "index.html", content: "write-3", version: "v3" });
+    });
+
+    // Only one drain should be in flight — the other two are stashed
+    expect(drainPendingChanges).toHaveBeenCalledTimes(1);
+
+    // Complete the first drain — the last stashed event should trigger a new drain
+    await act(async () => drainResolve?.());
+    expect(drainPendingChanges).toHaveBeenCalledTimes(2);
+
+    // Complete the second drain — this one processes the final write
+    await act(async () => drainResolve?.());
+    expect(reloadPreview).toHaveBeenCalled();
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalled();
+  });
 });
