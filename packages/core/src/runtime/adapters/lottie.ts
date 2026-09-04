@@ -103,9 +103,11 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               }
             } else if (typeof anim.seek === "function") {
               // dotlottie-web v1: seek(percentage 0-100)
-              const duration = anim.duration ?? 1;
-              const percentage = Math.min(100, (time / duration) * 100);
-              anim.seek(percentage);
+              const duration = anim.duration ?? 0;
+              if (Number.isFinite(duration) && duration > 0) {
+                const percentage = Math.min(100, (time / duration) * 100);
+                anim.seek(percentage);
+              }
             }
           }
         } catch (err) {

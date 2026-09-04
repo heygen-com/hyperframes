@@ -109,6 +109,30 @@ describe("lottie adapter", () => {
       expect(player.setCurrentRawFrameValue).toHaveBeenCalledWith(59);
     });
 
+    it.each([0, -1, NaN, Infinity, undefined])(
+      "does not seek a dotlottie v1 player with duration %s",
+      (duration) => {
+        const player = { pause: vi.fn(), seek: vi.fn(), duration };
+        lottieWindow.__hfLottie = [player];
+        const adapter = createLottieAdapter();
+        adapter.seek({ time: 0 });
+        adapter.seek({ time: 1 });
+        expect(player.seek).not.toHaveBeenCalled();
+      },
+    );
+
+    it("seeks a dotlottie v1 player once its duration becomes available", () => {
+      const player = { pause: vi.fn(), seek: vi.fn(), duration: 0 };
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      adapter.seek({ time: 0 });
+      player.duration = 2;
+      adapter.seek({ time: 1 });
+      adapter.seek({ time: -1 });
+      adapter.seek({ time: 3 });
+      expect(player.seek.mock.calls).toEqual([[50], [0], [100]]);
+    });
+
     it("does nothing with no instances", () => {
       const adapter = createLottieAdapter();
       expect(() => adapter.seek({ time: 1 })).not.toThrow();
