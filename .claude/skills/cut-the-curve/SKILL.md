@@ -1,6 +1,6 @@
 ---
 name: cut-the-curve
-description: "The technique catalog: five velocity-matched SEAMS (zoom-through, INVERSE zoom-through, cut-the-curve, waterfall cut, rack-focus blur-cut) plus the two in-scene techniques — waterfall ENTRY (staggered arrival cascades for title cards / segment openers) and the nudge curve (slow-fast-slow three-phase group slides). Covers partial-travel (~12% of frame) velocity matching via mirrored power4 eases, the Z scale-sign rule, size-scaled blur (10px text / 18-20px full-frame), word-by-word staggered cuts, cascade pacing by element weight, and the 10/65/25 slide ratio. Read before authoring any transition, text-beat handoff, kinetic text entry, or group reposition. [depth, zoom, inverse-zoom, scale-sign, mirrored-zoom, rack-focus, pacing, velocity, cut-the-curve, waterfall, stagger, cascade, kinetic-text, title-card, segment-opener, nudge, slide, easing, group-motion, z-depth, motion-graphics, cinematic, transition, blur, directional-continuity]"
+description: "The technique catalog: five velocity-matched SEAMS (zoom-through, INVERSE zoom-through, cut-the-curve, waterfall cut, rack-focus blur-cut) plus the two in-scene techniques — waterfall ENTRY (staggered arrival cascades for title cards / segment openers) and the nudge curve (slow-fast-slow three-phase group slides). Covers partial-travel (~12% of frame) velocity matching via mirrored power4 eases, the Z scale-sign rule, size-scaled blur (10px text / 18-20px full-frame), word-by-word staggered cuts, cascade pacing by element weight, and the 10/65/25 slide ratio. Read before authoring any transition, text-beat handoff, kinetic text entry, or group reposition."
 ---
 
 # Cut the Curve — the technique catalog
@@ -53,7 +53,7 @@ Same peak blur on both sides at the swap frame. Blur the WRAPPER, never children
 
 Z-axis velocity-matched cut; **never both texts visible.** Everything GROWS: the outgoing
 text accelerates toward camera, a hard swap hides at peak blur, the incoming text keeps
-growing into the focal plane. Headlines and short phrases only. Total ≈ 0.4s.
+growing into the focal plane. Headlines and short phrases only. Total ≈ 0.7s.
 
 | Phase          | Scale    | Blur     | Opacity           | Ease                                       | Duration |
 | -------------- | -------- | -------- | ----------------- | ------------------------------------------ | -------- |
