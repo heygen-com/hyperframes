@@ -138,7 +138,9 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
     runAuditGrid,
   );
 
-  expect(mocks.bundleWithLocalizedFonts).toHaveBeenCalledWith(PROJECT.dir);
+  expect(mocks.bundleWithLocalizedFonts).toHaveBeenCalledWith(PROJECT.dir, undefined, {
+    onDiagnostic: expect.any(Function),
+  });
   expect(result.layoutIssues).toEqual([
     expect.objectContaining({
       code: "frame_out_of_frame",

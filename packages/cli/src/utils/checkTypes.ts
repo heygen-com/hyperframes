@@ -1,3 +1,4 @@
+import type { BundleDiagnostic } from "@hyperframes/core/compiler";
 import type { ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
@@ -261,7 +262,15 @@ export interface CheckSection<T extends CheckFinding = CheckFinding> {
   findings: T[];
 }
 
+export interface CheckCompileResult {
+  status: "not_run" | "running" | "completed" | "failed";
+  reason?: "lint_errors" | "motion_spec_invalid" | "lint_failure";
+  diagnostics: BundleDiagnostic[];
+}
+
 export interface CheckReport {
+  /** Compiler warnings are informational here and preserve the existing exit policy. */
+  compile: CheckCompileResult;
   ok: boolean;
   strict: boolean;
   lint: CheckSection & { filesScanned: number };
@@ -292,6 +301,7 @@ export interface CheckDependencies {
     project: ProjectDir,
     options: CheckOptions,
     motion: MotionSpecResolution,
+    compile: CheckCompileResult,
   ): Promise<CheckBrowserResult>;
   writeSnapshot(
     projectDir: string,
