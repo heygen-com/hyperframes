@@ -8,6 +8,12 @@
     // into a running Studio by importing it from the Vite dev server by URL, so
     // no TypeScript import reaches its mount function.
     "packages/studio/src/components/ui/menuDismissSpikeMount.tsx",
+    // The shared-primitive barrel. Studio's panels move onto Button, IconButton,
+    // Tabs and Tooltip folder by folder, so a primitive is exported here before
+    // its first consumer exists. Treating the barrel as an entry point is what
+    // the alternative (an inline suppression per export, deleted again a week
+    // later) was pretending to be.
+    "packages/studio/src/components/ui/index.ts",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",

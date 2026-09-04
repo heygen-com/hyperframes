@@ -81,6 +81,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",
+    "cn": "0.2.4",
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",
     "marked": "^14.1.4",
