@@ -323,8 +323,7 @@ describe("registerFileRoutes", () => {
     });
     const readBody = request.arrayBuffer.bind(request);
     vi.spyOn(request, "arrayBuffer").mockImplementation(async () => {
-      expect(existsSync(path)).toBe(false);
-      writeFileSync(path, existing);
+      writeFileSync(path, existing, { flag: "wx" });
       return readBody();
     });
     const response = await app.request(request);
