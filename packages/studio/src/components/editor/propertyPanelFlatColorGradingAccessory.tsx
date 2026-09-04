@@ -74,7 +74,7 @@ export function FlatColorGradingAccessory({
           commitCompare(false);
         }}
         title="Hold to show original"
-        className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+        className="shrink-0 text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Compare size={12} />
       </button>
@@ -82,7 +82,7 @@ export function FlatColorGradingAccessory({
         <span
           data-flat-grade-status-dot="true"
           title={runtimeStatus.message}
-          className={`h-[5px] w-[5px] flex-shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
+          className={`h-[5px] w-[5px] shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
         />
         <span
           data-flat-grade-status-message="true"
@@ -100,7 +100,7 @@ export function FlatColorGradingAccessory({
           track("button", "Reset color grading");
           resetGrading();
         }}
-        className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1"
+        className="shrink-0 text-panel-text-3 hover:text-panel-text-1"
       >
         <RotateCcw size={12} />
       </button>

@@ -143,7 +143,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
       ref={overlayRef}
       aria-hidden="true"
       data-topology-lens={visible ? state.phase : "hidden"}
-      className="pointer-events-none absolute inset-0 z-[58] overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-58 overflow-hidden"
     >
       {visible && (
         <>
@@ -171,7 +171,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
                   key={index}
                   data-topology-contour="true"
                   data-topology-node={label}
-                  className="hf-topology-contour pointer-events-none absolute z-[1] rounded"
+                  className="hf-topology-contour pointer-events-none absolute z-1 rounded-sm"
                   style={{
                     ...rectStyle(rect),
                     animationDelay: `${Math.min(index, 5) * 28}ms`,
@@ -181,7 +181,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
               {!reducedMotion && (
                 <div
                   data-topology-scan="true"
-                  className="pointer-events-none absolute z-[2] overflow-hidden rounded"
+                  className="pointer-events-none absolute z-2 overflow-hidden rounded-sm"
                   style={rectStyle(geometry.field.rect)}
                 >
                   <div className="hf-topology-scan absolute inset-y-0 left-0 w-1/4" />
@@ -196,7 +196,7 @@ export function TopologyLens({ iframeRef, activeCompositionPath }: TopologyLensP
             data-topology-terminal={
               state.phase === "localizing" ? (state.terminal ?? undefined) : undefined
             }
-            className="hf-topology-target pointer-events-none absolute z-[3] rounded-md"
+            className="hf-topology-target pointer-events-none absolute z-3 rounded-md"
             style={rectStyle(geometry.target.rect)}
           />
         </>

@@ -159,7 +159,7 @@ export const LeftSidebar = memo(
         ) : (
           <>
             {/* Tabs — Code first */}
-            <div className="border-b border-neutral-800/50 px-3 py-3 flex-shrink-0">
+            <div className="border-b border-neutral-800/50 px-3 py-3 shrink-0">
               <div className="flex items-center gap-2">
                 <div
                   ref={tablistRef}
@@ -194,7 +194,7 @@ export const LeftSidebar = memo(
                   <button
                     type="button"
                     onClick={onToggleCollapse}
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
                     title="Hide sidebar"
                     aria-label="Hide sidebar"
                   >
@@ -255,7 +255,7 @@ export const LeftSidebar = memo(
             {tab === "code" && (
               <div id="sidebar-panel-code" role="tabpanel" className="flex flex-1 min-h-0">
                 {(fileProp?.length ?? 0) > 0 && (
-                  <div className="w-[160px] flex-shrink-0 border-r border-neutral-800 overflow-y-auto">
+                  <div className="w-[160px] shrink-0 border-r border-neutral-800 overflow-y-auto">
                     <FileTree
                       files={fileProp ?? []}
                       activeFile={editingFile?.path ?? null}
@@ -293,7 +293,7 @@ export const LeftSidebar = memo(
 
             {/* Lint button pinned at the bottom */}
             {onLint && (
-              <div className="border-t border-neutral-800 p-2 flex-shrink-0">
+              <div className="border-t border-neutral-800 p-2 shrink-0">
                 <button
                   onClick={onLint}
                   disabled={linting}

@@ -71,7 +71,7 @@ export function BorderRadiusEditor({
           width={PREVIEW_W}
           height={PREVIEW_H}
           viewBox={`0 0 ${PREVIEW_W} ${PREVIEW_H}`}
-          className="flex-shrink-0"
+          className="shrink-0"
         >
           <path
             d={path}

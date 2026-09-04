@@ -304,14 +304,14 @@ export function DeclarationForm({
         <button
           type="button"
           onClick={onCancel}
-          className="h-6 rounded px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
+          className="h-6 rounded-sm px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={submit}
-          className="h-6 rounded bg-neutral-800 px-2 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700"
+          className="h-6 rounded-sm bg-neutral-800 px-2 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700"
         >
           {submitLabel}
         </button>

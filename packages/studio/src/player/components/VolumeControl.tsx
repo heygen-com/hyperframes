@@ -52,7 +52,7 @@ export const VolumeControl = memo(function VolumeControl({
   const muteLabel = silent ? "Unmute audio" : "Mute audio";
 
   return (
-    <div className="group flex flex-shrink-0 items-center">
+    <div className="group flex shrink-0 items-center">
       <div className="w-0 overflow-hidden opacity-0 transition-[width,opacity] duration-150 ease-out group-hover:w-14 group-hover:opacity-100 group-focus-within:w-14 group-focus-within:opacity-100">
         <div className="relative mx-1 flex h-6 w-12 items-center">
           <div className="absolute inset-x-0 h-0.5 overflow-hidden rounded-full bg-neutral-700">
@@ -92,7 +92,7 @@ export const VolumeControl = memo(function VolumeControl({
           disabled={disabled}
           aria-label={muteLabel}
           aria-pressed={silent}
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-30 ${
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-30 ${
             silent ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
           }`}
         >

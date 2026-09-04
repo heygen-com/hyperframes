@@ -18,7 +18,7 @@ function FlatEmptyState() {
         </svg>
       </span>
       <div className="text-[13px] font-semibold text-panel-text-0">Nothing selected</div>
-      <div className="max-w-[250px] text-[11px] leading-[1.5] text-panel-text-3">
+      <div className="max-w-[250px] text-[11px] leading-normal text-panel-text-3">
         Click any element on the canvas to edit it, or drag to select several.
       </div>
       <div className="mt-2 flex w-full flex-col gap-1.5">
@@ -27,7 +27,7 @@ function FlatEmptyState() {
             <span className="text-panel-danger">●</span>
             Record a gesture
           </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
+          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             R
           </span>
         </span>
@@ -36,7 +36,7 @@ function FlatEmptyState() {
             <span className="text-panel-accent">✦</span>
             Describe a change to the agent
           </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
+          <span className="rounded-sm border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
             ⌘K
           </span>
         </span>
@@ -74,7 +74,7 @@ function FlatMultiSelectState({
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex items-center gap-3 rounded-xl border border-panel-border bg-panel-surface p-3">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-panel-accent/10 text-panel-accent">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel-accent/10 text-panel-accent">
           <Layers size={16} />
         </span>
         <div className="min-w-0 flex-1">
@@ -90,7 +90,7 @@ function FlatMultiSelectState({
           data-flat-multiselect-clear="true"
           aria-label="Clear selection"
           onClick={onClearSelection}
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center text-panel-text-3"
+          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center text-panel-text-3"
         >
           <svg
             width="13"
@@ -113,14 +113,14 @@ function FlatMultiSelectState({
               className="flex items-center gap-2 rounded-lg border border-panel-border bg-panel-bg px-2.5 py-[7px]"
             >
               <span
-                className={`flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded text-[9px] font-bold ${className}`}
+                className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm text-[9px] font-bold ${className}`}
               >
                 {glyph}
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
                 {element.label}
               </span>
-              <span className="flex-shrink-0 font-mono text-[9px] text-panel-text-4">
+              <span className="shrink-0 font-mono text-[9px] text-panel-text-4">
                 {element.id ? `#${element.id}` : element.selector}
               </span>
             </span>

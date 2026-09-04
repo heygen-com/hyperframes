@@ -136,7 +136,7 @@ export function FlatMediaSection({
     <div className="space-y-1.5">
       <div className="flex min-h-8 items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="h-5 w-8 flex-shrink-0 rounded-[3px] bg-panel-surface" />
+          <span className="h-5 w-8 shrink-0 rounded-[3px] bg-panel-surface" />
           <span className="min-w-0 truncate font-mono text-[11px] text-panel-text-0">
             {srcAttr}
           </span>
@@ -151,14 +151,14 @@ export function FlatMediaSection({
               setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="flex flex-shrink-0 items-center gap-1 text-[10px] text-panel-text-3 hover:text-panel-text-1"
+          className="flex shrink-0 items-center gap-1 text-[10px] text-panel-text-3 hover:text-panel-text-1"
         >
           {copied ? <Check size={11} /> : <ClipboardList size={11} />}
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
       {isVisualMedia && (
-        <div className="ml-[1px] border-l-2 border-panel-border-input py-1 pl-[10px]">
+        <div className="ml-px border-l-2 border-panel-border-input py-1 pl-[10px]">
           <div className="flex min-h-6 items-center justify-between">
             <span className="flex items-baseline gap-[7px]">
               <span className="text-[11px] font-semibold text-panel-text-1">Cutout</span>

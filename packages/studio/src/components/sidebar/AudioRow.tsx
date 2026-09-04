@@ -227,9 +227,9 @@ export function AudioRow({
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });
         }}
-        className={`group w-full text-left px-4 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer outline-none focus-visible:bg-neutral-800/60 ${
+        className={`group w-full text-left px-4 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer outline-hidden focus-visible:bg-neutral-800/60 ${
           playing
-            ? "bg-panel-accent/[0.06]"
+            ? "bg-panel-accent/6"
             : isCopied
               ? "bg-panel-accent/10"
               : "hover:bg-panel-surface-hover"
@@ -238,7 +238,7 @@ export function AudioRow({
         <button
           aria-label={playing ? `Pause preview of ${name}` : `Play preview of ${name}`}
           aria-pressed={playing}
-          className={`w-7 h-7 rounded-md flex-shrink-0 flex items-center justify-center transition-colors active:scale-[0.95] ${
+          className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center transition-colors active:scale-[0.95] ${
             playing
               ? "bg-panel-accent/15 text-panel-accent"
               : "text-panel-text-5 group-hover:text-panel-text-3"
@@ -267,20 +267,20 @@ export function AudioRow({
               {name}
             </span>
             {!playing && (
-              <span className="text-[11px] text-panel-text-5 flex-shrink-0">
+              <span className="text-[11px] text-panel-text-5 shrink-0">
                 {meta?.duration ? `${meta.duration}s · ` : ""}
                 {subtype}
               </span>
             )}
             {used && (
-              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded flex-shrink-0">
+              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded-sm shrink-0">
                 in use
               </span>
             )}
             {(isCopied || copyFailed) && (
               <span
                 role="status"
-                className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
+                className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
                   copyFailed ? "text-red-400 bg-red-500/10" : "text-panel-accent bg-panel-accent/10"
                 }`}
               >

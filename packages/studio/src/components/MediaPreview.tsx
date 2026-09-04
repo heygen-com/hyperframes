@@ -44,7 +44,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
           src={serveUrl}
           alt={name}
           onError={setFailed}
-          className="max-w-full max-h-[70%] object-contain rounded border border-neutral-800"
+          className="max-w-full max-h-[70%] object-contain rounded-sm border border-neutral-800"
         />
         <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
       </div>
@@ -58,7 +58,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
           src={serveUrl}
           controls
           onError={setFailed}
-          className="max-w-full max-h-[70%] rounded border border-neutral-800"
+          className="max-w-full max-h-[70%] rounded-sm border border-neutral-800"
         />
         <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
       </div>

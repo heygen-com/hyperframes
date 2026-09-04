@@ -76,8 +76,8 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           disabled={!isComplete}
           aria-label={isComplete ? `Open ${job.filename} in a new tab` : undefined}
           className={[
-            "w-20 h-[45px] rounded-md overflow-hidden bg-panel-input flex-shrink-0 relative",
-            "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent",
+            "w-20 h-[45px] rounded-md overflow-hidden bg-panel-input shrink-0 relative",
+            "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent",
             isComplete ? "cursor-pointer" : "cursor-default",
           ].join(" ")}
         >
@@ -129,7 +129,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
               {job.filename}
             </span>
             {job.durationMs && (
-              <span className="text-[9px] text-panel-text-5 flex-shrink-0">
+              <span className="text-[9px] text-panel-text-5 shrink-0">
                 {formatDuration(job.durationMs)}
               </span>
             )}
@@ -170,7 +170,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
         </div>
 
         {/* Actions — always visible to prevent layout shifts */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {isRendering ? (
             <Button
               size="sm"
@@ -210,7 +210,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             <>
               <button
                 onClick={isComplete ? handleDownload : undefined}
-                className={`p-1.5 min-w-6 min-h-6 rounded transition-colors outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
+                className={`p-1.5 min-w-6 min-h-6 rounded transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent ${
                   isComplete
                     ? "text-panel-text-5 hover:text-panel-accent"
                     : "text-panel-text-5/30 cursor-default"
@@ -239,7 +239,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                   e.stopPropagation();
                   setConfirmingDelete(true);
                 }}
-                className="p-1.5 min-w-6 min-h-6 rounded text-panel-text-5 hover:text-red-400 transition-colors outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
+                className="p-1.5 min-w-6 min-h-6 rounded-sm text-panel-text-5 hover:text-red-400 transition-colors outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent"
                 title="Delete render file"
                 aria-label={`Delete ${job.filename}`}
               >

@@ -207,7 +207,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
         onFocus={show}
         onBlur={hide}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center justify-center p-0.5 -m-0.5 rounded text-panel-text-5 hover:text-panel-text-3 transition-colors cursor-help outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
+        className="flex items-center justify-center p-0.5 -m-0.5 rounded-sm text-panel-text-5 hover:text-panel-text-3 transition-colors cursor-help outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent"
       >
         <svg
           width="12"
@@ -232,7 +232,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
             role="tooltip"
             onPointerEnter={show}
             onPointerLeave={hide}
-            className="fixed w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-[200]"
+            className="fixed w-52 p-2 rounded-sm bg-panel-input border border-neutral-700 shadow-lg z-200"
             style={{ left: position?.left ?? -9999, top: position?.top ?? -9999 }}
           >
             <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
@@ -303,7 +303,7 @@ function FormatExportButton({
   const showQuality = format !== "mov";
 
   const selectCls =
-    "h-7 w-full px-2 text-[11px] bg-panel-input rounded-md text-panel-text-1 outline-none cursor-pointer disabled:opacity-50 hover:bg-panel-hover transition-colors";
+    "h-7 w-full px-2 text-[11px] bg-panel-input rounded-md text-panel-text-1 outline-hidden cursor-pointer disabled:opacity-50 hover:bg-panel-hover transition-colors";
 
   return (
     <div className="flex flex-col gap-3">
@@ -454,7 +454,7 @@ export const RenderQueue = memo(function RenderQueue({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-3 border-b border-panel-border flex-shrink-0">
+      <div className="px-3 py-3 border-b border-panel-border shrink-0">
         <FormatExportButton
           onStartRender={onStartRender}
           isRendering={isRendering}
@@ -476,7 +476,7 @@ export const RenderQueue = memo(function RenderQueue({
             <button
               onClick={onDismissActionError}
               aria-label="Dismiss error"
-              className="text-[10px] text-panel-text-4 hover:text-panel-text-2 flex-shrink-0"
+              className="text-[10px] text-panel-text-4 hover:text-panel-text-2 shrink-0"
             >
               ✕
             </button>

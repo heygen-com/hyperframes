@@ -77,7 +77,7 @@ export function InlineTextToolbar({
       data-inline-text-toolbar="true"
       role="toolbar"
       aria-label="Text formatting"
-      className="pointer-events-auto fixed z-[200] flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
+      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
       style={{
         left: placement.left,
         top: placement.top,

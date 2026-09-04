@@ -37,7 +37,7 @@ export function LaneToggleButton({
       title={`${isExpanded ? "Hide" : "Show"} lanes`}
       // h-6 w-6 = the 24x24 WCAG 2.2 minimum target. The glyph stays 11px;
       // only the hit box grows.
-      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
+      className={`ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-[11px] leading-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC] ${
         isExpanded ? "text-[#3CE6AC]" : "text-white/55 hover:text-white"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
@@ -97,7 +97,7 @@ export function LayerDisclosureRow({
       </span>
       {/* Wraps rather than truncating: a truncated name needs a hover to be
           read, which a scanned column cannot rely on. */}
-      <span className="min-w-0 flex-1 break-words font-medium leading-tight">{name}</span>
+      <span className="min-w-0 flex-1 wrap-break-word font-medium leading-tight">{name}</span>
       <TrackClipCount clipCount={clipCount} />
       {children}
       {/* Anchored right, on every header that has one: the lane toggle is the

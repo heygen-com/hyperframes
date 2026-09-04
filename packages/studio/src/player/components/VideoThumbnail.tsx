@@ -94,7 +94,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
             return (
               <div
                 key={index}
-                className="relative h-full flex-shrink-0 overflow-hidden bg-neutral-900"
+                className="relative h-full shrink-0 overflow-hidden bg-neutral-900"
                 style={{ width: frameW }}
               >
                 <img
@@ -119,7 +119,9 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       )}
       {snapshot.status === "error" && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/60">
-          <span className="rounded bg-black/50 px-1 text-[8px] text-neutral-500">no preview</span>
+          <span className="rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
+            no preview
+          </span>
         </div>
       )}
       {label && (

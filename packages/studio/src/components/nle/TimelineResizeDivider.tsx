@@ -79,7 +79,7 @@ export function TimelineResizeDivider({
         (containerRef.current?.getBoundingClientRect().height ?? 600) - MIN_PREVIEW_H,
       )}
       tabIndex={0}
-      className="group relative h-[3px] flex-shrink-0 cursor-row-resize z-10 outline-none focus-visible:bg-studio-accent/20"
+      className="group relative h-[3px] shrink-0 cursor-row-resize z-10 outline-hidden focus-visible:bg-studio-accent/20"
       style={{ touchAction: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -93,7 +93,7 @@ export function TimelineResizeDivider({
           the 24px WCAG 2.2 (2.5.8) target because that is all the dead space
           there is: 28px transport buttons sit above and 28px toolbar buttons
           below, and silently stealing their clicks is the worse bug. */}
-      <div className="absolute inset-x-0 -top-[4px] h-[10px]" />
+      <div className="absolute inset-x-0 top-[-4px] h-[10px]" />
       {/* Visible hairline — invisible at rest, subtle wash on hover/drag/focus */}
       <div className="h-[3px] w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
     </div>

@@ -191,7 +191,7 @@ export const AudioWaveform = memo(function AudioWaveform({
                 "repeating-linear-gradient(90deg, rgba(75,163,210,0.35) 0 2px, transparent 2px 5px)",
             }}
           />
-          <span className="relative rounded bg-black/50 px-1 text-[8px] text-neutral-500">
+          <span className="relative rounded-sm bg-black/50 px-1 text-[8px] text-neutral-500">
             waveform unavailable
           </span>
         </div>

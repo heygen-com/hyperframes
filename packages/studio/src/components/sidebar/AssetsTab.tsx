@@ -330,7 +330,7 @@ export const AssetsTab = memo(function AssetsTab({
       : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
   return (
     <div
-      className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/[0.05]" : ""}`}
+      className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/5" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragOver(true);
@@ -339,7 +339,7 @@ export const AssetsTab = memo(function AssetsTab({
       onDrop={handleDrop}
     >
       {/* Header — matches design panel Section pattern */}
-      <div className="px-4 pt-2.5 pb-1.5 flex-shrink-0">
+      <div className="px-4 pt-2.5 pb-1.5 shrink-0">
         {/* Scope toggle */}
         <div className="flex gap-1 mb-2.5 p-0.5 rounded-md bg-panel-input">
           {(["local", "global"] as const).map((m) => (

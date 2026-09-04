@@ -48,7 +48,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ref={menuRef}
       role="menu"
       aria-label="Clip actions"
-      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
@@ -56,7 +56,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           <button
             type="button"
             role="menuitem"
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none focus-visible:bg-neutral-800 ${
+            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden focus-visible:bg-neutral-800 ${
               canSplit
                 ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
                 : "text-neutral-600 cursor-not-allowed"
@@ -79,7 +79,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-none cursor-pointer text-left"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left"
         onClick={() => {
           onDelete(element);
           onClose();

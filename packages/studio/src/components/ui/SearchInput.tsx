@@ -21,7 +21,7 @@ export function SearchInput({ className = "", ...props }: SearchInputProps) {
         height="12"
         viewBox="0 0 256 256"
         fill="none"
-        className="flex-shrink-0"
+        className="shrink-0"
         aria-hidden="true"
       >
         <circle
@@ -45,7 +45,7 @@ export function SearchInput({ className = "", ...props }: SearchInputProps) {
       </svg>
       <input
         type="text"
-        className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
+        className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-hidden placeholder:text-panel-text-5"
         {...props}
       />
     </div>

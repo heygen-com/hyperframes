@@ -184,7 +184,7 @@ export function ViewModeToggle() {
             tabIndex={active ? 0 : -1}
             onClick={() => selectMode(mode)}
             onKeyDown={(e) => handleKeyDown(e, index)}
-            className={`rounded px-3 py-1 text-[11px] font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
+            className={`rounded px-3 py-1 text-[11px] font-medium transition-colors active:scale-[0.98] outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent ${
               active ? "bg-neutral-200 text-neutral-900" : "text-neutral-400 hover:text-neutral-200"
             }`}
           >
@@ -232,7 +232,7 @@ export function StudioHeader({
   const ffmpegMissing = renderQueue.ffmpegMissing;
 
   return (
-    <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
+    <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 shrink-0">
       {/* Left: logo + project name */}
       <div className="flex items-center gap-3">
         <HyperframesLogo />

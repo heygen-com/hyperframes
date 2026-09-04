@@ -32,7 +32,7 @@ function ConflictReview({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
+      className="fixed inset-0 z-110 flex items-center justify-center bg-black/70 px-5 backdrop-blur-xs"
       onClick={onClose}
     >
       <div
@@ -41,7 +41,7 @@ function ConflictReview({
         aria-modal="true"
         aria-labelledby="external-conflict-title"
         tabIndex={-1}
-        className="max-h-[88vh] w-full max-w-5xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-none"
+        className="max-h-[88vh] w-full max-w-5xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -53,7 +53,7 @@ function ConflictReview({
               Reviewing or exporting does not change either version.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded px-2 py-1 text-neutral-400">
+          <button type="button" onClick={onClose} className="rounded-sm px-2 py-1 text-neutral-400">
             Close
           </button>
         </div>
@@ -68,14 +68,14 @@ function ConflictReview({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    className="rounded border border-neutral-700 px-2 py-1 text-[11px]"
+                    className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
                     onClick={() => void navigator.clipboard.writeText(side.content)}
                   >
                     Copy
                   </button>
                   <button
                     type="button"
-                    className="rounded border border-neutral-700 px-2 py-1 text-[11px]"
+                    className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
                     onClick={() =>
                       downloadText(`${conflict.error.filePath}.${side.suffix}.html`, side.content)
                     }
@@ -87,7 +87,7 @@ function ConflictReview({
               <textarea
                 readOnly
                 value={side.content}
-                className="h-80 w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
+                className="h-80 w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
               />
             </section>
           ))}
@@ -110,7 +110,7 @@ function FailedDraftReview({
   useDialogBehavior({ open: true, onClose, containerRef });
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
+      className="fixed inset-0 z-110 flex items-center justify-center bg-black/70 px-5 backdrop-blur-xs"
       onClick={onClose}
     >
       <div
@@ -119,7 +119,7 @@ function FailedDraftReview({
         aria-modal="true"
         aria-labelledby="failed-draft-title"
         tabIndex={-1}
-        className="max-h-[88vh] w-full max-w-3xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-none"
+        className="max-h-[88vh] w-full max-w-3xl overflow-auto rounded-xl border border-amber-400/30 bg-neutral-950 p-5 text-neutral-100 shadow-2xl outline-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -131,21 +131,21 @@ function FailedDraftReview({
               Copy or download this draft before choosing to discard it.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded px-2 py-1 text-neutral-400">
+          <button type="button" onClick={onClose} className="rounded-sm px-2 py-1 text-neutral-400">
             Close
           </button>
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            className="rounded border border-neutral-700 px-2 py-1 text-[11px]"
+            className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
             onClick={() => void navigator.clipboard.writeText(content)}
           >
             Copy
           </button>
           <button
             type="button"
-            className="rounded border border-neutral-700 px-2 py-1 text-[11px]"
+            className="rounded-sm border border-neutral-700 px-2 py-1 text-[11px]"
             onClick={() => downloadText(`${path}.studio.html`, content)}
           >
             Download
@@ -154,7 +154,7 @@ function FailedDraftReview({
         <textarea
           readOnly
           value={content}
-          className="mt-2 h-80 w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
+          className="mt-2 h-80 w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-3 font-mono text-[11px] leading-relaxed text-neutral-300"
         />
       </div>
     </div>
@@ -176,7 +176,7 @@ export function ExternalFileConflictBanner({
     <>
       <div
         role="alert"
-        className="absolute left-1/2 top-14 z-[94] flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-md border border-amber-400/30 bg-amber-950/95 px-4 py-2 text-[12px] font-medium text-amber-50 shadow-lg"
+        className="absolute left-1/2 top-14 z-94 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-wrap items-center gap-3 rounded-md border border-amber-400/30 bg-amber-950/95 px-4 py-2 text-[12px] font-medium text-amber-50 shadow-lg"
       >
         <span>
           {conflict
@@ -201,7 +201,7 @@ export function ExternalFileConflictBanner({
         <button
           type="button"
           onClick={() => void coordinator.useExternalFile()}
-          className="rounded border border-amber-200/30 px-2 py-1"
+          className="rounded-sm border border-amber-200/30 px-2 py-1"
         >
           Discard Studio edits and reload file
         </button>
@@ -217,7 +217,7 @@ export function ExternalFileConflictBanner({
                 void coordinator.keepStudioFile();
               }
             }}
-            className="rounded border border-red-300/40 px-2 py-1 text-red-100"
+            className="rounded-sm border border-red-300/40 px-2 py-1 text-red-100"
           >
             Overwrite file with Studio version
           </button>
@@ -234,7 +234,7 @@ export function ExternalFileConflictBanner({
                 void coordinator.keepStudioFile();
               }
             }}
-            className="rounded border border-red-300/40 px-2 py-1 text-red-100"
+            className="rounded-sm border border-red-300/40 px-2 py-1 text-red-100"
           >
             Overwrite file with recovered Studio draft
           </button>

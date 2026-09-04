@@ -19,7 +19,7 @@ export function TimelineEmptyState({
   return (
     <div
       className={`h-full border-t bg-[#0a0a0b] flex flex-col select-none transition-colors duration-150 ${
-        isDragOver ? "border-studio-accent/50 bg-studio-accent/[0.03]" : "border-neutral-800/50"
+        isDragOver ? "border-studio-accent/50 bg-studio-accent/3" : "border-neutral-800/50"
       }`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -27,7 +27,7 @@ export function TimelineEmptyState({
     >
       {/* Ruler */}
       <div
-        className="flex-shrink-0 border-b border-neutral-800/40 flex items-end relative"
+        className="shrink-0 border-b border-neutral-800/40 flex items-end relative"
         style={{ height: RULER_H, paddingLeft: GUTTER }}
       >
         {[0, 10, 20, 30, 40, 50].map((s) => (
@@ -49,7 +49,7 @@ export function TimelineEmptyState({
       <div className="flex-1 flex items-center justify-center">
         <div
           className={`flex items-center gap-3 px-6 py-3 border border-dashed rounded-lg transition-colors duration-150 ${
-            isDragOver ? "border-studio-accent/60 bg-studio-accent/[0.06]" : "border-neutral-700/50"
+            isDragOver ? "border-studio-accent/60 bg-studio-accent/6" : "border-neutral-700/50"
           }`}
         >
           {isDragOver ? (
@@ -63,7 +63,7 @@ export function TimelineEmptyState({
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="text-studio-accent flex-shrink-0"
+                className="text-studio-accent shrink-0"
               >
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
@@ -82,7 +82,7 @@ export function TimelineEmptyState({
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="text-neutral-600 flex-shrink-0"
+                className="text-neutral-600 shrink-0"
               >
                 <rect x="2" y="2" width="20" height="20" rx="2" />
                 <path d="M7 2v20" />
