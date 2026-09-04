@@ -1,7 +1,15 @@
 // @ts-expect-error -- wawoff2 ships no type declarations; ambient .d.ts only visible to producer's own tsconfig
 import wawoff2 from "wawoff2";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -57,9 +65,13 @@ function readCachedCompression(path: string): Buffer | null {
 }
 
 function cacheCompression(path: string, compressed: Buffer): void {
-  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  let tempDir: string | undefined;
   try {
     mkdirSync(dirname(path), { recursive: true });
+    // Keep the write on the cache filesystem for an atomic rename, inside a
+    // private directory that this invocation owns.
+    tempDir = mkdtempSync(join(dirname(path), ".compression-"));
+    const tmpPath = join(tempDir, "font.woff2");
     writeFileSync(tmpPath, compressed, { flag: "wx", mode: 0o644 });
     renameSync(tmpPath, path);
   } catch {
@@ -67,7 +79,7 @@ function cacheCompression(path: string, compressed: Buffer): void {
     // read-only. Compression still succeeded, so rendering can continue.
   } finally {
     try {
-      rmSync(tmpPath, { force: true });
+      if (tempDir) rmSync(tempDir, { recursive: true, force: true });
     } catch {
       // Best-effort cleanup only.
     }

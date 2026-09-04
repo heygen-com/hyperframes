@@ -1,5 +1,13 @@
-import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { describe, expect, it, spyOn } from "bun:test";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compressToWoff2, fontToDataUri } from "./fontCompression.js";
@@ -43,6 +51,66 @@ describe("compressToWoff2", () => {
 });
 
 describe("fontToDataUri", () => {
+  it("preserves a pre-existing temporary file and still populates the cache", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
+    const raw = Buffer.from("stable-font-content");
+    const compressed = Buffer.from("compressed-font-content");
+    const compressImpl = async () => compressed;
+    const clock = spyOn(Date, "now").mockReturnValue(1234567890);
+    try {
+      const first = await fontToDataUri(raw, "ttf", { cacheDir, compressImpl });
+      const [cacheName] = readdirSync(cacheDir);
+      if (!cacheName) throw new Error("Expected a cached font");
+      rmSync(join(cacheDir, cacheName));
+      const existingName = `${cacheName}.tmp-${process.pid}-${Date.now()}`;
+      writeFileSync(join(cacheDir, existingName), "another writer's file");
+
+      expect(await fontToDataUri(raw, "ttf", { cacheDir, compressImpl })).toBe(first);
+      expect(readFileSync(join(cacheDir, existingName), "utf8")).toBe("another writer's file");
+      expect(readFileSync(join(cacheDir, cacheName))).toEqual(compressed);
+      expect(readdirSync(cacheDir).sort()).toEqual([cacheName, existingName].sort());
+    } finally {
+      clock.mockRestore();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans up its temporary files when publishing the cache fails", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
+    const raw = Buffer.from("stable-font-content");
+    const compressImpl = async () => Buffer.from("compressed-font-content");
+    try {
+      const first = await fontToDataUri(raw, "ttf", { cacheDir, compressImpl });
+      const [cacheName] = readdirSync(cacheDir);
+      if (!cacheName) throw new Error("Expected a cached font");
+      rmSync(join(cacheDir, cacheName));
+      mkdirSync(join(cacheDir, cacheName));
+
+      expect(await fontToDataUri(raw, "ttf", { cacheDir, compressImpl })).toBe(first);
+      expect(readdirSync(cacheDir)).toEqual([cacheName]);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns compressed data when the cache directory cannot be created", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
+    const cacheDir = join(root, "not-a-directory");
+    writeFileSync(cacheDir, "keep");
+    try {
+      const compressed = Buffer.from("compressed-font-content");
+      const uri = await fontToDataUri(Buffer.from("font"), "ttf", {
+        cacheDir,
+        compressImpl: async () => compressed,
+      });
+      expect(uri).toBe(`data:font/woff2;base64,${compressed.toString("base64")}`);
+      expect(readFileSync(cacheDir, "utf8")).toBe("keep");
+      expect(readdirSync(root)).toEqual(["not-a-directory"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reuses cached compression across calls", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-local-font-cache-"));
     const raw = Buffer.from("stable-font-content");
