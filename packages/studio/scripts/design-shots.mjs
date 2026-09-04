@@ -169,7 +169,62 @@ async function shoot(page, outDir, name) {
   console.log(`captured ${name}.png`);
 }
 
-async function gotoState(page, baseUrl, projectId, params) {
+/**
+ * Boot Studio from source and open a browser on it. Shared with
+ * scripts/menu-dismiss-spike.mjs so both runs prove things against the same
+ * app, the same fixture and the same Chrome. Call `shutdown()` when done: it
+ * kills only the pid this call started.
+ */
+export async function bootStudio() {
+  const { default: puppeteer } = await import("puppeteer-core");
+  const { resolveChromeExecutable } = await import("../tests/e2e/chrome-executable.mjs");
+  const executablePath = resolveChromeExecutable();
+  if (!executablePath) throw new Error("no Chrome found; set PUPPETEER_EXECUTABLE_PATH");
+
+  const projectId = installFixture();
+  const port = await freePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const { child, readLog } = startStudio(port);
+
+  let browser = null;
+  const shutdown = async () => {
+    if (browser) {
+      const closing = browser;
+      browser = null;
+      await closing.close().catch(() => {});
+    }
+    // Exact pid only. Another Studio dev server may be running for a human.
+    if (child.pid) {
+      try {
+        process.kill(child.pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+  };
+  process.on("exit", () => {
+    void shutdown();
+  });
+
+  try {
+    if (!(await waitForServer(baseUrl))) {
+      throw new Error(`studio dev server did not start on ${port}\n${readLog()}`);
+    }
+    browser = await puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: ["--no-sandbox", "--window-size=1600,1000"],
+      defaultViewport: { width: 1600, height: 1000 },
+    });
+    const page = await browser.newPage();
+    return { page, baseUrl, projectId, shutdown };
+  } catch (error) {
+    await shutdown();
+    throw error;
+  }
+}
+
+export async function gotoState(page, baseUrl, projectId, params) {
   const query = new URLSearchParams({ v: "1", ...params }).toString();
   // Not networkidle: the dev server holds an HMR socket open and the fixture
   // pulls GSAP from a CDN, so "the network went quiet" never reliably fires.
@@ -178,7 +233,7 @@ async function gotoState(page, baseUrl, projectId, params) {
   await page.waitForSelector('[data-testid="header-export"]', { timeout: 30_000 });
 }
 
-async function selectFixtureElement(page) {
+export async function selectFixtureElement(page) {
   await page.waitForFunction(() => typeof window.__studioTest?.selectByDomId === "function", {
     timeout: 30_000,
   });
@@ -243,42 +298,11 @@ async function captureStorybook(page, storybookUrl, outDir) {
 }
 
 async function main() {
-  const { default: puppeteer } = await import("puppeteer-core");
-  const { resolveChromeExecutable } = await import("../tests/e2e/chrome-executable.mjs");
   const args = parseArgs(process.argv.slice(2));
-  const executablePath = resolveChromeExecutable();
-  if (!executablePath) throw new Error("no Chrome found; set PUPPETEER_EXECUTABLE_PATH");
-
   mkdirSync(args.out, { recursive: true });
-  const projectId = installFixture();
-  const port = await freePort();
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const { child, readLog } = startStudio(port);
 
-  let browser;
-  const shutdown = () => {
-    // Exact pid only. Another Studio dev server may be running for a human.
-    if (child.pid) {
-      try {
-        process.kill(child.pid, "SIGTERM");
-      } catch {
-        // already gone
-      }
-    }
-  };
-  process.on("exit", shutdown);
-
+  const { page, baseUrl, projectId, shutdown } = await bootStudio();
   try {
-    if (!(await waitForServer(baseUrl))) {
-      throw new Error(`studio dev server did not start on ${port}\n${readLog()}`);
-    }
-    browser = await puppeteer.launch({
-      executablePath,
-      headless: true,
-      args: ["--no-sandbox", "--window-size=1600,1000"],
-      defaultViewport: { width: 1600, height: 1000 },
-    });
-    const page = await browser.newPage();
     const measurements = {};
     await capture(page, baseUrl, projectId, args.out, measurements);
     await captureStorybook(page, args.storybookUrl, args.out);
@@ -288,8 +312,7 @@ async function main() {
     console.log(`\n${table}\n`);
     console.log(`wrote ${args.out}`);
   } finally {
-    if (browser) await browser.close();
-    shutdown();
+    await shutdown();
   }
 }
 
