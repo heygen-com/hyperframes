@@ -663,8 +663,9 @@
       code: "content_overlap",
       severity: "warning",
       time,
-      selector: selectorFor(a.element),
-      containerSelector: selectorFor(b.element),
+      // Unique both ends: the collapse key names this pair by its selectors alone, so aliased siblings must not share one.
+      selector: uniqueSelectorFor(a.element),
+      containerSelector: uniqueSelectorFor(b.element),
       text: textContentFor(a.element),
       message: "Two text blocks overlap and may render unreadable.",
       rect: a.rect,
@@ -1021,8 +1022,9 @@
       code: "text_occluded",
       severity: "error",
       time,
-      selector: selectorFor(element),
-      containerSelector: selectorFor(occluder),
+      // Unique both ends: the collapse key names this pair by its selectors alone, so aliased siblings must not share one.
+      selector: uniqueSelectorFor(element),
+      containerSelector: uniqueSelectorFor(occluder),
       text,
       message: "Text is hidden beneath an opaque element.",
       rect: textRect,
