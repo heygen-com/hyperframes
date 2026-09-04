@@ -36,6 +36,12 @@ export interface SelectProps {
   /** Called once per committed change, for design-input telemetry. */
   onTrack?: () => void;
   disabled?: boolean;
+  /**
+   * Opens the popup on mount. The one caller is the gallery: the list is
+   * portalled and has no forced-open CSS state, so a story cannot show it any
+   * other way. Studio's own selects leave it alone.
+   */
+  defaultOpen?: boolean;
   className?: string;
   "data-preview-state"?: PreviewState;
 }
@@ -47,6 +53,7 @@ export function Select({
   onCommit,
   onTrack,
   disabled,
+  defaultOpen,
   className,
   "data-preview-state": previewState,
 }: SelectProps) {
@@ -54,6 +61,7 @@ export function Select({
     <BaseSelect.Root
       value={value}
       disabled={disabled}
+      defaultOpen={defaultOpen}
       items={options}
       onValueChange={(next) => {
         const chosen = String(next);

@@ -225,7 +225,12 @@ interface MenuItemProps extends StyledProps<typeof BaseMenu.Item> {
   "data-preview-state"?: "hover";
 }
 
-/** One action. `disabled` items are skipped by the arrow keys, not just dimmed. */
+/**
+ * One action. A `disabled` item still takes the highlight from the arrow keys
+ * and cannot be activated, which is Base UI's behaviour and the ARIA menu
+ * pattern's: an item a keyboard user can never land on is an item they never
+ * learn exists. Verified over a real browser through the gallery.
+ */
 export function MenuItem({
   shortcut,
   tone = "default",

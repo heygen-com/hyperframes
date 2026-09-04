@@ -1,0 +1,21 @@
+{
+  "primitives-button--active color-contrast": 1,
+  "primitives-button--default color-contrast": 1,
+  "primitives-button--error color-contrast": 1,
+  "primitives-button--focus color-contrast": 1,
+  "primitives-button--hover color-contrast": 1,
+  "primitives-hyperframesloader--progress-clamped color-contrast": 1,
+  "primitives-hyperframesloader--with-progress color-contrast": 1,
+  "primitives-menu--item-hover color-contrast": 2,
+  "primitives-menu--open color-contrast": 2,
+  "primitives-numberfield--default color-contrast": 1,
+  "primitives-numberfield--disabled color-contrast": 1,
+  "primitives-numberfield--error color-contrast": 1,
+  "primitives-numberfield--focus color-contrast": 1,
+  "primitives-numberfield--hover color-contrast": 1,
+  "primitives-popover--open color-contrast": 1,
+  "primitives-tabs--default color-contrast": 2,
+  "primitives-tabs--disabled color-contrast": 1,
+  "primitives-tabs--focus color-contrast": 2,
+  "primitives-tabs--hover color-contrast": 1
+}

@@ -3,3 +3,4 @@ node_modules/
 data/projects/
 tests/e2e/evidence/
 .design-shots/
+storybook-static/

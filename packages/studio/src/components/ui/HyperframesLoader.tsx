@@ -41,6 +41,10 @@ export function HyperframesLoader({
         <div
           className="hf-loader-progress"
           role="progressbar"
+          // A progressbar with no accessible name is announced as a bare
+          // percentage with nothing to say what is progressing. The status line
+          // above it is already that name.
+          aria-label={title}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(boundedProgress * 100)}
@@ -56,7 +60,6 @@ export function HyperframesLoader({
   );
 }
 
-// fallow-ignore-next-line unused-export
 export function StatusFrame(props: HyperframesLoaderProps) {
   return (
     <div className="hf-frame">

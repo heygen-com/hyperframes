@@ -1,35 +1,32 @@
 // @vitest-environment happy-dom
 /**
- * Button and IconButton.
+ * Button.
  *
- * The class-resolution test is the load-bearing one. Tailwind has no strict
- * mode for markup: a class nobody defines is not an error, it is silence, and
- * that is how `rounded-button` and `shadow-btn-primary` sat in this file
- * styling nothing. So the test renders every variant and size, reads the class
- * list off the real DOM node, and compiles Studio's actual stylesheet with
- * those classes as candidates. A class that produces no selector fails, and
- * the failure names it.
+ * Whether these classes resolve at all is not asked here. The token gate
+ * (`styles/tokenGate.test.ts`) compiles Studio's stylesheet against every class
+ * candidate in every source file, so it already covers this one, and a second
+ * copy of that check is only a second thing to keep in step. What is left is
+ * what the gate cannot see: that the forced preview looks match the real ones,
+ * and that the motion token carries its own reduced-motion case.
  *
  * happy-dom has no layout, so nothing here asserts a pixel. What a rendered
- * control looks like is the screenshot script's job.
+ * control looks like is the screenshot script's and the gallery's job.
  */
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { compile } from "tailwindcss";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Button, type ButtonSize, type ButtonVariant } from "./Button";
-import { IconButton } from "./IconButton";
+import { Button, type ButtonVariant } from "./Button";
 import { Tab, Tabs, TabsList } from "./Tabs";
+import { loadStylesheet, STYLES_DIR } from "../../styles/styleSources";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const VARIANTS: ButtonVariant[] = ["primary", "secondary", "danger", "ghost"];
-const SIZES: ButtonSize[] = ["sm", "md", "lg"];
 
 let mounted: { root: Root; host: HTMLElement } | null = null;
 
@@ -58,72 +55,19 @@ function classesOf(host: HTMLElement, selector = "button"): string[] {
 
 // -- the compiled stylesheet, built once for the whole file --
 
-const STYLES_DIR = path.resolve(__dirname, "../../styles");
-const require = createRequire(import.meta.url);
-const TAILWIND_DIR = path.dirname(require.resolve("tailwindcss/package.json"));
-
-async function loadStylesheet(id: string, base: string) {
-  const file = id === "tailwindcss" ? path.join(TAILWIND_DIR, "index.css") : path.resolve(base, id);
-  return { path: file, base: path.dirname(file), content: readFileSync(file, "utf8") };
-}
-
-/** How Tailwind escapes a candidate into a selector: `\` before each symbol. */
-function asSelector(candidate: string): string {
-  return candidate.replace(/[^a-zA-Z0-9-]/g, (char) => `\\${char}`);
-}
-
 let compileStudioCss: (candidates: string[]) => string;
 
 beforeAll(async () => {
   const compiled = await compile(readFileSync(path.join(STYLES_DIR, "studio.css"), "utf8"), {
     base: STYLES_DIR,
-    loadStylesheet,
+    // Tailwind's loader is declared async; `styleSources` reads from disk
+    // synchronously, which is the same answer one turn earlier.
+    loadStylesheet: async (id, base) => loadStylesheet(id, base),
   });
   compileStudioCss = (candidates) => compiled.build(candidates);
 });
 
-function unresolved(candidates: string[]): string[] {
-  const css = compileStudioCss(candidates);
-  return candidates.filter((candidate) => !css.includes(asSelector(candidate)));
-}
-
 describe("Button classes", () => {
-  it("emits only classes Studio's stylesheet defines", () => {
-    const emitted = new Set<string>();
-    for (const variant of VARIANTS) {
-      for (const size of SIZES) {
-        const host = render(
-          <>
-            <Button variant={variant} size={size}>
-              Export
-            </Button>
-            <IconButton variant={variant} size={size} icon={null} aria-label="Zoom out" />
-          </>,
-        );
-        for (const el of host.querySelectorAll("button")) {
-          for (const cls of el.classList) emitted.add(cls);
-        }
-        act(() => mounted?.root.unmount());
-        mounted?.host.remove();
-        mounted = null;
-      }
-    }
-
-    expect(emitted.size).toBeGreaterThan(20);
-    expect(unresolved([...emitted])).toEqual([]);
-  });
-
-  it("fails an undefined class, so the check above is not vacuous", () => {
-    // Names inside a real namespace with no token behind them. The pair this
-    // used to name, `rounded-button` and `shadow-btn-primary`, stopped being
-    // undefined the moment the theme file grew those aliases, and a vacuity
-    // guard that quietly starts passing is worse than none.
-    expect(unresolved(["bg-not-a-token", "text-step-999"])).toEqual([
-      "bg-not-a-token",
-      "text-step-999",
-    ]);
-  });
-
   it("lets a caller's type size beat the size's own", () => {
     // The Renders Export case: `size="md"` brings `text-step-12`, the caller
     // wants 11px, and with plain concatenation both survived into the class
