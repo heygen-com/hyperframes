@@ -1,25 +1,11 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { FlatToggle } from "./propertyPanelFlatToggle";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(() => {
-  document.body.innerHTML = "";
-});
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
-}
+setupReactActEnvironment();
 
 describe("FlatToggle", () => {
   it("renders the off state with a dim label and dim knob, and fires onChange(true) on click", () => {
