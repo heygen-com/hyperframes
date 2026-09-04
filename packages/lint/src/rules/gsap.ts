@@ -1331,8 +1331,13 @@ export const gsapRules: LintRule<LintContext>[] = [
         const cssFromScale =
           scaleProps.length > 0 ? matchCssTransform(sel, cssScaleSelectors) : undefined;
         if (!cssFromTranslate && !cssFromScale) continue;
+        // When a single CSS declaration contains both translate and scale,
+        // both maps store the same transformVal for the same selector.
+        // Deduplicate to prevent doubled text in the finding message/fixHint.
+        const parts = [cssFromTranslate, cssFromScale].filter(Boolean);
+        const cssTransform = [...new Set(parts)].join(" ");
         const existing = conflicts.get(sel) ?? {
-          cssTransform: [cssFromTranslate, cssFromScale].filter(Boolean).join(" "),
+          cssTransform,
           props: new Set<string>(),
           raw: call.raw,
         };
