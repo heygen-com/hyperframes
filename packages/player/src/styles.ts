@@ -124,6 +124,10 @@ export const PLAYER_STYLES = /* css */ `
     animation: hfp-shader-loader-sheen 1.9s linear infinite;
   }
 
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding) .hfp-shader-loader-title-text {
+    animation-play-state: paused;
+  }
+
   .hfp-shader-loader-detail {
     width: 100%;
     height: 26px;
