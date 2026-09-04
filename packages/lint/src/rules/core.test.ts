@@ -793,4 +793,73 @@ describe("core rules", () => {
       expect(finding?.message).toContain("Missed semicolon");
     });
   });
+
+  describe("css_transition_used", () => {
+    const withStyle = (css: string, body = "") => `
+<html><head><style>${css}</style></head><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+${body}
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    it("flags a shorthand transition in a <style> block", async () => {
+      const result = await lintHyperframeHtml(withStyle(".card { transition: all .2s; }"));
+      const finding = result.findings.find((f) => f.code === "css_transition_used");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.selector).toBe(".card");
+    });
+
+    it("flags a longhand transition-* property", async () => {
+      const result = await lintHyperframeHtml(
+        withStyle(".card { transition-property: opacity; transition-duration: .3s; }"),
+      );
+      const codes = result.findings.filter((f) => f.code === "css_transition_used");
+      expect(codes).toHaveLength(2);
+    });
+
+    it("flags a -webkit- prefixed transition", async () => {
+      const result = await lintHyperframeHtml(
+        withStyle(".card { -webkit-transition: opacity .2s; }"),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeDefined();
+    });
+
+    it('flags an inline style="" transition and reports the element id', async () => {
+      const result = await lintHyperframeHtml(
+        withStyle("", '<div id="hero" style="transition: opacity .2s;"></div>'),
+      );
+      const finding = result.findings.find((f) => f.code === "css_transition_used");
+      expect(finding).toBeDefined();
+      expect(finding?.selector).toBe("#hero");
+      expect(finding?.elementId).toBe("hero");
+    });
+
+    it("does not flag transition: none", async () => {
+      const result = await lintHyperframeHtml(withStyle(".card { transition: none; }"));
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("does not flag transition-property: none", async () => {
+      const result = await lintHyperframeHtml(withStyle(".card { transition-property: none; }"));
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("does not flag a --transition-* custom property", async () => {
+      const result = await lintHyperframeHtml(
+        withStyle(".card { --transition-speed: .2s; color: red; }"),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("does not flag a class named transition-like or a transition inside a comment", async () => {
+      const result = await lintHyperframeHtml(
+        withStyle(
+          ".transition-card { color: red; } /* transition: all 1s; */ .other { color: blue; }",
+        ),
+      );
+      expect(result.findings.find((f) => f.code === "css_transition_used")).toBeUndefined();
+    });
+  });
 });

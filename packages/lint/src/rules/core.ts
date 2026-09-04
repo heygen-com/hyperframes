@@ -518,4 +518,78 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     return findings;
   },
+
+  // css_transition_used
+  ({ styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    // Matches the shorthand and every longhand (-property, -duration, -delay,
+    // -timing-function, -behavior), with or without -webkit-. Anchored at both
+    // ends so a custom property (--transition-speed) never matches: its name
+    // starts with "--", not "transition" or "-webkit-".
+    const transitionProperty = /^(-webkit-)?transition(-[a-z-]+)?$/i;
+
+    const report = (
+      prop: string,
+      value: string,
+      selector: string | undefined,
+      elementId: string | undefined,
+    ) => {
+      findings.push({
+        code: "css_transition_used",
+        severity: "error",
+        message:
+          `CSS \`${prop}\` runs on the browser clock, not the render's frame clock. A GSAP class/attr ` +
+          "swap driven by it looks correct in preview and --workers 1, but a fresh page (parallel chunk " +
+          "workers, snapshot --at past the settle time) restarts the transition from scratch, so the " +
+          "export can flash or land on the wrong visual state.",
+        selector,
+        elementId,
+        fixHint:
+          "Keep the class/attribute swap for state, and put the visual change on the paused GSAP " +
+          `timeline instead. Set \`${prop.startsWith("transition-") ? prop : "transition"}: none\` if a ` +
+          "non-animated state change is intended.",
+        snippet: truncateSnippet(`${prop}: ${value};`),
+      });
+    };
+
+    const scanDecls = (root: postcss.Root, inlineSelector?: string, inlineElementId?: string) => {
+      root.walkDecls((decl) => {
+        if (!transitionProperty.test(decl.prop)) return;
+        if (decl.value.trim().toLowerCase() === "none") return;
+        const parent = decl.parent;
+        const selector =
+          inlineSelector ??
+          (parent?.type === "rule" ? (parent as postcss.Rule).selector : undefined);
+        report(decl.prop, decl.value, selector, inlineElementId);
+      });
+    };
+
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      scanDecls(root);
+    }
+
+    for (const tag of tags) {
+      const inlineStyle = readAttr(tag.raw, "style");
+      if (!inlineStyle) continue;
+      let root: postcss.Root;
+      try {
+        // Wrapped in a dummy rule: postcss.parse expects a full stylesheet, and
+        // an inline style="" value is a bare declaration list.
+        root = postcss.parse(`__hf_inline__{${inlineStyle}}`);
+      } catch {
+        continue;
+      }
+      const id = readAttr(tag.raw, "id");
+      const firstClass = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean)[0];
+      scanDecls(root, id ? `#${id}` : firstClass ? `.${firstClass}` : undefined, id ?? undefined);
+    }
+
+    return findings;
+  },
 ];
