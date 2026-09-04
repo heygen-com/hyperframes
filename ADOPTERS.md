@@ -25,3 +25,4 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)       | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows.                 |
 | [Typeframe](https://typeframe.app)       | [@kiyeonjeon21](https://github.com/kiyeonjeon21) | Renders speech videos into shareable MP4 exports with word-timed typing captions and styled caption layouts.                  |
 | [THU-MAIC](https://github.com/THU-MAIC)  | [@wyuc](https://github.com/wyuc)                 | Powers OpenMAIC's one-click MP4 export for AI-generated interactive classrooms using self-contained HyperFrames compositions. |
+| [MONARC](https://monarcpro.app/)         | [@imselmon](https://github.com/imselmon)         | Powers AI-assisted editing, dynamic compositions, and seamless rendering throughout the Monarc video editor.                  |
