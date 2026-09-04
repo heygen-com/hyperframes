@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
@@ -229,6 +229,50 @@ describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
 });
 
 describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
+  it("isolates concurrent encodes and preserves pre-existing chunk files", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+    const legacyDir = join(root, "chunk-encode");
+    mkdirSync(legacyDir);
+    const legacyList = join(legacyDir, "concat-list.txt");
+    writeFileSync(legacyList, "another render's concat list");
+
+    const results = ["first.mp4", "second.mp4"].map((name) =>
+      encodeFramesChunkedConcat(
+        framesDir,
+        "frame_%06d.png",
+        join(root, name),
+        tinyEncodeOptions,
+        30,
+      ),
+    );
+    expect(calls).toHaveLength(2);
+    const chunkPaths = calls.map((call) => call.args.at(-1));
+    for (const call of [...calls]) emitClose(call.proc, 0);
+    await flushManagedProcessResolution();
+    expect(calls).toHaveLength(4);
+    const lists = calls.slice(2).map((call) => call.args[call.args.indexOf("-i") + 1]);
+    for (const call of calls.slice(2)) emitClose(call.proc, 0);
+    const completed = await Promise.all(results);
+
+    expect(completed.every((result) => result.success && result.framesEncoded === 2)).toBe(true);
+    expect(new Set(chunkPaths).size).toBe(2);
+    expect(new Set(lists).size).toBe(2);
+    for (let index = 0; index < 2; index++) {
+      const chunkPath = chunkPaths[index];
+      const list = lists[index];
+      if (!chunkPath || !list) throw new Error("Expected chunk and concat paths");
+      expect(dirname(chunkPath)).not.toBe(legacyDir);
+      expect(dirname(list)).toBe(dirname(chunkPath));
+      expect(dirname(dirname(list))).toBe(root);
+      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'`);
+    }
+    expect(readFileSync(legacyList, "utf8")).toBe("another render's concat list");
+  });
+
   it("passes config timeout to per-chunk encodes", async () => {
     vi.useFakeTimers();
     const { spawn, calls } = createSpawnSpy();

@@ -6,7 +6,15 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { join, dirname, extname } from "path";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
@@ -556,8 +564,10 @@ export async function encodeFramesChunkedConcat(
   }
   const chunkSize = Math.max(30, Math.floor(chunkSizeFrames));
   const chunkCount = Math.ceil(files.length / chunkSize);
-  const chunkDir = join(dirname(outputPath), "chunk-encode");
-  if (!existsSync(chunkDir)) mkdirSync(chunkDir, { recursive: true });
+  mkdirSync(dirname(outputPath), { recursive: true });
+  // Keep intermediates under the caller-owned output directory for its existing
+  // cleanup/debug policy, but never reuse another invocation's chunk files.
+  const chunkDir = mkdtempSync(join(dirname(outputPath), "chunk-encode-"));
   const chunkPaths: string[] = [];
 
   for (let i = 0; i < chunkCount; i++) {
