@@ -111,7 +111,7 @@ describe("buildPadTrimAudioArgs", () => {
 });
 
 describe("padOrTrimAudioToVideoFrameCount", () => {
-  // Build a minimal harness that stubs out the three injectables.
+  // Build a minimal harness that stubs out the duration probes and ffmpeg runner.
   function harness(opts: {
     video: ProbeVideoFrameInfo | "throw";
     audio: AudioProbeInfo | "throw";
@@ -291,6 +291,43 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
       success: false,
       failureReason: "external_interruption",
     });
+  });
+
+  it("accepts silence as already below the AAC true-peak ceiling", async () => {
+    const { input, captured } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.probeAudioTruePeakDbfs = async () => Number.NEGATIVE_INFINITY;
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result.success).toBe(true);
+    expect(captured.args).toHaveLength(1);
+  });
+
+  it("attenuates the duration-normalized artifact from its measured AAC true peak", async () => {
+    const calls: string[][] = [];
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3.029333 },
+    });
+    input.probeAudioTruePeakDbfs = async () => 1.5;
+    input.runFfmpeg = async (args) => {
+      calls.push(args);
+      return calls.length === 1
+        ? { success: true }
+        : { success: false, error: "synthetic correction stop" };
+    };
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("synthetic correction stop");
+    expect(calls).toHaveLength(2);
+    const correctionArgs = calls[1]!;
+    expect(correctionArgs[correctionArgs.indexOf("-af") + 1]).toBe("volume=-2.500dB");
+    expect(correctionArgs[correctionArgs.indexOf("-t") + 1]).toBe("3.000000");
   });
 });
 
