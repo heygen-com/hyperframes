@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { usePlayerStore } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
@@ -37,9 +37,9 @@ function assetTransfer(payload: string): DropTransfer {
 }
 
 function renderHarness(
-  onAssetDrop: ReturnType<typeof vi.fn>,
+  onAssetDrop: Mock,
   sessionEpoch = 1,
-  options: { onBlockDrop?: ReturnType<typeof vi.fn>; strict?: boolean } = {},
+  options: { onBlockDrop?: Mock; strict?: boolean } = {},
 ) {
   const tracks = Array.from({ length: 100 }, (_, index) => index);
   const geometry = createTimelineRowGeometry(

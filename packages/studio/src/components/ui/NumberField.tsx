@@ -44,6 +44,13 @@ export interface NumberFieldProps {
   min?: number;
   max?: number;
   step?: number;
+  /**
+   * Forces the invalid look. The field decides this for itself while the user
+   * types; the prop is for a consumer that already knows the value is rejected,
+   * and it is what lets a story or a screenshot show the state without typing.
+   * Named and shaped like `Input`'s so the two boxes take the same flag.
+   */
+  invalid?: boolean;
   disabled?: boolean;
   className?: string;
   "data-preview-state"?: PreviewState;
@@ -58,12 +65,14 @@ export function NumberField({
   min,
   max,
   step,
+  invalid: forcedInvalid,
   disabled,
   className,
   "data-preview-state": previewState,
 }: NumberFieldProps) {
   const [draft, setDraft] = useState<number | null>(value);
-  const [invalid, setInvalid] = useState(false);
+  const [selfInvalid, setSelfInvalid] = useState(false);
+  const invalid = forcedInvalid || selfInvalid;
   const inputRef = useRef<HTMLInputElement>(null);
   // What was last handed to `onCommit`, which is not the same as `value`: a
   // blur can fire both Base UI's commit and ours in one turn, before the parent
@@ -75,15 +84,15 @@ export function NumberField({
   useEffect(() => {
     committedRef.current = value;
     setDraft(value);
-    setInvalid(false);
+    setSelfInvalid(false);
   }, [value]);
 
   const commit = (next: number | null) => {
     if (next === null || !Number.isFinite(next)) {
-      setInvalid(true);
+      setSelfInvalid(true);
       return;
     }
-    setInvalid(false);
+    setSelfInvalid(false);
     if (next === committedRef.current) return;
     committedRef.current = next;
     onCommit(next);
@@ -105,7 +114,7 @@ export function NumberField({
       disabled={disabled}
       onValueChange={(next) => {
         setDraft(next);
-        if (next !== null) setInvalid(false);
+        if (next !== null) setSelfInvalid(false);
       }}
       onValueCommitted={(next) => commit(next)}
     >
@@ -129,7 +138,7 @@ export function NumberField({
             // text does not parse. That is the only case left for us: a valid
             // blur has already arrived through `onValueCommitted`.
             const text = inputRef.current?.value.trim() ?? "";
-            if (text === "" || !Number.isFinite(Number(text))) setInvalid(true);
+            if (text === "" || !Number.isFinite(Number(text))) setSelfInvalid(true);
           }}
         />
         {unit && (

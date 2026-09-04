@@ -18,3 +18,15 @@ export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
 export { Toggle } from "./Toggle";
 export type { ToggleProps } from "./Toggle";
+export {
+  ContextMenu,
+  Menu,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuShortcut,
+  popupSurface,
+} from "./Menu";
+export type { MenuItemTone, PopupPreviewState } from "./Menu";
+export { Popover } from "./Popover";

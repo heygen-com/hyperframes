@@ -17,7 +17,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "..",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "noEmit": true,
