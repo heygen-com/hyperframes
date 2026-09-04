@@ -1526,6 +1526,13 @@ describe("adaptive missing-frame retry helpers", () => {
     expect(
       isRecoverableParallelCaptureError(
         new Error(
+          "[Parallel] Capture failed: Worker 2: Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error(
           "[Parallel] Capture failed: Worker 0: drawElement worker encode timed out (frame 42)",
         ),
       ),

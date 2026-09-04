@@ -57,6 +57,7 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
 const PROTOCOL_TIMEOUT_PATTERNS = [
   /Runtime\.callFunctionOn timed out/i,
   /Runtime\.evaluate timed out/i,
+  /Page\.captureScreenshot timed out/i,
   /HeadlessExperimental\.beginFrame timed out/i,
   /drawElement worker encode timed out \(frame \d+\)/i,
   /Protocol error[\s\S]*tim(?:ed|e) out/i,

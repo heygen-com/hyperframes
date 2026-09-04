@@ -6,6 +6,10 @@ describe("classifyCaptureFailure", () => {
     ["Target closed", "transient_browser"],
     ["Runtime.callFunctionOn timed out after 30000ms", "protocol_timeout"],
     ["Runtime.evaluate timed out", "protocol_timeout"],
+    [
+      "Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+      "protocol_timeout",
+    ],
     ["drawElement worker encode timed out (frame 42)", "protocol_timeout"],
     ["Waiting failed: 30000ms exceeded", "protocol_timeout"],
     ["JavaScript heap out of memory", "memory_exhaustion"],
