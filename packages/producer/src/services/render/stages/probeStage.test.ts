@@ -444,6 +444,79 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
+    resetRetryMocks();
+    const media = (
+      id: string,
+      duration: number,
+      durationInferred: boolean,
+    ): Record<string, unknown> => ({
+      id,
+      tagName: "audio",
+      src: `${id}-selected.wav`,
+      start: 0,
+      end: duration,
+      duration,
+      durationInferred,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: true,
+      volume: 1,
+      muted: false,
+    });
+    browserMediaResults = [
+      media("longer-inferred", 6.530612, true),
+      media("longer-authored", 6.530612, false),
+      media("shorter-inferred", 3.836939, true),
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 7;
+    input.composition.audios.push(
+      {
+        id: "longer-inferred",
+        src: "short.wav",
+        start: 0,
+        end: 3.836939,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+      {
+        id: "longer-authored",
+        src: "short.wav",
+        start: 0,
+        end: 3.836939,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+      {
+        id: "shorter-inferred",
+        src: "long.wav",
+        start: 0,
+        end: 6.530612,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+    );
+    input.compiled.html = `
+      <audio id="longer-inferred" src="short.wav" data-var-src="a" data-hf-inferred-duration></audio>
+      <audio id="longer-authored" src="short.wav" data-var-src="b" data-duration="3.836939"></audio>
+      <audio id="shorter-inferred" src="long.wav" data-var-src="c" data-hf-inferred-duration></audio>`;
+    input.job.config.variables = { a: "a.wav", b: "b.wav", c: "c.wav" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.audios.map((audio) => audio.end)).toEqual([
+      6.530612, 3.836939, 3.836939,
+    ]);
+  });
+
   it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {
     resetRetryMocks();
     mediaPreflightError = new Error("ASSET_MEDIA_TYPE_MISMATCH");

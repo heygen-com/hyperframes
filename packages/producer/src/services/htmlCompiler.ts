@@ -104,6 +104,8 @@ export interface CompiledComposition {
   hasAncestorBackgroundImage: boolean;
 }
 
+const INFERRED_MEDIA_DURATION_ATTR = "data-hf-inferred-duration";
+
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
   return parseHTML(html).document as unknown as ParsableDocumentLike;
@@ -534,6 +536,23 @@ async function resolveMediaDuration(
  * Compile a single HTML file: static pass + ffprobe for unresolved media.
  * Returns compiled HTML and any unresolved composition elements that need browser resolution.
  */
+function markInferredVariableMediaDurations(
+  html: string,
+  unresolvedMedia: readonly UnresolvedElement[],
+): string {
+  const unresolvedIds = new Set(unresolvedMedia.map((element) => element.id));
+  if (unresolvedIds.size === 0) return html;
+
+  const { document } = parseHTML(html);
+  let changed = false;
+  for (const element of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
+    if (!unresolvedIds.has(element.id)) continue;
+    element.setAttribute(INFERRED_MEDIA_DURATION_ATTR, "");
+    changed = true;
+  }
+  return changed ? document.toString() : html;
+}
+
 async function compileHtmlFile(
   html: string,
   baseDir: string,
@@ -567,8 +586,9 @@ async function compileHtmlFile(
     (r): r is ResolvedDuration => r.duration != null && Number.isFinite(r.duration),
   );
 
+  const markedStaticHtml = markInferredVariableMediaDurations(staticCompiled, mediaUnresolved);
   let compiledHtml =
-    resolutions.length > 0 ? injectDurations(staticCompiled, resolutions) : staticCompiled;
+    resolutions.length > 0 ? injectDurations(markedStaticHtml, resolutions) : markedStaticHtml;
 
   // Phase 2: Bound authored audio to playable source (parallel ffprobe).
   // Explicit video slots may outlive their source and hold the final frame.
@@ -2101,6 +2121,8 @@ export interface BrowserMediaElement {
   start: number;
   end: number;
   duration: number;
+  /** True when compilation inferred duration from the fallback source. */
+  durationInferred: boolean;
   mediaStart: number;
   loop: boolean;
   hasAudio: boolean;
@@ -2123,6 +2145,8 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       start: number;
       endRaw: string | null;
       durationRaw: string | null;
+      intrinsicDuration: number;
+      durationInferred: boolean;
       playbackStartRaw: string | null;
       mediaStartRaw: string | null;
       loop: boolean;
@@ -2169,6 +2193,10 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
       const endRaw = htmlEl.getAttribute("data-end");
       const durationRaw = htmlEl.getAttribute("data-duration");
+      const durationInferred = htmlEl.hasAttribute("data-hf-inferred-duration");
+      const intrinsicDuration = isImage
+        ? 0
+        : (htmlEl as HTMLVideoElement | HTMLAudioElement).duration;
       const playbackStartRaw = htmlEl.getAttribute("data-playback-start");
       const mediaStartRaw = htmlEl.getAttribute("data-media-start");
       const loop = htmlEl.hasAttribute("loop");
@@ -2185,6 +2213,8 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         start,
         endRaw,
         durationRaw,
+        intrinsicDuration,
+        durationInferred,
         playbackStartRaw,
         mediaStartRaw,
         loop,
@@ -2197,18 +2227,23 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
     return results;
   });
 
-  return elements.map(({ endRaw, durationRaw, playbackStartRaw, mediaStartRaw, ...element }) => ({
-    ...element,
-    end: parseStrictFiniteTimingNumber(endRaw) ?? 0,
-    duration: parseStrictFiniteTimingNumber(durationRaw) ?? 0,
-    mediaStart: readMediaStart({
-      getAttribute(name: string) {
-        if (name === "data-playback-start") return playbackStartRaw;
-        if (name === "data-media-start") return mediaStartRaw;
-        return null;
-      },
+  return elements.map(
+    ({ endRaw, durationRaw, intrinsicDuration, playbackStartRaw, mediaStartRaw, ...element }) => ({
+      ...element,
+      end: parseStrictFiniteTimingNumber(endRaw) ?? 0,
+      duration:
+        element.durationInferred && Number.isFinite(intrinsicDuration) && intrinsicDuration > 0
+          ? intrinsicDuration
+          : (parseStrictFiniteTimingNumber(durationRaw) ?? 0),
+      mediaStart: readMediaStart({
+        getAttribute(name: string) {
+          if (name === "data-playback-start") return playbackStartRaw;
+          if (name === "data-media-start") return mediaStartRaw;
+          return null;
+        },
+      }),
     }),
-  }));
+  );
 }
 
 export async function discoverAudioVolumeAutomationFromTimeline(

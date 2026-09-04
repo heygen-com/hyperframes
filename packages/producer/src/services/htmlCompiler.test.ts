@@ -34,11 +34,16 @@ describe("discoverMediaFromBrowser", () => {
     html: string,
     currentSrcById: Record<string, string>,
     serializeCallback = false,
+    intrinsicDurationById: Record<string, number> = {},
   ) {
     const { document } = parseHTML(html);
     for (const [id, currentSrc] of Object.entries(currentSrcById)) {
       const element = document.getElementById(id);
       if (element) Object.defineProperty(element, "currentSrc", { value: currentSrc });
+    }
+    for (const [id, duration] of Object.entries(intrinsicDurationById)) {
+      const element = document.getElementById(id);
+      if (element) Object.defineProperty(element, "duration", { value: duration });
     }
     const previousDocument = Reflect.get(globalThis, "document");
     Reflect.set(globalThis, "document", document);
@@ -80,6 +85,21 @@ describe("discoverMediaFromBrowser", () => {
 
     expect(media).toHaveLength(1);
     expect(media[0]).toMatchObject({ id: "hf-img-1", tagName: "image" });
+  });
+
+  it("uses intrinsic duration only for variable media with an inferred duration", async () => {
+    const media = await discover(
+      `<audio id="inferred" src="fallback.wav" data-start="0" data-duration="3" data-end="3" data-var-src="track" data-hf-inferred-duration></audio>
+       <audio id="authored" src="fallback.wav" data-start="0" data-duration="3" data-end="3" data-var-src="track"></audio>`,
+      { inferred: "selected.wav", authored: "selected.wav" },
+      false,
+      { inferred: 6.530612, authored: 6.530612 },
+    );
+
+    expect(media.find((item) => item.id === "inferred")?.duration).toBe(6.530612);
+    expect(media.find((item) => item.id === "inferred")?.durationInferred).toBe(true);
+    expect(media.find((item) => item.id === "authored")?.duration).toBe(3);
+    expect(media.find((item) => item.id === "authored")?.durationInferred).toBe(false);
   });
 
   it("discovers the owning image for a variable-bound picture source", async () => {

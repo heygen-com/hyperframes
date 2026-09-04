@@ -176,6 +176,17 @@ export function hasVariableBoundMedia(
   });
 }
 
+function reconcileBrowserMediaEnd(
+  existingEnd: number,
+  projectedEnd: number,
+  sourceChanged: boolean,
+  durationInferred: boolean,
+): number {
+  if (projectedEnd <= 0) return existingEnd;
+  if (sourceChanged && durationInferred) return projectedEnd;
+  return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
+}
+
 /**
  * Runtime-created media does not exist when the static compiler scans the HTML.
  * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
@@ -500,7 +511,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
             const existing = composition.videos.find((v) => v.id === el.id);
             if (existing) {
-              if (existing.src !== src) {
+              const sourceChanged = existing.src !== src;
+              if (sourceChanged) {
                 existing.src = src;
               }
               const projectedEnd = projectBrowserEndToCompositionTimeline(
@@ -508,10 +520,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 el.start,
                 resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
-              if (projectedEnd > 0) {
-                existing.end =
-                  existing.end <= 0 ? projectedEnd : Math.min(existing.end, projectedEnd);
-              }
+              existing.end = reconcileBrowserMediaEnd(
+                existing.end,
+                projectedEnd,
+                sourceChanged,
+                el.durationInferred,
+              );
               if (
                 el.mediaStart > 0 &&
                 (existing.mediaStart <= 0 ||
@@ -544,7 +558,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
           if (existingAudioIds.has(el.id)) {
             const existing = composition.audios.find((a) => a.id === el.id);
             if (existing) {
-              if (existing.src !== src) {
+              const sourceChanged = existing.src !== src;
+              if (sourceChanged) {
                 existing.src = src;
               }
               const projectedEnd = projectBrowserEndToCompositionTimeline(
@@ -552,10 +567,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
                 el.start,
                 resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
-              if (projectedEnd > 0) {
-                existing.end =
-                  existing.end <= 0 ? projectedEnd : Math.min(existing.end, projectedEnd);
-              }
+              existing.end = reconcileBrowserMediaEnd(
+                existing.end,
+                projectedEnd,
+                sourceChanged,
+                el.durationInferred,
+              );
               if (
                 el.mediaStart > 0 &&
                 (existing.mediaStart <= 0 ||
