@@ -15,6 +15,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { aceStepConfig, configuredBgmProvider } from "../../../scripts/lib/acestep-provider.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 const r3 = (x) => Number(x.toFixed(3));
@@ -115,10 +116,17 @@ export function generateBgmDetached({
   durationS,
   hyperframesDir,
   lyriaRecipe,
+  acestepRecipe,
+  provider,
   seedSeconds = 28,
   hasVoice,
 }) {
-  const rel = "assets/bgm/track.wav";
+  const useAceStep =
+    (provider || configuredBgmProvider()) === "acestep" &&
+    !!aceStepConfig().baseUrl &&
+    !!acestepRecipe &&
+    existsSync(acestepRecipe);
+  const rel = useAceStep ? "assets/bgm/track.mp3" : "assets/bgm/track.wav";
   const abs = join(hyperframesDir, rel);
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
@@ -126,6 +134,25 @@ export function generateBgmDetached({
   const baseMeta = { path: rel, mode: null, volume: bgmDefaultVolume(hasVoice), pending: true };
 
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
+  const fd = openSync(log, "w");
+
+  if (useAceStep) {
+    const proc = spawn(
+      process.execPath,
+      [acestepRecipe, "--output", abs, "--duration", String(targetS), "--prompt", prompt],
+      { detached: true, stdio: ["ignore", fd, fd] },
+    );
+    proc.unref();
+    closeSync(fd);
+    return {
+      ...baseMeta,
+      mode: "detached-single",
+      provider: "acestep",
+      pid: proc.pid,
+      log,
+      target_duration_s: r3(targetS),
+    };
+  }
 
   // Make a backend runnable: prefer Lyria when configured (install google-genai
   // on demand), else ensure local MusicGen deps. Installs are synchronous here —
@@ -134,7 +161,6 @@ export function generateBgmDetached({
   const useLyria = lyriaConfigured && pyOk(LYRIA_PY_PROBE);
   if (!useLyria && !pyOk(BGM_PY_PROBE)) pipInstall(BGM_PY_DEPS);
 
-  const fd = openSync(log, "w");
   if (useLyria) {
     const { cmd, args } = pythonInvocation([
       lyriaRecipe,

@@ -10,7 +10,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 
 | Type    | What it finds                    | Provider / cascade                                           |
 | ------- | -------------------------------- | ------------------------------------------------------------ |
-| `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)                           |
+| `bgm`   | Background music                 | HeyGen catalog; optional ACE-Step remote generation          |
 | `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog                     |
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
@@ -65,6 +65,7 @@ node <SKILL_DIR>/scripts/resolve.mjs --type lut --intent "teal orange blockbuste
 | `--for`         | Analyze a local image/video and add measured adjust suggestions (`grade` only)       |
 | `--local-only`  | Offline: skip every network provider (cache + local only)                            |
 | `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`)                      |
+| `--duration`    | Generated BGM length in seconds, 10-600 (default 30)                                 |
 | `--adopt`       | Bulk-import existing assets/ into manifest                                           |
 | `--doctor`      | Check local CLI dependencies; no manifest changes                                    |
 | `--stats`       | Print local usage stats from `.media/` and `~/.media`; no manifest changes           |
@@ -102,6 +103,25 @@ The deterministic floor still runs automatically: an identical (case/whitespace-
 3. Check global cache `~/.media/` for a reusable asset matched on the same normalized prompt — auto-reuse
 4. Search via provider (HeyGen audio catalog, HeyGen asset search), or resolve color locally
 5. Freeze file to `.media/<type>/`, register in manifest, regenerate `index.md`, auto-promote to `~/.media/`
+
+### ACE-Step remote generation
+
+`acestep.remote` is the supported self-hosted BGM generator. Configure it in `~/.media/providers.json`:
+
+```json
+{
+  "version": 1,
+  "bgm": {
+    "default": "acestep",
+    "acestep": {
+      "base_url": "https://music.example.ts.net",
+      "api_key_env": "ACESTEP_API_KEY"
+    }
+  }
+}
+```
+
+The key is optional and is read only from the named environment variable. The provider submits the native `/release_task` request, polls `/query_result`, downloads `/v1/audio`, and then follows the same freeze, ledger, and global-cache path as every other provider. Use `--provider acestep --duration 45` to force it for one resolve. `--local-only` always blocks it because a Tailnet service is still a network provider.
 
 Steps 1 and 3 are the **deterministic floor**: they only auto-reuse an exact-normalized match, never a fuzzy one. Semantic reuse ("close enough") is the agent's explicit call via [Reuse before you resolve](#reuse-before-you-resolve) — it never happens automatically. The agent gets back **one line**; candidates, scores, provenance stay on disk.
 

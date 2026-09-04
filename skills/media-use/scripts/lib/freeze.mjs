@@ -5,9 +5,9 @@ import { dirname } from "node:path";
 // 256MB covers any real media asset; raise if 4K video sources ever exceed it.
 const MAX_FREEZE_BYTES = 256 * 1024 * 1024;
 
-export async function freezeUrl(url, destPath) {
+export async function freezeUrl(url, destPath, { headers } = {}) {
   const where = String(url).slice(0, 80);
-  const res = await fetch(url);
+  const res = await fetch(url, headers ? { headers } : undefined);
   if (!res.ok) throw new Error(`freeze failed: HTTP ${res.status} for ${where}`);
 
   // Fail fast on an advertised oversize body before reading a single byte.
