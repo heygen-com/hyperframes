@@ -4,12 +4,46 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  buildKokoroTtsArgs,
   parseFfmpegDurationBanner,
   ffprobeDuration,
   synthesizeOne,
   synthesizeHeygen,
   synthResult,
 } from "./tts.mjs";
+
+test("forwards a non-default speed to the Kokoro CLI", () => {
+  assert.deepEqual(
+    buildKokoroTtsArgs({
+      textPath: "/tmp/narration.txt",
+      voiceId: "am_michael",
+      wavRel: "audio/narration.wav",
+      lang: "en",
+      speed: 1.16,
+    }),
+    [
+      "hyperframes",
+      "tts",
+      "/tmp/narration.txt",
+      "--voice",
+      "am_michael",
+      "--output",
+      "audio/narration.wav",
+      "--speed",
+      "1.16",
+    ],
+  );
+});
+
+test("makes the Kokoro default speed explicit", () => {
+  const args = buildKokoroTtsArgs({
+    textPath: "/tmp/narration.txt",
+    voiceId: "am_michael",
+    wavRel: "audio/narration.wav",
+  });
+
+  assert.deepEqual(args.slice(-2), ["--speed", "1"]);
+});
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
   const stderr = [

@@ -241,6 +241,22 @@ save(audio, sys.argv[3])
 // [{text,start,end}] array for HeyGen (native), or null for ElevenLabs/Kokoro
 // (caller must transcribeWav). Never throws; failures return { ok:false, error }
 // where `error` states WHY (so the caller can surface it, not a bare "TTS failed").
+export function buildKokoroTtsArgs({ textPath, voiceId, wavRel, lang = "en", speed = 1.0 }) {
+  const args = [
+    "hyperframes",
+    "tts",
+    textPath,
+    "--voice",
+    voiceId,
+    "--output",
+    wavRel,
+    "--speed",
+    String(speed),
+  ];
+  if (lang !== "en") args.push("--lang", lang);
+  return args;
+}
+
 export async function synthesizeOne({
   provider,
   text,
@@ -276,8 +292,13 @@ export async function synthesizeOne({
   }
   // kokoro — via the published CLI; --output is relative to the project dir.
   const wavRel = relTo(hyperframesDir, wavAbs);
-  const args = ["hyperframes", "tts", writeTmpText(text), "--voice", voiceId, "--output", wavRel];
-  if (lang !== "en") args.push("--lang", lang);
+  const args = buildKokoroTtsArgs({
+    textPath: writeTmpText(text),
+    voiceId,
+    wavRel,
+    lang,
+    speed,
+  });
   const r = await spawnP("npx", args, { cwd: hyperframesDir });
   return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
 }
