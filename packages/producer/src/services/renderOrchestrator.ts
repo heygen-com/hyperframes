@@ -50,6 +50,7 @@ import {
   type Fps,
   type FpsInput,
   fpsToNumber,
+  redactTelemetryString,
   toFps,
 } from "@hyperframes/core";
 import {
@@ -639,8 +640,10 @@ export type ProgressCallback = (job: RenderJob, message: string) => void | Promi
 export class RenderQualityError extends Error {
   constructor(readonly warnings: readonly RenderWarning[]) {
     super(
-      `Render blocked by ${warnings.length} correctness warning${warnings.length === 1 ? "" : "s"}: ` +
-        warnings.map((warning) => warning.code).join(", "),
+      `Render blocked by ${warnings.length} correctness warning${warnings.length === 1 ? "" : "s"}:\n` +
+        warnings
+          .map((warning) => `- ${warning.code}: ${redactTelemetryString(warning.message)}`)
+          .join("\n"),
     );
     this.name = "RenderQualityError";
   }

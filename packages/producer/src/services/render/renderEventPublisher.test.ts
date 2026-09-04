@@ -126,6 +126,35 @@ describe("OrderedRenderEventPublisher", () => {
   });
 });
 
+describe("RenderQualityError", () => {
+  it("includes the warning message that identifies the failing audio element", () => {
+    const error = new RenderQualityError([
+      {
+        code: "audio_processing_failed",
+        message: "Audio processing failed for element bgm-bed: Automation is not valid JSON",
+        stage: "capture-readiness",
+      },
+    ]);
+
+    expect(error.message).toContain(
+      "audio_processing_failed: Audio processing failed for element bgm-bed: Automation is not valid JSON",
+    );
+  });
+
+  it("redacts URL query secrets from warning messages", () => {
+    const error = new RenderQualityError([
+      {
+        code: "audio_processing_failed",
+        message: "Audio processing failed for https://cdn.example.com/track.wav?token=secret",
+        stage: "capture-readiness",
+      },
+    ]);
+
+    expect(error.message).toContain("https://cdn.example.com/track.wav?…");
+    expect(error.message).not.toContain("secret");
+  });
+});
+
 describe("updateJobStatus", () => {
   it("keeps one bounded monotonic integer-percent representation", () => {
     const job = createRenderJob({ fps: 30, quality: "high" });
