@@ -56,11 +56,21 @@
   --color-media: #00e3ff;
   --color-container: #f5a623;
 
+  /* The two stops of the HeyGen brand gradient, worn by the header logo and by
+   * the standalone mark. Fixed brand values rather than roles, so they are not
+   * reachable as a background or a text colour by mistake. */
+  --color-brand-gradient-from: #06e3fa;
+  --color-brand-gradient-to: #4fdb5e;
+
   /* -------------------------------------------------------------- geometry */
 
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
+
+  /* The one radius every push-button wears, named by its role so a button does
+   * not have to know which step of the scale it sits on. */
+  --radius-button: var(--radius-md);
 
   /* Control heights: 24, 28 and 32 px. `--spacing-*` gives `h-ctl`, `min-h-ctl`
    * and friends. */
@@ -93,16 +103,25 @@
 
   /* Floating chrome over a near-black canvas: the hairline ring does the edge
    * definition that a light-mode drop shadow cannot. */
-  --shadow-menu:
-    0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.4);
-  --shadow-popover:
-    0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
+  --shadow-menu: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.4);
+  --shadow-popover: 0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
+
+  /* The primary button is the one light surface in a dark UI, so it reads as a
+   * raised key rather than a floating panel: a tight contact shadow, a soft
+   * ambient one, and an inner top highlight. */
+  --shadow-btn-primary:
+    0 1px 2px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.65);
 
   /* ---------------------------------------------------------------- motion */
 
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-circ: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* The curve for a small state change (hover, press, focus), named by role so
+   * a control does not have to pick one. The other two stay for motion that is
+   * meant to be noticed. */
+  --ease-standard: var(--ease-out-quint);
 
   /* Durations have no Tailwind namespace, so these are plain variables paired
    * with the `@utility` rules at the bottom of this file. All are at or under
@@ -124,7 +143,11 @@
   /* The `studio.*` and `panel.*` colour scales, kept so existing markup keeps
    * working while the sweep runs. They alias the semantic tokens above and
    * carry no value of their own. Removed from Studio's source by U12; the
-   * published JS preset keeps them one more major for v3 consumers. */
+   * published JS preset keeps them one more major for v3 consumers.
+   *
+   * `panel-bg-soft` and `panel-bg-2` never existed in the v3 preset either:
+   * the token gate found the markup asking for backgrounds no config has ever
+   * supplied, so those rows were rendering with no background at all. */
   --color-studio-bg: var(--color-bg-0);
   --color-studio-surface: var(--color-surface-alt);
   --color-studio-border: var(--color-border-strong);
@@ -145,10 +168,20 @@
   --color-panel-text-3: var(--color-text-3);
   --color-panel-text-4: var(--color-text-4);
   --color-panel-text-5: var(--color-text-5);
+  --color-panel-bg-soft: var(--color-bg-2);
+  --color-panel-bg-2: var(--color-bg-2);
   --color-panel-accent: var(--color-accent);
   --color-panel-danger: var(--color-danger);
   --color-panel-media: var(--color-media);
   --color-panel-container: var(--color-container);
+
+  /* Names Studio's markup invented that no config ever defined, so the classes
+   * compiled to nothing. Aliased to the token that was meant, rather than
+   * given values of their own, so there is still one source per decision.
+   * U12 rewrites the call sites and deletes these. */
+  --color-surface-hover: var(--color-hover);
+  --color-accent-red: var(--color-danger);
+  --text-2xs: var(--text-step-10);
 
   /* ------------------------------------------- deprecated: Tailwind palette */
 
