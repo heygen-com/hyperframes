@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { IconContext } from "@phosphor-icons/react";
 import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
+import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
 import "./styles/studio.css";
 
@@ -93,8 +95,12 @@ window.addEventListener("unhandledrejection", (event) => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <StudioErrorBoundary>
-      <StudioApp />
-    </StudioErrorBoundary>
+    {/* One icon size and weight for the whole app, taken from the theme file.
+        Icons that pass their own size or weight still win. */}
+    <IconContext.Provider value={readIconTokens()}>
+      <StudioErrorBoundary>
+        <StudioApp />
+      </StudioErrorBoundary>
+    </IconContext.Provider>
   </StrictMode>,
 );

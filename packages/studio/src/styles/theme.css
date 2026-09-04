@@ -1,0 +1,262 @@
+/*
+ * Studio's design tokens. This file is the only place a design value is
+ * decided: Tailwind turns every entry below into both a utility class and a
+ * real CSS custom property, so markup (`bg-accent`), plain CSS and canvas code
+ * (`var(--color-accent)`) all read the same number.
+ *
+ * `@theme static` keeps every variable in the emitted `:root` block. The
+ * default (tree-shaken) behavior would drop the tokens that no utility class
+ * happens to reference, and Studio reads several of them from CSS and from
+ * JavaScript rather than through a class.
+ *
+ * Published as `@hyperframes/studio/theme.css`.
+ */
+
+@theme static {
+  /* Clear Tailwind's stock palette so a colour that is not a Studio token
+   * cannot be reached from markup. The entries Studio still uses are
+   * re-declared below as deprecated aliases. */
+  --color-*: initial;
+
+  /* ---------------------------------------------------------------- colour */
+
+  /* Background levels, darkest (app shell) to lightest (inset panel body). */
+  --color-bg-0: #0a0a0a;
+  --color-bg-1: #0c0c0e;
+  --color-bg-2: #121214;
+
+  /* Raised surfaces. */
+  --color-surface: #18181b;
+  --color-surface-alt: #141414;
+  --color-input: #161618;
+  --color-hover: #27272a;
+
+  /* Separators, weakest to strongest. */
+  --color-hairline: #1a1a1c;
+  --color-border: #1e1e1e;
+  --color-border-input: #27272a;
+  --color-border-strong: #262626;
+
+  /* Text, brightest (0) to dimmest (5). */
+  --color-text-0: #fafafa;
+  --color-text-1: #e4e4e7;
+  --color-text-2: #a1a1aa;
+  --color-text-3: #71717a;
+  --color-text-4: #52525b;
+  --color-text-5: #3f3f46;
+  --color-text-body: #e5e5e5;
+  --color-text-muted: #737373;
+
+  /* Roles. Selection and playhead are reserved and differ from the accent so a
+   * selected clip, the playhead and an accented control stay tellable apart. */
+  --color-accent: #3ce6ac;
+  --color-selection: #4ba3d2;
+  --color-playhead: #ffffff;
+  --color-danger: #ef4444;
+  --color-media: #00e3ff;
+  --color-container: #f5a623;
+
+  /* -------------------------------------------------------------- geometry */
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+
+  /* Control heights: 24, 28 and 32 px. `--spacing-*` gives `h-ctl`, `min-h-ctl`
+   * and friends. */
+  --spacing-ctl-sm: 24px;
+  --spacing-ctl: 28px;
+  --spacing-ctl-lg: 32px;
+
+  /* ------------------------------------------------------------------ type */
+
+  /* Studio's dense UI type sizes, named by their pixel value. `step` is in the
+   * key because `--text-11` would collide with Tailwind's own size scale;
+   * `text-xs`, `text-sm` and `text-lg` keep their Tailwind values. */
+  --text-step-7: 7px;
+  --text-step-8: 8px;
+  --text-step-9: 9px;
+  --text-step-10: 10px;
+  --text-step-11: 11px;
+  --text-step-12: 12px;
+  --text-step-13: 13px;
+  --text-step-14: 14px;
+  --text-step-15: 15px;
+  --text-step-16: 16px;
+  --text-step-17: 17px;
+  --text-step-18: 18px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+
+  /* ---------------------------------------------------------------- shadow */
+
+  /* Floating chrome over a near-black canvas: the hairline ring does the edge
+   * definition that a light-mode drop shadow cannot. */
+  --shadow-menu:
+    0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.4);
+  --shadow-popover:
+    0 16px 40px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
+
+  /* ---------------------------------------------------------------- motion */
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-circ: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Durations have no Tailwind namespace, so these are plain variables paired
+   * with the `@utility` rules at the bottom of this file. All are at or under
+   * 200 ms. */
+  --duration-focus: 100ms;
+  --duration-press: 120ms;
+  --duration-hover: 150ms;
+  --duration-expand: 160ms;
+  --duration-open: 180ms;
+
+  /* ------------------------------------------------------------------ icon */
+
+  /* Read by `readIconTokens` and handed to Phosphor's `IconContext`. */
+  --icon-size: 16px;
+  --icon-weight: regular;
+
+  /* ------------------------------------------------- deprecated: old names */
+
+  /* The `studio.*` and `panel.*` colour scales, kept so existing markup keeps
+   * working while the sweep runs. They alias the semantic tokens above and
+   * carry no value of their own. Removed from Studio's source by U12; the
+   * published JS preset keeps them one more major for v3 consumers. */
+  --color-studio-bg: var(--color-bg-0);
+  --color-studio-surface: var(--color-surface-alt);
+  --color-studio-border: var(--color-border-strong);
+  --color-studio-text: var(--color-text-body);
+  --color-studio-muted: var(--color-text-muted);
+  --color-studio-accent: var(--color-accent);
+  --color-panel-bg: var(--color-bg-1);
+  --color-panel-bg-inset: var(--color-bg-2);
+  --color-panel-input: var(--color-input);
+  --color-panel-surface: var(--color-surface);
+  --color-panel-hover: var(--color-hover);
+  --color-panel-border: var(--color-border);
+  --color-panel-border-input: var(--color-border-input);
+  --color-panel-hairline: var(--color-hairline);
+  --color-panel-text-0: var(--color-text-0);
+  --color-panel-text-1: var(--color-text-1);
+  --color-panel-text-2: var(--color-text-2);
+  --color-panel-text-3: var(--color-text-3);
+  --color-panel-text-4: var(--color-text-4);
+  --color-panel-text-5: var(--color-text-5);
+  --color-panel-accent: var(--color-accent);
+  --color-panel-danger: var(--color-danger);
+  --color-panel-media: var(--color-media);
+  --color-panel-container: var(--color-container);
+
+  /* ------------------------------------------- deprecated: Tailwind palette */
+
+  /* Verbatim copies of the Tailwind 4.3.3 defaults for the stock colours
+   * Studio's markup still names. Without them `--color-*: initial` above would
+   * blank roughly 1500 class usages in one commit. The sweep replaces each with
+   * a semantic token and U12 deletes this block; `theme.test.ts` fails if one
+   * of these values drifts away from the Tailwind default it was copied from. */
+  --color-amber-50: oklch(98.7% 0.022 95.277);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-amber-900: oklch(41.4% 0.112 45.904);
+  --color-amber-950: oklch(27.9% 0.077 45.635);
+  --color-black: #000;
+  --color-blue-400: oklch(70.7% 0.165 254.624);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-cyan-400: oklch(78.9% 0.154 211.53);
+  --color-cyan-500: oklch(71.5% 0.143 215.221);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-emerald-500: oklch(69.6% 0.17 162.48);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-green-400: oklch(79.2% 0.209 151.711);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-green-600: oklch(62.7% 0.194 149.214);
+  --color-neutral-50: oklch(98.5% 0 none);
+  --color-neutral-100: oklch(97% 0 none);
+  --color-neutral-200: oklch(92.2% 0 none);
+  --color-neutral-300: oklch(87% 0 none);
+  --color-neutral-400: oklch(70.8% 0 none);
+  --color-neutral-500: oklch(55.6% 0 none);
+  --color-neutral-600: oklch(43.9% 0 none);
+  --color-neutral-700: oklch(37.1% 0 none);
+  --color-neutral-800: oklch(26.9% 0 none);
+  --color-neutral-900: oklch(20.5% 0 none);
+  --color-neutral-950: oklch(14.5% 0 none);
+  --color-orange-300: oklch(83.7% 0.128 66.29);
+  --color-orange-400: oklch(75% 0.183 55.934);
+  --color-pink-400: oklch(71.8% 0.202 349.761);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  --color-purple-200: oklch(90.2% 0.063 306.703);
+  --color-purple-300: oklch(82.7% 0.119 306.383);
+  --color-purple-400: oklch(71.4% 0.203 305.504);
+  --color-purple-500: oklch(62.7% 0.265 303.9);
+  --color-purple-900: oklch(38.1% 0.176 304.987);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-red-600: oklch(57.7% 0.245 27.325);
+  --color-red-700: oklch(50.5% 0.213 27.518);
+  --color-red-800: oklch(44.4% 0.177 26.899);
+  --color-red-900: oklch(39.6% 0.141 25.723);
+  --color-red-950: oklch(25.8% 0.092 26.042);
+  --color-rose-400: oklch(71.2% 0.194 13.428);
+  --color-rose-500: oklch(64.5% 0.246 16.439);
+  --color-sky-200: oklch(90.1% 0.058 230.902);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-sky-700: oklch(50% 0.134 242.749);
+  --color-sky-900: oklch(39.1% 0.09 240.876);
+  --color-sky-950: oklch(29.3% 0.066 243.157);
+  --color-violet-400: oklch(70.2% 0.183 293.541);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-white: #fff;
+}
+
+/* Motion durations as utilities, since Tailwind has no `--duration-*`
+ * namespace. Each one zeroes itself under `prefers-reduced-motion`, so a
+ * caller cannot forget the reduced-motion case. */
+
+@utility duration-focus {
+  transition-duration: var(--duration-focus);
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+@utility duration-press {
+  transition-duration: var(--duration-press);
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+@utility duration-hover {
+  transition-duration: var(--duration-hover);
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+@utility duration-expand {
+  transition-duration: var(--duration-expand);
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+@utility duration-open {
+  transition-duration: var(--duration-open);
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
