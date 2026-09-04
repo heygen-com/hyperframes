@@ -462,8 +462,12 @@
       ? tolerance
       : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
     const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
+    // A clipping box that is its own nearest constraint is `clipped_text`; billing the same defect
+    // here as well double-counted it. A NON-clipping self-constraint still reports — nothing else covers it.
+    const isClippedSelfConstraint = container === element && containerClips;
     if (
       containerOverflow &&
+      !isClippedSelfConstraint &&
       !hasTextClipOptOut(element) &&
       !clippedByAncestor(element, container)
     ) {
