@@ -14,8 +14,8 @@ const RECEIPT_TTL_MS = 10_000;
 const receipts = new Map<string, StoredReceipt[]>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
-export function fileContentVersion(content: string): string {
-  return `"sha256:${createHash("sha256").update(content, "utf8").digest("hex")}"`;
+export function fileContentVersion(content: string | Uint8Array): string {
+  return `"sha256:${createHash("sha256").update(content).digest("hex")}"`;
 }
 
 export function createWriteToken(requestToken?: string): string {

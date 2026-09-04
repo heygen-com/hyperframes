@@ -779,7 +779,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         const absPath = resolve(projectDir, path);
         let version: string | null = null;
         try {
-          version = fileContentVersion(readFileSync(absPath, "utf-8"));
+          version = fileContentVersion(readFileSync(absPath));
         } catch {
           // A deletion has no current bytes to match against an API write receipt.
         }

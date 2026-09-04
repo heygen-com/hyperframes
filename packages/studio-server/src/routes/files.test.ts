@@ -284,6 +284,71 @@ describe("registerFileRoutes", () => {
     expect(response.headers.get("etag")).toBe(payload.version);
   });
 
+  it.each(["POST", "PUT"])("preserves arbitrary bytes when creating through %s", async (method) => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0xc0, 0x80]);
+    const url = "http://localhost/projects/demo/files/assets/image.png";
+    const response = await app.request(url, {
+      method,
+      headers: { "Content-Type": "application/octet-stream", "If-None-Match": "*" },
+      body: bytes,
+    });
+    expect(response.status).toBe(method === "POST" ? 201 : 200);
+    expect(readFileSync(join(projectDir, "assets/image.png"))).toEqual(bytes);
+    const read = await app.request(url);
+    const payload = await read.json();
+    expect(payload.content).toBe(bytes.toString("utf-8"));
+    expect(payload.version).toBe(fileContentVersion(bytes));
+    expect(read.headers.get("etag")).toBe(payload.version);
+    const duplicate = await app.request(url, {
+      method,
+      headers: { "If-None-Match": "*" },
+      body: "overwrite",
+    });
+    expect(duplicate.status).toBe(409);
+    expect(readFileSync(join(projectDir, "assets/image.png"))).toEqual(bytes);
+  });
+
+  it("versions binary bytes exactly while preserving conflicts, backups, and write receipts", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const path = join(projectDir, "image.png");
+    const before = Buffer.from([0xff, 0, 0x80, 0x81]);
+    const after = Buffer.from([0xfe, 0, 0x80]);
+    writeFileSync(path, before);
+    const url = "http://localhost/projects/demo/files/image.png";
+    const read = await app.request(url);
+    const version = read.headers.get("etag")!;
+    // Invalid UTF-8 bytes may decode to the same string, but must not share a version.
+    const staleBytes = Buffer.from([0xfe, 0, 0x80, 0x81]);
+    expect(staleBytes.toString("utf-8")).toBe(before.toString("utf-8"));
+    for (const headers of [{}, { "If-Match": fileContentVersion(staleBytes) }]) {
+      const rejected = await app.request(url, { method: "PUT", headers, body: after });
+      expect([428, 409]).toContain(rejected.status);
+      expect((await rejected.json()).currentVersion).toBe(version);
+      expect(readFileSync(path)).toEqual(before);
+    }
+    const response = await app.request(url, {
+      method: "PUT",
+      headers: { "If-Match": version, "X-Hyperframes-Write-Token": "binary-write" },
+      body: after,
+    });
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(readFileSync(path)).toEqual(after);
+    expect(readFileSync(join(projectDir, payload.backupPath))).toEqual(before);
+    expect(payload.version).toBe(fileContentVersion(after));
+    expect(response.headers.get("etag")).toBe(payload.version);
+    expect(consumeFileWriteReceipt(path, payload.version)).toEqual({
+      path: "image.png",
+      version: payload.version,
+      writeToken: "binary-write",
+    });
+  });
+
   it("requires If-Match for updates and preserves the current bytes", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
