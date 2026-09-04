@@ -77,7 +77,11 @@ import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
-import { detectH264EncoderMode } from "../browser/ffmpeg.js";
+import {
+  detectH264EncoderMode,
+  getFFmpegInstallHint,
+  H264EncoderUnavailableError,
+} from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
@@ -838,6 +842,16 @@ export async function renderLocal(
     try {
       encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
     } catch (error) {
+      // HDR MP4 uses HEVC; auto mode cannot resolve the codec until sources
+      // have been inspected. Only forced SDR is definitely H.264 here.
+      if (error instanceof H264EncoderUnavailableError && options.hdrMode === "force-sdr") {
+        errorBox(
+          "MP4 H.264 encoder unavailable",
+          error.message,
+          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()}), or render WebM instead: hyperframes render --format webm --output output.webm`,
+        );
+        failCommand();
+      }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
       if (!options.quiet) {
