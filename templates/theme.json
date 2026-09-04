@@ -1,0 +1,37 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schemas/theme.json",
+  "name": "default",
+  "version": "1.0.0",
+  "colors": {
+    "background": "#0F0F0F",
+    "primary": "#FFFFFF",
+    "accent": "#FF5733",
+    "muted": "#888888"
+  },
+  "typography": {
+    "fontFamily": "Inter, sans-serif",
+    "heading": {
+      "fontSize": "72px",
+      "fontWeight": "700",
+      "lineHeight": "1.1"
+    },
+    "body": {
+      "fontSize": "32px",
+      "fontWeight": "400",
+      "lineHeight": "1.5"
+    },
+    "caption": {
+      "fontSize": "24px",
+      "fontWeight": "400"
+    }
+  },
+  "spacing": {
+    "margin": "48px",
+    "gap": "24px",
+    "padding": "32px"
+  },
+  "composition": {
+    "width": 1920,
+    "height": 1080
+  }
+}
