@@ -1,0 +1,123 @@
+<template>
+  <div
+    id="beat-vector"
+    data-composition-id="vector"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-vector {
+        background: #101820;
+        overflow: hidden;
+      }
+      #beat-vector .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f0f4f6;
+      }
+      #beat-vector .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #5fc8d8;
+        margin-bottom: 14px;
+      }
+      #beat-vector .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-vector .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #8fa2ad;
+        margin-top: 12px;
+      }
+      #beat-vector .vc-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-vector .vc-note {
+        position: absolute;
+        right: 96px;
+        bottom: 92px;
+        font-size: 22px;
+        font-weight: 300;
+        color: #7f939f;
+        text-align: right;
+      }
+    </style>
+
+    <div class="vc-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <g id="vc-zoom">
+          <g fill="none" stroke="#5fc8d8" stroke-width="3">
+            <circle cx="960" cy="520" r="240" />
+            <circle cx="960" cy="520" r="168" stroke="#e8734a" />
+            <circle cx="960" cy="520" r="96" stroke="#f0c419" />
+          </g>
+          <path
+            d="M780 520 L900 400 L1020 640 L1140 520"
+            fill="none"
+            stroke="#f0f4f6"
+            stroke-width="5"
+            stroke-linejoin="round"
+          />
+          <text
+            x="960"
+            y="536"
+            text-anchor="middle"
+            font-size="34"
+            font-weight="700"
+            fill="#f0f4f6"
+            font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+          >
+            VECTOR
+          </text>
+        </g>
+      </svg>
+    </div>
+    <div class="vc-note">
+      Same path data at every zoom level.<br />No raster, no resample, no softening.
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">07 / DIGITAL</div>
+      <div class="beat-name">Digital vector</div>
+      <div class="beat-tech">Resolution-independent SVG under 14&times; scale</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Push a hard scale so the edges have to stay crisp. A raster asset
+        // would fall apart here; path data simply re-rasterizes at the new size
+        // on every frame.
+        tl.fromTo(
+          "#vc-zoom",
+          { scale: 1, transformOrigin: "960px 520px" },
+          { scale: 14, duration: 3.2, ease: "power2.in" },
+          0.2,
+        );
+        tl.to(
+          "#vc-zoom",
+          { rotation: 12, transformOrigin: "960px 520px", duration: 3.2, ease: "sine.inOut" },
+          0.2,
+        );
+        tl.from(".vc-note", { opacity: 0, duration: 0.6 }, 0.6);
+
+        tl.from(
+          "#beat-vector .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["vector"] = tl;
+      })();
+    </script>
+  </div>
+</template>

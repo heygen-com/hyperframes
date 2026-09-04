@@ -1,0 +1,115 @@
+<template>
+  <div
+    id="beat-paintglass"
+    data-composition-id="paintglass"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-paintglass {
+        background: #141210;
+        overflow: hidden;
+      }
+      #beat-paintglass .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f4ede0;
+      }
+      #beat-paintglass .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #d09a5e;
+        margin-bottom: 14px;
+      }
+      #beat-paintglass .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-paintglass .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #b6ac9c;
+        margin-top: 12px;
+      }
+      #beat-paintglass .pg-canvas {
+        position: absolute;
+        left: 300px;
+        top: 24px;
+        width: 1320px;
+        height: 742px;
+      }
+      #beat-paintglass .pg-caveat {
+        position: absolute;
+        right: 96px;
+        bottom: 92px;
+        max-width: 520px;
+        text-align: right;
+        font-size: 21px;
+        line-height: 1.5;
+        font-weight: 300;
+        color: #e08b72;
+      }
+    </style>
+
+    <!-- The source art carries its own paint texture: overlapping soft
+         gradient blobs plus a turbulence wash. Kuwahara is an edge-preserving
+         SMOOTHING filter, so it needs texture to chew on — over flat vector
+         fills it is nearly invisible. Learned the hard way. -->
+    <img
+      id="pg-plate"
+      class="pg-canvas clip"
+      data-start="0"
+      data-duration="3.5"
+      data-track-index="1"
+      style="--hf-color-grading-kuwahara: 0"
+      data-color-grading='{"enabled":true,"effects":{"kuwahara":0,"kuwaharaRadius":0.62,"kuwaharaSharpness":0.4,"kuwaharaSaturation":0.68}}'
+      src="assets/paint-plate.jpg"
+    />
+
+    <div class="pg-caveat">
+      Real paint-on-glass smears the previous frame. HyperFrames requires every frame to be a pure
+      function of t, so this is a simulation &mdash; the look, not the physics.
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">04 / PAINTERLY</div>
+      <div class="beat-name">Paint-on-glass</div>
+      <div class="beat-tech">Shipped kuwahara shader &mdash; simulated, never accumulated</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // The one painterly path that is genuinely keyframeable: kuwahara
+        // strength rides a CSS custom property, tweened from this sub-comp's
+        // own timeline. A parent timeline could not reach across the
+        // sub-composition boundary to do this.
+        tl.to(
+          "#pg-plate",
+          { "--hf-color-grading-kuwahara": 1, duration: 2.4, ease: "power2.inOut" },
+          0.5,
+        );
+        tl.from(
+          "#pg-plate",
+          { scale: 1.06, transformOrigin: "50% 50%", duration: 3.4, ease: "sine.out" },
+          0,
+        );
+        tl.from(".pg-caveat", { opacity: 0, duration: 0.7, ease: "power1.out" }, 1.2);
+
+        tl.from(
+          "#beat-paintglass .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["paintglass"] = tl;
+      })();
+    </script>
+  </div>
+</template>

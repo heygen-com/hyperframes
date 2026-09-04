@@ -1,0 +1,142 @@
+<template>
+  <div
+    id="beat-motiongfx"
+    data-composition-id="motiongfx"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-motiongfx {
+        background: #0e1116;
+        overflow: hidden;
+      }
+      #beat-motiongfx .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #f2f5f8;
+      }
+      #beat-motiongfx .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #4ad9a4;
+        margin-bottom: 14px;
+      }
+      #beat-motiongfx .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-motiongfx .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #8b98a5;
+        margin-top: 12px;
+      }
+      #beat-motiongfx .mg-wrap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      #beat-motiongfx .mg-stat {
+        font-size: 300px;
+        font-weight: 800;
+        letter-spacing: -0.05em;
+        color: #4ad9a4;
+        line-height: 1;
+        margin-bottom: 34px;
+      }
+      #beat-motiongfx .mg-words {
+        display: flex;
+        gap: 22px;
+        margin-top: 26px;
+        overflow: hidden;
+      }
+      #beat-motiongfx .mg-word {
+        font-size: 56px;
+        font-weight: 300;
+        letter-spacing: 0.02em;
+        color: #f2f5f8;
+      }
+      #beat-motiongfx .mg-rule {
+        width: 0;
+        height: 6px;
+        background: #4ad9a4;
+        margin-top: 44px;
+      }
+    </style>
+
+    <div class="mg-wrap">
+      <div class="mg-stat" id="mg-stat">0</div>
+      <div class="mg-words">
+        <span class="mg-word">frames</span>
+        <span class="mg-word">a</span>
+        <span class="mg-word">second,</span>
+        <span class="mg-word">deterministic</span>
+      </div>
+      <div class="mg-rule" id="mg-rule"></div>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">11 / DIGITAL</div>
+      <div class="beat-name">Motion graphics</div>
+      <div class="beat-tech">Kinetic type and a counted stat &mdash; the native case</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // The count-up is a tween on a proxy, not on text content, so it stays
+        // seek-safe: any frame recomputes the same integer from timeline time.
+        var counter = { v: 0 };
+        var statEl = document.getElementById("mg-stat");
+        tl.to(
+          counter,
+          {
+            v: 24,
+            duration: 1.5,
+            ease: "power2.out",
+            onUpdate: function () {
+              statEl.textContent = Math.round(counter.v);
+            },
+          },
+          0.25,
+        );
+
+        tl.from(
+          "#beat-motiongfx .mg-stat",
+          { scale: 0.7, opacity: 0, duration: 0.6, ease: "back.out(1.6)" },
+          0.15,
+        );
+        tl.from(
+          "#beat-motiongfx .mg-word",
+          { y: 90, opacity: 0, duration: 0.6, ease: "power3.out", stagger: 0.08 },
+          0.7,
+        );
+        tl.to("#mg-rule", { width: 520, duration: 0.9, ease: "power3.inOut" }, 1.3);
+        // Deliberately NOT tweening letter-spacing: it reflows text and snaps
+        // glyphs to integer pixels under the seek-by-frame capture engine.
+        tl.to(
+          "#beat-motiongfx .mg-stat",
+          { scale: 1.03, transformOrigin: "50% 100%", duration: 1.4, ease: "sine.inOut" },
+          1.6,
+        );
+
+        tl.from(
+          "#beat-motiongfx .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["motiongfx"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -1,0 +1,184 @@
+<template>
+  <div
+    id="beat-cel"
+    data-composition-id="cel"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-cel {
+        background: #f4efe2;
+        overflow: hidden;
+      }
+      #beat-cel .cel-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #beat-cel .cel-pose {
+        opacity: 0;
+      }
+      #beat-cel .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #1c1a16;
+      }
+      #beat-cel .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #906342;
+        margin-bottom: 14px;
+      }
+      #beat-cel .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-cel .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #6b6459;
+        margin-top: 12px;
+      }
+      #beat-cel .cel-frameline {
+        position: absolute;
+        right: 96px;
+        bottom: 92px;
+        display: flex;
+        gap: 10px;
+      }
+      #beat-cel .cel-tick {
+        width: 26px;
+        height: 8px;
+        background: #d6cdb8;
+      }
+    </style>
+
+    <div class="cel-stage">
+      <!-- Eight hand-drawn poses of a walk cycle. Only one is visible at a
+           time; the timeline hard-swaps between them with zero-duration sets.
+           No interpolation anywhere — this is the frame-by-frame contract. -->
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <g stroke="#1c1a16" stroke-width="9" stroke-linecap="round" fill="none">
+          <!-- ground line -->
+          <path d="M420 760 L1500 760" stroke="#c8bfa8" stroke-width="6" />
+
+          <g class="cel-pose" id="cel-p0">
+            <circle cx="960" cy="452" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 506 L960 646" />
+            <path d="M960 646 L906 760" />
+            <path d="M960 646 L1030 738" />
+            <path d="M960 546 L888 606" />
+            <path d="M960 546 L1036 592" />
+          </g>
+          <g class="cel-pose" id="cel-p1">
+            <circle cx="960" cy="444" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 498 L962 640" />
+            <path d="M962 640 L924 760" />
+            <path d="M962 640 L1016 754" />
+            <path d="M960 540 L900 616" />
+            <path d="M960 540 L1024 604" />
+          </g>
+          <g class="cel-pose" id="cel-p2">
+            <circle cx="960" cy="436" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 490 L964 634" />
+            <path d="M964 634 L950 760" />
+            <path d="M964 634 L994 760" />
+            <path d="M960 534 L916 622" />
+            <path d="M960 534 L1008 618" />
+          </g>
+          <g class="cel-pose" id="cel-p3">
+            <circle cx="960" cy="446" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 500 L962 642" />
+            <path d="M962 642 L1000 758" />
+            <path d="M962 642 L932 756" />
+            <path d="M960 542 L1020 610" />
+            <path d="M960 542 L902 612" />
+          </g>
+          <g class="cel-pose" id="cel-p4">
+            <circle cx="960" cy="452" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 506 L960 646" />
+            <path d="M960 646 L1030 760" />
+            <path d="M960 646 L890 738" />
+            <path d="M960 546 L1036 606" />
+            <path d="M960 546 L884 592" />
+          </g>
+          <g class="cel-pose" id="cel-p5">
+            <circle cx="960" cy="444" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 498 L958 640" />
+            <path d="M958 640 L1000 760" />
+            <path d="M958 640 L904 754" />
+            <path d="M960 540 L1020 616" />
+            <path d="M960 540 L896 604" />
+          </g>
+          <g class="cel-pose" id="cel-p6">
+            <circle cx="960" cy="436" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 490 L956 634" />
+            <path d="M956 634 L970 760" />
+            <path d="M956 634 L926 760" />
+            <path d="M960 534 L1004 622" />
+            <path d="M960 534 L912 618" />
+          </g>
+          <g class="cel-pose" id="cel-p7">
+            <circle cx="960" cy="446" r="54" fill="#e0552f" stroke="none" />
+            <path d="M960 500 L958 642" />
+            <path d="M958 642 L920 758" />
+            <path d="M958 642 L988 756" />
+            <path d="M960 542 L900 610" />
+            <path d="M960 542 L1018 612" />
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="cel-frameline">
+      <div class="cel-tick" id="cel-t0"></div>
+      <div class="cel-tick" id="cel-t1"></div>
+      <div class="cel-tick" id="cel-t2"></div>
+      <div class="cel-tick" id="cel-t3"></div>
+      <div class="cel-tick" id="cel-t4"></div>
+      <div class="cel-tick" id="cel-t5"></div>
+      <div class="cel-tick" id="cel-t6"></div>
+      <div class="cel-tick" id="cel-t7"></div>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">01 / TRADITIONAL</div>
+      <div class="beat-name">Cel animation</div>
+      <div class="beat-tech">8 drawings, held on twos &mdash; zero interpolation</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var POSES = 8;
+        var HOLD = 1 / 12; // on twos at 24fps
+        var DURATION = 3.5;
+        var steps = Math.floor(DURATION / HOLD);
+
+        // Hard cuts only: every pose swap is a zero-duration set, so the
+        // renderer sees a held drawing rather than a tween between drawings.
+        for (var s = 0; s < steps; s++) {
+          var idx = s % POSES;
+          var t = s * HOLD;
+          for (var p = 0; p < POSES; p++) {
+            tl.set("#cel-p" + p, { opacity: p === idx ? 1 : 0 }, t);
+            tl.set("#cel-t" + p, { backgroundColor: p === idx ? "#e0552f" : "#d6cdb8" }, t);
+          }
+        }
+
+        tl.from(
+          "#beat-cel .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["cel"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -162,6 +162,10 @@ launch-video*/
 !skills/launch-video/
 ab-test/
 compositions/
+# ...but `compositions/<scene>.html` is also the documented layout for modular
+# sub-compositions (see hyperframes-core/references/composition-patterns.md), so
+# tracked projects that follow it need an explicit opt-back-in.
+!projects/2d-animation-styles/compositions/
 video-6-2-patched/
 claude-design-hyperframes-video/
 # Per-site video work at the repo root (huly-*, raycast-*, etc.)

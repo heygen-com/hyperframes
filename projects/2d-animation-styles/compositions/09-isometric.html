@@ -1,0 +1,211 @@
+<template>
+  <div
+    id="beat-isometric"
+    data-composition-id="isometric"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-isometric {
+        background: #191d2b;
+        overflow: hidden;
+      }
+      #beat-isometric .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #eef1f7;
+      }
+      #beat-isometric .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #7f9cf5;
+        margin-bottom: 14px;
+      }
+      #beat-isometric .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-isometric .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #93a0bd;
+        margin-top: 12px;
+      }
+      #beat-isometric .is-stage {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+
+    <div class="is-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <!-- True 2:1 isometric: every x step moves (+64, +32), every y step
+             moves (-64, +32). Three faces per cube, each a fixed shade — the
+             shading IS the depth cue, there is no lighting model. -->
+        <g id="is-grid" stroke="#31384f" stroke-width="2" fill="none" opacity="0.8"></g>
+        <g id="is-cubes"></g>
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">09 / DIGITAL</div>
+      <div class="beat-name">Isometric</div>
+      <div class="beat-tech">2:1 projection, hand-rolled &mdash; no primitive ships</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var NS = "http://www.w3.org/2000/svg";
+        var OX = 960,
+          OY = 420,
+          TW = 64,
+          TH = 32,
+          CH = 74;
+        var grid = document.getElementById("is-grid");
+        var cubes = document.getElementById("is-cubes");
+
+        function iso(gx, gy) {
+          return { x: OX + (gx - gy) * TW, y: OY + (gx + gy) * TH };
+        }
+
+        // ground grid
+        for (var g = 0; g <= 8; g++) {
+          var a = iso(g, 0),
+            b = iso(g, 8),
+            c = iso(0, g),
+            d = iso(8, g);
+          var p1 = document.createElementNS(NS, "path");
+          p1.setAttribute("d", "M" + a.x + " " + a.y + " L" + b.x + " " + b.y);
+          grid.appendChild(p1);
+          var p2 = document.createElementNS(NS, "path");
+          p2.setAttribute("d", "M" + c.x + " " + c.y + " L" + d.x + " " + d.y);
+          grid.appendChild(p2);
+        }
+
+        // A small skyline. Heights are a fixed pattern, not random, so the
+        // build order reads as deliberate.
+        var HEIGHTS = [
+          [1, 0, 2, 0, 1, 3, 0, 1],
+          [0, 2, 1, 3, 0, 1, 2, 0],
+          [2, 1, 3, 1, 2, 0, 1, 2],
+          [0, 3, 0, 2, 1, 3, 0, 1],
+          [1, 0, 2, 1, 3, 1, 2, 0],
+          [3, 1, 1, 0, 2, 0, 1, 3],
+          [0, 2, 3, 1, 0, 2, 1, 0],
+          [1, 1, 0, 2, 1, 1, 3, 2],
+        ];
+        var order = [];
+        for (var gy = 0; gy < 8; gy++) {
+          for (var gx = 0; gx < 8; gx++) {
+            var h = HEIGHTS[gy][gx];
+            if (!h) continue;
+            var p = iso(gx, gy);
+            var top = p.y - h * CH;
+            var grp = document.createElementNS(NS, "g");
+            function face(d, fill) {
+              var el = document.createElementNS(NS, "path");
+              el.setAttribute("d", d);
+              el.setAttribute("fill", fill);
+              grp.appendChild(el);
+            }
+            // top rhombus
+            face(
+              "M" +
+                p.x +
+                " " +
+                (top - TH) +
+                " L" +
+                (p.x + TW) +
+                " " +
+                top +
+                " L" +
+                p.x +
+                " " +
+                (top + TH) +
+                " L" +
+                (p.x - TW) +
+                " " +
+                top +
+                " Z",
+              "#8fa6ff",
+            );
+            // left face
+            face(
+              "M" +
+                (p.x - TW) +
+                " " +
+                top +
+                " L" +
+                p.x +
+                " " +
+                (top + TH) +
+                " L" +
+                p.x +
+                " " +
+                (p.y + TH) +
+                " L" +
+                (p.x - TW) +
+                " " +
+                p.y +
+                " Z",
+              "#4a5ba8",
+            );
+            // right face
+            face(
+              "M" +
+                (p.x + TW) +
+                " " +
+                top +
+                " L" +
+                p.x +
+                " " +
+                (top + TH) +
+                " L" +
+                p.x +
+                " " +
+                (p.y + TH) +
+                " L" +
+                (p.x + TW) +
+                " " +
+                p.y +
+                " Z",
+              "#33407a",
+            );
+            cubes.appendChild(grp);
+            order.push({ el: grp, depth: gx + gy });
+          }
+        }
+
+        // Build back-to-front so the painter's-algorithm stacking reads right.
+        order.forEach(function (o) {
+          tl.from(
+            o.el,
+            {
+              y: -260,
+              opacity: 0,
+              duration: 0.5,
+              ease: "back.out(1.4)",
+            },
+            0.1 + o.depth * 0.09,
+          );
+        });
+        tl.from("#is-grid", { opacity: 0, duration: 0.6 }, 0);
+
+        tl.from(
+          "#beat-isometric .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["isometric"] = tl;
+      })();
+    </script>
+  </div>
+</template>
