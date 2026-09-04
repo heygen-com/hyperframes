@@ -136,7 +136,7 @@ export function useExternalFileChangeCoordinator({
   const blockedRef = useRef(blocked);
   const snapshotWriteTailRef = useRef<Promise<void>>(Promise.resolve());
   const drainingRef = useRef(false);
-  const pendingPayloadRef = useRef<{ payload: unknown; allowDuplicate: boolean } | null>(null);
+  const pendingPayloadRef = useRef<{ payload: unknown } | null>(null);
   blockedRef.current = blocked;
 
   useEffect(() => {
@@ -215,22 +215,130 @@ export function useExternalFileChangeCoordinator({
     await next;
   }, []);
 
+  const drainOnePending = useCallback(
+    // fallow-ignore-next-line complexity
+    async (payload: unknown) => {
+      const path = readStudioFileChangePath(payload);
+      if (!path) return;
+
+      const generation = ++generationRef.current;
+      const result = await drainPendingChanges();
+      if (!mountedRef.current || generation !== generationRef.current) return;
+
+      if (result.status === "clean") {
+        const previousBlocked = blockedRef.current;
+        if (previousBlocked?.status === "failed" && deleteConflictSnapshot) {
+          try {
+            await deleteConflictSnapshot(projectId!, path);
+          } catch (error) {
+            if (mountedRef.current && generation === generationRef.current) {
+              setBlocked({ ...previousBlocked, generation, error });
+            }
+            return;
+          }
+        }
+        if (!mountedRef.current || generation !== generationRef.current) return;
+        setBlocked(null);
+        onAcceptedPersistedFileChange(path);
+        reloadAcceptedGeneration(path);
+        return;
+      }
+      const content = readFileChangeContent(payload);
+      if (result.status === "failed") {
+        const candidate = getPendingCandidate?.();
+        const studioContent = candidate?.path === path ? candidate.content : null;
+        let error = result.error;
+        if (studioContent != null && persistFailureSnapshot) {
+          try {
+            await persistSnapshotInOrder(() =>
+              persistFailureSnapshot(
+                projectId!,
+                path,
+                studioContent,
+                readFileChangeVersion(payload),
+                content,
+                result.error,
+              ),
+            );
+          } catch (snapshotError) {
+            error = new Error(
+              `Studio could not save the edit or its recovery snapshot: ${
+                snapshotError instanceof Error ? snapshotError.message : String(snapshotError)
+              }`,
+              { cause: result.error },
+            );
+          }
+        }
+        if (!mountedRef.current || generation !== generationRef.current) return;
+        setBlocked({
+          status: "failed",
+          generation,
+          path,
+          error,
+          payload,
+          studioContent,
+          recovered: false,
+        });
+        return;
+      }
+      try {
+        await persistSnapshotInOrder(() => persistConflictSnapshot(projectId!, result.error));
+      } catch (error) {
+        if (!mountedRef.current || generation !== generationRef.current) return;
+        setBlocked({
+          status: "failed",
+          generation,
+          path,
+          error,
+          payload,
+          studioContent: result.error.attemptedContent,
+          recovered: false,
+        });
+        return;
+      }
+      if (!mountedRef.current || generation !== generationRef.current) return;
+      setBlocked({ status: "conflict", generation, error: result.error, payload });
+    },
+    [
+      drainPendingChanges,
+      projectId,
+      deleteConflictSnapshot,
+      getPendingCandidate,
+      persistConflictSnapshot,
+      persistFailureSnapshot,
+      persistSnapshotInOrder,
+      reloadAcceptedGeneration,
+      onAcceptedPersistedFileChange,
+    ],
+  );
+
+  const startDrainLoop = useCallback(async () => {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    try {
+      while (mountedRef.current) {
+        const pending = pendingPayloadRef.current;
+        if (!pending) break;
+        pendingPayloadRef.current = null;
+        await drainOnePending(pending.payload);
+      }
+    } finally {
+      drainingRef.current = false;
+    }
+  }, [drainOnePending]);
+
   const processChange = useCallback(
     // fallow-ignore-next-line complexity
-    async (payload: unknown, allowDuplicate = false) => {
+    (payload: unknown) => {
       const path = readStudioFileChangePath(payload);
       if (!path || !projectId) return;
-      const pendingTimelinePaths = pendingTimelineEditPathRef.current;
-      // The old path-only suppression could drop a real agent/user write that
-      // raced ahead of the timeline write receipt. Clear the legacy marker but
-      // decide ownership only from the exact write token/content below.
-      pendingTimelinePaths.delete(path);
+      pendingTimelineEditPathRef.current.delete(path);
 
       const content = readFileChangeContent(payload);
       const token = readFileChangeWriteToken(payload);
       logReload("file-change", { path, token: token ?? null, hasContent: content != null });
       const identity = eventIdentity(path, payload);
-      if (!allowDuplicate && identity != null && identity === lastEventIdentityRef.current) {
+      if (identity != null && identity === lastEventIdentityRef.current) {
         logReload("suppressed", { path, why: "duplicate event" });
         return;
       }
@@ -247,117 +355,10 @@ export function useExternalFileChangeCoordinator({
         return;
       }
 
-      // When a drain is already in progress, stash this event so the
-      // completion handler picks it up. Without this guard, rapid external
-      // writes each increment generationRef and start a new drain; the
-      // generation check after the await then kills every in-flight drain,
-      // so no reload ever completes and Studio freezes on stale content.
-      if (drainingRef.current) {
-        pendingPayloadRef.current = { payload, allowDuplicate: true };
-        return;
-      }
-      drainingRef.current = true;
-
-      try {
-        const generation = ++generationRef.current;
-        const result = await drainPendingChanges();
-        if (!mountedRef.current || generation !== generationRef.current) return;
-
-        if (result.status === "clean") {
-          const previousBlocked = blockedRef.current;
-          if (previousBlocked?.status === "failed" && deleteConflictSnapshot) {
-            try {
-              await deleteConflictSnapshot(projectId, path);
-            } catch (error) {
-              if (mountedRef.current && generation === generationRef.current) {
-                setBlocked({ ...previousBlocked, generation, error });
-              }
-              return;
-            }
-          }
-          if (!mountedRef.current || generation !== generationRef.current) return;
-          setBlocked(null);
-          onAcceptedPersistedFileChange(path);
-          reloadAcceptedGeneration(path);
-          return;
-        }
-        if (result.status === "failed") {
-          const candidate = getPendingCandidate?.();
-          const studioContent = candidate?.path === path ? candidate.content : null;
-          let error = result.error;
-          if (studioContent != null && persistFailureSnapshot) {
-            try {
-              await persistSnapshotInOrder(() =>
-                persistFailureSnapshot(
-                  projectId,
-                  path,
-                  studioContent,
-                  readFileChangeVersion(payload),
-                  content,
-                  result.error,
-                ),
-              );
-            } catch (snapshotError) {
-              error = new Error(
-                `Studio could not save the edit or its recovery snapshot: ${
-                  snapshotError instanceof Error ? snapshotError.message : String(snapshotError)
-                }`,
-                { cause: result.error },
-              );
-            }
-          }
-          if (!mountedRef.current || generation !== generationRef.current) return;
-          setBlocked({
-            status: "failed",
-            generation,
-            path,
-            error,
-            payload,
-            studioContent,
-            recovered: false,
-          });
-          return;
-        }
-        try {
-          await persistSnapshotInOrder(() => persistConflictSnapshot(projectId, result.error));
-        } catch (error) {
-          if (!mountedRef.current || generation !== generationRef.current) return;
-          setBlocked({
-            status: "failed",
-            generation,
-            path,
-            error,
-            payload,
-            studioContent: result.error.attemptedContent,
-            recovered: false,
-          });
-          return;
-        }
-        if (!mountedRef.current || generation !== generationRef.current) return;
-        setBlocked({ status: "conflict", generation, error: result.error, payload });
-      } finally {
-        drainingRef.current = false;
-        if (mountedRef.current) {
-          const pending = pendingPayloadRef.current;
-          if (pending) {
-            pendingPayloadRef.current = null;
-            void processChange(pending.payload, pending.allowDuplicate);
-          }
-        }
-      }
+      pendingPayloadRef.current = { payload };
+      void startDrainLoop();
     },
-    [
-      projectId,
-      pendingTimelineEditPathRef,
-      drainPendingChanges,
-      deleteConflictSnapshot,
-      getPendingCandidate,
-      persistConflictSnapshot,
-      persistFailureSnapshot,
-      persistSnapshotInOrder,
-      reloadAcceptedGeneration,
-      onAcceptedPersistedFileChange,
-    ],
+    [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
   );
 
   useEffect(() => {
@@ -381,7 +382,7 @@ export function useExternalFileChangeCoordinator({
     if (!current || current.status === "conflict" || current.recovered) return;
     resetSaveQueues?.();
     lastEventIdentityRef.current = null;
-    await processChange(current.payload, true);
+    processChange(current.payload);
   }, [processChange, resetSaveQueues]);
 
   const useExternalFile = useCallback(

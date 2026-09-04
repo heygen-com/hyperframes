@@ -794,6 +794,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (shouldWatchProjectFile(changedPath)) listener(changedPath);
       };
       watcher.addListener(wrappedListener);
+      stream.onAbort(() => watcher.removeListener(wrappedListener));
       try {
         while (true) {
           await stream.sleep(30000);
