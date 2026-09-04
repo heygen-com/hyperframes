@@ -187,6 +187,11 @@ export interface CheckAuditDriver {
   seek(time: number): Promise<void>;
   /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */
   seekGeometry(time: number): Promise<void>;
+  /** Sleep-free seek for grid times that only feed collectMotionFrame. Keeps the
+   * ordered double-rAF (transforms must be committed) but drops the paint-flush
+   * sleep and glyph-subset font wait, which only matter when a sample measures
+   * or photographs text. */
+  seekMotion(time: number): Promise<void>;
   collectLayout(
     time: number,
     tolerance: number,

@@ -4,6 +4,7 @@ import type { Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
   DENSE_GEOMETRY_SEEK_OPTIONS,
+  MOTION_SAMPLE_SEEK_OPTIONS,
   DEFAULT_ZOOM_PADDING_PX,
   DEFAULT_ZOOM_SCALE,
   captureRegionCrop,
@@ -408,6 +409,10 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
       setTime(time);
       await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
     },
+    seekMotion: async (time) => {
+      setTime(time);
+      await seekCompositionTimeline(page, time, MOTION_SAMPLE_SEEK_OPTIONS);
+    },
     collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
@@ -757,10 +762,15 @@ async function compositionBbox(page: Page): Promise<CheckBbox> {
   });
 }
 
+// `layoutAnnotations` being undefined is the pipeline's signal that --snapshots
+// is off (see checkPipeline's contrast branch): nothing will ever read
+// `pngBase64`, so the restored-page screenshot and its overlay are skipped
+// entirely. Passing an array — even an empty one — still produces the shot,
+// which is what a --snapshots run with no findings at this time needs.
 async function collectContrast(
   page: Page,
   time: number,
-  layoutAnnotations: CheckAnnotationBox[] = [],
+  layoutAnnotations?: CheckAnnotationBox[],
 ): Promise<ContrastCapture> {
   let prepared: PreparedContrast[] = [];
   try {
@@ -782,6 +792,7 @@ async function collectContrast(
     );
     const finished = raw.flatMap(parseFinishedContrast);
     const entries = joinContrastEntries(finished, prepared);
+    if (!layoutAnnotations) return { entries, pngBase64: "" };
     // __contrastAuditFinish restores the text paint hidden by prepare. The
     // measurement screenshot intentionally has glyphs removed so contrast
     // can sample the pixels behind them; never persist that image as visual

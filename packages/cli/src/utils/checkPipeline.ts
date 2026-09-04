@@ -365,6 +365,61 @@ async function collectGeometryAt(
   return issues;
 }
 
+/** A grid time can take the sleep-free motion profile only when nothing at that
+ * time measures text (layout), photographs the frame (contrast), or reads
+ * caption/frame geometry — those all need the paint-flush settle and the
+ * glyph-subset font wait that collectMotionFrame does not. */
+function needsFullAuditSettle(input: {
+  time: number;
+  layoutSet: Set<number>;
+  contrastSet: Set<number>;
+  canvas: Canvas | null;
+  grid: SampleGrid;
+  options: CheckOptions;
+}): boolean {
+  const { time, layoutSet, contrastSet, canvas, grid, options } = input;
+  if (layoutSet.has(time) || contrastSet.has(time)) return true;
+  return canvas !== null && geometryRequest(time, grid, options) !== null;
+}
+
+/** Layout-sample collection for one grid time: the issues plus the three
+ * per-sample accumulators (frozen-sweep fingerprint, rotation, off-pivot) that
+ * only layout times contribute to. Returns the issues so the caller can also
+ * feed them to the contrast annotation overlay. */
+async function collectLayoutAt(
+  driver: CheckAuditDriver,
+  options: CheckOptions,
+  time: number,
+  collected: GridSamples,
+): Promise<AnchoredLayoutIssue[]> {
+  const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
+  collected.layoutIssues.push(...layoutIssues);
+  collected.geometrySignatures.push(await driver.collectLayoutGeometry());
+  collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
+  collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
+  return layoutIssues;
+}
+
+/** Contrast capture for one grid time, plus its share of the contrast timer. */
+async function collectContrastAt(
+  driver: CheckAuditDriver,
+  options: CheckOptions,
+  time: number,
+  issuesAtTime: AnchoredLayoutIssue[],
+  collected: GridSamples,
+): Promise<void> {
+  const contrastStart = Date.now();
+  // Annotation is a --snapshots-only nicety — skip building it (and the
+  // driver's extra overlay screenshot) when nothing will use it; the call
+  // shape without --snapshots stays exactly what it was before this existed.
+  const capture = options.snapshots
+    ? await driver.collectContrast(time, annotationBoxesFrom(issuesAtTime))
+    : await driver.collectContrast(time);
+  collected.contrastMs += Date.now() - contrastStart;
+  collected.contrastEntries.push(...capture.entries);
+  collected.screenshots.push({ time, pngBase64: capture.pngBase64 });
+}
+
 async function collectGridSamples(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -388,18 +443,15 @@ async function collectGridSamples(
     indicatorFrames: [],
   };
   for (const time of mergeSampleTimes(grid.layoutSamples, motion.times)) {
-    await driver.seek(time);
+    await (needsFullAuditSettle({ time, layoutSet, contrastSet, canvas, grid, options })
+      ? driver.seek(time)
+      : driver.seekMotion(time));
     // Findings collected for THIS sample time, so the overview overlay (below)
     // only ever annotates a frame with defects that are actually valid at
     // that render time — never a stale bbox from an earlier/later sample.
     const issuesAtTime: AnchoredLayoutIssue[] = [];
     if (layoutSet.has(time)) {
-      const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
-      collected.layoutIssues.push(...layoutIssues);
-      issuesAtTime.push(...layoutIssues);
-      collected.geometrySignatures.push(await driver.collectLayoutGeometry());
-      collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
-      collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
+      issuesAtTime.push(...(await collectLayoutAt(driver, options, time, collected)));
     }
     if (canvas) {
       const geometryIssues = await collectGeometryAt(
@@ -419,16 +471,7 @@ async function collectGridSamples(
       );
     }
     if (contrastSet.has(time)) {
-      const contrastStart = Date.now();
-      // Annotation is a --snapshots-only nicety — skip building it (and the
-      // driver's extra overlay screenshot) when nothing will use it; the call
-      // shape without --snapshots stays exactly what it was before this existed.
-      const capture = options.snapshots
-        ? await driver.collectContrast(time, annotationBoxesFrom(issuesAtTime))
-        : await driver.collectContrast(time);
-      collected.contrastMs += Date.now() - contrastStart;
-      collected.contrastEntries.push(...capture.entries);
-      collected.screenshots.push({ time, pngBase64: capture.pngBase64 });
+      await collectContrastAt(driver, options, time, issuesAtTime, collected);
     }
   }
   await collectMotionOverlapSamples(driver, grid, collected);
