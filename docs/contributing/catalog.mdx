@@ -86,6 +86,28 @@ Other useful optional fields include `author`, `authorUrl`, `relatedSkill`,
 current authority. The published JSON schema validates the shared manifest
 fields but does not yet describe the block-only `params` field.
 
+### Installer metadata
+
+Use `registryDependencies` to name registry items that must be installed first.
+The installer resolves dependencies transitively and rejects missing items or
+cycles. Reference exact item names and keep the dependency graph small.
+
+Set `minCliVersion` to the first CLI version that supports the item. All resolved
+items, including dependencies, must pass the compatibility check before any item
+files are installed. An incompatible CLI reports the required version and an
+upgrade command.
+
+Set `deprecated` to a short migration message when an item has a replacement.
+The installer warns and keeps the item available for existing projects.
+
+```json
+{
+  "minCliVersion": "0.6.96",
+  "registryDependencies": ["grain-overlay"],
+  "deprecated": "Use my-block-v2 instead."
+}
+```
+
 ## Build for reuse
 
 Every registry item must:

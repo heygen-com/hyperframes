@@ -87,6 +87,7 @@ const shaders: Record<string, ShaderDef> = {
   },
 
   "gravitational-lens": {
+    // Begin with the untouched source; full horizon darkening starts at progress 0.3.
     frag:
       H +
       "void main(){vec4 B=texture2D(u_to,v_uv);" +
@@ -98,7 +99,8 @@ const shaders: Record<string, ShaderDef> = {
       "float shift=pull*.02/(dist+.2);" +
       "float r=texture2D(u_from,clamp(v_uv-uv*(warpStr+shift),0.,1.)).r;" +
       "float b=texture2D(u_from,clamp(v_uv-uv*(warpStr-shift),0.,1.)).b;" +
-      "vec3 lensed=vec3(r,A.g,b)*horizon;" +
+      "float horizonStrength=smoothstep(0.,.3,u_progress);" +
+      "vec3 lensed=vec3(r,A.g,b)*mix(1.,horizon,horizonStrength);" +
       "gl_FragColor=vec4(mix(lensed,B.rgb,smoothstep(.3,.9,u_progress)),1.);}",
   },
 

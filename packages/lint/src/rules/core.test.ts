@@ -601,6 +601,25 @@ describe("core rules", () => {
   });
 
   describe("non_deterministic_code", () => {
+    it("gives randomness guidance for crypto and clock guidance for wall time", async () => {
+      const result = await lintHyperframeHtml(`<html><body>
+        <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+        <script>
+          crypto.getRandomValues(new Uint32Array(1));
+          Date.now();
+          window.__timelines = { c1: gsap.timeline({ paused: true }) };
+        </script>
+      </body></html>`);
+      const crypto = result.findings.find((finding) =>
+        finding.message.includes("crypto.getRandomValues"),
+      );
+      const clock = result.findings.find((finding) => finding.message.includes("Date.now"));
+      expect(crypto).toMatchObject({ code: "non_deterministic_code", severity: "error" });
+      expect(crypto?.fixHint).toContain("seeded PRNG");
+      expect(crypto?.fixHint).not.toContain("time-dependent");
+      expect(clock?.fixHint).toContain("wall-clock time");
+    });
+
     it("detects Math.random() in script content", async () => {
       const html = `
 <html><body>
