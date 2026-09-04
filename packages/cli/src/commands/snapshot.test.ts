@@ -77,6 +77,17 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain("opts.autoProxy");
   });
 
+  it("pairs every frame with the frame-exact reference frame under --against", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("against: {");
+    expect(source).toContain("extractVideoFrameToBuffer(opts.against, time, false, true)");
+    expect(source).toContain('labels: ["render", "reference"]');
+    // accurate seek = `-ss` after `-i`, never the keyframe-snap fast path
+    expect(source).toContain(
+      'accurateSeek ? ["-i", videoPath, ...seek] : [...seek, "-i", videoPath]',
+    );
+  });
+
   it("resolves and forwards the shared local browser GPU policy", () => {
     const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
     expect(source).toContain("resolveLocalBrowserGpuMode");
