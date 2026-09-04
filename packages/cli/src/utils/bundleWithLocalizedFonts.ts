@@ -1,3 +1,4 @@
+import type { BundleOptions } from "@hyperframes/core/compiler";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { c } from "../ui/colors.js";
 
@@ -20,9 +21,10 @@ export async function bundleWithLocalizedFonts(
   // Injectable for tests. Production callers omit it and get the producer
   // font-localization pass (see localizeWithProducer).
   localizeFonts: (html: string) => Promise<string> = localizeWithProducer,
+  options?: Pick<BundleOptions, "onDiagnostic">,
 ): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, options);
   return localizeFonts(html);
 }
 

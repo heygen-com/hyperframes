@@ -905,6 +905,7 @@ function emptySection<T extends CheckFinding>(findings: T[] = []) {
 
 function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
   return {
+    compile: { status: "completed", diagnostics: [] },
     ok: true,
     strict: false,
     lint: { ...emptySection(), filesScanned: 0 },
@@ -1631,4 +1632,23 @@ describe("dense motion-overlap re-sampling", () => {
     expect(driver.collectOverlap).toHaveBeenCalled();
     expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
   });
+});
+
+it("keeps compiler warnings informational under the existing strict exit policy", async () => {
+  const { deps } = dependencies(fakeDriver());
+  const runBrowser = deps.runBrowserCheck;
+  deps.runBrowserCheck = async (project, options, motion, compile) => {
+    compile.status = "completed";
+    compile.diagnostics.push({
+      code: "color_grading_lut_not_inlined",
+      severity: "warning",
+      source: "gone.cube",
+      message: "Could not inline LUT",
+    });
+    return runBrowser(project, options, motion, compile);
+  };
+  const report = await runCheckPipeline(PROJECT, { ...DEFAULT_CHECK_OPTIONS, strict: true }, deps);
+  expect(report.compile.diagnostics).toHaveLength(1);
+  expect(report.ok).toBe(true);
+  expect(checkExitCode(report)).toBe(0);
 });
