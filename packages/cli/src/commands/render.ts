@@ -663,6 +663,7 @@ async function renderDocker(
   options: RenderOptions,
 ): Promise<SingleRenderResult> {
   const startTime = Date.now();
+  const primitiveCommandStartedAt = performance.now();
 
   // Dev mode (tsx/ts-node) uses "latest" since the local version isn't on npm
   const dockerVersion = isDevMode() ? "latest" : VERSION;
@@ -741,7 +742,11 @@ async function renderDocker(
       child.on("error", (err) => reject(err));
     });
   } catch (error: unknown) {
-    trackPrimitiveRenderFailed(projectDir, "render_failed");
+    await trackPrimitiveRenderFailed(
+      projectDir,
+      "render_failed",
+      performance.now() - primitiveCommandStartedAt,
+    );
     handleRenderError(error, options, startTime, true, "Check Docker is running: docker info");
   }
 
@@ -752,7 +757,7 @@ async function renderDocker(
   // so any late throw here (telemetry flush, feedback prompt) cannot flip
   // the exit code.
   markRenderSucceeded();
-  trackPrimitiveRenderSucceeded(projectDir);
+  await trackPrimitiveRenderSucceeded(projectDir, performance.now() - primitiveCommandStartedAt);
 
   // Track metrics (no job object available from Docker — use a minimal stub)
   runPostRenderStep("trackRenderComplete", () =>
@@ -853,6 +858,7 @@ export async function renderLocal(
   );
 
   const startTime = Date.now();
+  const primitiveCommandStartedAt = performance.now();
   const logger = createRenderTelemetryLogger(
     producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
   );
@@ -900,7 +906,11 @@ export async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
-    trackPrimitiveRenderFailed(projectDir, "render_failed");
+    await trackPrimitiveRenderFailed(
+      projectDir,
+      "render_failed",
+      performance.now() - primitiveCommandStartedAt,
+    );
     maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
     handleRenderError(
       error,
@@ -919,7 +929,7 @@ export async function renderLocal(
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
   markRenderSucceeded();
-  trackPrimitiveRenderSucceeded(projectDir);
+  await trackPrimitiveRenderSucceeded(projectDir, performance.now() - primitiveCommandStartedAt);
 
   maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
   const elapsed = Date.now() - startTime;

@@ -106,6 +106,25 @@ describe("interactive catalog verified OAuth boundary", () => {
     expect(mocks.startAuthorizationCodeFlow).toHaveBeenCalledTimes(1);
     expect(mocks.getCurrentUser).toHaveBeenCalledWith(expect.objectContaining({ type: "oauth" }));
     expect(mocks.runAdd).toHaveBeenCalledTimes(1);
+    expect(mocks.runAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primitiveFunnelSession: expect.objectContaining({
+          context: expect.objectContaining({ primitiveId: "thread-message-stack" }),
+        }),
+      }),
+    );
+    expect(mocks.trackEvent.mock.calls.map(([name]) => name)).toEqual([
+      "primitive_catalog_searched",
+      "primitive_catalog_result_selected",
+      "primitive_auth_started",
+      "$identify",
+      "primitive_auth_completed",
+    ]);
+    expect(
+      mocks.trackEvent.mock.calls.find(
+        ([name]) => name === "primitive_catalog_result_selected",
+      )?.[1],
+    ).toMatchObject({ result_rank: 1, auth_state: "anonymous" });
   });
 
   it("stitches an already verified OAuth session exactly once before install", async () => {
@@ -145,6 +164,12 @@ describe("interactive catalog verified OAuth boundary", () => {
       mocks.trackEvent.mock.calls.filter(([name]) => name === "primitive_auth_completed"),
     ).toHaveLength(1);
     expect(mocks.runAdd).toHaveBeenCalledTimes(1);
+    expect(mocks.trackEvent.mock.calls.map(([name]) => name)).toEqual([
+      "primitive_catalog_searched",
+      "primitive_catalog_result_selected",
+      "$identify",
+      "primitive_auth_completed",
+    ]);
   });
 
   it("emits no identity or auth-completed events when opted out", async () => {

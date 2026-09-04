@@ -14,6 +14,8 @@ export type ThreadMessageStackAuthorizationOutcome =
 interface AuthorizationDeps {
   authenticate?: () => Promise<true | "cancelled" | "failed">;
   verify?: (credential: ResolvedCredential) => Promise<UserInfo>;
+  onAuthStarted?: () => void;
+  onVerified?: (user: UserInfo, authState: "existing_session" | "oauth") => void;
 }
 
 async function defaultAuthenticate(): Promise<true | "failed"> {
@@ -36,16 +38,20 @@ export async function authorizeThreadMessageStackInstall(
   const verify =
     deps.verify ?? (async (credential) => await new AuthClient().getCurrentUser(credential));
   let credential = await tryResolveOAuthCredential();
+  let authState: "existing_session" | "oauth" = "existing_session";
 
   if (!credential) {
+    deps.onAuthStarted?.();
     const outcome = await authenticate();
     if (outcome !== true) return outcome;
     credential = await tryResolveOAuthCredential();
     if (!credential) return "api-key-only";
+    authState = "oauth";
   }
 
   try {
-    await verify(credential);
+    const user = await verify(credential);
+    deps.onVerified?.(user, authState);
     return "authorized";
   } catch {
     return "failed";
