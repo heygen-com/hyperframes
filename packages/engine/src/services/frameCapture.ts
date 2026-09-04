@@ -2056,6 +2056,22 @@ function recordScriptLoadFailure(session: CaptureSession, url: string): void {
   }
 }
 
+export function classifyConsoleScriptFailure(type: string, text: string): string | null {
+  if (type !== "error") return null;
+  if (text.startsWith("[HyperFrames] composition script error:")) {
+    const detail = text.slice("[HyperFrames] composition script error:".length).trim();
+    const compId = detail.split(" ")[0] || "unknown";
+    return `runtime-error:${compId}`;
+  }
+  if (
+    /failed to find a valid digest in the ['"]integrity['"] attribute/i.test(text) &&
+    /resource has been blocked/i.test(text)
+  ) {
+    return "runtime-error:subresource-integrity";
+  }
+  return null;
+}
+
 // fallow-ignore-next-line unit-size
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
@@ -2074,11 +2090,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     // can never arrive — same fail-fast treatment as script load failures.
     // Without this, pollSubCompositionTimelines burns the full timeout and
     // the render silently succeeds with a degenerate 2-frame output (#3352).
-    if (type === "error" && text.startsWith("[HyperFrames] composition script error:")) {
-      const detail = text.slice("[HyperFrames] composition script error:".length).trim();
-      const compId = detail.split(" ")[0] || "unknown";
-      recordScriptLoadFailure(session, `runtime-error:${compId}`);
-    }
+    const scriptFailure = classifyConsoleScriptFailure(type, text);
+    if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
   });
 
   page.on("pageerror", (err) => {

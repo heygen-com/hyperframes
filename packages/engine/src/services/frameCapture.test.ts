@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  classifyConsoleScriptFailure,
   DrawElementVerificationError,
   formatHttpErrorDiagnostic,
   formatConsoleDiagnostic,
@@ -12,6 +13,27 @@ import {
   sanitizeDiagnosticUrl,
   shouldIgnoreRequestFailureDiagnostic,
 } from "./frameCapture.js";
+
+describe("classifyConsoleScriptFailure", () => {
+  it("promotes Chromium's blocked subresource-integrity diagnostic", () => {
+    expect(
+      classifyConsoleScriptFailure(
+        "error",
+        "Failed to find a valid digest in the 'integrity' attribute for resource 'http://127.0.0.1:4173/_ext/vendor/gsap.js' with computed SHA-384 integrity 'abc'. The resource has been blocked.",
+      ),
+    ).toBe("runtime-error:subresource-integrity");
+  });
+
+  it("ignores non-error and unrelated integrity messages", () => {
+    expect(
+      classifyConsoleScriptFailure(
+        "warning",
+        "Failed to find a valid digest in the 'integrity' attribute. The resource has been blocked.",
+      ),
+    ).toBeNull();
+    expect(classifyConsoleScriptFailure("error", "Integrity metadata is present.")).toBeNull();
+  });
+});
 
 describe("isFontResourceError", () => {
   it("matches Google Fonts CSS load failures via location.url", () => {
