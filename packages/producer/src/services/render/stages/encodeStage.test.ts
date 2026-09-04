@@ -259,6 +259,65 @@ describe("runEncodeStage config plumbing", () => {
     });
   });
 
+  it("gives the reported long high-quality encode a 24x source-duration budget", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const input = makeInput();
+
+    await runEncodeStage(
+      makeInput({
+        job: {
+          ...input.job,
+          config: { ...input.job.config, quality: "high" },
+          duration: 331.273,
+        },
+        engineConfig: { ffmpegEncodeTimeout: 600_000 },
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[5]).toEqual({
+      ffmpegEncodeTimeout: 7_950_552,
+    });
+  });
+
+  it("keeps the 4x budget for a standard encode", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const input = makeInput();
+
+    await runEncodeStage(
+      makeInput({
+        job: {
+          ...input.job,
+          config: { ...input.job.config, quality: "standard" },
+          duration: 331.273,
+        },
+        engineConfig: { ffmpegEncodeTimeout: 600_000 },
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[5]).toEqual({
+      ffmpegEncodeTimeout: 1_325_092,
+    });
+  });
+
+  it("preserves a larger operator timeout for high-quality encoding", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const input = makeInput();
+    const operatorConfig = { ffmpegEncodeTimeout: 9_000_000 };
+
+    await runEncodeStage(
+      makeInput({
+        job: {
+          ...input.job,
+          config: { ...input.job.config, quality: "high" },
+          duration: 331.273,
+        },
+        engineConfig: operatorConfig,
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[5]).toBe(operatorConfig);
+  });
+
   it("prefers engine config supplied by the orchestrator", async () => {
     const { runEncodeStage } = await import("./encodeStage.js");
     const orchestratorEngineConfig = { ffmpegEncodeTimeout: 54_321 };
