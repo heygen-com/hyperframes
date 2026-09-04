@@ -155,7 +155,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         </button>
         <button
           type="button"
-          className="absolute -right-0.5 -bottom-0.5 rounded p-0.5 text-white/50 hover:text-white/90 bg-black/50"
+          className="absolute -right-0.5 -bottom-0.5 rounded-sm p-0.5 text-white/50 hover:text-white/90 bg-black/50"
           onClick={() => setGridPopoverOpen((v) => !v)}
           title="Grid options"
           aria-label="Grid options"
@@ -185,7 +185,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
                     updatePrefs({ gridSpacing: val });
                   }
                 }}
-                className="w-16 rounded bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-none focus:border-studio-accent"
+                className="w-16 rounded-sm bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-hidden focus:border-studio-accent"
               />
             </label>
             <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">

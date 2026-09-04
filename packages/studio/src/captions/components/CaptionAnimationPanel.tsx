@@ -171,7 +171,7 @@ function AnimationPhase({
               }}
               className="flex-1 accent-studio-accent disabled:opacity-40"
             />
-            <span className="text-2xs text-neutral-400 font-mono w-8 text-right flex-shrink-0">
+            <span className="text-2xs text-neutral-400 font-mono w-8 text-right shrink-0">
               {intensity.toFixed(2)}
             </span>
           </div>
@@ -249,7 +249,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {gated && (
-        <div className="flex-shrink-0 mx-3 mt-2 px-2 py-1.5 rounded border border-amber-500/30 bg-amber-500/10">
+        <div className="shrink-0 mx-3 mt-2 px-2 py-1.5 rounded-sm border border-amber-500/30 bg-amber-500/10">
           <p className="text-2xs text-amber-300/90 leading-snug">
             Animation editing isn&apos;t applied to playback or saved yet, so these controls are
             disabled.
@@ -286,13 +286,13 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
       </div>
 
       {/* Footer */}
-      <div className="flex-shrink-0 px-3 py-2 border-t border-neutral-800">
+      <div className="shrink-0 px-3 py-2 border-t border-neutral-800">
         <button
           type="button"
           onClick={handleApplyToAll}
           disabled={gated}
           title={gated ? "Disabled until animation editing is applied to playback" : undefined}
-          className="w-full py-1.5 rounded border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
+          className="w-full py-1.5 rounded-sm border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
         >
           Apply to all groups
         </button>

@@ -213,7 +213,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-neutral-800 flex-shrink-0">
+      <div className="px-3 py-2 border-b border-neutral-800 shrink-0">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-2xs text-neutral-500">{countLabel}</span>
         </div>
@@ -225,7 +225,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
             aria-selected={activeTab === "style"}
             onClick={() => setActiveTab("style")}
             className={[
-              "flex-1 py-0.5 rounded text-2xs font-medium transition-colors",
+              "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
               activeTab === "style"
                 ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
@@ -239,7 +239,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
             aria-selected={activeTab === "animation"}
             onClick={() => setActiveTab("animation")}
             className={[
-              "flex-1 py-0.5 rounded text-2xs font-medium transition-colors",
+              "flex-1 py-0.5 rounded-sm text-2xs font-medium transition-colors",
               activeTab === "animation"
                 ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
                 : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",

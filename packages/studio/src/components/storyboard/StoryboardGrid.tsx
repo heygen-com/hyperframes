@@ -35,7 +35,7 @@ export function StoryboardGrid({
   }
 
   return (
-    <div className="mt-8 grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+    <div className="mt-8 grid gap-x-6 gap-y-8 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
       {frames.map((frame) => (
         <StoryboardFrameTile
           key={frame.index}

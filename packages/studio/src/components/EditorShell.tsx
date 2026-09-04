@@ -259,7 +259,7 @@ function EditorShellBody({
       ref={containerRef}
       // Shell canvas is a step LIGHTER than the near-black panel cards so the
       // gaps between panels read as visible seams (CapCut-style).
-      className="flex flex-col flex-1 min-h-0 bg-[#18181B]"
+      className="flex flex-col flex-1 min-h-0 bg-panel-surface"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
@@ -292,7 +292,7 @@ function EditorShellBody({
         onSelectTimelineElement={onSelectTimelineElement}
         timelineFooter={
           captionEditMode ? (
-            <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
+            <div className="border-t border-neutral-800/30 shrink-0" style={{ height: 60 }}>
               <div className="flex items-center gap-1.5 px-2 py-0.5">
                 <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
                   Captions

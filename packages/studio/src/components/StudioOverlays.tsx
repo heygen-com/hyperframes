@@ -81,7 +81,7 @@ export function StudioOverlays({
       {dragOverlayActive && <StudioGlobalDragOverlay />}
       {/* One bottom-right stack so the feedback card and toasts queue instead
           of covering each other. Empty when nothing is showing. */}
-      <div className="absolute bottom-6 right-6 z-[91] flex flex-col items-end gap-2">
+      <div className="absolute bottom-6 right-6 z-91 flex flex-col items-end gap-2">
         {toasts.map((toast) => (
           <StudioToast
             key={toast.id}

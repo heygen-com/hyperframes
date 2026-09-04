@@ -144,7 +144,7 @@ export function StoryboardReviewGuide({
               {FRAME_STATUS_ORDER.map((status) => (
                 <span
                   key={status}
-                  className={`rounded px-2 py-1 text-[10px] font-medium ${FRAME_STATUS_META[status].chipClass}`}
+                  className={`rounded-sm px-2 py-1 text-[10px] font-medium ${FRAME_STATUS_META[status].chipClass}`}
                 >
                   {summary.counts[status]} {FRAME_STATUS_META[status].label}
                 </span>
