@@ -413,9 +413,12 @@ const MANIFEST_CLIP_ATTRS: ReadonlyArray<[string, (clip: ClipManifestClip) => nu
   ["data-track-index", (clip) => clip.track],
 ];
 
+function nodeMatchesClipTag(node: Element, clip: ClipManifestClip): boolean {
+  return !clip.tagName || node.tagName.toLowerCase() === clip.tagName.toLowerCase();
+}
+
 function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean {
-  const tagName = clip.tagName?.toLowerCase();
-  if (tagName && node.tagName.toLowerCase() !== tagName) return false;
+  if (!nodeMatchesClipTag(node, clip)) return false;
   // An attribute only constrains the match when it parses to a finite number:
   // missing or garbled reads as "unknown", not "mismatch".
   return MANIFEST_CLIP_ATTRS.every(([attr, expected]) => {
@@ -427,6 +430,7 @@ function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean
 function findTimelineDomNode(doc: Document, id: string): Element | null {
   return (
     doc.getElementById(id) ??
+    doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`) ??
     doc.querySelector(`[data-composition-id="${CSS.escape(id)}"]`) ??
     doc.querySelector(`.${CSS.escape(id)}`) ??
     null
@@ -438,15 +442,30 @@ export function findTimelineDomNodeForClip(
   clip: ClipManifestClip,
   fallbackIndex: number,
   usedNodes = new Set<Element>(),
+  getCandidates = () => getTimelineDomNodes(doc),
 ): Element | null {
   const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
-  if (byIdentity && !usedNodes.has(byIdentity)) return byIdentity;
+  if (byIdentity && !usedNodes.has(byIdentity) && nodeMatchesClipTag(byIdentity, clip))
+    return byIdentity;
 
-  const candidates = getTimelineDomNodes(doc).filter((node) => !usedNodes.has(node));
+  const candidates = getCandidates().filter((node) => !usedNodes.has(node));
   const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));
   if (exact) return exact;
 
-  return candidates[fallbackIndex] ?? null;
+  const positional = candidates[fallbackIndex];
+  return positional && nodeMatchesClipTag(positional, clip) ? positional : null;
+}
+
+/** One synchronous hydration pass: snapshot only on a miss, never across reloads. */
+export function createTimelineDomNodeResolver(doc: Document) {
+  let candidates: Element[] | undefined;
+  const usedNodes = new Set<Element>();
+  const getCandidates = () => (candidates ??= getTimelineDomNodes(doc));
+  return (clip: ClipManifestClip, index: number): Element | null => {
+    const node = findTimelineDomNodeForClip(doc, clip, index, usedNodes, getCandidates);
+    if (node) usedNodes.add(node);
+    return node;
+  };
 }
 
 // ---------------------------------------------------------------------------

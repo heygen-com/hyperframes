@@ -192,6 +192,7 @@ function canTrimEdge(element: TimelineElement, edge: TimelineGroupResizeEdge): b
     kind: element.kind,
     duration: element.duration,
     domId: element.domId,
+    hfId: element.hfId,
     selector: element.selector,
     compositionSrc: element.compositionSrc,
     playbackStart: element.playbackStart,

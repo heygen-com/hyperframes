@@ -9,6 +9,7 @@
  * an argument, so each is callable — and readable — on its own.
  */
 
+import { createTimelineDomNodeResolver } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
@@ -20,7 +21,6 @@ import {
   buildStandaloneRootTimelineElement,
   createImplicitTimelineLayersFromDOM,
   createTimelineElementFromManifestClip,
-  findTimelineDomNodeForClip,
   getTimelineElementSelector,
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
@@ -195,19 +195,16 @@ export function safeContentDocument(iframe: HTMLIFrameElement | null): Document 
 
 /**
  * The manifest's root clips as TimelineElements, each bound to the live DOM node
- * it was authored as. `usedHostEls` makes the binding one-to-one: two clips with
+ * it was authored as. The pass-scoped resolver makes the binding one-to-one: two clips with
  * the same shape must not both claim the same element.
  */
 export function buildTimelineElementsFromClips(
   clips: readonly ClipManifestClip[],
   iframeDoc: Document | null,
 ): TimelineElement[] {
-  const usedHostEls = new Set<Element>();
+  const resolveHost = iframeDoc ? createTimelineDomNodeResolver(iframeDoc) : null;
   return clips.map((clip, index) => {
-    const hostEl = iframeDoc
-      ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-      : null;
-    if (hostEl) usedHostEls.add(hostEl);
+    const hostEl = resolveHost?.(clip, index) ?? null;
     return createTimelineElementFromManifestClip({
       clip,
       fallbackIndex: index,
