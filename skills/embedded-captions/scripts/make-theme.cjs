@@ -746,7 +746,7 @@ ${
     : ""
 }
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // rail yields while the apex lands (furniture never contests the hero).
   // Overlap guards: dim starts after the line is IN, never runs into the exit;
   // restore is emitted only with clear runway before the exit (else the line
@@ -777,7 +777,7 @@ function paradigmPanel() {
       w.display,
       +w.start.toFixed(3),
       // redaction: words inside the hero phrase window get blocks until lock
-      redactLinkage && w.start >= hero.start - 0.01 && w.start <= hero.end + 0.01
+      hero && redactLinkage && w.start >= hero.start - 0.01 && w.start <= hero.end + 0.01
         ? +lockT.toFixed(3)
         : 0,
     ]),
@@ -814,7 +814,7 @@ ${lineData.map((L) => `        <div class="ln" id="${L.id}"></div>`).join("\n")}
   // ---- body paradigm: PANEL (typed console log, accumulate) ----
   tl.fromTo("#panel", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" }, 0.05);
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  tl.to("#panel", { opacity: ${b.yield.dim}, duration: 0.25, ease: "power1.in" }, ${(heroIn - 0.08).toFixed(3)});
   tl.to("#panel", { opacity: 1, duration: 0.3, ease: "power1.out" }, ${(lockT + 0.15).toFixed(3)});`
     : ""
@@ -1804,24 +1804,29 @@ function paradigmLastpage() {
     words: L.words.map((w) => [w.display, +w.start.toFixed(3)]),
   }));
   const css = `
-  .fld { position:absolute; white-space:nowrap; font-family:'${dna.fonts.body}', serif;
-         font-weight:600; color:${dna.palette.body}; filter: blur(${b.fieldBlur || 9}px); }
+${
+  HEROLESS
+    ? ""
+    : `  .fld { position:absolute; white-space:nowrap; font-family:'${dna.fonts.body}', serif;
+         font-weight:600; color:${dna.palette.body}; filter: blur(${b.fieldBlur || 9}px); }`
+}
   .ms  { position:absolute; left:${W / 2}px; top:${H - (b.bottomPx || 96)}px; opacity:0; white-space:nowrap;
          font-family:'${dna.fonts.body}', serif; font-size:${b.fontPx}px; line-height:1;
          color:${dna.palette.body}; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
   .ms .w { display:inline-block; opacity:0; margin:0 0.14em; overflow:hidden; vertical-align:bottom; white-space:nowrap; }`;
   const html =
-    inst
-      .map(
-        (f, i) =>
-          `      <div class="fld" id="f${i}" style="left:${f.x}px; top:${f.y}px; font-size:${f.px}px; opacity:${f.op}; transform:translate(-50%,-50%) rotate(${f.rot}deg)">${esc(heroDisplay)}</div>`,
-      )
-      .join("\n") +
-    "\n" +
+    (HEROLESS
+      ? ""
+      : inst
+          .map(
+            (f, i) =>
+              `      <div class="fld" id="f${i}" style="left:${f.x}px; top:${f.y}px; font-size:${f.px}px; opacity:${f.op}; transform:translate(-50%,-50%) rotate(${f.rot}deg)">${esc(heroDisplay)}</div>`,
+          )
+          .join("\n") + "\n") +
     lineData.map((L) => `      <div class="ms" id="${L.id}"></div>`).join("\n");
   const js = `
   // ---- THE LAST PAGE ----
-  const I = ${I.toFixed(3)};
+${!HEROLESS ? `  const I = ${I.toFixed(3)};` : ""}
   const MS = ${J(lineData)};
   MS.forEach((L) => {
     const line = document.getElementById(L.id);
@@ -1840,7 +1845,9 @@ function paradigmLastpage() {
     tl.to(line, { opacity: 0, duration: 0.16, ease: "power2.in" }, xo);
     tl.set(line, { display: "none" }, xo + 0.18);
   });
-  // the field breathes imperceptibly (alive, unreadable)
+${
+  !HEROLESS
+    ? `  // the field breathes imperceptibly (alive, unreadable)
   ${inst.map((f, i) => `tl.to("#f${i}", { y: ${prnd() - 0.5 > 0 ? "+" : "-"}${(3 + prnd() * 5).toFixed(1)}, duration: ${(2.4 + prnd() * 2).toFixed(1)}, ease: "sine.inOut" }, 0);`).join("\n  ")}
   // APEX: rack focus — the future was only ever one sentence
   tl.to(".fld", { filter: "blur(0px)", duration: 0.38, ease: "power3.inOut" }, I - 0.1);
@@ -1856,7 +1863,9 @@ function paradigmLastpage() {
   tl.to(".fld", { filter: "blur(${b.fieldBlur || 9}px)", duration: 0.6, ease: "power2.inOut" }, I + 1.5);
   tl.to("#f${inst.indexOf(main)}", { filter: "blur(0px)", duration: 0.01 }, I + 1.5);
   ${inst.map((f, i) => (i === inst.indexOf(main) ? "" : `tl.to("#f${i}", { opacity: 0, duration: 0.6 }, I + 1.6);`)).join("\n  ")}
-  tl.to("#f${inst.indexOf(main)}", { opacity: 0, duration: 0.3, ease: "power2.in" }, ${(heroOut - 0.3).toFixed(3)});`;
+  tl.to("#f${inst.indexOf(main)}", { opacity: 0, duration: 0.3, ease: "power2.in" }, ${(heroOut - 0.3).toFixed(3)});`
+    : ""
+}`;
   return { css, html, js };
 }
 
@@ -2055,7 +2064,7 @@ ${
     : ""
 }
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // rail yields while the apex board locks
   tl.to("#flwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
   tl.to("#flwrap", { opacity: 1, duration: 0.22, ease: "power1.out" }, ${(heroIn + (b.yield.post || 0.47)).toFixed(3)});`
@@ -2194,14 +2203,18 @@ ${
 }
 
   // ===== furniture =====
-  // status blinks while we wait, then the gag: pages to the OK row
+${
+  !HEROLESS
+    ? `  // status blinks while we wait, then the gag: pages to the OK row
   ${J(statBlinks)}.forEach((t) => {
     tl.set("#tstrow1", { opacity: 0.35 }, t);
     tl.set("#tstrow1", { opacity: 1 },    t + 0.042);
   });
   tl.to("#tstatstack", { y: -24, duration: 0.16, ease: "steps(4)" }, ${swapT.toFixed(3)});
   tl.set("#tstrow2", { opacity: 0.5 }, ${(swapT + 0.18).toFixed(3)});
-  tl.set("#tstrow2", { opacity: 1 },   ${(swapT + 0.222).toFixed(3)});
+  tl.set("#tstrow2", { opacity: 1 },   ${(swapT + 0.222).toFixed(3)});`
+    : ""
+}
 
   // clock seconds tick (stacked digit column, stepped shifts)
   for (let k = 1; k <= ${nDig - 1}; k++) tl.set("#tdigcol", { y: -22 * k }, k);
@@ -2212,7 +2225,7 @@ ${
     tl.set("#twin", { opacity: 1 },    t + 0.042);
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `
   // ===== hierarchy: board yields while the apex lands =====
   tl.to("#tboard", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
@@ -2343,7 +2356,7 @@ function paradigmVhsrail() {
   gags.push([+(lastOut - 0.01).toFixed(3), null]);
   const js = `
   // ---- body paradigm: VHSRAIL (tracking-glitch words, REWIND exits, OSD furniture) ----
-  const I = ${heroIn.toFixed(3)}, X = ${X.toFixed(3)};
+${!HEROLESS ? `  const I = ${heroIn.toFixed(3)}, X = ${X.toFixed(3)};` : ""}
 
   // ===== OSD furniture: present the whole clip, 1-frame power-on glitch =====
   tl.set(["#osdplay","#osdts"], { opacity: 1, x: 5 }, 0.02);
@@ -2404,7 +2417,7 @@ function paradigmVhsrail() {
     });
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `
   // rail yields while the apex lands (dim clamped ≥ line-in; restore only with runway)
   VRAIL.forEach((L) => {
@@ -2427,7 +2440,9 @@ ${
     tl.set("#drift", { opacity: 0 }, L.out + 0.7);
   });
 
-  // ===== REC FREEZE artifacts (apex-coupled, in FRONT of the subject) =====
+${
+  !HEROLESS
+    ? `  // ===== REC FREEZE artifacts (apex-coupled, in FRONT of the subject) =====
   // 1-frame full white tear band
   tl.set("#tear", { opacity: 0.95 }, I);
   tl.set("#tear", { opacity: 0 }, I + F);
@@ -2446,7 +2461,9 @@ ${
   tl.set("#hsbar", { opacity: 0 }, I + 10 * F);
 
   // apex REWIND exit: 2 scrub lines at the apex band
-  [0.6, 0.25, 0.5, 0].forEach((o, k) => tl.set(["#scrub3","#scrub4"], { opacity: o }, X + k * F));
+  [0.6, 0.25, 0.5, 0].forEach((o, k) => tl.set(["#scrub3","#scrub4"], { opacity: o }, X + k * F));`
+    : ""
+}
   // head-switch reprise on the final rewind
   [[0, 0.85, 40], [0.04, 0.6, 190], [0.08, 0.8, 90]].forEach(([dt, o, px]) => {
     tl.set("#hsbar", { opacity: o, backgroundPositionX: px + "px" }, ${lastOut.toFixed(3)} + dt);
@@ -2551,7 +2568,7 @@ ${lineData.map((L) => `        <div class="hln" id="${L.id}"></div>`).join("\n")
     tl.set(line, { opacity: 0, display: "none" }, Math.min(L.xo + 0.15, ${(DUR - 0.02).toFixed(2)}));
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // HUD yields while the boss lands (restore only with runway)
   tl.to("#hud", { opacity: ${b.yield.dim}, duration: 0.15, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
 ${
@@ -2791,7 +2808,7 @@ ${pageData
     }
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `
   // ===== apex etiquette: the strip yields while the stamp lands =====
   tl.to(strip, { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${dimT});
@@ -2799,7 +2816,7 @@ ${resT + 0.3 < FY ? `  tl.to(strip, { opacity: 1, duration: 0.25, ease: "power1.
     : ""
 }
 ${
-  shadeDur > 0.4
+  !HEROLESS && shadeDur > 0.4
     ? `
   // strip top-shadow breathes during the stamp's dead-still hold
   tl.to("#shade", { keyframes: { opacity: [0.5, 0.72, 0.54, 0.7, 0.55, 0.66, 0.5] },
@@ -2915,9 +2932,13 @@ function paradigmLaserrail() {
     L.words.forEach(([txt, st, em], wi) => {
       const el = line.children[wi];
       const [wx, wy] = L.pos[wi];
-      // beams yield inside the apex window (the hero owns the light)
+${
+  HEROLESS
+    ? "      const yld = 1;"
+    : `      // beams yield inside the apex window (the hero owns the light)
       const yld = (st > ${(heroIn - 0.41).toFixed(3)} && st < ${(heroIn + 0.99).toFixed(3)})
-        ? ${b.yield ? (b.yield.beamDim ?? 0.55) : 1} : 1;
+        ? ${b.yield ? (b.yield.beamDim ?? 0.55) : 1} : 1;`
+}
       const t0 = st - 0.21, cv = st - 0.083;
       // two beams converge on the word 2 frames before its time
       [[-25, -15, LACC, wx - 170], [${W + 25}, -15, LMAG, wx + 170]].forEach(([ex, ey, col, sx]) => {
@@ -2975,7 +2996,7 @@ function paradigmLaserrail() {
     tl.set(line, { display: "none" }, Math.min(L.sweepT + 0.32, ${(DUR - 0.02).toFixed(3)}));
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // rail yields while the apex lands (restore only with clear runway)
   LRAIL.forEach((L) => {
     if (L.in < ${heroIn.toFixed(3)} + 0.9 && L.sweepT > ${heroIn.toFixed(3)} - 0.3) {
@@ -3035,7 +3056,7 @@ function paradigmStormrail() {
       <div id="rain2"></div>`;
   const js = `
   // ---- body paradigm: STORMRAIL (lightning-kiss words, rain-wash exits, ambient rain) ----
-  const I = ${heroIn.toFixed(3)};
+${!HEROLESS ? `  const I = ${heroIn.toFixed(3)};` : ""}
   // ambient rain: seeded streaks on repeating linear cycles (f(t), no random at render)
   function makeRain(container, n, seed, t0, t1) {
     const rnd = mulberry32(seed);
@@ -3059,10 +3080,14 @@ function paradigmStormrail() {
     }
   }
   makeRain(document.getElementById("rain"),  ${r.count ?? 18}, ${r.seed ?? 9021}, 0, ${(DUR - 0.02).toFixed(2)});
-  makeRain(document.getElementById("rain2"), ${r.count ?? 18}, ${r.seed2 ?? 4477}, ${(heroIn - 0.11).toFixed(3)}, ${Math.min(heroIn + 1.24, DUR - 0.02).toFixed(3)});
+${
+  !HEROLESS
+    ? `  makeRain(document.getElementById("rain2"), ${r.count ?? 18}, ${r.seed2 ?? 4477}, ${(heroIn - 0.11).toFixed(3)}, ${Math.min(heroIn + 1.24, DUR - 0.02).toFixed(3)});
   // rain doubles for ~1s after the strike
   tl.set("#rain2", { opacity: 0.11 }, I + 0.02);
-  tl.to("#rain2",  { opacity: 0, duration: 0.30 }, ${Math.min(heroIn + 1.02, DUR - 0.34).toFixed(3)});
+  tl.to("#rain2",  { opacity: 0, duration: 0.30 }, ${Math.min(heroIn + 1.02, DUR - 0.34).toFixed(3)});`
+    : ""
+}
 
   // rail scrim (stable reading surface against the busy lower frame)
   tl.to("#stscrim", { opacity: 1, duration: 0.20 }, 0.05);
@@ -3097,7 +3122,7 @@ function paradigmStormrail() {
     tl.set(line, { display: "none" }, Math.min(L.out + 0.20, ${(DUR - 0.02).toFixed(2)}));
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // rail yields while the bolt lands; the visible line's shadow flips toward
   // the strike for the flash frames (light from the bolt side)
   SRAIL.forEach((L) => {
@@ -3244,7 +3269,7 @@ function paradigmHolorail() {
     tl.set(line, { opacity: 0, display: "none" }, ex + 0.15);
   });
 ${
-  b.yield
+  !HEROLESS && b.yield
     ? `  // the whole rail (plate included) yields while the apex lands
   tl.to("#railwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre ?? 0.18)).toFixed(3)});
   tl.to("#railwrap", { opacity: 1, duration: 0.22, ease: "power1.out" }, ${(heroIn + (b.yield.post ?? 0.37)).toFixed(3)});`
@@ -3324,14 +3349,14 @@ function paradigmPlanktonrail() {
       .join("\n");
   const js = `
   // ---- body paradigm: PLANKTONRAIL (jellyfish glow-on, two-row float, sinking exits) ----
-  const I = ${heroIn.toFixed(3)};
+${!HEROLESS ? `  const I = ${heroIn.toFixed(3)};` : ""}
   const mrnd = mulberry32(${m.seed ?? 2929});
   const mf = document.getElementById("mfield");
   // plankton motes: seeded drift walks f(t); the first ${m.near ?? 5} seed a
   // ring around the bloom heart and get ATTRACTED to it as the apex lands
   const APX = ${HG.x}, APY = ${HG.y};
   for (let i = 0; i < ${m.count ?? 12}; i++) {
-    const near = i < ${m.near ?? 5};
+    const near = ${HEROLESS ? "false" : `i < ${m.near ?? 5}`};
     const el = document.createElement("div");
     el.className = "mote"; mf.appendChild(el);
     let L, T;
@@ -3352,11 +3377,13 @@ function paradigmPlanktonrail() {
     // slow seeded drift walk
     const a1 = (mrnd() - 0.5) * 36, a2 = a1 + (mrnd() - 0.5) * 36, a3 = a2 + (mrnd() - 0.5) * 30;
     const b1 = (mrnd() - 0.5) * 28, b2 = b1 + (mrnd() - 0.5) * 28, b3 = b2 + (mrnd() - 0.5) * 24;
-    const dEnd = near ? I - 0.25 : ${(DUR - 0.34).toFixed(3)};
+    const dEnd = ${HEROLESS ? (DUR - 0.34).toFixed(3) : `near ? I - 0.25 : ${(DUR - 0.34).toFixed(3)}`};
     tl.to(el, { keyframes: { x: [a1, a2, a3], y: [b1, b2, b3],
                              opacity: [0.13, 0.07, 0.11] },
                duration: dEnd - (tin + 0.32), ease: "sine.inOut" }, tin + 0.32);
-    if (near) {
+${
+  !HEROLESS
+    ? `    if (near) {
       // ATTRACTION: pulled toward the bloom, brightening
       const tx = (APX - L) * 0.72 + (mrnd() - 0.5) * 24;
       const ty = (APY - T) * 0.72 + (mrnd() - 0.5) * 18;
@@ -3367,7 +3394,9 @@ function paradigmPlanktonrail() {
       tl.to(el, { y: ty + 18, opacity: 0, duration: 0.18, ease: "power1.in" }, ${(DUR - 0.22).toFixed(3)});
     } else {
       tl.to(el, { y: "+=14", opacity: 0, duration: 0.16, ease: "power1.in" }, ${(DUR - 0.2).toFixed(3)});
-    }
+    }`
+    : `    tl.to(el, { y: "+=14", opacity: 0, duration: 0.16, ease: "power1.in" }, ${(DUR - 0.2).toFixed(3)});`
+}
   }
 
   // ---- body lines: jellyfish glow-on, floating couplet rows, sinking exits ----
@@ -3415,7 +3444,9 @@ function paradigmPlanktonrail() {
     }
   });
 
-  // rail yields to the apex landing: the feeding line dims (and exits dimmed
+${
+  !HEROLESS
+    ? `  // rail yields to the apex landing: the feeding line dims (and exits dimmed
   // unless it has ≥0.9s of hold left); a line entering during the hold
   // arrives at ${yld.enter ?? 0.8} and restores once the bloom settles
   PRAIL.forEach((L, i) => {
@@ -3429,7 +3460,9 @@ function paradigmPlanktonrail() {
       tl.to("#" + L.id, { opacity: 1, duration: 0.25, ease: "power1.out" },
             Math.min(Math.max(I + ${(yld.post ?? 0.63).toFixed(2)}, L.in + 0.1), ${(DUR - 0.28).toFixed(2)}));
     }
-  });`;
+  });`
+    : ""
+}`;
   return { css, html, js };
 }
 
@@ -3510,7 +3543,7 @@ function paradigmSheenrail() {
       </div>`;
   const js = `
   // ---- body paradigm: SHEENRAIL (flow-on entrance, sheen-sweep emphasis, dissolve-to-streaks exits) ----
-  const I = ${heroIn.toFixed(3)};
+${!HEROLESS ? `  const I = ${heroIn.toFixed(3)};` : ""}
   const srnd = mulberry32(${b.seed ?? 20260611});
   const stg = document.getElementById("stage");
   const PAL = ${J(PAL)};
@@ -3564,9 +3597,13 @@ function paradigmSheenrail() {
   // continuous iridescent sheen drift f(t) — the body's hold life
   tl.fromTo(allGrads, { backgroundPosition: "0% 50%" },
             { backgroundPosition: "300% 50%", duration: ${(DUR - 0.04).toFixed(3)}, ease: "none" }, 0);
-  // rail yields — band included — while the ribbon writes (apex owns the frame)
+${
+  !HEROLESS
+    ? `  // rail yields — band included — while the ribbon writes (apex owns the frame)
   tl.to("#skwrap", { opacity: ${yld.dim ?? 0.5}, duration: 0.2, ease: "sine.in" }, I - ${(yld.pre ?? 0.16).toFixed(2)});
-  tl.to("#skwrap", { opacity: 1, duration: 0.3, ease: "sine.out" }, I + ${(yld.post ?? 0.62).toFixed(2)});`;
+  tl.to("#skwrap", { opacity: 1, duration: 0.3, ease: "sine.out" }, I + ${(yld.post ?? 0.62).toFixed(2)});`
+    : ""
+}`;
   return { css, html, js };
 }
 
@@ -3626,7 +3663,7 @@ function paradigmScoperail() {
       x += ws[i] + GAPem * b.fontPx;
     });
   });
-  if (!heroInline)
+  if (hero && !heroInline)
     for (let k = 0; k < hero.len; k++) {
       const hx = HG.x + (hero.len === 1 ? 0 : (k / (hero.len - 1)) * 0.6 * (HG.halfW || 300));
       burst.push([+tWords[hero.idx + k].start.toFixed(3), +hx.toFixed(1), 1]);
@@ -3744,7 +3781,7 @@ function paradigmScoperail() {
   tl.fromTo("#scwavewrap", { scaleX: 0.04, transformOrigin: "50% 50%" },
             { scaleX: 1, duration: 0.22, ease: "power2.out" }, 0.04);
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // rail yields while the apex trace writes (band carries lines + wave + HUD)
   tl.to("#scband", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${Math.max(heroIn - (b.yield.pre || 0.13), 0.2).toFixed(3)});
@@ -3940,7 +3977,7 @@ ${lineData.map((L) => `        <div class="pline" id="${L.id}"></div>`).join("\n
   for (let t = 0.45; t < ${(DUR - 0.06).toFixed(3)}; t += 1/6)
     tl.set("#pstrip", { x: (rrnd()-0.5)*1.4, y: (rrnd()-0.5)*1.4, rotation: (rrnd()-0.5)*0.36 }, t);
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // rail yields while the apex chips land (furniture never contests the hero)
   tl.to(["#pstrip", "#plines"], { opacity: ${b.yield.dim}, duration: 0.10 }, ${dimT});
@@ -4137,7 +4174,7 @@ ${lineData.map((L) => `        <div class="puline" id="${L.id}"></div>`).join("\
     });
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // APEX OWNS ITS WINDOW — page yields while the centerfold lands, restores
   tl.to("#pupage", { opacity: ${b.yield.dim}, duration: 0.12, ease: "power1.out" }, ${(heroIn - (b.yield.pre || 0.03)).toFixed(3)});
@@ -4331,7 +4368,7 @@ ${lineData.map((L) => `        <div class="crow" id="${L.id}" style="top:${L.top
     }
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // APEX OWNS ITS WINDOW — band yields while the chalk word writes, restores
   tl.to("#cband", { opacity: ${b.yield.dim}, duration: 0.14, ease: "power1.in"  }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
@@ -4467,7 +4504,7 @@ function paradigmMarkerrail() {
     }
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `  // APEX OWNS ITS WINDOW — the line visible at the tag's onset yields.
   // Restore only with runway before the buff (else the line exits dimmed).
   RAILM.forEach((L) => {
@@ -4647,7 +4684,7 @@ ${lineData.map((L) => `        <div class="bline" id="${L.id}"></div>`).join("\n
     tl.set(line, { opacity: 0 }, L.eraseEnd + 0.02);
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // APEX OWNS ITS WINDOW — band + the line under the gesture yield, band restores
   tl.to(${heroLi >= 0 ? `["#band", "#br${heroLi}"]` : `"#band"`}, { opacity: ${b.yield.dim}, duration: 0.16 }, ${(heroIn - (b.yield.pre || 0.16)).toFixed(3)});
@@ -4782,7 +4819,7 @@ function paradigmInkrail() {
     }
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `
   // rows visible under the bloom yield while the drop blooms, restore after.
   // Overlap guards: dim only after the line is IN with runway before its exit;
@@ -4930,7 +4967,7 @@ ${lineData.map((L) => `        <div class="rline" id="${L.id}"></div>`).join("\n
                             duration: L.bd, ease: "none" }, L.bs);
   });
 ${
-  b.yield && !heroInline
+  !HEROLESS && b.yield && !heroInline
     ? `  // rail yields while the apex letters slam behind the subject (container
   // opacity — never contests the per-chip channels)
   tl.to("#rrailwrap", { opacity: ${b.yield.dim}, duration: 0.12 }, ${Math.max(0.05, heroIn - (b.yield.pre ?? 0.02)).toFixed(3)});
@@ -8495,7 +8532,7 @@ if (!heroInline && !HEROLESS) {
     throw new Error("[make-theme] unknown setpiece: " + dna.hero.setpiece);
   setp = SETPIECES[dna.hero.setpiece]();
 }
-const fx = frontFx();
+const fx = HEROLESS ? { css: "", html: "", js: "" } : frontFx();
 
 // bg file: plate reaction + embedded setpiece (+ body if body.layer === "bg")
 const bodyInBg = dna.body.layer === "bg";

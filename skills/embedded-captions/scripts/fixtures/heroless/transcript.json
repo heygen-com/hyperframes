@@ -1,0 +1,10 @@
+{
+  "words": [
+    { "text": "quiet", "start": 0.5, "end": 0.9 },
+    { "text": "captions", "start": 1.2, "end": 1.8 },
+    { "text": "continue", "start": 2.1, "end": 2.7 },
+    { "text": "without", "start": 3.0, "end": 3.4 },
+    { "text": "a", "start": 3.7, "end": 3.8 },
+    { "text": "hero", "start": 4.1, "end": 4.45 }
+  ]
+}

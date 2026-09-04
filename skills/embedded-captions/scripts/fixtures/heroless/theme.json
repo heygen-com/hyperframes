@@ -1,0 +1,11 @@
+{
+  "width": 1280,
+  "height": 720,
+  "fps": 24,
+  "duration": 6,
+  "lines": [
+    ["quiet", "captions"],
+    ["continue", "without"],
+    ["a", "hero"]
+  ]
+}
