@@ -23,8 +23,6 @@ export function setupQuad(gl: WebGLRenderingContext): WebGLBuffer {
   return buf;
 }
 
-let cachedVertexShader: WebGLShader | null = null;
-
 function compileShader(gl: WebGLRenderingContext, src: string, type: number): WebGLShader {
   const s = gl.createShader(type);
   if (!s) throw new Error("[HyperShader] Failed to create shader");
@@ -53,10 +51,7 @@ function linkProgram(
 }
 
 export function createProgram(gl: WebGLRenderingContext, fragSrc: string): WebGLProgram {
-  if (!cachedVertexShader) {
-    cachedVertexShader = compileShader(gl, vertSrc, gl.VERTEX_SHADER);
-  }
-  return linkProgram(gl, cachedVertexShader, fragSrc);
+  return createProgramWithVertex(gl, vertSrc, fragSrc);
 }
 
 export function createProgramWithVertex(
