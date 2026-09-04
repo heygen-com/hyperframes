@@ -56,6 +56,12 @@
   --color-media: #00e3ff;
   --color-container: #f5a623;
 
+  /* The two stops of the HeyGen brand gradient, worn by the header logo and by
+   * the standalone mark. Fixed brand values rather than roles, so they are not
+   * reachable as a background or a text colour by mistake. */
+  --color-brand-gradient-from: #06e3fa;
+  --color-brand-gradient-to: #4fdb5e;
+
   /* -------------------------------------------------------------- geometry */
 
   --radius-sm: 0.25rem;

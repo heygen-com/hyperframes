@@ -1,12 +1,11 @@
 {
-  "total": 475,
+  "total": 470,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
     "packages/studio/src/captions/generator.ts": 2,
     "packages/studio/src/captions/parser.ts": 1,
     "packages/studio/src/captions/types.ts": 4,
-    "packages/studio/src/components/StudioHeader.tsx": 5,
     "packages/studio/src/components/StudioToast.tsx": 10,
     "packages/studio/src/components/TimelineToolbar.tsx": 2,
     "packages/studio/src/components/editor/ArcPathControls.tsx": 1,

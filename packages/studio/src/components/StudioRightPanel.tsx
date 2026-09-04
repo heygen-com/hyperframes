@@ -9,7 +9,7 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueuePanel } from "./renders/RenderQueuePanel";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import { VariablesPanel } from "./panels/VariablesPanel";
-import { PanelTabButton } from "./PanelTabButton";
+import { RightPanelTabs, type RightPanelTabDescriptor } from "./RightPanelTabs";
 import type { RenderJob } from "./renders/useRenderQueue";
 import { STUDIO_FLAT_INSPECTOR_ENABLED } from "./editor/manualEditingAvailability";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
@@ -345,6 +345,51 @@ export function StudioRightPanel({
 
   const renderQueuePanel = <RenderQueuePanel />;
 
+  // Slideshow appears only for a slideshow composition, so the strip is built
+  // rather than written out: a tab that is not in this list is not reachable by
+  // an arrow key either.
+  const inspectorTabs: RightPanelTabDescriptor[] = [
+    {
+      id: "design",
+      label: "Design",
+      tooltip: "Element styles and properties",
+      active: designPaneOpen,
+      onSelect: () => handleInspectorPaneButtonClick("design"),
+    },
+    {
+      id: "layers",
+      label: "Layers",
+      tooltip: "Composition layer stack",
+      active: layersPaneOpen,
+      onSelect: () => handleInspectorPaneButtonClick("layers"),
+    },
+    {
+      id: "renders",
+      label: renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders",
+      tooltip: "Render queue and exports",
+      active: rightPanelTab === "renders",
+      onSelect: () => setRightPanelTab("renders"),
+    },
+    ...(isSlideshowComposition
+      ? [
+          {
+            id: "slideshow",
+            label: "Slideshow",
+            tooltip: "Slideshow branching editor",
+            active: rightPanelTab === "slideshow",
+            onSelect: () => setRightPanelTab("slideshow"),
+          },
+        ]
+      : []),
+    {
+      id: "variables",
+      label: "Variables",
+      tooltip: "Template variables — declare, preview with values",
+      active: rightPanelTab === "variables",
+      onSelect: () => setRightPanelTab("variables"),
+    },
+  ];
+
   return (
     <>
       {/* Vertical resize divider: 3px visible seam, 13px hit zone via the inner div. */}
@@ -382,40 +427,7 @@ export function StudioRightPanel({
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
-              <PanelTabButton
-                label="Design"
-                tooltip="Element styles and properties"
-                active={designPaneOpen}
-                onClick={() => handleInspectorPaneButtonClick("design")}
-              />
-              <PanelTabButton
-                label="Layers"
-                tooltip="Composition layer stack"
-                active={layersPaneOpen}
-                onClick={() => handleInspectorPaneButtonClick("layers")}
-              />
-              <PanelTabButton
-                label={renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
-                tooltip="Render queue and exports"
-                active={rightPanelTab === "renders"}
-                onClick={() => setRightPanelTab("renders")}
-              />
-              {isSlideshowComposition && (
-                <PanelTabButton
-                  label="Slideshow"
-                  tooltip="Slideshow branching editor"
-                  active={rightPanelTab === "slideshow"}
-                  onClick={() => setRightPanelTab("slideshow")}
-                />
-              )}
-              <PanelTabButton
-                label="Variables"
-                tooltip="Template variables — declare, preview with values"
-                active={rightPanelTab === "variables"}
-                onClick={() => setRightPanelTab("variables")}
-              />
-            </div>
+            <RightPanelTabs tabs={inspectorTabs} />
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (
                 <BlockParamsPanel
