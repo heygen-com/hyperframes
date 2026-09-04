@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findFFmpeg, findFFprobe } from "./ffmpeg.js";
+import { findFFmpeg, findFFprobe, H264EncoderUnavailableError } from "./ffmpeg.js";
 
 // Only child_process is mocked: the H264 encoder probe shells out, while the
 // wrapper tests below resolve via env overrides and need the real `existsSync`.
@@ -60,9 +60,27 @@ describe("resolveH264EncoderMode", () => {
  V....D h264_vaapi    H.264/AVC (VAAPI)
 `;
 
-    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(
-      "neither libx264 nor VideoToolbox",
+    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(H264EncoderUnavailableError);
+  });
+
+  it("prefers libx264 when both encoders are available", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    expect(
+      resolveH264EncoderMode(" V....D libx264 H.264\n V....D h264_videotoolbox H.264\n", false),
+    ).toBe("software");
+  });
+
+  it("distinguishes a successful unsupported probe from an unavailable probe", async () => {
+    const { detectH264EncoderMode } = await import("./ffmpeg.js");
+    mockExecFile.mockReturnValue(" V....D libvpx-vp9 VP9\n");
+    expect(() => detectH264EncoderMode("/custom/ffmpeg", false)).toThrow(
+      H264EncoderUnavailableError,
     );
+    const timeout = new Error("ETIMEDOUT");
+    mockExecFile.mockImplementationOnce(() => {
+      throw timeout;
+    });
+    expect(() => detectH264EncoderMode("/custom/ffmpeg", false)).toThrow(timeout);
   });
 
   it("inspects the configured FFmpeg binary", async () => {

@@ -78,6 +78,7 @@ const preflightState = vi.hoisted(() => ({
 const ffmpegEncoderState = vi.hoisted(() => ({
   mode: "software" as "software" | "gpu",
   error: null as Error | null,
+  encoders: null as string | null,
 }));
 const orphanCleanupState = vi.hoisted(() => ({
   calls: 0,
@@ -180,14 +181,20 @@ vi.mock("../telemetry/events.js", () => ({
   }),
 }));
 
-vi.mock("../browser/ffmpeg.js", () => ({
-  detectH264EncoderMode: vi.fn(() => {
-    if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
-    return ffmpegEncoderState.mode;
-  }),
-  findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
-  getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
-}));
+vi.mock("../browser/ffmpeg.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../browser/ffmpeg.js")>();
+  return {
+    ...actual,
+    detectH264EncoderMode: vi.fn(() => {
+      if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
+      if (ffmpegEncoderState.encoders !== null)
+        return actual.resolveH264EncoderMode(ffmpegEncoderState.encoders, false);
+      return ffmpegEncoderState.mode;
+    }),
+    findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
+    getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
+  };
+});
 
 vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
@@ -294,6 +301,7 @@ describe("renderLocal browser GPU config", () => {
     trackingState.renderObservations = [];
     ffmpegEncoderState.mode = "software";
     ffmpegEncoderState.error = null;
+    ffmpegEncoderState.encoders = null;
     orphanCleanupState.calls = 0;
     orphanCleanupState.killed = 0;
     resetTrialState();
@@ -477,6 +485,63 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.createdJobs[0]?.useGpu).toBe(true);
   });
+
+  it("rejects confirmed unsupported SDR MP4 before loading the producer", async () => {
+    ffmpegEncoderState.encoders = " V....D h264_vaapi H.264/AVC (VAAPI)\n";
+    const { loadProducer } = await import("../utils/producer.js");
+    vi.mocked(loadProducer).mockClear();
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      renderLocal("/tmp/project", "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "high",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "force-sdr",
+        quiet: true,
+      }),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+
+    expect(loadProducer).not.toHaveBeenCalled();
+    expect(producerState.createdJobs).toHaveLength(0);
+    expect(stderr.mock.calls.flat().join(" ")).toContain("libx264");
+  });
+
+  it.each(["webm", "mov", "png-sequence"] as const)(
+    "does not require H.264 for %s",
+    async (format) => {
+      ffmpegEncoderState.encoders = " V....D libvpx-vp9 VP9\n";
+      await renderLocal("/tmp/project", `/tmp/out.${format}`, {
+        fps: { num: 30, den: 1 },
+        quality: "high",
+        format,
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "force-sdr",
+        quiet: true,
+      });
+      expect(producerState.createdJobs).toHaveLength(1);
+    },
+  );
+
+  it.each(["auto", "force-hdr"] as const)(
+    "does not reject potential HEVC output in %s mode",
+    async (hdrMode) => {
+      ffmpegEncoderState.encoders = " V....D libx265 HEVC\n";
+      await renderLocal("/tmp/project", "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "high",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode,
+        quiet: true,
+      });
+      expect(producerState.createdJobs).toHaveLength(1);
+    },
+  );
 
   it("lets the encoder surface its own error when capability detection fails", async () => {
     ffmpegEncoderState.error = new Error("encoder probe timed out");
