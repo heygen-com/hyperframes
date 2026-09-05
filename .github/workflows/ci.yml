@@ -364,6 +364,23 @@ jobs:
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --test "${SKILLS_TESTS[@]}"
 
+  test-skill-bootstrap-windows:
+    name: "Test: skill bootstrap (Windows, Node 24)"
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Exercise npm-cli bootstrap command
+        run: >-
+          node --test
+          skills/hyperframes-animation/scripts/package-loader.test.mjs
+          skills/hyperframes-creative/scripts/package-loader.test.mjs
+
   # Guards that skills-manifest.json (the published freshness fingerprint read
   # by `hyperframes skills check`) was regenerated when a skill changed. Runs
   # `gen:skills-manifest --check`, which compares per-skill content hashes; the
