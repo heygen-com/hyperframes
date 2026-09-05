@@ -387,6 +387,53 @@ describe("GSAP rules", () => {
     expect(finding?.message).toContain("visibility");
   });
 
+  it("ERRORS when GSAP animates autoAlpha on a clip element", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="incoming" class="clip" data-start="1.01" data-duration="5" data-track-index="1">
+      <p>Incoming scene</p>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#incoming", { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 }, 1.01);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("autoAlpha");
+    expect(finding?.fixHint).toContain("child");
+  });
+
+  it("does NOT flag autoAlpha on content inside a clip", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="incoming" class="clip" data-start="1.01" data-duration="5" data-track-index="1">
+      <p id="content">Incoming scene</p>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#content", { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 }, 1.01);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+
+    expect(finding).toBeUndefined();
+  });
+
   it("ERRORS when GSAP animates display on a clip element", async () => {
     const html = `
 <html><body>

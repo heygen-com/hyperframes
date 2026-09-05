@@ -1226,24 +1226,25 @@ export const gsapRules: LintRule<LintContext>[] = [
         });
       }
 
-      // gsap_animates_clip_element — only error when GSAP animates visibility/display
+      // gsap_animates_clip_element — GSAP must not compete with the framework's
+      // clip visibility window. autoAlpha owns visibility as well as opacity.
       for (const win of gsapWindows) {
         const sel = win.targetSelector;
         const clipInfo = clipIds.get(sel) || clipClasses.get(sel);
         if (!clipInfo) continue;
         const conflictingProps = win.properties.filter(
-          (p) => p === "visibility" || p === "display",
+          (p) => p === "visibility" || p === "display" || p === "autoAlpha",
         );
         if (conflictingProps.length === 0) continue;
         const elDesc = `<${clipInfo.tag}${clipInfo.id ? ` id="${clipInfo.id}"` : ""} class="${clipInfo.classes}">`;
         findings.push({
           code: "gsap_animates_clip_element",
           severity: "error",
-          message: `GSAP animation sets ${conflictingProps.join(", ")} on a clip element. Selector "${sel}" resolves to element ${elDesc}. The framework manages clip visibility via ${conflictingProps.join("/")} — do not animate these properties on clip elements.`,
+          message: `GSAP animation sets ${conflictingProps.join(", ")} on a clip element. Selector "${sel}" resolves to element ${elDesc}. The framework manages clip visibility, and autoAlpha writes visibility as well as opacity — do not animate these properties on clip elements.`,
           selector: sel,
           elementId: clipInfo.id || undefined,
           fixHint:
-            "Remove the visibility/display tween, or move the content into a child <div> and target that instead.",
+            "Remove the visibility/display/autoAlpha tween, or move the content into a child <div> and target that instead.",
           snippet: truncateSnippet(win.raw),
         });
       }
