@@ -1303,6 +1303,31 @@ describe("layout-audit.browser content overlap", () => {
     });
     expect(issues.some((issue) => issue.code === "content_overlap")).toBe(true);
   });
+
+  it.each(["hidden", "clip", "auto", "scroll"])(
+    "excludes fully clipped text under overflow:%s",
+    (overflow) => {
+      const issues = auditOverflowClippedOverlap({
+        overflow,
+        clipRect: rect({ left: 0, top: 0, width: 640, height: 100 }),
+        aTextRect: rect({ left: 100, top: 180, width: 300, height: 80 }),
+        bTextRect: rect({ left: 120, top: 190, width: 300, height: 80 }),
+      });
+
+      expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+    },
+  );
+
+  it("uses the painted fragment area after partial overflow clipping", () => {
+    const issues = auditOverflowClippedOverlap({
+      overflow: "hidden",
+      clipRect: rect({ left: 390, top: 0, width: 250, height: 200 }),
+      aTextRect: rect({ left: 100, top: 50, width: 300, height: 100 }),
+      bTextRect: rect({ left: 397, top: 50, width: 50, height: 100 }),
+    });
+
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(true);
+  });
 });
 
 describe("contrast-audit.browser clip-path visibility", () => {
@@ -1721,9 +1746,33 @@ function auditOverlapScene(options: {
   return runAudit();
 }
 
+function auditOverflowClippedOverlap(options: {
+  overflow: string;
+  clipRect: DOMRect;
+  aTextRect: DOMRect;
+  bTextRect: DOMRect;
+}): ReturnType<typeof runAudit> {
+  document.body.innerHTML = `
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+      <div id="clip"><div id="a">Block A copy</div></div>
+      <div id="b">Block B copy</div>
+    </div>
+  `;
+  const textRects = { a: [options.aTextRect], b: [options.bTextRect] };
+  installOverlapStyles(
+    { a: "rgb(0, 0, 0)", b: "rgb(0, 0, 0)" },
+    { a: "none", b: "none" },
+    { clip: options.overflow },
+  );
+  installOverlapGeometry(textRects, { clip: options.clipRect });
+  installAuditScript();
+  return runAudit();
+}
+
 function installOverlapStyles(
   colors: Record<string, string>,
   clipPaths: Record<string, string>,
+  overflows: Record<string, string> = {},
 ): void {
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
     const id = (element as Element).id;
@@ -1733,6 +1782,9 @@ function installOverlapStyles(
       opacity: "1",
       color: colors[id] ?? "rgb(0, 0, 0)",
       clipPath: clipPaths[id] ?? "none",
+      overflow: overflows[id] ?? "visible",
+      overflowX: overflows[id] ?? "visible",
+      overflowY: overflows[id] ?? "visible",
     } as unknown as CSSStyleDeclaration;
   });
 
@@ -1745,10 +1797,14 @@ function installOverlapStyles(
   };
 }
 
-function installOverlapGeometry(textRects: Record<string, DOMRect[]>): void {
+function installOverlapGeometry(
+  textRects: Record<string, DOMRect[]>,
+  elementRects: Record<string, DOMRect> = {},
+): void {
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
-      boundingTextRect(textRects[element.id]) ??
+      elementRects[element.id] ??
+        boundingTextRect(textRects[element.id]) ??
         rect({ left: 0, top: 0, width: 1920, height: 1080 }),
     );
   }

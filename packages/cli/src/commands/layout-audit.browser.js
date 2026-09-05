@@ -245,10 +245,8 @@
     return rects;
   }
 
-  function textRectFor(element, directOnly) {
-    const rects = textClientRects(element, directOnly);
+  function unionRects(rects) {
     if (rects.length === 0) return null;
-
     const union = rects.reduce(
       (acc, rect) => ({
         left: Math.min(acc.left, rect.left),
@@ -263,12 +261,43 @@
         bottom: Number.NEGATIVE_INFINITY,
       },
     );
-
     return toRect({
       ...union,
       width: union.right - union.left,
       height: union.bottom - union.top,
     });
+  }
+
+  function visibleTextClientRects(element, directOnly) {
+    // Range rects stay geometrically present outside an overflow clip. Reduce
+    // them in viewport coordinates so overlap measures only paintable text.
+    let rects = textClientRects(element, directOnly).map(toRect);
+    for (
+      let ancestor = element.parentElement;
+      ancestor && rects.length > 0;
+      ancestor = ancestor.parentElement
+    ) {
+      const style = getComputedStyle(ancestor);
+      const clipX = clipsOverflowValue(style.overflowX || style.overflow);
+      const clipY = clipsOverflowValue(style.overflowY || style.overflow);
+      if (!clipX && !clipY) continue;
+      const clip = toRect(ancestor.getBoundingClientRect());
+      rects = rects
+        .map((rect) => {
+          const left = clipX ? Math.max(rect.left, clip.left) : rect.left;
+          const right = clipX ? Math.min(rect.right, clip.right) : rect.right;
+          const top = clipY ? Math.max(rect.top, clip.top) : rect.top;
+          const bottom = clipY ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
+          if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+          return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
+        })
+        .filter(Boolean);
+    }
+    return rects;
+  }
+
+  function textRectFor(element, directOnly) {
+    return unionRects(textClientRects(element, directOnly));
   }
 
   function parsePx(value) {
@@ -317,9 +346,13 @@
     return hasBackground || hasImage || hasBorder || hasRadius;
   }
 
+  function clipsOverflowValue(value) {
+    return value && value !== "visible" && value !== "clip visible";
+  }
+
   function clipsOverflow(style) {
-    return [style.overflowX, style.overflowY, style.overflow].some(
-      (value) => value && value !== "visible" && value !== "clip visible",
+    return [style.overflowX, style.overflowY, style.overflow].some((value) =>
+      clipsOverflowValue(value),
     );
   }
 
@@ -587,8 +620,8 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
-      const rects = textClientRects(element, true);
-      const rect = textRectFor(element, true);
+      const rects = visibleTextClientRects(element, true);
+      const rect = unionRects(rects);
       if (rect) blocks.push({ element, rect, rects });
     }
     return blocks;
