@@ -321,16 +321,29 @@ function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): 
   return pathBeforeFragment.toLowerCase().endsWith(".svg");
 }
 
-function warnColorGradingLutNotInlined(lutSrc: string): void {
+function warnColorGradingLutNotInlined(
+  lutSrc: string,
+  onDiagnostic?: BundleOptions["onDiagnostic"],
+): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
-  console.warn(
-    `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+  emitBundleDiagnostic(
+    {
+      code: "color_grading_lut_not_inlined",
+      severity: "warning",
+      source: trimmed,
+      message: `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    },
+    onDiagnostic,
   );
 }
 
 // fallow-ignore-next-line complexity
-function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: string): string {
+function rewriteColorGradingLutWithInlinedAssets(
+  value: string,
+  projectDir: string,
+  onDiagnostic?: BundleOptions["onDiagnostic"],
+): string {
   if (!value.trim().startsWith("{")) return value;
   let parsed: unknown;
   try {
@@ -344,7 +357,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lut === "string") {
     const inlined = maybeInlineRelativeAssetUrl(lut, projectDir);
     if (!inlined) {
-      warnColorGradingLutNotInlined(lut);
+      warnColorGradingLutNotInlined(lut, onDiagnostic);
       return value;
     }
     Reflect.set(parsed, "lut", inlined);
@@ -355,7 +368,7 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, projectDir: stri
   if (typeof lutSrc !== "string") return value;
   const inlined = maybeInlineRelativeAssetUrl(lutSrc, projectDir);
   if (!inlined) {
-    warnColorGradingLutNotInlined(lutSrc);
+    warnColorGradingLutNotInlined(lutSrc, onDiagnostic);
     return value;
   }
   Reflect.set(lut, "src", inlined);
@@ -683,7 +696,24 @@ function stripJsCommentsParserSafe(source: string): string {
   }
 }
 
+export interface BundleDiagnostic {
+  code: "color_grading_lut_not_inlined" | "static_guard_invalid" | "sub_composition_skipped";
+  severity: "warning";
+  message: string;
+  source: string;
+}
+
+function emitBundleDiagnostic(
+  diagnostic: BundleDiagnostic,
+  onDiagnostic?: BundleOptions["onDiagnostic"],
+): void {
+  console.warn(diagnostic.message);
+  onDiagnostic?.(diagnostic);
+}
+
 export interface BundleOptions {
+  /** Observe compiler warnings in addition to the existing console output. */
+  onDiagnostic?: (diagnostic: BundleDiagnostic) => void;
   /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
   entryFile?: string;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
@@ -813,8 +843,14 @@ export async function bundleToSingleHtml(
 
   const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
-    console.warn(
-      `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+    emitBundleDiagnostic(
+      {
+        code: "static_guard_invalid",
+        severity: "warning",
+        source: entryFile,
+        message: `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+      },
+      options?.onDiagnostic,
     );
   }
 
@@ -921,8 +957,14 @@ export async function bundleToSingleHtml(
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
     scriptErrorLabel: "[HyperFrames] composition script error:",
     onMissingComposition: (srcPath: string, reason?: string) => {
-      console.warn(
-        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+      emitBundleDiagnostic(
+        {
+          code: "sub_composition_skipped",
+          severity: "warning",
+          source: srcPath,
+          message: `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        },
+        options?.onDiagnostic,
       );
     },
   });
@@ -1136,7 +1178,7 @@ export async function bundleToSingleHtml(
       if (value) {
         el.setAttribute(
           HF_COLOR_GRADING_ATTR,
-          rewriteColorGradingLutWithInlinedAssets(value, projectDir),
+          rewriteColorGradingLutWithInlinedAssets(value, projectDir, options?.onDiagnostic),
         );
       }
     }

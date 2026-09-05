@@ -36,6 +36,7 @@ import type {
   CheckAuditDriver,
   CheckBbox,
   CheckBrowserResult,
+  CheckCompileResult,
   CheckContrastFinding,
   CheckDependencies,
   CheckFinding,
@@ -1109,6 +1110,7 @@ export async function runCheckPipeline(
   options: CheckOptions,
   dependencies: CheckDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<CheckReport> {
+  const compile: CheckCompileResult = { status: "not_run", diagnostics: [] };
   let lintResult: ProjectLintResult;
   const lintStartedAt = Date.now();
   try {
@@ -1127,7 +1129,10 @@ export async function runCheckPipeline(
 
   const lint = buildLintSection(lintResult);
   if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
-    return buildReport(options, lint, emptyBrowserResult(), { kind: "none" }, [], []);
+    return buildReport(options, lint, emptyBrowserResult(), { kind: "none" }, [], [], {
+      ...compile,
+      reason: "lint_errors",
+    });
   }
 
   const motion = dependencies.resolveMotionSpec(project.dir);
@@ -1138,12 +1143,15 @@ export async function runCheckPipeline(
       motion.message,
       relative(project.dir, motion.path) || "index.motion.json",
     );
-    return buildReport(options, lint, emptyBrowserResult(), motion, [finding], []);
+    return buildReport(options, lint, emptyBrowserResult(), motion, [finding], [], {
+      ...compile,
+      reason: "motion_spec_invalid",
+    });
   }
 
   let browser: CheckBrowserResult;
   try {
-    browser = await dependencies.runBrowserCheck(project, options, motion);
+    browser = await dependencies.runBrowserCheck(project, options, motion, compile);
   } catch (error) {
     browser = emptyBrowserResult();
     browser.runtimeFindings.push(runtimeFailure(error));
@@ -1152,7 +1160,7 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, [], snapshotFiles);
+  const report = buildReport(options, lint, browser, motion, [], snapshotFiles, compile);
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
@@ -1332,6 +1340,7 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
+  compile: CheckCompileResult,
 ): CheckReport {
   const layout = shapeLayoutSection(browser.layoutIssues, browser, options);
   const shapedMotion = shapeLayoutFindings(browser.motionIssues, options);
@@ -1352,6 +1361,7 @@ function buildReport(
     motionSection.errorCount +
     contrastSection.errorCount;
   const report: CheckReport = {
+    compile,
     ok: errorCount === 0 && (!options.strict || warningCount === 0),
     strict: options.strict,
     lint,
@@ -1507,7 +1517,11 @@ function failureReport(options: CheckOptions, finding: CheckFinding): CheckRepor
   const lint = { ...section([]), filesScanned: 0 };
   const browser = emptyBrowserResult();
   browser.runtimeFindings.push(finding);
-  return buildReport(options, lint, browser, { kind: "none" }, [], []);
+  return buildReport(options, lint, browser, { kind: "none" }, [], [], {
+    status: "not_run",
+    reason: "lint_failure",
+    diagnostics: [],
+  });
 }
 
 function isBbox(value: unknown): value is CheckBbox {
@@ -1537,11 +1551,12 @@ async function runBrowserCheck(
   project: ProjectDir,
   options: CheckOptions,
   motion: MotionSpecResolution,
+  compile: CheckCompileResult,
 ): Promise<CheckBrowserResult> {
   const module = await import("./checkBrowser.js");
   // runAuditGrid is handed over as a callback so checkBrowser never imports
   // this module back (no import cycle).
-  return module.runBrowserCheck(project, options, motion, runAuditGrid);
+  return module.runBrowserCheck(project, options, motion, runAuditGrid, compile);
 }
 
 async function writeSnapshot(

@@ -34,6 +34,7 @@ import type {
   CheckAuditDriver,
   CheckBbox,
   CheckBrowserResult,
+  CheckCompileResult,
   CheckFinding,
   CheckFindingCropRequest,
   CheckGeometryCandidate,
@@ -148,9 +149,20 @@ export async function runBrowserCheck(
   options: CheckOptions,
   motion: MotionSpecResolution,
   runGrid: RunAuditGrid,
+  compile?: CheckCompileResult,
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
-  const html = await bundleWithLocalizedFonts(project.dir);
+  if (compile) compile.status = "running";
+  let html: string;
+  try {
+    html = await bundleWithLocalizedFonts(project.dir, undefined, {
+      onDiagnostic: (diagnostic) => compile?.diagnostics.push(diagnostic),
+    });
+    if (compile) compile.status = "completed";
+  } catch (error) {
+    if (compile) compile.status = "failed";
+    throw error;
+  }
   await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
   const server = await serveStaticProjectHtml(
     project.dir,
