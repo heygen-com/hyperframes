@@ -1,6 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/config-schema.json",
   "entry": [
+    // Vitest collects .test.mjs, but fallow's default test-entry detection only
+    // knows the .ts/.tsx spellings, so this one reads as an unreachable file.
+    "packages/studio/scripts/*.test.mjs",
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",
