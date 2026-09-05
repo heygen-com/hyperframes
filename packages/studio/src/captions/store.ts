@@ -25,6 +25,10 @@ interface CaptionState {
   syncError: string | null;
   /** Registered by useCaptionSync so error banners can retry the save. */
   retrySave: (() => void) | null;
+  /** True while an edit is debounced or a save PUT is in flight. Lets a
+   *  composition-switch flush skip retrySave() when there is nothing to
+   *  flush, instead of firing a PUT on every switch. */
+  hasPendingSave: boolean;
 
   // Undo/redo (in-memory model snapshots)
   past: CaptionModel[];
@@ -39,6 +43,7 @@ interface CaptionState {
   setSourceFilePath: (path: string | null) => void;
   setSyncError: (error: string | null) => void;
   setRetrySave: (fn: (() => void) | null) => void;
+  setHasPendingSave: (pending: boolean) => void;
 
   // Selection
   selectSegment: (id: string, additive?: boolean) => void;
@@ -79,6 +84,7 @@ const initialState = {
   sourceFilePath: null,
   syncError: null,
   retrySave: null,
+  hasPendingSave: false,
   past: [] as CaptionModel[],
   future: [] as CaptionModel[],
 };
@@ -118,6 +124,7 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
   setSourceFilePath: (path) => set({ sourceFilePath: path }),
   setSyncError: (error) => set({ syncError: error }),
   setRetrySave: (fn) => set({ retrySave: fn }),
+  setHasPendingSave: (pending) => set({ hasPendingSave: pending }),
 
   // Undo/redo
   undo: () => {

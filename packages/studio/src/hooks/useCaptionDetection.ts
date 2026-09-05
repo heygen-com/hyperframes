@@ -37,7 +37,10 @@ export function useCaptionDetection({
       if (store.model || store.isEditMode) {
         // Flush the last debounced caption edit before the reset destroys the
         // model — otherwise a save landing after the switch writes nothing.
-        store.retrySave?.();
+        // Gated on hasPendingSave: without it, every switch out of a
+        // composition that ever entered caption mode fired a PUT, even when
+        // nothing had been edited.
+        if (store.hasPendingSave) store.retrySave?.();
         store.reset();
       }
     }
