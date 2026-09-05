@@ -166,7 +166,7 @@ import {
   shouldCopyExtractedFrames,
 } from "./render/stages/extractVideosStage.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
-import { runCaptureStage } from "./render/stages/captureStage.js";
+import { inspectDiskCaptureHeadroom, runCaptureStage } from "./render/stages/captureStage.js";
 import {
   type CaptureStreamingStageResult,
   runCaptureStreamingStage,
@@ -3636,10 +3636,19 @@ async function executeRenderPipeline(input: {
               : "capture failed on pinned worker count; retrying with forceScreenshot",
           );
           const failedRouting = capturePlan.routing.kind;
+          const verificationDiskFallbackAvailable =
+            isVerifyError &&
+            capturePlan.routing.kind !== "default" &&
+            capturePlan.routing.fallback.kind === "sdr_disk"
+              ? inspectDiskCaptureHeadroom(framesDir, totalFrames, buildCaptureOptions()).available
+              : undefined;
           capturePlan = replanAfterFailure(
             capturePlan,
             isVerifyError
-              ? { kind: "draw_element_verification" }
+              ? {
+                  kind: "draw_element_verification",
+                  diskFallbackAvailable: verificationDiskFallbackAvailable,
+                }
               : { kind: "capture_failure", memoryExhaustion: isMemoryExhaustion },
           );
           syncCapturePlan();
@@ -3666,14 +3675,17 @@ async function executeRenderPipeline(input: {
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "streaming");
           }
           if (failedRouting === "worker_inversion") {
-            // The inversion bet on drawElement and lost — re-render on the
-            // pre-inversion parallel screenshot path instead of single-worker
-            // screenshot streaming (the slowest capture shape for this size).
+            // The inversion bet on drawElement and lost. Prefer its
+            // pre-inversion parallel screenshot route, but retain the already
+            // supported one-worker screenshot stream when that disk route is
+            // not feasible.
             // "reverted" (not cleared) so telemetry keeps the lost-inversion
             // cohort distinguishable from renders that never inverted.
             log.info(
-              `[Render] Reverting worker inversion for the retry: ${capturePlan.workerCount} workers, ` +
-                `plan=${capturePlan.kind}.`,
+              capturePlan.kind === "sdr_streaming"
+                ? "[Render] Worker-inversion disk fallback lacks headroom; retrying with one-worker screenshot streaming."
+                : `[Render] Reverting worker inversion for the retry: ${capturePlan.workerCount} workers, ` +
+                    `plan=${capturePlan.kind}.`,
             );
           } else if (failedRouting === "parallel_router") {
             // The router's bet on verified parallel streaming lost — re-render
