@@ -361,6 +361,13 @@ export interface CapturePerfSummary {
   deBoundaryFrames: number;
   /** Per-frame "No cached paint record" screenshot fallbacks during capture. */
   deNcprFallbacks: number;
+  /**
+   * Per-frame drawElement captures that blew the `HF_DE_FRAME_TIMEOUT_MS`
+   * deadline (renderer stopped scheduling after drawElementImage returned —
+   * PRINFRA-488). Each timeout aborts that attempt so the producer can retry the
+   * whole render on a fresh screenshot session.
+   */
+  deFrameTimeouts: number;
 }
 
 // ── Global Augmentation ────────────────────────────────────────────────────────

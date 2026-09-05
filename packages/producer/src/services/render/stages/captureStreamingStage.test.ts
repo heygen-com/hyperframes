@@ -6,6 +6,7 @@ import { createCapturePlan } from "../capturePlan.js";
 type MinimalEngineConfig = {
   forceScreenshot: boolean;
   ffmpegStreamingTimeout: number;
+  lowMemoryMode?: boolean;
 };
 
 const writeFrame = mock((_buffer: Buffer) => true);
@@ -21,6 +22,7 @@ let failInitializeSession = false;
 let hangParallelUntilAbort = false;
 let hangSequentialUntilStall = false;
 let sessionWorkerEncodeEnabled = false;
+let captureSessionMode: "drawelement" | "screenshot" = "drawelement";
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
@@ -59,6 +61,7 @@ mock.module("@hyperframes/engine", () => ({
     browserConsoleBuffer,
     options: { captureBeyondViewport: false },
     workerEncodeEnabled: sessionWorkerEncodeEnabled,
+    captureMode: captureSessionMode,
   }),
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
@@ -354,6 +357,44 @@ describe("runCaptureStreamingStage", () => {
 
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toContain("stalled");
+  });
+
+  it("reports the actual screenshot mode and closes a wedged low-memory session", async () => {
+    hangSequentialUntilStall = true;
+    captureSessionMode = "screenshot";
+    closeCaptureSession.mockClear();
+    const prev = process.env.HF_DE_STALL_MS;
+    process.env.HF_DE_STALL_MS = "50";
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = {
+      forceScreenshot: true,
+      ffmpegStreamingTimeout: 3_600_000,
+      lowMemoryMode: true,
+    };
+    const baseInput = createInput(cfg);
+    const input = {
+      ...baseInput,
+      totalFrames: 10,
+      plan: { ...baseInput.plan, forceScreenshot: true },
+    };
+
+    let caught: unknown;
+    try {
+      await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      hangSequentialUntilStall = false;
+      captureSessionMode = "drawelement";
+      if (prev === undefined) delete process.env.HF_DE_STALL_MS;
+      else process.env.HF_DE_STALL_MS = prev;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error & { cause?: Error }).cause?.name).toBe("SequentialCaptureStallError");
+    expect((caught as Error).message).toContain("Sequential screenshot capture stalled");
+    expect((caught as Error).message).not.toContain("drawElement");
+    expect(closeCaptureSession).toHaveBeenCalledTimes(1);
   });
 
   it("still honors the pre-rename HF_DE_PARALLEL_STALL_MS env var for one release", async () => {
