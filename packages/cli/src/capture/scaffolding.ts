@@ -71,11 +71,15 @@ export async function generateProjectScaffold(
   const metaPath = join(outputDir, "meta.json");
   if (!existsSync(metaPath)) {
     const hostname = new URL(url).hostname.replace(/^www\./, "");
-    writeFileSync(
-      metaPath,
-      JSON.stringify({ id: hostname + "-video", name: tokens.title || hostname }, null, 2),
-      "utf-8",
-    );
+    try {
+      writeFileSync(
+        metaPath,
+        JSON.stringify({ id: hostname + "-video", name: tokens.title || hostname }, null, 2),
+        { encoding: "utf-8", flag: "wx" },
+      );
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && err.code === "EEXIST")) throw err;
+    }
   }
 
   // Generate AGENTS.md + CLAUDE.md (AI agent instructions — always, regardless of API keys)
