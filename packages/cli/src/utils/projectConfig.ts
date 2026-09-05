@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
+import { writeNewFileSync } from "./writeNewFile.js";
 
 export const PROJECT_CONFIG_FILENAME = "hyperframes.json";
 const PROJECT_CONFIG_SCHEMA_URL = "https://hyperframes.heygen.com/schema/hyperframes.json";
@@ -187,6 +188,14 @@ export function writeProjectConfig(
   writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
+/** Create `hyperframes.json` without replacing an existing file or following a symlink. */
+export function createProjectConfig(
+  projectDir: string,
+  config: ProjectConfig = DEFAULT_PROJECT_CONFIG,
+): void {
+  writeNewFileSync(projectConfigPath(projectDir), JSON.stringify(config, null, 2) + "\n");
+}
+
 /**
  * Load the project config for the given directory, falling back to defaults
  * if missing. Mutates nothing on disk. Used by commands that want to operate
@@ -234,8 +243,8 @@ function isFileNotFound(error: unknown): boolean {
  * never fails the render it rode in on.
  *
  * One of two writers that touch an ALREADY EXISTING `hyperframes.json` (the
- * other is {@link recordProjectRegistryItems}; every plain `writeProjectConfig`
- * call site is guarded to write only when the file is absent), so it must not
+ * other is {@link recordProjectRegistryItems}; absent-only callers use
+ * {@link createProjectConfig}), so it must not
  * round-trip through {@link normalizeConfig}:
  * that rebuilds the object from a field whitelist, which would drop keys it
  * does not know about and materialize defaults the user never wrote. The file
@@ -259,7 +268,7 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
   } catch (error) {
     if (isFileNotFound(error)) {
       try {
-        writeProjectConfig(projectDir, { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill });
+        createProjectConfig(projectDir, { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill });
       } catch {
         // Read-only or missing project directory — best effort.
       }

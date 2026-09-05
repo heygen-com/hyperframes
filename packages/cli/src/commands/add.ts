@@ -26,7 +26,7 @@ import {
   loadProjectConfig,
   projectConfigPath,
   recordProjectRegistryItems,
-  writeProjectConfig,
+  createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
@@ -279,7 +279,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   let config = loadProjectConfig(projectDir);
   const hasConfig = existsSync(projectConfigPath(projectDir));
   if (!hasConfig && existsSync(resolve(projectDir, "index.html"))) {
-    writeProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
+    createProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
     config = DEFAULT_PROJECT_CONFIG;
   }
 
@@ -499,7 +499,7 @@ export default defineCommand({
         !existsSync(projectConfigPath(projectDir)) &&
         existsSync(resolve(projectDir, "index.html"))
       ) {
-        writeProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
+        createProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
         config = DEFAULT_PROJECT_CONFIG;
       }
 

@@ -592,11 +592,11 @@ async function scaffoldProject(
   // When the scaffolding workflow declared itself via --skill, stamp the owning
   // skill here so every later render of this project is attributed to it.
   if (!existsSync(resolve(destDir, "hyperframes.json"))) {
-    const { writeProjectConfig, DEFAULT_PROJECT_CONFIG } =
+    const { createProjectConfig, DEFAULT_PROJECT_CONFIG } =
       await import("../utils/projectConfig.js");
     const { normalizeSkillSlug } = await import("../telemetry/skill.js");
     const skill = normalizeSkillSlug(authoringSkill);
-    writeProjectConfig(
+    createProjectConfig(
       destDir,
       skill ? { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill } : DEFAULT_PROJECT_CONFIG,
     );
