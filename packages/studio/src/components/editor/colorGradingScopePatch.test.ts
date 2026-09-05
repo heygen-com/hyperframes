@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { patchMediaColorGradingInHtml } from "./colorGradingScopePatch";
 
 describe("patchMediaColorGradingInHtml", () => {
+  it.each(['"', "'"])("replaces and removes long grading values quoted with %s", (quote) => {
+    const otherQuote = quote === '"' ? "'" : '"';
+    for (const value of [
+      "",
+      "line1\nline2",
+      "a".repeat(100_000),
+      `data-color-grading=${otherQuote}a`.repeat(10_000),
+    ]) {
+      const html = `<img alt="kept"\tDATA-COLOR-GRADING=${quote}${value}${quote} />`;
+      expect(patchMediaColorGradingInHtml(html, "new")).toEqual({
+        html: '<img alt="kept" data-color-grading="new" />',
+        count: 1,
+      });
+      expect(patchMediaColorGradingInHtml(html, null)).toEqual({
+        html: '<img alt="kept" />',
+        count: 1,
+      });
+    }
+  });
+
   it("adds color grading to video and image tags only", () => {
     const { html, count } = patchMediaColorGradingInHtml(
       `<div><video id="v"></video><img id="i" /><audio id="a"></audio></div>`,

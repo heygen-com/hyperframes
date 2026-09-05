@@ -8,6 +8,22 @@ import {
 } from "./sourcePatcher";
 
 describe("applyPatchByTarget", () => {
+  it.each(['"', "'"])("patches long and multiline styles quoted with %s", (quote) => {
+    const otherQuote = quote === '"' ? "'" : '"';
+    const op: PatchOperation = { type: "inline-style", property: "opacity", value: "0.5" };
+    for (const value of [
+      "",
+      "line1\nline2",
+      "a".repeat(100_000),
+      `style=${otherQuote}a`.repeat(10_000),
+    ]) {
+      const html = `<img id="hero" class="hero" style=${quote}--label:${value}${quote} />`;
+      const expected = `<img id="hero" class="hero" style=${quote}--label: ${value}; opacity: 0.5${quote} />`;
+      expect(applyPatch(html, "hero", op)).toBe(expected);
+      expect(applyPatchByTarget(html, { selector: ".hero" }, op)).toBe(expected);
+    }
+  });
+
   it("updates a composition host by data-composition-id selector", () => {
     const html = `<div data-composition-id="intro" data-start="0" data-track-index="1"></div>`;
     const op: PatchOperation = { type: "attribute", property: "start", value: "2.5" };

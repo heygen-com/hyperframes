@@ -184,10 +184,10 @@ function patchInlineStyleInTag(
   if (!tag) return html;
 
   // Check if there's an existing style attribute
-  const styleMatch = /\bstyle=(["'])([\s\S]*?)\1/.exec(tag);
+  const styleMatch = /\bstyle=(")([^"]*)"|\bstyle=(')([^']*)'/.exec(tag);
   if (styleMatch) {
-    const existingStyle = styleMatch[2];
-    const quote = styleMatch[1];
+    const existingStyle = styleMatch[2] ?? styleMatch[4];
+    const quote = styleMatch[1] ?? styleMatch[3];
     // Parse existing properties
     const props = new Map<string, string>();
     for (const part of splitInlineStyleDeclarations(existingStyle)) {
