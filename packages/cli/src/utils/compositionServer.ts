@@ -5,7 +5,6 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getMimeType } from "@hyperframes/studio-server";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
 /**
@@ -75,10 +74,6 @@ export function resolveSlideshowPath(): string | null {
  */
 export function injectRuntime(html: string): string {
   return injectTagsAtHeadStart(html, `<script src="/runtime.js"></script>`);
-}
-
-export function assetContentType(filePath: string): string {
-  return getMimeType(filePath);
 }
 
 /**

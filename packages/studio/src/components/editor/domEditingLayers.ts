@@ -46,12 +46,7 @@ function sameTagChildIndex(el: HTMLElement): number {
   return index;
 }
 
-function getTextFieldLabel(
-  _tagName: string,
-  index: number,
-  total: number,
-  source: "self" | "child",
-): string {
+function getTextFieldLabel(index: number, total: number, source: "self" | "child"): string {
   if (source === "self" || total === 1) return "Content";
   return `Text ${index + 1}`;
 }
@@ -67,7 +62,7 @@ function buildTextField(
   const key = el.getAttribute("data-hf-text-key") ?? `${source}:${index}:${tagName}`;
   return {
     key,
-    label: getTextFieldLabel(tagName, index, total, source),
+    label: getTextFieldLabel(index, total, source),
     value: el.textContent ?? "",
     tagName,
     attributes: Array.from(el.attributes)

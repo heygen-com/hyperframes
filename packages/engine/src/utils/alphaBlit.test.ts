@@ -487,6 +487,16 @@ function makeDomRgba(
 }
 
 describe("blitRgba8OverRgb48le", () => {
+  it("blends an odd-offset canvas without changing surrounding bytes", () => {
+    const parent = Buffer.alloc(8, 0xaa);
+    parent.fill(0xff, 1, 7);
+    const canvas = parent.subarray(1, 7);
+
+    blitRgba8OverRgb48le(new Uint8Array([255, 0, 255, 128]), canvas, 1, 1, "srgb");
+
+    expect([...parent]).toEqual([0xaa, 0xff, 0xff, 0x7f, 0x7f, 0xff, 0xff, 0xaa]);
+  });
+
   it("fully transparent DOM: canvas unchanged", () => {
     const canvas = makeHdrFrame(1, 1, 32000, 40000, 50000);
     const dom = makeDomRgba(1, 1, 255, 0, 0, 0); // red but alpha=0

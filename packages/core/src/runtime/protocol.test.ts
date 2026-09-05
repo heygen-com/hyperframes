@@ -14,6 +14,28 @@ describe("runtime protocol", () => {
     },
   );
 
+  it.each([1e-8, Number.MIN_VALUE])("preserves %s fps through protocol metadata", (fps) => {
+    const metadata = runtimeProtocolMetadata(fps);
+    expect(inspectRuntimeProtocol(metadata)).toEqual({ status: "supported", fps, metadata });
+  });
+
+  it.each([
+    [Number.MAX_VALUE, Number.MIN_VALUE],
+    [Number.MIN_VALUE, Number.MAX_VALUE],
+  ])("rejects an unrepresentable frame rate %s / %s", (numerator, denominator) => {
+    expect(
+      inspectRuntimeProtocol({
+        protocolVersion: 1,
+        capabilities: [],
+        fps: { numerator, denominator },
+      }),
+    ).toEqual({
+      status: "unsupported",
+      code: "invalid_protocol_metadata",
+      receivedVersion: 1,
+    });
+  });
+
   it("accepts protocol v1 metadata and exposes its fps", () => {
     expect(inspectRuntimeProtocol(runtimeProtocolMetadata(60))).toMatchObject({
       status: "supported",

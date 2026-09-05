@@ -315,27 +315,3 @@ function resolveGsapEaseFromPayload(
     return motion.ease;
   }
 }
-
-export function installStudioMotionSeekReapply(win: Window, apply: () => void): boolean {
-  const studioWin = win as StudioMotionWindow;
-  studioWin.__hfStudioMotionApply = () => {
-    apply();
-    return 0;
-  };
-  if (studioWin.__hfStudioMotionWrapped) return false;
-  const player = studioWin.__player;
-  if (!player) return false;
-
-  const wrapPlayerMethod = (key: "renderSeek" | "seek") => {
-    const original = player[key];
-    if (typeof original !== "function") return;
-    player[key] = (time: number) => {
-      original.call(player, time);
-      studioWin.__hfStudioMotionApply?.();
-    };
-  };
-  wrapPlayerMethod("renderSeek");
-  wrapPlayerMethod("seek");
-  studioWin.__hfStudioMotionWrapped = true;
-  return true;
-}
