@@ -119,8 +119,8 @@ function maskInertRegions(html: string): { masked: string; restore: (s: string) 
   const stash: string[] = [];
   const parts: string[] = [];
   const opening = /<!--|<script\b|<style\b/gi;
-  const closings = new Map<string, string | RegExp>([
-    ["<!--", "-->"],
+  const closings = new Map([
+    ["<!--", /--!?>/g],
     ["<script", /<\/script\s*>/gi],
     ["<style", /<\/style\s*>/gi],
   ]);
@@ -130,14 +130,8 @@ function maskInertRegions(html: string): { masked: string; restore: (s: string) 
     const kind = match[0].toLowerCase();
     const closing = closings.get(kind);
     if (!closing) continue;
-    let end: number;
-    if (typeof closing === "string") {
-      const index = html.indexOf(closing, opening.lastIndex);
-      end = index < 0 ? -1 : index + closing.length;
-    } else {
-      closing.lastIndex = opening.lastIndex;
-      end = closing.exec(html) ? closing.lastIndex : -1;
-    }
+    closing.lastIndex = opening.lastIndex;
+    const end = closing.exec(html) ? closing.lastIndex : -1;
     if (end < 0) {
       // No later opener of this kind can close either. Search each unmatched
       // suffix only once, while still allowing other kinds of inert regions.

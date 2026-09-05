@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { JSDOM } from "jsdom";
 import { describe, it, expect } from "vitest";
 import {
   compileTimingAttrs,
@@ -23,7 +24,6 @@ describe("inert region scanning", () => {
 
   it.each([
     `<!-- ${media} <!-- nested -->`,
-    `<!-- --!> ${media} -->`,
     `<ScRiPt type="text/javascript">${media}</sCrIpT \n>`,
     `<STYLE>${media}</STYLE\u00a0>`,
     `<script-data>${media}</script>`,
@@ -37,13 +37,40 @@ describe("inert region scanning", () => {
     expect(extractResolvedMedia(region + media)).toEqual(extractResolvedMedia(media));
   });
 
-  it.each(["<!--", "<!-- --!>", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
+  it.each(["<!--", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
     "keeps media outside a complete inert region after %j visible",
     (prefix) => {
       expect(compileTimingAttrs(prefix + media).html).toBe(prefix + compileTimingAttrs(media).html);
       expect(extractResolvedMedia(prefix + media)).toEqual(extractResolvedMedia(media));
     },
   );
+
+  it.each(["-->", "--!>"])("recognizes %j as the first comment end like the browser", (end) => {
+    const hidden = '<video id="hidden" data-duration="1">';
+    const visible = '<video id="visible" data-start="1" data-duration="2">';
+    const comment = `<!-- ${hidden} ${end}`;
+    // The trailing delimiter must not extend the comment over visible media.
+    const html = comment + visible + " -->";
+    const dom = new JSDOM(html);
+    expect([...dom.window.document.querySelectorAll("video")].map((el) => el.id)).toEqual([
+      "visible",
+    ]);
+    dom.window.close();
+    expect(compileTimingAttrs(html)).toEqual({
+      html: comment + compileTimingAttrs(visible).html + " -->",
+      unresolved: [],
+    });
+    expect(extractResolvedMedia(html).map((el) => el.id)).toEqual(["visible"]);
+  });
+
+  it("closes an end-bang comment without a later standard delimiter", () => {
+    const comment = '<!-- <video id="hidden" data-duration="1"> --!>';
+    expect(compileTimingAttrs(comment + media)).toEqual({
+      html: comment + compileTimingAttrs(media).html,
+      unresolved: [],
+    });
+    expect(extractResolvedMedia(comment + media)).toEqual(extractResolvedMedia(media));
+  });
 
   it.each(["<!--", "<script", "<style"])(
     "handles many unclosed %j prefixes while masking other region kinds",
