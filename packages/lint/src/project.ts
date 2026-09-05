@@ -15,6 +15,7 @@ import {
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
+import { collectLocalAudioCandidates, lintAuthoredAudioMediaType } from "./audioMediaTypeLint.js";
 import { collectLocalVideoCandidates, lintHevcPreviewCodec } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
@@ -235,6 +236,7 @@ export async function lintProject(
     ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
+    ...(await lintAuthoredAudioMediaType(collectLocalAudioCandidates(projectDir, allHtmlSources))),
     ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
   ];
   if (projectFindings.length > 0) {
