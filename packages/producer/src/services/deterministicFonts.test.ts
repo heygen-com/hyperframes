@@ -1,5 +1,49 @@
 import { describe, expect, it } from "bun:test";
-import { FONT_ALIASES, FONT_ALIAS_KEYS } from "./deterministicFonts.js";
+import {
+  FONT_ALIASES,
+  FONT_ALIAS_KEYS,
+  injectDeterministicFontFaces,
+} from "./deterministicFonts.js";
+
+describe("existing font-face recognition", () => {
+  it.each([
+    ['@font-face { font-family: "Existing Font"; src: url(font.woff2); }', false],
+    ["@FONT-FACE\n{ FONT-FAMILY : 'EXISTING FONT'; }", false],
+    ['@font-face { font-family:\u00a0"Existing Font"; }', false],
+    ['@font-face { font-family:; font-family: "Existing Font"; }', false],
+    [
+      '@font-face { font-family: "Other Font"; } @font-face { font-family: "Existing Font"; }',
+      false,
+    ],
+    ['@font-face { font-family: "Existing Font" }', true],
+    ['@font-face { font-family: "Existing Font";', true],
+    ['@font-face { font-family: "Other Font"; font-family: "Existing Font"; }', true],
+    ['@font-face { font-family:   ; font-family: "Existing Font"; }', true],
+  ])("preserves authored font and fallback decisions for %j", async (css, needsFallback) => {
+    const html = `<html><head><style>${css}</style></head><body><p style="font-family: 'Existing Font';">Hello</p></body></html>`;
+    let requests = 0;
+    const fetchImpl = Object.assign(
+      async () => {
+        requests += 1;
+        return new Response("", { status: 404 });
+      },
+      { preconnect: fetch.preconnect },
+    );
+    expect(
+      await injectDeterministicFontFaces(html, { fetchImpl, allowSystemFontCapture: false }),
+    ).toBe(html);
+    expect(requests > 0).toBe(needsFallback);
+  });
+
+  it.each([
+    "@font-face{{".repeat(100_000),
+    "@font-face{{font-family:" + " ".repeat(100_000),
+    "@font-face{{font-family::;" + "font-family::;".repeat(100_000),
+  ])("handles a long incomplete font-face suffix", async (css) => {
+    const html = `<html><head><style>${css}</style></head><body>Hello</body></html>`;
+    expect(await injectDeterministicFontFaces(html, { allowSystemFontCapture: false })).toBe(html);
+  });
+});
 
 describe("FONT_ALIASES cross-platform coverage", () => {
   it("maps macOS sans-serif system fonts to inter", () => {

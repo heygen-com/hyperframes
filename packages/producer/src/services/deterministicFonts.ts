@@ -438,13 +438,26 @@ function fontDataUri(
 
 function extractExistingFontFaces(html: string): Set<string> {
   const families = new Set<string>();
-  const fontFaceRegex = /@font-face\s*\{[\s\S]*?font-family\s*:\s*([^;]+);[\s\S]*?\}/gi;
-  for (const match of html.matchAll(fontFaceRegex)) {
-    const raw = match[1] || "";
-    const normalized = normalizeFamilyName(raw);
-    if (normalized) {
-      families.add(normalized);
+  const opening = /@font-face\s*\{/gi;
+  const family = /font-family\s*:/gi;
+  while (opening.exec(html)) {
+    family.lastIndex = opening.lastIndex;
+    let declaration = family.exec(html);
+    // The original matcher requires at least one character before ';'.
+    while (declaration && html[family.lastIndex] === ";") {
+      declaration = family.exec(html);
     }
+    // If this opener has no complete family/semicolon/closer suffix, no later
+    // opener can have one. Never retry the same unmatched suffix.
+    if (!declaration) break;
+    const valueStart = family.lastIndex;
+    const semicolon = html.indexOf(";", valueStart);
+    if (semicolon < 0) break;
+    const end = html.indexOf("}", semicolon + 1);
+    if (end < 0) break;
+    const normalized = normalizeFamilyName(html.slice(valueStart, semicolon));
+    if (normalized) families.add(normalized);
+    opening.lastIndex = end + 1;
   }
   return families;
 }
