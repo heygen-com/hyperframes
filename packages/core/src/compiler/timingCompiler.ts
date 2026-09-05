@@ -113,18 +113,38 @@ function setAttr(tag: string, attr: string, value: string): string {
 // `<video>`/`<audio>` gets rewritten as if it were a real element (issue #1938).
 // Mask those inert regions with placeholders (no `<`, so the tag regexes skip
 // them) before scanning, then restore them verbatim.
-const INERT_REGION_RE =
-  /<!--[\s\S]*?-->|<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>/gi;
-
 // The NUL delimiters must stay as \u0000 escapes: raw 0x00 bytes make this file
 // binary to git and are corrupted by Bun's transpiler when bundled (issue #2139).
 function maskInertRegions(html: string): { masked: string; restore: (s: string) => string } {
   const stash: string[] = [];
-  const masked = html.replace(INERT_REGION_RE, (region) => {
+  const parts: string[] = [];
+  const opening = /<!--|<script\b|<style\b/gi;
+  const closings = new Map([
+    ["<!--", /-->/g],
+    ["<script", /<\/script\s*>/gi],
+    ["<style", /<\/style\s*>/gi],
+  ]);
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = opening.exec(html)) !== null) {
+    const kind = match[0].toLowerCase();
+    const closing = closings.get(kind);
+    if (!closing) continue;
+    closing.lastIndex = opening.lastIndex;
+    if (!closing.exec(html)) {
+      // No later opener of this kind can close either. Search each unmatched
+      // suffix only once, while still allowing other kinds of inert regions.
+      closings.delete(kind);
+      continue;
+    }
     const token = `\u0000HFMASK${stash.length}\u0000`;
-    stash.push(region);
-    return token;
-  });
+    parts.push(html.slice(cursor, match.index), token);
+    stash.push(html.slice(match.index, closing.lastIndex));
+    cursor = closing.lastIndex;
+    opening.lastIndex = cursor;
+  }
+  parts.push(html.slice(cursor));
+  const masked = parts.join("");
   const restore = (s: string): string =>
     // oxlint-disable-next-line no-control-regex -- NUL cannot appear in HTML, which is what makes it a safe mask delimiter
     s.replace(/\u0000HFMASK(\d+)\u0000/g, (_, i) => stash[Number(i)] ?? "");

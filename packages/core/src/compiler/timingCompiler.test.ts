@@ -18,6 +18,55 @@ it("source contains no raw NUL bytes", () => {
   expect(src.includes("\x00")).toBe(false);
 });
 
+describe("inert region scanning", () => {
+  const media = '<video id="v" data-start="1" data-duration="2">';
+
+  it.each([
+    `<!-- ${media} <!-- nested -->`,
+    `<ScRiPt type="text/javascript">${media}</sCrIpT \n>`,
+    `<STYLE>${media}</STYLE\u00a0>`,
+    `<script-data>${media}</script>`,
+    `<style:${media}</style>`,
+    `<!-- <script>${media} -->`,
+    `<script><!-- ${media}</script>`,
+    `<style><script>${media}</style>`,
+  ])("preserves the existing complete-region boundaries in %j", (region) => {
+    const result = compileTimingAttrs(region + media);
+    expect(result).toEqual({ html: region + compileTimingAttrs(media).html, unresolved: [] });
+    expect(extractResolvedMedia(region + media)).toEqual(extractResolvedMedia(media));
+  });
+
+  it.each(["<!--", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
+    "keeps media outside a complete inert region after %j visible",
+    (prefix) => {
+      expect(compileTimingAttrs(prefix + media).html).toBe(prefix + compileTimingAttrs(media).html);
+      expect(extractResolvedMedia(prefix + media)).toEqual(extractResolvedMedia(media));
+    },
+  );
+
+  it.each(["<!--", "<script", "<style"])(
+    "handles many unclosed %j prefixes while masking other region kinds",
+    (prefix) => {
+      const unclosed = prefix.repeat(100_000);
+      const hidden = prefix === "<!--" ? `<style>${media}</style>` : `<!--${media}-->`;
+      expect(compileTimingAttrs(unclosed + hidden + media)).toEqual({
+        html: unclosed + hidden + compileTimingAttrs(media).html,
+        unresolved: [],
+      });
+      expect(extractResolvedMedia(unclosed + hidden + media)).toEqual(extractResolvedMedia(media));
+    },
+  );
+
+  it("uses the first closing delimiter and resumes scanning after it", () => {
+    const hidden = `<script>${media}</script>`;
+    const html = hidden + media + `</script><!--${media}--><style>${media}</style>`;
+    expect(compileTimingAttrs(html).html).toBe(
+      hidden + compileTimingAttrs(media).html + `</script><!--${media}--><style>${media}</style>`,
+    );
+    expect(extractResolvedMedia(html)).toEqual(extractResolvedMedia(media));
+  });
+});
+
 describe("compileTimingAttrs", () => {
   it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN"])(
     "does not partially parse invalid literal data-duration=%j",
