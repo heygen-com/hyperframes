@@ -2886,6 +2886,233 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("gsap_repeated_fromto_without_baseline: warns for repeated future fromTo state", async () => {
+    const html = `
+<html><body>
+  <style>#ring { opacity: 0; }</style>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="ring"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.selector).toBe("#ring");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: accepts explicit immediateRender false", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5, immediateRender: false }, 5);
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5, immediateRender: false }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_repeated_fromto_without_baseline: accepts an earlier timeline set baseline", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#ring", { opacity: 0, scale: 1 }, 0);
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_repeated_fromto_without_baseline: rejects an earlier standalone set", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    gsap.set("#ring", { opacity: 0, scale: 1 });
+    tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: rejects a later incomplete standalone set", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
+    gsap.set("#ring", { x: 0 });
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: does not guess that a later standalone set is a timeline baseline", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
+    gsap.set("#ring", { opacity: 0, scale: 1 });
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: does not treat a deferred callback set as baseline", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="ring"></div><button id="reset"></button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    document.getElementById("reset").addEventListener("click", () => {
+      gsap.set("#ring", { opacity: 0, scale: 1 });
+    });
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: requires a timeline baseline to be authored first", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5 }, 10);
+    tl.set("#ring", { opacity: 0 }, 0);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: accepts one future fromTo writer", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find(
+        (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("gsap_repeated_fromto_without_baseline: keeps different selectors independent", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="ring-a"></div><div id="ring-b"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring-a", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring-b", { opacity: 1 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find(
+        (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+      ),
+    ).toBeUndefined();
+  });
+
   // ── svg_measure_before_path_d ──────────────────────────────────────────────
 
   it("svg_measure_before_path_d: ERROR when no d assignment exists anywhere", async () => {
