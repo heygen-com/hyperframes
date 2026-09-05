@@ -29,13 +29,13 @@ export function mergeStyleIntoTag(tag: string, newStyles: string): string {
 
   const incoming = parseStyleString(newStyles);
 
-  // Match style="..." or style='...' — handle multi-line attrs via dotall-like trick
-  const styleAttrRe = /style=(["'])([\s\S]*?)\1/;
+  // Match each quote-delimited form explicitly, including multi-line values.
+  const styleAttrRe = /style=(")([^"]*)"|style=(')([^']*)'/;
   const match = tag.match(styleAttrRe);
 
   if (match) {
-    const quote = match[1];
-    const existing = parseStyleString(match[2]);
+    const quote = match[1] ?? match[3];
+    const existing = parseStyleString(match[2] ?? match[4]);
     const merged = { ...existing, ...incoming };
     const serialized = Object.entries(merged)
       .map(([k, v]) => `${k}: ${v}`)
