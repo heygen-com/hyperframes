@@ -464,7 +464,7 @@ export async function spawnStreamingEncoder(
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
   });
-  trackChildProcess(ffmpeg);
+  trackChildProcess(ffmpeg, { kind: "ffmpeg" });
 
   let exitStatus: "running" | "success" | "error" = "running";
   let stderr = "";

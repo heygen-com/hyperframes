@@ -90,6 +90,17 @@ interface BrowserLaunchOptions {
   browserNoGpu?: boolean;
 }
 
+export async function drainEmbeddedPreviewResources(input: {
+  beginProcessDrain: () => void;
+  disposeRenders: () => Promise<void>;
+  closeThumbnailBrowser: () => Promise<void>;
+  drainBrowserPool: () => Promise<void>;
+}): Promise<void> {
+  input.beginProcessDrain();
+  await Promise.allSettled([input.disposeRenders(), input.closeThumbnailBrowser()]);
+  await input.drainBrowserPool().catch(() => {});
+}
+
 interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
   autoProxy?: boolean;
@@ -1566,7 +1577,7 @@ async function runEmbeddedMode(
   // Compute everything that may throw before acquiring the fs.watch handle.
   // Once createStudioServer returns, every subsequent exit path must close it.
   const serverBuildSignature = await loadPreviewServerBuildSignature();
-  const { app, watcher } = createStudioServer({
+  const { app, watcher, dispose } = createStudioServer({
     projectDir: dir,
     projectName: pName,
     autoProxy: options?.autoProxy,
@@ -1584,6 +1595,7 @@ async function runEmbeddedMode(
       options?.browserGpuMode,
     );
   } catch (err: unknown) {
+    await dispose().catch(() => {});
     watcher.close();
     reportPreviewFailure(
       Boolean(options?.json),
@@ -1598,6 +1610,7 @@ async function runEmbeddedMode(
     // createStudioServer acquires an fs.watch handle before port discovery.
     // Reuse owns no local server, so release that handle before returning or
     // the otherwise-finished CLI process remains alive indefinitely.
+    await dispose().catch(() => {});
     watcher.close();
     const url = `http://localhost:${result.port}`;
     if (options?.json) {
@@ -1685,10 +1698,13 @@ async function runEmbeddedMode(
       // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
       const cleanup = async () => {
         const { closeThumbnailBrowser } = await import("../server/studioServer.js");
-        const { drainBrowserPool, killTrackedProcesses } = await import("@hyperframes/engine");
-        killTrackedProcesses();
-        await closeThumbnailBrowser().catch(() => {});
-        await drainBrowserPool().catch(() => {});
+        const { beginTrackedProcessDrain, drainBrowserPool } = await import("@hyperframes/engine");
+        await drainEmbeddedPreviewResources({
+          beginProcessDrain: beginTrackedProcessDrain,
+          disposeRenders: dispose,
+          closeThumbnailBrowser,
+          drainBrowserPool,
+        });
       };
 
       cleanup()

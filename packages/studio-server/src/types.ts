@@ -23,6 +23,8 @@ export interface RenderJobState {
    * route still marks the job cancelled so the SSE stream terminates).
    */
   cancel?: () => void;
+  /** Resolves after the adapter has released all resources owned by this render. */
+  completion?: Promise<void>;
 }
 
 export interface MediaProcessingJobState {

@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { trackChildProcess, killTrackedProcesses } from "./processTracker.js";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  beginTrackedProcessDrain,
+  findOwnedOrphanedFfmpegProcesses,
+  trackChildProcess,
+  killTrackedProcesses,
+} from "./processTracker.js";
 
 // Reset tracked set between tests by killing everything
 beforeEach(() => {
@@ -101,5 +109,62 @@ describe("killTrackedProcesses", () => {
 
     killTrackedProcesses();
     killTrackedProcesses();
+  });
+
+  it("registers owned FFmpeg identity and removes it on clean exit", async () => {
+    const registryDir = mkdtempSync(join(tmpdir(), "hf-owned-ffmpeg-"));
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const exitPromise = new Promise<void>((resolve) => proc.on("close", () => resolve()));
+    try {
+      trackChildProcess(proc, { kind: "ffmpeg", registryDir });
+      expect(readdirSync(registryDir)).toHaveLength(1);
+
+      proc.kill("SIGTERM");
+      await exitPromise;
+      expect(readdirSync(registryDir)).toHaveLength(0);
+    } finally {
+      proc.kill("SIGKILL");
+      await exitPromise;
+      rmSync(registryDir, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers only identity-matched FFmpeg records reparented to init", () => {
+    const registryDir = mkdtempSync(join(tmpdir(), "hf-owned-ffmpeg-scan-"));
+    try {
+      for (const [pid, identity] of [
+        [101, "linux:one"],
+        [102, "linux:two"],
+        [103, "linux:stale"],
+      ] as const) {
+        writeFileSync(
+          join(registryDir, `${pid}.json`),
+          JSON.stringify({ version: 1, kind: "ffmpeg", pid, identity }),
+        );
+      }
+
+      expect(
+        findOwnedOrphanedFfmpegProcesses({
+          registryDir,
+          identityForPid: (pid) =>
+            ({ 101: "linux:one", 102: "linux:two", 103: "linux:reused" })[pid] ?? null,
+          parentPidForPid: (pid) => (pid === 101 ? 1 : 77),
+        }),
+      ).toEqual([{ pid: 101, identity: "linux:one" }]);
+      expect(readdirSync(registryDir)).not.toContain("103.json");
+      expect(readdirSync(registryDir)).toContain("102.json");
+    } finally {
+      rmSync(registryDir, { recursive: true, force: true });
+    }
+  });
+
+  it("kills a child registered after the terminal drain begins", async () => {
+    beginTrackedProcessDrain();
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const exitPromise = new Promise<number | null>((resolve) => proc.on("close", resolve));
+
+    trackChildProcess(proc);
+
+    expect(await exitPromise).toBeNull();
   });
 });

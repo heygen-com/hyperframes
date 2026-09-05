@@ -332,7 +332,11 @@ export {
   FFPROBE_PATH_ENV,
 } from "./utils/ffmpegBinaries.js";
 
-export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
+export {
+  beginTrackedProcessDrain,
+  killTrackedProcesses,
+  trackChildProcess,
+} from "./utils/processTracker.js";
 
 // drawElement self-verify comparison — shared by the streaming drain
 // (producer) and the parallel disk-path verify (parallelCoordinator).
