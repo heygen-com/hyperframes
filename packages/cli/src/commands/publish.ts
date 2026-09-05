@@ -125,7 +125,7 @@ export default defineCommand({
         `  ${c.bold("hyperframes publish uploads this project and creates a stable public URL.")}`,
       );
       console.log(
-        `  ${c.dim("Anyone with the URL can open the published project and claim it after authenticating.")}`,
+        `  ${c.dim("Anyone with the URL can open the published project. If a claim link is returned, open it and sign in to claim the project.")}`,
       );
       console.log();
       const approved = await clack.confirm({ message: "Publish this project?" });

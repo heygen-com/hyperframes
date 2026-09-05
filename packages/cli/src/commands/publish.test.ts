@@ -4,6 +4,12 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const publishState = vi.hoisted(() => ({ publish: vi.fn() }));
+const clackState = vi.hoisted(() => ({ confirm: vi.fn() }));
+
+vi.mock("@clack/prompts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@clack/prompts")>()),
+  confirm: clackState.confirm,
+}));
 
 vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/publishProject.js")>()),
@@ -88,5 +94,42 @@ describe("publish default-entry preflight", () => {
     expect(output).toContain("compositions/card.html");
     expect(output).not.toContain("hyperframes publish <project>/compositions");
     expect(output).toContain("publish accepts project directories, not individual HTML files");
+  });
+});
+
+describe("publish consent notice", () => {
+  it("discloses public access and makes claiming conditional before consent", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-consent-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
+    );
+    publishState.publish.mockReset();
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+    clackState.confirm.mockReset().mockImplementation(async () => {
+      const notice = lines.join("\n");
+      expect(notice).toContain("creates a stable public URL");
+      expect(notice).toContain("Anyone with the URL can open the published project.");
+      expect(notice).toContain(
+        "If a claim link is returned, open it and sign in to claim the project.",
+      );
+      expect(notice).not.toContain("and claim it after authenticating");
+      expect(notice).not.toContain("you own it on publish");
+      return false;
+    });
+
+    try {
+      await publishCommand.run?.({ args: { dir: project, proxy: false } } as never);
+      expect(clackState.confirm).toHaveBeenCalledOnce();
+      expect(publishState.publish).not.toHaveBeenCalled();
+      expect(lines.join("\n")).toContain("Aborted.");
+    } finally {
+      log.mockRestore();
+      clackState.confirm.mockReset();
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 });
