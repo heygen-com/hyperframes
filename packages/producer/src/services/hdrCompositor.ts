@@ -434,6 +434,10 @@ export function resolveCompositeTransfer(
   return hasHdrContent && effectiveHdr ? effectiveHdr.transfer : "srgb";
 }
 
+export function isHdrLayerBlittable(el: ElementStackingInfo): boolean {
+  return el.opacity > 0 && (el.visible || el.renderFrameVisible === true);
+}
+
 export function selectDomLayerShowIds(
   layerElementIds: string[],
   fullStacking: ElementStackingInfo[],
@@ -559,8 +563,7 @@ export async function compositeHdrFrame(
 
   for (const [layerIdx, layer] of layers.entries()) {
     if (layer.type === "hdr") {
-      // Skip zero-opacity HDR elements — their parent scene may have faded out.
-      if (layer.element.opacity <= 0) continue;
+      if (!isHdrLayerBlittable(layer.element)) continue;
       const before = shouldLog ? countNonZeroRgb48(canvas) : 0;
       const isHdrImage = nativeHdrImageIds.has(layer.element.id);
       const hdrTargetTransfer = compositeTransfer === "srgb" ? undefined : compositeTransfer;
