@@ -206,10 +206,8 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
-type LoadTimeStandaloneGsapSet = { selector: string; propertiesSource: string };
-
-function extractLoadTimeStandaloneGsapSets(script: string): LoadTimeStandaloneGsapSet[] {
-  const sets: LoadTimeStandaloneGsapSet[] = [];
+function extractStandaloneHiddenSelectors(script: string): Set<string> {
+  const selectors = new Set<string>();
   const source = stripJsComments(script);
   const functionRanges = collectFunctionBodyRanges(source);
   const aliases = new Map<string, string>();
@@ -226,16 +224,10 @@ function extractLoadTimeStandaloneGsapSets(script: string): LoadTimeStandaloneGs
     const target = (match[1] ?? "").trim();
     const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
     if (!selector) continue;
-    sets.push({ selector, propertiesSource: match[2] ?? "" });
-  }
-  return sets;
-}
-
-function extractStandaloneHiddenSelectors(script: string): Set<string> {
-  const selectors = new Set<string>();
-  for (const { selector, propertiesSource } of extractLoadTimeStandaloneGsapSets(script)) {
-    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(propertiesSource))
+    const body = match[2] ?? "";
+    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
       selectors.add(selector);
+    }
   }
   return selectors;
 }
@@ -1132,11 +1124,6 @@ export const gsapRules: LintRule<LintContext>[] = [
       const repeatedFromToGroups = [...fromToWindowsBySelector.values()].filter(
         (windows) => windows.length >= 2,
       );
-      const standaloneSetSelectors =
-        repeatedFromToGroups.length > 0
-          ? new Set(extractLoadTimeStandaloneGsapSets(script.content).map((set) => set.selector))
-          : new Set<string>();
-
       for (const fromToWindows of repeatedFromToGroups) {
         const firstFromTo = fromToWindows[0];
         if (!firstFromTo) continue;
@@ -1152,7 +1139,7 @@ export const gsapRules: LintRule<LintContext>[] = [
               candidate.targetSelector === selector &&
               candidate.position <= firstFromToPosition,
           );
-        if (hasTimelineBaseline || standaloneSetSelectors.has(selector)) continue;
+        if (hasTimelineBaseline) continue;
 
         findings.push({
           code: "gsap_repeated_fromto_without_baseline",
@@ -1165,7 +1152,7 @@ export const gsapRules: LintRule<LintContext>[] = [
           selector,
           fixHint:
             `Add \`immediateRender: false\` to the destination vars of each future fromTo, or set a safe ` +
-            `resting state with an earlier \`gsap.set("${selector}", { ... })\`. Pre-first-tween seeks must not ` +
+            `resting state with an earlier \`tl.set("${selector}", { ... }, 0)\`. Pre-first-tween seeks must not ` +
             `inherit whichever fromTo call happened to author last.`,
           snippet: truncateSnippet(fromToWindows.map((win) => win.raw).join("\n")),
         });
