@@ -99,6 +99,7 @@ import { fileURLToPath } from "url";
 import {
   closeFileServerSafely,
   createFileServer,
+  probeFileServerHealth,
   type FileServerHandle,
   HF_PAGE_SIDE_COMPOSITING_STUB,
   VIRTUAL_TIME_SHIM,
@@ -2643,11 +2644,10 @@ async function executeRenderPipeline(input: {
     } else {
       observability.checkpoint("file_server", "reused probe file server");
     }
-    const activeFileServer = fileServer;
+    let activeFileServer = fileServer;
     if (!activeFileServer) {
       throw new Error("File server failed to initialize before frame capture");
     }
-
     const framesDir = join(workDir, "captured-frames");
     if (!existsSync(framesDir)) mkdirSync(framesDir, { recursive: true });
 
@@ -3318,6 +3318,21 @@ async function executeRenderPipeline(input: {
           "screenshot per output frame.",
       );
     }
+    const restartCaptureFileServer = async (): Promise<void> => {
+      closeFileServerSafely(activeFileServer, "capture retry", log);
+      fileServer = null;
+      activeFileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+        preHeadScripts: [
+          VIRTUAL_TIME_SHIM,
+          ...(usePageSideCompositingForTransitions ? [HF_PAGE_SIDE_COMPOSITING_STUB] : []),
+        ],
+        fps: job.config.fps,
+      });
+      fileServer = activeFileServer;
+    };
     const useLayeredComposite =
       !usePageSideCompositingForTransitions &&
       shouldUseLayeredComposite({
@@ -3607,8 +3622,8 @@ async function executeRenderPipeline(input: {
           const isVerifyError = isDrawElementVerificationError(err);
           const isCancellation =
             err instanceof RenderCancelledError || executionSignal?.aborted === true;
-          const isTransientBrowserFailure =
-            classifyCaptureFailure(err, { signal: executionSignal }).kind === "transient_browser";
+          const captureFailure = classifyCaptureFailure(err, { signal: executionSignal });
+          const isTransientBrowserFailure = captureFailure.kind === "transient_browser";
           const isTransientSingleWorkerFailure =
             isTransientBrowserFailure && capturePlan.workerCount === 1;
           if (
@@ -3669,6 +3684,10 @@ async function executeRenderPipeline(input: {
             deWorkerInversion,
             deParallelRouter,
           });
+          const preFrameHealthPromise =
+            isTransientSingleWorkerFailure && job.framesRendered === 0
+              ? probeFileServerHealth(activeFileServer)
+              : null;
           // Streaming stage aims to close the probe in its own finally; if it
           // threw before doing so, the Chrome process would orphan through the
           // pinned-fallback retry. Close defensively before we release the
@@ -3678,6 +3697,32 @@ async function executeRenderPipeline(input: {
             const orphaned = probeSession;
             probeSession = null;
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "streaming");
+          }
+          if (preFrameHealthPromise) {
+            const health = await preFrameHealthPromise;
+            const endpointOwner =
+              captureFailure.endpoint?.port === activeFileServer.port
+                ? "file_server"
+                : captureFailure.endpoint
+                  ? "browser_or_unknown"
+                  : "unknown";
+            log.warn("[Render] Pre-frame capture endpoint health", {
+              reportedEndpoint: captureFailure.endpoint
+                ? `${captureFailure.endpoint.host}:${captureFailure.endpoint.port}`
+                : undefined,
+              endpointOwner,
+              fileServerEndpoint: activeFileServer.url,
+              fileServerHealthy: health.healthy,
+              fileServerStatus: health.status,
+              healthProbeMs: health.durationMs,
+              healthProbeError: health.error,
+            });
+            if (!health.healthy) {
+              await restartCaptureFileServer();
+              log.warn("[Render] Recreated unhealthy file server before bounded capture retry", {
+                fileServerEndpoint: activeFileServer.url,
+              });
+            }
           }
           if (failedRouting === "worker_inversion") {
             // The inversion bet on drawElement and lost — re-render on the

@@ -682,6 +682,47 @@ export interface FileServerHandle {
   addPreHeadScript: (script: string) => void;
 }
 
+export interface FileServerHealth {
+  healthy: boolean;
+  status?: number;
+  durationMs: number;
+  error?: string;
+}
+
+export const FILE_SERVER_HEALTH_PATH = "/__hyperframes_health";
+const FILE_SERVER_HEALTH_HEADER = "x-hyperframes-file-server";
+
+export async function probeFileServerHealth(
+  fileServer: Pick<FileServerHandle, "url">,
+  timeoutMs = 1_000,
+): Promise<FileServerHealth> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (typeof timer.unref === "function") timer.unref();
+  try {
+    const response = await fetch(`${fileServer.url}${FILE_SERVER_HEALTH_PATH}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const healthy = response.ok && response.headers.get(FILE_SERVER_HEALTH_HEADER) === "healthy";
+    await response.body?.cancel();
+    return {
+      healthy,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
  * preview-only initialization work that mutates the live visual timeline.
@@ -733,6 +774,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
+
+  app.get(FILE_SERVER_HEALTH_PATH, (c) => {
+    c.header(FILE_SERVER_HEALTH_HEADER, "healthy");
+    return c.text("ok");
+  });
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
