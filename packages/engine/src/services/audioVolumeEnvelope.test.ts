@@ -1,10 +1,23 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+
+// Make a staging-name collision reproducible without weakening production randomness.
+vi.mock("crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomBytes: () => Buffer.from("010203040506", "hex") };
+});
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
@@ -48,6 +61,27 @@ describe("applyVolumeEnvelopeToWav", () => {
     for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   });
 
+  // Creating file symlinks requires extra privileges on Windows; regular collisions run there.
+  it.each(process.platform === "win32" ? ["file"] : ["file", "symlink"])(
+    "preserves an existing staging %s and original WAV",
+    (kind) => {
+      const dir = tmp();
+      const path = join(dir, "collision.wav");
+      writeConstantWav(path, 16, 10000);
+      const original = readFileSync(path);
+      const tempPath = `${path}.010203040506.tmp`;
+      const victim = join(dir, "victim.txt");
+      writeFileSync(victim, "untouched");
+      if (kind === "symlink") symlinkSync(victim, tempPath);
+      else writeFileSync(tempPath, "untouched");
+
+      expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0 }], 0, 0)).toBe(false);
+      expect(readFileSync(path)).toEqual(original);
+      expect(readFileSync(tempPath, "utf8")).toBe("untouched");
+      expect(readFileSync(victim, "utf8")).toBe("untouched");
+    },
+  );
+
   it("applies a linear fade sample-accurately", () => {
     const path = join(tmp(), "a.wav");
     const frames = SAMPLE_RATE; // 1 second
@@ -64,6 +98,7 @@ describe("applyVolumeEnvelopeToWav", () => {
       0,
     );
     expect(applied).toBe(true);
+    expect(readdirSync(dirname(path))).toEqual(["a.wav"]);
 
     expect(sampleAt(path, 0)).toBe(0); // gain 0
     expect(sampleAt(path, frames / 2)).toBeCloseTo(5000, -2); // gain ~0.5

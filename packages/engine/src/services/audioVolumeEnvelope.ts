@@ -174,11 +174,11 @@ export function applyVolumeEnvelopeToWav(
     scaleSamples(buffer, layout, gainAt);
 
     // Write to a uniquely-named sibling then atomically rename over the
-    // original. The random name avoids following a pre-planted symlink at a
-    // predictable path, and the rename means a crash mid-write can't leave a
+    // original. Exclusive creation rejects any pre-existing file or symlink,
+    // and the rename means a crash mid-write can't leave a
     // truncated WAV for the downstream mix.
     const tempPath = `${wavPath}.${randomBytes(6).toString("hex")}.tmp`;
-    writeFileSync(tempPath, buffer);
+    writeFileSync(tempPath, buffer, { flag: "wx" });
     renameSync(tempPath, wavPath);
     return true;
   } catch {
