@@ -695,6 +695,19 @@ describe("runProbeStage — render variable threading", () => {
 });
 
 describe("runProbeStage — decimal duration frame count", () => {
+  it("covers the final 60fps sample when duration extends fractionally past it", async () => {
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.job.config.fps = { num: 60, den: 1 };
+    input.composition.duration = 79.402;
+    input.compiled.staticDuration = 79.402;
+
+    const result = await runProbeStage(input);
+
+    expect(result.totalFrames).toBe(4765);
+    expect((result.totalFrames - 1) / 60).toBeLessThan(result.duration);
+  });
+
   it("does not add a frame for a six-decimal duration rounded from an exact frame boundary", async () => {
     const { runProbeStage } = await import("./probeStage.js");
     const input = makeProbeInput({});

@@ -631,6 +631,59 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.style.visibility).toBe("visible");
   });
 
+  it("keeps the producer's final sample visible through a fractional authored end", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1080");
+    root.setAttribute("data-height", "1920");
+    document.body.appendChild(root);
+
+    const ctaHost = document.createElement("div");
+    ctaHost.setAttribute("data-start", "0");
+    root.appendChild(ctaHost);
+
+    const cta = document.createElement("div");
+    cta.setAttribute("data-start", "0");
+    ctaHost.appendChild(cta);
+
+    const setDuration = (duration: number) => {
+      for (const element of [root, ctaHost, cta]) {
+        element.setAttribute("data-duration", String(duration));
+      }
+    };
+    setDuration(79.402);
+
+    window.__timelines = { main: createMockTimeline(79.402) };
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 60, fpsSource: "render-options" };
+    initSandboxRuntimeModular();
+
+    const finalSample = 4764 / 60;
+    window.__player?.renderSeek(finalSample);
+    expect([root, ctaHost, cta].map((element) => element.style.visibility)).toEqual([
+      "visible",
+      "visible",
+      "visible",
+    ]);
+
+    setDuration(79.4);
+    window.__player?.renderSeek(finalSample);
+    expect([root, ctaHost, cta].map((element) => element.style.visibility)).toEqual([
+      "hidden",
+      "hidden",
+      "hidden",
+    ]);
+
+    setDuration(79.41666666666667);
+    window.__player?.renderSeek(finalSample);
+    expect([root, ctaHost, cta].map((element) => element.style.visibility)).toEqual([
+      "visible",
+      "visible",
+      "visible",
+    ]);
+  });
+
   it("surfaces unknown export render fps sources without collapsing them to render-options", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const root = document.createElement("div");

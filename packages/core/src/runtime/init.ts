@@ -53,7 +53,7 @@ import {
   isMemberGroupHidden,
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
-import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
+import { quantizeTimeToFrame, snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
   RuntimeDeterministicAdapter,
@@ -746,16 +746,16 @@ export function initSandboxRuntimeModular(): void {
     }
     const computedEnd =
       duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-    const frameAlignedStart = window.__HF_EXPORT_RENDER_SEEK_CONFIG
-      ? quantizeTimeToFrame(start, state.canonicalFps)
+    const visibilityStart = window.__HF_EXPORT_RENDER_SEEK_CONFIG
+      ? snapTimeToFrameBoundary(start, state.canonicalFps)
       : start;
-    const frameAlignedEnd =
+    const visibilityEnd =
       window.__HF_EXPORT_RENDER_SEEK_CONFIG && Number.isFinite(computedEnd)
-        ? quantizeTimeToFrame(computedEnd, state.canonicalFps)
+        ? snapTimeToFrameBoundary(computedEnd, state.canonicalFps)
         : computedEnd;
     return (
-      currentTime >= frameAlignedStart &&
-      (Number.isFinite(frameAlignedEnd) ? currentTime < frameAlignedEnd : true)
+      currentTime >= visibilityStart &&
+      (Number.isFinite(visibilityEnd) ? currentTime < visibilityEnd : true)
     );
   };
 
