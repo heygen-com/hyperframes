@@ -15,16 +15,23 @@ export interface CaptureWorkerDiagnostic {
   lines: readonly string[];
 }
 
+export interface CaptureEndpointDiagnostic {
+  host: string;
+  port: number;
+}
+
 export class CaptureFailure extends Error {
   readonly kind: CaptureFailureKind;
   readonly cause: unknown;
   readonly workerDiagnostics: readonly CaptureWorkerDiagnostic[];
+  readonly endpoint?: Readonly<CaptureEndpointDiagnostic>;
 
   constructor(input: {
     kind: CaptureFailureKind;
     message: string;
     cause?: unknown;
     workerDiagnostics?: readonly CaptureWorkerDiagnostic[];
+    endpoint?: CaptureEndpointDiagnostic;
   }) {
     super(input.message);
     this.name = "CaptureFailure";
@@ -35,6 +42,7 @@ export class CaptureFailure extends Error {
         Object.freeze({ ...diagnostic, lines: Object.freeze([...diagnostic.lines]) }),
       ),
     );
+    this.endpoint = input.endpoint ? Object.freeze({ ...input.endpoint }) : undefined;
     if (input.cause instanceof Error && input.cause.stack) this.stack = input.cause.stack;
   }
 }
@@ -101,6 +109,17 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function loopbackTimeoutEndpoint(message: string): CaptureEndpointDiagnostic | undefined {
+  const match =
+    /connect ETIMEDOUT (127\.0\.0\.1|localhost|\[::1\]):(\d+)/i.exec(message) ??
+    /net::ERR_TIMED_OUT at https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)/i.exec(message);
+  if (!match?.[1] || !match[2]) return undefined;
+  const port = Number(match[2]);
+  return Number.isInteger(port) && port > 0 && port <= 65_535
+    ? { host: match[1], port }
+    : undefined;
+}
+
 function matchesAny(message: string, patterns: readonly RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(message));
 }
@@ -138,6 +157,8 @@ export function classifyCaptureFailure(
     return error;
   }
   const message = messageOf(error);
+  const timeoutEndpoint = loopbackTimeoutEndpoint(message);
+  const endpoint = error instanceof CaptureFailure ? error.endpoint : timeoutEndpoint;
   let kind: CaptureFailureKind;
   if (options.signal?.aborted || /(?:render|capture)?_?cancelled|AbortError/i.test(message)) {
     kind = "cancelled";
@@ -151,7 +172,7 @@ export function classifyCaptureFailure(
     kind = "verification";
   } else if (matchesAny(message, PROTOCOL_TIMEOUT_PATTERNS)) {
     kind = "protocol_timeout";
-  } else if (matchesAny(message, TRANSIENT_BROWSER_ERROR_PATTERNS)) {
+  } else if (timeoutEndpoint || matchesAny(message, TRANSIENT_BROWSER_ERROR_PATTERNS)) {
     kind = "transient_browser";
   } else if (matchesAny(message, AUTHORING_ERROR_PATTERNS)) {
     kind = "authoring";
@@ -165,6 +186,7 @@ export function classifyCaptureFailure(
     workerDiagnostics:
       options.workerDiagnostics ??
       (error instanceof CaptureFailure ? error.workerDiagnostics : undefined),
+    endpoint,
   });
 }
 

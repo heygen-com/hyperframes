@@ -99,6 +99,7 @@ import { fileURLToPath } from "url";
 import {
   closeFileServerSafely,
   createFileServer,
+  probeFileServerHealth,
   type FileServerHandle,
   HF_PAGE_SIDE_COMPOSITING_STUB,
   VIRTUAL_TIME_SHIM,
@@ -1810,10 +1811,8 @@ export function resolveParallelRouterRetryPlan(args: {
 }
 
 /**
- * Should a capture-stage error retry via the pinned-worker-count fallback
- * (the same "well-tested parallel-disk / single-worker screenshot" path
- * `resolveInversionRetryPlan`/`resolveParallelRouterRetryPlan` reroute to)
- * instead of failing the render outright?
+ * Should a streaming capture-stage error use the bounded screenshot recovery
+ * path instead of failing the render outright?
  *
  * True for the drawElement self-verify failures this retry path was
  * originally built for (blank frame / PSNR breach), AND for any OTHER
@@ -1821,6 +1820,12 @@ export function resolveParallelRouterRetryPlan(args: {
  * worker count was PINNED by the inversion or router — those pin regardless
  * of calibration, so a generic capture failure on that pinned count is
  * exactly the scenario the pin itself introduced risk for.
+ *
+ * An ordinary one-worker stream also gets one retry when Chrome itself dies.
+ * There is no worker count to reduce, but the failed stage has already closed
+ * its session and encoder; replanning forces screenshot capture and the second
+ * invoke creates fresh resources. The surrounding catch performs this at most
+ * once, so a deterministically dying composition still fails.
  *
  * Includes OOM (previously excluded — see PR history): every worker's
  * `executeWorkerTask` closes its capture session in a `finally` that awaits
@@ -1847,16 +1852,18 @@ export function shouldRetryViaPinnedFallback(args: {
   isVerifyError: boolean;
   isCancellation: boolean;
   isEncoderInterrupted?: boolean;
+  isTransientSingleWorkerFailure?: boolean;
   deWorkerInversion: "inverted" | "reverted" | undefined;
   deParallelRouter: "routed" | "reverted" | undefined;
 }): boolean {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError) return true;
+  if (args.isTransientSingleWorkerFailure) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
 
 /**
- * When a self-verify (or pinned-fallback) retry is triggered mid-capture, the
+ * When a self-verify or capture retry is triggered mid-capture, the
  * caller may still hold a live probe session that the failed stage was passed
  * but did not (or could not) close in its own `finally` before it threw. Left
  * behind, that session's Chrome process orphans until the containing render
@@ -2637,11 +2644,10 @@ async function executeRenderPipeline(input: {
     } else {
       observability.checkpoint("file_server", "reused probe file server");
     }
-    const activeFileServer = fileServer;
+    let activeFileServer = fileServer;
     if (!activeFileServer) {
       throw new Error("File server failed to initialize before frame capture");
     }
-
     const framesDir = join(workDir, "captured-frames");
     if (!existsSync(framesDir)) mkdirSync(framesDir, { recursive: true });
 
@@ -3312,6 +3318,21 @@ async function executeRenderPipeline(input: {
           "screenshot per output frame.",
       );
     }
+    const restartCaptureFileServer = async (): Promise<void> => {
+      closeFileServerSafely(activeFileServer, "capture retry", log);
+      fileServer = null;
+      activeFileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+        preHeadScripts: [
+          VIRTUAL_TIME_SHIM,
+          ...(usePageSideCompositingForTransitions ? [HF_PAGE_SIDE_COMPOSITING_STUB] : []),
+        ],
+        fps: job.config.fps,
+      });
+      fileServer = activeFileServer;
+    };
     const useLayeredComposite =
       !usePageSideCompositingForTransitions &&
       shouldUseLayeredComposite({
@@ -3590,10 +3611,9 @@ async function executeRenderPipeline(input: {
           streamingRes = await invokeStreaming();
         } catch (err) {
           // drawElement self-verification tripped (blank frame or PSNR breach
-          // vs the pre-injection ground truth), OR — when the inversion/router
-          // pinned a fixed worker count regardless of calibration — any other
-          // capture-stage failure (host contention timeout, worker crash, OOM)
-          // on that pinned path. Both restart the whole render on the same
+          // vs the pre-injection ground truth), an ordinary single-worker
+          // stream lost its browser, OR a pinned inversion/router path failed.
+          // Each restarts the whole render on the same
           // tested screenshot/parallel-SS baseline: slower, never wrong. The
           // failed attempt's session was closed by the stage's finally;
           // probeSession (if any) was consumed by it, so a fresh session
@@ -3602,11 +3622,16 @@ async function executeRenderPipeline(input: {
           const isVerifyError = isDrawElementVerificationError(err);
           const isCancellation =
             err instanceof RenderCancelledError || executionSignal?.aborted === true;
+          const captureFailure = classifyCaptureFailure(err, { signal: executionSignal });
+          const isTransientBrowserFailure = captureFailure.kind === "transient_browser";
+          const isTransientSingleWorkerFailure =
+            isTransientBrowserFailure && capturePlan.workerCount === 1;
           if (
             !shouldRetryViaPinnedFallback({
               isVerifyError,
               isCancellation,
               isEncoderInterrupted: err instanceof EncoderInterruptedError,
+              isTransientSingleWorkerFailure,
               deWorkerInversion,
               deParallelRouter,
             })
@@ -3626,14 +3651,18 @@ async function executeRenderPipeline(input: {
           log.warn(
             isVerifyError
               ? "[Render] drawElement self-verification failed; re-rendering via screenshot"
-              : "[Render] capture failed on the pinned worker count; re-rendering via screenshot",
+              : isTransientSingleWorkerFailure
+                ? "[Render] transient single-worker browser failure; retrying with a fresh screenshot session"
+                : "[Render] capture failed on the pinned worker count; re-rendering via screenshot",
             { error: err instanceof Error ? err.message : String(err) },
           );
           observability.checkpoint(
             "capture_streaming",
             isVerifyError
               ? "drawElement self-verify failed; retrying with forceScreenshot"
-              : "capture failed on pinned worker count; retrying with forceScreenshot",
+              : isTransientSingleWorkerFailure
+                ? "transient single-worker browser failure; retrying with a fresh screenshot session"
+                : "capture failed on pinned worker count; retrying with forceScreenshot",
           );
           const failedRouting = capturePlan.routing.kind;
           capturePlan = replanAfterFailure(
@@ -3655,6 +3684,10 @@ async function executeRenderPipeline(input: {
             deWorkerInversion,
             deParallelRouter,
           });
+          const preFrameHealthPromise =
+            isTransientSingleWorkerFailure && job.framesRendered === 0
+              ? probeFileServerHealth(activeFileServer)
+              : null;
           // Streaming stage aims to close the probe in its own finally; if it
           // threw before doing so, the Chrome process would orphan through the
           // pinned-fallback retry. Close defensively before we release the
@@ -3664,6 +3697,32 @@ async function executeRenderPipeline(input: {
             const orphaned = probeSession;
             probeSession = null;
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "streaming");
+          }
+          if (preFrameHealthPromise) {
+            const health = await preFrameHealthPromise;
+            const endpointOwner =
+              captureFailure.endpoint?.port === activeFileServer.port
+                ? "file_server"
+                : captureFailure.endpoint
+                  ? "browser_or_unknown"
+                  : "unknown";
+            log.warn("[Render] Pre-frame capture endpoint health", {
+              reportedEndpoint: captureFailure.endpoint
+                ? `${captureFailure.endpoint.host}:${captureFailure.endpoint.port}`
+                : undefined,
+              endpointOwner,
+              fileServerEndpoint: activeFileServer.url,
+              fileServerHealthy: health.healthy,
+              fileServerStatus: health.status,
+              healthProbeMs: health.durationMs,
+              healthProbeError: health.error,
+            });
+            if (!health.healthy) {
+              await restartCaptureFileServer();
+              log.warn("[Render] Recreated unhealthy file server before bounded capture retry", {
+                fileServerEndpoint: activeFileServer.url,
+              });
+            }
           }
           if (failedRouting === "worker_inversion") {
             // The inversion bet on drawElement and lost — re-render on the
