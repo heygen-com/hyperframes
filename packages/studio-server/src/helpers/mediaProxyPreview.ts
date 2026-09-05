@@ -111,7 +111,7 @@ export async function injectMediaCodecMapIntoHtml(
     });
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
-  // the injected tag, mirroring injectPreviewVariables in routes/preview.ts.
+  // the injected tag, mirroring injectPreviewVariables in helpers/previewVariables.ts.
   const json = JSON.stringify(map)
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
