@@ -42,7 +42,7 @@ describe("generateProjectScaffold metadata", () => {
 
   afterEach(() => {
     if (fs.existsSync(dir)) {
-      expect(fs.readdirSync(dir).filter((name) => name.startsWith(".hf-meta-"))).toEqual([]);
+      expect(fs.readdirSync(dir).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     }
     fs.rmSync(dir, { recursive: true, force: true });
   });

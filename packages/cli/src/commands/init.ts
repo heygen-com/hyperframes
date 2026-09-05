@@ -4,6 +4,7 @@
 // own task.
 // fallow-ignore-file complexity
 import { failCommand, finishCommand } from "../utils/commandResult.js";
+import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { defineCommand, runCommand } from "citty";
 import type { Example } from "./_examples.js";
 
@@ -269,7 +270,7 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
   const packageJsonPath = resolve(destDir, "package.json");
   if (existsSync(packageJsonPath)) return;
 
-  writeFileSync(
+  writeNewFileSync(
     packageJsonPath,
     `${JSON.stringify(
       {
@@ -281,7 +282,6 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
       null,
       2,
     )}\n`,
-    "utf-8",
   );
 }
 
