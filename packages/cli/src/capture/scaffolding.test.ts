@@ -7,7 +7,12 @@ import type { DesignTokens } from "./types.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof fs>();
-  return { ...original, existsSync: vi.fn(original.existsSync) };
+  return {
+    ...original,
+    existsSync: vi.fn(original.existsSync),
+    writeFileSync: vi.fn(original.writeFileSync),
+    linkSync: vi.fn(original.linkSync),
+  };
 });
 
 const tokens: DesignTokens = {
@@ -36,6 +41,9 @@ describe("generateProjectScaffold metadata", () => {
   });
 
   afterEach(() => {
+    if (fs.existsSync(dir)) {
+      expect(fs.readdirSync(dir).filter((name) => name.startsWith(".hf-meta-"))).toEqual([]);
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -101,4 +109,17 @@ describe("generateProjectScaffold metadata", () => {
     await expect(generate()).rejects.toMatchObject({ code: "ENOENT" });
     expect(progress).not.toHaveBeenCalled();
   });
+
+  it.each(["writeFileSync", "linkSync"] as const)(
+    "cleans staging and propagates failures from %s",
+    async (operation) => {
+      const error = Object.assign(new Error("injected I/O failure"), { code: "EIO" });
+      vi.mocked(fs[operation]).mockImplementationOnce(() => {
+        throw error;
+      });
+      await expect(generate()).rejects.toBe(error);
+      expect(fs.existsSync(metaPath)).toBe(false);
+      expect(progress).not.toHaveBeenCalled();
+    },
+  );
 });
