@@ -1474,17 +1474,18 @@
   };
 
   // Frozen-sweep guard (#U10, checkPipeline.ts): a compact per-sample
-  // fingerprint of every visible element's box + opacity, in DOM order. Node
+  // fingerprint of every visible element's box, opacity, and rendered text
+  // state, in DOM order. Node
   // calls this once per seeked grid point and compares the strings across the
   // whole run — if every sample produces the identical string, the seek never
   // actually moved anything and the whole audit run is unreliable. Deliberately
   // a single opaque string (not a structured array) since Node only ever needs
   // equality, not per-element diffing.
   // Pixel-only media motion (a 2D/WebGL canvas repainting or a playing video
-  // without any element moving) is invisible to a geometry+opacity fingerprint
+  // without any element moving) is invisible to a DOM-state fingerprint
   // and false-positives sweep_static. Downsample each visible canvas/video to
   // 8x8 and fold its pixels into the fingerprint. Tainted, zero-sized, or
-  // unreadable media hashes to a constant — no worse than geometry-only
+  // unreadable media hashes to a constant — no worse than DOM-state-only
   // detection and never a new false negative for DOM-motion compositions.
   // Media inside iframes is intentionally outside this fingerprint: it lives
   // in a separate document, and cross-origin frames are inaccessible under SOP.
@@ -1509,30 +1510,114 @@
     }
   }
 
+  function foldFingerprintField(hash, value) {
+    hash ^= value.length;
+    hash = Math.imul(hash, 16777619);
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash;
+  }
+
+  function cssFingerprintValue(value) {
+    return value === "none" || value === "normal" ? "" : value || "";
+  }
+
+  function foldCounterState(hash, style) {
+    hash = foldFingerprintField(hash, cssFingerprintValue(style.counterReset));
+    hash = foldFingerprintField(hash, cssFingerprintValue(style.counterIncrement));
+    return foldFingerprintField(hash, cssFingerprintValue(style.counterSet));
+  }
+
+  function counterStateHash(style) {
+    const reset = cssFingerprintValue(style.counterReset);
+    const increment = cssFingerprintValue(style.counterIncrement);
+    const set = cssFingerprintValue(style.counterSet);
+    if (!reset && !increment && !set) return "";
+    let hash = 2166136261;
+    hash = foldCounterState(hash, style);
+    return (hash >>> 0).toString(36);
+  }
+
+  function foldLiveControlState(hash, element) {
+    if (element.tagName === "INPUT") {
+      hash = foldFingerprintField(hash, element.type || "");
+      hash = foldFingerprintField(hash, element.value || "");
+      hash = foldFingerprintField(hash, element.checked ? "1" : "0");
+      return foldFingerprintField(hash, element.indeterminate ? "1" : "0");
+    }
+    if (element.tagName === "TEXTAREA") {
+      return foldFingerprintField(hash, element.value || "");
+    }
+    if (element.tagName !== "SELECT") return foldFingerprintField(hash, "");
+    hash = foldFingerprintField(hash, String(element.selectedIndex));
+    hash = foldFingerprintField(hash, element.value || "");
+    for (let i = 0; i < element.options.length; i++) {
+      hash = foldFingerprintField(hash, element.options[i].selected ? "1" : "0");
+    }
+    return hash;
+  }
+
+  function textualStateHash(element, style) {
+    // Chromium resolves attr() here, so pseudo computed content is the
+    // platform-owned rendered value rather than a CSS expression to reparse.
+    const before = getComputedStyle(element, "::before");
+    const after = getComputedStyle(element, "::after");
+    // Visible descendants are fingerprinted separately; direct nodes prevent
+    // a hidden descendant's text mutation from masquerading as visible motion.
+    let directText = "";
+    for (const node of directTextNodes(element)) {
+      directText += node.textContent || "";
+    }
+    let hash = 2166136261;
+    hash = foldFingerprintField(hash, directText);
+    hash = foldLiveControlState(hash, element);
+    hash = foldFingerprintField(hash, cssFingerprintValue(before.content));
+    hash = foldFingerprintField(hash, cssFingerprintValue(after.content));
+    hash = foldCounterState(hash, style);
+    hash = foldCounterState(hash, before);
+    hash = foldCounterState(hash, after);
+    return (hash >>> 0).toString(36);
+  }
+
   window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
       document.querySelector("[data-composition-id]") ||
       document.body;
-    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element),
-    );
+    const allElements = [root, ...root.querySelectorAll("*")];
+    const elements = allElements.filter((element) => isVisibleElement(element));
     const parts = elements.map((element) => {
       const rect = toRect(element.getBoundingClientRect());
       const opacity = round(opacityChain(element));
       // Variable-font axis animation (font-variation-settings) is a real,
       // visible motion channel that moves no geometry and no opacity, so a
-      // box+opacity fingerprint reads it as a frozen timeline. Worse in a
+      // box+opacity+text fingerprint reads it as a frozen timeline. Worse in a
       // DUPLEXED face (Recursive holds an identical advance width at every
       // weight by design), where not even the line width shifts — the whole
       // run then false-positives sweep_static. Fold the computed axis string
       // in; it is "normal" for every element that does not use it, so this
       // adds nothing to the fingerprint of an ordinary composition.
-      const axes = getComputedStyle(element).fontVariationSettings;
+      const style = getComputedStyle(element);
+      const axes = style.fontVariationSettings;
+      const textState = textualStateHash(element, style);
       return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity},${
         axes && axes !== "normal" ? axes : ""
-      }`;
+      },${textState}`;
     });
+    const visibleElements = new Set(elements);
+    for (let ancestor = root.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const state = counterStateHash(getComputedStyle(ancestor));
+      if (state) parts.push(`c:${state}`);
+    }
+    // Counter declarations can live on zero-box owners while a visible
+    // descendant's ::before/::after paints the resulting value.
+    for (const element of allElements) {
+      if (visibleElements.has(element)) continue;
+      const state = counterStateHash(getComputedStyle(element));
+      if (state) parts.push(`c:${state}`);
+    }
     for (const media of root.querySelectorAll("canvas, video")) {
       if (!isVisibleElement(media)) continue;
       parts.push(`p:${mediaPixelHash(media)}`);

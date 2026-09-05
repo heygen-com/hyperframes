@@ -179,6 +179,214 @@ describe("layout-audit.browser", () => {
     expect(collect()).toBe(collect());
   });
 
+  it("changes the sweep fingerprint when fixed-width text content changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="countdown">10</span>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+    });
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    document.getElementById("countdown")!.textContent = "09";
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when an attr-backed data value changes", () => {
+    document.body.innerHTML = `
+      <style>#countdown::after { content: attr(data-txt); }</style>
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="countdown" data-txt="10"></span>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+      },
+      {},
+      {
+        countdown: {
+          after: {
+            get content() {
+              return JSON.stringify(document.getElementById("countdown")!.getAttribute("data-txt"));
+            },
+          } as Partial<CSSStyleDeclaration>,
+        },
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    document.getElementById("countdown")!.setAttribute("data-txt", "09");
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when pseudo-element content changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="countdown"></span>
+      </div>
+    `;
+    let generatedContent = '"10"';
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+      },
+      {},
+      {
+        countdown: {
+          after: {
+            get content() {
+              return generatedContent;
+            },
+          } as Partial<CSSStyleDeclaration>,
+        },
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    generatedContent = '"09"';
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when CSS counter state changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="counter-owner"><span id="countdown"></span></div>
+      </div>
+    `;
+    let counterReset = "countdown 10";
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        "counter-owner": rect({ left: 0, top: 0, width: 0, height: 0 }),
+        countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+      },
+      {
+        "counter-owner": {
+          get counterReset() {
+            return counterReset;
+          },
+        } as Partial<CSSStyleDeclaration>,
+      },
+      {
+        countdown: {
+          after: { content: "counter(countdown)" } as Partial<CSSStyleDeclaration>,
+        },
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    counterReset = "countdown 9";
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when checkbox state changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <input id="toggle" type="checkbox" />
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      toggle: rect({ left: 280, top: 140, width: 24, height: 24 }),
+    });
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    (document.getElementById("toggle") as HTMLInputElement).checked = true;
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when a secondary select option changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <select id="choices" multiple><option selected>A</option><option>B</option></select>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      choices: rect({ left: 280, top: 140, width: 120, height: 48 }),
+    });
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    (document.getElementById("choices") as HTMLSelectElement).options[1]!.selected = true;
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("changes the sweep fingerprint when a fixed-width form value changes", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <input id="countdown" value="10" />
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+    });
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    (document.getElementById("countdown") as HTMLInputElement).value = "09";
+
+    expect(collect()).not.toBe(before);
+  });
+
+  it("keeps textual sweep channels identical when the countdown is truly frozen", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="countdown" data-txt="10">10</span>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        countdown: rect({ left: 280, top: 140, width: 80, height: 48 }),
+      },
+      { countdown: { counterReset: "countdown 10" } as Partial<CSSStyleDeclaration> },
+      {
+        countdown: {
+          after: { content: '"10"' } as Partial<CSSStyleDeclaration>,
+        },
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    expect(collect()).toBe(collect());
+  });
+
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
@@ -2487,13 +2695,23 @@ function rangeTextRect(selected: Node | null, rects: Record<string, DOMRect>): D
 function installGeometry(
   rects: Record<string, DOMRect>,
   styleOverrides: Record<string, Partial<CSSStyleDeclaration>> = {},
+  pseudoStyleOverrides: Record<
+    string,
+    { before?: Partial<CSSStyleDeclaration>; after?: Partial<CSSStyleDeclaration> }
+  > = {},
 ): void {
   // Style-fixture branching mirrors the audit's per-property reads; splitting
   // it would scatter one mock across helpers.
   // fallow-ignore-next-line complexity
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
     const el = element as Element;
     const isBubble = el.id === "bubble";
+    const pseudoOverride =
+      pseudoElement === "::before"
+        ? pseudoStyleOverrides[el.id]?.before
+        : pseudoElement === "::after"
+          ? pseudoStyleOverrides[el.id]?.after
+          : undefined;
     return {
       display: "block",
       visibility: "visible",
@@ -2517,6 +2735,7 @@ function installGeometry(
       paddingLeft: isBubble ? "16px" : "0px",
       fontSize: "36px",
       ...styleOverrides[el.id],
+      ...pseudoOverride,
     } as unknown as CSSStyleDeclaration;
   });
 
