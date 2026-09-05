@@ -2,7 +2,7 @@
 
 import React, { act, useState } from "react";
 import { createRoot } from "react-dom/client";
-import postcss from "postcss";
+import postcss, { type AcceptedPlugin } from "postcss";
 import tailwindcss from "tailwindcss";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatTextLayerList, FlatTextSection } from "./propertyPanelFlatTextSection";
@@ -511,11 +511,16 @@ describe("FlatTextSection — multi-field", () => {
     expect(contentTextarea?.classList).toContain("resize-y");
     expect(contentTextarea?.classList).toContain("overflow-y-auto");
 
+    // Vite 8 wants a newer postcss than tailwindcss 3 does, so the tree now
+    // carries two copies and their `Plugin` types are nominally distinct even
+    // though the plugin object is the same shape. The cast bridges the two
+    // declarations; it goes away when the Tailwind v4 upgrade drops the v3
+    // postcss pipeline.
     const compiled = await postcss([
       tailwindcss({
         content: [{ raw: host.innerHTML, extension: "html" }],
         corePlugins: { preflight: false },
-      }),
+      }) as AcceptedPlugin,
     ]).process("@tailwind utilities;", { from: undefined });
     expect(compiled.css).toContain("field-sizing: content");
 

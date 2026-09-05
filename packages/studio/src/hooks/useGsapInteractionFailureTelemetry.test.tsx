@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { GsapEditBlockedError } from "./gsapEditOutcome";
@@ -25,7 +25,7 @@ const selection = {
   element: document.createElement("div"),
 } as unknown as DomEditSelection;
 
-function mountFailureTelemetry(showToast: ReturnType<typeof vi.fn>) {
+function mountFailureTelemetry(showToast: Mock) {
   let report!: ReturnType<typeof useGsapInteractionFailureTelemetry>;
   function Harness() {
     report = useGsapInteractionFailureTelemetry("index.html", showToast);
