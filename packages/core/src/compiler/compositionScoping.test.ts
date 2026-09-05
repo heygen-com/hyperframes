@@ -106,6 +106,31 @@ body { margin: 0; }
     expect(wrapped).not.toContain("requestAnimationFrame");
   });
 
+  it.each(["=", "^=", "*=", "$="])(
+    "scopes %s authored-root selectors to the duplicate instance and its box",
+    (operator) => {
+      const scope = '[data-composition-id="scene__hf2"]';
+      const scoped = scopeCssToComposition(
+        `[data-composition-id${operator}"scene"] { padding: 13px; }
+[data-composition-id${operator}"scene"] .item { border-width: 3px; }`,
+        "scene",
+        scope,
+      );
+
+      expect(scoped).toContain(
+        `${scope}:not(:has([data-hf-inner-root])), ${scope} > [data-hf-inner-root] { padding: 13px; }`,
+      );
+      expect(scoped).toContain(`${scope} .item { border-width: 3px; }`);
+      expect(scoped).not.toContain(`[data-composition-id${operator}"scene"]`);
+    },
+  );
+
+  it("preserves pattern selectors for a different nested composition", () => {
+    const scope = '[data-composition-id="scene__hf2"]';
+    const css = '[data-composition-id^="nested"] .item { color: red; }';
+    expect(scopeCssToComposition(css, "scene", scope)).toBe(`${scope} ${css}`);
+  });
+
   it("normalizes root timing attributes when scoping selectors", () => {
     const scoped = scopeCssToComposition(
       '[data-composition-id="scene"][data-start="0"] .title { opacity: 0; }',

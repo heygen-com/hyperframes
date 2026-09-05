@@ -137,8 +137,9 @@ function scopeSelector(
     // caused the parent-body clobber, which is what this remap targets.
     return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
   }
+  // Authored-root patterns must follow the renamed instance, not require a nested root.
   const compositionIdPattern = new RegExp(
-    `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
+    `\\[\\s*data-composition-id\\s*[\\^\\*\\$]?=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
   );
   if (compositionIdPattern.test(trimmed)) {
