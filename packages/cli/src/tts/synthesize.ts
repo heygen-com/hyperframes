@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -11,6 +11,7 @@ import {
   type SupportedLang,
 } from "./manager.js";
 import { findPython, hasPythonPackage } from "./python.js";
+import { writeNewFileSync } from "../utils/writeNewFile.js";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -100,7 +101,7 @@ const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v3.py");
 function ensureSynthScript(): string {
   if (!existsSync(SCRIPT_PATH)) {
     mkdirSync(SCRIPT_DIR, { recursive: true });
-    writeFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
     // Best-effort: delete older versioned scripts left behind by previous
     // CLI releases so users don't accumulate stale files in ~/.cache.
     const currentName = basename(SCRIPT_PATH);
