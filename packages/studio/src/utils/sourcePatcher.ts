@@ -212,8 +212,8 @@ function patchInlineStyleInTag(
   } else {
     // No existing style attribute
     if (value === null) return html; // nothing to remove
-    const selfClosing = /\s*\/$/.test(tag);
-    const base = selfClosing ? tag.replace(/\s*\/$/, "") : tag;
+    const selfClosing = tag.endsWith("/");
+    const base = selfClosing ? tag.slice(0, -1).trimEnd() : tag;
     const newTag = `${base} style="${prop}: ${escapeStyleAttributeValue(value, '"')}"${selfClosing ? " /" : ""}`;
     return html.replace(tag, newTag);
   }

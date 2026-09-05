@@ -66,6 +66,23 @@ describe("applyPatchByTarget", () => {
     expect(result).not.toContain("/ style");
   });
 
+  it.each(["", " ", "\t\r\n", "\u00a0\u2028", " ".repeat(100_000)])(
+    "preserves self-closing whitespace handling (case %#)",
+    (whitespace) => {
+      const prefix = '<img id="hero" class="hero"';
+      const op: PatchOperation = { type: "inline-style", property: "opacity", value: "0.5" };
+      for (const suffix of ["/", "/\n", "/\r", "/\r\n", "/\u2028", "", "x", "/ "]) {
+        const tag = prefix + whitespace + suffix;
+        const selfClosing = suffix === "/";
+        // The original operation removes whitespace before the slash only.
+        const expectedBase = selfClosing ? prefix + suffix.slice(1) : tag;
+        const expected = `${expectedBase} style="opacity: 0.5"${selfClosing ? " /" : ""}>`;
+        expect(applyPatch(tag + ">", "hero", op)).toBe(expected);
+        expect(applyPatchByTarget(tag + ">", { selector: ".hero" }, op)).toBe(expected);
+      }
+    },
+  );
+
   it("patches inline move styles by target", () => {
     const html = `<div id="card" style="position: absolute; left: 108px; top: 112px"></div>`;
 
