@@ -67,7 +67,7 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
   });
-  trackChildProcess(ffmpeg);
+  trackChildProcess(ffmpeg, { kind: "ffmpeg" });
   let stdout = "";
   ffmpeg.stdout.on("data", (data) => {
     stdout += data.toString();
@@ -150,7 +150,7 @@ async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
   });
-  trackChildProcess(ffmpeg);
+  trackChildProcess(ffmpeg, { kind: "ffmpeg" });
   const outcome = await new ManagedChildProcess(ffmpeg, {
     deadlineAtMs: Date.now() + GPU_PROBE_TIMEOUT_MS,
     terminationGraceMs: GPU_PROBE_KILL_GRACE_MS,

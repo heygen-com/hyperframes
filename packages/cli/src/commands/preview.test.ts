@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import {
   default as previewCommand,
+  drainEmbeddedPreviewResources,
   foregroundPreviewReadyPayload,
   handlePreviewKillAll,
   handlePreviewList,
@@ -491,5 +492,35 @@ describe("waitForStudioChildClose", () => {
     await waiting;
     expect(resolved).toBe(true);
     expect(signalTarget.off).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("embedded preview resource drain", () => {
+  it("closes child registration before cancelling and awaiting renders", async () => {
+    const order: string[] = [];
+    let finishRenderDrain!: () => void;
+    const renderDrain = new Promise<void>((resolve) => {
+      finishRenderDrain = resolve;
+    });
+    const draining = drainEmbeddedPreviewResources({
+      beginProcessDrain: () => order.push("processes"),
+      disposeRenders: async () => {
+        order.push("renders:start");
+        await renderDrain;
+        order.push("renders:end");
+      },
+      closeThumbnailBrowser: async () => {
+        order.push("thumbnail");
+      },
+      drainBrowserPool: async () => {
+        order.push("browsers");
+      },
+    });
+    await Promise.resolve();
+
+    expect(order).toEqual(["processes", "renders:start", "thumbnail"]);
+    finishRenderDrain();
+    await draining;
+    expect(order).toEqual(["processes", "renders:start", "thumbnail", "renders:end", "browsers"]);
   });
 });

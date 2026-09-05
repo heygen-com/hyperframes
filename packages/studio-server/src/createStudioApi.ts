@@ -5,7 +5,7 @@ import { registerStoryboardRoutes } from "./routes/storyboard.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
-import { registerRenderRoutes } from "./routes/render.js";
+import { registerRenderRoutes, type RenderRoutesHandle } from "./routes/render.js";
 import { registerThumbnailRoutes } from "./routes/thumbnail.js";
 import { registerWaveformRoutes } from "./routes/waveform.js";
 import { registerFontRoutes } from "./routes/fonts.js";
@@ -14,13 +14,15 @@ import { registerSelectionRoutes } from "./routes/selection.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 
+export type StudioApi = Hono & RenderRoutesHandle;
+
 /**
  * Create a Hono sub-app with all studio API routes.
  *
  * Both the vite dev server and CLI embedded server mount this app
  * under /api, each providing their own adapter for host-specific behavior.
  */
-export function createStudioApi(adapter: StudioApiAdapter): Hono {
+export function createStudioApi(adapter: StudioApiAdapter): StudioApi {
   const api = new Hono();
 
   registerProjectRoutes(api, adapter);
@@ -28,7 +30,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerFileRoutes(api, adapter);
   registerPreviewRoutes(api, adapter);
   registerLintRoutes(api, adapter);
-  registerRenderRoutes(api, adapter);
+  const renderRoutes = registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
@@ -37,5 +39,5 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerRegistryRoutes(api, adapter);
   registerGlobalAssetRoutes(api);
 
-  return api;
+  return Object.assign(api, { dispose: () => renderRoutes.dispose() });
 }
