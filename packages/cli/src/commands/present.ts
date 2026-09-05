@@ -1,3 +1,4 @@
+import { getMimeType } from "@hyperframes/studio-server";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
@@ -23,7 +24,6 @@ import {
   resolvePlayerPath,
   resolveSlideshowPath,
   listenOnFreePort,
-  assetContentType,
 } from "../utils/compositionServer.js";
 
 export default defineCommand({
@@ -141,7 +141,7 @@ export default defineCommand({
       if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
       if (!existsSync(filePath)) return ctx.text("Not found", 404);
       if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
-      return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
+      return ctx.body(readFileSync(filePath), 200, { "Content-Type": getMimeType(filePath) });
     });
 
     // Both the presenter window and the audience window (opened by present() with

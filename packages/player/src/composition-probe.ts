@@ -72,11 +72,6 @@ export class CompositionProbe {
     private readonly _callbacks: ProbeCallbacks,
   ) {}
 
-  // fallow-ignore-next-line unused-class-member
-  get runtimeInjected(): boolean {
-    return this._runtimeInjected;
-  }
-
   /** Start (or restart) the probe. Stops any previously running probe first. */
   start(): void {
     this.stop();

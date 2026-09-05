@@ -118,11 +118,7 @@
     },
     {
       "file": "packages/studio/src/player/components/timelineEditing.ts",
-      "exports": [
-        "selectTimelineElementsInMarquee",
-        "TimelineGroupResizeEdge",
-        "TimelineGroupTimingMember",
-      ],
+      "exports": ["TimelineGroupResizeEdge", "TimelineGroupTimingMember"],
     },
     {
       "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
