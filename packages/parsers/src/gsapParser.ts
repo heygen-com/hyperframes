@@ -216,6 +216,13 @@ function scopeChainOf(path: AstPath): AstNode[] {
 /** Per-scope element bindings: scopeNode → (variable name → selector). */
 type TargetBindings = Map<any, Map<string, string>>;
 
+interface TargetHelper {
+  params: string[];
+  returnNode: AstNode;
+}
+
+type TargetHelpers = Map<any, Map<string, TargetHelper>>;
+
 function addBinding(
   bindings: TargetBindings,
   scopeNode: AstNode,
@@ -230,26 +237,110 @@ function addBinding(
   if (!scoped.has(name)) scoped.set(name, selector);
 }
 
+function directHelperReturn(node: AstNode): AstNode | null {
+  if (node.type === "ArrowFunctionExpression" && node.body?.type !== "BlockStatement") {
+    return node.body;
+  }
+  if (!isFunctionNode(node) || node.body?.type !== "BlockStatement") return null;
+  const returns = (node.body.body ?? []).filter(
+    (statement: AstNode) => statement.type === "ReturnStatement" && statement.argument,
+  );
+  return returns.length === 1 ? returns[0].argument : null;
+}
+
+function collectTargetHelpers(ast: AstNode): TargetHelpers {
+  const helpers: TargetHelpers = new Map();
+  const add = (scopeNode: AstNode, name: string, fn: AstNode): void => {
+    const returnNode = directHelperReturn(fn);
+    const params = (fn.params ?? [])
+      .filter((param: AstNode) => param.type === "Identifier")
+      .map((param: AstNode) => param.name);
+    if (!returnNode || params.length !== (fn.params?.length ?? 0)) return;
+    let scoped = helpers.get(scopeNode);
+    if (!scoped) {
+      scoped = new Map();
+      helpers.set(scopeNode, scoped);
+    }
+    if (!scoped.has(name)) scoped.set(name, { params, returnNode });
+  };
+
+  recast.types.visit(ast, {
+    visitFunctionDeclaration(path: AstPath) {
+      const name = path.node.id?.name;
+      const scopeNode = enclosingScopeNode(path);
+      if (name && scopeNode) add(scopeNode, name, path.node);
+      this.traverse(path);
+    },
+    visitVariableDeclarator(path: AstPath) {
+      const name = path.node.id?.name;
+      const fn = path.node.init;
+      const scopeNode = enclosingScopeNode(path);
+      if (name && fn && isFunctionNode(fn) && scopeNode) add(scopeNode, name, fn);
+      this.traverse(path);
+    },
+  });
+  return helpers;
+}
+
+function lookupTargetHelper(
+  name: string,
+  path: AstPath,
+  helpers: TargetHelpers,
+): TargetHelper | null {
+  for (const scopeNode of scopeChainOf(path)) {
+    const helper = helpers.get(scopeNode)?.get(name);
+    if (helper) return helper;
+  }
+  return null;
+}
+
+function selectorFromTargetCall(
+  node: AstNode,
+  path: AstPath,
+  scope: ScopeBindings,
+  helpers: TargetHelpers,
+): string | null {
+  const direct = selectorFromQueryCall(node, scope);
+  if (direct) return direct;
+  if (node?.type !== "CallExpression" || node.callee?.type !== "Identifier") return null;
+  const helper = lookupTargetHelper(node.callee.name, path, helpers);
+  if (!helper || helper.params.length !== (node.arguments?.length ?? 0)) return null;
+
+  const helperScope = new Map(scope);
+  for (let i = 0; i < helper.params.length; i += 1) {
+    const param = helper.params[i];
+    if (!param) return null;
+    const value = resolveNode(node.arguments[i], scope);
+    if (value === undefined) return null;
+    helperScope.set(param, value);
+  }
+  return selectorFromQueryCall(helper.returnNode, helperScope);
+}
+
 /**
  * Build a lexically-scoped index of element variables → selector. Two passes:
  * (1) direct DOM-lookup assignments (`const x = root.querySelector(...)`), then
  * (2) iteration callback params (`coll.forEach(el => …)`), whose element type is
  * the collection's selector — resolved against the pass-1 bindings.
  */
-function collectTargetBindings(ast: AstNode, scope: ScopeBindings): TargetBindings {
+function collectTargetBindings(
+  ast: AstNode,
+  scope: ScopeBindings,
+  helpers: TargetHelpers,
+): TargetBindings {
   const bindings: TargetBindings = new Map();
 
   recast.types.visit(ast, {
     visitVariableDeclarator(path: AstPath) {
       const name = path.node.id?.name;
-      const selector = selectorFromQueryCall(path.node.init, scope);
+      const selector = selectorFromTargetCall(path.node.init, path, scope, helpers);
       const scopeNode = enclosingScopeNode(path);
       if (name && selector !== null && scopeNode) addBinding(bindings, scopeNode, name, selector);
       this.traverse(path);
     },
     visitAssignmentExpression(path: AstPath) {
       const left = path.node.left;
-      const selector = selectorFromQueryCall(path.node.right, scope);
+      const selector = selectorFromTargetCall(path.node.right, path, scope, helpers);
       const scopeNode = enclosingScopeNode(path);
       if (left?.type === "Identifier" && selector !== null && scopeNode) {
         addBinding(bindings, scopeNode, left.name, selector);
@@ -324,6 +415,7 @@ function resolveTargetSelector(
   path: AstPath,
   scope: ScopeBindings,
   bindings: TargetBindings,
+  helpers: TargetHelpers,
 ): string | null {
   if (!node) return null;
   if (node.type === "StringLiteral" || node.type === "Literal") {
@@ -333,11 +425,11 @@ function resolveTargetSelector(
     return lookupBinding(node.name, path, bindings);
   }
   if (node.type === "CallExpression") {
-    return selectorFromQueryCall(node, scope);
+    return selectorFromTargetCall(node, path, scope, helpers);
   }
   if (node.type === "ArrayExpression") {
     const parts = node.elements
-      .map((el: AstNode) => resolveTargetSelector(el, path, scope, bindings))
+      .map((el: AstNode) => resolveTargetSelector(el, path, scope, bindings, helpers))
       .filter((s: string | null): s is string => typeof s === "string" && s.length > 0);
     return parts.length > 0 ? parts.join(", ") : null;
   }
@@ -518,6 +610,7 @@ function findAllTweenCalls(
   ref: TimelineRef,
   scope: ScopeBindings,
   targetBindings: TargetBindings,
+  targetHelpers: TargetHelpers,
 ): TweenCallInfo[] {
   const results: TweenCallInfo[] = [];
   recast.types.visit(ast, {
@@ -554,7 +647,8 @@ function findAllTweenCalls(
           return;
         }
         const selectorValue =
-          resolveTargetSelector(args[0], path, scope, targetBindings) ?? "__unresolved__";
+          resolveTargetSelector(args[0], path, scope, targetBindings, targetHelpers) ??
+          "__unresolved__";
 
         if (method === "fromTo") {
           results.push({
@@ -1178,11 +1272,12 @@ interface ParsedGsapAst {
 function parseGsapAst(script: string): ParsedGsapAst {
   const ast = parseScript(script);
   const scope = collectScopeBindings(ast);
-  const targetBindings = collectTargetBindings(ast, scope);
+  const targetHelpers = collectTargetHelpers(ast);
+  const targetBindings = collectTargetBindings(ast, scope, targetHelpers);
   const detection = findTimelineVar(ast, scope);
   const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
   const timelineVar = timelineRootSource(ref);
-  const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
+  const calls = findAllTweenCalls(ast, ref, scope, targetBindings, targetHelpers);
   sortBySourcePosition(calls);
   const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope));
   applyTimelineDefaults(rawAnims, detection.defaults);
