@@ -797,6 +797,78 @@ describe("core rules", () => {
     });
   });
 
+  describe("runtime_hidden_style_opacity", () => {
+    const comp = (css: string, extraMarkup = "") => `
+<html><head><style>${css}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <video id="footage" src="clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+    ${extraMarkup}
+  </div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`;
+
+    it("errors when a broad hidden-style selector forces replacement-frame opacity to zero", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`[style*="visibility: hidden"] { opacity: 0 !important; }`),
+      );
+      const finding = result.findings.find((item) => item.code === "runtime_hidden_style_opacity");
+
+      expect(finding?.severity).toBe("error");
+      expect(finding?.selector).toBe(`[style*="visibility: hidden"]`);
+      expect(finding?.message).toContain("replacement frame");
+      expect(finding?.fixHint).toContain("data-composition-src");
+    });
+
+    it("errors when composition scoping still leaves the hidden-style selector on video", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`#root > video[style*="visibility: hidden"] { opacity: 0; }`),
+      );
+
+      expect(
+        result.findings.find((item) => item.code === "runtime_hidden_style_opacity")?.selector,
+      ).toBe(`#root > video[style*="visibility: hidden"]`);
+    });
+
+    it("errors when the root stylesheet can affect video mounted from a sub-composition", async () => {
+      const result = await lintHyperframeHtml(`
+<html><head><style>[style*="visibility: hidden"] { opacity: 0; }</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div data-composition-id="scene" data-composition-src="scene.html"></div>
+  </div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`);
+
+      expect(
+        result.findings.find((item) => item.code === "runtime_hidden_style_opacity")?.severity,
+      ).toBe("error");
+    });
+
+    it("allows hidden-style opacity guards scoped to sub-composition hosts", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `[data-composition-src][style*="visibility: hidden"],
+           [data-composition-file][style*="visibility: hidden"] { opacity: 0 !important; }`,
+          `<div data-composition-id="scene-a" data-composition-src="scene-a.html"></div>
+           <div data-composition-id="scene-b" data-composition-file="scene-b.html"></div>`,
+        ),
+      );
+
+      expect(
+        result.findings.find((item) => item.code === "runtime_hidden_style_opacity"),
+      ).toBeUndefined();
+    });
+
+    it("allows broad hidden-style selectors that do not change opacity", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`[style*="visibility: hidden"] { pointer-events: none; }`),
+      );
+
+      expect(
+        result.findings.find((item) => item.code === "runtime_hidden_style_opacity"),
+      ).toBeUndefined();
+    });
+  });
+
   describe("css_parse_error — malformed CSS is reported instead of silently swallowed", () => {
     it("reports a css_parse_error finding for unparseable CSS", async () => {
       const html = `<html><body>
