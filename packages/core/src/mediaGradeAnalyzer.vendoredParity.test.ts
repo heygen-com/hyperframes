@@ -98,3 +98,27 @@ describe("vendored media grade analyzer parity", () => {
     expect(await vendoredResult(signalStats)).toEqual(product);
   });
 });
+
+describe("signal-stats frame headers", () => {
+  it.each([
+    ["frame:123 pts:42 pts_time:-12.5", -12.5],
+    ["frame:000pts_time:+.25", 0.25],
+    ["frame:1 pts_time:1 pts_time:2.5", 2.5],
+    ["frame:1 pts_time:1 pts_time:invalid", 1],
+    ["frame:1 pts_time:12.", 12],
+    ["frame:1 pts_time:2e3", 2],
+    ["frame: pts_time:1", undefined],
+    ["frame:-1 pts_time:1", undefined],
+    ["prefix frame:1 pts_time:1", undefined],
+    ["frame:1\u2028pts_time:1", undefined],
+    ["frame:" + "0".repeat(100_000) + "!", undefined],
+    ["frame:" + "0".repeat(100_000) + " pts_time:-.5", -0.5],
+  ])("preserves header parsing (case %#)", async (header, ptsTime) => {
+    const raw = SIGNALSTATS.replace("frame:0 pts:0 pts_time:0", String(header));
+    const product = productResult(raw);
+    expect(product.frames).toHaveLength(2);
+    expect(product.frames[0]?.ptsTime).toBe(ptsTime);
+    expect(product.frames[1]?.ptsTime).toBe(1);
+    expect(await vendoredResult(raw)).toEqual(product);
+  });
+});
