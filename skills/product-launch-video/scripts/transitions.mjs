@@ -117,15 +117,17 @@ function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, di
   let extended = 0;
   const rewritten = html.replace(/<([A-Za-z][\w:-]*)\b([^>]*)>/g, (tag, name, attrs) => {
     const durationMatch = attrs.match(/\bdata-duration="([\d.]+)"/);
-    if (!durationMatch) return tag;
-    const duration = Number(durationMatch[1]);
-    if (!Number.isFinite(duration)) return tag;
-
     const compositionMatch = attrs.match(/\bdata-composition-id="([^"]+)"/);
     if (compositionMatch?.[1] === compId && !foundRoot) {
       foundRoot = true;
-      return tag.replace(/\bdata-duration="[\d.]+"/, `data-duration="${targetDuration}"`);
+      return durationMatch
+        ? tag.replace(/\bdata-duration="[\d.]+"/, `data-duration="${targetDuration}"`)
+        : tag.replace(/(\s*\/?>)$/, ` data-duration="${targetDuration}"$1`);
     }
+
+    if (!durationMatch) return tag;
+    const duration = Number(durationMatch[1]);
+    if (!Number.isFinite(duration)) return tag;
 
     if (name.toLowerCase() === "audio") return tag;
     const startMatch = attrs.match(/\bdata-start="([\d.]+)"/);
