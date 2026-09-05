@@ -1040,7 +1040,7 @@ async function mixGroupMembers(
   let useNormalize = true;
   let result = await runOnce(useNormalize);
   const canRetrySubmix = () =>
-    !result.success && result.failureReason !== "external_interruption" && !signal?.aborted;
+    !result.success && !signal?.aborted && !ffmpegFailure("mix", result).retryable;
   if (canRetrySubmix() && groupNormalizeOptionUnsupported(result.stderr)) {
     useNormalize = false;
     result = await runOnce(useNormalize);

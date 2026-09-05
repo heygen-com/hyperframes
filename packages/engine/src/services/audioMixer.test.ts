@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -930,6 +930,78 @@ describe("processCompositionAudio", () => {
     expect(
       runFfmpegMock.mock.calls.filter(([args]) => String(args.at(-1)).includes("group-voiceover")),
     ).toHaveLength(1);
+    expect(existsSync(workDir)).toBe(false);
+  });
+
+  it("preserves a managed deadline from a group sub-mix without degradation retries", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "sfx-a.wav"), "stub");
+    writeFileSync(join(baseDir, "sfx-b.wav"), "stub");
+
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      if (String(args.at(-1)).includes("group-sfx")) {
+        return {
+          success: false,
+          durationMs: 300_000,
+          stderr: "managed deadline reached",
+          exitCode: null,
+          terminationReason: "deadline" as const,
+        };
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "sfx-a",
+          src: "sfx-a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          volumeKeyframes: [
+            { time: 0, volume: 1 },
+            { time: 2, volume: 0.5 },
+          ],
+          groupId: "sfx",
+          type: "audio",
+        },
+        {
+          id: "sfx-b",
+          src: "sfx-b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          groupId: "sfx",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "ffmpeg_timeout",
+        owner: "system",
+        retryable: true,
+        elementId: "sfx",
+      }),
+    ]);
+    expect(
+      runFfmpegMock.mock.calls.filter(([args]) => String(args.at(-1)).includes("group-sfx")),
+    ).toHaveLength(1);
+    expect(existsSync(workDir)).toBe(false);
   });
 
   it("bounds per-cause details and the aggregate error across many authored IDs", async () => {
