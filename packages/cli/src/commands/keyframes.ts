@@ -659,7 +659,7 @@ function addTraceSelectors(selectors: Set<string>, cmp: SurfacedComposition): vo
 
 function addTweenSelectors(selectors: Set<string>, cmp: SurfacedComposition): void {
   for (const t of cmp.tweens) {
-    if (t.method !== "set") selectors.add(t.target);
+    if (t.method !== "set" && t.target !== "__unresolved__") selectors.add(t.target);
   }
 }
 
@@ -701,7 +701,7 @@ function onionShotGuardError(
   // The rendered onion (--ghost) screenshots the whole painted stage, so it does
   // not need an animated DOM element to sample — only the marker onion does.
   if (requests.length === 0 && !ghost)
-    return "--shot: no animated element to sample for the selection.";
+    return "--shot: no statically resolved animated element to sample for the selection. Use a direct DOM selector or --ghost for runtime-only targets.";
   return null;
 }
 

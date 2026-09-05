@@ -1241,6 +1241,22 @@ describe("variable-target resolution (querySelector pattern)", () => {
     expect(result.animations.map((a) => a.targetSelector)).toEqual([".literal", ".kicker"]);
   });
 
+  it("resolves a DOM target returned by a lexical helper", () => {
+    const script = `
+      function scoped(id) {
+        return document.getElementById(id);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const target = scoped("drag");
+      tl.to(target, { x: 240, duration: 1 }, 0);
+    `;
+
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0]?.targetSelector).toBe("#drag");
+    expect(result.animations[0]?.hasUnresolvedSelector).toBeUndefined();
+  });
+
   it("parses every tween in a real-world IIFE composition with interleaved gsap.set", () => {
     const result = parseGsapScript(REAL_WORLD_SCRIPT);
     expect(result.animations.map((a) => a.targetSelector)).toEqual([

@@ -192,6 +192,20 @@ describe("keyframes runtime surfacing", () => {
 
     expect(selectors).toEqual(expect.arrayContaining([".dot", ".chip"]));
   });
+
+  it("does not forward unresolved static targets as concrete shot selectors", () => {
+    const html = wrap(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to(runtimeOnlyTarget(), { x: 240, duration: 1 });
+      tl.to("#drag", { x: 240, duration: 1 });
+    `);
+
+    const selectors = collectShotSelectors([
+      surfaceComposition(html, "helper.html", "helper.html"),
+    ]).map((item) => item.selector);
+
+    expect(selectors).toEqual(["#drag"]);
+  });
 });
 
 describe("keyframes template-wrapped sub-compositions", () => {
