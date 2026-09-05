@@ -3,7 +3,7 @@ export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
@@ -294,7 +294,53 @@ const INLINE_MIME: Record<string, string> = {
   ".txt": "text/plain",
   ".cube": "text/plain",
   ".xml": "application/xml",
+  // Fonts and raster images. A bundle handed to a consumer that stores it as a
+  // lone object — no sibling `assets/` directory — 404s on every surviving
+  // relative reference, and a missing font silently reflows the whole frame
+  // rather than failing loudly. Media (mp4/webm/mp3/wav) is deliberately absent:
+  // it is large, streamed rather than laid out, and its absence is obvious.
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
 };
+
+/**
+ * Per-asset ceiling on base64 inlining.
+ *
+ * Base64 costs ~33% over the raw bytes, so an unbounded rule turns one careless
+ * 40 MB asset into a bundle no browser should be asked to parse. 2 MiB is
+ * measured against this repo's own assets rather than picked: the largest of
+ * 164 tracked `.woff2` files is 105 KB (p90 75 KB) and the largest of 284
+ * tracked raster images is 2.00 MB (p90 437 KB). So every font and effectively
+ * every image in-tree inlines, while a video-sized file cannot.
+ *
+ * Oversized assets keep their project-relative URL — correct wherever the
+ * bundle is served from its project directory, and warned about because that is
+ * exactly where "self-contained" stops being true.
+ */
+const MAX_INLINE_ASSET_BYTES = 2 * 1024 * 1024;
+
+function safeStatSize(filePath: string): number | null {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return null;
+  }
+}
+
+function warnAssetTooLargeToInline(assetPath: string, byteLength: number): void {
+  const mb = (byteLength / (1024 * 1024)).toFixed(1);
+  console.warn(
+    `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+  );
+}
 
 function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): string | null {
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
@@ -305,6 +351,13 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   const ext = filePath.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
   const mimeType = INLINE_MIME[ext];
   if (!mimeType) return null;
+  // Size-check before reading: an oversized asset must not be pulled into memory
+  // just to be discarded.
+  const byteLength = safeStatSize(filePath);
+  if (byteLength !== null && byteLength > MAX_INLINE_ASSET_BYTES) {
+    warnAssetTooLargeToInline(basePath, byteLength);
+    return null;
+  }
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
   const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
@@ -719,7 +772,9 @@ export interface BundleOptions {
  * - Injects the HyperFrames runtime script
  * - Inlines local CSS and JS files
  * - Inlines sub-composition HTML fragments (data-composition-src)
- * - Inlines small textual assets as data URLs
+ * - Inlines textual assets, fonts and raster images as data URLs, up to a
+ *   per-asset size limit; audio/video and oversized assets keep their
+ *   project-relative URL and require the project directory to be served
  */
 
 function ensureExternalScriptTag(doc: Document, src: string): void {
