@@ -137,4 +137,12 @@ describe("getProbeArgs", () => {
       expect(args).toContain("color=size=320x240:rate=1:duration=1");
     }
   });
+
+  it("probes VideoToolbox with the same supported bitrate option as production", () => {
+    const args = getProbeArgs("videotoolbox");
+
+    expect(args).not.toContain("-q:v");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("1M");
+    expect(args[args.indexOf("-allow_sw") + 1]).toBe("1");
+  });
 });

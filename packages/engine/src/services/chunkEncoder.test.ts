@@ -891,6 +891,27 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p5");
   });
 
+  it("uses a supported derived bitrate for high-quality VideoToolbox", () => {
+    const args = buildEncoderArgs(
+      {
+        fps: { num: 24, den: 1 },
+        width: 1920,
+        height: 1080,
+        codec: "h264",
+        preset: "slow",
+        quality: 15,
+        useGpu: true,
+      },
+      inputArgs,
+      "out.mp4",
+      "videotoolbox",
+    );
+
+    expect(args).not.toContain("-q:v");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("12M");
+    expect(args[args.indexOf("-allow_sw") + 1]).toBe("1");
+  });
+
   // hevc_nvenc uses the same p1..p7 preset vocabulary as h264_nvenc, so the
   // mapping must apply to both codecs. Locks in "H.264 and H.265 NVENC share
   // the preset mapping" against a future refactor that might split the path.
