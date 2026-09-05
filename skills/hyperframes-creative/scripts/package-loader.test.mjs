@@ -44,6 +44,23 @@ test("resolveNpmSpawnCommand finds npm-cli.js beside node for direct Windows run
   assert.deepEqual(resolved?.args, [npmCli, "install", "@hyperframes/producer@0.7.55"]);
 });
 
+test(
+  "resolveNpmSpawnCommand launches the installed npm CLI on Windows",
+  { skip: process.platform !== "win32" },
+  () => {
+    const resolved = resolveNpmSpawnCommand(["--version"]);
+    assert.ok(resolved);
+
+    const result = spawnSync(resolved.cmd, resolved.args, {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout.trim(), /^\d+\./);
+  },
+);
+
 // (a) env override wins — no ancestor lookup, exact version echoed back.
 test("hyperframesPackageSpec: env override wins", async () => {
   const prev = process.env[ENV];
