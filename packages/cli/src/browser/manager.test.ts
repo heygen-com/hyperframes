@@ -229,6 +229,23 @@ describe("findBrowser — cache resolution", () => {
     );
   });
 
+  it("finds Chrome in the standard Windows Program Files location", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const windowsChrome = join(
+      "C:\\Program Files",
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    );
+    installFsMocks({ existing: new Set([windowsChrome]) });
+    installPuppeteerBrowsersMock();
+
+    const { findSystemBrowser } = await import("./manager.js");
+
+    expect(findSystemBrowser()).toEqual({ executablePath: windowsChrome, source: "system" });
+  });
+
   it("does not resolve to a hyperframes-cache build from an older CHROME_VERSION pin", async () => {
     // A build downloaded by a prior hyperframes version (this pin has moved
     // 131 -> 151 -> 152 across releases) must not satisfy resolution, or an

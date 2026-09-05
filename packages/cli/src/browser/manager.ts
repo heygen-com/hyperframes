@@ -240,12 +240,32 @@ function purgeStaleInstall(installPath: string): void {
 const SYSTEM_CHROME_PATHS: ReadonlyArray<string> =
   process.platform === "darwin"
     ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
-    : [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-      ];
+    : process.platform === "win32"
+      ? [
+          join(
+            process.env["ProgramW6432"] ?? process.env["PROGRAMFILES"] ?? "C:\\Program Files",
+            "Google",
+            "Chrome",
+            "Application",
+            "chrome.exe",
+          ),
+          join(
+            process.env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)",
+            "Google",
+            "Chrome",
+            "Application",
+            "chrome.exe",
+          ),
+          ...(process.env["LOCALAPPDATA"]
+            ? [join(process.env["LOCALAPPDATA"], "Google", "Chrome", "Application", "chrome.exe")]
+            : []),
+        ]
+      : [
+          "/usr/bin/google-chrome",
+          "/usr/bin/google-chrome-stable",
+          "/usr/bin/chromium",
+          "/usr/bin/chromium-browser",
+        ];
 
 function whichBinary(name: string): string | undefined {
   try {
@@ -486,7 +506,7 @@ export function _resetSystemFallbackWarnForTests(): void {
   _warnedSystemFallback = false;
 }
 
-function findFromSystem(): BrowserResult | undefined {
+export function findSystemBrowser(): BrowserResult | undefined {
   for (const p of SYSTEM_CHROME_PATHS) {
     if (existsSync(p)) {
       return { executablePath: p, source: "system" };
@@ -531,7 +551,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
     }
   }
 
-  const fromSystem = findFromSystem();
+  const fromSystem = findSystemBrowser();
   if (fromSystem) {
     warnSystemFallbackOnce(fromSystem.executablePath);
   }
@@ -613,7 +633,7 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
     }
 
     if (!options?.preferManagedChrome) {
-      const fromSystem = findFromSystem();
+      const fromSystem = findSystemBrowser();
       if (fromSystem) {
         warnSystemFallbackOnce(fromSystem.executablePath);
         return fromSystem;
