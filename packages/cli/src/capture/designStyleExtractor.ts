@@ -127,7 +127,7 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   var isFilledEl = (el) => {
     var cs = getComputedStyle(el);
     var bg = cs.backgroundColor;
-    var solid = !!bg && bg !== "transparent" && !/rgba?\\([^)]*,\\s*0\\s*\\)/.test(bg);
+    var solid = !!bg && rgbToHex(bg) !== "transparent";
     // a gradient-filled CTA (e.g. Snowflake's blue pill = background: var(--ui-background-03)) has a
     // transparent background-COLOR but a gradient background-IMAGE — count it as filled too.
     return solid || (cs.backgroundImage || "").indexOf("gradient") >= 0;
@@ -144,7 +144,7 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   for (var bi = 0; bi < buttonEls.length; bi++) {
     var bs = getStyles(buttonEls[bi]);
     // Deduplicate by visual appearance (gradient fill kept distinct so a gradient CTA survives)
-    var bKey = bs.background + "|" + bs.backgroundImage + "|" + bs.borderRadius + "|" + bs.border;
+    var bKey = bs.background + "|" + bs.backgroundImage + "|" + bs.backdropFilter + "|" + bs.borderRadius + "|" + bs.border;
     if (!buttonMap[bKey]) {
       var btnText = (buttonEls[bi].textContent || "").trim().slice(0, 40);
       buttonMap[bKey] = {
@@ -492,6 +492,6 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   };
 })()`;
 
-export async function extractDesignStyles(page: Page): Promise<DesignStyles> {
+export async function extractDesignStyles(page: Pick<Page, "evaluate">): Promise<DesignStyles> {
   return page.evaluate(EXTRACT_DESIGN_STYLES_SCRIPT) as Promise<DesignStyles>;
 }
