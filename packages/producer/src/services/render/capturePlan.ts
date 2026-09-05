@@ -65,7 +65,7 @@ export interface CreateCapturePlanInput {
 
 export type CapturePlanFailure =
   | Readonly<{ kind: "streaming_unavailable" }>
-  | Readonly<{ kind: "draw_element_verification" }>
+  | Readonly<{ kind: "draw_element_verification"; diskFallbackAvailable?: boolean }>
   | Readonly<{ kind: "capture_failure"; memoryExhaustion: boolean }>;
 
 function assertWorkerCount(workerCount: number): void {
@@ -150,6 +150,14 @@ export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailur
   }
 
   const isMemoryExhaustion = failure.kind === "capture_failure" && failure.memoryExhaustion;
+  const diskFallbackUnavailable =
+    failure.kind === "draw_element_verification" &&
+    failure.diskFallbackAvailable === false &&
+    plan.routing.kind === "worker_inversion" &&
+    plan.routing.fallback.kind === "sdr_disk";
+  // memoryExhaustionFallback is the routing decision's precomputed
+  // low-resource target. It is also the viable choice when disk, rather than
+  // RAM, makes the preferred fallback impossible.
   const fallback =
     plan.routing.kind === "default"
       ? {
@@ -157,7 +165,7 @@ export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailur
           workerCount: isMemoryExhaustion ? 1 : plan.workerCount,
           forceParallelStream: false,
         }
-      : isMemoryExhaustion
+      : isMemoryExhaustion || diskFallbackUnavailable
         ? plan.routing.memoryExhaustionFallback
         : plan.routing.fallback;
   return createCapturePlan({
