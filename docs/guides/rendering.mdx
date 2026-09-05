@@ -95,6 +95,9 @@ browser already supports the source or you are diagnosing the proxy itself.
 ## Choose quality and frame rate
 
 The default `standard` quality is the right choice for most finished work.
+MOV is an alpha-preserving editing intermediate and always uses the fixed
+ProRes 4444 profile. `--crf` and `--video-bitrate` do not map to that profile
+and are rejected for MOV; choose MP4 or WebM when you need those controls.
 
 ```bash
 # Faster review version

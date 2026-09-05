@@ -408,6 +408,15 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     );
     failUsage();
   }
+  if (format === "mov" && (crf !== undefined || videoBitrate !== undefined)) {
+    const flag = crf !== undefined ? "--crf" : "--video-bitrate";
+    errorBox(
+      "Unsupported ProRes rate control",
+      `${flag} does not apply to MOV. MOV uses a fixed alpha-preserving ProRes 4444 profile.`,
+      `Remove ${flag}, or choose MP4/WebM when you need CRF or target-bitrate control.`,
+    );
+    failUsage();
+  }
 
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;

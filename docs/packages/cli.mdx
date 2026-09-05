@@ -857,7 +857,7 @@ The flags that come up most:
 | `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
 | `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
-| `--quality, -q`     | `standard`                    | `draft`, `standard`, or `high`. Drives CRF and bitrate.                                                                                            |
+| `--quality, -q`     | `standard`                    | `draft`, `standard`, or `high`. Drives MP4/WebM encoder settings; MOV always uses the fixed alpha-preserving ProRes 4444 profile.                  |
 | `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
 | `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
@@ -869,8 +869,8 @@ Quality and file size:
 
 | Flag                   | Default         | Description                                                                                              |
 | ---------------------- | --------------- | -------------------------------------------------------------------------------------------------------- |
-| `--crf`                | from `--quality`| Override encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`.                          |
-| `--video-bitrate`      | from `--quality`| Target bitrate, e.g. `10M` or `5000k`. Not with `--crf`.                                                  |
+| `--crf`                | from `--quality`| Override MP4/WebM encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`; rejected for MOV. |
+| `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
 | `--vp9-cpu-used`       | encoder default | libvpx-vp9 speed/quality trade-off for WebM, -8 to 8. Env: `PRODUCER_VP9_CPU_USED`.                       |
 | `--gif-loop`           | `0`             | GIF loop count, `0` for forever. Range 0–65535, `--format gif` only.                                     |
 | `--video-frame-format` | `auto`          | How source video frames are extracted: `auto`, `jpg`, `png`. Use `png` for UI recordings, screen captures, and other colour-sensitive footage. |
