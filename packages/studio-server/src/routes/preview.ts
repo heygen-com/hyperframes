@@ -19,6 +19,7 @@ import {
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
+import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   resolveProxy,
   ProxyCapacityError,
@@ -201,32 +202,6 @@ function injectGsapCdnFallback(html: string): string {
   if (html.includes("data-hf-gsap-fallback")) return html;
   if (html.includes("<head>")) return html.replace("<head>", "<head>" + GSAP_CDN_FALLBACK_SCRIPT);
   return GSAP_CDN_FALLBACK_SCRIPT + html;
-}
-
-/**
- * Inject preview variable overrides: `?variables=<json>` becomes
- * `window.__hfVariables` set before any composition script runs — the exact
- * global the engine sets via evaluateOnNewDocument at render time
- * (engine/src/services/frameCapture.ts), so preview-with-values cannot
- * diverge from render behavior. The runtime's getVariables() merges these
- * overrides over the declared defaults.
- */
-function injectPreviewVariables(html: string, values: Record<string, unknown>): string {
-  // <-escape prevents a string value containing "</script>" from
-  // breaking out of the injected tag.
-  const json = JSON.stringify(values).replace(/</g, "\\u003c");
-  const tag = `<script data-hf-preview-variables>window.__hfVariables=${json};</script>`;
-  // Insert as early as possible without ever landing before the doctype —
-  // content before <!doctype> flips the document into quirks mode, so the
-  // fallback chain is <head…> → <html…> → after the doctype → prepend.
-  for (const pattern of [/<head[^>]*>/i, /<html[^>]*>/i, /^\s*<!doctype[^>]*>/i]) {
-    const match = pattern.exec(html);
-    if (match) {
-      const at = match.index + match[0].length;
-      return html.slice(0, at) + tag + html.slice(at);
-    }
-  }
-  return tag + html;
 }
 
 /**
