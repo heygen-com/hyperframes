@@ -140,13 +140,14 @@ describe("telemetry queue delivery", () => {
     const [execPath, args, opts] = spawnMock.mock.calls[0] as unknown as [
       string,
       string[],
-      { detached: boolean },
+      { detached: boolean; windowsHide?: boolean },
     ];
     expect(execPath).toBe(process.execPath);
     expect(args[0]).toBe("-e");
     expect(args[1]).toContain("render_complete");
     expect(args[1]).toMatch(/[0-9a-f-]{36}/); // event uuid rides along
     expect(opts.detached).toBe(true);
+    expect(opts.windowsHide).toBe(true);
 
     // Queue handed to the child — nothing left for a regular flush.
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
