@@ -1,0 +1,281 @@
+<!--
+  panels-join — N generic panels converge and become one.
+
+  The "consolidation" move: 2–6 flat, unbranded panels enter from the frame edges, hold, slide together
+  so their centres meet, then a single joined panel takes over while a thin seam traces where they met
+  and fades. Nothing is deleted — the panels join. Built for any "many tools → one view", "silos → one
+  platform", "four logins → one" beat; works on any canvas size because every distance is relative to
+  the host box.
+
+  Paste the markup, CSS and script into a composition and drive the timeline integration from a paused
+  GSAP timeline so renders remain deterministic. The parent composition owns timing.
+
+  Variables (read once at init; unrecognised values return to their declared defaults):
+    - count (number, 2–6, default 4): how many panels converge.
+    - accent (color, default #A289FC): panel border, chips and the seam. Everything else is the ink
+      at three alpha steps (placeholder-material.md) so it drops onto any brand.
+    - tone (ink | paper, default ink): near-black panels for light frames, near-white for dark ones.
+
+  Timeline integration (all times relative; T = when the beat starts, D = its length, ~3–4 s):
+    pj.enter(tl, T)          panels arrive from the edges, staggered ≤ 0.5 s total (power3.out)
+    pj.join(tl, T + 1.2)     centres converge over 0.8 s (power2.inOut), joined panel takes over (power3.out)
+    pj.seam(tl, T + 2.25)    seam traces (0.35 s) then lets go (0.45 s)
+  or call pj.all(tl, T) for the whole choreography.
+-->
+
+<div
+  class="hf-catalog-panels-join"
+  id="pj-stage"
+  data-composition-variables='[
+    { "id": "count",  "type": "number", "role": "content", "label": "Panels", "description": "How many panels converge (2–6).", "default": 4, "min": 2, "max": 6, "step": 1 },
+    { "id": "accent", "type": "color",  "role": "style",   "label": "Accent", "description": "Border, chips and seam colour.", "default": "#A289FC" },
+    { "id": "tone",   "type": "enum",   "role": "style",   "label": "Tone",   "description": "ink panels for light frames, paper panels for dark ones.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }] }
+  ]'
+>
+  <div class="pj-joined" id="pj-joined">
+    <div class="pj-bar"><i></i><i></i><i></i></div>
+    <div class="pj-row"><b></b></div>
+    <div class="pj-row"><b></b></div>
+    <div class="pj-row"><b></b></div>
+    <div class="pj-row"><b></b></div>
+  </div>
+  <div class="pj-seam pj-seam-v" id="pj-seam-v"></div>
+  <div class="pj-seam pj-seam-h" id="pj-seam-h"></div>
+</div>
+
+<style>
+  .hf-catalog-panels-join {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 72%;
+    aspect-ratio: 1.26;
+    transform: translate(-50%, -50%);
+    --pj-accent: #a289fc;
+    --pj-fill: rgba(30, 25, 60, 0.92);
+    --pj-ink: rgba(241, 237, 255, 1);
+    --pj-radius: 8px;
+  }
+  .hf-catalog-panels-join .pj-panel {
+    position: absolute;
+    width: calc(50% - 1.5%);
+    height: calc(50% - 1.5%);
+    border-radius: var(--pj-radius);
+    background: var(--pj-fill);
+    border: 2px solid color-mix(in srgb, var(--pj-accent) 40%, transparent);
+    overflow: hidden;
+    will-change: transform, opacity;
+    box-sizing: border-box;
+  }
+  .hf-catalog-panels-join .pj-bar {
+    height: 13%;
+    background: color-mix(in srgb, var(--pj-ink) 6%, transparent);
+    display: flex;
+    align-items: center;
+    gap: 4%;
+    padding: 0 5%;
+  }
+  .hf-catalog-panels-join .pj-bar i {
+    display: block;
+    width: 3.5%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--pj-ink) 22%, transparent);
+  }
+  .hf-catalog-panels-join .pj-row {
+    height: 9%;
+    margin: 7% 6% 0;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--pj-ink) 12%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 3%;
+  }
+  .hf-catalog-panels-join .pj-row b {
+    display: block;
+    width: 14%;
+    height: 45%;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--pj-accent) 55%, transparent);
+  }
+  .hf-catalog-panels-join .pj-joined {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--pj-radius);
+    background: var(--pj-fill);
+    border: 2px solid color-mix(in srgb, var(--pj-accent) 40%, transparent);
+    overflow: hidden;
+    box-sizing: border-box;
+    will-change: transform, opacity;
+    opacity: 0;
+  }
+  .hf-catalog-panels-join .pj-joined .pj-bar {
+    height: 9%;
+  }
+  .hf-catalog-panels-join .pj-joined .pj-row {
+    height: 7%;
+    margin: 4% 4% 0;
+  }
+  .hf-catalog-panels-join .pj-seam {
+    position: absolute;
+    background: var(--pj-accent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--pj-accent) 90%, transparent);
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+  .hf-catalog-panels-join .pj-seam-v {
+    left: calc(50% - 1px);
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform-origin: 50% 50%;
+  }
+  .hf-catalog-panels-join .pj-seam-h {
+    left: 0;
+    top: calc(50% - 1px);
+    width: 100%;
+    height: 2px;
+    transform-origin: 50% 50%;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+    var stage = document.getElementById("pj-stage");
+    var count = Math.min(6, Math.max(2, parseInt(vars.count, 10) || 4));
+    var accent =
+      typeof vars.accent === "string" && /^#[0-9a-f]{6}$/i.test(vars.accent)
+        ? vars.accent
+        : "#A289FC";
+    var tone = vars.tone === "paper" ? "paper" : "ink";
+    stage.style.setProperty("--pj-accent", accent);
+    stage.style.setProperty(
+      "--pj-fill",
+      tone === "paper" ? "rgba(250,250,250,.94)" : "rgba(30,25,60,.92)",
+    );
+    stage.style.setProperty(
+      "--pj-ink",
+      tone === "paper" ? "rgba(20,18,40,1)" : "rgba(241,237,255,1)",
+    );
+
+    // Layout: up to 6 panels on a 2- or 3-column grid; each remembers its slot and the edge it enters from.
+    var cols = count <= 4 ? 2 : 3,
+      rows = Math.ceil(count / cols);
+    var w = cols === 2 ? 48.5 : 31.6,
+      h = rows === 1 ? 100 : 48.5,
+      gap = 3;
+    var panels = [];
+    for (var i = 0; i < count; i++) {
+      var p = document.createElement("div");
+      p.className = "pj-panel";
+      p.id = "pj-panel-" + i;
+      p.innerHTML =
+        '<div class="pj-bar"><i></i><i></i><i></i></div><div class="pj-row"><b></b></div><div class="pj-row"><b></b></div><div class="pj-row"><b></b></div>';
+      var c = i % cols,
+        r = Math.floor(i / cols);
+      p.style.width = w + "%";
+      p.style.height = h + "%";
+      p.style.left = c * (w + gap) + "%";
+      p.style.top = r * (h + gap) + "%";
+      stage.insertBefore(p, stage.firstChild);
+      // convergence vector: from the slot centre to the stage centre, in % of the stage box → px at init
+      var rect = { cx: c * (w + gap) + w / 2, cy: r * (h + gap) + h / 2 };
+      var edges = [
+        [-1, 0],
+        [0, -1],
+        [0, 1],
+        [1, 0],
+        [-1, -1],
+        [1, 1],
+      ];
+      panels.push({
+        el: p,
+        dx: 50 - rect.cx,
+        dy: 50 - rect.cy,
+        ex: edges[i % edges.length][0],
+        ey: edges[i % edges.length][1],
+      });
+    }
+    var W = function () {
+      return stage.getBoundingClientRect().width || 800;
+    };
+    var H = function () {
+      return stage.getBoundingClientRect().height || 630;
+    };
+
+    var pj = {
+      enter: function (tl, T) {
+        var sw = W() * 1.1,
+          sh = H() * 1.3;
+        panels.forEach(function (p, i) {
+          tl.fromTo(
+            p.el,
+            { x: p.ex * sw, y: p.ey * sh, autoAlpha: 0 },
+            { x: 0, y: 0, autoAlpha: 1, duration: 0.6, ease: "power3.out" },
+            T + 0.05 + i * (0.45 / Math.max(1, count - 1)),
+          );
+        });
+      },
+      join: function (tl, T) {
+        var sw = W(),
+          sh = H();
+        panels.forEach(function (p) {
+          tl.to(
+            p.el,
+            { x: (p.dx / 100) * sw, y: (p.dy / 100) * sh, duration: 0.8, ease: "power2.inOut" },
+            T,
+          );
+        });
+        tl.to(
+          panels.map(function (p) {
+            return p.el;
+          }),
+          { autoAlpha: 0, duration: 0.25, ease: "power2.in" },
+          T + 0.75,
+        );
+        tl.fromTo(
+          "#pj-joined",
+          { autoAlpha: 0, scale: 0.5 },
+          { autoAlpha: 1, scale: 1, duration: 0.5, ease: "power3.out" },
+          T + 0.7,
+        );
+      },
+      seam: function (tl, T) {
+        tl.fromTo(
+          "#pj-seam-v",
+          { scaleY: 0, autoAlpha: 1 },
+          { scaleY: 1, duration: 0.35, ease: "power2.out" },
+          T,
+        );
+        tl.fromTo(
+          "#pj-seam-h",
+          { scaleX: 0, autoAlpha: 1 },
+          { scaleX: 1, duration: 0.35, ease: "power2.out" },
+          T + 0.05,
+        );
+        tl.to(
+          ["#pj-seam-v", "#pj-seam-h"],
+          { autoAlpha: 0, duration: 0.45, ease: "power2.in" },
+          T + 0.5,
+        );
+      },
+      all: function (tl, T) {
+        this.enter(tl, T);
+        this.join(tl, T + 1.2);
+        this.seam(tl, T + 2.25);
+      },
+    };
+    window.__hfPanelsJoin = pj;
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  window.__hfPanelsJoin.all(tl, 0.2);   // or enter / join / seam separately at your own beats
+-->

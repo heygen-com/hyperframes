@@ -1,0 +1,15 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "panels-join",
+  "type": "hyperframes:component",
+  "title": "Panels Join",
+  "description": "Two to six generic panels enter from the edges, converge and become one joined panel while a seam traces the join — the consolidation move for any many-tools-to-one-view beat.",
+  "tags": ["effect", "overlay", "consolidation", "ui"],
+  "files": [
+    {
+      "path": "panels-join.html",
+      "target": "compositions/components/panels-join.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
