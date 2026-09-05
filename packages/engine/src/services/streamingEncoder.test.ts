@@ -271,6 +271,25 @@ describe("buildStreamingArgs", () => {
       expect(presetArg(args)).toBe("p4");
     });
 
+    it("uses a supported derived bitrate for high-quality VideoToolbox", () => {
+      const args = buildStreamingArgs(
+        {
+          ...baseGpu,
+          fps: { num: 24, den: 1 },
+          width: 1920,
+          height: 1080,
+          preset: "slow",
+          quality: 15,
+        },
+        "/tmp/out.mp4",
+        "videotoolbox",
+      );
+
+      expect(args).not.toContain("-q:v");
+      expect(args[args.indexOf("-b:v") + 1]).toBe("12M");
+      expect(args[args.indexOf("-allow_sw") + 1]).toBe("1");
+    });
+
     // Same mapping applies to hevc_nvenc: NVENC's preset vocabulary is
     // codec-agnostic, so the helper must translate for H.265 too.
     it("translates libx264 preset names to NVENC pN for h265 as well", () => {
