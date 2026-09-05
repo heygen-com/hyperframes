@@ -23,6 +23,7 @@ describe("inert region scanning", () => {
 
   it.each([
     `<!-- ${media} <!-- nested -->`,
+    `<!-- --!> ${media} -->`,
     `<ScRiPt type="text/javascript">${media}</sCrIpT \n>`,
     `<STYLE>${media}</STYLE\u00a0>`,
     `<script-data>${media}</script>`,
@@ -36,7 +37,7 @@ describe("inert region scanning", () => {
     expect(extractResolvedMedia(region + media)).toEqual(extractResolvedMedia(media));
   });
 
-  it.each(["<!--", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
+  it.each(["<!--", "<!-- --!>", "<script>", "<style>", "<scripture>", "<stylesheet>"])(
     "keeps media outside a complete inert region after %j visible",
     (prefix) => {
       expect(compileTimingAttrs(prefix + media).html).toBe(prefix + compileTimingAttrs(media).html);
