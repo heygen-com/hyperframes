@@ -194,9 +194,9 @@ export interface CheckAuditDriver {
   ): Promise<AnchoredLayoutIssue[]>;
   /** content_overlap only, for the dense re-sampling grid — catches transient text collisions the sparse grid seeks past. */
   collectOverlap(time: number): Promise<AnchoredLayoutIssue[]>;
-  /** Frozen-sweep guard (#U10): an opaque per-sample geometry+opacity
-   * fingerprint of the current seeked state, for detecting a timeline that
-   * never advances under seek. See layout-audit.browser.js. */
+  /** Frozen-sweep guard (#U10): an opaque fingerprint of the current seeked
+   * visual state, for detecting a timeline that never advances under seek.
+   * The method keeps its legacy name for driver compatibility. */
   collectLayoutGeometry(): Promise<string>;
   /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
