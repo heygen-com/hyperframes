@@ -373,15 +373,27 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
 
   // ── 7. Box shadows ──
   var shadowCounts = {};
-  var shadowSamples = Array.from(document.querySelectorAll(
+  // Keep semantic samples even when they are small or appear late in a dense page.
+  var semanticShadowSamples = new Set(Array.from(document.querySelectorAll(
     "[class*='card'], [class*='Card'], button, [class*='btn'], " +
     "[class*='dropdown'], [class*='modal'], [class*='popover'], " +
     "nav, header, [class*='panel'], article"
-  )).slice(0, 100);
+  )).slice(0, 100));
+  // Plain/utility-class boxes also carry elevation. Bound the extra style reads
+  // and deduplicate elements that already matched a semantic selector.
+  var shadowSamples = new Set([
+    ...semanticShadowSamples,
+    ...Array.from(document.querySelectorAll("div, section, aside, li, a, figure, main")).slice(0, 800)
+  ]);
 
-  for (var shi = 0; shi < shadowSamples.length; shi++) {
-    if (!isVisible(shadowSamples[shi])) continue;
-    var shVal = getComputedStyle(shadowSamples[shi]).boxShadow;
+  for (var shEl of shadowSamples) {
+    if (!isVisible(shEl)) continue;
+    if (!semanticShadowSamples.has(shEl)) {
+      var shRect = shEl.getBoundingClientRect();
+      if (shRect.width * shRect.height < 1600) continue;
+      if (shRect.width > window.innerWidth * 0.95 && shRect.height > window.innerHeight * 0.9) continue;
+    }
+    var shVal = getComputedStyle(shEl).boxShadow;
     if (shVal && shVal !== "none") {
       shadowCounts[shVal] = (shadowCounts[shVal] || 0) + 1;
     }
@@ -492,6 +504,6 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   };
 })()`;
 
-export async function extractDesignStyles(page: Page): Promise<DesignStyles> {
+export async function extractDesignStyles(page: Pick<Page, "evaluate">): Promise<DesignStyles> {
   return page.evaluate(EXTRACT_DESIGN_STYLES_SCRIPT) as Promise<DesignStyles>;
 }
