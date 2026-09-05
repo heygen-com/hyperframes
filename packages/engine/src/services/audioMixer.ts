@@ -955,7 +955,12 @@ async function mixGroupMembers(
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<{ success: boolean; error?: string; degradedAutomation?: boolean }> {
+): Promise<{
+  success: boolean;
+  error?: string;
+  degradedAutomation?: boolean;
+  failure?: AudioProcessingFailure;
+}> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
@@ -1034,7 +1039,9 @@ async function mixGroupMembers(
 
   let useNormalize = true;
   let result = await runOnce(useNormalize);
-  if (!result.success && groupNormalizeOptionUnsupported(result.stderr)) {
+  const canRetrySubmix = () =>
+    !result.success && result.failureReason !== "external_interruption" && !signal?.aborted;
+  if (canRetrySubmix() && groupNormalizeOptionUnsupported(result.stderr)) {
     useNormalize = false;
     result = await runOnce(useNormalize);
   }
@@ -1046,7 +1053,7 @@ async function mixGroupMembers(
   // grouped, it took the entire composition's audio down with it.
   let degradedAutomation = false;
   const hasAutomation = memberTracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
-  if (!result.success && !signal?.aborted && hasAutomation) {
+  if (canRetrySubmix() && hasAutomation) {
     const retry = await runOnce(useNormalize, true);
     if (retry.success) {
       result = retry;
@@ -1056,7 +1063,11 @@ async function mixGroupMembers(
 
   if (signal?.aborted) return { success: false, error: "Group sub-mix cancelled" };
   if (!result.success)
-    return { success: false, error: formatFfmpegError(result.exitCode, result.stderr) };
+    return {
+      success: false,
+      error: formatFfmpegError(result.exitCode, result.stderr),
+      failure: ffmpegFailure("mix", result),
+    };
   return { success: true, degradedAutomation };
 }
 
@@ -1435,11 +1446,15 @@ export async function processCompositionAudio(
         config,
       );
       if (!subMix.success) {
-        failures.push({
+        const failure = subMix.failure ?? {
           stage: "mix",
           reason: "ffmpeg_failed",
           owner: "system",
           retryable: false,
+          detail: subMix.error ?? "unknown",
+        };
+        failures.push({
+          ...failure,
           elementId: groupId,
           detail: boundedDetail(
             `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
