@@ -81,28 +81,28 @@ import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
 /**
- * No-frame-progress watchdog for DE streaming capture. A worker (parallel
- * path) or the single in-flight capture (sequential path, worker-encode or
- * plain) can wedge mid-capture (a hung seek/screenshot at an early frame),
+ * No-frame-progress watchdog for streaming capture. A worker (parallel path)
+ * or the single in-flight capture (sequential path, worker-encode or plain)
+ * can wedge mid-capture (a hung seek/screenshot at an early frame),
  * which would otherwise sit until the per-frame CDP `protocolTimeout`
  * (~5 min) fires — a silent multi-minute hang that only THEN reaches the
  * pinned fallback. Trip well before that: if no NEW frame lands within this
- * window, fail fast so the orchestrator re-renders via screenshot. Default
+ * window, fail fast so the orchestrator retries from a fresh session. Default
  * 60s ≫ any real per-frame budget (15–32 ms), so a legit slow frame won't
  * false-trip; a false trip only costs the (slower, never-wrong) screenshot
  * fallback.
  */
-const DEFAULT_DE_STALL_MS = 60_000;
+const DEFAULT_CAPTURE_STALL_MS = 60_000;
 const DE_STALL_POLL_MS = 5_000;
 
-function resolveDeStallTimeoutMs(): number {
+function resolveCaptureStallTimeoutMs(): number {
   // HF_DE_PARALLEL_STALL_MS is the pre-rename name (this config used to guard
   // only the parallel path). Bridged for one release so an already-deployed
   // ops surface (runbook, ConfigMap, ...) tuning the old name doesn't
   // silently no-op; drop once nothing sets it anymore.
   const raw = process.env.HF_DE_STALL_MS ?? process.env.HF_DE_PARALLEL_STALL_MS;
   const parsed = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DE_STALL_MS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CAPTURE_STALL_MS;
 }
 
 /**
@@ -112,8 +112,8 @@ function resolveDeStallTimeoutMs(): number {
  * take no signal — a wedged call can't be cancelled, only raced. A tripped
  * guard abandons the in-flight capture (same "orphaned, never awaited"
  * contract as the worker-encode pipeline's encodeResult) and rejects so the
- * caller fails fast to the pinned screenshot fallback instead of waiting out
- * the ~5min CDP protocol timeout.
+ * caller fails fast to the exactly-once fresh-session fallback instead of
+ * waiting out the ~5min CDP protocol timeout.
  *
  * `signal` is read only at trip time to label the rejection, never to cancel
  * the race early — a parent abort during a wedge still has to wait out the
@@ -121,21 +121,56 @@ function resolveDeStallTimeoutMs(): number {
  * must say "aborted", not "stalled", so downstream logs/telemetry don't
  * misreport a deliberate cancellation as a capture failure.
  */
+function captureModeLabel(mode: CaptureSession["captureMode"]): string {
+  if (mode === "drawelement") return "drawElement";
+  if (mode === "beginframe") return "BeginFrame";
+  return "screenshot";
+}
+
+class SequentialCaptureStallError extends Error {
+  readonly captureMode: CaptureSession["captureMode"];
+
+  constructor(
+    captureMode: CaptureSession["captureMode"],
+    stallTimeoutMs: number,
+    frameIndex: number,
+    totalFrames: number,
+  ) {
+    super(
+      `[Render] Sequential ${captureModeLabel(captureMode)} capture stalled: ` +
+        `no frame progress for ${stallTimeoutMs}ms (stuck at frame ${frameIndex}/${totalFrames}).`,
+    );
+    this.name = "SequentialCaptureStallError";
+    this.captureMode = captureMode;
+  }
+}
+
 function raceAgainstStall<T>(
   promise: Promise<T>,
   deadlineMs: number,
-  message: string,
+  input: {
+    captureMode: CaptureSession["captureMode"];
+    frameIndex: number;
+    totalFrames: number;
+    stallTimeoutMs: number;
+  },
   signal?: AbortSignal,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
       () => {
         reject(
-          new Error(
-            signal?.aborted
-              ? "[Render] Sequential drawElement capture aborted while a capture call was in flight."
-              : message,
-          ),
+          signal?.aborted
+            ? new Error(
+                `[Render] Sequential ${captureModeLabel(input.captureMode)} capture aborted ` +
+                  `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
+              )
+            : new SequentialCaptureStallError(
+                input.captureMode,
+                input.stallTimeoutMs,
+                input.frameIndex,
+                input.totalFrames,
+              ),
         );
       },
       Math.max(0, deadlineMs),
@@ -391,13 +426,13 @@ async function runWorkerEncodePipelineLoop(
   const guard = createDrainFrameGuard({ log, stats, frameTime });
   const guardFrame = (idx: number, buf: Buffer): Promise<Buffer> => guard(session, idx, buf);
 
-  const stallTimeoutMs = resolveDeStallTimeoutMs();
+  const stallTimeoutMs = resolveCaptureStallTimeoutMs();
   let lastProgressAt = Date.now();
   const captureWithStallGuard = <T>(idx: number, promise: Promise<T>): Promise<T> =>
     raceAgainstStall(
       promise,
       stallTimeoutMs - (Date.now() - lastProgressAt),
-      `[Render] Sequential drawElement capture stalled: no frame progress for ${stallTimeoutMs}ms (stuck at frame ${idx}/${totalFrames}).`,
+      { captureMode: session.captureMode, frameIndex: idx, totalFrames, stallTimeoutMs },
       abortSignal,
     );
 
@@ -668,7 +703,7 @@ export async function runCaptureStreamingStage(
         if (abortSignal.aborted) stallController.abort();
         else abortSignal.addEventListener("abort", forwardParentAbort, { once: true });
       }
-      const stallTimeoutMs = resolveDeStallTimeoutMs();
+      const stallTimeoutMs = resolveCaptureStallTimeoutMs();
       let lastCapturedFrames = 0;
       let lastProgressAt = Date.now();
       let stalled = false;
@@ -813,7 +848,7 @@ export async function runCaptureStreamingStage(
             abortSignal,
           );
         } else {
-          const stallTimeoutMs = resolveDeStallTimeoutMs();
+          const stallTimeoutMs = resolveCaptureStallTimeoutMs();
           let lastProgressAt = Date.now();
           for (let i = 0; i < totalFrames; i++) {
             assertNotAborted();
@@ -821,7 +856,7 @@ export async function runCaptureStreamingStage(
             const { buffer } = await raceAgainstStall(
               captureFrameToBuffer(session, i, time),
               stallTimeoutMs - (Date.now() - lastProgressAt),
-              `[Render] Sequential drawElement capture stalled: no frame progress for ${stallTimeoutMs}ms (stuck at frame ${i}/${totalFrames}).`,
+              { captureMode: session.captureMode, frameIndex: i, totalFrames, stallTimeoutMs },
               abortSignal,
             );
             await reorderBuffer.waitForFrame(i);

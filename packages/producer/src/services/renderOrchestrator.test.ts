@@ -35,6 +35,7 @@ import {
   resetCaptureAttemptProgress,
   shouldRetryViaPinnedFallback,
   isDeRendererStallError,
+  isSequentialCaptureStallError,
   countElementTags,
   envInt,
   isDeParallelRouterEnabled,
@@ -2639,7 +2640,7 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
   });
 });
 
-describe("sequential drawElement renderer stall recovery", () => {
+describe("sequential capture stall recovery", () => {
   it("retries a typed stall on an explicit unpinned one-worker route", () => {
     expect(
       shouldRetryViaPinnedFallback({
@@ -2651,6 +2652,43 @@ describe("sequential drawElement renderer stall recovery", () => {
         isDeRendererStall: true,
       }),
     ).toBe(true);
+  });
+
+  it("retries a typed screenshot stall on an unpinned low-memory route", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isEncoderInterrupted: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isSequentialCaptureStall: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry a screenshot stall after parent cancellation", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        isEncoderInterrupted: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isSequentialCaptureStall: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("recognizes a wrapped screenshot watchdog error across the stage boundary", () => {
+    expect(
+      isSequentialCaptureStallError(
+        new Error(
+          "[Render] Sequential screenshot capture stalled: no frame progress for 60000ms (stuck at frame 99/135).",
+        ),
+      ),
+    ).toBe(true);
+    expect(isSequentialCaptureStallError(new Error("ordinary screenshot failure"))).toBe(false);
   });
 });
 

@@ -1850,8 +1850,10 @@ export function resolveParallelRouterRetryPlan(args: {
  * that would delay honoring "stop" with a pointless resource spin-up/
  * tear-down cycle.
  *
- * A typed drawElement renderer stall is independent of routing and retries on
- * any cohort. Encoder interruptions remain excluded so a host shutdown cannot
+ * A typed sequential capture stall is independent of routing and retries on
+ * any cohort. This includes low-memory screenshot capture: its failed stage
+ * closes the wedged session before the retry creates a fresh screenshot
+ * session. Encoder interruptions remain excluded so a host shutdown cannot
  * be hidden behind same-host retry work.
  */
 export function shouldRetryViaPinnedFallback(args: {
@@ -1870,10 +1872,12 @@ export function shouldRetryViaPinnedFallback(args: {
    * failed the entire render.
    */
   isDeRendererStall?: boolean;
+  /** The producer's no-progress watchdog tripped around a sequential capture call. */
+  isSequentialCaptureStall?: boolean;
 }): boolean {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError) return true;
-  if (args.isDeRendererStall === true) return true;
+  if (args.isDeRendererStall === true || args.isSequentialCaptureStall === true) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
 
@@ -1886,6 +1890,21 @@ export function shouldRetryViaPinnedFallback(args: {
 export function isDeRendererStallError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return err.name === "DeFrameTimeoutError" || err.message.includes("renderer stopped scheduling");
+}
+
+/**
+ * True when the producer's sequential no-progress deadline won. The stage
+ * wraps its typed cause in CaptureStageError, so match both the inner name and
+ * the stable, mode-bearing outer message.
+ */
+export function isSequentialCaptureStallError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "SequentialCaptureStallError" ||
+    /^\[Render\] Sequential (?:drawElement|BeginFrame|screenshot) capture stalled:/.test(
+      err.message,
+    )
+  );
 }
 
 /**
@@ -3622,18 +3641,16 @@ async function executeRenderPipeline(input: {
         try {
           streamingRes = await invokeStreaming();
         } catch (err) {
-          // drawElement self-verification tripped (blank frame or PSNR breach
-          // vs the pre-injection ground truth), OR — when the inversion/router
-          // pinned a fixed worker count regardless of calibration — any other
-          // capture-stage failure (host contention timeout, worker crash, OOM)
-          // on that pinned path. Both restart the whole render on the same
-          // tested screenshot/parallel-SS baseline: slower, never wrong. The
-          // failed attempt's session was closed by the stage's finally;
-          // probeSession (if any) was consumed by it, so a fresh session
-          // spawns on retry. See shouldRetryViaPinnedFallback for exactly
-          // which errors qualify.
+          // drawElement self-verification or a sequential no-progress deadline
+          // restarts the whole render from a fresh screenshot session. When an
+          // inversion/router pinned the worker count, other capture-stage
+          // failures (host timeout, worker crash, OOM) can use that same tested
+          // baseline. The stage closes the failed session before throwing;
+          // probeSession (if any) was consumed by it. See
+          // shouldRetryViaPinnedFallback for exactly which errors qualify.
           const isVerifyError = isDrawElementVerificationError(err);
           const isDeStall = isDeRendererStallError(err);
+          const isSequentialStall = isSequentialCaptureStallError(err);
           const isCancellation =
             err instanceof RenderCancelledError || executionSignal?.aborted === true;
           if (
@@ -3644,6 +3661,7 @@ async function executeRenderPipeline(input: {
               deWorkerInversion,
               deParallelRouter,
               isDeRendererStall: isDeStall,
+              isSequentialCaptureStall: isSequentialStall,
             })
           )
             throw err;
@@ -3667,7 +3685,9 @@ async function executeRenderPipeline(input: {
               ? "[Render] drawElement self-verification failed; re-rendering via screenshot"
               : isDeStall
                 ? "[Render] drawElement renderer stalled; re-rendering via screenshot"
-                : "[Render] capture failed on the pinned worker count; re-rendering via screenshot",
+                : isSequentialStall
+                  ? "[Render] sequential capture stalled; retrying on a fresh screenshot session"
+                  : "[Render] capture failed on the pinned worker count; re-rendering via screenshot",
             { error: err instanceof Error ? err.message : String(err) },
           );
           observability.checkpoint(
@@ -3676,7 +3696,9 @@ async function executeRenderPipeline(input: {
               ? "drawElement self-verify failed; retrying with forceScreenshot"
               : isDeStall
                 ? "drawElement renderer stalled; retrying with forceScreenshot"
-                : "capture failed on pinned worker count; retrying with forceScreenshot",
+                : isSequentialStall
+                  ? "sequential capture stalled; retrying with a fresh screenshot session"
+                  : "capture failed on pinned worker count; retrying with forceScreenshot",
           );
           const failedRouting = capturePlan.routing.kind;
           capturePlan = replanAfterFailure(
