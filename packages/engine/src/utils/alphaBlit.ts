@@ -920,16 +920,16 @@ export function normalizeObjectFit(value: string | undefined): ObjectFit {
 export function parseTransformMatrix(css: string): number[] | null {
   if (!css || css === "none") return null;
 
-  const match2d = css.match(
-    /^matrix\(\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,)]+)\s*\)$/,
-  );
+  // The captures already include whitespace; overlapping whitespace quantifiers
+  // cause excessive backtracking on malformed input. Number handles the spaces.
+  const match2d = css.match(/^matrix\(([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,)]+)\)$/);
   if (match2d) {
     const values = match2d.slice(1, 7).map(Number);
     if (!values.every(Number.isFinite)) return null;
     return values;
   }
 
-  const match3d = css.match(/^matrix3d\(\s*([^)]+)\)$/);
+  const match3d = css.match(/^matrix3d\(([^)]+)\)$/);
   if (match3d) {
     const raw = match3d[1];
     if (!raw) return null;
