@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -12,15 +12,6 @@ import {
 } from "./lut-preset-provider.mjs";
 import { buildCube } from "./cube-build.mjs";
 import { validateCube, validateCubeFile } from "./cube-validate.mjs";
-
-const REPO_ROOT = join(import.meta.dirname, "..", "..", "..", "..");
-
-function corePresetIdsFromSource() {
-  const src = readFileSync(join(REPO_ROOT, "packages/core/src/colorGrading.ts"), "utf8");
-  const match = src.match(/export type HfColorGradingPresetId =([\s\S]*?);/);
-  assert.ok(match, "core preset union should be readable");
-  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-}
 
 test("warm daylight and warm natural light resolve to the core warm-daylight preset", () => {
   assert.deepEqual(matchColorLook("warm daylight"), {
@@ -65,12 +56,7 @@ test("library look freezes a validated cube from params offline (--local-only)",
   }
 });
 
-test("every resolver preset exists in packages/core/src/colorGrading.ts", () => {
-  const corePresetIds = corePresetIdsFromSource();
-  assert.deepEqual(
-    RESOLVABLE_PRESET_IDS.filter((id) => !corePresetIds.includes(id)),
-    [],
-  );
+test("every resolver preset round-trips through the published matcher", () => {
   for (const id of RESOLVABLE_PRESET_IDS) {
     const match = matchColorLook(id);
     assert.equal(match.kind, "preset");

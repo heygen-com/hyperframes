@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -22,16 +22,30 @@ test("hyperframesPackageSpec: env override wins", async () => {
   }
 });
 
-// (b) resolvable version (in-repo) pins the bundled hyperframes/@hyperframes/cli version.
-test("hyperframesPackageSpec: resolvable in-repo version pins it", async () => {
-  const prev = process.env[ENV];
-  delete process.env[ENV];
+// (b) a resolvable ancestor package version pins the bundled package version.
+// Published skills do not include the HyperFrames monorepo, so build the
+// ancestor relationship explicitly instead of depending on the install path.
+test("hyperframesPackageSpec: resolvable ancestor version pins it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-pkgloader-version-"));
   try {
-    const { hyperframesPackageSpec } = await import("./package-loader.mjs");
-    const spec = hyperframesPackageSpec("@hyperframes/producer");
-    assert.match(spec, /^@hyperframes\/producer@\d+\.\d+\.\d+/);
+    const scriptsDir = join(dir, "skills", "fixture", "scripts");
+    writeFileSync(join(dir, "package.json"), '{"name":"hyperframes","version":"1.2.3"}\n');
+    mkdirSync(scriptsDir, { recursive: true });
+    copyFileSync(join(HERE, "package-loader.mjs"), join(scriptsDir, "package-loader.mjs"));
+    const probe = join(scriptsDir, "probe.mjs");
+    writeFileSync(
+      probe,
+      [
+        'import { hyperframesPackageSpec } from "./package-loader.mjs";',
+        'process.stdout.write(hyperframesPackageSpec("@hyperframes/producer"));',
+        "",
+      ].join("\n"),
+    );
+    const probeResult = spawnSync(process.execPath, [probe], { cwd: scriptsDir, encoding: "utf8" });
+    assert.equal(probeResult.status, 0, probeResult.stderr);
+    assert.equal(probeResult.stdout.trim(), "@hyperframes/producer@1.2.3");
   } finally {
-    if (prev !== undefined) process.env[ENV] = prev;
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
