@@ -9,6 +9,20 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.29"
+  description="Released - 2026-09-05"
+  tags={["Release", "Studio"]}
+>
+Studio no longer freezes when external tools write project files in rapid bursts. An SSE listener leak and a drain-starvation race are both fixed.
+
+## Fixes
+
+- **Studio:** Prevent preview hang on burst external file rewrites ([00c575d23](https://github.com/heygen-com/hyperframes/commit/00c575d23b15d1da39eb37355a4760562270b4d0), [#3648](https://github.com/heygen-com/hyperframes/pull/3648)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.28...v0.8.29).
+</Update>
+
+<Update
   label="HyperFrames v0.8.28"
   description="Released - 2026-09-05"
   tags={["Release", "Capture", "Core", "Render"]}
