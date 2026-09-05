@@ -2584,6 +2584,21 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
   });
 });
 
+describe("sequential drawElement renderer stall recovery", () => {
+  it("retries a typed stall on an explicit unpinned one-worker route", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isEncoderInterrupted: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isDeRendererStall: true,
+      }),
+    ).toBe(true);
+  });
+});
+
 describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
   const eligible = {
     routerEnabled: true,
