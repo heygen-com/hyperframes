@@ -55,7 +55,8 @@ type GsapWindow = {
   propertyValues: Record<string, string | number>;
   fromPropertyValues?: Record<string, string | number>;
   overwriteAuto: boolean;
-  immediateRender: boolean;
+  /** Explicit immediateRender option; undefined keeps the GSAP method default. */
+  immediateRender?: boolean;
   method: string;
   /** True for an off-timeline `gsap.set(...)` (applied once at load). */
   global?: boolean;
@@ -150,6 +151,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
     const cycleCount = infiniteRepeat ? 1 : repeat > 0 ? repeat + 1 : 1;
     const effectiveDuration =
       animation.method === "set" ? 0 : (animation.duration ?? 0) * cycleCount;
+    const immediateRender = unwrapRaw(animation.extras?.immediateRender);
     windows.push({
       targetSelector: animation.targetSelector,
       targetIdentity: animation.targetIdentity,
@@ -162,7 +164,8 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       propertyValues: animation.properties,
       fromPropertyValues: animation.fromProperties,
       overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
-      immediateRender: unwrapRaw(animation.extras?.immediateRender) === "true",
+      immediateRender:
+        immediateRender === "true" ? true : immediateRender === "false" ? false : undefined,
       method: animation.method,
       global: animation.global,
       raw: synthesizeWindowRaw(parsed.timelineVar, animation),
@@ -203,8 +206,10 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
-function extractStandaloneHiddenSelectors(script: string): Set<string> {
-  const selectors = new Set<string>();
+type LoadTimeStandaloneGsapSet = { selector: string; propertiesSource: string };
+
+function extractLoadTimeStandaloneGsapSets(script: string): LoadTimeStandaloneGsapSet[] {
+  const sets: LoadTimeStandaloneGsapSet[] = [];
   const source = stripJsComments(script);
   const functionRanges = collectFunctionBodyRanges(source);
   const aliases = new Map<string, string>();
@@ -221,10 +226,16 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
     const target = (match[1] ?? "").trim();
     const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
     if (!selector) continue;
-    const body = match[2] ?? "";
-    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
+    sets.push({ selector, propertiesSource: match[2] ?? "" });
+  }
+  return sets;
+}
+
+function extractStandaloneHiddenSelectors(script: string): Set<string> {
+  const selectors = new Set<string>();
+  for (const { selector, propertiesSource } of extractLoadTimeStandaloneGsapSets(script)) {
+    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(propertiesSource))
       selectors.add(selector);
-    }
   }
   return selectors;
 }
@@ -1106,6 +1117,58 @@ export const gsapRules: LintRule<LintContext>[] = [
             snippet: truncateSnippet(`${left.raw}\n${right.raw}`),
           });
         }
+      }
+
+      // gsap_repeated_fromto_without_baseline
+      const fromToWindowsBySelector = new Map<string, GsapWindow[]>();
+      for (const win of gsapWindows) {
+        if (win.method !== "fromTo" || win.immediateRender === false) continue;
+        if (win.targetSelector === UNRESOLVED_TARGET) continue;
+        const windows = fromToWindowsBySelector.get(win.targetSelector) ?? [];
+        windows.push(win);
+        fromToWindowsBySelector.set(win.targetSelector, windows);
+      }
+
+      const repeatedFromToGroups = [...fromToWindowsBySelector.values()].filter(
+        (windows) => windows.length >= 2,
+      );
+      const standaloneSetSelectors =
+        repeatedFromToGroups.length > 0
+          ? new Set(extractLoadTimeStandaloneGsapSets(script.content).map((set) => set.selector))
+          : new Set<string>();
+
+      for (const fromToWindows of repeatedFromToGroups) {
+        const firstFromTo = fromToWindows[0];
+        if (!firstFromTo) continue;
+        const selector = firstFromTo.targetSelector;
+        const firstFromToIndex = gsapWindows.indexOf(firstFromTo);
+        const firstFromToPosition = Math.min(...fromToWindows.map((win) => win.position));
+        const hasTimelineBaseline = gsapWindows
+          .slice(0, firstFromToIndex)
+          .some(
+            (candidate) =>
+              candidate.method === "set" &&
+              !candidate.global &&
+              candidate.targetSelector === selector &&
+              candidate.position <= firstFromToPosition,
+          );
+        if (hasTimelineBaseline || standaloneSetSelectors.has(selector)) continue;
+
+        findings.push({
+          code: "gsap_repeated_fromto_without_baseline",
+          severity: "warning",
+          message:
+            `${fromToWindows.length} tl.fromTo() calls target "${selector}" with no stable baseline. ` +
+            `The last-authored fromTo "from" values become the element's resting state for any seek before ` +
+            `the first tween actually runs, because GSAP applies fromTo from-values at authoring time ` +
+            `(immediateRender), not at tween position.`,
+          selector,
+          fixHint:
+            `Add \`immediateRender: false\` to the destination vars of each future fromTo, or set a safe ` +
+            `resting state with an earlier \`gsap.set("${selector}", { ... })\`. Pre-first-tween seeks must not ` +
+            `inherit whichever fromTo call happened to author last.`,
+          snippet: truncateSnippet(fromToWindows.map((win) => win.raw).join("\n")),
+        });
       }
 
       // gsap_exit_missing_hard_kill
@@ -2362,7 +2425,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       const initialHolds = firstTweenIndex < 0 ? windows : windows.slice(0, firstTweenIndex);
       for (const win of initialHolds) {
         if (!isInstantHold(win) || win.position !== 0) continue;
-        if (win.global || win.immediateRender) continue;
+        if (win.global || win.immediateRender === true) continue;
         if (targetHasNoStableIdentity(win.targetSelector, win.targetIdentity)) continue;
         const targetTokens = [...targetedSelectorTokens(win.targetSelector)];
         const hiddenByToken =
