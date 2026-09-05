@@ -197,6 +197,32 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     return element;
   }
 
+  it.each([
+    ["Group 1", "group-1"],
+    [" --HELLO___World!! ", "hello-world"],
+    ["a---b---c", "a-b-c"],
+    ["--123--", "123"],
+    ["", "group"],
+    [" --- ", "group"],
+    ["你好", "group"],
+    ["-".repeat(100_000) + "Title" + "-".repeat(100_000), "title"],
+  ])("preserves normalized group IDs and collision suffixes (case %#)", (name, id) => {
+    const source = FIXTURE.replace(
+      "</body>",
+      `<div id="${id}"></div><div id="${id}-2"></div></body>`,
+    );
+    const result = wrapElementsInHtml(source, TARGETS, name, BBOX, REBASES);
+    expect(result.matched).toBe(true);
+    const { document } = parseHTML(result.html);
+    const group = document.getElementById(`${id}-3`);
+    expect(group?.getAttribute("data-hf-group")).toBe(name);
+    expect(Array.from(group?.children ?? []).map((child) => child.id)).toEqual([
+      "title",
+      "logo",
+      "badge",
+    ]);
+  });
+
   it("wraps members in a data-hf-group div, preserving order and rebasing left/top", () => {
     const { html, matched, groupId } = wrapElementsInHtml(
       FIXTURE,

@@ -478,7 +478,8 @@ function uniqueGroupDomId(document: Document, groupId: string): string {
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "group";
+      // Normalization above leaves at most one hyphen at either edge.
+      .replace(/^-|-$/g, "") || "group";
   let id = base;
   let n = 2;
   while (document.getElementById(id)) {
