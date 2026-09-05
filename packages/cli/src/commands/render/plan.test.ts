@@ -89,6 +89,34 @@ describe("createRenderPlan", () => {
     expect(() => createRenderPlan({ dir: projectDir, quality: "maximum" })).toThrow(CliUsageError);
   });
 
+  it.each([
+    ["--crf", { crf: "18" }],
+    ["--video-bitrate", { "video-bitrate": "78M" }],
+  ])("rejects unsupported %s rate control for ProRes MOV", (flag, encoderArgs) => {
+    expect(() => createRenderPlan({ dir: projectDir, format: "mov", ...encoderArgs })).toThrow(
+      CliUsageError,
+    );
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+      "fixed alpha-preserving ProRes 4444",
+    );
+  });
+
+  it("keeps MOV quality tiers on the fixed alpha-preserving profile", () => {
+    const plan = createRenderPlan({ dir: projectDir, format: "mov", quality: "high" });
+
+    expect(plan).toMatchObject({ format: "mov", quality: "high" });
+    expect(plan.crf).toBeUndefined();
+    expect(plan.videoBitrate).toBeUndefined();
+  });
+
+  it("keeps MP4 and WebM rate controls available", () => {
+    expect(createRenderPlan({ dir: projectDir, format: "mp4", crf: "18" }).crf).toBe(18);
+    expect(
+      createRenderPlan({ dir: projectDir, format: "webm", "video-bitrate": "10M" }).videoBitrate,
+    ).toBe("10M");
+  });
+
   it("rejects batch and single-render variables before execution", () => {
     expect(() =>
       createRenderPlan({ dir: projectDir, batch: "rows.json", variables: '{"name":"Ada"}' }),
