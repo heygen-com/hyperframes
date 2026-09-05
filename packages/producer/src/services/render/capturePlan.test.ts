@@ -80,11 +80,41 @@ describe("CapturePlan", () => {
         forceParallelStream: false,
       },
     });
-    const next = replanAfterFailure(initial, { kind: "draw_element_verification" });
+    const next = replanAfterFailure(initial, {
+      kind: "draw_element_verification",
+      diskFallbackAvailable: true,
+    });
 
     expect(next).toMatchObject({
       kind: "sdr_disk",
       workerCount: 5,
+      forceScreenshot: true,
+      routing: { kind: "worker_inversion", state: "reverted" },
+    });
+    expect(initial).toMatchObject({ workerCount: 1, routing: { state: "active" } });
+    expect(Object.isFrozen(next.routing)).toBe(true);
+  });
+
+  it("keeps verification recovery streaming when the disk fallback lacks headroom", () => {
+    const initial = streaming({
+      kind: "worker_inversion",
+      state: "active",
+      fallback: { kind: "sdr_disk", workerCount: 5, forceParallelStream: false },
+      memoryExhaustionFallback: {
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceParallelStream: false,
+      },
+    });
+
+    const next = replanAfterFailure(initial, {
+      kind: "draw_element_verification",
+      diskFallbackAvailable: false,
+    });
+
+    expect(next).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
       forceScreenshot: true,
       routing: { kind: "worker_inversion", state: "reverted" },
     });
