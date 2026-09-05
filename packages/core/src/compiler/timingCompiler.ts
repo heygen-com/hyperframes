@@ -154,6 +154,33 @@ function maskInertRegions(html: string): { masked: string; restore: (s: string) 
 
 // ── Core compilation ─────────────────────────────────────────────────────
 
+function* iterateOpeningTags(html: string, prefix: RegExp) {
+  let match: RegExpExecArray | null;
+  while ((match = prefix.exec(html)) !== null) {
+    const closing = html.indexOf(">", prefix.lastIndex);
+    // Without a closer, no later prefix can form a complete tag either.
+    if (closing < 0) break;
+    const end = closing + 1;
+    yield { tag: html.slice(match.index, end), index: match.index, end };
+    prefix.lastIndex = end;
+  }
+}
+
+function replaceOpeningTags(
+  html: string,
+  prefix: RegExp,
+  replace: (tag: string) => string,
+): string {
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { tag, index, end } of iterateOpeningTags(html, prefix)) {
+    parts.push(html.slice(cursor, index), replace(tag));
+    cursor = end;
+  }
+  parts.push(html.slice(cursor));
+  return parts.join("");
+}
+
 function compileTag(
   tag: string,
   isVideo: boolean,
@@ -228,14 +255,14 @@ export function compileTimingAttrs(html: string): CompilationResult {
   html = masked;
 
   // Process <video ...> tags
-  html = html.replace(/<video[^>]*>/gi, (match) => {
+  html = replaceOpeningTags(html, /<video/gi, (match) => {
     const { tag, unresolved: u } = compileTag(match, true, () => nextVideoId++);
     if (u) unresolved.push(u);
     return tag;
   });
 
   // Process <audio ...> tags
-  html = html.replace(/<audio[^>]*>/gi, (match) => {
+  html = replaceOpeningTags(html, /<audio/gi, (match) => {
     const { tag, unresolved: u } = compileTag(match, false, () => nextAudioId++);
     if (u) unresolved.push(u);
     return tag;
@@ -243,9 +270,9 @@ export function compileTimingAttrs(html: string): CompilationResult {
 
   // Identify unresolved timed elements (divs with data-start but no data-end/data-duration)
   // These are typically compositions whose duration depends on GSAP timelines
-  html.replace(/<(?:div|section)[^>]*>/gi, (match) => {
-    if (!hasAttr(match, "data-start")) return match;
-    if (hasAttr(match, "data-end") || hasAttr(match, "data-duration")) return match;
+  for (const { tag: match } of iterateOpeningTags(html, /<(?:div|section)/gi)) {
+    if (!hasAttr(match, "data-start")) continue;
+    if (hasAttr(match, "data-end") || hasAttr(match, "data-duration")) continue;
 
     const id = getAttr(match, "id");
     const compositionSrc = getAttr(match, "data-composition-src");
@@ -260,9 +287,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
         compositionSrc: compositionSrc ?? undefined,
       });
     }
-
-    return match;
-  });
+  }
 
   return { html: restore(html), unresolved };
 }
@@ -314,10 +339,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
   const resolved: ResolvedMediaElement[] = [];
 
   html = maskInertRegions(html).masked;
-  const mediaRegex = /<(?:video|audio)[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = mediaRegex.exec(html)) !== null) {
-    const tag = match[0];
+  for (const { tag } of iterateOpeningTags(html, /<(?:video|audio)/gi)) {
     const id = getAttr(tag, "id");
     const durationStr = getAttr(tag, "data-duration");
     if (!id || durationStr === null) continue;

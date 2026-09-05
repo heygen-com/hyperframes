@@ -95,6 +95,53 @@ describe("inert region scanning", () => {
   });
 });
 
+describe("opening tag scanning", () => {
+  it.each(["<video", "<audio", "<div", "<section", "<video<audio<div<section"])(
+    "preserves an unclosed %j suffix after compiling complete media",
+    (prefix) => {
+      const media = '<video id="v" data-start="1" data-duration="2">';
+      const suffix = prefix.repeat(100_000);
+      expect(compileTimingAttrs(media + suffix)).toEqual({
+        html: compileTimingAttrs(media).html + suffix,
+        unresolved: [],
+      });
+      expect(extractResolvedMedia(media + suffix).map((el) => el.id)).toEqual(["v"]);
+    },
+  );
+
+  it("keeps separate media ID counters and video/audio/composition resolution order", () => {
+    const html = '<audio><VIDEO><section id="scene" data-start="0"><audio>';
+    const result = compileTimingAttrs(html);
+    expect(result.unresolved.map((el) => el.id)).toEqual([
+      "hf-video-0",
+      "hf-audio-0",
+      "hf-audio-1",
+      "scene",
+    ]);
+    expect(result.html.indexOf('id="hf-audio-0"')).toBeLessThan(
+      result.html.indexOf('id="hf-video-0"'),
+    );
+  });
+
+  it("extracts mixed-case media in source order", () => {
+    const html = '<AUDIO id="a" data-duration="2"><video id="v" data-duration="3">';
+    expect(extractResolvedMedia(html).map((el) => [el.id, el.tagName, el.duration])).toEqual([
+      ["a", "audio", 2],
+      ["v", "video", 3],
+    ]);
+  });
+
+  it("retains the existing first-greater-than boundary even inside a quoted value", () => {
+    const html = '<video title="a>b" data-duration="2">';
+    const result = compileTimingAttrs(html);
+    expect(result.html).toBe(
+      '<video title="a id="hf-video-0" data-start="0" data-hf-auto-start="" data-has-audio="true">b" data-duration="2">',
+    );
+    expect(result.unresolved.map((el) => el.id)).toEqual(["hf-video-0"]);
+    expect(extractResolvedMedia(html)).toEqual([]);
+  });
+});
+
 describe("compileTimingAttrs", () => {
   it.each(["", "   ", "0s", "0abc", "0px", "-1s", "Infinity", "NaN"])(
     "does not partially parse invalid literal data-duration=%j",
