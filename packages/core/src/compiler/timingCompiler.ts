@@ -181,6 +181,33 @@ function replaceOpeningTags(
   return parts.join("");
 }
 
+function replaceIdTags(html: string, id: string, replace: (tag: string) => string): string {
+  const idPattern = new RegExp(`id=["']${escapeRegex(id)}["']`, "gi");
+  const lastClosing = html.lastIndexOf(">");
+  const parts: string[] = [];
+  let cursor = 0;
+  let candidate = idPattern.exec(html);
+  for (const { index, end } of iterateOpeningTags(html, /</g)) {
+    if (index < cursor) continue;
+    let targetEnd = -1;
+    while (candidate && candidate.index < end) {
+      const candidateEnd = candidate.index + candidate[0].length;
+      if (candidate.index > index && candidateEnd <= lastClosing) targetEnd = candidateEnd;
+      // Preserve the old greedy prefix's last matching ID, including overlaps.
+      idPattern.lastIndex = candidate.index + 1;
+      candidate = idPattern.exec(html);
+    }
+    if (targetEnd < 0) continue;
+    // An authored ID can itself contain '>', so its closer may follow the
+    // initial span. The lastClosing check guarantees a closing delimiter.
+    const closing = html.indexOf(">", targetEnd) + 1;
+    parts.push(html.slice(cursor, index), replace(html.slice(index, closing)));
+    cursor = closing;
+  }
+  parts.push(html.slice(cursor));
+  return parts.join("");
+}
+
 function compileTag(
   tag: string,
   isVideo: boolean,
@@ -302,9 +329,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
 export function injectDurations(html: string, resolutions: ResolvedDuration[]): string {
   for (const { id, duration } of resolutions) {
     // Match the element's opening tag by id
-    const idPattern = new RegExp(`(<[^>]*id=["']${escapeRegex(id)}["'][^>]*>)`, "gi");
-
-    html = html.replace(idPattern, (tag) => {
+    html = replaceIdTags(html, id, (tag) => {
       let result = tag;
 
       // Add data-duration if missing
@@ -373,9 +398,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
  */
 export function clampDurations(html: string, clamps: ResolvedDuration[]): string {
   for (const { id, duration } of clamps) {
-    const idPattern = new RegExp(`(<[^>]*id=["']${escapeRegex(id)}["'][^>]*>)`, "gi");
-
-    html = html.replace(idPattern, (tag) => {
+    html = replaceIdTags(html, id, (tag) => {
       // Replace data-duration value
       tag = tag.replace(/data-duration=["'][^"']*["']/, `data-duration="${duration}"`);
 

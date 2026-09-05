@@ -96,6 +96,41 @@ describe("inert region scanning", () => {
 });
 
 describe("opening tag scanning", () => {
+  it.each([injectDurations, clampDurations])(
+    "keeps long unclosed ID-targeted tags unchanged in %p",
+    (write) => {
+      const html = '<video id="target" '.repeat(100_000);
+      expect(write(html, [{ id: "target", duration: 3 }])).toBe(html);
+    },
+  );
+
+  it.each(["target", "a>b", "a<b", "a.b[0]"])(
+    "preserves substring-ID matches and delimiter characters for %j",
+    (id) => {
+      const html = `<video data-id="${id}" data-start="1" data-duration="bad" data-end="4">`;
+      expect(injectDurations(html, [{ id, duration: 3 }])).toBe(
+        `<video data-id="${id}" data-start="1" data-duration="3" data-end="4">`,
+      );
+      expect(clampDurations(html, [{ id, duration: 3 }])).toBe(
+        `<video data-id="${id}" data-start="1" data-duration="3" data-end="4">`,
+      );
+    },
+  );
+
+  it("leaves similar IDs alone and applies repeated resolutions in order", () => {
+    const html = '<video id="a.b" data-start="1" data-duration="bad"><video id="axb">';
+    const resolutions = [
+      { id: "a.b", duration: 3 },
+      { id: "a.b", duration: 5 },
+    ];
+    expect(injectDurations(html, resolutions)).toBe(
+      '<video id="a.b" data-start="1" data-duration="3" data-end="4"><video id="axb">',
+    );
+    expect(clampDurations(html, resolutions)).toBe(
+      '<video id="a.b" data-start="1" data-duration="5"><video id="axb">',
+    );
+  });
+
   it.each(["<video", "<audio", "<div", "<section", "<video<audio<div<section"])(
     "preserves an unclosed %j suffix after compiling complete media",
     (prefix) => {
