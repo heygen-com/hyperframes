@@ -203,6 +203,7 @@ describe("layoutAudit helpers", () => {
 // Sample counts below (9) mirror the CLI's default grid so the "1 sample =
 // entrance/exit transient, 2+ adjacent samples = held" framing in the
 // approach doc lines up with the numbers used here.
+
 describe("persistence-tiered severity (#U10)", () => {
   it("demotes a content_overlap seen at only one sample among several to info", () => {
     const collapsed = collapseStaticLayoutIssues(
@@ -253,6 +254,133 @@ describe("persistence-tiered severity (#U10)", () => {
 
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0]).toMatchObject({ severity: "warning", occurrences: 2 });
+  });
+
+  it("promotes a content_overlap whose text changes every sample (count-up over a label)", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        {
+          ...issue("content_overlap", "warning"),
+          time: 4.0,
+          containerSelector: ".num",
+          text: "$1,204",
+        },
+        {
+          ...issue("content_overlap", "warning"),
+          time: 4.5,
+          containerSelector: ".num",
+          text: "$8,930",
+        },
+      ],
+      73,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
+  });
+
+  it("keeps a text_occluded over changing text at error, not demoted per sample", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        {
+          ...issue("text_occluded", "error"),
+          time: 4.0,
+          containerSelector: ".scrim",
+          text: "$1,204",
+        },
+        {
+          ...issue("text_occluded", "error"),
+          time: 4.5,
+          containerSelector: ".scrim",
+          text: "$8,930",
+        },
+      ],
+      73,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
+  });
+
+  it("keeps two content_overlap pairs on different containers in separate groups", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...issue("content_overlap", "warning"), time: 4.0, containerSelector: ".num" },
+        { ...issue("content_overlap", "warning"), time: 4.5, containerSelector: ".pct" },
+      ],
+      73,
+    );
+
+    expect(collapsed).toHaveLength(2);
+  });
+
+  it("does not bridge two separate transients on one pair into a held collision", () => {
+    const blip = { ...issue("content_overlap", "warning"), containerSelector: ".label" };
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...blip, time: 1.0 },
+        { ...blip, time: 1.125 },
+        { ...blip, time: 9.0 },
+        { ...blip, time: 9.125 },
+      ],
+      73,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "warning", occurrences: 4 });
+  });
+
+  it("promotes only when one contiguous run clears the floor, not the span between runs", () => {
+    const blip = { ...issue("content_overlap", "warning"), containerSelector: ".label" };
+    const held = [1.0, 1.125, 1.25, 1.375, 1.5, 1.625].map((time) => ({ ...blip, time }));
+    const collapsed = collapseStaticLayoutIssues([...held, { ...blip, time: 9.0 }], 73);
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 7 });
+  });
+
+  it("does not bridge two blips 1.5s apart, whatever grid the collapse was handed", () => {
+    const blip = { ...issue("content_overlap", "warning"), containerSelector: ".label" };
+    for (const sampleCount of [9, 81]) {
+      const collapsed = collapseStaticLayoutIssues(
+        [
+          { ...blip, time: 2.0 },
+          { ...blip, time: 3.5 },
+        ],
+        sampleCount,
+      );
+      expect(collapsed[0]).toMatchObject({ severity: "warning" });
+    }
+  });
+
+  it("promotes a 625ms contiguous collision even when a tight pair sits elsewhere", () => {
+    const blip = { ...issue("content_overlap", "warning"), containerSelector: ".label" };
+    const held = [5.0, 5.125, 5.25, 5.375, 5.5, 5.625].map((time) => ({ ...blip, time }));
+    const elsewhere = { ...issue("content_overlap", "warning"), containerSelector: ".other" };
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        ...held,
+        { ...elsewhere, time: 2.0 },
+        { ...elsewhere, time: 2.05 },
+        { ...elsewhere, time: 2.1 },
+      ],
+      81,
+    );
+
+    const label = collapsed.find((entry) => entry.containerSelector === ".label");
+    expect(label).toMatchObject({ severity: "error", heldMs: 625 });
+  });
+
+  it("still separates two distinct text_box_overflow findings that differ only by text", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...issue("text_box_overflow", "warning"), time: 4.0, text: "first" },
+        { ...issue("text_box_overflow", "warning"), time: 4.5, text: "second" },
+      ],
+      73,
+    );
+
+    expect(collapsed).toHaveLength(2);
   });
 
   it("promotes content_overlap whose two occurrences span exactly 500ms (at the floor)", () => {

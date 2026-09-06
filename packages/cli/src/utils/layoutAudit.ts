@@ -49,6 +49,7 @@ export interface LayoutIssue {
   firstSeen?: number;
   lastSeen?: number;
   occurrences?: number;
+  heldMs?: number;
   selector: string;
   containerSelector?: string;
   text?: string;
@@ -204,6 +205,13 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "connector_detached",
 ]);
 
+const CONTIGUOUS_SAMPLE_GAP_MS = CONTENT_OVERLAP_HELD_ERROR_MS * 2;
+
+const TEXT_AGNOSTIC_KEY_CODES: ReadonlySet<LayoutIssueCode> = new Set([
+  "content_overlap",
+  "text_occluded",
+]);
+
 export function collapseStaticLayoutIssues(
   issues: LayoutIssue[],
   totalSampleCount?: number,
@@ -215,6 +223,7 @@ export function collapseStaticLayoutIssues(
       firstSeen: number;
       lastSeen: number;
       occurrences: number;
+      times: number[];
     }
   >();
 
@@ -227,6 +236,7 @@ export function collapseStaticLayoutIssues(
         firstSeen: issue.time,
         lastSeen: issue.time,
         occurrences: 1,
+        times: [issue.time],
       });
       continue;
     }
@@ -234,6 +244,7 @@ export function collapseStaticLayoutIssues(
     existing.firstSeen = Math.min(existing.firstSeen, issue.time);
     existing.lastSeen = Math.max(existing.lastSeen, issue.time);
     existing.occurrences += 1;
+    existing.times.push(issue.time);
   }
 
   // A run that only ever sampled one point in time can't distinguish a
@@ -242,12 +253,37 @@ export function collapseStaticLayoutIssues(
   const sampleCount = totalSampleCount ?? new Set(issues.map((issue) => issue.time)).size;
   const multiSampleRun = sampleCount > 1;
 
-  return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences }) =>
+  return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences, times }) =>
     applyPersistenceTier(
-      { ...issue, time: firstSeen, firstSeen, lastSeen, occurrences },
+      {
+        ...issue,
+        time: firstSeen,
+        firstSeen,
+        lastSeen,
+        occurrences,
+        heldMs: longestContiguousRunMs(times),
+      },
       multiSampleRun,
     ),
   );
+}
+
+function longestContiguousRunMs(times: number[]): number {
+  const sorted = [...new Set(times)].sort((a, b) => a - b);
+  const first = sorted[0];
+  const last = sorted.at(-1);
+  if (first === undefined || last === undefined) return 0;
+  let longest = 0;
+  let runStart = first;
+  let previous = first;
+  for (const current of sorted) {
+    if ((current - previous) * 1000 > CONTIGUOUS_SAMPLE_GAP_MS) {
+      longest = Math.max(longest, previous - runStart);
+      runStart = current;
+    }
+    previous = current;
+  }
+  return Math.max(longest, last - runStart) * 1000;
 }
 
 /**
@@ -309,7 +345,7 @@ function isContentOverlapHeldLongEnough(issue: LayoutIssue, occurrences: number)
   if (occurrences < HELD_ACROSS_SAMPLES_MIN_OCCURRENCES) return false;
   const firstSeen = issue.firstSeen ?? issue.time;
   const lastSeen = issue.lastSeen ?? issue.time;
-  const heldMs = (lastSeen - firstSeen) * 1000;
+  const heldMs = issue.heldMs ?? (lastSeen - firstSeen) * 1000;
   return heldMs >= CONTENT_OVERLAP_HELD_ERROR_MS;
 }
 
@@ -342,7 +378,7 @@ function staticIssueKey(issue: LayoutIssue): string {
     issue.severity,
     issue.selector,
     issue.containerSelector ?? "",
-    issue.text ?? "",
+    TEXT_AGNOSTIC_KEY_CODES.has(issue.code) ? "" : (issue.text ?? ""),
     issue.overflow ? formatOverflow(issue.overflow) : "",
     framePositionKey(issue),
   ].join("|");
