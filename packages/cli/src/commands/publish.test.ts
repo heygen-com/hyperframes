@@ -92,10 +92,7 @@ describe("publish default-entry preflight", () => {
 });
 
 describe("publish visibility messaging", () => {
-  async function runPublish(options: {
-    public: boolean;
-    claimed?: boolean;
-  }): Promise<string> {
+  async function runPublish(options: { public: boolean; claimed?: boolean }): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-visibility-"));
     writeFileSync(
       join(project, "index.html"),
