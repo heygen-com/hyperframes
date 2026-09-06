@@ -306,7 +306,7 @@ type MaterializePathModule = {
 type MaterializeFileSystem = {
   existsSync: (path: string) => boolean;
   mkdirSync: (path: string, options: { recursive: true }) => unknown;
-  symlinkSync: (target: string, path: string) => unknown;
+  symlinkSync: (target: string, path: string, type?: "dir" | "junction") => unknown;
   cpSync: (src: string, dest: string, options: { recursive: true }) => unknown;
   // Optional: only the stale-entry (EEXIST) recovery path calls it, and the
   // default fileSystem always supplies it. Test doubles that never trigger
@@ -412,31 +412,55 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
  * external callers should use `executeRenderJob` instead.
  */
 // Stage one video's extracted-frame dir into the compiled dir. Default is a
-// single symlink (cheap; the in-process renderer); `materializeSymlinks` copies
-// instead (distributed plan() needs a self-contained dir). On Windows without
-// Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
-// which failed high/standard renders — degrade to a copy there rather than
-// throwing. Non-permission errors still propagate so real failures aren't hidden.
+// directory link (cheap; the in-process renderer); `materializeSymlinks` copies
+// instead (distributed plan() needs a self-contained dir). On Windows, try a
+// junction if symlink privileges are unavailable before falling back to a copy.
 // One-time guard for the symlink→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
+// Junctions avoid Windows symlink privileges. POSIX keeps its copy fallback.
+function tryWindowsFrameJunction(
+  fileSystem: MaterializeFileSystem,
+  src: string,
+  dest: string,
+): boolean {
+  if (process.platform !== "win32") return false;
+  try {
+    fileSystem.symlinkSync(src, dest, "junction");
+    return true;
+  } catch (error) {
+    const code =
+      error instanceof Error && "code" in error && typeof error.code === "string"
+        ? error.code
+        : undefined;
+    if (
+      ["EPERM", "EACCES", "UNKNOWN", "EINVAL", "ENOSYS", "EOPNOTSUPP", "ENOTSUP"].includes(
+        code ?? "",
+      )
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 // Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN — some Windows builds surface a symlink
-// privilege denial as an UNKNOWN-coded error rather than EPERM). Non-permission
-// errors propagate.
+// errors (EPERM/EACCES, plus UNKNOWN), trying a Windows junction first.
+// Other symlink errors and non-capability junction errors propagate.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
-    fileSystem.symlinkSync(src, dest);
+    fileSystem.symlinkSync(src, dest, "dir");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
+    if (tryWindowsFrameJunction(fileSystem, src, dest)) return;
     // Copying is measurably slower than symlinking, so surface the degrade once
     // — it explains a render that suddenly got heavier and saves a support
     // round-trip diagnosing slow frame staging on Windows.
     if (!warnedSymlinkFallback) {
       warnedSymlinkFallback = true;
       defaultLogger.info(
-        `[Render] Symlinking extracted frames was rejected (${code}); copying them into the compiled dir instead. Expected on Windows without Developer Mode/Administrator.`,
+        `[Render] Linking extracted frames was rejected (${code}); copying them into the compiled dir instead.`,
       );
     }
     fileSystem.cpSync(src, dest, { recursive: true });

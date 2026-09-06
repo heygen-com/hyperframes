@@ -15,7 +15,6 @@ import {
   buildHdrProbeStageError,
   resolveVideoExtractionPolicy,
   safeVideoExtractionSourceLogMetadata,
-  shouldCopyExtractedFrames,
   VideoExtractionStageError,
 } from "./extractVideosStage.js";
 import { EncoderInterruptedError } from "../encoderInterruption.js";
@@ -207,17 +206,6 @@ describe("HDR probe src resolution (PRINFRA-349)", () => {
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("shouldCopyExtractedFrames", () => {
-  it("copies frames on Windows (symlinkSync throws EPERM without Developer Mode)", () => {
-    expect(shouldCopyExtractedFrames("win32")).toBe(true);
-  });
-
-  it("symlinks on macOS and Linux (cheaper, symlinks allowed)", () => {
-    expect(shouldCopyExtractedFrames("darwin")).toBe(false);
-    expect(shouldCopyExtractedFrames("linux")).toBe(false);
   });
 });
 

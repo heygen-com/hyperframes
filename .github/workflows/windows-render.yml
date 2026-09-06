@@ -484,6 +484,11 @@ jobs:
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
 
+      - name: Verify Windows frame staging
+        if: matrix.lane == 'studio-engine-cli'
+        shell: pwsh
+        run: bunx vitest run packages/producer/src/services/windowsFrameStaging.test.ts --maxWorkers=2
+
       - name: Verify catalog source reads on Windows
         if: matrix.lane == 'studio-engine-cli'
         shell: pwsh
