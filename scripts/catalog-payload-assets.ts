@@ -8,8 +8,20 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+  realpathSync,
+  openSync,
+  fstatSync,
+  closeSync,
+  constants,
+} from "node:fs";
+import { extname, join, resolve, relative, isAbsolute, sep } from "node:path";
 
 export const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -127,6 +139,49 @@ export interface AssetResult {
   unresolved: string[];
 }
 
+function isWithin(root: string, filePath: string): boolean {
+  const rel = relative(root, filePath);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/** Read one checked file from the prepared project, including internal links. */
+function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | null {
+  if (!isWithin(root, filePath)) return null;
+  let source: string;
+  try {
+    source = realpathSync(filePath);
+    if (!isWithin(realpathSync(root), source)) return null;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    throw error;
+  }
+  let fd: number;
+  try {
+    // Nonblocking mode lets fstat reject named pipes without waiting for a writer.
+    fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    if (!statSync(source, { throwIfNoEntry: false })?.isFile()) return null;
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export interface AssetTarget {
   /** Directory shared by every item, so one font is stored once. */
   dir: string;
@@ -164,8 +219,8 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
 
     // A composition reaching outside its own directory would pull an arbitrary
     // file from the build machine into a published payload.
-    const contained = source === root || source.startsWith(`${root}/`);
-    if (!contained || !existsSync(source) || !statSync(source).isFile()) {
+    const bytes = readProjectFile(root, source);
+    if (bytes === null) {
       // A name a script passed around that turned out not to be a file is just
       // a string; only a reference we are sure about counts as a broken one.
       if (strict) unresolved.push(ref);
@@ -179,7 +234,6 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
       continue;
     }
 
-    const bytes = readFileSync(source);
     if (HOSTED_EXTENSIONS.has(ext)) {
       const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
       const dest = join(target.dir, name);
@@ -248,19 +302,27 @@ export function externalizeDataUris(
 }
 
 /** Copy a directory's publishable files into `destDir`, flattening one level. */
-function walkInto(from: string, rel: string, destDir: string, onCopy: () => void): void {
+function walkInto(
+  root: string,
+  from: string,
+  rel: string,
+  destDir: string,
+  onCopy: () => void,
+): void {
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue;
     const childRel = rel ? `${rel}/${entry.name}` : entry.name;
     const childFrom = join(from, entry.name);
     if (entry.isDirectory()) {
-      walkInto(childFrom, childRel, destDir, onCopy);
+      walkInto(root, childFrom, childRel, destDir, onCopy);
       continue;
     }
     if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+    const bytes = readProjectFile(root, childFrom);
+    if (bytes === null) continue;
     const to = join(destDir, childRel);
     mkdirSync(join(to, ".."), { recursive: true });
-    writeFileSync(to, readFileSync(childFrom));
+    writeFileSync(to, bytes);
     onCopy();
   }
 }
@@ -319,9 +381,11 @@ export function hostItemDirectory(projectDir: string, destDir: string, urlBase: 
         continue;
       }
       if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+      const bytes = readProjectFile(projectDir, childFrom);
+      if (bytes === null) continue;
       const to = join(destDir, childRel);
       mkdirSync(join(to, ".."), { recursive: true });
-      writeFileSync(to, readFileSync(childFrom));
+      writeFileSync(to, bytes);
       copied += 1;
     }
   };
@@ -339,7 +403,7 @@ export function hostItemDirectory(projectDir: string, destDir: string, urlBase: 
   // working, and the files are content-identical either way.
   const downloads = join(projectDir, "_downloads");
   if (existsSync(downloads) && statSync(downloads).isDirectory()) {
-    walkInto(downloads, "", destDir, () => (copied += 1));
+    walkInto(projectDir, downloads, "", destDir, () => (copied += 1));
   }
 
   return copied > 0 ? urlBase : "";
@@ -376,8 +440,9 @@ export function inlineMountedComposition(html: string, projectDir: string): stri
     (whole, quote: string, ref: string) => {
       if (/^(https?:|data:)/i.test(ref)) return whole;
       const source = resolve(projectDir, ref.replace(/^\.\//, "").split(/[?#]/)[0] ?? ref);
-      if (!source.startsWith(resolve(projectDir)) || !existsSync(source)) return whole;
-      const encoded = readFileSync(source).toString("base64");
+      const bytes = readProjectFile(resolve(projectDir), source);
+      if (bytes === null) return whole;
+      const encoded = bytes.toString("base64");
       return `data-composition-src=${quote}data:text/html;base64,${encoded}${quote}`;
     },
   );

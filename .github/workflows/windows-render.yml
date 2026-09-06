@@ -484,6 +484,11 @@ jobs:
         shell: pwsh
         run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
 
+      - name: Verify catalog source reads on Windows
+        if: matrix.lane == 'studio-engine-cli'
+        shell: pwsh
+        run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts --maxWorkers=2
+
       - name: Run runtime contract test
         if: matrix.runtime_contract
         shell: pwsh
