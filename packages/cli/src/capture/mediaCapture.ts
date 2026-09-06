@@ -11,6 +11,7 @@ import type { Browser, Page } from "puppeteer-core";
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { isPrivateUrl, safeFetch } from "./assetDownloader.js";
+import { CAPTURE_USER_AGENT } from "./userAgent.js";
 
 /** Discovered Lottie item from network interception or DOM scan. */
 export interface DiscoveredLottie {
@@ -58,7 +59,7 @@ export async function saveLottieAnimations(
         // SSRF guard — safeFetch re-checks the denylist on every redirect hop
         const res = await safeFetch(lottieItem.url, {
           signal: AbortSignal.timeout(requestTimeoutMs),
-          headers: { "User-Agent": "HyperFrames/1.0" },
+          headers: { "User-Agent": CAPTURE_USER_AGENT },
         });
         if (!res || !res.ok) continue;
         const buf = Buffer.from(await res.arrayBuffer());
@@ -278,7 +279,7 @@ async function downloadVideoBody(
     // Location hop, so a public URL cannot 30x to an internal/metadata host.
     const res = await safeFetch(srcUrl, {
       signal: AbortSignal.timeout(timeoutMs), // bounded by both per-request and aggregate capture budgets
-      headers: { "User-Agent": "HyperFrames/1.0" },
+      headers: { "User-Agent": CAPTURE_USER_AGENT },
     });
     if (!res || !res.ok || !res.body) return null;
     const ct = (res.headers.get("content-type") || "").toLowerCase();

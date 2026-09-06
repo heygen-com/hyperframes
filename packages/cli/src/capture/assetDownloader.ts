@@ -10,6 +10,7 @@ import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
+import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
 
 interface DownloadBudgetOptions {
@@ -503,7 +504,7 @@ async function fetchBuffer(url: string, timeoutMs = 10_000): Promise<Buffer | nu
   try {
     const res = await safeFetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
-      headers: { "User-Agent": "HyperFrames/1.0" },
+      headers: { "User-Agent": CAPTURE_USER_AGENT },
     });
     if (!res || !res.ok) return null;
     // Reject XML/HTML error pages disguised as 200 OK (common with S3/CloudFront)

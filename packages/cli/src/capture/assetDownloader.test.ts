@@ -10,6 +10,8 @@ import {
   toStandaloneSvg,
 } from "./assetDownloader.js";
 import type { DesignTokens } from "./types.js";
+import type { IconCandidate } from "./faviconRanker.js";
+import { CAPTURE_USER_AGENT } from "./userAgent.js";
 
 describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
   it("blocks loopback, private, and metadata IPv4", () => {
@@ -187,6 +189,16 @@ describe("downloadAndRewriteFonts — attempt caps", () => {
   });
 });
 
+function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), "hf-drops-"));
+  return run(dir).finally(() => rmSync(dir, { recursive: true, force: true }));
+}
+
+/** The two fields `downloadAssets` reads off the token bundle. */
+function tokensWithNoSvgs(): DesignTokens {
+  return { svgs: [], sections: [], ogImage: "" } as unknown as DesignTokens;
+}
+
 describe("drop counts — why a referenced asset is not in the capture", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -197,11 +209,6 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
       (_, i) =>
         `@font-face { font-family: Family${i}; src: url(https://fonts${i}.example/font-${i}.woff2); }`,
     ).join("\n");
-  }
-
-  function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
-    const dir = mkdtempSync(join(tmpdir(), "hf-drops-"));
-    return run(dir).finally(() => rmSync(dir, { recursive: true, force: true }));
   }
 
   it("counts every face the budget never let it reach, not just the one it stopped on", async () => {
@@ -269,11 +276,6 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
     });
   });
 
-  /** The two fields `downloadAssets` reads off the token bundle. */
-  function tokensWithNoSvgs(): DesignTokens {
-    return { svgs: [], sections: [], ogImage: "" } as unknown as DesignTokens;
-  }
-
   it("counts an image dropped for being under the raster floor", async () => {
     // 9 KB is under the 10 KB floor. Nothing lands, and the reason is now on the record.
     await withTempDir(async (dir) => {
@@ -325,6 +327,78 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
       );
       expect(assets).toHaveLength(30);
       expect(drops["cap-reached"]).toBe(4);
+    });
+  });
+});
+
+describe("asset fetches present the same identity as the page navigation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * openai.com's declared icons, in DOM order, with the attributes the page really carries.
+   * `rankIconCandidates` puts `favicon.svg` first, so that is the file a capture must land.
+   */
+  const OPENAI_ICONS: IconCandidate[] = [
+    {
+      rel: "icon",
+      href: "https://openai.example/favicon.svg",
+      sizes: null,
+      type: "image/svg+xml",
+    },
+    {
+      rel: "icon",
+      href: "https://openai.example/favicon.ico",
+      sizes: "48x48",
+      type: "image/x-icon",
+    },
+    {
+      rel: "apple-touch-icon",
+      href: "https://openai.example/apple-icon.png",
+      sizes: "180x180",
+      type: "image/png",
+    },
+  ];
+
+  /**
+   * Measured against the real origin: `GET /favicon.svg` answers `403 text/html` to
+   * `User-Agent: HyperFrames/1.0` and `200 image/svg+xml` to the browser UA the capture
+   * already navigates with. The other two icons are served to either agent.
+   */
+  function serveLikeAnAntiBotEdge() {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      const agent = new Headers(init?.headers).get("user-agent") ?? "";
+      if (url.endsWith("/favicon.svg") && !agent.startsWith("Mozilla/")) {
+        return new Response("<html>denied</html>", {
+          status: 403,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      const body = new Uint8Array(4096);
+      return new Response(body, { status: 200, headers: { "content-type": "image/svg+xml" } });
+    });
+  }
+
+  it("lands the icon the ranker chose from an origin that refuses non-browser agents", async () => {
+    // With a bot UA the ranker's winner 403s and the capture silently falls through to the
+    // next candidate, so the file on disk is chosen by the CDN rather than by the ranker.
+    await withTempDir(async (dir) => {
+      vi.stubGlobal("fetch", serveLikeAnAntiBotEdge());
+      const { assets } = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
+      expect(assets.map((a) => a.localPath)).toEqual(["assets/favicon.svg"]);
+      expect(assets[0]?.url).toBe("https://openai.example/favicon.svg");
+    });
+  });
+
+  it("sends one User-Agent for every asset request", async () => {
+    await withTempDir(async (dir) => {
+      const fetchMock = serveLikeAnAntiBotEdge();
+      vi.stubGlobal("fetch", fetchMock);
+      await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
+      const agents = fetchMock.mock.calls.map((call) =>
+        new Headers(call[1]?.headers).get("user-agent"),
+      );
+      expect(agents).not.toHaveLength(0);
+      expect(new Set(agents)).toEqual(new Set([CAPTURE_USER_AGENT]));
     });
   });
 });
