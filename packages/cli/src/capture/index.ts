@@ -684,6 +684,14 @@ export async function captureWebsite(
       });
       assets = assetPass.assets;
       assetDrops = assetPass.drops;
+      // Which icons the site declared, what each one is, and why one became favicon.<ext>.
+      // The brand-kit consumer needs the shape to decide which tile an icon belongs in; the
+      // reason is what stops a substituted headline from being silent again.
+      writeFileSync(
+        join(outputDir, "extracted", "icons-manifest.json"),
+        JSON.stringify(assetPass.icons, null, 2),
+        "utf-8",
+      );
       phase(
         "assets",
         remainingMs() > 0 ? "completed" : "degraded",

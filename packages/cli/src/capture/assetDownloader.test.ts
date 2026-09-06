@@ -12,6 +12,7 @@ import {
 import type { DesignTokens } from "./types.js";
 import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
+import sharp from "sharp";
 
 describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
   it("blocks loopback, private, and metadata IPv4", () => {
@@ -199,6 +200,31 @@ function tokensWithNoSvgs(): DesignTokens {
   return { svgs: [], sections: [], ogImage: "" } as unknown as DesignTokens;
 }
 
+/**
+ * openai.com's declared icons, in DOM order, with the attributes the page really carries.
+ * `rankIconCandidates` puts `favicon.svg` first, so that is the file a capture must land.
+ */
+const OPENAI_ICONS: IconCandidate[] = [
+  {
+    rel: "icon",
+    href: "https://openai.example/favicon.svg",
+    sizes: null,
+    type: "image/svg+xml",
+  },
+  {
+    rel: "icon",
+    href: "https://openai.example/favicon.ico",
+    sizes: "48x48",
+    type: "image/x-icon",
+  },
+  {
+    rel: "apple-touch-icon",
+    href: "https://openai.example/apple-icon.png",
+    sizes: "180x180",
+    type: "image/png",
+  },
+];
+
 describe("drop counts — why a referenced asset is not in the capture", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -335,31 +361,6 @@ describe("asset fetches present the same identity as the page navigation", () =>
   afterEach(() => vi.unstubAllGlobals());
 
   /**
-   * openai.com's declared icons, in DOM order, with the attributes the page really carries.
-   * `rankIconCandidates` puts `favicon.svg` first, so that is the file a capture must land.
-   */
-  const OPENAI_ICONS: IconCandidate[] = [
-    {
-      rel: "icon",
-      href: "https://openai.example/favicon.svg",
-      sizes: null,
-      type: "image/svg+xml",
-    },
-    {
-      rel: "icon",
-      href: "https://openai.example/favicon.ico",
-      sizes: "48x48",
-      type: "image/x-icon",
-    },
-    {
-      rel: "apple-touch-icon",
-      href: "https://openai.example/apple-icon.png",
-      sizes: "180x180",
-      type: "image/png",
-    },
-  ];
-
-  /**
    * Measured against the real origin: `GET /favicon.svg` answers `403 text/html` to
    * `User-Agent: HyperFrames/1.0` and `200 image/svg+xml` to the browser UA the capture
    * already navigates with. The other two icons are served to either agent.
@@ -383,9 +384,9 @@ describe("asset fetches present the same identity as the page navigation", () =>
     // next candidate, so the file on disk is chosen by the CDN rather than by the ranker.
     await withTempDir(async (dir) => {
       vi.stubGlobal("fetch", serveLikeAnAntiBotEdge());
-      const { assets } = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
-      expect(assets.map((a) => a.localPath)).toEqual(["assets/favicon.svg"]);
-      expect(assets[0]?.url).toBe("https://openai.example/favicon.svg");
+      const { icons } = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
+      expect(icons.headline?.file).toBe("assets/favicon.svg");
+      expect(icons.icons[0]?.url).toBe("https://openai.example/favicon.svg");
     });
   });
 
@@ -399,6 +400,140 @@ describe("asset fetches present the same identity as the page navigation", () =>
       );
       expect(agents).not.toHaveLength(0);
       expect(new Set(agents)).toEqual(new Set([CAPTURE_USER_AGENT]));
+    });
+  });
+});
+
+describe("declared icons — keep them all, headline the bare mark", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A mark knocked out of a full-bleed rounded rect: the shape openai.com's favicon.svg has. */
+  const BADGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+    <rect width="180" height="180" rx="90" fill="#000" /><path d="M60 60h60v60H60z" fill="#fff" />
+  </svg>`;
+
+  /** One shape with transparent margins. */
+  const BARE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+    <path d="M40 40h100v100H40z" fill="#000" />
+  </svg>`;
+
+  function solidPng(alpha: number): Promise<Buffer> {
+    return sharp({
+      create: { width: 64, height: 64, channels: 4, background: { r: 20, g: 20, b: 20, alpha } },
+    })
+      .png()
+      .toBuffer();
+  }
+
+  const CONTENT_TYPE: Record<string, string> = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/vnd.microsoft.icon",
+  };
+
+  /** Serve each URL the bytes the test names for it; 404 anything unexpected. */
+  function serve(bodies: Record<string, Buffer | string>) {
+    return vi.fn(async (url: string) => {
+      const body = Object.entries(bodies).find(([suffix]) => url.endsWith(suffix))?.[1];
+      if (body === undefined) return new Response("nope", { status: 404 });
+      const ext = url.slice(url.lastIndexOf("."));
+      const bytes = typeof body === "string" ? Buffer.from(body) : body;
+      return new Response(new Uint8Array(bytes), {
+        status: 200,
+        headers: { "content-type": CONTENT_TYPE[ext] ?? "application/octet-stream" },
+      });
+    });
+  }
+
+  it("writes one file per declared icon, named for its rel and sizes", async () => {
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        serve({
+          "favicon.svg": BADGE_SVG,
+          "favicon.ico": Buffer.from("not a decodable ico"),
+          "apple-icon.png": await solidPng(1),
+        }),
+      );
+      const { icons } = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
+      expect(icons.icons.map((i) => i.file)).toEqual([
+        "assets/icon-icon-unsized.svg",
+        "assets/icon-apple-touch-icon-180x180.png",
+        "assets/icon-icon-48x48.ico",
+      ]);
+    });
+  });
+
+  it("records openai.com's icons as badges, and says the headline had no bare mark to pick", async () => {
+    // Measured against the real files: the SVG is a mark knocked out of a full-bleed disc, and
+    // the apple-touch PNG is an opaque white square, because Apple composites those onto an
+    // opaque tile. openai.com declares no bare mark at all, so the headline falls back to the
+    // ranker and the manifest has to say so rather than implying a preference was satisfied.
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        serve({
+          "favicon.svg": BADGE_SVG,
+          "favicon.ico": Buffer.from("not a decodable ico"),
+          "apple-icon.png": await solidPng(1),
+        }),
+      );
+      const { icons } = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS);
+      expect(icons.icons.map((i) => i.shape)).toEqual(["badge", "badge", "unknown"]);
+      expect(icons.headline).toMatchObject({
+        file: "assets/favicon.svg",
+        source: "assets/icon-icon-unsized.svg",
+        shape: "badge",
+      });
+      expect(icons.headline?.reason).toContain("no bare-mark candidate");
+    });
+  });
+
+  it("headlines a lower-ranked bare mark over the better-ranked badge", async () => {
+    // The ordering rule, on its own. By declared quality the SVG wins outright; by shape the
+    // PNG does, and shape is what the brand band needs. Under the old rule this lands
+    // assets/favicon.svg.
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        serve({ "favicon.svg": BADGE_SVG, "apple-icon.png": await solidPng(0) }),
+      );
+      const { icons } = await downloadAssets(tokensWithNoSvgs(), dir, [], [
+        { rel: "icon", href: "https://x.test/favicon.svg", sizes: null, type: "image/svg+xml" },
+        {
+          rel: "apple-touch-icon",
+          href: "https://x.test/apple-icon.png",
+          sizes: "180x180",
+          type: "image/png",
+        },
+      ] as IconCandidate[]);
+      expect(icons.headline).toMatchObject({
+        file: "assets/favicon.png",
+        source: "assets/icon-apple-touch-icon-180x180.png",
+        shape: "bare-mark",
+        rank: 1,
+      });
+      expect(icons.headline?.reason).toContain("bare mark preferred over 1 badge");
+    });
+  });
+
+  it("headlines the SVG when it is the bare mark", async () => {
+    await withTempDir(async (dir) => {
+      vi.stubGlobal("fetch", serve({ "favicon.svg": BARE_SVG }));
+      const { icons } = await downloadAssets(tokensWithNoSvgs(), dir, [], [
+        { rel: "icon", href: "https://x.test/favicon.svg", sizes: null, type: "image/svg+xml" },
+      ] as IconCandidate[]);
+      expect(icons.headline).toMatchObject({ file: "assets/favicon.svg", shape: "bare-mark" });
+    });
+  });
+
+  it("keeps assets/favicon.<ext> so a stem match still finds the icon", async () => {
+    await withTempDir(async (dir) => {
+      vi.stubGlobal("fetch", serve({ "favicon.svg": BARE_SVG }));
+      const { assets } = await downloadAssets(tokensWithNoSvgs(), dir, [], [
+        { rel: "icon", href: "https://x.test/favicon.svg", sizes: null, type: "image/svg+xml" },
+      ] as IconCandidate[]);
+      expect(assets.map((a) => a.localPath)).toContain("assets/favicon.svg");
     });
   });
 });

@@ -12,6 +12,7 @@ import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
+import { classifyIcon, type IconShape } from "./iconClassifier.js";
 
 interface DownloadBudgetOptions {
   remainingMs?: () => number;
@@ -90,6 +91,209 @@ export function toStandaloneSvg(outerHTML: string): string {
   return outerHTML.replace(original, tag);
 }
 
+/** One icon the page declared, as downloaded and inspected. */
+export interface IconRecord {
+  /** Path inside the capture, e.g. `assets/icon-apple-touch-icon-180x180.png`. */
+  file: string;
+  url: string;
+  rel: string;
+  sizes: string | null;
+  type: string | null;
+  /** Position in the declared-quality ranking; 0 is the best-ranked icon. */
+  rank: number;
+  shape: IconShape;
+  shapeReason: string;
+}
+
+/**
+ * Every icon a page declared, plus which one became `assets/favicon.<ext>` and why.
+ *
+ * The `reason` field is the point of this file. The downloader chooses among candidates, and a
+ * choice whose losers are invisible is indistinguishable from having had no choice at all — the
+ * failure mode that let a silent 403 substitute a worse icon without anything recording it.
+ */
+export interface IconManifest {
+  schema: "hyperframes.capture.icons.v1";
+  headline: {
+    /** The backwards-compatible stem, e.g. `assets/favicon.png`. */
+    file: string;
+    /** The `icons[].file` it was copied from, so a consumer can avoid showing it twice. */
+    source: string;
+    rank: number;
+    shape: IconShape;
+    reason: string;
+  } | null;
+  icons: IconRecord[];
+}
+
+function emptyIconManifest(): IconManifest {
+  return { schema: "hyperframes.capture.icons.v1", headline: null, icons: [] };
+}
+
+/** Icons downloaded per capture. Pages declare up to a dozen apple-touch sizes; a few is plenty. */
+const MAX_ICONS = 8;
+
+/**
+ * Headline preference, deliberately BINARY: a positively identified bare mark first, then the
+ * existing declared-quality ranking for everything else.
+ *
+ * `unknown` is not promoted above `badge`. Ranking it in between looked reasonable and is wrong:
+ * a `.ico` cannot be decoded for inspection, so on a site whose icons are all badges the
+ * undecodable legacy file would outrank the good SVG purely for being unexaminable. Absence of
+ * evidence is not evidence of a bare mark.
+ */
+const SHAPE_PREFERENCE: Record<IconShape, number> = { "bare-mark": 0, unknown: 1, badge: 1 };
+
+/** `<link rel="apple-touch-icon" sizes="180x180">` -> `icon-apple-touch-icon-180x180`. */
+function iconFileStem(icon: IconCandidate): string {
+  const slug = `${icon.rel} ${icon.sizes ?? "unsized"}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `icon-${slug || "unknown"}`;
+}
+
+function headlineReason(chosen: IconRecord, all: IconRecord[]): string {
+  const badges = all.filter((i) => i.shape === "badge").length;
+  if (chosen.shape === "bare-mark") {
+    return badges > 0
+      ? `bare mark preferred over ${badges} badge(s)`
+      : "the only candidate is a bare mark";
+  }
+  const bare = all.filter((i) => i.shape === "bare-mark").length;
+  if (bare > 0) return `best-ranked bare mark was unavailable; used a ${chosen.shape}`;
+  return `no bare-mark candidate among ${all.length} icon(s); used the best-ranked ${chosen.shape}`;
+}
+
+/**
+ * Download every icon the page declared, classify each, and copy the best onto the historical
+ * `assets/favicon.<ext>` stem.
+ *
+ * Downloading all of them rather than stopping at the first success is what makes the choice
+ * possible: shape can only be read from bytes, so a ranking that stops early can never know
+ * whether the candidate it skipped was the bare mark the brand band actually wants.
+ */
+/** A stem not yet used in this capture; sites declare the same rel+sizes pair more than once. */
+function uniqueStem(icon: IconCandidate, used: Set<string>): string {
+  const base = iconFileStem(icon);
+  let stem = base;
+  for (let n = 2; used.has(stem); n++) stem = `${base}-${n}`;
+  used.add(stem);
+  return stem;
+}
+
+/** Fetch one icon, write it under `stem`, and inspect what it is. Null when it did not arrive. */
+async function fetchAndInspectIcon(
+  icon: IconCandidate,
+  rank: number,
+  stem: string,
+  outputDir: string,
+  timeoutMs: number,
+): Promise<{ record: IconRecord; buffer: Buffer } | null> {
+  const ext = extname(new URL(icon.href).pathname) || ".ico";
+  const buffer = await fetchBuffer(icon.href, timeoutMs);
+  if (!buffer) return null;
+
+  const file = `assets/${stem}${ext}`;
+  writeFileSync(join(outputDir, file), buffer);
+  const verdict = await classifyIcon(buffer, ext);
+  return {
+    buffer,
+    record: {
+      file,
+      url: icon.href,
+      rel: icon.rel,
+      sizes: icon.sizes ?? null,
+      type: icon.type ?? null,
+      rank,
+      shape: verdict.shape,
+      shapeReason: verdict.reason,
+    },
+  };
+}
+
+/** Copy the winning icon onto the historical `assets/favicon.<ext>` stem consumers match on. */
+function promoteHeadline(
+  manifest: IconManifest,
+  bytesByFile: Map<string, Buffer>,
+  outputDir: string,
+): DownloadedAsset | null {
+  const chosen = [...manifest.icons].sort(
+    (a, b) => SHAPE_PREFERENCE[a.shape] - SHAPE_PREFERENCE[b.shape] || a.rank - b.rank,
+  )[0];
+  if (!chosen) return null;
+
+  const file = `assets/favicon${extname(chosen.file)}`;
+  writeFileSync(join(outputDir, file), bytesByFile.get(chosen.file)!);
+  manifest.headline = {
+    file,
+    source: chosen.file,
+    rank: chosen.rank,
+    shape: chosen.shape,
+    reason: headlineReason(chosen, manifest.icons),
+  };
+  return { url: chosen.url, localPath: file, type: "favicon" };
+}
+
+/**
+ * Download every icon the page declared, classify each, and promote the best one.
+ *
+ * Downloading all of them rather than stopping at the first success is what makes the choice
+ * possible: shape can only be read from bytes, so a ranking that stops early can never know
+ * whether the candidate it skipped was the bare mark the brand band actually wants.
+ */
+async function downloadDeclaredIcons(
+  faviconLinks: IconCandidate[],
+  outputDir: string,
+  drops: AssetDropCounts,
+  options: DownloadBudgetOptions,
+): Promise<{ assets: DownloadedAsset[]; manifest: IconManifest }> {
+  const ranked = rankIconCandidates(faviconLinks);
+  const attempted = ranked.slice(0, MAX_ICONS);
+  drops["cap-reached"] += ranked.length - attempted.length;
+
+  const assets: DownloadedAsset[] = [];
+  const manifest = emptyIconManifest();
+  const bytesByFile = new Map<string, Buffer>();
+  const usedStems = new Set<string>();
+
+  for (const [rank, icon] of attempted.entries()) {
+    const remainingMs = options.remainingMs?.() ?? 10_000;
+    if (remainingMs <= 0) {
+      drops["budget-exhausted"] += attempted.length - rank;
+      break;
+    }
+    try {
+      const stem = uniqueStem(icon, usedStems);
+      const got = await fetchAndInspectIcon(
+        icon,
+        rank,
+        stem,
+        outputDir,
+        Math.min(10_000, remainingMs),
+      );
+      if (!got) {
+        drops.unavailable++;
+        continue;
+      }
+      bytesByFile.set(got.record.file, got.buffer);
+      manifest.icons.push(got.record);
+      assets.push({ url: icon.href, localPath: got.record.file, type: "favicon" });
+    } catch {
+      drops.unavailable++;
+    }
+  }
+
+  try {
+    const headline = promoteHeadline(manifest, bytesByFile, outputDir);
+    if (headline) assets.push(headline);
+  } catch {
+    drops.unavailable++;
+  }
+
+  return { assets, manifest };
+}
+
 // fallow-ignore-next-line complexity
 export async function downloadAssets(
   tokens: DesignTokens,
@@ -97,13 +301,14 @@ export async function downloadAssets(
   catalogedAssets?: CatalogedAsset[],
   faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
-): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts }> {
+): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
   const assetsDir = join(outputDir, "assets");
   mkdirSync(assetsDir, { recursive: true });
 
   const assets: DownloadedAsset[] = [];
   const drops = noDrops();
   const downloadedUrls = new Set<string>();
+  let icons: IconManifest = emptyIconManifest();
 
   mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
   const usedSvgNames = new Set<string>();
@@ -135,30 +340,10 @@ export async function downloadAssets(
     }
   }
 
-  // 2. Favicon — best declared candidate first, falling back through the rest on failure.
-  const icons = rankIconCandidates(faviconLinks || []);
-  for (const [index, icon] of icons.entries()) {
-    const remainingMs = options.remainingMs?.() ?? 10_000;
-    if (remainingMs <= 0) {
-      drops["budget-exhausted"] += icons.length - index;
-      break;
-    }
-    if (!icon.href) continue;
-    try {
-      const ext = extname(new URL(icon.href).pathname) || ".ico";
-      const name = `favicon${ext}`;
-      const localPath = `assets/${name}`;
-      const buffer = await fetchBuffer(icon.href, Math.min(10_000, remainingMs));
-      if (buffer) {
-        writeFileSync(join(outputDir, localPath), buffer);
-        assets.push({ url: icon.href, localPath, type: "favicon" });
-        break;
-      }
-      drops.unavailable++;
-    } catch {
-      drops.unavailable++;
-    }
-  }
+  // 2. Icons — keep every one the page declares, then choose the headline among them.
+  const iconPass = await downloadDeclaredIcons(faviconLinks || [], outputDir, drops, options);
+  assets.push(...iconPass.assets);
+  icons = iconPass.manifest;
 
   // 3. Images — use the catalog as the single source of truth (highest resolution, deduplicated)
   // If the catalog is empty, asset download produces zero images — this is surfaced as a warning
@@ -299,7 +484,7 @@ export async function downloadAssets(
     }
   }
 
-  return { assets, drops };
+  return { assets, drops, icons };
 }
 
 /** Normalize URL for deduplication — unwrap Next.js image proxy, strip w/q params */
