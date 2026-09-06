@@ -16,12 +16,19 @@ const hooks = vi.hoisted(() => {
     swap?: () => void;
     beforeOpen?: () => void;
     beforeWrite?: () => void;
+    afterStat?: () => void;
+    forbidUnbounded: boolean;
+    bytesRead: number;
+    maxReadSize: number;
     readCount: number;
     failStat: boolean;
     failRead: boolean;
     fds: Map<number, string>;
   } = {
     target: "",
+    forbidUnbounded: false,
+    bytesRead: 0,
+    maxReadSize: Infinity,
     readCount: 1,
     failStat: false,
     failRead: false,
@@ -31,6 +38,16 @@ const hooks = vi.hoisted(() => {
 });
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
+  function beforeRead(file: number | string): void {
+    const path = typeof file === "number" ? hooks.fds.get(file) : file;
+    if (!path || !hooks.target) return;
+    if (fs.realpathSync(path) !== fs.realpathSync(hooks.target)) return;
+    if (--hooks.readCount !== 0) return;
+    const swap = hooks.swap;
+    hooks.swap = undefined;
+    swap?.();
+    if (hooks.failRead) throw new Error("read failure");
+  }
   return {
     ...fs,
     openSync: (...args: Parameters<typeof fs.openSync>) => {
@@ -43,22 +60,28 @@ vi.mock("node:fs", async (importOriginal) => {
     },
     fstatSync: (...args: Parameters<typeof fs.fstatSync>) => {
       if (hooks.failStat) throw new Error("stat failure");
-      return fs.fstatSync(...args);
+      const stat = fs.fstatSync(...args);
+      const afterStat = hooks.afterStat;
+      hooks.afterStat = undefined;
+      afterStat?.();
+      return stat;
     },
     readFileSync: (...args: Parameters<typeof fs.readFileSync>) => {
-      const path = typeof args[0] === "number" ? hooks.fds.get(args[0]) : String(args[0]);
-      if (
-        path &&
-        hooks.target &&
-        fs.realpathSync(path) === fs.realpathSync(hooks.target) &&
-        --hooks.readCount === 0
-      ) {
-        const swap = hooks.swap;
-        hooks.swap = undefined;
-        swap?.();
-        if (hooks.failRead) throw new Error("read failure");
-      }
+      if (hooks.forbidUnbounded) throw new Error("unbounded directory read");
+      beforeRead(typeof args[0] === "number" ? args[0] : String(args[0]));
       return fs.readFileSync(...args);
+    },
+    readSync: (
+      fd: number,
+      buffer: Buffer,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => {
+      beforeRead(fd);
+      const count = fs.readSync(fd, buffer, offset, Math.min(length, hooks.maxReadSize), position);
+      hooks.bytesRead += count;
+      return count;
     },
     writeFileSync: (...args: Parameters<typeof fs.writeFileSync>) => {
       const beforeWrite = hooks.beforeWrite;
@@ -86,6 +109,10 @@ beforeEach(() => {
     swap: undefined,
     beforeOpen: undefined,
     beforeWrite: undefined,
+    afterStat: undefined,
+    forbidUnbounded: false,
+    bytesRead: 0,
+    maxReadSize: Infinity,
     readCount: 1,
     failStat: false,
     failRead: false,
@@ -148,6 +175,39 @@ describe("catalog source reads", () => {
     };
     expect(hostItemDirectory(project, out.dir, "/item/")).toBe("");
     expect(hooks.beforeOpen).toBeUndefined();
+    expect(fs.existsSync(out.dir)).toBe(false);
+  });
+  it("bounds a sparse oversized source to the remaining directory budget plus one byte", () => {
+    file("a.png", "already counted");
+    const path = file("large.mp4", "");
+    fs.truncateSync(path, 32 * 1024 * 1024);
+    hooks.forbidUnbounded = true;
+    expect(hostItemDirectory(project, out.dir, "/item/")).toBe("");
+    expect(hooks.bytesRead).toBe(MAX_HOSTED_DIRECTORY_BYTES + 1);
+    expect(fs.existsSync(out.dir)).toBe(false);
+  });
+  it("bounds a file that grows after its descriptor stat", () => {
+    const path = file("asset.webm", "x");
+    hooks.afterStat = () => fs.truncateSync(path, MAX_HOSTED_DIRECTORY_BYTES * 2);
+    hooks.forbidUnbounded = true;
+    expect(hostItemDirectory(project, out.dir, "/item/")).toBe("");
+    expect(hooks.afterStat).toBeUndefined();
+    expect(hooks.bytesRead).toBe(MAX_HOSTED_DIRECTORY_BYTES + 1);
+    expect(fs.existsSync(out.dir)).toBe(false);
+  });
+  it("handles short descriptor reads without truncating a directory asset", () => {
+    file("font.woff2");
+    hooks.forbidUnbounded = true;
+    hooks.maxReadSize = 2;
+    expect(hostItemDirectory(project, out.dir, "/item/")).toBe("/item/");
+    expect(fs.readFileSync(join(out.dir, "font.woff2"), "utf8")).toBe("checked");
+    expect(hooks.bytesRead).toBe(7);
+  });
+  it("closes a directory source descriptor when its bounded read fails", () => {
+    hooks.target = file("asset.png");
+    hooks.failRead = true;
+    expect(() => hostItemDirectory(project, out.dir, "/item/")).toThrow("read failure");
+    expect(hooks.fds.size).toBe(0);
     expect(fs.existsSync(out.dir)).toBe(false);
   });
   it("leaves existing output untouched when collected files exceed the budget", () => {

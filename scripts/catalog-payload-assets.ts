@@ -13,6 +13,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readSync,
   statSync,
   writeFileSync,
   realpathSync,
@@ -152,8 +153,26 @@ function isMissingFile(error: unknown): boolean {
   );
 }
 
+/** Keep oversized or concurrently growing directory assets within the read budget. */
+function readWithinBudget(fd: number, maxBytes: number): Buffer<ArrayBuffer> {
+  const chunks: Buffer<ArrayBuffer>[] = [];
+  let remaining = maxBytes + 1;
+  while (remaining > 0) {
+    const chunk = Buffer.alloc(Math.min(64 * 1024, remaining));
+    const count = readSync(fd, chunk, 0, chunk.length, null);
+    if (count === 0) break;
+    chunks.push(chunk.subarray(0, count));
+    remaining -= count;
+  }
+  return Buffer.concat(chunks);
+}
+
 /** Read one checked file from the prepared project, including internal links. */
-function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | null {
+function readProjectFile(
+  root: string,
+  filePath: string,
+  maxBytes?: number,
+): Buffer<ArrayBuffer> | null {
   if (!isWithin(root, filePath)) return null;
   let source: string;
   try {
@@ -174,7 +193,7 @@ function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | 
   }
   try {
     if (!fstatSync(fd).isFile()) return null;
-    return readFileSync(fd);
+    return maxBytes === undefined ? readFileSync(fd) : readWithinBudget(fd, maxBytes);
   } finally {
     closeSync(fd);
   }
@@ -353,7 +372,11 @@ export function hostItemDirectory(projectDir: string, destDir: string, urlBase: 
   const files = new Map<string, Buffer<ArrayBuffer>>();
   let total = 0;
   for (const path of hostedPaths(projectDir)) {
-    const bytes = readProjectFile(projectDir, join(projectDir, path));
+    const bytes = readProjectFile(
+      projectDir,
+      join(projectDir, path),
+      MAX_HOSTED_DIRECTORY_BYTES - total,
+    );
     if (bytes === null) continue;
     total += bytes.length;
     if (total > MAX_HOSTED_DIRECTORY_BYTES) return "";
