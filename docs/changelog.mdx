@@ -9,6 +9,42 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.30"
+  description="Released - 2026-09-06"
+  tags={["Release", "CLI", "Render", "Core"]}
+>
+Site capture now keeps every icon a page declares and fetches assets as the same browser that loaded the page. The rest of this release hardens file handling and bounds slow scans across core, engine, studio and producer.
+
+## Features
+
+- **CLI:** Keep every icon a site declares and headline the bare mark ([1fa31d5df](https://github.com/heygen-com/hyperframes/commit/1fa31d5dfb9c2e2e27fd9f745e5bd52f3dff0663), [#3727](https://github.com/heygen-com/hyperframes/pull/3727)).
+
+## Fixes
+
+- **CLI:** Clarify publish visibility and claim links ([672ea844a](https://github.com/heygen-com/hyperframes/commit/672ea844a5e66c574d367163741bdf7b7adea367), [#3730](https://github.com/heygen-com/hyperframes/pull/3730)).
+- **CLI:** Pin Studio bundle, signature and runtime file reads ([97fde27df](https://github.com/heygen-com/hyperframes/commit/97fde27df741ba82358f4e518a37bb59e9e7c250), [#3728](https://github.com/heygen-com/hyperframes/pull/3728)).
+- **CLI:** Fetch a page's assets as the same agent that loaded the page ([7a07ea9ac](https://github.com/heygen-com/hyperframes/commit/7a07ea9ac34804e77cd054ca10ea84f3e0a0c774), [#3726](https://github.com/heygen-com/hyperframes/pull/3726)).
+- **Render:** Serve engine and producer files through checked descriptors ([be86a1ec7](https://github.com/heygen-com/hyperframes/commit/be86a1ec7d5c35d31c81524983ac377e4dca8582), [#3725](https://github.com/heygen-com/hyperframes/pull/3725)).
+- **CLI:** Read caption images through checked file descriptors ([41551c7ac](https://github.com/heygen-com/hyperframes/commit/41551c7acbb4ddf37dffdb6d1020e824da1ca1a0), [#3724](https://github.com/heygen-com/hyperframes/pull/3724)).
+- **CLI:** Publish cached synthesis script exclusively ([cfdaccb7e](https://github.com/heygen-com/hyperframes/commit/cfdaccb7e612f92572cc99ebcf189e9a7dfeb6b2), [#3722](https://github.com/heygen-com/hyperframes/pull/3722)).
+- **CLI:** Preserve concurrent scaffold config creation ([b49fba8de](https://github.com/heygen-com/hyperframes/commit/b49fba8dea7453a3cde2517aaded25475463ccd2), [#3721](https://github.com/heygen-com/hyperframes/pull/3721)).
+- **CLI:** Publish capture metadata without overwriting files ([e6d2816e1](https://github.com/heygen-com/hyperframes/commit/e6d2816e1d6efa9a15439f37fafaa166e1181b38), [#3720](https://github.com/heygen-com/hyperframes/pull/3720)).
+- **Core:** Bound timing compiler opening tag scans ([b94b5bde5](https://github.com/heygen-com/hyperframes/commit/b94b5bde5812da876ef6feb3f43a74fd2a020c01), [#3719](https://github.com/heygen-com/hyperframes/pull/3719)).
+- **Producer:** Bound existing font-face recognition scans ([3610d94a9](https://github.com/heygen-com/hyperframes/commit/3610d94a9850aebb5f530f1457d46b350de45024), [#3718](https://github.com/heygen-com/hyperframes/pull/3718)).
+- **Core:** Bound inert region scans in timing compiler ([e78da303f](https://github.com/heygen-com/hyperframes/commit/e78da303f4392118883f9b69e85ca35edc649ddf), [#3717](https://github.com/heygen-com/hyperframes/pull/3717)).
+- **Studio Server:** Bound preview variable insertion scans ([fe2cc9205](https://github.com/heygen-com/hyperframes/commit/fe2cc92050e0f06b07fb13757ca18ba2e72212e1), [#3715](https://github.com/heygen-com/hyperframes/pull/3715)).
+- **Studio:** Match style attributes with explicit quote boundaries ([7d7003aa6](https://github.com/heygen-com/hyperframes/commit/7d7003aa648c6f98cb62ebe2f357acd3f3710b1f), [#3712](https://github.com/heygen-com/hyperframes/pull/3712)).
+- **Studio Server:** Simplify normalized group ID trimming ([e9250fcc4](https://github.com/heygen-com/hyperframes/commit/e9250fcc45db4adf2a1a9994ba08c015e369646f), [#3711](https://github.com/heygen-com/hyperframes/pull/3711)).
+- **Engine:** Isolate WAV staging in a private directory ([51a3c7e24](https://github.com/heygen-com/hyperframes/commit/51a3c7e24569bac431295fcee5f94b7c1942ace6), [#3709](https://github.com/heygen-com/hyperframes/pull/3709)).
+- **Studio:** Avoid inline style regex backtracking ([c564daf21](https://github.com/heygen-com/hyperframes/commit/c564daf21054a9715c6cdfebc60ab1840152bace), [#3708](https://github.com/heygen-com/hyperframes/pull/3708)).
+- **Core:** Avoid grade stats regex backtracking ([eec04340b](https://github.com/heygen-com/hyperframes/commit/eec04340b3535da024126629b54033afedfc42b4), [#3706](https://github.com/heygen-com/hyperframes/pull/3706)).
+- **Engine:** Avoid transform regex backtracking ([e5d1d9bf0](https://github.com/heygen-com/hyperframes/commit/e5d1d9bf0e3016fd0bac9981b1f40b03f316da84), [#3704](https://github.com/heygen-com/hyperframes/pull/3704)).
+- **Engine:** Isolate chunked encode temporary files ([f13037ecd](https://github.com/heygen-com/hyperframes/commit/f13037ecd4cdf115fb2f644e294bb9d4b3d3d145), [#3680](https://github.com/heygen-com/hyperframes/pull/3680)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.29...v0.8.30).
+</Update>
+
+<Update
   label="HyperFrames v0.8.29"
   description="Released - 2026-09-05"
   tags={["Release", "Studio"]}
