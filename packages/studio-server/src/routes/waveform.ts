@@ -6,6 +6,7 @@ import {
   decodeAudioPeaks,
   buildWaveformCacheKey,
   writeWaveformCache,
+  isWaveformCacheDirectory,
 } from "../helpers/waveform.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -25,13 +26,13 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     // asset in place invalidates its peaks instead of drawing the old ones.
     const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
 
-    if (existsSync(cachePath)) {
-      try {
+    try {
+      if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) {
         const peaks = JSON.parse(readFileSync(cachePath, "utf-8")) as number[];
         return c.json({ peaks });
-      } catch {
-        // corrupt cache — regenerate
       }
+    } catch {
+      // corrupt or inaccessible cache — regenerate
     }
 
     let peaks: number[];

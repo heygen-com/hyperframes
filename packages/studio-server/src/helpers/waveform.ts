@@ -3,6 +3,7 @@ import {
   existsSync,
   writeFileSync,
   mkdirSync,
+  lstatSync,
   mkdtempSync,
   renameSync,
   rmSync,
@@ -105,22 +106,37 @@ export async function generateWaveformCache(projectDir: string, assetPath: strin
   const stats = statSync(audioPath);
   const cacheDir = join(projectDir, ".waveform-cache");
   const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
-  if (existsSync(cachePath)) return;
+  if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) return;
 
   const peaks = await decodeAudioPeaks(audioPath);
   writeWaveformCache(cachePath, peaks);
 }
 
+export function isWaveformCacheDirectory(cacheDir: string): boolean {
+  return lstatSync(cacheDir, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
 /** Publish complete peaks without following a replaced cache-file symlink. */
 export function writeWaveformCache(cachePath: string, peaks: number[]): void {
   const cacheDir = dirname(cachePath);
-  mkdirSync(cacheDir, { recursive: true });
+  try {
+    mkdirSync(cacheDir, { mode: 0o700 });
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+  }
+  if (!isWaveformCacheDirectory(cacheDir)) {
+    throw new Error("Waveform cache must be a directory, not a symlink");
+  }
   const stagingDir = mkdtempSync(join(cacheDir, ".waveform-"));
   try {
     const stagingPath = join(stagingDir, "peaks.json");
     writeFileSync(stagingPath, JSON.stringify(peaks), { flag: "wx" });
     renameSync(stagingPath, cachePath);
   } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
+    try {
+      rmSync(stagingDir, { recursive: true, force: true });
+    } catch {
+      // Cleanup must not mask a write error or fail an already published cache.
+    }
   }
 }

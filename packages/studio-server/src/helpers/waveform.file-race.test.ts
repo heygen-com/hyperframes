@@ -15,7 +15,8 @@ const hooks = vi.hoisted(() => {
     failDecode: boolean;
     failWrite: boolean;
     failRename: boolean;
-  } = { failDecode: false, failWrite: false, failRename: false };
+    failCleanup: boolean;
+  } = { failDecode: false, failWrite: false, failRename: false, failCleanup: false };
   return state;
 });
 vi.mock("node:child_process", async () => {
@@ -46,6 +47,10 @@ vi.mock("node:fs", async (importOriginal) => {
       }
       return fs.writeFileSync(...args);
     },
+    rmSync: (...args: Parameters<typeof fs.rmSync>) => {
+      if (hooks.failCleanup) throw new Error("cache cleanup failed");
+      return fs.rmSync(...args);
+    },
     renameSync: (...args: Parameters<typeof fs.renameSync>) => {
       if (hooks.failRename) throw new Error("cache rename failed");
       return fs.renameSync(...args);
@@ -66,6 +71,7 @@ beforeEach(() => {
     failDecode: false,
     failWrite: false,
     failRename: false,
+    failCleanup: false,
   });
   projectDir = fs.mkdtempSync(join(tmpdir(), "hf-waveform-test-"));
   fs.writeFileSync(join(projectDir, "audio.wav"), "audio");
@@ -127,6 +133,52 @@ for (const caller of ["helper", "route"]) {
         ]);
       },
     );
+
+    it.each([true, false])(
+      "rejects a cache-directory symlink (target exists: %s)",
+      async (exists) => {
+        const outside = fs.mkdtempSync(join(tmpdir(), "hf-waveform-outside-"));
+        const target = join(outside, "cache");
+        const outsideCache = join(
+          target,
+          buildWaveformCacheKey("audio.wav", fs.statSync(join(projectDir, "audio.wav"))),
+        );
+        if (exists) {
+          fs.mkdirSync(target);
+          fs.writeFileSync(outsideCache, "untouched");
+        }
+        fs.symlinkSync(target, cacheDir, process.platform === "win32" ? "junction" : "dir");
+        try {
+          if (caller === "helper")
+            await expect(generateWaveformCache(projectDir, "audio.wav")).rejects.toThrow();
+          else {
+            const response = await request();
+            expect(response.status).toBe(200);
+            expect((await response.json()).peaks).toHaveLength(4000);
+          }
+          if (exists) {
+            expect(fs.readFileSync(outsideCache, "utf8")).toBe("untouched");
+            expect(fs.readdirSync(target)).toHaveLength(1);
+          } else expect(fs.existsSync(target)).toBe(false);
+        } finally {
+          fs.rmSync(outside, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it("rejects a cache-directory symlink planted during decoding", async () => {
+      const outside = fs.mkdtempSync(join(tmpdir(), "hf-waveform-outside-"));
+      hooks.decode = () =>
+        fs.symlinkSync(outside, cacheDir, process.platform === "win32" ? "junction" : "dir");
+      try {
+        if (caller === "helper")
+          await expect(generateWaveformCache(projectDir, "audio.wav")).rejects.toThrow();
+        else expect((await request()).status).toBe(200);
+        expect(fs.readdirSync(outside)).toEqual([]);
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
+    });
 
     it("reuses an existing cache without decoding", async () => {
       seedCache("[0.25,1]");
@@ -201,4 +253,18 @@ it("keeps helper skipping, route 404s and decode failures unchanged", async () =
   await expect(generateWaveformCache(projectDir, "audio.wav")).resolves.toBeUndefined();
   expect((await request()).status).toBe(404);
   expect(fs.existsSync(cacheDir)).toBe(false);
+});
+
+it("cleanup failure does not turn a successful publication into a helper error", async () => {
+  hooks.failCleanup = true;
+  await expect(generateWaveformCache(projectDir, "audio.wav")).resolves.toBeUndefined();
+  expect(readPeaks()).toHaveLength(4000);
+});
+it("cleanup failure does not mask the original write error", async () => {
+  hooks.failWrite = true;
+  hooks.failCleanup = true;
+  await expect(generateWaveformCache(projectDir, "audio.wav")).rejects.toThrow(
+    "cache write failed",
+  );
+  expect(fs.existsSync(cachePath)).toBe(false);
 });
