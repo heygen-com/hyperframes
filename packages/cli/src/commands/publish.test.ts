@@ -11,6 +11,7 @@ vi.mock("../utils/publishProject.js", async (importOriginal) => ({
 }));
 
 import publishCommand, { examples, parseUpdateTarget } from "./publish.js";
+import { ensureProjectId } from "../utils/projectLink.js";
 
 describe("parseUpdateTarget", () => {
   it("extracts the id from a full published URL", () => {
@@ -95,20 +96,23 @@ describe("publish visibility messaging", () => {
   async function runPublish(options: {
     public: boolean;
     claimed?: boolean;
-    update?: string;
+    inPlace?: boolean;
   }): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-visibility-"));
     writeFileSync(
       join(project, "index.html"),
       `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
     );
+    // "Updated in place" is decided by the response echoing the id the directory already
+    // resolves to — no --update flag required, which is how a plain re-publish reaches it.
+    const projectId = options.inPlace === true ? ensureProjectId(project) : "project-id";
     publishState.publish.mockReset();
     publishState.publish.mockResolvedValue({
       title: "test",
       fileCount: 1,
       claimed: options.claimed ?? true,
-      projectId: "project-id",
-      url: "https://hyperframes.dev/p/project-id",
+      projectId,
+      url: `https://hyperframes.dev/p/${projectId}`,
       claimToken: "claim-secret",
     });
     const lines: string[] = [];
@@ -118,13 +122,7 @@ describe("publish visibility messaging", () => {
 
     try {
       await publishCommand.run?.({
-        args: {
-          dir: project,
-          yes: true,
-          public: options.public,
-          proxy: false,
-          update: options.update,
-        },
+        args: { dir: project, yes: true, public: options.public, proxy: false },
       } as never);
       return lines.join("\n");
     } finally {
@@ -151,10 +149,12 @@ describe("publish visibility messaging", () => {
     },
   );
 
-  // A re-publish without --public sends no visibility, so the server keeps the project's
-  // existing setting. Claiming "Private" here would tell someone a public link is locked down.
-  it("does not claim private when updating a project in place without --public", async () => {
-    const output = await runPublish({ public: false, update: "project-id" });
+  // A re-publish without --public sends no visibility, so the server keeps whatever the
+  // project already had. Claiming "Private" here would tell someone a public link is locked
+  // down. This is the plain `hyperframes publish` path in an already-published directory,
+  // not just --update — the same branch serves all three routes to an in-place update.
+  it("does not claim private when re-publishing in place without --public", async () => {
+    const output = await runPublish({ public: false, inPlace: true });
 
     expect(output).toContain("Requested visibility");
     expect(output).toContain("Unchanged — keeps this project's current setting");
