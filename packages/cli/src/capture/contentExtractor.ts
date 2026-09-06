@@ -9,7 +9,15 @@
  */
 
 import type { Page } from "puppeteer-core";
-import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  statSync,
+  readFileSync,
+  openSync,
+  fstatSync,
+  closeSync,
+} from "node:fs";
 import { basename, join } from "node:path";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
@@ -446,9 +454,15 @@ export async function captionImagesWithGemini(
       const results = await Promise.allSettled(
         batch.map(async (file: string) => {
           const filePath = join(outputDir, "assets", file);
-          const stat = statSync(filePath);
-          if (stat.size > 4_000_000) return { file, caption: "" }; // skip images > 4 MB (provider inline limit)
-          const buffer = readFileSync(filePath);
+          const fd = openSync(filePath, "r");
+          let buffer: Buffer;
+          try {
+            const stat = fstatSync(fd);
+            if (stat.size > 4_000_000) return { file, caption: "" }; // skip images > 4 MB (provider inline limit)
+            buffer = readFileSync(fd);
+          } finally {
+            closeSync(fd);
+          }
           const base64 = buffer.toString("base64");
           const ext = file.split(".").pop()?.toLowerCase() || "png";
           const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
