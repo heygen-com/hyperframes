@@ -89,9 +89,10 @@ describe("project entry reads", () => {
     "reads the checked file when %s is replaced",
     (entry) => {
       hooks.target = writeEntry(entry);
-      const replacement = join(root, "replacement.html");
-      fs.writeFileSync(replacement, "<html>unchecked</html>");
-      hooks.swap = () => fs.renameSync(replacement, hooks.target);
+      hooks.swap = () => {
+        fs.renameSync(hooks.target, join(root, "original.html"));
+        fs.writeFileSync(hooks.target, "<html>unchecked</html>");
+      };
       expect(prepare(entry === "preferred.html" ? entry : undefined)).toEqual(expected(entry));
       expect(hooks.swap).toBeUndefined();
     },
