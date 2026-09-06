@@ -3,15 +3,32 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { createStudioServer, type StudioServer } from "./studioServer.js";
+import {
+  createStudioServer,
+  loadPreviewServerBuildSignature,
+  type StudioServer,
+} from "./studioServer.js";
 
 const hooks = vi.hoisted(() => ({
   studioDir: "",
+  runtimeDir: "",
+  ignoreNextExists: "",
+  useRuntimeFallback: false,
   checked: (_path: fs.PathLike) => {},
   beforeRead: () => {},
   opened: new Map<number, fs.PathLike>(),
   active: new Set<number>(),
 }));
+
+vi.mock("./runtimeSource.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./runtimeSource.js")>();
+  return {
+    ...actual,
+    loadRuntimeSource: () =>
+      hooks.useRuntimeFallback ? Promise.resolve(null) : actual.loadRuntimeSource(),
+    loadRuntimeSourceSignature: () => Promise.resolve("stable-runtime-signature"),
+  };
+});
 
 vi.mock("node:path", async (importOriginal) => {
   const actual = await importOriginal<typeof path>();
@@ -25,6 +42,12 @@ vi.mock("node:path", async (importOriginal) => {
         parts[1] === "studio"
       )
         return hooks.studioDir;
+      if (
+        hooks.runtimeDir &&
+        ["hyperframe-runtime.js", "hyperframe.runtime.iife.js"].includes(parts.at(-1) ?? "")
+      ) {
+        return actual.resolve(hooks.runtimeDir, parts.at(-1) ?? "");
+      }
       return actual.resolve(...parts);
     },
   };
@@ -36,7 +59,8 @@ vi.mock("node:fs", async (importOriginal) => {
     ...actual,
     existsSync: (file: fs.PathLike) => {
       const exists = actual.existsSync(file);
-      if (exists) hooks.checked(file);
+      if (file === hooks.ignoreNextExists) hooks.ignoreNextExists = "";
+      else if (exists) hooks.checked(file);
       return exists;
     },
     openSync: (file: fs.PathLike, flags: number | string) => {
@@ -73,6 +97,9 @@ describe("Studio bundle file reads", () => {
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(tmpdir(), "hf-studio-static-"));
     hooks.studioDir = path.join(root, "studio");
+    hooks.runtimeDir = path.join(root, "runtime");
+    fs.mkdirSync(hooks.runtimeDir);
+    fs.writeFileSync(path.join(hooks.runtimeDir, "hyperframe-runtime.js"), "checked runtime");
     const projectDir = path.join(root, "project");
     fs.mkdirSync(projectDir);
     fs.mkdirSync(hooks.studioDir);
@@ -94,6 +121,9 @@ describe("Studio bundle file reads", () => {
     vi.restoreAllMocks();
     fs.rmSync(root, { recursive: true, force: true });
     hooks.studioDir = "";
+    hooks.runtimeDir = "";
+    hooks.ignoreNextExists = "";
+    hooks.useRuntimeFallback = false;
   });
   function expectClosed() {
     expect(hooks.opened.size).toBeGreaterThan(0);
@@ -129,6 +159,49 @@ describe("Studio bundle file reads", () => {
     expect(response.headers.get("content-type")).toContain(mime);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.text()).toBe("");
+    expectClosed();
+  });
+
+  it("hashes the checked Studio index despite replacement", async () => {
+    const file = path.join(hooks.studioDir, "index.html");
+    const expected = await loadPreviewServerBuildSignature();
+    hooks.ignoreNextExists = file; // bundle selection precedes the content read
+    hooks.checked = (checked) => {
+      if (checked !== file) return;
+      hooks.checked = () => {};
+      fs.renameSync(file, path.join(root, "original-index"));
+      fs.writeFileSync(file, "replacement index");
+    };
+    expect(await loadPreviewServerBuildSignature()).toBe(expected);
+    expectClosed();
+  });
+
+  it("serves the checked runtime fallback despite replacement", async () => {
+    hooks.useRuntimeFallback = true;
+    const file = path.join(hooks.runtimeDir, "hyperframe-runtime.js");
+    hooks.checked = (checked) => {
+      if (checked !== file) return;
+      hooks.checked = () => {};
+      fs.renameSync(file, path.join(root, "original-runtime"));
+      fs.writeFileSync(file, "replacement runtime");
+    };
+    const response = await server.app.request("/api/runtime.js");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/javascript");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).toBe("checked runtime");
+    expectClosed();
+  });
+
+  it.each(["signature", "runtime"])("closes a failed %s read", async (kind) => {
+    hooks.useRuntimeFallback = true;
+    hooks.beforeRead = () => {
+      throw new Error("Injected read failure");
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    if (kind === "signature")
+      await expect(loadPreviewServerBuildSignature()).rejects.toThrow("Injected read failure");
+    else expect((await server.app.request("/api/runtime.js")).status).toBe(500);
     expectClosed();
   });
 

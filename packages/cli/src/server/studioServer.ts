@@ -7,18 +7,9 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  statSync,
-  unlinkSync,
-  openSync,
-  fstatSync,
-  closeSync,
-  constants,
-} from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
+import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
   shouldWatchProjectFile,
@@ -324,10 +315,9 @@ export interface StudioServer {
 export async function loadPreviewServerBuildSignature(): Promise<string> {
   const runtimeSignature = await loadRuntimeSourceSignature();
   const studioBundle = resolveStudioBundle();
-  const studioIndex =
-    studioBundle.available && existsSync(studioBundle.indexPath)
-      ? readFileSync(studioBundle.indexPath, "utf-8")
-      : "";
+  const studioIndex = studioBundle.available
+    ? (readBundleFile(studioBundle.indexPath)?.toString("utf-8") ?? "")
+    : "";
   return hashSignatureParts([
     version,
     runtimeSignature,
@@ -370,31 +360,6 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
       },
     );
     writeFileSync(absPath, content, "utf-8");
-  }
-}
-
-function readStudioFile(filePath: string): Buffer<ArrayBuffer> | null {
-  let fd: number;
-  try {
-    // Check named pipes without waiting for a writer to connect.
-    fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
-    )
-      return null;
-    // Classify platform-specific directory/socket errors after a failed open.
-    // No pathname read follows this check.
-    if (!statSync(filePath, { throwIfNoEntry: false })?.isFile()) return null;
-    throw error;
-  }
-  try {
-    if (!fstatSync(fd).isFile()) return null;
-    return readFileSync(fd);
-  } finally {
-    closeSync(fd);
   }
 }
 
@@ -769,8 +734,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/api/runtime.js", (c) => {
     const serve = async () => {
       const runtimeSource =
-        (await loadRuntimeSource()) ??
-        (existsSync(runtimePath) ? readFileSync(runtimePath, "utf-8") : null);
+        (await loadRuntimeSource()) ?? readBundleFile(runtimePath)?.toString("utf-8") ?? null;
       if (!runtimeSource) return c.text("runtime not available", 404);
       return c.body(runtimeSource, 200, {
         "Content-Type": "text/javascript",
@@ -912,7 +876,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Studio SPA static files
   const serveStudioStaticFile = (c: Context) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
-    const content = readStudioFile(filePath);
+    const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
       headers: { "Content-Type": getMimeType(filePath), "Cache-Control": "no-store" },
@@ -941,7 +905,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // SPA fallback
   app.get("*", (c) => {
     const indexPath = resolve(studioDir, "index.html");
-    const indexContent = readStudioFile(indexPath);
+    const indexContent = readBundleFile(indexPath);
     if (indexContent === null) {
       return c.html(
         `<!doctype html>
