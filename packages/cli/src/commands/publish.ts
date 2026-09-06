@@ -207,13 +207,15 @@ export default defineCommand({
       publishSpinner.stop(c.success("Project published"));
 
       console.log();
-      console.log(`  ${c.dim("Project")}    ${c.accent(published.title)}`);
-      console.log(`  ${c.dim("Files")}      ${String(published.fileCount)}`);
+      console.log(`  ${c.dim("Project")}              ${c.accent(published.title)}`);
+      console.log(`  ${c.dim("Files")}                ${String(published.fileCount)}`);
       if (proxyBakeManifest) {
-        console.log(`  ${c.dim("Proxies")}    ${String(proxyBakeManifest.proxied.length)} baked`);
+        console.log(
+          `  ${c.dim("Proxies")}              ${String(proxyBakeManifest.proxied.length)} baked`,
+        );
         if (proxyBakeManifest.skippedAlpha.length > 0) {
           console.log(
-            `  ${c.dim("Proxy note")} ${String(proxyBakeManifest.skippedAlpha.length)} alpha source(s) kept original`,
+            `  ${c.dim("Proxy note")}           ${String(proxyBakeManifest.skippedAlpha.length)} alpha source(s) kept original`,
           );
         }
       }
@@ -221,16 +223,24 @@ export default defineCommand({
       if (published.claimed) {
         // The server returns the same id on an in-place update, a fresh id on create.
         const updatedInPlace = published.projectId === requestedProjectId;
-        console.log(`  ${c.dim("URL")}        ${c.accent(published.url)}`);
+        console.log(`  ${c.dim("URL")}                  ${c.accent(published.url)}`);
+        // The CLI only ever states what it ASKED for: no response field carries the project's
+        // actual visibility. A re-publish without --public sends no visibility at all, so the
+        // server keeps whatever the project already had — saying "Private" there would claim
+        // a state we neither requested nor observed.
+        const requestedVisibility =
+          args.public === true
+            ? "Public — anyone with the URL"
+            : updatedInPlace
+              ? "Unchanged — keeps this project's current setting"
+              : "Private — authentication and access required";
+        console.log(`  ${c.dim("Requested visibility")} ${c.accent(requestedVisibility)}`);
         console.log(
-          `  ${c.dim("Visibility")} ${c.accent(args.public === true ? "Public — anyone with the URL" : "Private — authentication and access required")}`,
-        );
-        console.log(
-          `  ${c.dim("Status")}     ${c.accent(updatedInPlace ? "Updated existing project" : "Created new project")}`,
+          `  ${c.dim("Status")}               ${c.accent(updatedInPlace ? "Updated existing project" : "Created new project")}`,
         );
         if (args.public !== true) {
           console.log(
-            `  ${c.dim("Tip")}        ${c.dim("Re-publish with --public to allow anyone with the URL.")}`,
+            `  ${c.dim("Tip")}                  ${c.dim("Re-publish with --public to allow anyone with the URL.")}`,
           );
         }
         // Warn whenever we aimed at a KNOWN existing project (an explicit --update target or

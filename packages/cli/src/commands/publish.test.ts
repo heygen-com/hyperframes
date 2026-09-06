@@ -92,7 +92,11 @@ describe("publish default-entry preflight", () => {
 });
 
 describe("publish visibility messaging", () => {
-  async function runPublish(options: { public: boolean; claimed?: boolean }): Promise<string> {
+  async function runPublish(options: {
+    public: boolean;
+    claimed?: boolean;
+    update?: string;
+  }): Promise<string> {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-visibility-"));
     writeFileSync(
       join(project, "index.html"),
@@ -114,7 +118,13 @@ describe("publish visibility messaging", () => {
 
     try {
       await publishCommand.run?.({
-        args: { dir: project, yes: true, public: options.public, proxy: false },
+        args: {
+          dir: project,
+          yes: true,
+          public: options.public,
+          proxy: false,
+          update: options.update,
+        },
       } as never);
       return lines.join("\n");
     } finally {
@@ -135,11 +145,22 @@ describe("publish visibility messaging", () => {
         expect.any(String),
         expect.objectContaining({ public: isPublic }),
       );
-      expect(output).toContain("Visibility");
+      expect(output).toContain("Requested visibility");
       expect(output).toContain(label);
       if (hint) expect(output).toContain(hint);
     },
   );
+
+  // A re-publish without --public sends no visibility, so the server keeps the project's
+  // existing setting. Claiming "Private" here would tell someone a public link is locked down.
+  it("does not claim private when updating a project in place without --public", async () => {
+    const output = await runPublish({ public: false, update: "project-id" });
+
+    expect(output).toContain("Requested visibility");
+    expect(output).toContain("Unchanged — keeps this project's current setting");
+    expect(output).toContain("Updated existing project");
+    expect(output).not.toContain("Private — authentication and access required");
+  });
 
   it("labels an authentication-required anonymous URL as a claim URL", async () => {
     const output = await runPublish({ public: false, claimed: false });
