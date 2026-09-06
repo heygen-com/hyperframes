@@ -10,7 +10,7 @@ vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   publishProjectArchive: publishState.publish,
 }));
 
-import publishCommand, { parseUpdateTarget } from "./publish.js";
+import publishCommand, { examples, parseUpdateTarget } from "./publish.js";
 
 describe("parseUpdateTarget", () => {
   it("extracts the id from a full published URL", () => {
@@ -88,5 +88,72 @@ describe("publish default-entry preflight", () => {
     expect(output).toContain("compositions/card.html");
     expect(output).not.toContain("hyperframes publish <project>/compositions");
     expect(output).toContain("publish accepts project directories, not individual HTML files");
+  });
+});
+
+describe("publish visibility messaging", () => {
+  async function runPublish(options: {
+    public: boolean;
+    claimed?: boolean;
+  }): Promise<string> {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-visibility-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5"><div class="clip" data-start="0" data-duration="5">Visible</div></div></body></html>`,
+    );
+    publishState.publish.mockReset();
+    publishState.publish.mockResolvedValue({
+      title: "test",
+      fileCount: 1,
+      claimed: options.claimed ?? true,
+      projectId: "project-id",
+      url: "https://hyperframes.dev/p/project-id",
+      claimToken: "claim-secret",
+    });
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+
+    try {
+      await publishCommand.run?.({
+        args: { dir: project, yes: true, public: options.public, proxy: false },
+      } as never);
+      return lines.join("\n");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
+  it.each([
+    { public: false, label: "Private", hint: "--public" },
+    { public: true, label: "Public", hint: undefined },
+  ])(
+    "keeps --yes orthogonal to requested $label visibility",
+    async ({ public: isPublic, label, hint }) => {
+      const output = await runPublish({ public: isPublic });
+
+      expect(publishState.publish).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ public: isPublic }),
+      );
+      expect(output).toContain("Visibility");
+      expect(output).toContain(label);
+      if (hint) expect(output).toContain(hint);
+    },
+  );
+
+  it("labels an authentication-required anonymous URL as a claim URL", async () => {
+    const output = await runPublish({ public: false, claimed: false });
+
+    expect(output).toContain("Claim URL");
+    expect(output).toContain("claim_token=claim-secret");
+    expect(output).toContain("sign in");
+    expect(output).not.toMatch(/^\s*Public\s/m);
+  });
+
+  it("does not describe default publishing as public", () => {
+    expect(examples[0]?.[0]).not.toContain("public URL");
   });
 });

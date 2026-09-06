@@ -182,9 +182,10 @@ Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--
 ## publish
 
 ```bash
-npx hyperframes publish              # upload current project, return public URL
+npx hyperframes publish              # upload current project privately, return stable URL
 npx hyperframes publish ./my-video   # specific project
+npx hyperframes publish --public     # allow anyone with the URL to view the claimed project
 npx hyperframes publish --yes        # skip the confirmation prompt (scripts/CI)
 ```
 
-Uploads the project's source (HTML + assets) and returns a stable public URL that renders in the browser. Use this for sharing a draft for review before rendering MP4, or for embedding the composition elsewhere. Lint findings are surfaced before upload but do not block.
+Uploads the project's source (HTML + assets) and returns a stable hosted URL that renders in the browser. Publishing is private by default and requires authentication plus access to view. Use `--public` to allow anyone with the URL to view the claimed project. `--yes` only skips the confirmation prompt; it does not change visibility. A signed-out publish returns an authentication-required claim URL rather than a public playback URL. Lint findings are surfaced before upload but do not block.
