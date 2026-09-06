@@ -1768,6 +1768,170 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("errors when a grouped gsap.set array hides a fromTo target with no destination opacity", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="header">Header</div>
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const header = "#header";
+    const card = "#card";
+    gsap.set([header, card], { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("errors when a single-element gsap.set array hides a from({opacity:0}) target", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card">Never visible</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const card = "#card";
+    gsap.set([card], { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#card", { opacity: 0, y: 30, duration: 0.5 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("errors when a gsap.set array of quoted selectors hides a fromTo target", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="header">Header</div>
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    gsap.set(["#header", "#card"], { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("errors when a comma-separated gsap.set selector string hides a fromTo target", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="header">Header</div>
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    gsap.set("#header, #card", { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("does NOT error when a grouped gsap.set array sets a non-opacity property", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="header">Header</div>
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const header = "#header";
+    const card = "#card";
+    gsap.set([header, card], { scaleX: 0, transformOrigin: "left center" });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeUndefined();
+  });
+
+  it("keeps a later gsap.set hide visible when an earlier one has non-literal vars", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const staggerVars = { y: 20 };
+    gsap.set(document.querySelectorAll(".row"), staggerVars);
+    gsap.set("#card", { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("does NOT error when a grouped gsap.set hide sits inside a callback body", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const card = "#card";
+    const tl = gsap.timeline({ paused: true });
+    tl.eventCallback("onComplete", function () {
+      gsap.set([card], { opacity: 0 });
+    });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("does NOT error when gsap.to() uses opacity:0 (exit animation)", async () => {
     const html = `
 <html><body>
@@ -3068,6 +3232,30 @@ describe("SVG draw-on rules", () => {
       expect(
         result.findings.find((f) => f.code === "gsap_fullscreen_overlay_starts_visible"),
       ).toBeDefined();
+    });
+
+    it("does not flag a fromTo() at 0 whose from-vars are hidden, which also seats at t=0", async () => {
+      const result = await lintHyperframeHtml(
+        overlay(
+          "",
+          `tl.fromTo("#flash", { opacity: 0, scale: 1.04 }, { opacity: 1, scale: 1, duration: 1.15 }, 0);\n    tl.to("#flash", { opacity: 0, duration: 0.42 }, 4);`,
+        ),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_fullscreen_overlay_starts_visible"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag an overlay hidden by an aliased standalone gsap.set", async () => {
+      const result = await lintHyperframeHtml(
+        overlay(
+          "",
+          `const flash = "#flash";\n    gsap.set(flash, { opacity: 0 });\n    tl.to("#flash", { opacity: 1, duration: 1 }, 2);\n    tl.to("#flash", { opacity: 0, duration: 1 }, 5);`,
+        ),
+      );
+      expect(
+        result.findings.find((f) => f.code === "gsap_fullscreen_overlay_starts_visible"),
+      ).toBeUndefined();
     });
   });
   describe("gsap_timeline_return_used_as_tween", () => {

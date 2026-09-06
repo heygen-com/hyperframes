@@ -203,6 +203,19 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
+function hiddenSetTargetSelectors(target: string, aliases: Map<string, string>): string[] {
+  const parts =
+    target.startsWith("[") && target.endsWith("]") ? target.slice(1, -1).split(",") : [target];
+  return parts
+    .flatMap((part) => {
+      const trimmed = part.trim();
+      const resolved = /^(["'`])([^"'`]+)\1$/.exec(trimmed)?.[2] ?? aliases.get(trimmed);
+      return resolved === undefined ? [] : resolved.split(",");
+    })
+    .map((selector) => selector.trim())
+    .filter((selector) => selector.length > 0);
+}
+
 function extractStandaloneHiddenSelectors(script: string): Set<string> {
   const selectors = new Set<string>();
   const source = stripJsComments(script);
@@ -213,17 +226,17 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   )) {
     aliases.set(match[1] ?? "", match[3] ?? "");
   }
-  const pattern = /gsap\.set\s*\(\s*([^,]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
+  const pattern =
+    /gsap\.set\s*\(\s*(\[[^[\]]*\]|"[^"]*"|'[^']*'|`[^`]*`|[^,()[\]]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
     // Skip callback/handler bodies; keep IIFEs (they run at parse time).
     if (indexInsideNonIifeRange(match.index, source, functionRanges)) continue;
-    const target = (match[1] ?? "").trim();
-    const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
-    if (!selector) continue;
+    const targets = hiddenSetTargetSelectors((match[1] ?? "").trim(), aliases);
+    if (targets.length === 0) continue;
     const body = match[2] ?? "";
     if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
-      selectors.add(selector);
+      for (const selector of targets) selectors.add(selector);
     }
   }
   return selectors;
@@ -1044,6 +1057,9 @@ export const gsapRules: LintRule<LintContext>[] = [
   // fallow-ignore-next-line complexity
   async ({ source, tags, scripts, styles, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
+    const authoredHiddenSelectors = new Set(
+      scripts.flatMap((script) => [...extractStandaloneHiddenSelectors(script.content)]),
+    );
 
     // Build clip element selector map
     type ClipInfo = { tag: string; id: string; classes: string };
@@ -1170,9 +1186,12 @@ export const gsapRules: LintRule<LintContext>[] = [
           .sort((a, b) => a.position - b.position);
         const startsHiddenAtZero = visibilityWindows.some(
           (win) =>
-            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS && isHiddenGsapState(win.propertyValues),
+            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS &&
+            (isHiddenGsapState(win.propertyValues) ||
+              (win.fromPropertyValues !== undefined && isHiddenGsapState(win.fromPropertyValues))),
         );
         if (startsHiddenAtZero) continue;
+        if (selectors.some((selector) => authoredHiddenSelectors.has(selector))) continue;
         const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
         if (!firstVisible) continue;
         const selector =
