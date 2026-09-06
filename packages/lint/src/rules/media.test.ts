@@ -894,11 +894,14 @@ describe("media_src_kind_mismatch", () => {
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
   });
 
-  it("does not flag .ogg, which carries video as well as audio", async () => {
+  it("does not flag .ogg or .m4a, whose containers can carry video too", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
     <video id="v1" src="clip.ogg" data-start="0" data-duration="5" muted></video>
+    <video id="v2" src="clip.m4a" data-start="0" data-duration="5" muted></video>
+    <img id="i1" src="clip.ogg" data-start="0" data-duration="5" />
+    <img id="i2" src="clip.m4a" data-start="0" data-duration="5" />
   </div>
   <script>window.__timelines = {};</script>
 </body></html>`;
