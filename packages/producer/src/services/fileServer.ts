@@ -11,8 +11,19 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import type { IncomingMessage } from "node:http";
-import { existsSync, realpathSync, statSync, createReadStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import {
+  existsSync,
+  realpathSync,
+  statSync,
+  createReadStream,
+  openSync,
+  fstatSync,
+  closeSync,
+  constants,
+  readFile,
+} from "node:fs";
+import { promisify } from "node:util";
+
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
@@ -20,6 +31,8 @@ import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+
+const readFileAsync = promisify(readFile);
 
 export { injectScriptsAtHeadStart };
 
@@ -714,6 +727,34 @@ export function closeFileServerSafely(
   }
 }
 
+function openRegularFile(filePath: string) {
+  let fd: number;
+  try {
+    // Reject FIFOs with fstat without waiting for a writer to connect.
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    // A failed open of a directory/socket has platform-specific errors.
+    // Classifying it here never authorizes a later pathname read.
+    if (!statSync(filePath, { throwIfNoEntry: false })?.isFile()) return null;
+    throw error;
+  }
+  let accepted = false;
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return null;
+    accepted = true;
+    return { fd, stat, filePath };
+  } finally {
+    if (!accepted) closeSync(fd);
+  }
+}
+
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
   const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
 
@@ -757,118 +798,105 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // containment, so a request like `GET /../etc/passwd` would otherwise
     // be served straight off the filesystem. Keep this lexical so project
     // symlinks to sibling asset directories behave like preview mode.
-    let filePath: string | null = null;
-    if (compiledDir) {
-      const candidate = join(compiledDir, relativePath);
-      if (
-        existsSync(candidate) &&
-        isPathInside(candidate, compiledDir) &&
-        statSync(candidate).isFile()
-      ) {
-        filePath = candidate;
-      }
-    }
-    if (!filePath) {
-      const candidate = join(projectDir, relativePath);
-      if (
-        existsSync(candidate) &&
-        isPathInside(candidate, projectDir) &&
-        statSync(candidate).isFile()
-      ) {
-        filePath = candidate;
-      }
+    let file: ReturnType<typeof openRegularFile> = null;
+    for (const root of compiledDir ? [compiledDir, projectDir] : [projectDir]) {
+      const candidate = join(root, relativePath);
+      if (isPathInside(candidate, root)) file = openRegularFile(candidate);
+      if (file) break;
     }
 
-    if (!filePath) {
+    if (!file) {
       if (!/favicon\.ico$/i.test(requestPath)) {
         console.warn(`[FileServer] 404 Not Found: ${requestPath}`);
       }
       return c.text("Not found", 404);
     }
 
-    const ext = extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    const { fd, stat, filePath } = file;
+    let streamOwnsFd = false;
+    try {
+      const ext = extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
-    if (ext === ".html") {
-      // Use the async read here so we don't block the Node event loop while
-      // reading an HTML file (typically small, but a 200KB+ AI-generated
-      // composition during a concurrent render still costs a ms of stall).
-      // The injection step is sync — it's pure string ops on the buffered
-      // HTML — but the read itself is the only step that touches the disk.
-      const rawHtml = await readFile(filePath, "utf-8");
-      const isIndex = relativePath === "index.html";
-      let html = rawHtml;
-      if (preHeadScripts.length > 0) {
-        html = injectScriptsAtHeadStart(html, preHeadScripts);
+      if (ext === ".html") {
+        // Use the async read here so we don't block the Node event loop while
+        // reading an HTML file (typically small, but a 200KB+ AI-generated
+        // composition during a concurrent render still costs a ms of stall).
+        // The injection step is sync — it's pure string ops on the buffered
+        // HTML — but the read itself is the only step that touches the disk.
+        const rawHtml = await readFileAsync(fd, "utf-8");
+        const isIndex = relativePath === "index.html";
+        let html = rawHtml;
+        if (preHeadScripts.length > 0) {
+          html = injectScriptsAtHeadStart(html, preHeadScripts);
+        }
+        html = isIndex
+          ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
+          : html;
+        return c.text(html, 200, { "Content-Type": contentType });
       }
-      html = isIndex
-        ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
-        : html;
-      return c.text(html, 200, { "Content-Type": contentType });
-    }
 
-    // Stream binary file content rather than buffering it with readFileSync.
-    // On video-heavy compositions Chrome requests several 32MB video files
-    // back-to-back through this server; each readFileSync(32MB) blocked the
-    // Node event loop long enough to wedge concurrent /health responses (see
-    // renderOrchestrator.ts:1277-1306 documenting the same regression class).
-    // createReadStream() pipes bounded chunks asynchronously, so the event
-    // loop stays responsive even when several large assets are in flight
-    // simultaneously. Chrome reassembles the chunks transparently.
-    //
-    // We also honor `Range:` requests (RFC 7233) so Chrome's <video> element
-    // can seek into and partial-load large media without re-pulling the whole
-    // file. `Accept-Ranges: bytes` is advertised on every response (including
-    // full-body 200s) so the client knows ranges are supported.
-    const stat = statSync(filePath);
-    const totalSize = stat.size;
-    const rangeHeader = c.req.header("range");
-    const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
+      // Stream binary file content rather than buffering it with readFileSync.
+      // On video-heavy compositions Chrome requests several 32MB video files
+      // back-to-back through this server; each readFileSync(32MB) blocked the
+      // Node event loop long enough to wedge concurrent /health responses (see
+      // renderOrchestrator.ts:1277-1306 documenting the same regression class).
+      // createReadStream() pipes bounded chunks asynchronously, so the event
+      // loop stays responsive even when several large assets are in flight
+      // simultaneously. Chrome reassembles the chunks transparently.
+      //
+      // We also honor `Range:` requests (RFC 7233) so Chrome's <video> element
+      // can seek into and partial-load large media without re-pulling the whole
+      // file. `Accept-Ranges: bytes` is advertised on every response (including
+      // full-body 200s) so the client knows ranges are supported.
+      const totalSize = stat.size;
+      const rangeHeader = c.req.header("range");
+      const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
 
-    if (rangeRequest.kind === "unsatisfiable") {
-      // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
-      // carry the total length as `bytes */<size>` so clients know how to
-      // re-issue a valid range.
-      return new Response(null, {
-        status: 416,
+      if (rangeRequest.kind === "unsatisfiable") {
+        // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
+        // carry the total length as `bytes */<size>` so clients know how to
+        // re-issue a valid range.
+        return new Response(null, {
+          status: 416,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Range": `bytes */${totalSize}`,
+            "Accept-Ranges": "bytes",
+          },
+        });
+      }
+
+      const range = rangeRequest.kind === "satisfiable" ? rangeRequest : null;
+      const responseOptions = {
+        status: range ? 206 : 200,
         headers: {
           "Content-Type": contentType,
-          "Content-Range": `bytes */${totalSize}`,
+          "Content-Length": String(range ? range.end - range.start + 1 : totalSize),
           "Accept-Ranges": "bytes",
+          ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${totalSize}` } : {}),
         },
+      };
+      // HEAD has no body consumer to take ownership of a stream's descriptor.
+      if (c.req.method === "HEAD") return new Response(null, responseOptions);
+      const stream = createReadStream(filePath, {
+        fd,
+        autoClose: true,
+        ...(range ? { start: range.start, end: range.end } : {}),
       });
+      streamOwnsFd = true;
+      try {
+        const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
+        return new Response(webStream, responseOptions);
+      } catch (error) {
+        stream.destroy();
+        throw error;
+      }
+    } finally {
+      // Streams close on completion, error or cancellation. HTML/416/errors
+      // before stream creation remain owned by this request.
+      if (!streamOwnsFd) closeSync(fd);
     }
-
-    if (rangeRequest.kind === "satisfiable") {
-      const { start, end } = rangeRequest;
-      const length = end - start + 1;
-      const stream = createReadStream(filePath, { start, end });
-      const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
-      return new Response(webStream, {
-        status: 206,
-        headers: {
-          "Content-Type": contentType,
-          "Content-Length": String(length),
-          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
-          "Accept-Ranges": "bytes",
-        },
-      });
-    }
-
-    // No Range header (or malformed/multi-range): full-body 200 with
-    // Accept-Ranges advertised so the client knows future Range requests
-    // are supported. Node Readable -> Web ReadableStream so Hono's
-    // Response can consume it. Node 18+ supports Readable.toWeb directly.
-    const stream = createReadStream(filePath);
-    const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
-    return new Response(webStream, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": String(totalSize),
-        "Accept-Ranges": "bytes",
-      },
-    });
   });
 
   return new Promise((resolve) => {
