@@ -144,6 +144,14 @@ function isWithin(root: string, filePath: string): boolean {
   return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
+function isMissingFile(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
+}
+
 /** Read one checked file from the prepared project, including internal links. */
 function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | null {
   if (!isWithin(root, filePath)) return null;
@@ -152,12 +160,7 @@ function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | 
     source = realpathSync(filePath);
     if (!isWithin(realpathSync(root), source)) return null;
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
-    )
-      return null;
+    if (isMissingFile(error)) return null;
     throw error;
   }
   let fd: number;
@@ -165,12 +168,7 @@ function readProjectFile(root: string, filePath: string): Buffer<ArrayBuffer> | 
     // Nonblocking mode lets fstat reject named pipes without waiting for a writer.
     fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
-    )
-      return null;
+    if (isMissingFile(error)) return null;
     if (!statSync(source, { throwIfNoEntry: false })?.isFile()) return null;
     throw error;
   }
@@ -301,29 +299,30 @@ export function externalizeDataUris(
   return { html: out, externalized };
 }
 
-/** Copy a directory's publishable files into `destDir`, flattening one level. */
-function walkInto(
-  root: string,
-  from: string,
-  rel: string,
-  destDir: string,
-  onCopy: () => void,
-): void {
+/** Enumerate publishable paths without using pathname sizes to authorize reads. */
+function* hostedPaths(from: string, rel = ""): Generator<string> {
   for (const entry of readdirSync(from, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue;
     const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-    const childFrom = join(from, entry.name);
     if (entry.isDirectory()) {
-      walkInto(root, childFrom, childRel, destDir, onCopy);
-      continue;
+      yield* hostedPaths(join(from, entry.name), childRel);
+    } else if (HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+      yield childRel;
     }
-    if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
-    const bytes = readProjectFile(root, childFrom);
-    if (bytes === null) continue;
-    const to = join(destDir, childRel);
-    mkdirSync(join(to, ".."), { recursive: true });
-    writeFileSync(to, bytes);
-    onCopy();
+  }
+}
+
+/** Internal directory aliases share the buffers already collected at their real paths. */
+function downloadMirrorPrefix(projectDir: string): string | null {
+  try {
+    const root = realpathSync(projectDir);
+    const downloads = realpathSync(join(projectDir, "_downloads"));
+    if (!isWithin(root, downloads) || !statSync(downloads).isDirectory()) return null;
+    const rel = relative(root, downloads).split(sep).join("/");
+    return rel ? `${rel}/` : "";
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    throw error;
   }
 }
 
@@ -340,22 +339,6 @@ function walkInto(
  * Only publishable types are copied; a composition needing something the host
  * drops still falls back to inlining, which is handled by the caller.
  */
-/** Publishable bytes an item would add, counted before anything is written. */
-function directoryBytes(dir: string): number {
-  let total = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue;
-    const child = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      total += directoryBytes(child);
-      continue;
-    }
-    if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
-    total += statSync(child).size;
-  }
-  return total;
-}
-
 /**
  * What an item may add by publishing its own directory.
  *
@@ -366,47 +349,33 @@ function directoryBytes(dir: string): number {
 export const MAX_HOSTED_DIRECTORY_BYTES = 2_000_000;
 
 export function hostItemDirectory(projectDir: string, destDir: string, urlBase: string): string {
-  if (directoryBytes(projectDir) > MAX_HOSTED_DIRECTORY_BYTES) return "";
-  let copied = 0;
-
-  const walk = (from: string, rel: string): void => {
-    for (const entry of readdirSync(from, { withFileTypes: true })) {
-      // Nothing here should ever leave the prepared copy, and a symlink is the
-      // one entry that could point back out of it.
-      if (entry.isSymbolicLink()) continue;
-      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-      const childFrom = join(from, entry.name);
-      if (entry.isDirectory()) {
-        walk(childFrom, childRel);
-        continue;
-      }
-      if (!HOSTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
-      const bytes = readProjectFile(projectDir, childFrom);
-      if (bytes === null) continue;
-      const to = join(destDir, childRel);
-      mkdirSync(join(to, ".."), { recursive: true });
-      writeFileSync(to, bytes);
-      copied += 1;
-    }
-  };
-
-  // Both layouts are published. The prepared copy holds each asset twice, once
-  // as the registry stores it and once at its install path, and which one a
-  // composition asks for differs per item: the texture masks use the registry
-  // spelling, the caption textures the install one. Guessing wrong is a 404 at
-  // run time, so the budget below is what keeps the cost in check instead.
-  walk(projectDir, "");
-
-  // The compiler pulls remote media into `_downloads/` but rewrites references
-  // as if the document sat inside it, so `_remote_media/x.woff2` has to resolve
-  // from the item root too. Mirroring rather than moving keeps both spellings
-  // working, and the files are content-identical either way.
-  const downloads = join(projectDir, "_downloads");
-  if (existsSync(downloads) && statSync(downloads).isDirectory()) {
-    walkInto(projectDir, downloads, "", destDir, () => (copied += 1));
+  const mirrorPrefix = downloadMirrorPrefix(projectDir);
+  const files = new Map<string, Buffer<ArrayBuffer>>();
+  let total = 0;
+  for (const path of hostedPaths(projectDir)) {
+    const bytes = readProjectFile(projectDir, join(projectDir, path));
+    if (bytes === null) continue;
+    total += bytes.length;
+    if (total > MAX_HOSTED_DIRECTORY_BYTES) return "";
+    files.set(path, bytes);
   }
 
-  return copied > 0 ? urlBase : "";
+  // Charge each source once, as before. Publish only after the entire item fits,
+  // and reuse the collected bytes for both registry and install-path layouts.
+  const publish = (path: string, bytes: Buffer<ArrayBuffer>): void => {
+    const to = join(destDir, path);
+    mkdirSync(join(to, ".."), { recursive: true });
+    writeFileSync(to, bytes);
+  };
+  for (const [path, bytes] of files) publish(path, bytes);
+
+  // Compiler references omit `_downloads/`. Preserve both spellings and the
+  // existing mirror-wins collision order without reopening any source file.
+  for (const [path, bytes] of files) {
+    if (mirrorPrefix !== null && path.startsWith(mirrorPrefix))
+      publish(path.slice(mirrorPrefix.length), bytes);
+  }
+  return files.size > 0 ? urlBase : "";
 }
 
 /**
