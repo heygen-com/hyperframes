@@ -1,5 +1,13 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { resolve, join } from "node:path";
+import {
+  existsSync,
+  readFileSync,
+  statSync,
+  openSync,
+  fstatSync,
+  closeSync,
+  constants,
+} from "node:fs";
+import { resolve, join, relative, isAbsolute, sep } from "node:path";
 import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/lint";
 
 export interface PreparedHyperframeLintInput {
@@ -38,6 +46,30 @@ function pickEntryFile(files: Record<string, string>, preferredEntryFile?: strin
   return null;
 }
 
+function readEntryHtml(filePath: string): string | null {
+  let fd: number;
+  try {
+    // Opening a named pipe must not wait for a writer before fstat can reject it.
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    // Classify platform-specific directory/socket errors only after open fails.
+    if (!statSync(filePath, { throwIfNoEntry: false })?.isFile()) return null;
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd, "utf-8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readProjectEntryFile(
   projectDir: string,
   preferredEntryFile?: string,
@@ -53,13 +85,19 @@ function readProjectEntryFile(
 
   for (const entryFile of entryCandidates) {
     const absoluteEntryPath = resolve(absProjectDir, entryFile);
-    if (!absoluteEntryPath.startsWith(absProjectDir)) {
+    const entryRelativePath = relative(absProjectDir, absoluteEntryPath);
+    if (
+      entryRelativePath === ".." ||
+      entryRelativePath.startsWith(`..${sep}`) ||
+      isAbsolute(entryRelativePath)
+    ) {
       return { error: `Entry file must stay inside project directory: ${entryFile}` };
     }
-    if (existsSync(absoluteEntryPath) && statSync(absoluteEntryPath).isFile()) {
+    const html = readEntryHtml(absoluteEntryPath);
+    if (html !== null) {
       return {
         entryFile,
-        html: readFileSync(absoluteEntryPath, "utf-8"),
+        html,
         source: "projectDir",
       };
     }

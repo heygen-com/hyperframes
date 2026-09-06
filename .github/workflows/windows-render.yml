@@ -479,6 +479,11 @@ jobs:
         shell: pwsh
         run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
 
+      - name: Verify producer lint entry reads on Windows
+        if: matrix.lane == 'studio-engine-cli'
+        shell: pwsh
+        run: bunx vitest run packages/producer/src/services/hyperframeLint.file-race.test.ts --maxWorkers=2
+
       - name: Run runtime contract test
         if: matrix.runtime_contract
         shell: pwsh
