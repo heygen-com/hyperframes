@@ -1,8 +1,12 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
-import { decodeAudioPeaks, buildWaveformCacheKey } from "../helpers/waveform.js";
+import {
+  decodeAudioPeaks,
+  buildWaveformCacheKey,
+  writeWaveformCache,
+} from "../helpers/waveform.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/waveform/*", async (c) => {
@@ -38,8 +42,7 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     }
 
     try {
-      mkdirSync(cacheDir, { recursive: true });
-      writeFileSync(cachePath, JSON.stringify(peaks));
+      writeWaveformCache(cachePath, peaks);
     } catch {
       // cache write failure is non-fatal
     }

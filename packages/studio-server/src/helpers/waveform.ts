@@ -1,6 +1,14 @@
 import { spawn } from "node:child_process";
-import { existsSync, writeFileSync, mkdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 const SAMPLE_RATE = 4000;
@@ -100,6 +108,19 @@ export async function generateWaveformCache(projectDir: string, assetPath: strin
   if (existsSync(cachePath)) return;
 
   const peaks = await decodeAudioPeaks(audioPath);
+  writeWaveformCache(cachePath, peaks);
+}
+
+/** Publish complete peaks without following a replaced cache-file symlink. */
+export function writeWaveformCache(cachePath: string, peaks: number[]): void {
+  const cacheDir = dirname(cachePath);
   mkdirSync(cacheDir, { recursive: true });
-  writeFileSync(cachePath, JSON.stringify(peaks));
+  const stagingDir = mkdtempSync(join(cacheDir, ".waveform-"));
+  try {
+    const stagingPath = join(stagingDir, "peaks.json");
+    writeFileSync(stagingPath, JSON.stringify(peaks), { flag: "wx" });
+    renameSync(stagingPath, cachePath);
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
 }

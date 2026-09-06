@@ -474,6 +474,11 @@ jobs:
         # package scripts cannot oversubscribe the hosted Windows runner.
         run: bun run ${{ matrix.packages }} test -- --maxWorkers=2
 
+      - name: Verify waveform cache writes on Windows
+        if: matrix.lane == 'studio-engine-cli'
+        shell: pwsh
+        run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
+
       - name: Run runtime contract test
         if: matrix.runtime_contract
         shell: pwsh
