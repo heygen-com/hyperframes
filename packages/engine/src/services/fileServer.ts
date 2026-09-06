@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 
@@ -59,6 +59,31 @@ export interface FileServerHandle {
   close: () => void;
 }
 
+function readRegularFile(filePath: string): Buffer<ArrayBuffer> | null {
+  let fd: number;
+  try {
+    // Do not block on a named pipe before fstat can reject non-regular files.
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    // Platforms report different open errors for directories and sockets.
+    // This check only classifies a failed open; no read follows it.
+    if (!statSync(filePath, { throwIfNoEntry: false })?.isFile()) return null;
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
   const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
 
@@ -74,20 +99,16 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
     const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
-    const hasCompiledFile = Boolean(
-      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile(),
-    );
-    const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
+    const content =
+      (compiledPath ? readRegularFile(compiledPath) : null) ??
+      readRegularFile(join(projectDir, relativePath));
+    if (content === null) return c.text("Not found", 404);
 
-    if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-      return c.text("Not found", 404);
-    }
-
-    const ext = extname(filePath).toLowerCase();
+    const ext = extname(relativePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
     if (ext === ".html") {
-      const rawHtml = readFileSync(filePath, "utf-8");
+      const rawHtml = content.toString("utf-8");
       const html =
         relativePath === "index.html"
           ? injectScriptsIntoHtml(rawHtml, headScripts, bodyScripts, stripEmbeddedRuntime)
@@ -95,7 +116,6 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       return c.text(html, 200, { "Content-Type": contentType });
     }
 
-    const content = readFileSync(filePath);
     return new Response(content, {
       status: 200,
       headers: { "Content-Type": contentType },
