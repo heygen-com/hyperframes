@@ -335,24 +335,68 @@ export function stripStringLiterals(source: string): string {
 }
 
 // fallow-ignore-next-line complexity
-export function stripJsComments(source: string): string {
+function scanJsComments(source: string): { out: string; balanced: boolean } {
   let out = "";
   let i = 0;
   let quote: "'" | '"' | "`" | null = null;
   let escaped = false;
+  let inRegex = false;
+  let inRegexClass = false;
+  let regexMisread = false;
+  const ctx = new CodeContext();
+
+  const emitCode = (ch: string) => {
+    out += ch;
+    ctx.push(ch);
+  };
+  const emitOpaque = (ch: string) => {
+    out += ch;
+    ctx.push(" ");
+  };
 
   while (i < source.length) {
     const ch = source[i] ?? "";
     const next = source[i + 1] ?? "";
 
-    if (quote) {
+    if (inRegex) {
       out += ch;
       if (escaped) {
         escaped = false;
+        if (ch === "\n" || ch === "\r") {
+          inRegex = false;
+          inRegexClass = false;
+          regexMisread = true;
+        }
       } else if (ch === "\\") {
         escaped = true;
+      } else if (ch === "[") {
+        inRegexClass = true;
+      } else if (ch === "]") {
+        inRegexClass = false;
+      } else if (ch === "/" && !inRegexClass) {
+        inRegex = false;
+        ctx.push(ch);
+      } else if (ch === "\n" || ch === "\r") {
+        inRegex = false;
+        inRegexClass = false;
+        regexMisread = true;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        emitOpaque(ch);
+      } else if (ch === "\\") {
+        escaped = true;
+        emitOpaque(ch);
       } else if (ch === quote) {
         quote = null;
+        emitCode(ch);
+      } else {
+        emitOpaque(ch);
       }
       i += 1;
       continue;
@@ -360,16 +404,19 @@ export function stripJsComments(source: string): string {
 
     if (ch === "'" || ch === '"' || ch === "`") {
       quote = ch;
-      out += ch;
+      emitCode(ch);
       i += 1;
       continue;
     }
 
     if (ch === "/" && next === "/") {
       out += "  ";
+      ctx.push(" ");
+      ctx.push(" ");
       i += 2;
       while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
         out += " ";
+        ctx.push(" ");
         i += 1;
       }
       continue;
@@ -377,21 +424,272 @@ export function stripJsComments(source: string): string {
 
     if (ch === "/" && next === "*") {
       out += "  ";
+      ctx.push(" ");
+      ctx.push(" ");
       i += 2;
       while (i < source.length) {
         const blockCh = source[i] ?? "";
         const blockNext = source[i + 1] ?? "";
         if (blockCh === "*" && blockNext === "/") {
           out += "  ";
+          ctx.push(" ");
+          ctx.push(" ");
           i += 2;
           break;
         }
-        out += blockCh === "\n" || blockCh === "\r" ? blockCh : " ";
+        const kept = blockCh === "\n" || blockCh === "\r" ? blockCh : " ";
+        out += kept;
+        ctx.push(kept);
         i += 1;
       }
       continue;
     }
 
+    if (ch === "/" && ctx.startsRegexLiteral()) {
+      inRegex = true;
+      emitCode(ch);
+      i += 1;
+      continue;
+    }
+
+    emitCode(ch);
+    i += 1;
+  }
+
+  return { out, balanced: quote === null && !inRegex && !regexMisread };
+}
+
+export function stripJsComments(source: string): string {
+  return scanJsComments(source).out;
+}
+
+export function stripJsCode(source: string): string {
+  const { out, balanced } = scanJsComments(source);
+  return balanced ? stripJsStringLiterals(out) : source;
+}
+
+const REGEX_ALLOWED_BEFORE = new Set("=(,:[!&|?{};+-*%^~<>");
+const REGEX_ALLOWED_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+
+const WORD_CHAR = /[A-Za-z0-9_$]/;
+
+/**
+ * Tracks just enough emitted context to tell a regex literal from a division: the last
+ * two significant characters and the trailing identifier. Carried incrementally because
+ * re-scanning the accumulated output per candidate slash is quadratic — a composition
+ * with one inlined vendor bundle took 58x longer to lint.
+ */
+class CodeContext {
+  private last = "";
+  private prev = "";
+  private word = "";
+  private wordEnded = false;
+  private wordAfterDot = false;
+
+  push(ch: string): void {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      this.wordEnded = true;
+      return;
+    }
+    if (WORD_CHAR.test(ch)) {
+      if (this.wordEnded || this.word === "") this.wordAfterDot = this.last === ".";
+      this.word = this.wordEnded ? ch : this.word + ch;
+    } else {
+      this.word = "";
+      this.wordAfterDot = false;
+    }
+    this.wordEnded = false;
+    this.prev = this.last;
+    this.last = ch;
+  }
+
+  startsRegexLiteral(): boolean {
+    if (this.last === "") return true;
+    if (WORD_CHAR.test(this.last))
+      return !this.wordAfterDot && REGEX_ALLOWED_KEYWORDS.has(this.word);
+    if ((this.last === "+" || this.last === "-") && this.prev === this.last) return false;
+    return REGEX_ALLOWED_BEFORE.has(this.last);
+  }
+}
+
+/**
+ * Blanks string, template-literal and regex-literal *contents* (delimiters, length
+ * and newline positions kept) so a rule scanning for an API call does not match one
+ * a composition merely renders as on-screen text. Template `${…}` expressions stay —
+ * they are code. Returns the source untouched if the scan ends mid-literal, so a
+ * parse this scanner cannot model degrades to the caller's pre-existing behaviour
+ * rather than silently blanking real code on an `error`-severity gate.
+ */
+// fallow-ignore-next-line complexity
+export function stripJsStringLiterals(source: string): string {
+  let out = "";
+  let i = 0;
+  const templateBraces: number[] = [];
+  const ctx = new CodeContext();
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+  let inRegex = false;
+  let inRegexClass = false;
+  let regexMisread = false;
+
+  const blank = (ch: string) => (ch === "\n" || ch === "\r" ? ch : " ");
+  const emit = (text: string) => {
+    out += text;
+    for (const ch of text) ctx.push(ch);
+  };
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    const next = source[i + 1] ?? "";
+
+    if (inRegex) {
+      if (escaped) {
+        escaped = false;
+        if (ch === "\n" || ch === "\r") {
+          inRegex = false;
+          inRegexClass = false;
+          regexMisread = true;
+        }
+        emit(blank(ch));
+      } else if (ch === "\\") {
+        escaped = true;
+        emit(" ");
+      } else if (ch === "[") {
+        inRegexClass = true;
+        emit(" ");
+      } else if (ch === "]") {
+        inRegexClass = false;
+        emit(" ");
+      } else if (ch === "/" && !inRegexClass) {
+        inRegex = false;
+        emit(ch);
+      } else if (ch === "\n" || ch === "\r") {
+        inRegex = false;
+        inRegexClass = false;
+        escaped = false;
+        regexMisread = true;
+        emit(ch);
+      } else {
+        emit(" ");
+      }
+      i += 1;
+      continue;
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        emit(blank(ch));
+      } else if (ch === "\\") {
+        escaped = true;
+        emit(" ");
+      } else if (ch === quote) {
+        quote = null;
+        emit(ch);
+      } else if (ch === "`" || quote !== "`" || ch !== "$" || next !== "{") {
+        emit(blank(ch));
+      } else {
+        templateBraces.push(0);
+        quote = null;
+        emit("${");
+        i += 2;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      emit(ch);
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next !== "/" && next !== "*" && ctx.startsRegexLiteral()) {
+      inRegex = true;
+      emit(ch);
+      i += 1;
+      continue;
+    }
+
+    if (templateBraces.length > 0) {
+      const depth = templateBraces[templateBraces.length - 1] ?? 0;
+      if (ch === "{") templateBraces[templateBraces.length - 1] = depth + 1;
+      else if (ch === "}") {
+        if (depth === 0) {
+          templateBraces.pop();
+          quote = "`";
+          emit(ch);
+          i += 1;
+          continue;
+        }
+        templateBraces[templateBraces.length - 1] = depth - 1;
+      }
+    }
+
+    emit(ch);
+    i += 1;
+  }
+
+  if (quote !== null || templateBraces.length > 0 || inRegex || regexMisread) return source;
+  return out;
+}
+
+/**
+ * Drops CSS comments without following a `/*` that only appears inside a string —
+ * a slide printing comment markers as content otherwise pairs two of them and
+ * deletes the real rules in between.
+ */
+// fallow-ignore-next-line complexity
+export function stripCssComments(source: string): string {
+  let out = "";
+  let i = 0;
+  let quote: "'" | '"' | null = null;
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    if (quote) {
+      out += ch;
+      if (ch === "\\") {
+        out += source[i + 1] ?? "";
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      for (let j = i; j < stop; j += 1) {
+        const c = source[j] ?? "";
+        out += c === "\n" || c === "\r" ? c : " ";
+      }
+      i = stop;
+      continue;
+    }
     out += ch;
     i += 1;
   }

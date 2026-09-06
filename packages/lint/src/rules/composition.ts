@@ -4,7 +4,9 @@ import {
   readAttr,
   readDecodedAttr,
   readJsonAttr,
+  stripCssComments,
   stripJsComments,
+  stripJsCode,
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
@@ -487,8 +489,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         });
       }
     };
-    for (const style of styles) scan(style.content);
-    for (const script of scripts) scan(script.content);
+    for (const style of styles) scan(stripCssComments(style.content));
+    for (const script of scripts) scan(stripJsComments(script.content));
     return findings;
   },
 
@@ -498,8 +500,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const script of scripts) {
       const templateLiteralSelectorPattern =
         /(?:querySelector|querySelectorAll)\s*\(\s*`[^`]*\$\{[^}]+\}[^`]*`\s*\)/g;
+      const scanned = stripJsCode(script.content);
       let tlMatch: RegExpExecArray | null;
-      while ((tlMatch = templateLiteralSelectorPattern.exec(script.content)) !== null) {
+      while ((tlMatch = templateLiteralSelectorPattern.exec(scanned)) !== null) {
         findings.push({
           code: "template_literal_selector",
           severity: "error",
@@ -508,7 +511,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
             "The HTML bundler's CSS parser crashes on these. Use a hardcoded string instead.",
           fixHint:
             "Replace the template literal variable with a hardcoded string. The bundler's CSS parser cannot handle interpolated variables in script content.",
-          snippet: truncateSnippet(tlMatch[0]),
+          snippet: truncateSnippet(
+            script.content.slice(tlMatch.index, tlMatch.index + tlMatch[0].length),
+          ),
         });
       }
     }
@@ -648,7 +653,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      const stripped = stripJsComments(script.content);
+      const stripped = stripJsCode(script.content);
       if (/requestAnimationFrame\s*\(/.test(stripped)) {
         findings.push({
           code: "requestanimationframe_in_composition",
