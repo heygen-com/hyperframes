@@ -67,7 +67,17 @@ const VIDEO_SRC_EXT = new Set([
   "mpeg",
 ]);
 
-function srcKind(src: string): "image" | "video" | null {
+const AUDIO_SRC_EXT = new Set(["mp3", "wav", "m4a", "aac", "flac", "opus", "aiff", "wma"]);
+
+type SrcKind = "image" | "video" | "audio";
+
+const SRC_KIND_NOUN: Record<SrcKind, string> = {
+  image: "an image",
+  video: "a video",
+  audio: "an audio file",
+};
+
+function srcKind(src: string): SrcKind | null {
   const stripped = src.trim();
   if (!stripped) return null;
   const lower = stripped.toLowerCase();
@@ -76,6 +86,7 @@ function srcKind(src: string): "image" | "video" | null {
     if (!mime) return null;
     if (mime.startsWith("image/")) return "image";
     if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
     return null;
   }
   if (lower.startsWith("blob:")) return null;
@@ -95,6 +106,7 @@ function srcKind(src: string): "image" | "video" | null {
   const ext = base.slice(dot + 1).toLowerCase();
   if (IMAGE_SRC_EXT.has(ext)) return "image";
   if (VIDEO_SRC_EXT.has(ext)) return "video";
+  if (AUDIO_SRC_EXT.has(ext)) return "audio";
   return null;
 }
 
@@ -106,19 +118,18 @@ function findMediaSrcKindMismatchFindings(ctx: LintContext): HyperframeLintFindi
     if (!src) continue;
     const kind = srcKind(src);
     if (kind === null) continue;
-    if (tag.name === "video" && kind !== "image") continue;
-    if (tag.name === "img" && kind !== "video") continue;
-    const elementId = readAttr(tag.raw, "id") || undefined;
     const expected = tag.name === "video" ? "video" : "image";
+    if (kind === expected) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
     findings.push({
       code: "media_src_kind_mismatch",
       severity: "error",
-      message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> src is a ${kind}, not a ${expected}. The producer fail-closes when the tag and file kind disagree.`,
+      message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> src is ${SRC_KIND_NOUN[kind]}, not ${SRC_KIND_NOUN[expected]}. The producer fail-closes when the tag and file kind disagree.`,
       elementId,
       fixHint:
         tag.name === "video"
-          ? "Use <img> for a still, or point <video> at a video URL (mp4/webm/mov/…)."
-          : "Use <video> for a video URL, or point <img> at a still (png/jpg/webp/…).",
+          ? "Use <img> for a still, <audio> for sound, or point <video> at a video URL (mp4/webm/mov/…)."
+          : "Use <video> for a video URL, <audio> for sound, or point <img> at a still (png/jpg/webp/…).",
       snippet: truncateSnippet(tag.raw),
     });
   }
