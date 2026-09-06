@@ -32,6 +32,7 @@ import {
 } from "../utils/checkPipeline.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { consumeCommandResult } from "../utils/commandResult.js";
+import { ambiguousIssue } from "../utils/motionAudit.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import type {
   LayoutIssue,
@@ -1108,6 +1109,171 @@ describe("check pipeline", () => {
     expect(report.runtime.errorCount).toBe(1);
     expect(report.layout.errorCount).toBe(1);
     expect(browser).toHaveBeenCalledTimes(1);
+  });
+
+  it("still audits layout when the motion sidecar is invalid", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: 'assertions[0] (staysInFrame): "selector" must be a non-empty string',
+    };
+    const driver = fakeDriver({
+      collectLayout: vi.fn(async (time: number) => [layoutIssue("error", { time })]),
+    });
+    const { report, browser } = await runScenario(driver, {}, { motion });
+
+    expect(browser).toHaveBeenCalledTimes(1);
+    expect(report.layout.findings.length).toBeGreaterThan(0);
+    expect(report.motion.findings).toEqual([
+      expect.objectContaining({ code: "motion_spec_invalid", severity: "error" }),
+    ]);
+    expect(report.motion).toMatchObject({
+      enabled: true,
+      specPath: "/project/index.motion.json",
+      samples: 0,
+    });
+    expect(report.ok).toBe(false);
+  });
+
+  it("does not sample motion for an invalid sidecar", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: "version 2 is not supported",
+    };
+    const driver = fakeDriver();
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBe(0);
+    expect(driver.collectMotionFrame).not.toHaveBeenCalled();
+  });
+
+  it("keeps evaluating the unambiguous assertions when one selector is ambiguous", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "appearsBy", selector: ".item", bySec: 1 },
+          { kind: "appearsBy", selector: "#hero", bySec: 0.2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+      collectMotionFrame: vi.fn(async (time: number) => heroMotionFrame(time, (t) => t >= 0.5)),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBeGreaterThan(0);
+    expect(report.motion.findings.map((finding) => finding.code).sort()).toEqual([
+      "motion_appears_late",
+      "motion_selector_ambiguous",
+    ]);
+    expect(report.ok).toBe(false);
+    expect(
+      report.motion.findings.find((finding) => finding.code === "motion_selector_ambiguous")
+        ?.message,
+    ).toContain("1 assertion(s) naming it were not evaluated");
+    expect(driver.collectMotionFrame).toHaveBeenCalledWith(expect.any(Number), ["#hero"], []);
+  });
+
+  it("separates the ambiguity message from the skipped-assertion count", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: { assertions: [{ kind: "appearsBy", selector: ".item", bySec: 1 }] },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error"), ...ambiguousIssue(".item") },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    const message = report.motion.findings.find(
+      (finding) => finding.code === "motion_selector_ambiguous",
+    )?.message;
+    expect(message).toContain("exactly one. 1 assertion(s)");
+  });
+
+  it("counts skipped assertions per ambiguous selector, not across all of them", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "appearsBy", selector: ".item", bySec: 1 },
+          { kind: "appearsBy", selector: ".card", bySec: 1 },
+          { kind: "appearsBy", selector: ".card", bySec: 2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".card" },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    const messages = report.motion.findings
+      .filter((finding) => finding.code === "motion_selector_ambiguous")
+      .map((finding) => finding.message);
+    expect(messages.filter((m) => m.includes("1 assertion(s) naming it"))).toHaveLength(1);
+    expect(messages.filter((m) => m.includes("2 assertion(s) naming it"))).toHaveLength(1);
+  });
+
+  it("drops a before assertion when either side is ambiguous, keeping the rest", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "before", a: "#hero", b: ".item" },
+          { kind: "appearsBy", selector: "#hero", bySec: 0.2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+      collectMotionFrame: vi.fn(async (time: number) => heroMotionFrame(time, (t) => t >= 0.5)),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.findings.map((finding) => finding.code).sort()).toEqual([
+      "motion_appears_late",
+      "motion_selector_ambiguous",
+    ]);
+    expect(driver.collectMotionFrame).toHaveBeenCalledWith(expect.any(Number), ["#hero"], []);
+  });
+
+  it("does not sample when every assertion names an ambiguous selector", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: { assertions: [{ kind: "appearsBy", selector: ".item", bySec: 1 }] },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBe(0);
+    expect(report.motion.findings.map((finding) => finding.code)).toEqual([
+      "motion_selector_ambiguous",
+    ]);
   });
 
   it("reports a failing appearsBy sidecar as motion_appears_late", async () => {
