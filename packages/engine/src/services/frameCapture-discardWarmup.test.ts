@@ -165,7 +165,7 @@ describe("discardWarmupCapture", () => {
 
   it("restores state even when the inner capture throws", async () => {
     const session = makeFakeSession();
-    const perfBefore = { ...session.capturePerf };
+    const perfBefore = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
     const hasBefore = session.beginFrameHasDamageCount;
     const noBefore = session.beginFrameNoDamageCount;
     try {
@@ -173,6 +173,7 @@ describe("discardWarmupCapture", () => {
       try {
         await discardWarmupCapture(session, 0, 0, async (s) => {
           s.capturePerf.frames += 5;
+          s.capturePerf.frameMs.push(999);
           s.beginFrameNoDamageCount += 2;
           throw new Error("simulated capture failure");
         });
