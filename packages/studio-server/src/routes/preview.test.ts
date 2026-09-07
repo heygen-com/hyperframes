@@ -1,7 +1,17 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  ftruncateSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerPreviewRoutes } from "./preview";
@@ -1202,5 +1212,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(proxyRes.status).toBe(404);
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("preview asset byte ranges", () => {
+  it("streams a slice of a media file too large to read whole", async () => {
+    // A sparse 3 GiB file costs no disk. readFileSync refuses anything over
+    // 2 GiB (ERR_FS_FILE_TOO_LARGE), so a route that buffers the whole file
+    // cannot serve a single byte of it; streaming the window must.
+    const projectDir = createProjectDir();
+    const size = 3 * 1024 * 1024 * 1024;
+    const fd = openSync(join(projectDir, "clip.mp4"), "w");
+    writeSync(fd, "WXYZ", 5_000_000);
+    ftruncateSync(fd, size);
+    closeSync(fd);
+
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { Range: "bytes=5000000-5000003" },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe(`bytes 5000000-5000003/${size}`);
+    expect(res.headers.get("Content-Length")).toBe("4");
+    expect(await res.text()).toBe("WXYZ");
+  });
+
+  it("answers 416 for a range that starts past the end of the file", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "abc");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { Range: "bytes=99-200" },
+    });
+    expect(res.status).toBe(416);
+    expect(res.headers.get("Content-Range")).toBe("bytes */3");
   });
 });

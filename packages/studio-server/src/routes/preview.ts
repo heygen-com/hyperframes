@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
@@ -580,34 +581,45 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       servedContentType = PROXY_VARIANT_CONFIG[proxyVariant].contentType;
     }
 
-    const buffer: Buffer = isText
-      ? Buffer.from(readFileSync(file, "utf-8"), "utf-8")
-      : readFileSync(servedPath);
-    const totalSize = buffer.length;
+    // Text is small and keeps its utf-8 round trip in memory. Binary media
+    // streams only the requested window: Chrome refills a playing <video> or
+    // <audio> with a fresh Range request every few hundred milliseconds, and a
+    // 1KB slice of a multi-hundred-MB source must not readFileSync the whole
+    // file on each one. The full read also blocked the event loop, so every
+    // other Studio request (SSE, saves, the voice track) waited behind it.
+    const textBuffer = isText ? Buffer.from(readFileSync(file, "utf-8"), "utf-8") : null;
+    const totalSize = textBuffer ? textBuffer.length : statSync(servedPath).size;
+    const bodyFor = (start: number, end: number): BodyInit =>
+      textBuffer
+        ? new Uint8Array(textBuffer.subarray(start, end + 1))
+        : (Readable.toWeb(createReadStream(servedPath, { start, end })) as ReadableStream);
 
     // Support byte-range requests so browsers can seek audio/video elements.
     const rangeHeader = c.req.header("Range");
-    if (rangeHeader) {
-      const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-      if (match) {
-        const start = parseInt(match[1]!, 10);
-        const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-        const safeEnd = Math.min(end, totalSize - 1);
-        const chunkSize = safeEnd - start + 1;
-        return new Response(new Uint8Array(buffer.slice(start, safeEnd + 1)), {
-          status: 206,
-          headers: {
-            ...cacheHeaders,
-            "Content-Type": servedContentType,
-            "Content-Range": `bytes ${start}-${safeEnd}/${totalSize}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": String(chunkSize),
-          },
+    const match = rangeHeader ? /bytes=(\d+)-(\d*)/.exec(rangeHeader) : null;
+    if (match) {
+      const start = parseInt(match[1]!, 10);
+      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const safeEnd = Math.min(end, totalSize - 1);
+      if (start > safeEnd) {
+        return new Response(null, {
+          status: 416,
+          headers: { ...cacheHeaders, "Content-Range": `bytes */${totalSize}` },
         });
       }
+      return new Response(bodyFor(start, safeEnd), {
+        status: 206,
+        headers: {
+          ...cacheHeaders,
+          "Content-Type": servedContentType,
+          "Content-Range": `bytes ${start}-${safeEnd}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(safeEnd - start + 1),
+        },
+      });
     }
 
-    return new Response(new Uint8Array(buffer), {
+    return new Response(totalSize > 0 ? bodyFor(0, totalSize - 1) : null, {
       headers: {
         ...cacheHeaders,
         "Content-Type": servedContentType,
