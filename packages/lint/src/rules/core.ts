@@ -233,9 +233,9 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
   // unbalanced_style_tags — extra </style> dumps the rest of the stylesheet as on-screen text.
   ({ source }) => {
-    const withoutScripts = source.replace(/<script\b[\s\S]*?<\/script>/gi, "");
+    const withoutScripts = source.replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, "");
     const opens = withoutScripts.match(/<style\b/gi)?.length ?? 0;
-    const closes = withoutScripts.match(/<\/style>/gi)?.length ?? 0;
+    const closes = withoutScripts.match(/<\/style\s*>/gi)?.length ?? 0;
     if (opens === closes) return [];
     return [
       {

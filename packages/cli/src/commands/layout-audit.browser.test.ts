@@ -1326,6 +1326,25 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]?.message).toContain("#n2");
   });
 
+  it("flags a horizontal shaft, whose bounding box has no height", () => {
+    document.body.innerHTML = orphanDom;
+    installGeometry(
+      orphanRects,
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+    const flat = document.getElementById("path-input");
+    if (flat) {
+      const box = { left: 360, top: 480, right: 1400, bottom: 480, width: 1040, height: 0 };
+      flat.getBoundingClientRect = () => ({ ...box, x: box.left, y: box.top, toJSON: () => box });
+    }
+
+    const issues = runAudit().filter((issue) => issue.code === "connector_orphan");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.message).toContain("#n2");
+  });
+
   it("does not orphan a shaft whose endpoints are both on stage", () => {
     document.body.innerHTML = orphanDom;
     installGeometry(orphanRects, orphanStyles({}));

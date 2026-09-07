@@ -313,6 +313,39 @@ describe("core rules", () => {
     expect(finding?.message).toContain("extra </style>");
   });
 
+  it("does not count style text inside a script closed with a spaced end tag", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <style>
+      .editorial-block { color: #fff; }
+    </style>
+    <script>
+      const marker = "</style>";
+    </script >
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "unbalanced_style_tags")).toBeUndefined();
+  });
+
+  it("reports an extra closer written as </style >", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <style>
+      .editorial-block { color: #fff; }
+    </style >
+    </style >
+    .leftover { color: red; }
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "unbalanced_style_tags")?.severity).toBe("error");
+  });
+
   it("does not report paired style blocks", async () => {
     const html = compositionWithBodyPrefix("", `<div class="editorial-block">Hello</div>`);
     const result = await lintHyperframeHtml(html);

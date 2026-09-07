@@ -1368,6 +1368,19 @@
     return issues;
   }
 
+  function shaftIsPainted(path) {
+    if (IGNORE_TAGS.has(path.tagName) || hasIgnoreFlag(path)) return false;
+    const style = getComputedStyle(path);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse"
+    ) {
+      return false;
+    }
+    return opacityChain(path) >= 0.2;
+  }
+
   function shaftDashHidden(path) {
     if (typeof path.getTotalLength !== "function") return false;
     let total;
@@ -1409,7 +1422,7 @@
       for (const path of Array.from(svg.querySelectorAll("path"))) {
         if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
         if (!isConnectorPath(svg, path)) continue;
-        if (!isVisibleElement(path) || shaftDashHidden(path)) continue;
+        if (!shaftIsPainted(path) || shaftDashHidden(path)) continue;
         const user = pathUserEndpoints(path);
         const rendered = pathScreenEndpoints(svg, path, user);
         if (!user || !rendered) continue;
