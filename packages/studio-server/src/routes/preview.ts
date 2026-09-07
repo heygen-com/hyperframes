@@ -592,7 +592,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const bodyFor = (start: number, end: number): BodyInit =>
       textBuffer
         ? new Uint8Array(textBuffer.subarray(start, end + 1))
-        : (Readable.toWeb(createReadStream(servedPath, { start, end })) as ReadableStream);
+        : // Node's web stream type and the DOM one do not overlap for tsc on
+          // every platform's lib set; the double cast is the documented bridge.
+          (Readable.toWeb(
+            createReadStream(servedPath, { start, end }),
+          ) as unknown as ReadableStream);
 
     // Support byte-range requests so browsers can seek audio/video elements.
     const rangeHeader = c.req.header("Range");
