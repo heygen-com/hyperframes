@@ -100,6 +100,30 @@ function isPlayerElement(el: HTMLElement): el is PlayerElement {
   );
 }
 
+/** What init needs from the element's subtree, or why it cannot start yet. */
+export type SlideshowParts =
+  | { kind: "ready"; player: HTMLElement; manifest: SlideshowManifest }
+  | { kind: "incomplete"; reason: "no-player" | "no-island" | "malformed-island" };
+
+/** Classify the subtree. Reads the DOM, decides nothing about timing. */
+export function locateSlideshowParts(root: Element): SlideshowParts {
+  const player = root.querySelector("hyperframes-player");
+  if (!(player instanceof HTMLElement)) return { kind: "incomplete", reason: "no-player" };
+  let manifest: ReturnType<typeof parseSlideshowManifest>;
+  try {
+    manifest = parseSlideshowManifest(root.innerHTML);
+  } catch {
+    return { kind: "incomplete", reason: "malformed-island" };
+  }
+  if (!manifest) return { kind: "incomplete", reason: "no-island" };
+  return { kind: "ready", player, manifest };
+}
+
+/** Parser-inserted children are all present once the document leaves `loading`. */
+export function childrenMayStillArrive(readyState: DocumentReadyState): boolean {
+  return readyState === "loading";
+}
+
 const PRESENTER_NOTES_STORAGE_PREFIX = "hf-slideshow:presenter-notes:v1:";
 
 // Injected once per document to avoid duplicating @keyframes across multiple elements.
@@ -196,6 +220,7 @@ export class HyperframesSlideshow extends HTMLElement {
   private presenterPositionTimers: ReturnType<typeof setTimeout>[] = [];
   private disconnected = false;
   private initTimer: ReturnType<typeof setTimeout> | null = null;
+  private initRetry: (() => void) | null = null;
   private initInFlight = false;
   private initGeneration = 0;
   private keyForwardFrame: HTMLIFrameElement | null = null;
@@ -283,6 +308,10 @@ export class HyperframesSlideshow extends HTMLElement {
     if (this.initTimer !== null) {
       clearTimeout(this.initTimer);
       this.initTimer = null;
+    }
+    if (this.initRetry !== null) {
+      document.removeEventListener("DOMContentLoaded", this.initRetry);
+      this.initRetry = null;
     }
     window.removeEventListener("keydown", this.onKey);
     this.detachIframeKeys?.();
@@ -410,18 +439,14 @@ export class HyperframesSlideshow extends HTMLElement {
     const gen = this.initGeneration;
 
     try {
-      const playerEl = this.querySelector("hyperframes-player");
-      if (!playerEl || !(playerEl instanceof HTMLElement)) return;
-
-      const html = this.innerHTML;
-      let manifest: ReturnType<typeof parseSlideshowManifest>;
-      try {
-        manifest = parseSlideshowManifest(html);
-      } catch {
-        // Malformed island (e.g. bad JSON) — fail gracefully, no chrome.
+      const parts = locateSlideshowParts(this);
+      if (parts.kind === "incomplete") {
+        // Missing or malformed: either an authoring error (no chrome, fail
+        // gracefully) or the parser has not finished appending our children.
+        this.retryInitWhenParsed(gen);
         return;
       }
-      if (!manifest) return;
+      const { player: playerEl, manifest } = parts;
 
       this.renderInitialChrome(manifest);
 
@@ -493,6 +518,25 @@ export class HyperframesSlideshow extends HTMLElement {
     } finally {
       this.initInFlight = false;
     }
+  }
+
+  /**
+   * The macrotask in connectedCallback usually lets the parser append this
+   * element's children before init runs, but with the bundle loaded from
+   * <head> the timer can still fire while the parser is inside the element
+   * (seen in headless Chromium), so init finds no player, or an island that is
+   * only half streamed in, and would give up for good. While the document is
+   * still loading, retry once at DOMContentLoaded: every parser-inserted child
+   * exists by then. Once parsing is over there is nothing to wait for.
+   */
+  private retryInitWhenParsed(gen: number): void {
+    if (this.initRetry !== null || !childrenMayStillArrive(document.readyState)) return;
+    const retry = () => {
+      this.initRetry = null;
+      if (gen === this.initGeneration && this.isConnected && !this.disconnected) void this.init();
+    };
+    this.initRetry = retry;
+    document.addEventListener("DOMContentLoaded", retry, { once: true });
   }
 
   private renderInitialChrome(manifest: SlideshowManifest): void {
