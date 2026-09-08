@@ -316,6 +316,25 @@ describe("persistence-tiered severity (#U10)", () => {
     }
   });
 
+  it("keeps id-less connector findings apart by geometry, so each stays a single sample", () => {
+    for (const code of ["connector_detached", "connector_orphan"] as const) {
+      const shaft = { ...issue(code, "warning"), selector: "svg path" };
+      const collapsed = collapseStaticLayoutIssues(
+        [
+          { ...shaft, time: 1, rect: { ...shaft.rect, left: 100, top: 100 } },
+          { ...shaft, time: 3, rect: { ...shaft.rect, left: 600, top: 300 } },
+          { ...shaft, time: 5, rect: { ...shaft.rect, left: 1200, top: 700 } },
+        ],
+        9,
+      );
+
+      expect(collapsed).toHaveLength(3);
+      for (const finding of collapsed) {
+        expect(finding).toMatchObject({ severity: "info", occurrences: 1 });
+      }
+    }
+  });
+
   it("keeps a held but small canvas_overflow at info", () => {
     const breach = {
       ...issue("canvas_overflow", "info"),

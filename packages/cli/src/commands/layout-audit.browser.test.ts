@@ -1393,18 +1393,58 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]).toMatchObject({ selector: "#path-to-commitment" });
   });
 
-  it("does not orphan an unnamed decorative path on an empty frame", () => {
-    document.body.innerHTML = `
-      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-        <svg id="decor"><path id="drafting-line" d="M 40 540 L 720 540" /></svg>
-      </div>
-    `;
+  it("does not orphan an unnamed decorative path that runs between real nodes", () => {
+    document.body.innerHTML = orphanDom
+      .replace(
+        '<path id="path-input" d="M 360 480 L 1400 480" marker-end="url(#arrowhead)" />',
+        '<path id="drafting-line" d="M 360 480 L 1400 480" />',
+      )
+      .replace('<svg id="connectors">', '<svg id="decor">');
     installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-        decor: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-      },
-      {},
+      { ...orphanRects, decor: orphanRects.connectors },
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+  });
+
+  it("orphans that same path once it carries an arrowhead", () => {
+    document.body.innerHTML = orphanDom.replace('<svg id="connectors">', '<svg id="decor">');
+    installGeometry(
+      { ...orphanRects, decor: orphanRects.connectors },
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toHaveLength(1);
+  });
+
+  it("does not orphan a shaft still hidden behind its dash offset", () => {
+    document.body.innerHTML = orphanDom;
+    installGeometry(
+      orphanRects,
+      orphanStyles({
+        n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" },
+        "path-input": { strokeDasharray: "100", strokeDashoffset: "100" },
+      }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+  });
+
+  it("does not blame a staged halo that sits on a live node", () => {
+    document.body.innerHTML = orphanDom.replace(
+      '<div id="n2"></div>',
+      '<div id="n2"></div>\n        <div id="n2-halo"></div>',
+    );
+    installGeometry(
+      { ...orphanRects, "n2-halo": rect({ left: 1390, top: 390, width: 180, height: 180 }) },
+      orphanStyles({ "n2-halo": { backgroundColor: "rgb(80, 90, 100)", opacity: "0" } }),
     );
     installConnectorGeometry({ e: 0, f: 0 });
     installAuditScript();

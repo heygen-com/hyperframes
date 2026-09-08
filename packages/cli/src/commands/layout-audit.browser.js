@@ -1435,12 +1435,17 @@
         const dark = [];
         for (const point of [rendered.start, rendered.end]) {
           let best = null;
+          let attached = false;
           for (const candidate of candidates) {
             const gap = distanceToRect(point, candidate.rect);
             if (gap > threshold) continue;
+            if (isVisibleElement(candidate.element)) {
+              attached = true;
+              break;
+            }
             if (best === null || gap < best.gap) best = { gap, candidate };
           }
-          if (best !== null && !isVisibleElement(best.candidate.element)) dark.push(best.candidate);
+          if (!attached && best !== null) dark.push(best.candidate);
         }
         if (dark.length === 0) continue;
         issues.push({
