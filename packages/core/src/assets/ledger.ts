@@ -123,15 +123,24 @@ export function classifyAssetUrl(url: string): "remote" | "data" | "local-candid
 
 // ── HTML scanning ───────────────────────────────────────────────────────────
 
-/** Minimal entity decode for attribute values (URLs use a small entity set). */
+const HTML_ENTITY_MAP: Record<string, string> = {
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+};
+
+/**
+ * Minimal entity decode for attribute values (URLs use a small entity set).
+ * Single pass so each entity decodes exactly once — a decoded `&` can never
+ * recombine with following text into a second entity (`&amp;lt;` → `&lt;`,
+ * never `<`).
+ */
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0*39;/g, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
+  return value.replace(/&(?:(amp|quot|apos|lt|gt)|#0*39);/gi, (match, name: string | undefined) =>
+    name === undefined ? "'" : (HTML_ENTITY_MAP[name.toLowerCase()] ?? match),
+  );
 }
 
 /** Length-preserving `<!-- … -->` blanking so commented-out tags never count. */
@@ -306,8 +315,24 @@ const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)|"([^"]+)"|'([^']+)')/gi;
 const FONT_FACE_BLOCK_RE = /@font-face\s*\{[^}]*\}/gi;
 
+/**
+ * Length-preserving blanking of CSS block comments via a linear O(n) scan
+ * (CSS comments do not nest) — same shape as `maskHtmlComments`, no regex
+ * backtracking on adversarial input.
+ */
 function stripCssComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length));
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (true) {
+    const start = css.indexOf("/*", cursor);
+    if (start === -1) break;
+    const end = css.indexOf("*/", start + 2);
+    if (end === -1) break;
+    const afterComment = end + 2;
+    chunks.push(css.slice(cursor, start), " ".repeat(afterComment - start));
+    cursor = afterComment;
+  }
+  return chunks.length === 0 ? css : chunks.join("") + css.slice(cursor);
 }
 
 function collectCssUrls(

@@ -15,7 +15,12 @@ vi.mock("../utils/updateCheck.js", () => ({ withMeta: (o: unknown) => o }));
 // resolveProject reports invalid-dir failures to telemetry; keep tests silent.
 vi.mock("../telemetry/events.js", () => ({ trackCommandFailure: () => {} }));
 
-import vendorCommand, { rewriteHtmlReferences, toFetchableUrl, vendorFileName } from "./vendor.js";
+import vendorCommand, {
+  resolveVendorTarget,
+  rewriteHtmlReferences,
+  toFetchableUrl,
+  vendorFileName,
+} from "./vendor.js";
 
 const run = makeRunner(vendorCommand);
 
@@ -46,6 +51,23 @@ describe("vendorFileName", () => {
 
   it("derives the extension from content-type when the URL has none", () => {
     expect(vendorFileName("https://fonts.example.com/inter", "font/woff2")).toMatch(/\.woff2$/);
+  });
+});
+
+describe("resolveVendorTarget", () => {
+  it("resolves plain filenames under the vendor directory", () => {
+    const outDir = join("/tmp", "proj", "assets", "vendor");
+    expect(resolveVendorTarget(outDir, "gsap.min-abc.js")).toBe(join(outDir, "gsap.min-abc.js"));
+  });
+
+  it("refuses filenames that would escape the vendor directory", () => {
+    const outDir = join("/tmp", "proj", "assets", "vendor");
+    expect(() => resolveVendorTarget(outDir, "../../../etc/passwd")).toThrow(
+      /outside the vendor directory/,
+    );
+    expect(() => resolveVendorTarget(outDir, "/etc/passwd")).toThrow(
+      /outside the vendor directory/,
+    );
   });
 });
 
@@ -146,6 +168,33 @@ describe("vendor command", () => {
     expect(output.ok).toBe(false);
     expect(output.failed).toEqual([{ url: GSAP_URL, error: "HTTP 404" }]);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(GSAP_URL);
+  });
+
+  it("rejects downloads over the size cap without rewriting their references", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => fetchResponse("0123456789", "text/javascript")),
+    );
+
+    await run({ dir, out: "assets/vendor", json: true, "max-bytes": "4" });
+    expect(consumeCommandResult().exitCode).toBe(1);
+
+    const output = lastJsonOutput();
+    expect(output.ok).toBe(false);
+    expect(output.failed).toEqual([
+      { url: GSAP_URL, error: expect.stringMatching(/exceeds size cap/) },
+    ]);
+    expect(readFileSync(join(dir, "index.html"), "utf-8")).toContain(GSAP_URL);
+  });
+
+  it("refuses an --out directory outside the project", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await run({ dir, out: "../outside-vendor", json: true });
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(lastJsonOutput().error).toMatch(/inside the project directory/);
   });
 
   it("--strict-offline exits 1 when a non-vendorable remote (iframe) remains", async () => {
