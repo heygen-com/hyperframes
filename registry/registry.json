@@ -72,6 +72,106 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "carousel-circle-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-5",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "chatgpt-exchange",
       "type": "hyperframes:block"
     },
