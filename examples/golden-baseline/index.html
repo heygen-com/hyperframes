@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=640, height=360" />
+    <title>Golden Baseline Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background-color: #101018;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        background-color: #101018;
+        overflow: hidden;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+      #accent-bar {
+        width: 220px;
+        height: 10px;
+        border-radius: 5px;
+        background-color: #f5a623;
+        transform-origin: left center;
+      }
+      #headline {
+        color: #f4f4f0;
+        font-size: 44px;
+        font-weight: 700;
+        letter-spacing: 2px;
+      }
+      #subline {
+        color: #9aa3b2;
+        font-size: 18px;
+        letter-spacing: 1px;
+      }
+      #pulse-dot {
+        position: absolute;
+        left: 60px;
+        bottom: 48px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background-color: #4fc3f7;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="golden-baseline-demo"
+      data-start="0"
+      data-duration="4"
+      data-width="640"
+      data-height="360"
+    >
+      <div id="scene-1" class="clip scene" data-start="0" data-duration="4">
+        <div id="accent-bar"></div>
+        <div id="headline">GOLDEN GATE</div>
+        <div id="subline">pixel-diffed against committed baselines</div>
+        <div id="pulse-dot"></div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from("#accent-bar", { scaleX: 0, duration: 0.6, ease: "power3.out" }, 0.1);
+      tl.from("#headline", { y: 26, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.4);
+      tl.from("#subline", { y: 18, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.8);
+      tl.fromTo("#pulse-dot", { x: 0 }, { x: 494, duration: 2.4, ease: "power1.inOut" }, 1.2);
+
+      window.__timelines["golden-baseline-demo"] = tl;
+    </script>
+  </body>
+</html>
