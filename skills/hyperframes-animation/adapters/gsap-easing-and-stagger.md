@@ -116,12 +116,12 @@ tl.fromTo(
 );
 ```
 
-| dampingFraction   | overshoot       | register                                                                                                                                           |
-| ----------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1.0 (default)** | none (monotone) | The house settle — the exact curve `power3.out` approximates. Product / enterprise / serious tone.                                                 |
-| 0.80–0.85         | ~1–1.5%         | "Alive, not bouncy" — the iOS system default register. The overshoot is felt, not seen.                                                            |
-| 0.60–0.70         | ~5–10%          | Explicitly-playful ONLY (same rule as `back.out`, which this replaces — a spring's second-order settle reads physical where `back` reads cartoon). |
-| < 0.55            | > 12%           | Don't. Cartoon-wobble territory.                                                                                                                   |
+| dampingFraction   | overshoot       | register                                                                                                                                                                           |
+| ----------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1.0 (default)** | none (monotone) | The house settle — the exact curve `power3.out` approximates. Product / enterprise / serious tone.                                                                                 |
+| 0.80–0.85         | ~1–1.5%         | "Alive, not bouncy" — the iOS system default register. The overshoot is felt, not seen.                                                                                            |
+| 0.60–0.70         | ~5–10%          | Explicitly-playful ONLY (same rule as `back.out`, which this replaces — a spring's second-order settle reads physical where `back` reads cartoon).                                 |
+| < 0.55            | > 12%           | Don't — as an entrance. Cartoon-wobble territory for an arrival. The one sanctioned home for this band is impact **recovery** (Recovery Registers below), never the travel itself. |
 
 | response  | duration (ζ=1) | feel                                                         |
 | --------- | -------------- | ------------------------------------------------------------ |
@@ -134,6 +134,119 @@ Craft notes:
 - **ζ=1 vs `power3.out`**: the true spring front-loads harder (~67% vs ~58% travelled at quarter-time) and settles on a longer asymptotic tail; max shape difference ~11%. That long tail is the "premium" read — use it when the settle IS the shot (a wordmark landing, a final lockup).
 - **At ζ<1, overshooting curves go on transforms only** — never on `opacity` (it would push past 1) or color. Split opacity onto its own `power2.out` tween at the same timeline position.
 - **Doctrine unchanged**: ζ below ~0.8 is still the rare, explicitly-playful exception (`rules/spring-pop-entrance.md`). The default of this section is ζ=1 — real spring physics is not a license for bounce.
+
+### Named Registers
+
+Feel words over the same helper — a lookup table, not a second API. Each register is a `{ response, dampingFraction }` pair that shipped through a deterministic reference build (24 s reel, 2026-09-08, running this helper: every spring tween consuming the helper's duration verbatim, double-render bit-identical). The durations below are what `springEase` returns for the pair; take them from the helper, never from this table.
+
+```javascript
+const SPRING_REGISTERS = {
+  // Entrance / settle voices — arrivals, lockups, hero landings (ζ ≥ 0.8 per the doctrine above).
+  snappy: { response: 0.22, dampingFraction: 0.9 }, // tight snap: chips, small UI
+  "heavy-settle": { response: 0.8, dampingFraction: 1 }, // weighted lockup — the settle IS the shot
+  // Recovery voices — ONLY the spring-back after a contact (see Recovery Registers). Never an arrival.
+  bouncy: { response: 0.4, dampingFraction: 0.5 },
+  wobbly: { response: 0.5, dampingFraction: 0.28 },
+};
+const spring = (feel) => springEase(SPRING_REGISTERS[feel]);
+
+const land = spring("heavy-settle");
+tl.fromTo(
+  "#lockup",
+  { y: 80, opacity: 0 },
+  { y: 0, opacity: 1, duration: land.duration, ease: land.ease },
+  1.2,
+);
+```
+
+| register       | response | ζ    | duration (from the helper) | use                                                        |
+| -------------- | -------- | ---- | -------------------------- | ---------------------------------------------------------- |
+| `snappy`       | 0.22     | 0.90 | ≈ 0.29s                    | tight snap — chips, badges, small UI; ~0.1% overshoot      |
+| `heavy-settle` | 0.80     | 1.00 | ≈ 1.18s                    | weighted hero landing, end card, wordmark lockup; monotone |
+
+#### Recovery Registers (impact recovery only)
+
+`bouncy` and `wobbly` sit inside the "< 0.55 — Don't" band on purpose. They are **deformation-recovery** voices — the spring-back of a body after it lands and squashes, a control after release, the settle-back of a chain of followers after the leader's arrival — not entrance eases. A recovery starts _at_ the contact frame and moves the element by a small fraction of the arrival travel — a few percent of a large element's height, up to about its own height for a chip or badge — never the travel itself, so a 16–40% overshoot of that small displacement reads as material (rubber, jelly, drag), where the same overshoot on the arrival travel reads as cartoon.
+
+| register | response | ζ    | overshoot | duration (from the helper) | recovery context                                                          |
+| -------- | -------- | ---- | --------- | -------------------------- | ------------------------------------------------------------------------- |
+| `bouncy` | 0.40     | 0.50 | ~16%      | ≈ 0.81s                    | soft-body landing recovery, a released press, a chain's settle-back move  |
+| `wobbly` | 0.50     | 0.28 | ~40%      | ≈ 1.90s                    | rubber / jelly tier — the wobble _is_ the material read; rare, deliberate |
+
+- The arrival keeps the entrance doctrine (ζ ≥ 0.8, or `power3.out`); only the post-contact recovery may go `bouncy` / `wobbly`.
+- Recovery goes on a transform or a deformation proxy that was just displaced — never on `opacity`, never on the arrival travel.
+- Longer flight in a chain or trail comes from `response`, not from the duration (next section).
+
+### Duration Is an Output — the Greppable Criterion
+
+`springEase` returns the settle time and the tween consumes it verbatim, so the audit is mechanical: a spring tween's `duration:` is `<spring>.duration` with **no arithmetic on it**.
+
+```bash
+grep -nE 'duration\s*\*|\*\s*[A-Za-z_.]*duration' index.html   # spring tweens: zero hits
+```
+
+The `css` / `waapi` lanes need milliseconds: cast once through a helper (`ms(s.duration)`, next section) so a unit conversion never reads as arithmetic on a spring duration. A longer or shorter flight comes from `response` — `springEase({ ...SPRING_REGISTERS.bouncy, response: 0.4 * 1.4 })` — the same normalized curve over a physics-derived settle. A stretched duration draws the identical pixels (it re-times the same curve) and is still the anti-pattern the grep catches: it hides the physics parameter from the reader and from the next edit, and it is the first thing to drift when a beat gets re-timed.
+
+### bakeSpring — the Same Spring in the CSS-Keyframes and WAAPI Lanes
+
+`@keyframes` and `element.animate()` can't take a function ease, but both accept CSS `linear()` — a piecewise-linear easing with explicit stops. Bake the spring into one at setup; the curve is then a pure function of the animation's own time, so the `css` and `waapi` adapters seek it like any other keyframe animation (`css-animations.md`, `waapi.md`).
+
+```javascript
+// Curvature-adaptive sampling: stops cluster where the curve bends (the overshoot lobes).
+function bakeSpring(spring, { maxPts = 75 } = {}) {
+  const dense = 400;
+  const pts = [[0, 0]];
+  const curv = [];
+  for (let i = 1; i < dense; i++) {
+    const y0 = spring.ease((i - 1) / dense);
+    const y1 = spring.ease(i / dense);
+    const y2 = spring.ease((i + 1) / dense);
+    curv.push(Math.abs(y2 - 2 * y1 + y0)); // second difference ≈ local curvature
+  }
+  const total = curv.reduce((a, b) => a + b, 0) || 1;
+  const budget = maxPts - 2;
+  let acc = 0;
+  for (let i = 1; i < dense; i++) {
+    acc += (curv[i - 1] / total) * budget;
+    if (acc >= 1) {
+      pts.push([i / dense, spring.ease(i / dense)]);
+      acc = 0;
+    }
+  }
+  pts.push([1, 1]);
+  const css = `linear(${pts.map(([x, y]) => `${y.toFixed(5)} ${(x * 100).toFixed(3)}%`).join(", ")})`;
+  return { points: pts, css }; // at most maxPts stops; the four registers land at 57–61 with the default
+}
+
+const ms = (seconds) => Math.round(seconds * 1000); // the css / waapi lanes take milliseconds — one unit cast, kept out of the tween sites
+const s = springEase(SPRING_REGISTERS.snappy);
+const baked = bakeSpring(s);
+// CSS lane — the duration is still the helper's:
+style.textContent = `#chip { animation: chip-in ${ms(s.duration)}ms ${baked.css} 200ms 1 both; }`;
+// WAAPI lane:
+chip
+  .animate([{ transform: "translateY(-220px)" }, { transform: "translateY(0)" }], {
+    duration: ms(s.duration),
+    delay: 200,
+    easing: baked.css,
+    fill: "both",
+    iterations: 1,
+  })
+  .pause();
+```
+
+Parity against the analytic ease is a function of travel: the bake error is a fraction of the curve, so it grows with the distance the element moves. Computed against this file's `springEase` (script sampling of the bake at 4000 points, 2026-09-08):
+
+| register       | points at the default cap | worst error, 1000 px travel | at 220 px | with `maxPts: 200` |
+| -------------- | ------------------------- | --------------------------- | --------- | ------------------ |
+| `snappy`       | 61                        | 2.3 px                      | 0.5 px    | 115 pts → 0.5 px   |
+| `heavy-settle` | 58                        | 2.5 px                      | 0.5 px    | 110 pts → 0.6 px   |
+| `bouncy`       | 61                        | 3.0 px                      | 0.7 px    | 123 pts → 1.0 px   |
+| `wobbly`       | 57                        | 7.3 px                      | 1.6 px    | 107 pts → 1.9 px   |
+
+In the render itself (one composition, the `wobbly` register at `maxPts: 200`, the GSAP analytic ease beside the CSS-keyframes and WAAPI lanes on the same travel, 1-px edge measurement on every frame of the tween): both baked lanes stay within **1 px** of the analytic chip over 220 px of travel and within **2 px** over 900 px.
+
+Rule of thumb: keep `|baked − analytic| × travel ≤ 2 px`. The default cap holds `snappy`, `heavy-settle` and `bouncy` to that tolerance up to roughly 650 px of travel (the two entrance registers to about 800 px); the `wobbly` register's lobes want `maxPts: 200` for the same tolerance at 1000 px. Raise `maxPts` rather than accepting a visible step.
 
 ## Stagger
 
