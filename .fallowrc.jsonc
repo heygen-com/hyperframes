@@ -425,6 +425,9 @@
     "happy-dom",
     "ffmpeg-static",
     "ffprobe-static",
+    // Optional peer of @vitejs/plugin-react: resolved by the plugin itself when
+    // `compiler: true` is set, so nothing in this repo imports it by name.
+    "oxc-transform-react",
     "@hyperframes/core",
     "@hyperframes/studio",
     "@hyperframes/producer",

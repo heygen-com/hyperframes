@@ -112,9 +112,7 @@ describe("useThumbnailLease", () => {
       value: { kind: "image" as const, url: "blob:video", aspect: 1 },
       weight: 1,
     }));
-    let kind: ThumbnailRequest["kind"] = "image";
-    let rich = false;
-    function Probe() {
+    function Probe({ kind, rich }: { kind: ThumbnailRequest["kind"]; rich: boolean }) {
       useThumbnailLease(
         {
           key: "same-content",
@@ -131,14 +129,12 @@ describe("useThumbnailLease", () => {
     }
     const root = createRoot(document.createElement("div"));
     await act(async () => {
-      root.render(React.createElement(Probe));
+      root.render(React.createElement(Probe, { kind: "image", rich: false }));
       await Promise.resolve();
     });
 
-    kind = "video";
-    rich = true;
     await act(async () => {
-      root.render(React.createElement(Probe));
+      root.render(React.createElement(Probe, { kind: "video", rich: true }));
       await Promise.resolve();
     });
 
