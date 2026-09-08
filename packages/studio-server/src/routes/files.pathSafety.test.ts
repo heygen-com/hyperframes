@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, type TestContext } from "vitest";
+import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { Hono } from "hono";
 import {
   existsSync,
@@ -17,6 +17,7 @@ import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -199,5 +200,63 @@ describe("file route containment", () => {
     expect((await (await app.request(fileUrl("alias/inside.txt"))).json()).content).toBe(
       "nested bytes",
     );
+  });
+});
+
+describe("upload collision races", () => {
+  function raceDuringRead(filename: string, collide: () => void) {
+    const file = new File(["new upload"], filename);
+    const read = file.arrayBuffer.bind(file);
+    vi.spyOn(file, "arrayBuffer").mockImplementation(async () => {
+      collide();
+      return read();
+    });
+    const form = new FormData();
+    form.append("files", file);
+    vi.spyOn(Request.prototype, "formData").mockResolvedValue(form);
+  }
+
+  it("preserves an upload that appears while the body is read", async () => {
+    const { app, project } = fixture();
+    raceDuringRead("upload.txt", () => writeFileSync(join(project, "upload.txt"), "other upload"));
+    const response = await upload(app);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ files: ["upload (2).txt"] });
+    expect(readFileSync(join(project, "upload.txt"), "utf8")).toBe("other upload");
+    expect(readFileSync(join(project, "upload (2).txt"), "utf8")).toBe("new upload");
+  });
+
+  it.each([".gitignore", "archive.tar.txt"])(
+    "retries suffix races without changing extension rules: %s",
+    async (name) => {
+      const { app, project } = fixture();
+      const dot = name.indexOf(".", name.startsWith(".") ? 1 : 0);
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : "";
+      writeFileSync(join(project, name), "original");
+      raceDuringRead(name, () => {
+        writeFileSync(join(project, `${base} (2)${ext}`), "second");
+        writeFileSync(join(project, `${base} (3)${ext}`), "third");
+      });
+      const response = await upload(app, "", name);
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ files: [`${base} (4)${ext}`] });
+      expect(readFileSync(join(project, `${base} (2)${ext}`), "utf8")).toBe("second");
+      expect(readFileSync(join(project, `${base} (3)${ext}`), "utf8")).toBe("third");
+    },
+  );
+
+  it("does not write through a symlink planted during the upload read", async (context) => {
+    const { app, project, outside } = fixture();
+    // Establish symlink support before entering the mocked asynchronous read.
+    const probe = join(project, "probe-link");
+    linkOrSkip(context, join(outside, "secret.txt"), probe, "file");
+    rmSync(probe);
+    raceDuringRead("upload.txt", () =>
+      symlinkSync(join(outside, "secret.txt"), join(project, "upload.txt")),
+    );
+    const response = await upload(app);
+    expect(await response.json()).toMatchObject({ files: [] });
+    expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("outside secret");
   });
 });

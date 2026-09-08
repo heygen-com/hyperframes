@@ -2204,13 +2204,14 @@ async function processUploadedFiles(
     // Don't overwrite — append (2), (3), etc.
     let finalPath = destPath;
     let finalName = name;
+    // Handle dotfiles correctly: .gitignore → ext="", base=".gitignore"
+    const dotIdx = name.indexOf(".", name.startsWith(".") ? 1 : 0);
+    const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
+    const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+    const MAX_COPY_INDEX = 10000;
+    let n = 1;
     if (existsSync(finalPath)) {
-      // Handle dotfiles correctly: .gitignore → ext="", base=".gitignore"
-      const dotIdx = name.indexOf(".", name.startsWith(".") ? 1 : 0);
-      const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
-      const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-      let n = 2;
-      const MAX_COPY_INDEX = 10000;
+      n = 2;
       while (n < MAX_COPY_INDEX && existsSync(resolve(targetDir, `${base} (${n})${ext}`))) n++;
       if (n >= MAX_COPY_INDEX) {
         skipped.push(name);
@@ -2231,7 +2232,28 @@ async function processUploadedFiles(
       continue;
     }
 
-    writeFileSync(finalPath, buffer);
+    // Reading the upload yields: another request can claim the selected name.
+    // Only exclusive creation authorizes a write; retry collisions without
+    // following a newly planted link or overwriting another upload.
+    let written = false;
+    while (n < MAX_COPY_INDEX && isSafePath(projectDir, finalPath)) {
+      try {
+        writeFileSync(finalPath, buffer, { flag: "wx" });
+        written = true;
+        break;
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") {
+          throw error;
+        }
+        n++;
+        finalName = `${base} (${n})${ext}`;
+        finalPath = resolve(targetDir, finalName);
+      }
+    }
+    if (!written) {
+      if (n >= MAX_COPY_INDEX) skipped.push(name);
+      continue;
+    }
     const relativePath = subDir ? join(subDir, finalName) : finalName;
     uploaded.push(relativePath);
     if (isAudioFile(finalName)) {
