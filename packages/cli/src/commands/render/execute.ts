@@ -165,6 +165,7 @@ export function renderOptionsFromPlan(
     pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
+    provenance: plan.provenance,
     exitAfterComplete: true,
     manageDeParallelRouterBreaker: true,
   };
@@ -358,6 +359,7 @@ export function batchRowRenderOptions(
     resumeSegments: plan.resumeSegments,
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
+    provenance: plan.provenance,
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,

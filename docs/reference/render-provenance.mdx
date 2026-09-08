@@ -1,0 +1,117 @@
+---
+title: "Render provenance sidecar"
+sidebarTitle: "Render provenance"
+description: "The portable JSON receipt written next to every rendered output."
+---
+
+Every successful `hyperframes render` writes a small JSON receipt next to the
+output file: `out.mp4` gets `out.mp4.hf-render.json`. The sidecar records what
+produced the file — tool versions, input hashes, fonts, format, encoder, stage
+timings, and warning codes — so agents, CI pipelines, and support tooling can
+answer "what rendered this, from what, and how" without re-running anything.
+
+```bash
+npx hyperframes render --output out.mp4
+# → out.mp4
+# → out.mp4.hf-render.json
+```
+
+```json
+{
+  "$schema": "https://hyperframes.heygen.com/schema/hf-render-sidecar.json",
+  "schemaVersion": 1,
+  "kind": "hf-render-sidecar",
+  "createdAt": "2026-09-08T01:10:29.640Z",
+  "versions": {
+    "producer": "0.8.31",
+    "node": "v22.22.2",
+    "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5"
+  },
+  "render": {
+    "jobId": "render-1757294992655-h2y0iqk3d",
+    "outcome": "completed",
+    "warningCodes": [],
+    "totalElapsedMs": 36980,
+    "stages": { "compileMs": 189, "captureFrameMs": 33212, "encodeMs": 941 },
+    "workers": 1,
+    "quality": "standard"
+  },
+  "input": {
+    "entryFile": "index.html",
+    "entrySha256": "9917f7d1…",
+    "compositionHash": "d59fa8f6a2f95627",
+    "fonts": ["Inter", "Space Grotesk"],
+    "variables": { "count": 2, "sha256": "0b26e313…" }
+  },
+  "output": {
+    "file": "out.mp4",
+    "format": "mp4",
+    "fps": { "num": 30, "den": 1 },
+    "width": 1920,
+    "height": 1080,
+    "durationSeconds": 4,
+    "totalFrames": 120,
+    "sizeBytes": 693352,
+    "sha256": "6cbb43c1…",
+    "hdr": false,
+    "encoder": { "codec": "h264", "preset": "medium", "pixelFormat": "yuv420p" }
+  },
+  "host": { "platform": "linux", "arch": "x64" }
+}
+```
+
+## Controlling the sidecar
+
+The sidecar is on by default for every render, including `--docker` and
+`--batch` renders (each batch row writes its own
+`<row output>.hf-render.json`).
+
+```bash
+npx hyperframes render --output out.mp4 --no-provenance        # disable
+npx hyperframes render --output out.mp4 --provenance receipts/out.json  # relocate
+```
+
+Two combinations are rejected up front: a custom `--provenance <path>` with
+`--batch` (one fixed path cannot serve N row outputs) and with `--docker`
+(an arbitrary host path is not visible from the render container). Disabling
+works everywhere.
+
+Programmatic callers set the same tri-state on the render request:
+`provenance` omitted (default path), `false` (disabled), or a custom path
+string.
+
+## What the fields mean
+
+| Field | Meaning |
+| --- | --- |
+| `versions` | `@hyperframes/producer` package version, Node.js version, and the first line of `ffmpeg -version`. |
+| `render.outcome` | `completed` or `completed_with_warnings` — sidecars only exist for renders whose artifact committed. |
+| `render.warningCodes` | Sorted capture-readiness warning codes (empty on a clean render). |
+| `render.stages` | Per-stage wall-clock timings in milliseconds (`compileMs`, `captureMs`, `encodeMs`, …). |
+| `input.entrySha256` | sha256 of the entry HTML source bytes. |
+| `input.compositionHash` | Content hash of the compiled composition — the same value render telemetry reports. |
+| `input.fonts` | `@font-face` family names baked into the compiled composition. |
+| `input.variables` | Count and sha256 of the render-time variable overrides — the hash proves *which* parametrization produced the output without disclosing values. `null` when no variables were passed. |
+| `output.sha256` / `output.sizeBytes` | Digest and size of the committed artifact. Omitted for `png-sequence` directory outputs. |
+| `output.encoder` | Codec, preset, and pixel format used by the encode stage. `null` for `png-sequence` and `gif`. |
+
+The full contract is published as a JSON Schema at
+[`hf-render-sidecar.json`](https://hyperframes.heygen.com/schema/hf-render-sidecar.json)
+(source: `packages/core/schemas/hf-render-sidecar.json`).
+
+## What the sidecar deliberately omits
+
+Variable **values** (they routinely carry user text and tokens — only a hash
+is recorded), environment variables, absolute host paths, usernames, and
+machine names. Once a receipt travels with a shared file, metadata leaks are
+hard to walk back.
+
+## Sidecar vs. embedded container tags
+
+HyperFrames also stamps MP4/MOV/WebM containers with two unsigned metadata
+tags (`hyperframes_renderer`, `hyperframes_version`). The two are
+complementary: the embedded tags survive file moves but hold only the
+renderer name and version; the sidecar carries the full receipt but is a
+separate file. Both are unauthenticated hints — any tool can write either —
+so use them for diagnostics and CI bookkeeping, never as an authenticity or
+attribution boundary.
