@@ -262,6 +262,30 @@ export async function createAudioGroupAndAssignMembers({
  * expanded-rows resolution as element-visibility, for the same reason — a
  * nested sub-composition child has no entry in the raw store list.
  */
+/**
+ * Run the group write; on failure log it, toast it, and rethrow it.
+ *
+ * Module scope, not the hook's: the React Compiler cannot lower a `throw` inside
+ * a `try`/`catch` and declines the whole hook when it finds one. The rethrow is
+ * the point, not an oversight — the carve's auto-group chains
+ * `.then(() => ({ ...next, sources: [groupId] }))` off this promise, so
+ * swallowing here let it persist a carve pointing at a group that was never
+ * written, the exact silent no-op the throw inside
+ * `createAudioGroupAndAssignMembers` exists to prevent.
+ */
+async function reportGroupFailure(
+  showToast: (message: string, tone?: "error" | "info") => void,
+  write: () => Promise<void>,
+): Promise<void> {
+  try {
+    await write();
+  } catch (error) {
+    console.error("[Timeline] Failed to group voice clips", error);
+    showToast(error instanceof Error ? error.message : "Failed to group voice clips");
+    throw error;
+  }
+}
+
 export function useAudioGroupCarveAssignment({
   projectIdRef,
   activeCompPath,
@@ -294,7 +318,7 @@ export function useAudioGroupCarveAssignment({
         const domId = runtimeAudioId(item);
         return domId !== null && wanted.has(domId);
       });
-      try {
+      await reportGroupFailure(showToast, async () => {
         // Loud, not silent: an unresolved id used to leave `elements` short,
         // `createAudioGroupAndAssignMembers` returning early with no write, and
         // the carve still persisting `sources: [groupId]` for a group that was
@@ -317,17 +341,7 @@ export function useAudioGroupCarveAssignment({
           domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
-      } catch (error) {
-        console.error("[Timeline] Failed to group voice clips", error);
-        const message = error instanceof Error ? error.message : "Failed to group voice clips";
-        showToast(message);
-        // Rethrown, not just reported: the carve's auto-group chains
-        // `.then(() => ({ ...next, sources: [groupId] }))` off this promise, so
-        // swallowing here let it persist a carve pointing at a group that was
-        // never written — the exact silent no-op the throw inside
-        // `createAudioGroupAndAssignMembers` exists to prevent.
-        throw error;
-      }
+      });
     },
     [
       activeCompPath,

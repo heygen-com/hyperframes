@@ -51,6 +51,24 @@ export interface UseBlockHandlersResult {
   handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
 
+/**
+ * Run `install`, and lower `latch` however it ends.
+ *
+ * Module scope rather than in the hook that owns the latch: the React Compiler
+ * cannot reorder across a `finally`, so a `try`/`finally` anywhere inside a hook
+ * makes it decline the whole hook and silently drop every memo in it.
+ */
+async function runAndRelease<T>(
+  latch: React.RefObject<boolean>,
+  install: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await install();
+  } finally {
+    latch.current = false;
+  }
+}
+
 export function useBlockHandlers({
   projectId,
   blockCtxDeps,
@@ -61,27 +79,42 @@ export function useBlockHandlers({
   const [activeBlockParams, setActiveBlockParams] =
     useState<UseBlockHandlersResult["activeBlockParams"]>(null);
 
+  // The caller rebuilds `blockCtxDeps` every render, so this repacks it into an
+  // object keyed on the eight fields that actually matter. Destructured first so
+  // the dependency list is eight plain names: a list of member expressions had to
+  // be suppressed to stand, and a suppression is a bail-out the React Compiler
+  // counts, which cost this hook its memoization anyway.
+  const {
+    activeCompPath,
+    timelineElements,
+    readProjectFile,
+    writeProjectFile,
+    recordEdit,
+    refreshFileTree,
+    reloadPreview,
+    showToast,
+  } = blockCtxDeps;
+
   const blockCtx = useMemo(
     () => ({
-      activeCompPath: blockCtxDeps.activeCompPath,
-      timelineElements: blockCtxDeps.timelineElements,
-      readProjectFile: blockCtxDeps.readProjectFile,
-      writeProjectFile: blockCtxDeps.writeProjectFile,
-      recordEdit: blockCtxDeps.recordEdit,
-      refreshFileTree: blockCtxDeps.refreshFileTree,
-      reloadPreview: blockCtxDeps.reloadPreview,
-      showToast: blockCtxDeps.showToast,
+      activeCompPath,
+      timelineElements,
+      readProjectFile,
+      writeProjectFile,
+      recordEdit,
+      refreshFileTree,
+      reloadPreview,
+      showToast,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      blockCtxDeps.activeCompPath,
-      blockCtxDeps.timelineElements,
-      blockCtxDeps.readProjectFile,
-      blockCtxDeps.writeProjectFile,
-      blockCtxDeps.recordEdit,
-      blockCtxDeps.refreshFileTree,
-      blockCtxDeps.reloadPreview,
-      blockCtxDeps.showToast,
+      activeCompPath,
+      timelineElements,
+      readProjectFile,
+      writeProjectFile,
+      recordEdit,
+      refreshFileTree,
+      reloadPreview,
+      showToast,
     ],
   );
 
@@ -96,11 +129,15 @@ export function useBlockHandlers({
       }
       installingBlockRef.current = true;
       blockCtx.showToast(`Adding ${blockName}…`, "info");
-      try {
-        return await install();
-      } finally {
-        installingBlockRef.current = false;
-      }
+      // Every caller drops this promise: three do `void runBlockInstall(...)` and
+      // the fourth is awaited from an unawaited JSX handler. A rejection there is
+      // an unhandled rejection, and the user is left with the "Adding…" toast and
+      // no second one. Report it on the surface the install itself reports on and
+      // resolve to null, which every caller already reads as "nothing installed".
+      return await runAndRelease(installingBlockRef, install).catch((error: unknown) => {
+        blockCtx.showToast(error instanceof Error ? error.message : `Failed to add ${blockName}`);
+        return null;
+      });
     },
     [blockCtx],
   );

@@ -137,8 +137,15 @@ export function useDomEditPreviewSync({
   // Auto-reveal source when an element is selected while the Code tab is active.
   // Use a ref for the callback so the effect only fires on selection changes,
   // not when openSourceForSelection is recreated due to editingFile content updates.
+  // Written after commit rather than during render: a ref write in the hook body
+  // is a render side effect and the React Compiler declines the whole hook when
+  // it sees one. This effect is declared above the reader below, and React runs
+  // a commit's effects in declaration order, so the reader still sees this
+  // render's callback.
   const openSourceRef = useRef(openSourceForSelection);
-  openSourceRef.current = openSourceForSelection;
+  useEffect(() => {
+    openSourceRef.current = openSourceForSelection;
+  });
   useEffect(
     // fallow-ignore-next-line complexity
     () => {
