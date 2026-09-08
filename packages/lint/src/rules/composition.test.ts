@@ -924,6 +924,86 @@ describe("composition rules", () => {
       expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
     });
 
+    it("warns for each bare nested composition id without a timeline or opt-out", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="320" data-height="180" data-duration="5">
+    <section id="alpha" data-composition-id="alpha"></section>
+    <section id="beta" data-composition-id="beta"></section>
+  </div>
+  <script>window.__timelines["root"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const findings = result.findings.filter((f) => f.code === "missing_data_no_timeline");
+
+      expect(findings).toHaveLength(2);
+      expect(findings.map((finding) => finding.elementId)).toEqual(["alpha", "beta"]);
+      expect(findings[0]?.message).toContain('Composition host "alpha"');
+      expect(findings[0]?.fixHint).toContain("plain `id`");
+    });
+
+    it("ignores a timeline registration that only appears in a script comment", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="320" data-height="180" data-duration="5">
+    <section data-composition-id="static"></section>
+  </div>
+  <script>
+    window.__timelines["root"] = gsap.timeline({ paused: true });
+    // window.__timelines["static"] = timeline;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")?.message).toContain(
+        'Composition host "static"',
+      );
+    });
+
+    it("accepts nested hosts with registrations, sources, or explicit opt-outs", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="320" data-height="180" data-duration="5">
+    <section data-composition-id="registered"></section>
+    <section data-composition-id="static" data-no-timeline></section>
+    <section data-composition-id="source" data-composition-src="source.html"></section>
+    <section data-composition-id="compiled" data-composition-file="compiled.html"></section>
+  </div>
+  <script>
+    window.__timelines.root = gsap.timeline({ paused: true });
+    window.__timelines.registered = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not guess which host a computed timeline key registers", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="320" data-height="180" data-duration="5">
+    <section data-composition-id="scene"></section>
+  </div>
+  <script>
+    const compositionId = "scene";
+    window.__timelines[compositionId] = (gsap.timeline({ paused: true }));
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("checks bare nested hosts inside a sub-composition file", async () => {
+      const html = `<template>
+  <div data-composition-id="scene" data-width="320" data-height="180" data-duration="5">
+    <section data-composition-id="static-part"></section>
+  </div>
+</template>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")?.message).toContain(
+        'Composition host "static-part"',
+      );
+    });
+
     it("does not warn when there is no root composition-id", async () => {
       const html = `<!DOCTYPE html><html><body><p>hello</p></body></html>`;
       const result = await lintHyperframeHtml(html);
