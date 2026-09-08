@@ -338,6 +338,15 @@ export default defineCommand({
       // guard below leaves PRODUCER_EXPERIMENTAL_FAST_CAPTURE untouched and the
       // env fallback survives (matches the --low-memory-mode idiom).
     },
+    provenance: {
+      type: "string",
+      description:
+        "Render provenance sidecar path (default: <output>.hf-render.json). " +
+        "The sidecar is a portable JSON receipt written next to the output " +
+        "after a successful render: tool versions, input hashes, variables " +
+        "hash, fonts, format/fps/resolution, encoder, stage timings, and " +
+        "warning codes. Pass false (or use --no-provenance) to disable.",
+    },
     "frames-cache-dir": {
       type: "string",
       description:
@@ -426,6 +435,11 @@ export interface RenderOptions {
   protocolTimeout?: number;
   /** Player-ready timeout override (ms). */
   playerReadyTimeout?: number;
+  /**
+   * Provenance sidecar setting: `undefined` = default sidecar next to the
+   * output, `false` = disabled, string = custom sidecar path.
+   */
+  provenance?: string | false;
   /** Throw render failures to the caller instead of printing and exiting. */
   throwOnError?: boolean;
   /** Skip the interactive feedback prompt after a successful render. */
@@ -728,6 +742,7 @@ async function renderDocker(
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
       protocolTimeoutMs: options.protocolTimeout,
       playerReadyTimeoutMs: options.playerReadyTimeout,
+      provenance: options.provenance,
     },
   });
 
@@ -894,6 +909,7 @@ export async function renderLocal(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
+      provenance: options.provenance,
       debug: options.debug,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
     },

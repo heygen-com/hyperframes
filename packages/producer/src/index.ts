@@ -44,6 +44,16 @@ export {
   type RenderObservationEvent,
   type RenderObservationStatus,
 } from "./services/render/observability.js";
+// ── Render provenance sidecar ───────────────────────────────────────────────
+// Public receipt written next to committed render artifacts (default on).
+export {
+  RENDER_SIDECAR_SCHEMA_URL,
+  RENDER_SIDECAR_SCHEMA_VERSION,
+  RENDER_SIDECAR_SUFFIX,
+  resolveProvenanceSidecarPath,
+  type ProvenanceSetting,
+  type RenderProvenanceSidecar,
+} from "./services/render/provenanceSidecar.js";
 
 // ── HTML asset localization ─────────────────────────────────────────────────
 // Rewrite remote <img>/<video>/<audio>/@font-face to same-origin local paths

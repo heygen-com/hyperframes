@@ -115,6 +115,7 @@ import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
 import { ArtifactTransaction } from "./render/artifactTransaction.js";
+import { emitRenderProvenanceSidecar, type ProvenanceSetting } from "./render/provenanceSidecar.js";
 import {
   createCapturePlan,
   replanAfterFailure,
@@ -360,6 +361,14 @@ export interface RenderConfig {
    * HDR constraints.
    */
   outputResolution?: CanvasResolution;
+  /**
+   * Render provenance sidecar setting. `undefined` (default) writes the
+   * public receipt to `<outputPath>.hf-render.json` after a successful
+   * artifact commit; `false` disables it; a string sets a custom sidecar
+   * path. Populated by the CLI from `--provenance <path|false>` /
+   * `--no-provenance`. See `services/render/provenanceSidecar.ts`.
+   */
+  provenance?: ProvenanceSetting;
   /**
    * True when `outputResolution` was normalized from an aspect-agnostic alias
    * (`1080p`, `hd`, `4k`, `uhd`) rather than a preset that names its own
@@ -4044,6 +4053,41 @@ async function executeRenderPipeline(input: {
 
     await artifactTransaction.commit();
     job.outputPath = outputPath;
+
+    // Public provenance receipt beside the committed artifact (default on,
+    // `provenance: false` / `--no-provenance` disables). Emitted only after a
+    // successful commit; a sidecar write failure logs a warning and never
+    // un-completes the render.
+    await emitRenderProvenanceSidecar({
+      outputPath,
+      provenance: job.config.provenance,
+      isFileArtifact: !isPngSequence,
+      projectDir,
+      entryFile: job.config.entryFile ?? "index.html",
+      compiledHtml: compiled.html,
+      jobId: job.id,
+      outcome: job.warnings.length > 0 ? "completed_with_warnings" : "completed",
+      warningCodes: job.warnings.map((warning) => warning.code),
+      totalElapsedMs: totalElapsed,
+      stages: perfStages,
+      workers: workerCount,
+      quality: job.config.quality,
+      compositionHash,
+      variables: job.config.variables,
+      format: outputFormat,
+      fps: job.config.fps,
+      width: outputWidth,
+      height: outputHeight,
+      durationSeconds: composition.duration,
+      totalFrames,
+      hdr: !isPngSequence && !isGif && Boolean(preset.hdr),
+      encoder:
+        isPngSequence || isGif
+          ? null
+          : { codec: preset.codec, preset: preset.preset, pixelFormat: preset.pixelFormat },
+      log,
+    });
+
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
     await eventPublisher.flush();
   } catch (error) {
