@@ -1,0 +1,127 @@
+---
+title: "Asset ledger & vendor CLI"
+sidebarTitle: "Ledger & vendor"
+description: "Inventory every declared asset, download remote references locally, and gate renders on being fully offline."
+---
+
+Deterministic renders must not depend on the network at capture time. These two
+commands make that property inspectable and enforceable:
+
+- `hyperframes ledger` builds a static, agent-readable **asset graph** of every
+  declared reference — scripts, stylesheets, fonts, images, audio, video,
+  iframes, text tracks — and classifies each as `remote`, `local`, `data`, or
+  `missing`. No browser, no network.
+- `hyperframes vendor` **downloads** the remote references, rewrites the HTML
+  to relative paths, and records provenance, so the project renders offline.
+
+For the workflow view (why and when), see
+[Offline & deterministic renders](/guides/offline-deterministic-renders).
+
+## `hyperframes ledger [dir]`
+
+```bash
+npx hyperframes ledger                    # human-readable summary
+npx hyperframes ledger ./my-video --json  # machine-readable asset graph
+npx hyperframes ledger --strict-offline   # exit 1 if any remote ref remains
+```
+
+The scan is purely static: every `.html` file under the project directory
+(excluding `node_modules`, dot-directories, `dist`, `coverage`) is parsed for
+declared URLs in tag attributes (`src`, `href`, `srcset`, `poster`), inline
+`style=""` attributes, and `<style>` blocks (`url(…)`, `@import`,
+`@font-face src`). URLs constructed at runtime inside scripts are out of
+scope, as are assets nested inside remote stylesheets.
+
+Classification:
+
+| Status    | Meaning                                                                  |
+| --------- | ------------------------------------------------------------------------ |
+| `remote`  | `http(s)://`, protocol-relative `//…`, or any non-inline URL scheme      |
+| `local`   | Resolves to a file on disk (relative to the declaring file or the root)  |
+| `data`    | Inline `data:` URI — self-contained, render-safe                         |
+| `missing` | Looks like a local path but no file exists                               |
+
+Commented-out markup, `blob:`/`javascript:`/`about:` values, and unresolved
+templating placeholders (`{{ token }}`, `__UPPER__`) are skipped.
+
+### JSON shape
+
+```json
+{
+  "ok": true,
+  "strictOffline": false,
+  "files": ["index.html", "scenes/intro.html"],
+  "counts": { "total": 14, "remote": 2, "local": 11, "data": 1, "missing": 0 },
+  "remoteUrls": ["https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"],
+  "assets": [
+    {
+      "kind": "script",
+      "url": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js",
+      "rawUrl": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js",
+      "status": "remote",
+      "file": "index.html",
+      "via": "src"
+    }
+  ]
+}
+```
+
+`via` records where the reference was declared: `src`, `href`, `srcset`,
+`poster`, `css-url`, `css-import`, or `style-attr`. Local assets carry a
+`localPath` with the resolved project-relative file.
+
+### Exit codes
+
+| Condition                                     | Exit code |
+| --------------------------------------------- | --------- |
+| Default                                       | `0`       |
+| `--strict-offline` and ≥1 remote reference    | `1`       |
+| Invalid project directory                     | `1`       |
+
+## `hyperframes vendor [dir]`
+
+```bash
+npx hyperframes vendor                          # download into assets/vendor/
+npx hyperframes vendor --out assets/third-party # custom output directory
+npx hyperframes vendor --dry-run                # list, download nothing
+npx hyperframes vendor --strict-offline         # exit 1 if remotes remain after
+```
+
+For every unique remote URL in the ledger, `vendor`:
+
+1. Downloads it (only `http:`/`https:` are ever fetched; protocol-relative URLs
+   are fetched over `https:`). Each file is saved as
+   `<basename>-<sha256-prefix><ext>` so re-runs are stable and names never
+   collide.
+2. Rewrites every reference in every HTML file to a path **relative to the
+   declaring file** (`assets/vendor/gsap.min-1a2b3c4d5e.js` from `index.html`,
+   `../assets/vendor/…` from `scenes/intro.html`). The rewrite is text-level,
+   so your formatting is preserved and URLs mentioned in inline scripts are
+   localized too.
+3. Writes `vendor-manifest.json` into the output directory recording `url`,
+   `file`, `bytes`, `sha256`, and `contentType` per asset — the provenance
+   record for review and licensing checks.
+
+Remote **iframes** are never vendored: a live page cannot be made
+deterministic by downloading it. They stay remote and still fail
+`--strict-offline`, which is the point — replace them with captured media.
+
+Google Fonts stylesheets are downloaded as declared, but font binaries nested
+inside a remote CSS response are not crawled. Prefer self-hosted `@font-face`
+files (see [media guide](/guides/media)) for text-critical fonts.
+
+### Exit codes
+
+| Condition                                        | Exit code |
+| ------------------------------------------------ | --------- |
+| All downloads succeeded, no strict violation     | `0`       |
+| Any download failed                              | `1`       |
+| `--strict-offline` and remote references remain  | `1`       |
+
+## Lint integration
+
+`hyperframes lint` reports an info-level `remote_script_not_vendored` finding
+for every remote `<script src>`, pointing at `hyperframes vendor`. CDN scripts
+remain the documented quick-start path — the enforcing gate is
+`hyperframes ledger --strict-offline`, typically in CI just before
+`hyperframes render`.
