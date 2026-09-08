@@ -11,7 +11,7 @@ it was not supposed to move.
 examples/golden-baseline/
   index.html                          # 640x360, 4s composition
   golden/
-    golden-baseline-demo/             # <compositionId>
+    golden-baseline/             # <compositionId>
       golden.json                     # sample times + diff tuning (optional)
       500.png                         # baseline at t=0.5s   (<timeMs>.png)
       2000.png                        # baseline at t=2.0s
@@ -67,14 +67,14 @@ The JSON envelope includes:
     "ok": false,
     "failed": [
       {
-        "id": "golden-baseline-demo",
+        "id": "golden-baseline",
         "time": 2,
         "maxDelta": 210,
         "diffRatio": 0.0042,
         "reason": "pixel-diff"
       }
     ],
-    "diffSheet": "golden-diff/golden-baseline-demo/contact-sheet.jpg"
+    "diffSheet": "golden-diff/golden-baseline/contact-sheet.jpg"
   }
 }
 ```
