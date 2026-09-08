@@ -1429,6 +1429,61 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]).toMatchObject({ selector: "#path-input" });
   });
 
+  const hiddenShaftStyles = [
+    { opacity: "0" },
+    { display: "none" },
+    { visibility: "hidden" },
+    { visibility: "collapse" },
+  ];
+  for (const hidden of hiddenShaftStyles) {
+    const label = Object.entries(hidden)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    it(`stays quiet while the shaft itself is still staged hidden (${label})`, () => {
+      document.body.innerHTML = orphanDom;
+      installGeometry(
+        orphanRects,
+        orphanStyles({
+          n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" },
+          "path-input": hidden,
+        }),
+      );
+      installConnectorGeometry({ e: 0, f: 0 });
+      installAuditScript();
+
+      expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+    });
+  }
+
+  it("does not blame a hidden element that sits well past the endpoint", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="ghost"></div>
+        <svg id="connectors">
+          <defs><marker id="arrowhead"><path id="tip" d="M 0 0 L 8 4 L 0 8" /></marker></defs>
+          <path id="path-input" d="M 360 480 L 1400 480" marker-end="url(#arrowhead)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 200, top: 400, width: 160, height: 160 }),
+        ghost: rect({ left: 1500, top: 400, width: 160, height: 160 }),
+        connectors: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        ghost: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" },
+      },
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+  });
+
   it("detaches a paste-bug shaft when the connector svg allows overflow", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
