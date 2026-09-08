@@ -1,5 +1,5 @@
 {
-  "total": 470,
+  "total": 468,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -45,10 +45,8 @@
     "packages/studio/src/components/editor/propertyPanelFxFamily.ts": 1,
     "packages/studio/src/components/editor/propertyPanelFxPresetStyle.ts": 25,
     "packages/studio/src/components/editor/propertyPanelHelpers.ts": 4,
-    "packages/studio/src/components/editor/propertyPanelPrimitives.tsx": 1,
     "packages/studio/src/components/editor/propertyPanelSections.tsx": 1,
     "packages/studio/src/components/editor/propertyPanelStyleSections.tsx": 3,
-    "packages/studio/src/components/editor/propertyPanelValueTier.ts": 1,
     "packages/studio/src/components/editor/transform3dProjection.ts": 3,
     "packages/studio/src/components/feedback/StudioFeedbackCard.tsx": 10,
     "packages/studio/src/components/panels/VariablesBindElement.tsx": 6,

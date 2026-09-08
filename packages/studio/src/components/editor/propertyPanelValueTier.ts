@@ -1,6 +1,6 @@
 /**
  * The flat inspector's 3-state value coloring (design_handoff_studio_inspector,
- * verified against Studio Panel Redesign.dc.html #10a): a property row is either
+ * verified against Studio Panel Redesign.dc.html, section 10a): a property row is either
  * unset (no explicit declaration), explicitly declared but equal to its default
  * (no visual "set" signal), or explicitly declared and different from its default
  * (mint value + emphasized label + reset affordance).
@@ -16,13 +16,13 @@ export function resolveValueTier(
 }
 
 export const VALUE_TIER_LABEL_CLASS: Record<PropertyValueTier, string> = {
-  default: "text-panel-text-3",
-  explicitDefault: "text-panel-text-2",
-  explicitCustom: "text-panel-text-0",
+  default: "text-text-3",
+  explicitDefault: "text-text-2",
+  explicitCustom: "text-text-0",
 };
 
 export const VALUE_TIER_VALUE_CLASS: Record<PropertyValueTier, string> = {
-  default: "text-panel-text-3",
-  explicitDefault: "text-panel-text-0",
-  explicitCustom: "text-panel-accent",
+  default: "text-text-3",
+  explicitDefault: "text-text-0",
+  explicitCustom: "text-accent",
 };

@@ -120,7 +120,7 @@ describe("FlatMediaSection — cutout", () => {
   it("toggles BG plate via FlatToggle", () => {
     const { host, root } = renderSection();
     const plateToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="BG plate"]',
+      '[role="switch"][aria-label="BG plate"]',
     );
     expect(plateToggle).not.toBeNull();
     expect(plateToggle?.getAttribute("aria-checked")).toBe("false");
@@ -273,14 +273,12 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
         />,
       );
     });
-    const loopToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="Loop"]',
-    );
+    const loopToggle = host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Loop"]');
     act(() => loopToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onSetHtmlAttribute).toHaveBeenCalledWith("loop", "true");
 
     const hasAudioToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+      '[role="switch"][aria-label="Has audio track"]',
     );
     expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("true");
     act(() => root.unmount());
@@ -306,7 +304,7 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
       );
     });
     const mutedToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="Muted"]',
+      '[role="switch"][aria-label="Muted"]',
     );
     expect(mutedToggle?.getAttribute("aria-checked")).toBe("false");
     act(() => mutedToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -334,7 +332,7 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
       );
     });
     const hasAudioToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+      '[role="switch"][aria-label="Has audio track"]',
     );
     expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("false");
     act(() => hasAudioToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -363,7 +361,7 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
       );
     });
     const hasAudioToggle = host.querySelector<HTMLButtonElement>(
-      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+      '[role="switch"][aria-label="Has audio track"]',
     );
     expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("true");
     act(() => hasAudioToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));

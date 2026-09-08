@@ -27,6 +27,6 @@ describe("value tier class maps", () => {
       expect(VALUE_TIER_LABEL_CLASS[tier]).toBeTruthy();
       expect(VALUE_TIER_VALUE_CLASS[tier]).toBeTruthy();
     }
-    expect(VALUE_TIER_VALUE_CLASS.explicitCustom).toBe("text-panel-accent");
+    expect(VALUE_TIER_VALUE_CLASS.explicitCustom).toBe("text-accent");
   });
 });

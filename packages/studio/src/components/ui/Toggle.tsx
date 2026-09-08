@@ -53,7 +53,12 @@ export function Toggle({
         "data-[checked]:border-accent data-[checked]:bg-accent",
         "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
         "data-[preview-state=focus]:outline-solid data-[preview-state=focus]:outline-2 data-[preview-state=focus]:outline-offset-1 data-[preview-state=focus]:outline-accent",
-        "disabled:cursor-not-allowed disabled:opacity-40",
+        // `data-[disabled]`, not `disabled:`. Base UI renders the switch as a
+        // `<span role="switch">` with a visually-hidden checkbox beside it, and
+        // `:disabled` only ever matches a form element, so the `disabled:`
+        // spelling compiled to a real rule that could never match: a disabled
+        // Toggle drew at full opacity with a pointer cursor.
+        "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40",
         className,
       )}
     >

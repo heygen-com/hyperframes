@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cn, fieldBase, fieldText } from "../ui";
 import { adjustNumericToken, parseNumericToken } from "./propertyPanelHelpers";
 import { useInspectorGestureTransaction } from "./useInspectorGestureTransaction";
 
@@ -13,6 +14,7 @@ export function CommitField({
   disabled,
   liveCommit,
   align = "left",
+  className,
   onPreview,
   onCommit,
 }: {
@@ -20,6 +22,8 @@ export function CommitField({
   disabled?: boolean;
   liveCommit?: boolean;
   align?: "left" | "right";
+  /** Merged into the box, for a caller that tints the boundary (value tiers). */
+  className?: string;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void | Promise<unknown>;
 }) {
@@ -181,45 +185,53 @@ export function CommitField({
   }, [disabled]);
 
   return (
-    <input
-      ref={inputRef}
-      type="text"
+    // The box, not the text, is the field (R10): before this it was bare text
+    // on the panel background, so a value read as its own label until you
+    // clicked it. `fieldBase` is the same boundary Input, NumberField and
+    // Select wear, so the inspector's metric field and every other Studio
+    // field are one control with one look.
+    <div
       // Stable hook for the design-shots computed-style capture: the inspector
       // metric field is the one control the sweep measures that has no label,
-      // role or aria-label of its own.
+      // role or aria-label of its own. It sits on the box because the box is
+      // what carries the height, radius and border the table reads.
       data-testid="inspector-field"
-      value={draft}
-      disabled={disabled}
-      onFocus={() => {
-        focusedRef.current = true;
-      }}
-      onChange={(event) => {
-        commitGenerationRef.current += 1;
-        settleGesture();
-        dirtyRef.current = true;
-        setDraft(event.target.value);
-        if (liveCommit) onPreview?.(event.target.value);
-      }}
-      onBlur={() => {
-        if (settleGesture()) {
+      className={cn(fieldBase, className)}
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        disabled={disabled}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onChange={(event) => {
+          commitGenerationRef.current += 1;
+          settleGesture();
+          dirtyRef.current = true;
+          setDraft(event.target.value);
+          if (liveCommit) onPreview?.(event.target.value);
+        }}
+        onBlur={() => {
+          if (settleGesture()) {
+            focusedRef.current = false;
+            return;
+          }
+          const wasDirty = dirtyRef.current;
           focusedRef.current = false;
-          return;
-        }
-        const wasDirty = dirtyRef.current;
-        focusedRef.current = false;
-        dirtyRef.current = false;
-        if (wasDirty && (!liveCommit || parseNumericToken(draft))) {
-          commitDraft(draft);
-        } else {
-          setDraft(valueRef.current);
-          if (wasDirty && liveCommit) onPreview?.(valueRef.current);
-        }
-      }}
-      onKeyDown={handleKeyDown}
-      title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
-      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600 ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-    />
+          dirtyRef.current = false;
+          if (wasDirty && (!liveCommit || parseNumericToken(draft))) {
+            commitDraft(draft);
+          } else {
+            setDraft(valueRef.current);
+            if (wasDirty && liveCommit) onPreview?.(valueRef.current);
+          }
+        }}
+        onKeyDown={handleKeyDown}
+        title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
+        className={cn(fieldText, align === "right" ? "text-right" : "text-left")}
+      />
+    </div>
   );
 }
