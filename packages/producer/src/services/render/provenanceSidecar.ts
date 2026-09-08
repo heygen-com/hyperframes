@@ -29,7 +29,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { stat, writeFile } from "node:fs/promises";
+import { open, rename, rm, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { getFfmpegBinary } from "@hyperframes/engine";
@@ -292,12 +292,31 @@ export function buildRenderProvenanceSidecar(
 /**
  * Serialize + write the sidecar. Pretty-printed with a trailing newline so
  * the receipt is diff-friendly in CI artifacts and shell-readable via `jq`.
+ *
+ * Written atomically: the JSON goes to a sibling `.tmp` file in the SAME
+ * directory as the destination (never a shared, world-writable os.tmpdir()),
+ * is flushed, then renamed over the final path — readers can only ever
+ * observe a complete receipt, and no cross-device or symlink-swap window
+ * exists between write and publish.
  */
 async function writeRenderProvenanceSidecar(
   sidecarPath: string,
   sidecar: RenderProvenanceSidecar,
 ): Promise<void> {
-  await writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf-8");
+  const tmpPath = `${sidecarPath}.tmp`;
+  const handle = await open(tmpPath, "w", 0o644);
+  try {
+    await handle.writeFile(`${JSON.stringify(sidecar, null, 2)}\n`, "utf-8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(tmpPath, sidecarPath);
+  } catch (error) {
+    await rm(tmpPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /**
