@@ -1455,6 +1455,20 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     });
   }
 
+  it("cannot reach an endpoint node hidden with display:none", () => {
+    document.body.innerHTML = orphanDom;
+    installGeometry(
+      { ...orphanRects, n2: rect({ left: 0, top: 0, width: 0, height: 0 }) },
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", display: "none" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+    expect(issues.filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
   it("does not blame a hidden element that sits well past the endpoint", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">

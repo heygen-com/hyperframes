@@ -346,6 +346,21 @@ describe("core rules", () => {
     expect(result.findings.find((f) => f.code === "unbalanced_style_tags")?.severity).toBe("error");
   });
 
+  it("does not count a closer that only appears inside an html comment", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <style>
+      .editorial-block { color: #fff; }
+    </style>
+    <!-- dropped the second sheet: </style> -->
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "unbalanced_style_tags")).toBeUndefined();
+  });
+
   it("does not report paired style blocks", async () => {
     const html = compositionWithBodyPrefix("", `<div class="editorial-block">Hello</div>`);
     const result = await lintHyperframeHtml(html);
