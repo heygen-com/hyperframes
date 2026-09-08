@@ -34,7 +34,7 @@
       "files": 11
     },
     "hyperframes-core": {
-      "hash": "033a6c675e66a5e7",
+      "hash": "6921c3b1dbeefb30",
       "files": 20
     },
     "hyperframes-creative": {
@@ -50,8 +50,8 @@
       "files": 12
     },
     "media-use": {
-      "hash": "5b35f62a2c59f220",
-      "files": 153
+      "hash": "e870f18213f27c8b",
+      "files": 154
     },
     "motion-graphics": {
       "hash": "853ac75cbab69036",
@@ -62,12 +62,12 @@
       "files": 132
     },
     "pr-to-video": {
-      "hash": "9ce0b5a7c75e969f",
+      "hash": "e3c6d1527c04a804",
       "files": 30
     },
     "product-launch-video": {
-      "hash": "01256d74e511f163",
-      "files": 29
+      "hash": "71226b200d8adae3",
+      "files": 30
     },
     "remotion-to-hyperframes": {
       "hash": "79fcf8e9641d126e",

@@ -48,10 +48,14 @@ function isProcessAlive(pid) {
 }
 
 function readTail(path, maxChars = 6000) {
-  if (!path || !existsSync(path)) return "";
-  const s = statSync(path);
-  const txt = readFileSync(path, "utf8");
-  return txt.slice(Math.max(0, txt.length - Math.min(maxChars, s.size)));
+  if (!path) return "";
+  try {
+    const txt = readFileSync(path, "utf8");
+    return txt.slice(Math.max(0, txt.length - maxChars));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return "";
+    throw error;
+  }
 }
 
 function detectFailure(logTail) {
