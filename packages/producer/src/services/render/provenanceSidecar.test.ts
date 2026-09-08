@@ -260,6 +260,15 @@ describe("emitRenderProvenanceSidecar", () => {
     expect(sidecar.versions.producer).toEqual(expect.any(String));
   });
 
+  it("publishes atomically — no temp file remains beside the receipt", async () => {
+    const input = makeEmitInput();
+    const sidecarPath = await emitRenderProvenanceSidecar(input);
+    expect(existsSync(sidecarPath as string)).toBe(true);
+    expect(existsSync(`${sidecarPath}.tmp`)).toBe(false);
+    // The rename target must be complete, parseable JSON.
+    expect(JSON.parse(readFileSync(sidecarPath as string, "utf-8")).kind).toBe("hf-render-sidecar");
+  });
+
   it("returns null and writes nothing when disabled", async () => {
     const input = makeEmitInput({ provenance: false });
     expect(await emitRenderProvenanceSidecar(input)).toBeNull();
