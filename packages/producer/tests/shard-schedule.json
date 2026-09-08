@@ -35,6 +35,7 @@
     "raf-ball-render-compat": 22,
     "render-symlinked-assets": 6,
     "static-volume-future-set": 120,
+    "static-dedup-nested-visibility": 8,
     "style-1-prod": 156,
     "style-10-prod": 232,
     "style-11-prod": 324,

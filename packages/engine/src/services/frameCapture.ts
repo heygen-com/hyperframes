@@ -3046,6 +3046,62 @@ interface StaticVerificationDependencies {
 }
 
 /**
+ * Prepare an isolated page for static-frame verification. Verification seeks
+ * intentionally visit frames out of capture order, so they must never mutate
+ * the page that will later be captured sequentially.
+ */
+export async function createStaticVerificationPage(session: CaptureSession): Promise<Page> {
+  const page = await session.browser.newPage();
+  const pageNavigationTimeout =
+    session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
+  const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
+
+  try {
+    await page.evaluateOnNewDocument(() => {
+      const w = window as unknown as { __name?: <T>(fn: T, _name: string) => T };
+      if (typeof w.__name !== "function") {
+        w.__name = <T>(fn: T, _name: string): T => fn;
+      }
+    });
+    if (session.options.variables && Object.keys(session.options.variables).length > 0) {
+      const variablesJson = JSON.stringify(session.options.variables);
+      await page.evaluateOnNewDocument((json: string) => {
+        (window as Window & { __hfVariables?: Record<string, unknown> }).__hfVariables =
+          JSON.parse(json);
+      }, variablesJson);
+    }
+    await page.setViewport({
+      width: session.options.width,
+      height: session.options.height,
+      deviceScaleFactor: session.options.deviceScaleFactor || 1,
+    });
+    await page.goto(`${session.serverUrl}/index.html`, {
+      waitUntil: "domcontentloaded",
+      timeout: pageNavigationTimeout,
+    });
+    await page.evaluate(`window.__hfFlushSync?.()`);
+    await pollHfReady(page, pageReadyTimeout);
+    await pollSubCompositionTimelines(page, pageReadyTimeout);
+    await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+
+    const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
+    await Promise.all([
+      pollVideosReady(page, skipVideoIds, pageReadyTimeout),
+      pollImagesReady(page, pageReadyTimeout).then((ready) =>
+        ready ? decodeAllImages(page) : undefined,
+      ),
+      page.evaluate(`document.fonts?.ready`),
+      waitForOptionalTailwindReady(page, pageReadyTimeout),
+    ]);
+    if (session.options.format === "png") await initTransparentBackground(page);
+    return page;
+  } catch (error) {
+    await page.close().catch(() => {});
+    throw error;
+  }
+}
+
+/**
  * Empirically verify the predicted-static set before trusting it. Group static frames
  * into runs; each run [a..b] reuses anchor a-1. CRITICAL: compare against the ANCHOR,
  * not the predecessor — a slow drift with sub-quantization per-frame deltas is byte-
@@ -3236,7 +3292,24 @@ async function armStaticDedup(
     );
     return;
   }
-  const verdict = await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
+  let verificationPage: Page | undefined;
+  let verdict: StaticVerificationResult;
+  try {
+    verificationPage = await createStaticVerificationPage(session);
+    verdict = await verifyStaticFramesSafe(
+      session,
+      verificationPage,
+      stats.staticFrameSet,
+      fps,
+      samples,
+    );
+  } catch {
+    session.staticDedupSkipReason = "verification_failed";
+    logInitPhase("static-frame dedup: disabled (verification infrastructure failure)");
+    return;
+  } finally {
+    await verificationPage?.close().catch(() => {});
+  }
   session.staticDedupVerification = verdict;
   if (verdict.outcome === "mismatch" || verdict.outcome === "infrastructure") {
     session.staticDedupSkipReason = "verification_failed";
