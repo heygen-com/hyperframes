@@ -9,8 +9,11 @@
 
 import { createHash } from "node:crypto";
 import {
-  existsSync,
   mkdirSync,
+  lstatSync,
+  linkSync,
+  mkdtempSync,
+  rmSync,
   readdirSync,
   readFileSync,
   readSync,
@@ -206,6 +209,33 @@ export interface AssetTarget {
   urlBase: string;
 }
 
+/** Publish a complete cache entry without replacing a competing file or link. */
+function cacheAsset(bytes: Buffer<ArrayBuffer>, ext: string, target: AssetTarget): string {
+  const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
+  const dest = join(target.dir, name);
+  // Cache hits need no writable directory. A miss still has to win linkSync.
+  if (lstatSync(dest, { throwIfNoEntry: false })) return name;
+  mkdirSync(target.dir, { recursive: true });
+  if (!lstatSync(target.dir).isDirectory())
+    throw new Error("Catalog cache must be a real directory");
+  const staging = mkdtempSync(join(target.dir, ".hf-asset-"));
+  try {
+    const staged = join(staging, "content");
+    writeFileSync(staged, bytes, { flag: "wx" });
+    try {
+      linkSync(staged, dest);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    }
+  } finally {
+    // Cleanup must not mask a publication error or fail an already published asset.
+    try {
+      rmSync(staging, { recursive: true, force: true });
+    } catch {}
+  }
+  return name;
+}
+
 /**
  * Point every local reference at something the browser can fetch.
  *
@@ -252,12 +282,7 @@ export function processAssets(html: string, projectDir: string, target: AssetTar
     }
 
     if (HOSTED_EXTENSIONS.has(ext)) {
-      const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
-      const dest = join(target.dir, name);
-      if (!existsSync(dest)) {
-        mkdirSync(target.dir, { recursive: true });
-        writeFileSync(dest, bytes);
-      }
+      const name = cacheAsset(bytes, ext, target);
       out = out.split(ref).join(`${target.urlBase}/${name}`);
       hosted += 1;
       continue;
@@ -305,12 +330,7 @@ export function externalizeDataUris(
       const bytes = Buffer.from(blob, "base64");
       if (bytes.length < EXTERNALIZE_MIN_BYTES) return whole;
 
-      const name = `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${ext}`;
-      const dest = join(target.dir, name);
-      if (!existsSync(dest)) {
-        mkdirSync(target.dir, { recursive: true });
-        writeFileSync(dest, bytes);
-      }
+      const name = cacheAsset(bytes, ext, target);
       externalized += 1;
       return `${target.urlBase}/${name}`;
     },
