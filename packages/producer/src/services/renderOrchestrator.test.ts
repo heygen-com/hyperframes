@@ -2508,6 +2508,30 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
     ).toBe(false);
   });
 
+  it("retries a transient browser death on an ordinary one-worker streaming route", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isTransientSingleWorkerFailure: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not widen the transient streaming retry to an unpinned multi-worker route", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        isTransientSingleWorkerFailure: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
   it("retries OOM too when the router pinned the worker count (fallback's Chrome processes are already dead by the time this runs, and the fallback is pooled/lighter than the pinned path)", () => {
     expect(
       shouldRetryViaPinnedFallback({
@@ -2565,6 +2589,15 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
       shouldRetryViaPinnedFallback({
         isVerifyError: true,
         isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        isTransientSingleWorkerFailure: true,
         deWorkerInversion: undefined,
         deParallelRouter: undefined,
       }),

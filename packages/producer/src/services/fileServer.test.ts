@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 import {
   closeFileServerSafely,
   createFileServer,
+  FILE_SERVER_HEALTH_PATH,
   RENDER_CAPTURE_MODE_SHIM,
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
   isPathInside,
   parseRangeHeader,
+  probeFileServerHealth,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 
@@ -73,6 +75,52 @@ async function withFileServer(
 function writeEmptyIndex(projectDir: string): void {
   writeFileSync(join(projectDir, "index.html"), "<!doctype html><html></html>");
 }
+
+describe("file server health", () => {
+  it("serves a dedicated loopback health endpoint", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-health-"));
+    try {
+      writeEmptyIndex(projectDir);
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}${FILE_SERVER_HEALTH_PATH}`);
+
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("ok");
+        expect(await probeFileServerHealth(server)).toMatchObject({
+          healthy: true,
+          status: 200,
+        });
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports an unreachable endpoint without throwing", async () => {
+    const health = await probeFileServerHealth({ url: "http://127.0.0.1:1" }, 100);
+
+    expect(health.healthy).toBe(false);
+    expect(health.error).toBeTruthy();
+    expect(health.durationMs).toBeLessThan(1_000);
+  });
+
+  it("bounds a health endpoint that never responds", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Promise<Response>(() => {}),
+    });
+    try {
+      const health = await probeFileServerHealth({ url: `http://127.0.0.1:${server.port}` }, 25);
+
+      expect(health.healthy).toBe(false);
+      expect(health.error).toBeTruthy();
+      expect(health.durationMs).toBeLessThan(500);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
 
 async function expectTextResponse(
   url: string,

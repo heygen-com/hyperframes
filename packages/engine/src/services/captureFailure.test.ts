@@ -4,6 +4,8 @@ import { CaptureFailure, classifyCaptureFailure, isFatalCaptureFailure } from ".
 describe("classifyCaptureFailure", () => {
   it.each([
     ["Target closed", "transient_browser"],
+    ["connect ETIMEDOUT 127.0.0.1:49152", "transient_browser"],
+    ["net::ERR_TIMED_OUT at http://localhost:49152/index.html", "transient_browser"],
     ["Runtime.callFunctionOn timed out after 30000ms", "protocol_timeout"],
     ["Runtime.evaluate timed out", "protocol_timeout"],
     [
@@ -15,6 +17,7 @@ describe("classifyCaptureFailure", () => {
     ["JavaScript heap out of memory", "memory_exhaustion"],
     ["drawElement self-verify failed", "verification"],
     ["Composition has zero duration. Runtime ready: true", "authoring"],
+    ["connect ETIMEDOUT 203.0.113.10:443", "authoring"],
   ] as const)("classifies %s as %s", (message, kind) => {
     expect(classifyCaptureFailure(new Error(message)).kind).toBe(kind);
   });
@@ -58,6 +61,16 @@ describe("classifyCaptureFailure", () => {
     expect(failure.workerDiagnostics[0]?.workerId).toBe(2);
     expect(Object.isFrozen(failure.workerDiagnostics)).toBe(true);
     expect(Object.isFrozen(failure.workerDiagnostics[0]?.lines)).toBe(true);
+  });
+
+  it("retains loopback endpoint provenance for capture diagnostics", () => {
+    expect(classifyCaptureFailure(new Error("connect ETIMEDOUT 127.0.0.1:49152"))).toMatchObject({
+      kind: "transient_browser",
+      endpoint: { host: "127.0.0.1", port: 49152 },
+    });
+    expect(
+      classifyCaptureFailure(new Error("net::ERR_TIMED_OUT at http://localhost:4173/index.html")),
+    ).toMatchObject({ endpoint: { host: "localhost", port: 4173 } });
   });
 
   it("classifies repeated operation text in linear time", () => {

@@ -69,6 +69,17 @@ describe("CapturePlan", () => {
     });
   });
 
+  it("replans an ordinary one-worker capture failure onto a fresh screenshot stream", () => {
+    expect(
+      replanAfterFailure(streaming(), { kind: "capture_failure", memoryExhaustion: false }),
+    ).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceScreenshot: true,
+      routing: { kind: "default" },
+    });
+  });
+
   it("atomically restores the pre-inversion disk route after verification failure", () => {
     const initial = streaming({
       kind: "worker_inversion",
