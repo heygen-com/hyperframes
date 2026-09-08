@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
@@ -46,10 +46,16 @@ export function useFileManager({
   const [revealSourceOffset, setRevealSourceOffset] = useState<number | null>(null);
 
   const editingPathRef = useRef(editingFile?.path);
-  editingPathRef.current = editingFile?.path;
-
   const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
+
+  // After commit, not during render: a ref write in the hook body is a render
+  // side effect and the React Compiler declines the whole hook when it sees one.
+  // Both refs are read only from callbacks, here and in the hooks they are handed
+  // to, and a callback cannot run before the render that set them has committed.
+  useEffect(() => {
+    editingPathRef.current = editingFile?.path;
+    projectIdRef.current = projectId;
+  });
 
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const fileVersionScope = useMemo(
@@ -258,14 +264,19 @@ export function useFileManager({
 
   // ── Click-to-source ──
 
+  // Named, rather than `editingFile?.content` inline: an optional member as a
+  // dependency is a shape the React Compiler cannot match against the one it
+  // infers from the body, and the mismatch costs this hook its memoization.
+  const editingContent = editingFile?.content;
+
   const openSourceForSelection = useCallback(
     (sourceFile: string, target: PatchTarget) => {
       const pid = projectIdRef.current;
       if (!pid || !sourceFile) return;
       revealAbortRef.current?.abort();
       revealAbortRef.current = null;
-      if (editingPathRef.current === sourceFile && editingFile?.content != null) {
-        const match = findTagByTarget(editingFile.content, target);
+      if (editingPathRef.current === sourceFile && editingContent != null) {
+        const match = findTagByTarget(editingContent, target);
         setRevealSourceOffset(match ? match.start : null);
         return;
       }
@@ -287,7 +298,7 @@ export function useFileManager({
         })
         .catch(() => {});
     },
-    [editingFile?.content, fileVersions],
+    [editingContent, fileVersions],
   );
 
   // ── Upload ──

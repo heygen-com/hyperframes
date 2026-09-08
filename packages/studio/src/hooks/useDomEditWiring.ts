@@ -25,7 +25,6 @@ export interface UseDomEditWiringParams {
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   previewIframe: HTMLIFrameElement | null;
   captionEditMode: boolean;
   refreshKey: number;
@@ -119,7 +118,6 @@ export function useDomEditWiring({
   domEditSelectionRef,
   domEditGroupSelectionsRef,
   refreshDomEditGroupSelectionsFromPreview,
-  previewIframeRef,
   previewIframe,
   captionEditMode,
   refreshKey,
@@ -201,7 +199,7 @@ export function useDomEditWiring({
     projectId ?? null,
     gsapSourceFile,
     gsapCacheVersion,
-    previewIframeRef,
+    previewIframe,
   );
 
   const {
@@ -217,7 +215,9 @@ export function useDomEditWiring({
     gsapCacheVersion,
     // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to
     // the live element and surface in the inspector — not just by #id match.
-    previewIframeRef,
+    // The element itself, not the ref: it is the same one this ref points at,
+    // and the hook resolves it during render, where reading a ref is not allowed.
+    previewIframe,
   );
 
   // ── Telemetry & fallback ──

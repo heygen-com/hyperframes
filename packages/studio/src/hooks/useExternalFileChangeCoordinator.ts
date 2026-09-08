@@ -135,7 +135,14 @@ export function useExternalFileChangeCoordinator({
   const lastEventIdentityRef = useRef<string | null>(null);
   const blockedRef = useRef(blocked);
   const snapshotWriteTailRef = useRef<Promise<void>>(Promise.resolve());
-  blockedRef.current = blocked;
+
+  // After commit, not during render: a ref write in the hook body is a render
+  // side effect and the React Compiler declines the whole hook when it sees one.
+  // Every reader of `blockedRef` below is an async callback, which cannot run
+  // before the render that produced `blocked` has committed.
+  useEffect(() => {
+    blockedRef.current = blocked;
+  });
 
   useEffect(() => {
     mountedRef.current = true;

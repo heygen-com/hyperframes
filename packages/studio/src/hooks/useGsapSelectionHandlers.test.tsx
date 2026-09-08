@@ -182,3 +182,32 @@ describe("useGsapSelectionHandlers retime settlement", () => {
     withSelection.unmount();
   });
 });
+
+describe("useGsapSelectionHandlers selection fallback", () => {
+  it("still targets the last selected element after the selection clears", async () => {
+    const updateGsapMeta = vi.fn().mockResolvedValue(undefined);
+    const selection = makeSelection();
+    /** One handle per render, so this reads two renders instead of a mutated binding. */
+    const renders: Handlers[] = [];
+    function Probe({ params }: { params: Params }) {
+      renders.push(useGsapSelectionHandlers(params));
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+
+    act(() =>
+      root.render(<Probe params={makeParams({ domEditSelection: selection, updateGsapMeta })} />),
+    );
+    act(() =>
+      root.render(<Probe params={makeParams({ domEditSelection: null, updateGsapMeta })} />),
+    );
+
+    // No override argument means "use whatever is selected"; with nothing
+    // selected the retime still has to land on the element it was opened for,
+    // or an inspector edit made after a click-away writes nowhere.
+    await renders[renders.length - 1]!.handleGsapUpdateMeta("anim-1", { duration: 2 });
+
+    expect(updateGsapMeta).toHaveBeenCalledWith(selection, "anim-1", { duration: 2 });
+    act(() => root.unmount());
+  });
+});

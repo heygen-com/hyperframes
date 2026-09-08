@@ -284,8 +284,13 @@ export function useGestureRecording() {
   const refs = useRef<RecordingRefs>(createRecordingRefs());
 
   // Stable reference aliases for the return value — consumers read these directly.
-  const samplesRef = useRef<GestureSample[]>(refs.current.samples);
-  const trailRef = useRef<Array<{ x: number; y: number }>>(refs.current.trail);
+  // They start empty rather than seeded from `refs.current`, which is a ref read
+  // during render and makes the React Compiler decline the whole hook. Nothing
+  // fills `refs.current.samples` before a recording starts, and startRecording
+  // and clearSamples both re-point these at the arrays they create, so the alias
+  // holds from the first sample onward exactly as it did.
+  const samplesRef = useRef<GestureSample[]>([]);
+  const trailRef = useRef<Array<{ x: number; y: number }>>([]);
 
   // Unmount safety: cancel RAF + remove listeners if component tears down mid-recording.
   useEffect(() => {

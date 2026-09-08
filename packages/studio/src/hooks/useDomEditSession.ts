@@ -427,7 +427,6 @@ export function useDomEditSession({
     domEditSelectionRef,
     domEditGroupSelectionsRef,
     refreshDomEditGroupSelectionsFromPreview,
-    previewIframeRef,
     previewIframe,
     captionEditMode,
     refreshKey,

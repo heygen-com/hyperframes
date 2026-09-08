@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
@@ -316,7 +316,11 @@ function instantPatchesFor(
 export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
   const activeProjectId = projectIdRef.current;
   const activeCompPathRef = useRef(activeCompPath);
-  activeCompPathRef.current = activeCompPath;
+  // After commit, not during render: a ref write in the hook body is a render side
+  // effect and the React Compiler declines the whole hook when it sees one. Every
+  // read is inside an async commit callback, which cannot run before the render
+  // that changed the composition has committed.
+  useEffect(() => { activeCompPathRef.current = activeCompPath; });
   // Serializer for per-key commits (options.serializeKey). Keyed by
   // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
   // the same animationId so their POSTs can't interleave. Held in a ref so the

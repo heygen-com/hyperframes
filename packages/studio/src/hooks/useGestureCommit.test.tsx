@@ -126,5 +126,50 @@ describe("useGestureCommit", () => {
     expect(options[0]).not.toHaveProperty("softReload");
     expect(options[1]).toEqual(expect.objectContaining({ coalesceMs: Infinity, softReload: true }));
     expect(options[1]).not.toHaveProperty("skipReload");
+    expect(gestureRecording.clearSamples).toHaveBeenCalledTimes(1);
+  });
+
+  it("still releases the recording when the commit rejects", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const element = document.createElement("div");
+    element.id = "card";
+    const showToast = vi.fn();
+    const sessionRef = {
+      current: {
+        domEditSelection: makeSelection(element),
+        selectedGsapAnimations: [],
+        commitMutation: vi.fn(async () => {
+          throw new Error("write failed");
+        }),
+      },
+    };
+    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
+    function Probe() {
+      captured.hook = useGestureCommit({
+        domEditSessionRef: sessionRef,
+        previewIframeRef: { current: iframe },
+        showToast,
+        isGestureRecordingRef: { current: false },
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Probe />);
+    cleanup = () => act(() => root.unmount());
+    if (!captured.hook) throw new Error("hook did not initialize");
+
+    act(() => captured.hook?.handleToggleRecording());
+    act(() => captured.hook?.handleToggleRecording());
+    await act(async () => {
+      await vi.waitFor(() => expect(gestureRecording.clearSamples).toHaveBeenCalledTimes(1));
+    });
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining("Gesture commit failed"),
+      "error",
+    );
+    // A second toggle has to be able to start a new recording: the in-flight
+    // latch is released in the same clause that clears the samples.
+    expect(captured.hook?.gestureState).toBe("idle");
   });
 });
