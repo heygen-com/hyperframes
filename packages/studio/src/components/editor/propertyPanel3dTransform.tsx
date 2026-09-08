@@ -318,12 +318,12 @@ export function PropertyPanel3dTransform({
   };
 
   return (
-    <div className="mt-3 border-t border-neutral-800/40 pt-3">
+    <div className="mt-3 border-t border-hairline pt-3">
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
-        className="mb-2 flex w-full items-center justify-between text-[10px] font-medium uppercase tracking-wider text-neutral-600 hover:text-neutral-400 active:scale-[0.99]"
+        className="mb-2 flex w-full items-center justify-between text-step-10 font-medium uppercase tracking-wider text-text-4 hover:text-text-2 active:scale-[0.99]"
       >
         <span>3D Transform</span>
         <svg
@@ -332,7 +332,7 @@ export function PropertyPanel3dTransform({
           viewBox="0 0 10 10"
           fill="currentColor"
           aria-hidden
-          className={`transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`}
+          className={`transition-transform ease-standard duration-expand ${collapsed ? "-rotate-90" : ""}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>

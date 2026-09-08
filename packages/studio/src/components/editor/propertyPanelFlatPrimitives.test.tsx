@@ -32,8 +32,8 @@ describe("FlatRow", () => {
     const { host, root } = renderInto(
       <FlatRow label="Weight" value="400 · Regular" tier="default" onCommit={vi.fn()} />,
     );
-    const value = host.querySelector('[data-flat-row-value="true"]');
-    expect(value?.className).toContain("text-panel-text-3");
+    const value = host.querySelector('[data-testid="inspector-field"]');
+    expect(value?.className).toContain("text-text-3");
     expect(host.querySelector('[data-flat-row-reset="true"]')).toBeNull();
     act(() => root.unmount());
   });
@@ -59,8 +59,11 @@ describe("FlatRow", () => {
         onReset={onReset}
       />,
     );
-    const value = host.querySelector('[data-flat-row-value="true"]');
-    expect(value?.className).toContain("text-panel-accent");
+    const value = host.querySelector('[data-testid="inspector-field"]');
+    expect(value?.className).toContain("text-accent");
+    // R10: the value's own boundary, so the field reads as a field before it
+    // is clicked. It used to be bare text with an underline drawn around it.
+    expect(value?.className).toContain("border");
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-row-reset="true"]');
     expect(reset).not.toBeNull();
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -1172,7 +1175,7 @@ describe("FlatSelectRow", () => {
       />,
     );
     const select = host.querySelector<HTMLSelectElement>("select");
-    expect(select?.className).toContain("text-panel-accent");
+    expect(select?.className).toContain("text-accent");
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onReset).toHaveBeenCalledTimes(1);

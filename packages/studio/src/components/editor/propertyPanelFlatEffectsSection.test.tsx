@@ -214,7 +214,7 @@ describe("FlatEffectsSection", () => {
     expect(
       host.querySelector<HTMLSelectElement>('select[aria-label="Style"]')?.options,
     ).toHaveLength(8);
-    expect(host.querySelectorAll('[data-flat-toggle="true"]')).toHaveLength(2);
+    expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
     expect(host.querySelector('[data-flat-effect-editor="ascii"]')?.textContent).not.toContain(
       "Mix",
     );

@@ -253,7 +253,11 @@ describe("FlatLayoutSection", () => {
     expect(text).toContain("X");
     expect(text).toContain("Z-index");
     expect(text).toContain("Flex");
-    expect(text).toContain("3D Transform");
+    // AE6, R9. Exactly once, not merely present: the section used to print its
+    // own label above a component that already renders a collapsible header
+    // with the same words, so the panel showed the title twice and only the
+    // lower one did anything.
+    expect(text.split("3D Transform")).toHaveLength(2);
     act(() => root.unmount());
   });
 

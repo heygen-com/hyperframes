@@ -497,6 +497,20 @@ describe("Toggle", () => {
     expect(flips).toEqual([true, true]);
     expect(designInputCalls()).toHaveLength(1); // coalesced, same control
   });
+
+  it("wears its disabled look on the attribute Base UI actually sets", () => {
+    // The switch is a `<span role="switch">`, not a `<button>`, so a
+    // `disabled:` class compiles to a real rule that can never match and the
+    // control draws as if it were live. Only `data-disabled` is on the element.
+    const host = render(<Toggle label="Visible" checked={false} disabled onCommit={() => {}} />);
+    const control = host.querySelector('[role="switch"]') as HTMLElement;
+
+    const classes = new Set(control.className.split(/\s+/));
+
+    expect(control.hasAttribute("data-disabled")).toBe(true);
+    expect(classes).toContain("data-[disabled]:opacity-40");
+    expect(classes).not.toContain("disabled:opacity-40");
+  });
 });
 
 describe("hotkey classification (KTD13)", () => {

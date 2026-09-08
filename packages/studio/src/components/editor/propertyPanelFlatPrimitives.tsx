@@ -41,28 +41,26 @@ export function FlatRow({
   const track = useTrackDesignInput();
   return (
     <div className="group flex min-h-[30px] items-center justify-between gap-3">
-      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+      <span className={`text-step-11 ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
       <span className="flex min-w-0 shrink-0 items-center gap-1.5">
-        <span
-          data-flat-row-value="true"
-          className={`min-w-0 border-b pb-px font-mono text-[11px] ${VALUE_TIER_VALUE_CLASS[tier]} ${
-            tier === "explicitCustom"
-              ? "border-panel-accent/30 group-hover:border-panel-accent/70"
-              : "border-panel-border-input/50 group-hover:border-panel-border-input"
+        {/* The value's boundary is the field's own box now (R10), not an
+            underline drawn around it: two edges around one control read as two
+            controls. The tier still tints that box, so an explicitly set
+            property is still the one wearing the accent. */}
+        <CommitField
+          value={value}
+          disabled={disabled}
+          liveCommit={liveCommit}
+          align="right"
+          className={`w-24 font-mono ${VALUE_TIER_VALUE_CLASS[tier]} ${
+            tier === "explicitCustom" ? "border-accent/30 hover:border-accent/70" : ""
           }`}
-        >
-          <CommitField
-            value={value}
-            disabled={disabled}
-            liveCommit={liveCommit}
-            align="right"
-            onPreview={onPreview}
-            onCommit={(nextValue) => {
-              track("metric", label);
-              return onCommit(nextValue);
-            }}
-          />
-        </span>
+          onPreview={onPreview}
+          onCommit={(nextValue) => {
+            track("metric", label);
+            return onCommit(nextValue);
+          }}
+        />
         {suffix}
         {tier === "explicitCustom" && onReset && (
           <button

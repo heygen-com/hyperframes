@@ -297,10 +297,10 @@ export function LayoutTransform3DBlock({
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }) {
   return (
-    <div className="border-t border-panel-hairline pt-2.5">
-      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        3D Transform
-      </div>
+    // No heading here: `PropertyPanel3dTransform` renders its own, and its own
+    // is the collapsible one, so a second label above it read as a title for a
+    // section that already had one (R9, AE6).
+    <div className="border-t border-hairline pt-2.5">
       <PropertyPanel3dTransform
         gsapRuntimeValues={gsapRuntimeValues}
         gsapAnimId={gsapAnimId}

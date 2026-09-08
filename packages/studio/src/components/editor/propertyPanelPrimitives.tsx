@@ -3,7 +3,8 @@ import {
   DesignPanelInputProvider,
   useTrackDesignInput,
 } from "../../contexts/DesignPanelInputContext";
-import { FIELD, LABEL } from "./propertyPanelHelpers";
+import { Select, Slider, Tab, Tabs, TabsList } from "../ui";
+import { LABEL } from "./propertyPanelHelpers";
 import { CommitField } from "./propertyPanelCommitField";
 
 export { CommitField } from "./propertyPanelCommitField";
@@ -69,23 +70,22 @@ export function MetricField({
   const scrubProps =
     scrub && !disabled
       ? ({
-          className:
-            "shrink-0 text-[11px] font-medium text-neutral-500 cursor-ew-resize select-none",
+          className: "shrink-0 text-step-11 font-medium text-text-4 cursor-ew-resize select-none",
           onPointerDown: handleScrubPointerDown,
           onPointerMove: handleScrubPointerMove,
           onPointerUp: handleScrubPointerUp,
           onPointerCancel: handleScrubPointerUp,
           onLostPointerCapture: handleScrubPointerUp,
         } as const)
-      : ({ className: "shrink-0 text-[11px] font-medium text-neutral-500" } as const);
+      : ({ className: "shrink-0 text-step-11 font-medium text-text-4" } as const);
 
+  // The label sits outside the box, not inside it: R10 asks for a boundary that
+  // differs from the label, and the old shared box put both behind one edge.
   return (
-    <div className={FIELD} title={tooltip}>
-      <div className="flex min-w-0 items-center gap-3">
-        <span {...scrubProps}>{label}</span>
-        <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
-        {suffix && <span className="shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
-      </div>
+    <div className="flex min-w-0 items-center gap-3" title={tooltip}>
+      <span {...scrubProps}>{label}</span>
+      <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
+      {suffix && <span className="shrink-0 text-step-10 text-text-4">{suffix}</span>}
     </div>
   );
 }
@@ -113,9 +113,7 @@ export function DetailField({
   return (
     <label className="grid min-w-0 gap-1.5">
       <span className={LABEL}>{label}</span>
-      <div className={FIELD}>
-        <CommitField value={value} disabled={disabled} onCommit={commit} />
-      </div>
+      <CommitField value={value} disabled={disabled} onCommit={commit} />
     </label>
   );
 }
@@ -142,62 +140,30 @@ export function SliderControl({
   onCommit: (nextValue: number) => void;
 }) {
   const track = useTrackDesignInput();
-  const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interactionChangedRef = useRef(false);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  // Only the readout needs the in-flight value; the shared Slider owns the
+  // thumb's own draft, so this is a display mirror rather than a second
+  // source of truth for the control.
+  const [preview, setPreview] = useState(value);
 
   useEffect(() => {
-    setDraft(value);
+    setPreview(value);
   }, [value]);
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (interactionChangedRef.current) {
-      interactionChangedRef.current = false;
-      track("slider", trackName);
-    }
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-  const scheduleCommit = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 40);
-  };
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-      <input
-        type="range"
+      <Slider
+        label={trackName}
+        value={value}
         min={min}
         max={max}
         step={step}
-        value={draft}
         disabled={disabled}
-        aria-label={trackName}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          setDraft(n);
-          interactionChangedRef.current = true;
-          scheduleCommit(n);
-        }}
-        onMouseUp={() => commitDraft(draft)}
-        onTouchEnd={() => commitDraft(draft)}
-        onBlur={() => commitDraft(draft)}
-        // h-6 is the 24x24 WCAG 2.2 (2.5.8) target: the visible track stays 2px
-        // and the thumb 10px, only the pointer box grows.
-        className="h-6 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+        onPreview={setPreview}
+        onCommit={onCommit}
+        onTrack={() => track("slider", trackName)}
       />
-      <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">
-        {formatDisplayValue?.(draft) ?? displayValue}
+      <div className="min-w-[44px] rounded-md bg-input px-2 py-1.5 text-right text-step-11 font-medium text-text-1 tabular-nums">
+        {formatDisplayValue?.(preview) ?? displayValue}
       </div>
     </div>
   );
@@ -217,31 +183,35 @@ export function SegmentedControl({
   onChange: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  // Real tabs, so the strip answers arrow keys, Home and End (KTD7). The
+  // buttons this replaces carried `aria-pressed` and no keyboard handling at
+  // all, so the only way through them was Tab, one segment at a time.
   return (
-    <div
-      className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    <Tabs
+      value={value}
+      onValueChange={(next) => {
+        const chosen = String(next);
+        if (chosen !== value) track("segmented", trackName);
+        onChange(chosen);
+      }}
     >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            if (option.value !== value) track("segmented", trackName);
-            onChange(option.value);
-          }}
-          aria-pressed={option.value === value}
-          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
-            option.value === value
-              ? "bg-panel-hover text-white"
-              : "text-panel-text-4 hover:text-panel-text-2"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+      <TabsList
+        aria-label={trackName}
+        className="grid min-w-0 gap-[2px] rounded-md bg-input p-[2px]"
+        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      >
+        {options.map((option) => (
+          <Tab
+            key={option.value}
+            value={option.value}
+            disabled={disabled}
+            className="min-w-0 truncate px-2 font-medium"
+          >
+            {option.label}
+          </Tab>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -259,26 +229,21 @@ export function SelectField({
   onChange: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
+  // An authored value the caller does not offer as a preset stays representable
+  // rather than silently reading back as the first option.
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
-    <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
-      <select
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="shrink-0 text-step-11 font-medium text-text-4">{label}</span>
+      <Select
+        label={label}
         value={value}
+        options={renderedOptions.map((option) => ({ label: option, value: option }))}
         disabled={disabled}
-        onChange={(e) => {
-          track("select", label);
-          onChange(e.target.value);
-        }}
-        className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
-      >
-        {renderedOptions.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
+        onCommit={onChange}
+        onTrack={() => track("select", label)}
+      />
+    </div>
   );
 }
 
@@ -302,7 +267,10 @@ export function Section({
       height="10"
       viewBox="0 0 10 10"
       fill="currentColor"
-      className={`shrink-0 text-panel-text-5 transition-transform duration-150 ${
+      // `duration-expand` is the panel expand and collapse token, and it zeroes
+      // itself under `prefers-reduced-motion` (R14), which the hard-coded 150ms
+      // it replaces could not.
+      className={`shrink-0 text-text-5 transition-transform ease-standard duration-expand ${
         collapsed ? "-rotate-90" : ""
       }`}
     >
@@ -313,7 +281,7 @@ export function Section({
   const section = slugifyPanelSectionTitle(title);
   return (
     <DesignPanelInputProvider section={section}>
-      <section className="min-w-0 border-t border-panel-border" data-panel-section={section}>
+      <section className="min-w-0 border-t border-border" data-panel-section={section}>
         <div className="flex w-full items-center gap-2 px-4 py-2.5">
           <button
             type="button"
@@ -321,7 +289,7 @@ export function Section({
             aria-expanded={!collapsed}
             className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
           >
-            <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
+            <h3 className="text-step-12 font-semibold text-text-1">{title}</h3>
             {collapseIcon}
           </button>
           {accessory && <div className="flex shrink-0 items-center">{accessory}</div>}

@@ -4,7 +4,9 @@ import React, { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import { __resetDesignInputThrottle } from "../../utils/designInputTracking";
+import { isTypingTarget } from "../../utils/typingTarget";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
@@ -89,6 +91,30 @@ function blurInput(input: HTMLInputElement) {
   input.blur();
 }
 
+/** Base UI moves focus a task later than React renders; happy-dom is no faster. */
+const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+/**
+ * Opens a Select and walks the highlight down `steps` items before committing,
+ * the way a keyboard user does. The trigger is a real `<button>`, so Space
+ * reaches it as keydown, keyup and then a click the browser synthesises;
+ * happy-dom does not synthesise that click, so it is dispatched here.
+ */
+async function chooseByArrowing(trigger: HTMLElement, steps: number) {
+  const key = (el: Element, type: string, name: string) =>
+    act(() => void el.dispatchEvent(new KeyboardEvent(type, { bubbles: true, key: name })));
+  key(trigger, "keydown", " ");
+  key(trigger, "keyup", " ");
+  act(() => trigger.click());
+  await settle();
+  for (let i = 0; i < steps; i += 1) {
+    key(document.activeElement ?? document.body, "keydown", "ArrowDown");
+    await settle();
+  }
+  key(document.activeElement ?? document.body, "keydown", "Enter");
+  await settle();
+}
+
 function expectTracked(control: string, name: string, section = "style") {
   expect(trackStudioEvent).toHaveBeenLastCalledWith("design_input", {
     ui: "classic",
@@ -153,8 +179,10 @@ describe("classic property-panel primitive telemetry", () => {
     expectTracked("metric", "opacity");
   });
 
-  it("tracks SliderControl on settle, not on its scheduled commit tick", () => {
-    vi.useFakeTimers();
+  it("tracks SliderControl once at the commit boundary, not per step in a burst", () => {
+    // KTD11 through a real section, not the primitive alone: the section is
+    // what holds the tracker, and a slider that fired per intermediate value
+    // would bury the panel's telemetry under one drag.
     const onCommit = vi.fn();
     const host = render(
       classicSection(
@@ -172,17 +200,23 @@ describe("classic property-panel primitive telemetry", () => {
     const input = host.querySelector<HTMLInputElement>('input[type="range"]');
     if (!input) throw new Error("expected slider input");
 
-    act(() => {
-      changeInput(input, "40");
-    });
-    act(() => vi.advanceTimersByTime(40));
-    expect(trackStudioEvent).not.toHaveBeenCalled();
+    for (let step = 0; step < 3; step += 1) {
+      act(
+        () =>
+          void input.dispatchEvent(
+            new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }),
+          ),
+      );
+    }
 
-    act(() => input.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    expect(onCommit).toHaveBeenCalledTimes(3);
+    // Three commits, one event: the sink coalesces a burst into one "the user
+    // worked this control".
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
     expectTracked("slider", "opacity");
   });
 
-  it("tracks SelectField with its label", () => {
+  it("tracks SelectField with its label", async () => {
     const host = render(
       classicSection(
         <SelectField
@@ -193,12 +227,12 @@ describe("classic property-panel primitive telemetry", () => {
         />,
       ),
     );
-    const select = host.querySelector("select");
-    if (!select) throw new Error("expected select");
-    act(() => {
-      select.value = "multiply";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    // R8: no native select is left, so the trigger is what a user reaches.
+    expect(host.querySelector("select")).toBeNull();
+    const trigger = host.querySelector<HTMLElement>('[role="combobox"]');
+    if (!trigger) throw new Error("expected a select trigger");
+    await chooseByArrowing(trigger, 1);
+
     expectTracked("select", "blend-mode");
   });
 
@@ -233,6 +267,80 @@ describe("classic property-panel primitive telemetry", () => {
     if (!gradient) throw new Error("expected Gradient segment");
     act(() => gradient.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expectTracked("segmented", "fill-type");
+  });
+});
+
+describe("migrated inspector controls", () => {
+  it("classifies the Select trigger the way it classified the native select (KTD13)", () => {
+    // Both hotkey selector lists gate on exact role strings. A migration that
+    // changed the role would leak Space and the arrow keys to the global
+    // playback shortcuts while the control was open, and nothing would say so.
+    const host = render(
+      classicSection(
+        <SelectField label="Blend mode" value="normal" options={["normal"]} onChange={vi.fn()} />,
+      ),
+    );
+    const reference = document.createElement("select");
+    document.body.append(reference);
+    const trigger = host.querySelector<HTMLElement>('[role="combobox"]');
+    if (!trigger) throw new Error("expected a select trigger");
+
+    // Both true, not merely equal: two falses would agree and prove nothing.
+    expect(isTypingTarget(reference)).toBe(true);
+    expect(shouldIgnorePlaybackShortcutTarget(reference)).toBe(true);
+    expect(isTypingTarget(trigger)).toBe(isTypingTarget(reference));
+    expect(shouldIgnorePlaybackShortcutTarget(trigger)).toBe(
+      shouldIgnorePlaybackShortcutTarget(reference),
+    );
+    reference.remove();
+  });
+
+  it("gives the segmented control real tabs, so arrow keys reach every option (KTD7)", async () => {
+    const onChange = vi.fn();
+    const host = render(
+      classicSection(
+        <SegmentedControl
+          trackName="Fill type"
+          value="solid"
+          options={[
+            { label: "Solid", value: "solid" },
+            { label: "Gradient", value: "gradient" },
+          ]}
+          onChange={onChange}
+        />,
+      ),
+    );
+    const tabs = host.querySelectorAll<HTMLElement>('[role="tab"]');
+    expect(tabs).toHaveLength(2);
+    expect(host.querySelector('[role="tablist"]')).not.toBeNull();
+
+    // The `aria-pressed` buttons this replaced answered no key but Tab, one
+    // segment at a time.
+    act(() => tabs[0].focus());
+    act(
+      () =>
+        void tabs[0].dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, composed: true, key: "ArrowRight" }),
+        ),
+    );
+    await settle();
+
+    expect(onChange).toHaveBeenCalledWith("gradient");
+    expectTracked("segmented", "fill-type");
+  });
+
+  it("expands a Section on the motion token, which zeroes under reduced motion (R14)", () => {
+    const host = render(
+      <Section title="Style" icon={null}>
+        <div />
+      </Section>,
+    );
+    const caret = host.querySelector("svg");
+
+    // `duration-expand` is a `@utility` that carries its own
+    // `prefers-reduced-motion` branch, so a hard-coded `duration-150` here
+    // would animate for a user who asked it not to.
+    expect(caret?.getAttribute("class")).toContain("duration-expand");
   });
 });
 
@@ -311,7 +419,7 @@ describe("flat property-panel primitive telemetry", () => {
     const host = render(
       flatSection(<FlatToggle label="Loop" checked={false} onChange={vi.fn()} />),
     );
-    const toggle = host.querySelector<HTMLButtonElement>('[data-flat-toggle="true"]');
+    const toggle = host.querySelector<HTMLButtonElement>('[role="switch"]');
     act(() => toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expectFlatTracked("toggle", "loop");
   });
