@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import type { DomEditSelection } from "./domEditing";
+import { chooseFlatSelectOption, flatSelectRow } from "./flatSelectHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -150,9 +151,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
       );
     });
     expect(host.textContent).toContain("0.0 dB");
-    expect(
-      host.querySelector('[data-flat-slider-track="true"]')?.getAttribute("aria-valuenow"),
-    ).toBe("0");
+    expect(host.querySelector('input[type="range"]')?.getAttribute("aria-valuenow")).toBe("0");
     act(() => root.unmount());
   });
 
@@ -174,7 +173,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    const volumeTrack = host.querySelectorAll("[data-slider-control]")[0];
     Object.defineProperty(volumeTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -207,7 +206,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const rateTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[1];
+    const rateTrack = host.querySelectorAll("[data-slider-control]")[1];
     Object.defineProperty(rateTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -238,7 +237,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const mediaStartTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[2];
+    const mediaStartTrack = host.querySelectorAll("[data-slider-control]")[2];
     Object.defineProperty(mediaStartTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -372,7 +371,7 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
 });
 
 describe("FlatMediaSection — fit/position", () => {
-  it("commits object-fit and object-position changes", () => {
+  it("commits object-fit and object-position changes", async () => {
     const onSetStyle = vi.fn();
     const { host, root } = (() => {
       const element = makeVideoElement();
@@ -393,20 +392,13 @@ describe("FlatMediaSection — fit/position", () => {
       });
       return { host, root };
     })();
-    const selects = host.querySelectorAll("select");
-    const fitSelect = Array.from(selects).find((s) => s.value === "cover");
-    expect(fitSelect).not.toBeUndefined();
-    act(() => {
-      if (fitSelect) {
-        fitSelect.value = "contain";
-        fitSelect.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    });
+    expect(flatSelectRow(host, "Fit").trigger.textContent).toContain("cover");
+    await chooseFlatSelectOption(host, "Fit", "contain");
     expect(onSetStyle).toHaveBeenCalledWith("object-fit", "contain");
     act(() => root.unmount());
   });
 
-  it("commits an object-position change", () => {
+  it("commits an object-position change", async () => {
     const onSetStyle = vi.fn();
     const element = makeVideoElement();
     const host = document.createElement("div");
@@ -424,15 +416,8 @@ describe("FlatMediaSection — fit/position", () => {
         />,
       );
     });
-    const selects = host.querySelectorAll("select");
-    const positionSelect = Array.from(selects).find((s) => s.value === "center");
-    expect(positionSelect).not.toBeUndefined();
-    act(() => {
-      if (positionSelect) {
-        positionSelect.value = "left top";
-        positionSelect.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    });
+    expect(flatSelectRow(host, "Position").trigger.textContent).toContain("center");
+    await chooseFlatSelectOption(host, "Position", "left top");
     expect(onSetStyle).toHaveBeenCalledWith("object-position", "left top");
     act(() => root.unmount());
   });

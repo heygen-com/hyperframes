@@ -26,6 +26,7 @@ import {
   SliderControl,
 } from "./propertyPanelPrimitives";
 import { TextAreaField } from "./propertyPanelSections";
+import { chooseFlatSelectOption } from "./flatSelectHarness";
 
 const trackStudioEvent = vi.hoisted(() => vi.fn());
 
@@ -372,7 +373,7 @@ describe("flat property-panel primitive telemetry", () => {
         />,
       ),
     );
-    const slider = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    const slider = host.querySelector<HTMLElement>("[data-slider-control]");
     if (!slider) throw new Error("expected flat slider");
     Object.defineProperty(slider, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
@@ -382,8 +383,14 @@ describe("flat property-panel primitive telemetry", () => {
       slider.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
       );
+    });
+    // `buttons: 1` is not decoration: Base UI reads it to tell a live drag from
+    // a move whose pointerup another element swallowed, and treats `buttons: 0`
+    // as the end of the gesture. A move without it would settle the drag here
+    // and this assertion would pass for the wrong reason.
+    act(() => {
       slider.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
+        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1, buttons: 1 }),
       );
     });
     expect(trackStudioEvent).not.toHaveBeenCalled();
@@ -424,7 +431,7 @@ describe("flat property-panel primitive telemetry", () => {
     expectFlatTracked("toggle", "loop");
   });
 
-  it("tracks FlatSelectRow changes with its accessible label", () => {
+  it("tracks FlatSelectRow changes with its accessible label", async () => {
     const host = render(
       flatSection(
         <FlatSelectRow
@@ -437,12 +444,9 @@ describe("flat property-panel primitive telemetry", () => {
         />,
       ),
     );
-    const select = host.querySelector("select");
-    if (!select) throw new Error("expected flat select");
-    act(() => {
-      select.value = "warm";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    // The row renders no visible label of its own here, so it is found by the
+    // accessible name the caller supplied — the same name the event carries.
+    await chooseFlatSelectOption(host, "", "warm");
     expectFlatTracked("select", "preset");
   });
 });

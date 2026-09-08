@@ -16,6 +16,7 @@ import {
   FlatEffectsSection,
 } from "./propertyPanelFlatEffectsSection";
 import { EFFECT_SPECS } from "./propertyPanelFlatEffectSpecs";
+import { openFlatSelect } from "./flatSelectHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -111,7 +112,7 @@ describe("FlatEffectsSection", () => {
     for (const effect of EFFECT_SPECS) {
       expect(Boolean(effect.palette)).toBe(capabilities.get(effect.key)?.supportsPalette);
     }
-    expect(host.querySelectorAll('[data-flat-slider-track="true"]')).toHaveLength(0);
+    expect(host.querySelectorAll("[data-slider-control]")).toHaveLength(0);
     act(() => root.unmount());
   });
 
@@ -190,7 +191,7 @@ describe("FlatEffectsSection", () => {
     expect(host.textContent).toContain("Angle");
     const effect = host.querySelector('[data-flat-effect-editor="chromaticAberration"]');
     if (!effect) throw new Error("expected chromatic effect");
-    const rows = effect.querySelectorAll('[data-flat-slider-track="true"]');
+    const rows = effect.querySelectorAll("[data-slider-control]");
     const angleTrack = rows[1] as HTMLElement | undefined;
     if (!angleTrack) throw new Error("expected angle slider");
     Object.defineProperty(angleTrack, "getBoundingClientRect", {
@@ -204,16 +205,14 @@ describe("FlatEffectsSection", () => {
     act(() => root.unmount());
   });
 
-  it("offers native ASCII styles, binary controls, and a bounded custom palette", () => {
+  it("offers native ASCII styles, binary controls, and a bounded custom palette", async () => {
     const onCommit = vi.fn();
     const grading = normalizeHfColorGrading({
       effects: HF_COLOR_GRADING_EFFECT_APPLY_DEFAULTS.ascii,
     });
     if (!grading) throw new Error("expected ASCII grading");
     const { host, root } = renderInto(<FlatEffectsSection {...sectionProps(grading, onCommit)} />);
-    expect(
-      host.querySelector<HTMLSelectElement>('select[aria-label="Style"]')?.options,
-    ).toHaveLength(8);
+    expect(await openFlatSelect(host, "Style")).toHaveLength(8);
     expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
     expect(host.querySelector('[data-flat-effect-editor="ascii"]')?.textContent).not.toContain(
       "Mix",

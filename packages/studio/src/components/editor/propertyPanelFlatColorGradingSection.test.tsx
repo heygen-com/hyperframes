@@ -48,7 +48,7 @@ function findRowByText(
 }
 
 function dragSliderTrack(row: Element, clientX: number, trackWidth: number) {
-  const track = row.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+  const track = row.querySelector<HTMLElement>("[data-slider-control]");
   if (!track) throw new Error("expected a slider track");
   Object.defineProperty(track, "getBoundingClientRect", {
     value: () => ({ left: 0, width: trackWidth, top: 0, height: 2, right: trackWidth, bottom: 2 }),

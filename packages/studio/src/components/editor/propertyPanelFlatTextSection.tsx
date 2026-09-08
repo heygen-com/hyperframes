@@ -7,12 +7,8 @@ import { normalizeTextMetricValue } from "./propertyPanelHelpers";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
-import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
-import {
-  resolveValueTier,
-  VALUE_TIER_LABEL_CLASS,
-  VALUE_TIER_VALUE_CLASS,
-} from "./propertyPanelValueTier";
+import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
+import { resolveValueTier } from "./propertyPanelValueTier";
 import {
   detectAvailableWeights,
   formatTextFieldPreview,
@@ -59,7 +55,6 @@ function FlatTextFieldEditor({
   onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
   autoFocus?: boolean;
 }) {
-  const track = useTrackDesignInput();
   const weight = getTextStyleValue(field, styles, "font-weight", "400");
   const weightOptions = detectAvailableWeights(
     field.computedStyles["font-family"] || styles["font-family"] || "",
@@ -105,45 +100,21 @@ function FlatTextFieldEditor({
         onPreview={(next) => onPreviewTextFieldStyle?.(field.key, "font-size", next)}
         onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
       />
-      <div className="flex min-h-[30px] items-center justify-between">
-        <span
-          className={
-            VALUE_TIER_LABEL_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-          }
-          style={{ fontSize: 11 }}
-        >
-          Weight
-        </span>
-        <label className="flex items-center gap-1.5 border-b border-panel-border-input/50 pb-px hover:border-panel-border-input">
-          <select
-            value={weight}
-            onChange={(e) => {
-              track("select", "Weight");
-              onSetTextFieldStyle(field.key, "font-weight", e.target.value);
-            }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-hidden ${
-              VALUE_TIER_VALUE_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-            }`}
-          >
-            {(weightOptions.includes(weight) ? weightOptions : [weight, ...weightOptions]).map(
-              (option) => (
-                <option key={option} value={option}>
-                  {WEIGHT_LABELS[option] ?? option}
-                </option>
-              ),
-            )}
-          </select>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
-        </label>
-      </div>
+      {/* Was a copy of FlatSelectRow rendered inline: the same native select,
+          the same underline, the same caret. The row it copied is now boxed,
+          so the copy was the last bare row in the panel. FlatSelectRow already
+          keeps an authored weight outside the list representable, which is
+          what the local `weightOptions.includes` branch was for. */}
+      <FlatSelectRow
+        label="Weight"
+        value={weight}
+        options={weightOptions.map((option) => ({
+          value: option,
+          label: WEIGHT_LABELS[option] ?? option,
+        }))}
+        tier={resolveValueTier(field.inlineStyles["font-weight"], "400")}
+        onChange={(next) => onSetTextFieldStyle(field.key, "font-weight", next)}
+      />
       <FlatRow
         label="Letter spacing"
         value={getTextStyleValue(field, styles, "letter-spacing", "0px")}

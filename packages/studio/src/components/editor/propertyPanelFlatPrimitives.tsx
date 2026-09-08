@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { RotateCcw } from "../../icons/SystemIcons";
+import { Slider } from "../ui";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -238,28 +239,8 @@ export function FlatGroupHeader({
 /*  FlatSlider — full-width label/track/value row                      */
 /* ------------------------------------------------------------------ */
 
-/** Keyboard target for a slider keydown, or null for keys we don't handle. */
-function sliderKeyTarget(
-  key: string,
-  current: number,
-  min: number,
-  max: number,
-  step: number,
-): number | null {
-  if (key === "Home") return min;
-  if (key === "End") return max;
-  const deltas: Record<string, number> = {
-    ArrowLeft: -step,
-    ArrowDown: -step,
-    ArrowRight: step,
-    ArrowUp: step,
-    PageDown: -step * 10,
-    PageUp: step * 10,
-  };
-  const delta = deltas[key];
-  if (delta === undefined) return null;
-  return Math.max(min, Math.min(max, current + delta));
-}
+/** At most one durable write per this many ms while a drag is in flight. */
+const COMMIT_INTERVAL_MS = 40;
 
 export function FlatSlider({
   label,
@@ -287,256 +268,97 @@ export function FlatSlider({
   onCommit: (nextValue: number) => void;
 }) {
   const track = useTrackDesignInput();
-  // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
-  // throttled (not debounced) to at most once per 40ms: a real drag fires
-  // pointermove faster than that, and a pure debounce (reset the timer on
-  // every move) never commits until the pointer pauses or lifts — which kills
-  // live preview updates during a continuous drag. Throttling still fires on
-  // the leading edge and on a trailing timer, so the preview keeps updating
-  // while dragging, with an immediate flush on release for the final value.
-  const [draft, setDraft] = useState(value);
+  // The shared Slider owns the thumb, the keyboard, the pointer capture and
+  // the abort. What stays here is the write RATE, because this row has exactly
+  // one channel: a caller's `onCommit` writes the style, and that write IS the
+  // live canvas preview. So the continuous `onPreview` stream is throttled to
+  // at most one write per COMMIT_INTERVAL_MS rather than dropped. A debounce
+  // would be wrong: it never fires until the pointer pauses, which is exactly
+  // when a preview is least wanted.
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitAtRef = useRef(0);
   const pendingRef = useRef<number | null>(null);
-  // True from pointerdown to pointerup/cancel. While dragging, the committed
-  // prop echoing back through the parent must NOT reset `draft` — the echo is
-  // up to 40ms stale (throttled commit), and syncing it mid-drag snaps the
-  // knob backwards under the user's pointer.
-  const draggingRef = useRef(false);
-  // Tracks the last value actually sent to onCommit — separate from `value`
-  // (the committed prop) because in a single pointerdown+pointerup click the
-  // leading-edge commit fires before the parent has re-rendered with the new
-  // prop, so the release flush must dedupe against what we just sent, not
-  // against the stale prop, or the same value commits twice.
+  // What was last handed to `onCommit`. Separate from the `value` prop: a
+  // leading-edge write lands before the parent has re-rendered, so the release
+  // flush has to dedupe against what was sent, not against the stale prop.
   const lastCommittedRef = useRef(value);
-  // Always the current render's onCommit — read inside the throttle timer
-  // instead of closing over the callback at schedule time. A caller whose
-  // onCommit spreads other current state (e.g. Grade's "...grading, details:
-  // {...}") would otherwise let a queued trailing commit fire ~40ms later
-  // with a stale snapshot and silently revert whatever the user changed on a
-  // different control in between.
+  // Always the current render's `onCommit`, read inside the throttle timer
+  // instead of closed over at schedule time. A caller whose onCommit spreads
+  // other current state (Grade's `...grading, details: {...}`) would otherwise
+  // let a queued write fire a frame later with a stale snapshot and silently
+  // revert whatever the user changed on another control in between.
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
-  // Always this render's committed value — read directly (not via the
-  // effect below) by onLostPointerCapture, so the resync there doesn't
-  // depend on ordering between the native event and the [value] effect.
-  const latestValueRef = useRef(value);
-  latestValueRef.current = value;
-  // releasePointerCapture() (called explicitly below in onPointerUp/
-  // onPointerCancel) fires lostpointercapture SYNCHRONOUSLY in real
-  // browsers — i.e. onLostPointerCapture runs mid-onPointerUp, BEFORE
-  // onPointerUp's own draggingRef check and final commitDraft. Without this
-  // flag, a NORMAL release would have onLostPointerCapture reset
-  // draggingRef/draft to the stale value first, making onPointerUp's own
-  // "if (!draggingRef.current) return" bail out and silently drop the
-  // real final-position commit. Set right before each explicit release
-  // call so onLostPointerCapture can tell "our own release, the caller's
-  // own logic already handles it" apart from a genuine EXTERNAL capture
-  // loss (another element steals it, or the browser reclaims it for a
-  // scroll/touch gesture) where no other handler is about to run.
-  const explicitReleaseRef = useRef(false);
-  // The committed value when the current drag began — Escape and right-click
-  // both cancel an in-progress drag by reverting to this, not by leaving
-  // whatever position the pointer last reached committed.
-  const dragStartValueRef = useRef(value);
-  const activePointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (draggingRef.current) return;
-    setDraft(value);
     lastCommittedRef.current = value;
   }, [value]);
   useEffect(
     () => () => {
-      if (commitTimerRef.current) {
-        clearTimeout(commitTimerRef.current);
-        // Flush rather than drop a still-queued edit — this only fires if the
-        // component unmounts mid-drag (e.g. selection changes away), and
-        // silently discarding the user's last dragged position would look
-        // like data loss.
-        if (pendingRef.current !== null) onCommitRef.current(pendingRef.current);
-      }
+      if (!commitTimerRef.current) return;
+      clearTimeout(commitTimerRef.current);
+      // Flush rather than drop a queued edit. This only runs if the row
+      // unmounts mid-drag (the selection changes away), and discarding the
+      // last dragged position would look like data loss.
+      if (pendingRef.current !== null) onCommitRef.current(pendingRef.current);
     },
     [],
   );
 
-  const clampedPct = Math.max(0, Math.min(100, ((draft - min) / Math.max(max - min, 1e-6)) * 100));
-
-  const stepFromClientX = (clientX: number, rect: DOMRect) => {
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(rect.width, 1)));
-    const raw = min + ratio * (max - min);
-    const stepped = Math.round(raw / step) * step;
-    return Math.max(min, Math.min(max, stepped));
-  };
-  const commitDraft = (nextDraft: number) => {
+  const commitNow = (next: number) => {
     if (commitTimerRef.current) {
       clearTimeout(commitTimerRef.current);
       commitTimerRef.current = null;
     }
     pendingRef.current = null;
     lastCommitAtRef.current = Date.now();
-    if (nextDraft !== lastCommittedRef.current) {
-      lastCommittedRef.current = nextDraft;
-      onCommitRef.current(nextDraft);
-    }
+    if (next === lastCommittedRef.current) return;
+    lastCommittedRef.current = next;
+    onCommitRef.current(next);
   };
-  const scheduleCommit = (nextDraft: number) => {
+  const scheduleCommit = (next: number) => {
     const elapsed = Date.now() - lastCommitAtRef.current;
-    if (elapsed >= 40) {
-      commitDraft(nextDraft);
+    if (elapsed >= COMMIT_INTERVAL_MS) {
+      commitNow(next);
       return;
     }
-    pendingRef.current = nextDraft;
-    if (!commitTimerRef.current) {
-      commitTimerRef.current = setTimeout(() => {
-        commitTimerRef.current = null;
-        if (pendingRef.current !== null) commitDraft(pendingRef.current);
-      }, 40 - elapsed);
-    }
-  };
-  // Reverts to the pre-drag value instead of leaving whatever position the
-  // pointer last reached committed — the drag's own leading-edge commit (in
-  // onPointerDown) may already have applied an intermediate value, so this
-  // must go through commitDraft (not just a visual setDraft) to actually
-  // undo it.
-  const cancelDrag = (target: HTMLDivElement) => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    const pointerId = activePointerIdRef.current;
-    if (pointerId !== null && target.hasPointerCapture(pointerId)) {
-      explicitReleaseRef.current = true;
-      target.releasePointerCapture(pointerId);
-    }
-    setDraft(dragStartValueRef.current);
-    commitDraft(dragStartValueRef.current);
+    pendingRef.current = next;
+    if (commitTimerRef.current) return;
+    commitTimerRef.current = setTimeout(() => {
+      commitTimerRef.current = null;
+      if (pendingRef.current !== null) commitNow(pendingRef.current);
+    }, COMMIT_INTERVAL_MS - elapsed);
   };
 
   return (
     <div className="flex min-h-[28px] items-center gap-2.5">
-      <span className="w-[86px] shrink-0 text-[11px] text-panel-text-3">{label}</span>
-      <div
-        data-flat-slider-track="true"
-        role="slider"
-        aria-label={label}
-        aria-valuenow={draft}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-disabled={disabled}
-        tabIndex={disabled ? -1 : 0}
-        style={{ touchAction: "none" }}
-        className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
-        onPointerDown={(e) => {
-          if (disabled) return;
-          draggingRef.current = true;
-          dragStartValueRef.current = latestValueRef.current;
-          activePointerIdRef.current = e.pointerId;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
-          scheduleCommit(stepped);
-        }}
-        onPointerMove={(e) => {
-          if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
-          scheduleCommit(stepped);
-        }}
-        onPointerUp={(e) => {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-            explicitReleaseRef.current = true;
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }
-          if (disabled) return;
-          if (!draggingRef.current) return;
-          draggingRef.current = false;
-          // Recompute from the event itself rather than reading the `draft`
-          // closure — if pointerdown+pointerup land in the same React batch
-          // (e.g. a very fast click), the onPointerUp handler can still be
-          // bound to the pre-drag render, making `draft` stale.
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
-          commitDraft(stepped);
-          if (stepped !== dragStartValueRef.current) track("slider", label);
-        }}
-        onPointerCancel={(e) => {
-          // A native pointercancel means the platform aborted the gesture (a
-          // scroll/touch takeover, pen leaving range, etc.) — that must cancel
-          // the drag the same way Escape/right-click do (revert to the
-          // pre-drag value), not just stop dragging and leave whatever
-          // intermediate position the pointer last reached committed.
-          cancelDrag(e.currentTarget);
-        }}
-        onLostPointerCapture={() => {
-          if (explicitReleaseRef.current) {
-            // Our own onPointerUp/onPointerCancel just released capture —
-            // their own logic already handles (or intentionally leaves)
-            // draggingRef/draft correctly. Resyncing here too would race
-            // onPointerUp's still-pending final commitDraft(stepped) below
-            // this call, since draggingRef flipping false would make its
-            // own "if (!draggingRef.current) return" bail out first.
-            explicitReleaseRef.current = false;
-            return;
-          }
-          // A genuine EXTERNAL capture loss (another element steals it, or
-          // the browser reclaims it for a scroll/touch gesture) — no other
-          // handler is about to run, so resync immediately and directly
-          // from latestValueRef rather than only clearing draggingRef and
-          // waiting for the [value] effect to notice (that effect depends
-          // on `value` actually changing again to re-run).
-          draggingRef.current = false;
-          setDraft(latestValueRef.current);
-          lastCommittedRef.current = latestValueRef.current;
-        }}
-        onKeyDown={(e) => {
-          if (disabled) return;
-          if (e.key === "Escape" && draggingRef.current) {
-            e.preventDefault();
-            cancelDrag(e.currentTarget);
-            return;
-          }
-          const next = sliderKeyTarget(e.key, draft, min, max, step);
-          if (next === null) return;
-          e.preventDefault();
-          setDraft(next);
-          commitDraft(next);
-          if (next !== draft) track("slider", label);
-        }}
-        onContextMenu={(e) => {
-          // Right-click during a drag must cancel it (revert to the pre-drag
-          // value), not leave the last dragged-to position committed while
-          // the native context menu opens on top of the slider.
-          if (!draggingRef.current) return;
-          e.preventDefault();
-          cancelDrag(e.currentTarget);
-        }}
-      >
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
-          {centerTick && (
-            <div
-              data-flat-slider-center-tick="true"
-              className="absolute left-1/2 -top-px h-1 w-px -translate-x-1/2 bg-panel-text-5"
-            />
-          )}
-          {tier === "explicitCustom" && (
-            <div
-              data-flat-slider-fill="true"
-              className="absolute inset-y-0 left-0 rounded-full bg-panel-text-5"
-              style={{ width: `${clampedPct}%` }}
-            />
-          )}
-        </div>
-        <div
-          data-flat-slider-knob="true"
-          className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-            tier === "explicitCustom" ? "h-2 w-2 bg-white" : "h-[7px] w-[7px] bg-panel-text-4"
-          }`}
-          style={{ left: `${clampedPct}%` }}
+      <span className="w-[86px] shrink-0 text-step-11 text-text-3">{label}</span>
+      <div className="relative flex min-w-0 flex-1 items-center">
+        <Slider
+          label={label}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          onPreview={scheduleCommit}
+          onCommit={commitNow}
+          onTrack={() => track("slider", label)}
+          className="w-full"
         />
+        {centerTick && (
+          // After the slider so it paints over the track, and inert so it
+          // cannot swallow a press aimed at the track under it.
+          <div
+            data-flat-slider-center-tick="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 h-1 w-px -translate-x-1/2 -translate-y-1/2 bg-text-5"
+          />
+        )}
       </div>
       <span
         data-flat-slider-value="true"
-        className={`w-11 shrink-0 text-right font-mono text-[10px] ${
-          tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
+        className={`w-11 shrink-0 text-right font-mono text-step-10 ${
+          tier === "explicitCustom" ? "text-text-0" : "text-text-3"
         }`}
       >
         {displayValue}
@@ -553,7 +375,7 @@ export function FlatSlider({
                 track("button", `Reset ${label}`);
                 onReset();
               }}
-              className="text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+              className="text-text-3 hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RotateCcw size={11} />
             </button>
