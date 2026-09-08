@@ -297,6 +297,13 @@ A composition using GSAP must:
 HyperFrames controls seeking. Composition code describes how the visual state
 looks at a given time.
 
+Every element with `data-composition-id` participates in timeline readiness.
+For a static nested section, use an ordinary `id` instead, or add
+`data-no-timeline` to declare that no timeline will be registered. Otherwise,
+the renderer waits up to the player-ready timeout for that element's timeline.
+`hyperframes lint` reports bare composition hosts that have neither a matching
+timeline registration nor an explicit opt-out as `missing_data_no_timeline`.
+
 ## Validate
 
 ```bash
