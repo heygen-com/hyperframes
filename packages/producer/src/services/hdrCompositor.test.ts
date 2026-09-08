@@ -96,4 +96,17 @@ describe("selectDomLayerShowIds", () => {
       ),
     ).toEqual(["active-overlay"]);
   });
+
+  it("excludes HDR elements whose sub-composition window has ended during a transition scene", () => {
+    expect(
+      selectDomLayerShowIds(
+        ["hdr-video-ended", "hdr-video-active", "visible-replacement"],
+        [
+          makeEl("hdr-video-ended", { visible: false, renderFrameVisible: false }),
+          makeEl("hdr-video-active", { visible: false, renderFrameVisible: true }),
+          makeEl("visible-replacement"),
+        ],
+      ),
+    ).toEqual(["hdr-video-active", "visible-replacement"]);
+  });
 });

@@ -445,7 +445,7 @@ export function selectDomLayerShowIds(
   const byId = new Map(fullStacking.map((el) => [el.id, el]));
   return layerElementIds.filter((id) => {
     const el = byId.get(id);
-    return !!el && el.opacity > 0 && (el.visible || el.renderFrameVisible === true);
+    return !!el && isHdrLayerBlittable(el);
   });
 }
 
