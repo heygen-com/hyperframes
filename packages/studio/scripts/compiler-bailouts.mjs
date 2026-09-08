@@ -77,6 +77,43 @@ export function listSourceFiles(root = STUDIO_ROOT) {
 }
 
 /**
+ * @param {string} relative
+ * @returns {{ lang: "tsx" | "ts", sourceType: "module" }}
+ */
+function parseOptions(relative) {
+  return { lang: relative.endsWith(".tsx") ? "tsx" : "ts", sourceType: "module" };
+}
+
+/**
+ * The diagnostics oxc-transform-react reports for one module, escalated so a
+ * skip is actually visible (see the module docstring, fact 1). Only the FIRST
+ * declined function's diagnostics come back; the transform aborts the module
+ * there. A parse failure is not a bail-out and throws instead of returning.
+ *
+ * @param {string} relative
+ * @param {string} source
+ * @param {{ lang: "tsx" | "ts", sourceType: "module" }} options
+ * @returns {import("oxc-transform-react").OxcError[]}
+ */
+function escalatedErrors(relative, source, options) {
+  const escalated = transformSync(path.basename(relative), source, {
+    ...options,
+    reactCompiler: { panicThreshold: "all_errors" },
+  });
+  if (escalated.errors.length === 0) return [];
+  // A file that does not parse also lands here, and is not a bail-out. Only
+  // the files that already errored pay for this second pass.
+  const parsed = transformSync(path.basename(relative), source, {
+    ...options,
+    reactCompiler: false,
+  });
+  if (parsed.errors.length > 0) {
+    throw new Error(`${relative} does not parse: ${parsed.errors[0]?.message}`);
+  }
+  return escalated.errors;
+}
+
+/**
  * What the compiler declines to compile in one module.
  *
  * `count` is one per opt-out the scan can see: one per directive, plus one if
@@ -104,31 +141,74 @@ export function analyzeSource(relative, source) {
   for (const match of source.matchAll(OPT_OUT_DIRECTIVE)) causes.push(`"${match[2]}" directive`);
   let count = causes.length;
 
-  const options = {
-    lang: /** @type {const} */ (relative.endsWith(".tsx") ? "tsx" : "ts"),
-    sourceType: /** @type {const} */ ("module"),
-  };
-  const escalated = transformSync(path.basename(relative), source, {
-    ...options,
-    reactCompiler: { panicThreshold: "all_errors" },
-  });
-  if (escalated.errors.length > 0) {
-    // A file that does not parse also lands here, and is not a bail-out. Only
-    // the files that already errored pay for this second pass.
-    const parsed = transformSync(path.basename(relative), source, {
-      ...options,
-      reactCompiler: false,
-    });
-    if (parsed.errors.length > 0) {
-      throw new Error(`${relative} does not parse: ${parsed.errors[0]?.message}`);
-    }
+  const errors = escalatedErrors(relative, source, parseOptions(relative));
+  if (errors.length > 0) {
     count += 1;
-    for (const error of escalated.errors) {
+    for (const error of errors) {
       if (!causes.includes(error.message)) causes.push(error.message);
     }
   }
 
   return { count, causes };
+}
+
+/** @typedef {{ readonly file: string, readonly cause: string, readonly codeframe: string }} Frame */
+
+/**
+ * Every diagnostic oxc-transform-react reports for the given files, one entry
+ * per diagnostic and NOT deduped by cause (unlike `causes` above), so two ref
+ * reads in the same function both get their own line and caret.
+ *
+ * Only the first declined function per module has anything to show here; see
+ * the ceiling note on `analyzeSource`. A `"use no memo"` / `"use no forget"`
+ * directive opts out before any diagnostic is produced, so it never appears
+ * in this list either, only in `analyzeSource`'s count.
+ *
+ * @param {readonly string[]} files Studio-relative, POSIX separators.
+ * @param {string} [root]
+ * @returns {Frame[]}
+ */
+export function collectFrames(files, root = STUDIO_ROOT) {
+  /** @type {Frame[]} */
+  const frames = [];
+  for (const relative of files) {
+    const source = readFileSync(path.join(root, relative), "utf8");
+    for (const error of escalatedErrors(relative, source, parseOptions(relative))) {
+      if (error.codeframe)
+        frames.push({ file: relative, cause: error.message, codeframe: error.codeframe });
+    }
+  }
+  return frames;
+}
+
+/**
+ * Turn `--frames` arguments (files or directories, relative to cwd or
+ * absolute) into scanned Studio-relative file paths. No arguments scans
+ * everything `listSourceFiles` would.
+ *
+ * @param {readonly string[]} args
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function resolveScanTargets(args, root = STUDIO_ROOT) {
+  const all = listSourceFiles(root);
+  if (args.length === 0) return all;
+  const targets = args.map((arg) =>
+    path.relative(root, path.resolve(arg)).split(path.sep).join("/"),
+  );
+  return all.filter((file) =>
+    targets.some((target) => file === target || file.startsWith(`${target}/`)),
+  );
+}
+
+/**
+ * @param {readonly Frame[]} frames
+ * @returns {string}
+ */
+export function formatFrames(frames) {
+  if (frames.length === 0)
+    return "No React Compiler diagnostics with a codeframe in the given files.\n";
+  return `${frames.map(({ file, cause, codeframe }) => `${file}: ${cause}${codeframe}`).join("\n")}\n`;
 }
 
 /**
@@ -254,12 +334,36 @@ export function formatReport(found) {
   return `${lines.join("\n")}\n`;
 }
 
+const HELP = `Usage: compiler-bailouts.mjs [--json] [--frames [<file-or-dir>...]]
+
+  (no flags)     Print the grouped, human-facing bail-out report.
+  --json         Print the same scan as { total, files: { file: causes[] } } JSON.
+  --frames       Print, for every React Compiler diagnostic, the file, the
+                 cause, and oxc-transform-react's own codeframe (line, column,
+                 caret), so an engineer lands on the exact statement.
+                 Restrict the scan to the given files/dirs; scans everything
+                 under src/ with no arguments. Only the FIRST declined
+                 function per module is reported: escalating the compiler's
+                 panic threshold aborts the module after its first bail-out,
+                 so a second declined function further down stays invisible
+                 until the first is fixed. A "use no memo" / "use no forget"
+                 directive has no diagnostic to frame; it never appears here.
+`;
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const found = scanTree();
-  const asJson = Object.fromEntries([...found].map(([file, { causes }]) => [file, causes]));
-  process.stdout.write(
-    process.argv.includes("--json")
-      ? `${JSON.stringify({ total: toBaseline(toCounts(found)).total, files: asJson }, null, 2)}\n`
-      : formatReport(found),
-  );
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(HELP);
+  } else if (argv.includes("--frames")) {
+    const targets = resolveScanTargets(argv.slice(argv.indexOf("--frames") + 1));
+    process.stdout.write(formatFrames(collectFrames(targets)));
+  } else {
+    const found = scanTree();
+    const asJson = Object.fromEntries([...found].map(([file, { causes }]) => [file, causes]));
+    process.stdout.write(
+      argv.includes("--json")
+        ? `${JSON.stringify({ total: toBaseline(toCounts(found)).total, files: asJson }, null, 2)}\n`
+        : formatReport(found),
+    );
+  }
 }

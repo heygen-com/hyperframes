@@ -15,7 +15,7 @@
  * `scripts/compiler-bailouts.mjs`, which `bun run compiler:bailouts` prints.
  */
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,8 +23,12 @@ import {
   analyzeSource,
   type Baseline,
   BASELINE_RELATIVE,
+  collectFrames,
+  formatFrames,
   isScanned,
+  listSourceFiles,
   LOWER_COMMAND,
+  resolveScanTargets,
   scanTree,
   STUDIO_ROOT,
   toBaseline,
@@ -92,6 +96,54 @@ describe("bail-out scan", () => {
     expect(isScanned("src/vite-env.d.ts")).toBe(false);
     expect(isScanned("src/test-setup.ts")).toBe(false);
     expect(isScanned("scripts/compiler-bailouts.mjs")).toBe(false);
+  });
+});
+
+describe("--frames", () => {
+  // resolveScanTargets walks `<root>/src`, mirroring Studio's real layout.
+  function fixtureRoot(files: Record<string, string>): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "bailout-frames-"));
+    mkdirSync(path.join(dir, "src"));
+    for (const [name, source] of Object.entries(files))
+      writeFileSync(path.join(dir, "src", name), source);
+    return dir;
+  }
+
+  it("prints the file, the cause, and a codeframe pinpointing the ref read's line", () => {
+    const dir = fixtureRoot({ "RefDuringRender.tsx": REF_DURING_RENDER });
+
+    const frames = collectFrames(["src/RefDuringRender.tsx"], dir);
+
+    expect(frames).toEqual([
+      {
+        file: "src/RefDuringRender.tsx",
+        cause: "Cannot access refs during render",
+        codeframe: expect.stringContaining("RefDuringRender.tsx:5:16"),
+      },
+    ]);
+    const output = formatFrames(frames);
+    expect(output).toContain("src/RefDuringRender.tsx: Cannot access refs during render");
+    // The codeframe carries the line number and a caret under the ref read.
+    expect(output).toContain("RefDuringRender.tsx:5:16");
+    expect(output).toContain("^");
+  });
+
+  it("reports nothing for a component the compiler can compile", () => {
+    const dir = fixtureRoot({ "Clean.tsx": CLEAN });
+
+    expect(collectFrames(["src/Clean.tsx"], dir)).toEqual([]);
+  });
+
+  it("restricts the scan to the given files, leaving other files out", () => {
+    const dir = fixtureRoot({ "RefDuringRender.tsx": REF_DURING_RENDER, "Clean.tsx": CLEAN });
+
+    const targets = resolveScanTargets([path.join(dir, "src/RefDuringRender.tsx")], dir);
+
+    expect(targets).toEqual(["src/RefDuringRender.tsx"]);
+  });
+
+  it("falls back to every scanned file when no target is given", () => {
+    expect(resolveScanTargets([])).toEqual(listSourceFiles());
   });
 });
 
