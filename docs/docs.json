@@ -780,7 +780,8 @@
             "pages": [
               "developers/cli",
               "packages/cli",
-              "packages/lint"
+              "packages/lint",
+              "guides/visual-regression"
             ]
           },
           {
@@ -825,7 +826,8 @@
             "pages": [
               "reference/html-schema",
               "reference/color-grading",
-              "reference/audio-effects"
+              "reference/audio-effects",
+              "reference/cli-golden"
             ]
           },
           {
