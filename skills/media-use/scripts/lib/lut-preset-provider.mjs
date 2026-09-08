@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { withReservedFile, withReservedFileSync } from "./manifest.mjs";
 import { freezeUrl } from "./freeze.mjs";
 import { tokenOverlap } from "./match.mjs";
@@ -216,9 +216,10 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
         type,
         ".cube",
         async ({ id, localPath, fullPath }) => {
-          const tmpPath = `${fullPath}.tmp`;
+          const tmpDir = mkdtempSync(join(dirname(fullPath), ".lut-download-"));
+          const tmpPath = join(tmpDir, "download.cube");
           try {
-            // Download + validate at a .tmp path, then atomically rename. A crash
+            // Download + validate in a private directory, then atomically rename. A crash
             // (SIGKILL/OOM) between write and validate can't orphan an invalid .cube
             // at the final path — only a validated cube is ever renamed into place.
             await freezeUrl(match.url, tmpPath);
@@ -226,7 +227,7 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
             renameSync(tmpPath, fullPath);
             return libraryRecord(match, { id, localPath, fullPath, via: "url" });
           } finally {
-            rmSync(tmpPath, { force: true });
+            rmSync(tmpDir, { recursive: true, force: true });
           }
         },
       );

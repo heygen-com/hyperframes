@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { freezeUrl } from "./freeze.mjs";
@@ -106,10 +107,20 @@ export async function heygenVideoGenerate(intent, ctx) {
     return null;
   }
 
-  const tmpPath = join(tmpdir(), `media-use-heygen-video-${process.pid}-${Date.now()}.mp4`);
+  let tmpDir;
+  let tmpPath;
   try {
+    tmpDir = mkdtempSync(join(tmpdir(), "media-use-heygen-video-"));
+    tmpPath = join(tmpDir, "video.mp4");
     await freezeUrl(videoUrl, tmpPath);
   } catch (err) {
+    if (tmpDir) {
+      try {
+        rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // Preserve the download failure if temporary-directory cleanup fails.
+      }
+    }
     console.error(`media-use: heygen video download failed: ${err.message}`);
     return null;
   }

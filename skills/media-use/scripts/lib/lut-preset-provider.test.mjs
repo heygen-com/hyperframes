@@ -1,5 +1,14 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -127,6 +136,15 @@ test("url library entries respect localOnly and freeze through fetch", async () 
     globalThis.fetch = async (url) => {
       fetchCalls++;
       assert.equal(url, match.url);
+      const directory = join(projectDir, ".media/luts");
+      const staging = readdirSync(directory).filter((name) => name.startsWith(".lut-download-"));
+      assert.equal(staging.length, 1);
+      if (process.platform !== "win32") {
+        assert.equal(statSync(join(directory, staging[0])).mode & 0o777, 0o700);
+      }
+      const victim = join(projectDir, "victim.cube");
+      writeFileSync(victim, "unchanged");
+      symlinkSync(victim, join(directory, "lut_001.cube.tmp"));
       return {
         ok: true,
         headers: { get: () => String(body.length) },
@@ -139,6 +157,11 @@ test("url library entries respect localOnly and freeze through fetch", async () 
     assert.match(frozen.localPath, /^\.media\/luts\/lut_001\.cube$/);
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
     assert.equal(frozen.metadata.provenance.via, "url");
+    assert.equal(readFileSync(join(projectDir, "victim.cube"), "utf8"), "unchanged");
+    assert.deepEqual(readdirSync(join(projectDir, ".media/luts")).sort(), [
+      "lut_001.cube",
+      "lut_001.cube.tmp",
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
     rmSync(projectDir, { recursive: true, force: true });

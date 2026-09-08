@@ -1,11 +1,31 @@
 import { strict as assert } from "node:assert";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
 import { AVATAR_VIDEO_SIGNIN_MESSAGE } from "./heygen-video-provider.mjs";
+
+function cleanupDownload(localPath) {
+  if (
+    basename(localPath) === "video.mp4" &&
+    basename(dirname(localPath)).startsWith("media-use-heygen-video-")
+  ) {
+    rmSync(dirname(localPath), { recursive: true, force: true });
+  } else {
+    rmSync(localPath, { force: true });
+  }
+}
 
 const VIDEO_FIXTURE = Buffer.from("tiny heygen video fixture");
 let importCount = 0;
@@ -148,7 +168,10 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
         });
         assert.ok(result);
         assert.equal(join(tmpdir(), result.localPath.slice(tmpdir().length + 1)), result.localPath);
-        assert.match(result.localPath, /media-use-heygen-video-\d+-\d+\.mp4$/);
+        assert.match(result.localPath, /media-use-heygen-video-[^/\\]+[/\\]video\.mp4$/);
+        if (process.platform !== "win32") {
+          assert.equal(statSync(dirname(result.localPath)).mode & 0o777, 0o700);
+        }
         assert.deepEqual(result, {
           localPath: result.localPath,
           ext: ".mp4",
@@ -163,7 +186,7 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
       },
     );
   } finally {
-    if (localPath) rmSync(localPath, { force: true });
+    if (localPath) cleanupDownload(localPath);
     await closeServer(server);
   }
 });
@@ -190,7 +213,7 @@ test("tags video creation but not avatar or voice discovery", async () => {
       },
     );
   } finally {
-    if (localPath) rmSync(localPath, { force: true });
+    if (localPath) cleanupDownload(localPath);
     await closeServer(server);
   }
 });
@@ -221,7 +244,7 @@ test("uses explicit avatar and voice overrides without discovery", async () => {
       },
     );
   } finally {
-    if (localPath) rmSync(localPath, { force: true });
+    if (localPath) cleanupDownload(localPath);
     await closeServer(server);
   }
 });
@@ -246,7 +269,7 @@ test("caches discovered avatar and voice IDs for the process", async () => {
       },
     );
   } finally {
-    for (const localPath of localPaths) rmSync(localPath, { force: true });
+    for (const localPath of localPaths) cleanupDownload(localPath);
     await closeServer(server);
   }
 });
@@ -340,5 +363,63 @@ test("download failure after a successful create returns null and logs a diagnos
     });
   } finally {
     await closeServer(server);
+  }
+});
+
+test("uses private unique downloads even when time is fixed and the old name is planted", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "hf-video-temp-test-"));
+  const previousTmpdir = process.env.TMPDIR;
+  process.env.TMPDIR = root;
+  t.mock.method(Date, "now", () => 123456);
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: true,
+    headers: { get: () => "4" },
+    body: [Buffer.from("new!")],
+  }));
+  try {
+    const victim = join(root, "victim");
+    writeFileSync(victim, "unchanged");
+    symlinkSync(victim, join(root, `media-use-heygen-video-${process.pid}-123456.mp4`));
+    await withFakeHeygen(
+      { response: JSON.stringify({ data: { video_url: "https://example.invalid/video.mp4" } }) },
+      async () => {
+        const generate = await freshGenerate();
+        const first = await generate("First", { avatarId: "a", voiceId: "v" });
+        const second = await generate("Second", { avatarId: "a", voiceId: "v" });
+        assert.ok(first && second);
+        assert.notEqual(first.localPath, second.localPath);
+        assert.equal(readFileSync(first.localPath, "utf8"), "new!");
+        assert.equal(readFileSync(second.localPath, "utf8"), "new!");
+        assert.equal(readFileSync(victim, "utf8"), "unchanged");
+      },
+    );
+  } finally {
+    if (previousTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previousTmpdir;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("removes private download staging on failure while returning null", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "hf-video-temp-fail-"));
+  const previousTmpdir = process.env.TMPDIR;
+  process.env.TMPDIR = root;
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("download failed");
+  });
+  t.mock.method(console, "error", () => {});
+  try {
+    await withFakeHeygen(
+      { response: JSON.stringify({ data: { video_url: "https://example.invalid/video.mp4" } }) },
+      async () => {
+        const generate = await freshGenerate();
+        assert.equal(await generate("Failure", { avatarId: "a", voiceId: "v" }), null);
+      },
+    );
+    assert.deepEqual(readdirSync(root), []);
+  } finally {
+    if (previousTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previousTmpdir;
+    rmSync(root, { recursive: true, force: true });
   }
 });
