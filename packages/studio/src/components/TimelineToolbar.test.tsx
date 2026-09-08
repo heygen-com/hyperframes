@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
+import { shouldIgnorePlaybackShortcutTarget } from "../player/lib/playbackShortcuts";
+import { isTypingTarget } from "../utils/typingTarget";
 import { TimelineToolbar } from "./TimelineToolbar";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -161,6 +163,77 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
       'button[aria-label="Add keyframe at playhead"]',
     );
     expect(button?.disabled).toBe(false);
+    act(() => root.unmount());
+  });
+});
+
+// KTD13. Before the sweep every control here was a `<button>` and the zoom
+// slider a native `<input type="range">`, so both global hotkey filters skipped
+// all of them. A primitive that renders a different role would let a playback
+// shortcut fire out of a focused toolbar control, or block one, and nothing in
+// the diff would say so.
+describe("TimelineToolbar — hotkey classification (KTD13)", () => {
+  it("keeps every button out of the playback shortcuts' reach", () => {
+    const { host, root } = renderToolbar();
+    const buttons = [...host.querySelectorAll("button")];
+
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(shouldIgnorePlaybackShortcutTarget(button)).toBe(true);
+    }
+    act(() => root.unmount());
+  });
+
+  it("keeps the zoom slider a typing target, the way the range input was", () => {
+    const { host, root } = renderToolbar();
+    // Base UI's Slider keeps a real `<input type="range">` inside the thumb and
+    // focus lands on it, which is why the classification did not have to move.
+    const input = host.querySelector('input[type="range"][aria-label="Timeline zoom"]');
+
+    expect(input).not.toBeNull();
+    expect(isTypingTarget(input)).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
+/**
+ * Moves a range input the way a real pointer does. Assigning `input.value`
+ * directly updates React's own value tracker as a side effect, so React
+ * decides nothing changed and swallows the event; the prototype's setter is
+ * the one the browser uses and the one the tracker can still see past.
+ */
+function setRangeValue(input: HTMLInputElement, value: number): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("no value setter on HTMLInputElement");
+  setter.call(input, String(value));
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+describe("TimelineToolbar — zoom", () => {
+  it("leaves fit mode and applies the slider's value", () => {
+    usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100, timelineFitPps: 20 });
+    const { host, root } = renderToolbar();
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("zoom slider not rendered");
+
+    act(() => setRangeValue(input, 80));
+
+    const state = usePlayerStore.getState();
+    expect(state.zoomMode).toBe("manual");
+    expect(state.manualZoomPercent).toBeGreaterThan(100);
+    act(() => root.unmount());
+  });
+
+  // The readout printed the word "Fit" in fit mode, right beside the Fit
+  // button: two identical labels side by side, one of which did nothing when
+  // pressed. It is a number in both modes now.
+  it("reads out a percentage in fit mode instead of repeating the Fit button", () => {
+    usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
+    const { host, root } = renderToolbar();
+    const readout = host.querySelector('[aria-label="Timeline zoom level"]');
+
+    expect(readout?.textContent).toMatch(/^\d+%$/);
     act(() => root.unmount());
   });
 });

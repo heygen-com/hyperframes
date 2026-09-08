@@ -39,8 +39,8 @@ export function VisibilityButton({
       type="button"
       aria-label={label}
       title={label}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline-solid focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[#3CE6AC] ${
-        hidden ? "text-[#3CE6AC] hover:text-white" : "text-white/35 hover:text-white/75"
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline-solid focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-accent ${
+        hidden ? "text-accent hover:text-white" : "text-white/35 hover:text-white/75"
       }`}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {

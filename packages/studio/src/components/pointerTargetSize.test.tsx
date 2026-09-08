@@ -34,15 +34,21 @@ function mount(element: React.ReactNode) {
 }
 
 describe("pointer target sizing classes (proxy for WCAG 2.5.8, not a geometry check)", () => {
+  // The zoom slider is the shared Slider now, so the 24px box comes from the
+  // primitive's Control rather than from vendor pseudo-element classes on a
+  // native range input. Same three numbers, one owner.
   it("gives the timeline zoom slider a 24px box without changing its 2px track or 10px thumb", () => {
     const host = mount(<TimelineToolbar />);
-    const slider = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]');
-    if (!slider) throw new Error("zoom slider did not render");
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Timeline zoom"]');
+    if (!input) throw new Error("zoom slider did not render");
 
-    expect(slider.className).toContain("h-6");
-    expect(slider.className).toContain("[&::-webkit-slider-runnable-track]:h-[2px]");
-    expect(slider.className).toContain("[&::-webkit-slider-thumb]:h-[10px]");
-    expect(slider.className).toContain("[&::-webkit-slider-thumb]:w-[10px]");
+    const control = input.closest<HTMLElement>("[data-slider-control]");
+    const track = control?.firstElementChild;
+    const thumb = input.parentElement;
+
+    expect(control?.className).toContain("h-6");
+    expect(track?.className).toContain("h-0.5");
+    expect(thumb?.className).toContain("size-2.5");
   });
 
   it("gives the composition card's render button a 24x24 box around its 14px glyph", () => {

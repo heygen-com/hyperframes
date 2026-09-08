@@ -4,6 +4,7 @@ import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAppHotkeys } from "../../hooks/useAppHotkeys";
+import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { LeftSidebarHandle } from "../sidebar/LeftSidebar";
 import type { DomEditSelection } from "./domEditing";
@@ -117,6 +118,69 @@ describe("SnapToolbar keyboard shortcuts", () => {
       );
     });
 
+    expect(onSnapChange).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+/**
+ * The grid panel on the shared Popover. It is a form, not a list of actions, so
+ * the arrow keys have to stay with the number field inside it (KTD5).
+ *
+ * Base UI opens and closes it from a portal, so every query below runs against
+ * `document` rather than the toolbar's own host.
+ */
+function openGridPanel(): HTMLElement {
+  const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Grid options"]');
+  if (!trigger) throw new Error("grid options trigger not rendered");
+  // Base UI treats a bare `click()` as a keyboard activation and pre-highlights;
+  // the pointer sequence is what a mouse actually sends.
+  act(() => {
+    const init = { bubbles: true, cancelable: true, composed: true, detail: 1 };
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { ...init, pointerType: "mouse" }));
+    trigger.dispatchEvent(new MouseEvent("mousedown", init));
+    trigger.dispatchEvent(new PointerEvent("pointerup", { ...init, pointerType: "mouse" }));
+    trigger.dispatchEvent(new MouseEvent("mouseup", init));
+    trigger.dispatchEvent(new MouseEvent("click", init));
+  });
+  const panel = document.querySelector<HTMLElement>('[aria-label="Grid options"][role="dialog"]');
+  if (!panel) throw new Error("grid panel did not open");
+  return panel;
+}
+
+describe("SnapToolbar grid panel", () => {
+  it("persists a spacing change through the preferences writer", () => {
+    const { root, onSnapChange } = renderToolbar();
+    const panel = openGridPanel();
+    const spacing = panel.querySelector<HTMLInputElement>('input[type="number"]');
+    if (!spacing) throw new Error("grid spacing field not rendered");
+
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(spacing, "120");
+      spacing.dispatchEvent(new Event("input", { bubbles: true }));
+      spacing.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(onSnapChange).toHaveBeenCalledWith(expect.objectContaining({ gridSpacing: 120 }));
+    expect(readStudioUiPreferences().gridSpacing).toBe(120);
+    act(() => root.unmount());
+  });
+
+  it("closes on an outside press and writes no preference", () => {
+    const { root, onSnapChange } = renderToolbar();
+    openGridPanel();
+    onSnapChange.mockClear();
+
+    act(() => {
+      document.body.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, composed: true, pointerType: "mouse" }),
+      );
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(document.querySelector('[aria-label="Grid options"][role="dialog"]')).toBeNull();
     expect(onSnapChange).not.toHaveBeenCalled();
     act(() => root.unmount());
   });

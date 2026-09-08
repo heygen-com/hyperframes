@@ -15,7 +15,7 @@ import {
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { Tooltip } from "./ui";
+import { Button, IconButton, Slider, Tooltip } from "./ui";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
@@ -98,6 +98,22 @@ function isKeyframeable(element: TimelineElement | undefined): boolean {
   return element?.tag !== "audio";
 }
 
+/**
+ * The pressed look for a toolbar toggle that is an on/off switch (tool mode,
+ * snapping). `IconButton`'s ghost variant already owns idle, hover, focus and
+ * disabled; a toggle only has to say what "on" looks like, and it says it by
+ * holding the hover wash down, so pressed and hovered stay one system.
+ */
+const TOGGLE_ON = "bg-hover text-text-0";
+
+/**
+ * The pressed look for the two view controls on the right (thumbnails, Fit).
+ * They tint rather than fill because they change what the timeline SHOWS
+ * rather than what a click does, which is the same distinction the header's
+ * view toggle draws.
+ */
+const VIEW_ON = "bg-accent/10 text-accent";
+
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
@@ -178,55 +194,49 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
-  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
-  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
-  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-neutral-200 active:scale-[0.98]`;
-  const flatActive = `${flatBtn} bg-white/8 text-neutral-100 active:scale-[0.98]`;
-  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
+  const applyZoomSlider = (sliderValue: number) => {
+    setZoomMode("manual");
+    setManualZoomPercent(timelineSliderToZoomPercent(sliderValue, timelineFitPps));
+  };
 
   return (
     // The "TIMELINE" label is dropped for CapCut-like density — the pane's
     // position (tracks right below) makes it self-evident.
-    <div className="border-b border-neutral-800/60">
+    <div className="border-b border-border">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
           <Tooltip label="Selection tool (V)">
-            <button
-              type="button"
+            <IconButton
               onClick={() => setActiveTool("select")}
               aria-label="Selection tool"
               aria-pressed={activeTool === "select"}
-              className={activeTool === "select" ? flatActive : flatIdle}
-            >
-              <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-              </svg>
-            </button>
+              className={activeTool === "select" ? TOGGLE_ON : undefined}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
+                  <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
+                </svg>
+              }
+            />
           </Tooltip>
           <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
-            <button
-              type="button"
+            <IconButton
               onClick={() => setActiveTool("razor")}
               aria-label="Razor tool"
               aria-pressed={activeTool === "razor"}
-              className={activeTool === "razor" ? flatActive : flatIdle}
-            >
-              <Scissors size={16} />
-            </button>
+              className={activeTool === "razor" ? TOGGLE_ON : undefined}
+              icon={<Scissors size={16} />}
+            />
           </Tooltip>
           {/* Divider: tool-mode | editing-actions */}
-          <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
+          <div aria-hidden="true" className="mx-1 h-4 w-px bg-border-strong" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
-            <button
-              type="button"
+            <IconButton
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
               aria-label="Toggle timeline snapping"
               aria-pressed={timelineSnapEnabled}
-              className={timelineSnapEnabled ? flatActive : flatIdle}
-            >
-              <Magnet size={16} weight="bold" aria-hidden="true" />
-            </button>
+              className={timelineSnapEnabled ? TOGGLE_ON : undefined}
+              icon={<Magnet size={16} weight="bold" aria-hidden="true" />}
+            />
           </Tooltip>
           {/* Always rendered (CapCut-style): with no keyframeable selection the
               button fades to a disabled state instead of unmounting, so the
@@ -252,8 +262,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                         : "Add keyframe (K)"
             }
           >
-            <button
-              type="button"
+            <IconButton
               disabled={!onToggleKeyframe}
               onClick={onToggleKeyframe}
               aria-label={
@@ -269,31 +278,31 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                       ? "Remove keyframe at playhead"
                       : "Add keyframe at playhead"
               }
+              // `enabled:hover:` matches the ghost variant's own prefix, so `cn`
+              // sees one text-colour decision and the accent replaces it rather
+              // than racing it on specificity.
               className={
-                !onToggleKeyframe
-                  ? flatDisabled
-                  : `${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
-                      keyframeState === "active"
-                        ? "text-studio-accent"
-                        : keyframeState === "inactive"
-                          ? "text-neutral-400 hover:text-studio-accent"
-                          : "text-neutral-600 hover:text-neutral-400"
-                    }`
+                keyframeState === "active"
+                  ? "text-accent"
+                  : keyframeState === "inactive"
+                    ? "enabled:hover:text-accent"
+                    : "text-text-3"
               }
-            >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                {keyframeState === "active" ? (
-                  <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                ) : (
-                  <path
-                    d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                )}
-              </svg>
-            </button>
+              icon={
+                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                  {keyframeState === "active" ? (
+                    <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
+                  ) : (
+                    <path
+                      d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                    />
+                  )}
+                </svg>
+              }
+            />
           </Tooltip>
           <Tooltip
             label={
@@ -302,32 +311,28 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 : "Manual edits will not be recorded as keyframes (click to turn on)"
             }
           >
-            <button
-              type="button"
+            <IconButton
               onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
               aria-label="Auto-record manual edits as keyframes"
               aria-pressed={autoKeyframeEnabled}
-              className={`${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
-                autoKeyframeEnabled
-                  ? "text-red-400 hover:text-red-300"
-                  : "text-neutral-600 hover:text-neutral-400"
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
-                {/* Same diamond outline as the Add-keyframe icon, with a
+              className={autoKeyframeEnabled ? "text-danger" : "text-text-3"}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
+                  {/* Same diamond outline as the Add-keyframe icon, with a
                       record-style dot inside: filled = auto-recording,
                       hollow = manual edits won't be keyframed. */}
-                <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                <circle
-                  cx="5"
-                  cy="5"
-                  r="1.8"
-                  fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1"
-                />
-              </svg>
-            </button>
+                  <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
+                  <circle
+                    cx="5"
+                    cy="5"
+                    r="1.8"
+                    fill={autoKeyframeEnabled ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth="1"
+                  />
+                </svg>
+              }
+            />
           </Tooltip>
           {onSplitElement &&
             (() => {
@@ -350,33 +355,32 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                         : "Select a clip to split"
                   }
                 >
-                  <button
-                    type="button"
+                  <IconButton
                     disabled={!canSplit}
                     aria-label="Split at playhead"
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
-                    className={canSplit ? flatIdle : flatDisabled}
-                  >
-                    {/* "][" split glyph: two outward-facing brackets with a center gap */}
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      {/* Right bracket of left half: ] */}
-                      <path d="M5 3 L7 3 L7 13 L5 13" />
-                      {/* Left bracket of right half: [ */}
-                      <path d="M11 3 L9 3 L9 13 L11 13" />
-                    </svg>
-                  </button>
+                    icon={
+                      /* "][" split glyph: two outward-facing brackets with a center gap */
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        {/* Right bracket of left half: ] */}
+                        <path d="M5 3 L7 3 L7 13 L5 13" />
+                        {/* Left bracket of right half: [ */}
+                        <path d="M11 3 L9 3 L9 13 L11 13" />
+                      </svg>
+                    }
+                  />
                 </Tooltip>
               );
             })()}
@@ -395,29 +399,25 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                       : "A beat already exists at the playhead"
                 }
               >
-                <button
-                  type="button"
+                <IconButton
                   disabled={!canAdd}
                   aria-label="Add beat at playhead"
                   onClick={() => {
                     if (canAdd) addBeatAtCompositionTime(currentTime);
                   }}
-                  className={
-                    canAdd
-                      ? `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-[#22c55e] active:scale-[0.98]`
-                      : flatDisabled
+                  className="enabled:hover:text-accent"
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   }
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                />
               </Tooltip>
             );
           })()}
@@ -430,8 +430,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 : "Show thumbnails — posters stay visible; richer previews appear on interaction"
             }
           >
-            <button
-              type="button"
+            <IconButton
               aria-label={
                 thumbnailsVisible
                   ? "Hide thumbnails — labels only"
@@ -439,31 +438,24 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               }
               aria-pressed={thumbnailsVisible}
               onClick={() => setThumbnailMode(thumbnailsVisible ? "hidden" : "adaptive")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                thumbnailsVisible
-                  ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
-              }`}
-            >
-              <Image size={16} aria-hidden="true" />
-            </button>
+              className={thumbnailsVisible ? VIEW_ON : undefined}
+              icon={<Image size={16} aria-hidden="true" />}
+            />
           </Tooltip>
           <Tooltip label="Fit timeline to width">
-            <button
-              type="button"
+            {/* The one labelled control in the group, so it keeps the icon
+                buttons' height and the toolbar's 11px type rather than the
+                default md button's 12px. */}
+            <Button
+              variant="ghost"
               onClick={() => setZoomMode("fit")}
-              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
-                zoomMode === "fit"
-                  ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
-              }`}
+              className={`px-2 text-step-11 ${zoomMode === "fit" ? VIEW_ON : ""}`}
             >
               Fit
-            </button>
+            </Button>
           </Tooltip>
           <Tooltip label="Zoom out">
-            <button
-              type="button"
+            <IconButton
               aria-label="Zoom out"
               onClick={() => {
                 setZoomMode("manual");
@@ -471,31 +463,22 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent, timelineFitPps),
                 );
               }}
-              className={flatIdle}
-            >
-              <MagnifyingGlassMinus size={16} aria-hidden="true" />
-            </button>
+              icon={<MagnifyingGlassMinus size={16} aria-hidden="true" />}
+            />
           </Tooltip>
-          <input
-            type="range"
-            min="0"
-            max="100"
+          {/* Zoom is a view control, not a saved value: every intermediate step
+              applies, so preview and commit are the same call. */}
+          <Slider
+            label="Timeline zoom"
             value={timelineZoomPercentToSlider(displayedTimelineZoomPercent, timelineFitPps)}
-            title={`${displayedTimelineZoomPercent}%`}
-            aria-label="Timeline zoom"
-            onChange={(e) => {
-              setZoomMode("manual");
-              setManualZoomPercent(
-                timelineSliderToZoomPercent(Number(e.target.value), timelineFitPps),
-              );
-            }}
-            // h-6 on the input is the 24x24 WCAG 2.2 (2.5.8) target: the visible
-            // track stays 2px and the thumb 10px, only the pointer box grows.
-            className="mx-1 h-6 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+            min={0}
+            max={100}
+            onPreview={applyZoomSlider}
+            onCommit={applyZoomSlider}
+            className="mx-1 w-24"
           />
           <Tooltip label="Zoom in">
-            <button
-              type="button"
+            <IconButton
               aria-label="Zoom in"
               onClick={() => {
                 setZoomMode("manual");
@@ -503,17 +486,18 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent, timelineFitPps),
                 );
               }}
-              className={flatIdle}
-            >
-              <MagnifyingGlassPlus size={16} aria-hidden="true" />
-            </button>
+              icon={<MagnifyingGlassPlus size={16} aria-hidden="true" />}
+            />
           </Tooltip>
-          {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
+          {/* Numeric zoom readout. Always a percentage, including in fit mode:
+              printing the word "Fit" next to the Fit button put two identical
+              labels side by side, and the readout was the one that looked like
+              a button that did nothing. */}
           <span
-            className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
+            className="ml-1 w-[38px] text-right font-mono text-step-11 tabular-nums text-text-4 select-none"
             aria-label="Timeline zoom level"
           >
-            {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
+            {displayedTimelineZoomPercent}%
           </span>
         </div>
       </div>
