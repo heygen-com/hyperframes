@@ -1429,7 +1429,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]).toMatchObject({ selector: "#path-input" });
   });
 
-  const hiddenShaftStyles = [
+  const hiddenShaftStyles: Array<Record<string, string>> = [
     { opacity: "0" },
     { display: "none" },
     { visibility: "hidden" },
