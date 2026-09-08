@@ -155,6 +155,7 @@ export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes-creative",
   "hyperframes-keyframes",
   "hyperframes-registry",
+  "hyperframes-studio",
   "media-use",
 ];
 
