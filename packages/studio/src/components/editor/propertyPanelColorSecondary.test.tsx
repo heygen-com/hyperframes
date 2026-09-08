@@ -97,7 +97,7 @@ describe("PropertyPanelColorSecondary", () => {
 
     act(() => {
       host
-        .querySelector<HTMLElement>('[role="slider"][aria-label="Saturation min"]')
+        .querySelector<HTMLElement>('input[type="range"][aria-label="Saturation min"]')
         ?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
     });
     expect(onCommit.mock.calls.at(-1)?.[0]?.[0]?.key.saturation).toMatchObject({
@@ -107,7 +107,7 @@ describe("PropertyPanelColorSecondary", () => {
 
     act(() => {
       host
-        .querySelector<HTMLElement>('[role="slider"][aria-label="Luma max"]')
+        .querySelector<HTMLElement>('input[type="range"][aria-label="Luma max"]')
         ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
     });
     expect(onCommit.mock.calls.at(-1)?.[0]?.[0]?.key.luma).toMatchObject({
@@ -128,10 +128,12 @@ describe("PropertyPanelColorSecondary", () => {
     });
     if (!grading?.secondaries) throw new Error("Expected normalized secondaries");
     const { host, root } = renderSecondary({ secondaries: grading.secondaries });
-    const hue = host.querySelector<HTMLElement>('[role="slider"][aria-label="Hue"]');
+    const hue = host.querySelector<HTMLElement>('input[type="range"][aria-label="Hue"]');
 
     expect(Number(hue?.getAttribute("aria-valuenow"))).toBeCloseTo(359.7);
-    expect(hue?.getAttribute("aria-valuemax")).toBe("359.99");
+    // The thumb is a real range input now, so the bound is the native `max`
+    // rather than an aria attribute the hand-rolled track had to write itself.
+    expect(hue?.getAttribute("max")).toBe("359.99");
     act(() => root.unmount());
   });
 

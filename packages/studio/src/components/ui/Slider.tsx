@@ -139,6 +139,11 @@ export function Slider({
           event.preventDefault();
           abort();
         }}
+        // The platform aborted the gesture (a scroll or touch takeover, a pen
+        // leaving range). Base UI has no handler for it, so without this the
+        // drag simply stops and whatever position the pointer last reached
+        // stays applied, which is not what an aborted gesture means.
+        onPointerCancel={abort}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || !draggingRef.current) return;
           event.preventDefault();

@@ -321,8 +321,50 @@ describe("FlatGroupHeader", () => {
   });
 });
 
+/* ------------------------------------------------------------------ */
+/*  Shared harness for the two rows that now wrap a Base UI control.   */
+/* ------------------------------------------------------------------ */
+
+/** Base UI moves focus and mounts a popup a task later; happy-dom is no faster. */
+const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+/** happy-dom has no layout, so Base UI's pointer maths needs a rect given to it. */
+function stubRect(el: Element, width = 100) {
+  el.getBoundingClientRect = () =>
+    ({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: 24, width, height: 24 }) as DOMRect;
+}
+
+function sliderControl(host: HTMLElement, width = 100) {
+  const control = host.querySelector<HTMLElement>("[data-slider-control]");
+  if (!control) throw new Error("expected a slider control");
+  stubRect(control, width);
+  return control;
+}
+
+/** The thumb's own input: where the value, the range and the keyboard live. */
+function sliderInput(host: HTMLElement) {
+  const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+  if (!input) throw new Error("expected a slider input");
+  return input;
+}
+
+function fire(el: Element, type: string, init: MouseEventInit & { key?: string } = {}) {
+  const event =
+    init.key === undefined
+      ? new MouseEvent(type, { bubbles: true, ...init })
+      : new KeyboardEvent(type, { bubbles: true, key: init.key });
+  act(() => void el.dispatchEvent(event));
+}
+
+/** `buttons: 1` is not decoration: Base UI reads it to tell a live drag from a
+ *  move whose pointerup another element swallowed. */
+const move = (clientX: number) =>
+  act(() => void document.dispatchEvent(new MouseEvent("pointermove", { clientX, buttons: 1 })));
+const release = (clientX: number) =>
+  act(() => void document.dispatchEvent(new MouseEvent("pointerup", { clientX, buttons: 0 })));
+
 describe("FlatSlider", () => {
-  it("renders the default tier with a dim knob at the correct position", () => {
+  it("shows the display value, tinted by tier", () => {
     const { host, root } = renderInto(
       <FlatSlider
         label="Layer blur"
@@ -334,17 +376,16 @@ describe("FlatSlider", () => {
         onCommit={vi.fn()}
       />,
     );
-    const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
-    expect(knob).not.toBeNull();
-    expect(knob?.className).toContain("bg-panel-text-4");
-    expect(knob?.style.left).toBe("0%");
     const value = host.querySelector('[data-flat-slider-value="true"]');
-    expect(value?.className).toContain("text-panel-text-3");
     expect(value?.textContent).toBe("0px");
+    expect(value?.className).toContain("text-text-3");
+    // The thumb reports the value to assistive tech, which the hand-rolled
+    // knob only did because it carried the aria attributes by hand.
+    expect(sliderInput(host).getAttribute("aria-valuenow")).toBe("0");
     act(() => root.unmount());
   });
 
-  it("renders the explicitCustom tier with a filled track and bright knob", () => {
+  it("marks an explicitly set value with the bright tier", () => {
     const { host, root } = renderInto(
       <FlatSlider
         label="Opacity"
@@ -356,14 +397,13 @@ describe("FlatSlider", () => {
         onCommit={vi.fn()}
       />,
     );
-    const fill = host.querySelector<HTMLElement>('[data-flat-slider-fill="true"]');
-    expect(fill?.style.width).toBe("100%");
-    const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
-    expect(knob?.className).toContain("bg-white");
+    const value = host.querySelector('[data-flat-slider-value="true"]');
+    expect(value?.className).toContain("text-text-0");
+    expect(sliderInput(host).getAttribute("aria-valuenow")).toBe("100");
     act(() => root.unmount());
   });
 
-  it("commits a value on track click, proportional to click position", () => {
+  it("commits a value proportional to where the track was pressed", () => {
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -376,330 +416,144 @@ describe("FlatSlider", () => {
         onCommit={onCommit}
       />,
     );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 2, right: 200, bottom: 2 }),
-    });
-    act(() => {
-      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
-      track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
-    });
-    expect(onCommit).toHaveBeenCalledWith(50);
+    const control = sliderControl(host);
+
+    fire(control, "pointerdown", { clientX: 50, button: 0 });
+    release(50);
+
+    expect(onCommit.mock.calls).toEqual([[50]]);
     act(() => root.unmount());
   });
 
-  it("widens the click/drag hit area vertically beyond the thin visible line", () => {
+  it("writes twice for a drag from 10 to 40 across five intermediate moves, not once per move", () => {
+    // The row's onCommit IS the live canvas preview, so mid-drag writes are the
+    // point; what must not happen is one write per pointermove. Five moves get
+    // a leading-edge write and then the released value, because the rest land
+    // inside the same throttle window.
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
         label="Opacity"
-        value={50}
+        value={10}
         min={0}
         max={100}
         tier="explicitCustom"
+        displayValue="10%"
+        onCommit={onCommit}
+      />,
+    );
+    const control = sliderControl(host);
+
+    fire(control, "pointerdown", { clientX: 10, button: 0 });
+    for (const x of [15, 20, 25, 30, 40]) move(x);
+    release(40);
+
+    expect(onCommit).toHaveBeenLastCalledWith(40);
+    expect(onCommit.mock.calls.length).toBeLessThanOrEqual(2);
+    act(() => root.unmount());
+  });
+
+  /** Past the throttle window, so a queued write actually lands. */
+  const past = () => act(async () => void (await new Promise((r) => setTimeout(r, 60))));
+
+  /**
+   * The three ways a drag is abandoned rather than finished. All three have to
+   * put back the value the drag started from, and the interesting part is that
+   * a mid-drag write has ALREADY applied an intermediate value to the document
+   * by then, so an abort that merely stopped listening would leave the canvas
+   * wherever the pointer happened to be.
+   */
+  const aborts = [
+    ["the right button", (control: HTMLElement) => fire(control, "contextmenu", { button: 2 })],
+    ["the platform cancelling the gesture", (c: HTMLElement) => fire(c, "pointercancel", {})],
+    ["Escape", (control: HTMLElement) => fire(control, "keydown", { key: "Escape" })],
+  ] as const;
+
+  it.each(aborts)("reverts a drag in flight aborted with %s (KTD8)", async (_name, abort) => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={10}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="10%"
+        onCommit={onCommit}
+      />,
+    );
+    const control = sliderControl(host);
+
+    fire(control, "pointerdown", { clientX: 10, button: 0 });
+    move(60);
+    expect(onCommit.mock.calls).toEqual([[60]]);
+
+    abort(control);
+    // The pointer is still down: the abort has to stop Base UI applying any
+    // further move, not merely reset the number once.
+    move(90);
+    release(90);
+    await past();
+
+    expect(sliderInput(host).value).toBe("10");
+    expect(onCommit.mock.calls).toEqual([[60], [10]]);
+    act(() => root.unmount());
+  });
+
+  it("steps with the arrow keys and clamps with Home and End", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Volume"
+        value={50}
+        min={0}
+        max={100}
+        tier="default"
         displayValue="50%"
         onCommit={onCommit}
       />,
     );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 18 }),
-      );
-      track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 20 }));
-    });
-    expect(onCommit).toHaveBeenCalledWith(10);
+    const input = sliderInput(host);
+    expect(input.min).toBe("0");
+    expect(input.max).toBe("100");
+
+    fire(input, "keydown", { key: "ArrowRight" });
+    expect(onCommit).toHaveBeenLastCalledWith(51);
+    fire(input, "keydown", { key: "Home" });
+    expect(onCommit).toHaveBeenLastCalledWith(0);
+    fire(input, "keydown", { key: "End" });
+    expect(onCommit).toHaveBeenLastCalledWith(100);
     act(() => root.unmount());
   });
 
-  it("tracks the knob instantly on every pointermove during a drag (draft state)", () => {
+  it("ignores the committed value echoing back mid-drag, so the thumb does not snap", () => {
     const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={50}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="50%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+    function Harness() {
+      const [value, setValue] = React.useState(10);
+      return (
+        <FlatSlider
+          label="Opacity"
+          value={value}
+          min={0}
+          max={100}
+          tier="explicitCustom"
+          displayValue={`${value}%`}
+          onCommit={(next) => {
+            onCommit(next);
+            setValue(next);
+          }}
+        />
       );
-    });
-    // Instant, un-throttled knob feedback via aria-valuenow (draft state) —
-    // this must update on every pointermove regardless of the commit throttle.
-    expect(track.getAttribute("aria-valuenow")).toBe("10");
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
-      );
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("80");
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
-      );
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("50");
-    act(() => {
-      track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
-    });
-    act(() => root.unmount());
-  });
+    }
+    const { host, root } = renderInto(<Harness />);
+    const control = sliderControl(host);
 
-  it("throttles rapid drag commits to leading edge + final value on release, not every step", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={5}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="5%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      // pointerdown fires the leading-edge commit immediately — a live
-      // preview needs to move the instant the drag starts, not wait 40ms.
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
-      );
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
-      );
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
-      );
-    });
-    // The leading-edge commit (10) fired; the rapid intermediate position (80)
-    // from the first pointermove never committed — it's within the 40ms
-    // throttle window, so only the trailing flush or the pointerup release
-    // gets to send the next value.
-    expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith(10);
-    act(() => {
-      // Real pointerup events always carry the pointer's true release position
-      // (matches the last pointermove) — the handler recomputes from this
-      // rather than trusting a possibly-stale `draft` closure.
-      track.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, clientX: 100, pointerId: 1 }),
-      );
-    });
-    // Release flushes immediately with the LAST position only.
-    expect(onCommit).toHaveBeenCalledTimes(2);
-    expect(onCommit).toHaveBeenNthCalledWith(2, 50);
-    act(() => root.unmount());
-  });
+    fire(control, "pointerdown", { clientX: 30, button: 0 });
+    expect(onCommit).toHaveBeenCalledWith(30);
+    move(60);
 
-  it("ignores pointermove once a drag has ended (pointer capture released)", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={50}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="50%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
-      );
-      track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
-    });
-    onCommit.mockClear();
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
-      );
-    });
-    expect(onCommit).not.toHaveBeenCalled();
-    act(() => root.unmount());
-  });
-
-  it("still commits the release position when releasePointerCapture synchronously fires lostpointercapture (real-browser behavior happy-dom doesn't replicate)", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    // Real browsers fire lostpointercapture SYNCHRONOUSLY, mid-call, when
-    // releasePointerCapture() is invoked — happy-dom does not replicate this,
-    // so patch it in to reproduce the exact reentrancy hazard onPointerUp
-    // must guard against.
-    const originalRelease = track.releasePointerCapture.bind(track);
-    track.releasePointerCapture = (pointerId: number) => {
-      originalRelease(pointerId);
-      track.dispatchEvent(new Event("lostpointercapture", { bubbles: true }));
-    };
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
-      );
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, clientX: 80, pointerId: 1 }),
-      );
-    });
-    // The real release position (80), not a rollback to the pre-drag value (10)
-    // caused by onLostPointerCapture resyncing mid-handler.
-    expect(onCommit).toHaveBeenLastCalledWith(80);
-    expect(track.getAttribute("aria-valuenow")).toBe("80");
-    act(() => root.unmount());
-  });
-
-  it("Escape during a drag reverts to the pre-drag value and releases pointer capture, instead of leaving the last dragged-to position committed", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
-      );
-    });
-    // The leading-edge commit already applied the dragged-to value (30).
-    expect(onCommit).toHaveBeenLastCalledWith(30);
-    act(() => {
-      track.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-      );
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(10);
-    expect(track.getAttribute("aria-valuenow")).toBe("10");
-    expect(track.hasPointerCapture(1)).toBe(false);
-    // A subsequent pointermove for the now-released pointer must not resume
-    // the cancelled drag.
-    onCommit.mockClear();
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
-      );
-    });
-    expect(onCommit).not.toHaveBeenCalled();
-    act(() => root.unmount());
-  });
-
-  it("right-click (contextmenu) during a drag cancels it and reverts to the pre-drag value, instead of committing the last dragged-to position", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 65, pointerId: 1 }),
-      );
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(65);
-    const contextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    act(() => {
-      track.dispatchEvent(contextMenuEvent);
-    });
-    expect(contextMenuEvent.defaultPrevented).toBe(true);
-    expect(onCommit).toHaveBeenLastCalledWith(10);
-    expect(track.getAttribute("aria-valuenow")).toBe("10");
-    expect(track.hasPointerCapture(1)).toBe(false);
-    act(() => root.unmount());
-  });
-
-  it("a native pointercancel during a drag reverts to the pre-drag value, instead of leaving the last dragged-to position committed", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 65, pointerId: 1 }),
-      );
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(65);
-    act(() => {
-      track.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 1 }));
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(10);
-    expect(track.getAttribute("aria-valuenow")).toBe("10");
-    expect(track.hasPointerCapture(1)).toBe(false);
+    // 60, not the 30 the parent echoed back a render later.
+    expect(sliderInput(host).value).toBe("60");
     act(() => root.unmount());
   });
 });
@@ -814,7 +668,7 @@ describe("FlatSlider — Grade extensions", () => {
     act(() => root.unmount());
   });
 
-  it("never commits from a click released on a disabled slider", () => {
+  it("never commits from a press released on a disabled slider", () => {
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -828,19 +682,11 @@ describe("FlatSlider — Grade extensions", () => {
         onCommit={onCommit}
       />,
     );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 50, pointerId: 1 }),
-      );
-      track.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, clientX: 50, pointerId: 1 }),
-      );
-    });
+    const control = sliderControl(host, 200);
+
+    fire(control, "pointerdown", { clientX: 50, button: 0 });
+    release(50);
+
     expect(onCommit).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
@@ -867,8 +713,7 @@ describe("FlatSlider — Grade extensions", () => {
     act(() => root.unmount());
   });
 
-  it("a trailing throttled commit uses the current render's onCommit, not the one captured when it was scheduled", () => {
-    vi.useFakeTimers();
+  it("a trailing throttled write uses the current render's onCommit, not the one captured when it was scheduled", async () => {
     const onCommitA = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -881,32 +726,19 @@ describe("FlatSlider — Grade extensions", () => {
         onCommit={onCommitA}
       />,
     );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      // Leading-edge commit fires synchronously with onCommitA (clientX 150
-      // on a -100..100 track maps to 50, distinct from the initial value 0).
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 150, pointerId: 1 }),
-      );
-    });
+    const control = sliderControl(host, 200);
+
+    // Leading edge: clientX 150 on a 200px, -100..100 track is 50.
+    fire(control, "pointerdown", { clientX: 150, button: 0 });
     expect(onCommitA).toHaveBeenCalledTimes(1);
-    act(() => {
-      // Within the 40ms throttle window — queues a trailing commit (to 80,
-      // distinct from the just-committed 50) instead of firing immediately.
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 180, pointerId: 1 }),
-      );
-    });
+    // Inside the throttle window, so this queues rather than writes.
+    move(180);
     expect(onCommitA).toHaveBeenCalledTimes(1);
-    // Simulate the real-world race: something else causes this slider to
-    // re-render with a NEW onCommit closure before the queued timer fires
-    // (e.g. Grade's per-detail onCommit spreads the render-time whole
-    // grading object, so a different control committing in between produces
-    // a fresh closure). The stale closure must not win.
+
+    // The real race: something else re-renders this row with a NEW onCommit
+    // closure before the queued write fires. Grade's per-detail onCommit
+    // spreads the render-time grading object, so a stale closure winning here
+    // would silently revert whatever changed in between.
     const onCommitB = vi.fn();
     act(() => {
       root.render(
@@ -921,18 +753,14 @@ describe("FlatSlider — Grade extensions", () => {
         />,
       );
     });
-    act(() => {
-      vi.advanceTimersByTime(45);
-    });
-    expect(onCommitB).toHaveBeenCalledTimes(1);
-    expect(onCommitB).toHaveBeenCalledWith(80);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 60))));
+
+    expect(onCommitB.mock.calls).toEqual([[80]]);
     expect(onCommitA).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
-    vi.useRealTimers();
   });
 
-  it("flushes a still-queued trailing commit on unmount instead of dropping it", () => {
-    vi.useFakeTimers();
+  it("flushes a still-queued trailing write on unmount instead of dropping it", () => {
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -945,258 +773,133 @@ describe("FlatSlider — Grade extensions", () => {
         onCommit={onCommit}
       />,
     );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
-      );
-    });
+    const control = sliderControl(host, 200);
+
+    fire(control, "pointerdown", { clientX: 20, button: 0 });
     expect(onCommit).toHaveBeenCalledTimes(1);
-    act(() => {
-      // Queues a trailing commit that never gets to fire before unmount.
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
-      );
-    });
+    // Queues a write that never gets to fire before the row goes away.
+    move(160);
     expect(onCommit).toHaveBeenCalledTimes(1);
+
     act(() => root.unmount());
+
     expect(onCommit).toHaveBeenCalledTimes(2);
     expect(onCommit).toHaveBeenNthCalledWith(2, 80);
-    vi.useRealTimers();
-  });
-
-  it("supports keyboard operation: focusable, arrow keys step, Home/End clamp to range", () => {
-    const onCommit = vi.fn();
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Volume"
-        value={50}
-        min={0}
-        max={100}
-        tier="default"
-        displayValue="50%"
-        onCommit={onCommit}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    expect(track.getAttribute("tabindex")).toBe("0");
-    expect(track.getAttribute("aria-valuemin")).toBe("0");
-    expect(track.getAttribute("aria-valuemax")).toBe("100");
-    act(() => {
-      track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(51);
-    act(() => {
-      track.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(0);
-    act(() => root.unmount());
-  });
-
-  it("ignores the committed prop echoing back mid-drag (no knob snap-back)", () => {
-    const onCommit = vi.fn();
-    function Harness() {
-      const [value, setValue] = React.useState(10);
-      return (
-        <FlatSlider
-          label="Opacity"
-          value={value}
-          min={0}
-          max={100}
-          tier="explicitCustom"
-          displayValue={`${value}%`}
-          onCommit={(next) => {
-            onCommit(next);
-            setValue(next);
-          }}
-        />
-      );
-    }
-    const { host, root } = renderInto(<Harness />);
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      // Leading-edge commit fires at 30 and echoes back through the parent's
-      // state — mid-drag, that echo must NOT reset the draft.
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
-      );
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
-      );
-    });
-    // Draft tracks the pointer (80), not the stale committed echo (30).
-    expect(track.getAttribute("aria-valuenow")).toBe("80");
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, clientX: 80, pointerId: 1 }),
-      );
-    });
-    expect(onCommit).toHaveBeenLastCalledWith(80);
-    expect(track.getAttribute("aria-valuenow")).toBe("80");
-    act(() => root.unmount());
-  });
-
-  it("resets the dragging state on lostpointercapture even without a prior pointerup/pointercancel", () => {
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={vi.fn()}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
-      );
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("30");
-    act(() => {
-      // Capture lost WITHOUT a pointerup/pointercancel first — e.g. another
-      // element steals it, or the browser reclaims it for a scroll gesture.
-      track.dispatchEvent(new Event("lostpointercapture", { bubbles: true }));
-    });
-    act(() => {
-      root.render(
-        <FlatSlider
-          label="Opacity"
-          value={99}
-          min={0}
-          max={100}
-          tier="explicitCustom"
-          displayValue="99%"
-          onCommit={vi.fn()}
-        />,
-      );
-    });
-    // If lostpointercapture hadn't cleared the dragging flag, this external
-    // value change would be silently ignored (mid-drag echo suppression)
-    // forever — the knob would be stuck at 30.
-    expect(track.getAttribute("aria-valuenow")).toBe("99");
-    act(() => root.unmount());
-  });
-
-  it("resyncs immediately from the latest value on lostpointercapture, even when the value changed WHILE still dragging", () => {
-    const { host, root } = renderInto(
-      <FlatSlider
-        label="Opacity"
-        value={10}
-        min={0}
-        max={100}
-        tier="explicitCustom"
-        displayValue="10%"
-        onCommit={vi.fn()}
-      />,
-    );
-    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a track element");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
-    });
-    act(() => {
-      track.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
-      );
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("30");
-    // Value changes to 99 WHILE still dragging — the [value] sync effect
-    // must skip it (draggingRef is still true), so draft stays at 30.
-    act(() => {
-      root.render(
-        <FlatSlider
-          label="Opacity"
-          value={99}
-          min={0}
-          max={100}
-          tier="explicitCustom"
-          displayValue="99%"
-          onCommit={vi.fn()}
-        />,
-      );
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("30");
-    act(() => {
-      // Capture lost with NO further render afterward — if the resync
-      // depended on a subsequent [value] effect run rather than reading
-      // latestValueRef directly, this would leave the knob stuck at 30.
-      track.dispatchEvent(new Event("lostpointercapture", { bubbles: true }));
-    });
-    expect(track.getAttribute("aria-valuenow")).toBe("99");
-    act(() => root.unmount());
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  FlatSelectRow                                                      */
+/* ------------------------------------------------------------------ */
+
+function selectTrigger(host: HTMLElement) {
+  const trigger = host.querySelector<HTMLElement>('[role="combobox"]');
+  if (!trigger) throw new Error("expected a select trigger");
+  return trigger;
+}
+
+/** Opens the popup and returns its options, which only exist while open. */
+async function openOptions(host: HTMLElement) {
+  act(() => selectTrigger(host).click());
+  await settle();
+  return [...document.querySelectorAll('[role="option"]')] as HTMLElement[];
+}
+
+async function choose(host: HTMLElement, text: string) {
+  const options = await openOptions(host);
+  const option = options.find((el) => el.textContent === text);
+  if (!option) throw new Error(`no option "${text}" among ${options.map((o) => o.textContent)}`);
+  act(() => option.click());
+  await settle();
+}
 
 describe("FlatSelectRow", () => {
   it("renders the default tier with no reset button", () => {
     const { host, root } = renderInto(
       <FlatSelectRow
-        label="Blend"
-        value="normal"
-        options={["normal", "multiply", "screen"]}
+        label="Overflow"
+        value="visible"
+        options={["visible", "hidden"]}
         tier="default"
         onChange={vi.fn()}
       />,
     );
-    const select = host.querySelector("select");
-    expect(select?.value).toBe("normal");
+    expect(selectTrigger(host).textContent).toContain("visible");
     expect(host.querySelector('[data-flat-select-reset="true"]')).toBeNull();
     act(() => root.unmount());
+  });
+
+  it("boxes the trigger the way the row's other fields are boxed", () => {
+    // R10 and R8 together: the value carries its own boundary, and it is the
+    // same boundary the text fields wear, not a native control's.
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Overflow"
+        value="hidden"
+        options={["visible", "hidden"]}
+        tier="explicitDefault"
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = selectTrigger(host);
+    expect(trigger.className).toContain("border-border-input");
+    expect(trigger.className).toContain("bg-input");
+    act(() => root.unmount());
+
+    // An explicitly set value tints that same box, and `cn` has to let the
+    // tint win over the base border rather than leave both classes standing.
+    const { host: custom, root: rootB } = renderInto(
+      <FlatSelectRow
+        label="Overflow"
+        value="hidden"
+        options={["visible", "hidden"]}
+        tier="explicitCustom"
+        onChange={vi.fn()}
+      />,
+    );
+    const tinted = selectTrigger(custom);
+    expect(tinted.className).toContain("border-accent/30");
+    expect(tinted.className).not.toContain("border-border-input");
+    expect(tinted.className).toContain("text-accent");
+    act(() => rootB.unmount());
   });
 
   it("renders the explicitCustom tier with a reset button and fires onReset", () => {
     const onReset = vi.fn();
     const { host, root } = renderInto(
       <FlatSelectRow
-        label="Shadow"
-        value="soft"
-        options={["none", "soft", "lift", "glow"]}
+        label="Overflow"
+        value="hidden"
+        options={["visible", "hidden"]}
         tier="explicitCustom"
         onChange={vi.fn()}
         onReset={onReset}
       />,
     );
-    const select = host.querySelector<HTMLSelectElement>("select");
-    expect(select?.className).toContain("text-accent");
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
+    expect(reset).not.toBeNull();
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onReset).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 
-  it("disables the reset button (and gives the select an accessible name) when the row itself is disabled", () => {
+  it("disables the reset button, and names the trigger, when the row itself is disabled", () => {
     const onReset = vi.fn();
     const { host, root } = renderInto(
       <FlatSelectRow
-        label="Shadow"
-        value="soft"
-        options={["none", "soft", "lift", "glow"]}
+        label=""
+        ariaLabel="Preset"
+        value="warm"
+        options={["neutral", "warm"]}
         tier="explicitCustom"
         disabled
         onChange={vi.fn()}
         onReset={onReset}
       />,
     );
-    const select = host.querySelector<HTMLSelectElement>("select");
-    expect(select?.getAttribute("aria-label")).toBe("Shadow");
+    const trigger = selectTrigger(host);
+    expect(trigger.getAttribute("aria-label")).toBe("Preset");
+    expect(trigger.hasAttribute("disabled")).toBe(true);
     const reset = host.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
     expect(reset?.disabled).toBe(true);
     act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -1204,87 +907,80 @@ describe("FlatSelectRow", () => {
     act(() => root.unmount());
   });
 
-  it("fires onChange when the select value changes", () => {
+  it("commits the chosen option's literal value", async () => {
     const onChange = vi.fn();
     const { host, root } = renderInto(
       <FlatSelectRow
         label="Overflow"
         value="visible"
-        options={["visible", "hidden", "clip", "auto", "scroll"]}
+        options={["visible", "hidden", "scroll"]}
         tier="default"
         onChange={onChange}
       />,
     );
-    const select = host.querySelector<HTMLSelectElement>("select");
-    if (!select) throw new Error("expected a select");
-    act(() => {
-      select.value = "hidden";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(onChange).toHaveBeenCalledWith("hidden");
+
+    await choose(host, "scroll");
+
+    expect(onChange.mock.calls).toEqual([["scroll"]]);
     act(() => root.unmount());
   });
 });
 
 describe("FlatSelectRow — label/value options", () => {
-  it("renders distinct labels for entries with a different display label than value", () => {
-    const { host, root } = renderInto(
-      <FlatSelectRow
-        label="Preset"
-        value="clean-studio"
-        options={[
-          { value: "neutral", label: "Neutral" },
-          { value: "clean-studio", label: "Clean Studio" },
-          { value: "bright-pop", label: "Bright Pop" },
-        ]}
-        tier="explicitCustom"
-        onChange={vi.fn()}
-      />,
-    );
-    const select = host.querySelector("select");
-    expect(select?.value).toBe("clean-studio");
-    const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toEqual(["Neutral", "Clean Studio", "Bright Pop"]);
-    act(() => root.unmount());
-  });
-
-  it("still treats a bare string array as value===label (Plan 2 behavior unchanged)", () => {
-    const { host, root } = renderInto(
-      <FlatSelectRow
-        label="Blend"
-        value="multiply"
-        options={["normal", "multiply", "screen"]}
-        tier="explicitCustom"
-        onChange={vi.fn()}
-      />,
-    );
-    const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toEqual(["normal", "multiply", "screen"]);
-    act(() => root.unmount());
-  });
-
-  it("preserves a valid authored value outside the preset list instead of misrepresenting it as the first option", () => {
+  it("renders distinct labels for entries with a different display label than value", async () => {
     const onChange = vi.fn();
     const { host, root } = renderInto(
       <FlatSelectRow
-        label="Blend"
-        value="difference"
-        options={["normal", "multiply", "screen", "overlay"]}
-        tier="explicitCustom"
+        label="Weight"
+        value="400"
+        options={[
+          { value: "400", label: "400 · Regular" },
+          { value: "600", label: "600 · Semibold" },
+        ]}
+        tier="default"
         onChange={onChange}
       />,
     );
-    const select = host.querySelector<HTMLSelectElement>("select");
-    // A native <select> whose `value` matches no <option> falls back to
-    // selectedIndex 0 — silently showing "normal" as selected even though
-    // the real persisted value is "difference". The row must add an option
-    // for the current value so it's genuinely representable.
-    expect(select?.value).toBe("difference");
-    const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toContain("difference");
-    // And reselecting the (still-present) first preset must be an explicit
-    // user choice, not something that already happened silently.
-    expect(onChange).not.toHaveBeenCalled();
+    expect(selectTrigger(host).textContent).toContain("400 · Regular");
+
+    await choose(host, "600 · Semibold");
+
+    // The literal union value, not its display label.
+    expect(onChange.mock.calls).toEqual([["600"]]);
+    act(() => root.unmount());
+  });
+
+  it("still treats a bare string array as value===label", async () => {
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Overflow"
+        value="visible"
+        options={["visible", "hidden", "clip"]}
+        tier="default"
+        onChange={vi.fn()}
+      />,
+    );
+    const options = await openOptions(host);
+    expect(options.map((el) => el.textContent)).toEqual(["visible", "hidden", "clip"]);
+    act(() => root.unmount());
+  });
+
+  it("preserves a valid authored value outside the preset list instead of dropping it", async () => {
+    // A `mix-blend-mode` this row does not offer as a preset still has to be
+    // displayable, or the row shows nothing and any choice silently overwrites
+    // a value the user never saw.
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Blend"
+        value="color-dodge"
+        options={["normal", "multiply"]}
+        tier="explicitCustom"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(selectTrigger(host).textContent).toContain("color-dodge");
+    const options = await openOptions(host);
+    expect(options.map((el) => el.textContent)).toEqual(["color-dodge", "normal", "multiply"]);
     act(() => root.unmount());
   });
 });
