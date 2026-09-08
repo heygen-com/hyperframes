@@ -120,7 +120,15 @@ test("CLI partial run retains unselected voices, BGM and SFX", (t) => {
       "--only",
       "none",
     ],
-    { encoding: "utf8" },
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HEYGEN_CONFIG_DIR: dir,
+        HEYGEN_API_KEY: "",
+        HYPERFRAMES_API_KEY: "",
+      },
+    },
   );
   assert.equal(result.status, 0, result.stderr);
   const actual = JSON.parse(readFileSync(path, "utf8"));
