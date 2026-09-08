@@ -29,6 +29,10 @@ export const examples: Example[] = [
   ],
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
+  [
+    "Stream machine-readable progress for agents/CI (NDJSON on stdout)",
+    "hyperframes render --progress-format ndjson --output out.mp4 | jq -r '.stage'",
+  ],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
   [
@@ -57,6 +61,11 @@ import { c } from "../ui/colors.js";
 import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderProgress } from "../ui/progress.js";
+import type {
+  NdjsonRenderJobView,
+  ProgressFormat,
+  ProgressNdjsonWriter,
+} from "../ui/progressNdjson.js";
 import {
   trackRenderComplete,
   trackRenderError,
@@ -350,6 +359,23 @@ export default defineCommand({
         "<tmpdir>/hyperframes-extract-cache-<uid>. " +
         "Env: HYPERFRAMES_EXTRACT_CACHE_DIR.",
     },
+    "progress-format": {
+      type: "string",
+      description:
+        "Progress output: tty (interactive bar), ndjson (one JSON event per " +
+        "line on stdout for agents/CI — render.progress ticks plus a terminal " +
+        "render.completed / render.failed; human stdout logs are suppressed " +
+        "and diagnostics stay on stderr), none (no progress output, like " +
+        "--quiet but for progress only). Default: tty.",
+      default: "tty",
+    },
+    "progress-fd": {
+      type: "string",
+      description:
+        "Write --progress-format ndjson events to this inherited file " +
+        "descriptor instead of stdout (e.g. 3 with a `3>events.ndjson` shell " +
+        "redirect), keeping stdout free for human logs or --json.",
+    },
   },
   // Keep the transport adapter thin: each phase has one ownership boundary.
   async run({ args }) {
@@ -451,6 +477,19 @@ export interface RenderOptions {
    * with process-wide state.
    */
   manageDeParallelRouterBreaker?: boolean;
+  /**
+   * Progress presentation (`--progress-format`). Omitted means the legacy
+   * behavior: TTY bar unless `quiet`. `"none"` suppresses progress without
+   * touching the rest of the human output; `"ndjson"` requires
+   * `progressNdjson` to carry the stream.
+   */
+  progressFormat?: ProgressFormat;
+  /**
+   * Active NDJSON event writer when `progressFormat === "ndjson"`. One writer
+   * per render (batch rows each get their own, stamped with the row index) so
+   * terminal-event dedupe is scoped to the row.
+   */
+  progressNdjson?: ProgressNdjsonWriter;
 }
 
 /**
@@ -900,11 +939,7 @@ export async function renderLocal(
   });
   const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
 
-  const onProgress = options.quiet
-    ? undefined
-    : (progressJob: { progress: number }, message: string) => {
-        renderProgress(progressJob.progress, message);
-      };
+  const onProgress = resolveRenderProgressCallback(options);
 
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
@@ -930,6 +965,10 @@ export async function renderLocal(
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
   markRenderSucceeded();
+
+  // Guarantee the stream's terminal event even if the producer's own
+  // "complete" tick never reached the callback; the writer dedupes when it did.
+  options.progressNdjson?.completed(job);
 
   maybeConsumeDeParallelRouterTrial(deParallelRouterActive, job, options.quiet);
   const elapsed = Date.now() - startTime;
@@ -970,6 +1009,28 @@ export async function renderLocal(
     durationMs,
     outcome,
     warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+  };
+}
+
+/**
+ * Resolve the producer progress sink for one render. Precedence: an active
+ * NDJSON writer always streams (even under --quiet — quiet silences HUMAN
+ * output, not the machine contract an agent is parsing); otherwise --quiet
+ * and --progress-format none disable progress; otherwise the TTY bar runs.
+ * Exported for the command-level wiring tests (no browser required).
+ */
+export function resolveRenderProgressCallback(
+  options: Pick<RenderOptions, "quiet" | "progressFormat" | "progressNdjson">,
+): ((job: NdjsonRenderJobView, message: string) => void) | undefined {
+  const ndjson = options.progressNdjson;
+  if (ndjson) {
+    return (job, message) => {
+      ndjson.publish(job, message);
+    };
+  }
+  if (options.quiet || options.progressFormat === "none") return undefined;
+  return (job, message) => {
+    renderProgress(job.progress, message);
   };
 }
 
@@ -1418,6 +1479,10 @@ function handleRenderError(
   job?: RenderJob,
 ): never {
   const message = normalizeErrorMessage(error);
+  // Terminal failure event first, so the stream carries failedStage /
+  // errorDetails even when throwOnError short-circuits the human reporting
+  // below. Deduped when the producer already published its failed tick.
+  options.progressNdjson?.failed(message, job);
   trackRenderError({
     fps: fpsToNumber(options.fps),
     quality: options.quality,

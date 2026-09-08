@@ -18,6 +18,11 @@ import {
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import { errorBox } from "../../ui/format.js";
+import {
+  PROGRESS_FORMAT_LABEL,
+  parseProgressFormat,
+  type ProgressFormat,
+} from "../../ui/progressNdjson.js";
 import { failUsage } from "../../utils/commandResult.js";
 import { resolveProject } from "../../utils/project.js";
 import {
@@ -90,6 +95,8 @@ export interface RenderCommandArgs {
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
+  "progress-format"?: string;
+  "progress-fd"?: string;
 }
 
 export interface RenderPlan {
@@ -137,6 +144,8 @@ export interface RenderPlan {
   variablesArg?: string;
   variablesFileArg?: string;
   strictVariables: boolean;
+  progressFormat: ProgressFormat;
+  progressFd?: number;
   environment: Readonly<Record<string, string>>;
 }
 
@@ -411,6 +420,12 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
 
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;
+  const { progressFormat, progressFd } = resolveProgressPlan(args, useDocker, batchJson);
+  // NDJSON owning stdout implies quiet human output: the event stream is the
+  // machine contract, so plan summaries / lint findings / completion prints
+  // must not interleave with it (same rule --batch --json already applies).
+  // console.warn/console.error diagnostics still reach stderr.
+  const ndjsonOwnsStdout = progressFormat === "ndjson" && progressFd === undefined;
   return Object.freeze({
     project,
     entryFile,
@@ -443,7 +458,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     debug: args.debug ?? false,
     bestEffort: args["best-effort"] ?? true,
     batchJson,
-    effectiveQuiet: quiet || (batchPath != null && batchJson),
+    effectiveQuiet: quiet || (batchPath != null && batchJson) || ndjsonOwnsStdout,
     strictAll: args["strict-all"] ?? false,
     strictErrors: (args.strict ?? false) || (args["strict-all"] ?? false),
     crf,
@@ -455,8 +470,64 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     variablesArg: args.variables,
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,
+    progressFormat,
+    progressFd,
     environment: Object.freeze(environment),
   });
+}
+
+/** True when the NDJSON event stream owns stdout (no `--progress-fd` redirect). */
+export function progressNdjsonOwnsStdout(plan: RenderPlan): boolean {
+  return plan.progressFormat === "ndjson" && plan.progressFd === undefined;
+}
+
+interface ResolvedProgressPlan {
+  progressFormat: ProgressFormat;
+  progressFd?: number;
+}
+
+/** Validate the machine-progress flags and their interactions with other modes. */
+function resolveProgressPlan(
+  args: RenderCommandArgs,
+  useDocker: boolean,
+  batchJson: boolean,
+): ResolvedProgressPlan {
+  const raw = args["progress-format"] ?? "tty";
+  const progressFormat = parseProgressFormat(raw);
+  if (!progressFormat) {
+    errorBox("Invalid progress-format", `Got "${raw}". Must be ${PROGRESS_FORMAT_LABEL}.`);
+    failUsage();
+  }
+  let progressFd: number | undefined;
+  if (args["progress-fd"] != null) {
+    if (progressFormat !== "ndjson") {
+      errorBox("Invalid progress-fd", "--progress-fd requires --progress-format ndjson.");
+      failUsage();
+    }
+    progressFd = positiveInteger(
+      args["progress-fd"],
+      "Invalid progress-fd",
+      `Got "${args["progress-fd"]}". Must be a positive file descriptor number (e.g. 3).`,
+    );
+  }
+  if (progressFormat !== "ndjson") return { progressFormat };
+  if (useDocker) {
+    errorBox(
+      "NDJSON progress is local-only",
+      "--progress-format ndjson streams the local render pipeline's progress events; --docker runs the render inside a container whose output is opaque to the host CLI.",
+      "Drop --docker, or run the containerized CLI directly with --progress-format ndjson.",
+    );
+    failUsage();
+  }
+  if (batchJson && progressFd === undefined) {
+    errorBox(
+      "Conflicting stdout formats",
+      "--json promises exactly one final JSON document on stdout; NDJSON progress on stdout would interleave with it.",
+      "Route the event stream to another descriptor: --progress-fd 3 (e.g. `hyperframes render ... 3>progress.ndjson`).",
+    );
+    failUsage();
+  }
+  return { progressFormat, progressFd };
 }
 
 export function applyRenderEnvironment(plan: RenderPlan): void {
