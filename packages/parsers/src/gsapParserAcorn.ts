@@ -62,6 +62,54 @@ function parseProgram(script: string): any {
   }
 }
 
+export interface LiteralQuerySelectorCall {
+  selector: string;
+  raw: string;
+}
+
+export interface LiteralGsapSelectorCall {
+  selector: string;
+  raw: string;
+}
+
+/**
+ * Return statically literal selectors passed to querySelector/querySelectorAll.
+ * Dynamic expressions are intentionally omitted: callers use this only when
+ * the browser-invalid selector can be proven from source.
+ */
+export function extractLiteralQuerySelectorCalls(script: string): LiteralQuerySelectorCall[] {
+  try {
+    const ast = parseProgram(script);
+    const calls: LiteralQuerySelectorCall[] = [];
+    acornWalk.simple(ast, {
+      CallExpression(node: any) {
+        const callee = node.callee;
+        if (callee?.type !== "MemberExpression") return;
+        const method = callee.computed
+          ? callee.property?.type === "Literal"
+            ? callee.property.value
+            : undefined
+          : callee.property?.type === "Identifier"
+            ? callee.property.name
+            : undefined;
+        if (method !== "querySelector" && method !== "querySelectorAll") return;
+        const arg = node.arguments?.[0];
+        const selector =
+          arg?.type === "Literal" && typeof arg.value === "string"
+            ? arg.value
+            : arg?.type === "TemplateLiteral" && arg.expressions?.length === 0
+              ? arg.quasis?.[0]?.value?.cooked
+              : undefined;
+        if (typeof selector !== "string") return;
+        calls.push({ selector, raw: script.slice(node.start, node.end) });
+      },
+    });
+    return calls;
+  } catch {
+    return [];
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
@@ -1849,6 +1897,46 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+/**
+ * Return only GSAP tween calls whose target argument is itself a string
+ * literal. Element variables and computed selectors are omitted, even when
+ * the full parser can resolve them to an equivalent selector.
+ */
+export function extractLiteralGsapSelectorCalls(script: string): LiteralGsapSelectorCall[] {
+  try {
+    const ast = parseProgram(script);
+    const scope = collectScopeBindings(ast);
+    const detection = findTimelineVar(ast, scope);
+    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
+    const timelineVar = timelineRootSource(ref, script);
+    if (ref.kind === "identifier") {
+      try {
+        inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
+      } catch {
+        // Fall back to calls visible in the original AST.
+      }
+    }
+    const identifierBindings = collectIdentifierBindingIndex(ast);
+    const targetBindings = collectTargetBindings(ast, scope, identifierBindings);
+    const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
+    const result: LiteralGsapSelectorCall[] = [];
+    for (const call of calls) {
+      const target = call.node.arguments?.[0];
+      const selector =
+        target?.type === "Literal" && typeof target.value === "string"
+          ? target.value
+          : target?.type === "TemplateLiteral" && target.expressions?.length === 0
+            ? target.quasis?.[0]?.value?.cooked
+            : undefined;
+      if (typeof selector !== "string") continue;
+      result.push({ selector, raw: script.slice(call.node.start, call.node.end) });
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Browser-safe equivalent of `parseGsapScript` (gsapParser.ts).

@@ -27,6 +27,20 @@ async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap
   return mod.parseGsapScriptAcorn as unknown as (script: string) => LintParsedGsap;
 }
 
+async function loadExtractLiteralQuerySelectorCalls(): Promise<
+  (script: string) => Array<{ selector: string; raw: string }>
+> {
+  const mod = await import("@hyperframes/parsers/gsap-parser-acorn");
+  return mod.extractLiteralQuerySelectorCalls;
+}
+
+async function loadExtractLiteralGsapSelectorCalls(): Promise<
+  (script: string) => Array<{ selector: string; raw: string }>
+> {
+  const mod = await import("@hyperframes/parsers/gsap-parser-acorn");
+  return mod.extractLiteralGsapSelectorCalls;
+}
+
 async function loadGsapScriptMotionPathFirstUseIndex(): Promise<(script: string) => number | null> {
   const mod = await import("@hyperframes/parsers/gsap-parser-acorn");
   return mod.gsapScriptMotionPathFirstUseIndex;
@@ -1053,6 +1067,42 @@ function collectCssOpacityZeroSelectors(
 
 // fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
+  // invalid_raw_selector_execution
+  async ({ tags, scripts }) => {
+    const unsafeIds = tags
+      .map((tag) => readAttr(tag.raw, "id"))
+      .filter((id): id is string => Boolean(id && /^\d/.test(id)));
+    if (unsafeIds.length === 0) return [];
+
+    const findUnsafeId = (selector: string): string | undefined =>
+      unsafeIds.find((id) => new RegExp(`#${escapeRegExp(id)}(?![\\w-])`).test(selector));
+    const findings: HyperframeLintFinding[] = [];
+    const reportedIds = new Set<string>();
+    const report = (selector: string, snippet: string) => {
+      const id = findUnsafeId(selector);
+      if (!id || reportedIds.has(id)) return;
+      reportedIds.add(id);
+      findings.push({
+        code: "invalid_raw_selector_execution",
+        severity: "error",
+        message: `The raw selector "#${id}" is executed, but digit-leading IDs are not valid unescaped CSS selectors and throw a SyntaxError in the browser.`,
+        selector: `#${id}`,
+        elementId: id,
+        fixHint:
+          "Rename the id to start with a letter (recommended), or construct the selector with `#${CSS.escape(id)}` before passing it to GSAP/querySelector.",
+        snippet: truncateSnippet(snippet),
+      });
+    };
+
+    const extractQueryCalls = await loadExtractLiteralQuerySelectorCalls();
+    const extractGsapCalls = await loadExtractLiteralGsapSelectorCalls();
+    for (const script of scripts) {
+      for (const call of extractGsapCalls(script.content)) report(call.selector, call.raw);
+      for (const call of extractQueryCalls(script.content)) report(call.selector, call.raw);
+    }
+    return findings;
+  },
+
   // overlapping_gsap_tweens + gsap_animates_clip_element
   // fallow-ignore-next-line complexity
   async ({ source, tags, scripts, styles, rootCompositionId }) => {

@@ -3,6 +3,81 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("GSAP rules", () => {
+  it("errors when a parsed GSAP tween executes a raw digit-leading id selector", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#123-frame", { opacity: 1, duration: 0.5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toMatchObject({ severity: "error", elementId: "123-frame", selector: "#123-frame" });
+    expect(
+      result.findings.find((finding) => finding.code === "id_requires_css_escape")?.severity,
+    ).toBe("warning");
+  });
+
+  it("errors for literal querySelector and querySelectorAll calls with raw unsafe ids", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+    <div id="456-card"></div>
+  </div>
+  <script>
+    document.querySelector("#123-frame");
+    document.querySelectorAll('#456-card');
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter(
+      (finding) => finding.code === "invalid_raw_selector_execution",
+    );
+
+    expect(findings.map((finding) => finding.elementId).sort()).toEqual(["123-frame", "456-card"]);
+  });
+
+  it("keeps warning-only behavior for unused and safely escaped digit-leading ids", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-unused"></div>
+    <div id="456-escaped"></div>
+    <div id="789-dynamic"></div>
+  </div>
+  <script>
+    const unused = document.getElementById("123-unused");
+    const tl = gsap.timeline({ paused: true });
+    tl.to(unused, { opacity: 1, duration: 0.5 }, 0);
+    tl.to("#\\\\34 56-escaped", { opacity: 1, duration: 0.5 }, 0);
+    document.querySelector("#\\\\34 56-escaped");
+    document.querySelector("#" + CSS.escape("789-dynamic"));
+    window.__timelines = { c1: tl };
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.filter((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toEqual([]);
+    expect(
+      result.findings.filter((finding) => finding.code === "id_requires_css_escape"),
+    ).toHaveLength(3);
+  });
+
   it("errors when window.__timelines is registered BEFORE the fonts.ready build", async () => {
     const html = `
 <html><body>
