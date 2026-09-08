@@ -231,11 +231,20 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // unbalanced_style_tags — extra </style> dumps the rest of the stylesheet as on-screen text.
+  // unbalanced_style_tags
   ({ source }) => {
-    const withoutScripts = source.replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, "");
-    const opens = withoutScripts.match(/<style\b/gi)?.length ?? 0;
-    const closes = withoutScripts.match(/<\/style\s*>/gi)?.length ?? 0;
+    let opens = 0;
+    let closes = 0;
+    let firstTag = "";
+    for (const match of source.matchAll(
+      /<script\b[\s\S]*?<\/script[^>]*>|<style\b|<\/style\s*>/gi,
+    )) {
+      const token = match[0].toLowerCase();
+      if (token.startsWith("<script")) continue;
+      if (token.startsWith("</style")) closes += 1;
+      else opens += 1;
+      if (!firstTag) firstTag = match[0];
+    }
     if (opens === closes) return [];
     return [
       {
@@ -246,7 +255,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             ? "A <style> block is never closed, so following markup is parsed as CSS and disappears from the frame."
             : "An extra </style> closes the stylesheet early, so trailing CSS renders as visible on-screen text.",
         fixHint: "Keep <style> and </style> paired. One extra closer dumps CSS into the body.",
-        snippet: truncateSnippet(withoutScripts.match(/<\/?style\b[^>]*>/i)?.[0] || "<style>"),
+        snippet: truncateSnippet(firstTag || "<style>"),
       },
     ];
   },
