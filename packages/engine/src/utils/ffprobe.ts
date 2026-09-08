@@ -1050,11 +1050,25 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .map((line) => parseFloat(line.trim()))
     .filter((t) => Number.isFinite(t));
 
-  if (timestamps.length < 2) {
+  if (timestamps.length === 1) {
+    // A single keyframe means every seek past 0 lands inside one GOP
+    // spanning the whole file — the effective interval is the stream
+    // duration, not zero. Still images and single-frame assets stay
+    // unproblematic because their duration is at or below the threshold.
+    const { durationSeconds } = await extractMediaMetadata(filePath);
+    return {
+      avgIntervalSeconds: durationSeconds,
+      maxIntervalSeconds: durationSeconds,
+      keyframeCount: 1,
+      isProblematic: durationSeconds > 2,
+    };
+  }
+
+  if (timestamps.length === 0) {
     return {
       avgIntervalSeconds: 0,
       maxIntervalSeconds: 0,
-      keyframeCount: timestamps.length,
+      keyframeCount: 0,
       isProblematic: false,
     };
   }
