@@ -825,13 +825,15 @@
             "pages": [
               "reference/html-schema",
               "reference/color-grading",
-              "reference/audio-effects"
+              "reference/audio-effects",
+              "reference/cli-ledger"
             ]
           },
           {
             "group": "Rendering paths",
             "pages": [
               "guides/rendering",
+              "guides/offline-deterministic-renders",
               "deploy/overview",
               "deploy/cloud",
               "guides/deploy"
