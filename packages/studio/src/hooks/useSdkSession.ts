@@ -147,12 +147,19 @@ export function useSdkSession(
   const sessionOwnersRef = useRef(new WeakMap<Composition, SdkSessionOwner>());
   const generationRef = useRef(0);
   const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
   const activeCompPathRef = useRef(activeCompPath);
-  activeCompPathRef.current = activeCompPath;
   const [reloadToken, setReloadToken] = useState(0);
   const reloadTokenRef = useRef(reloadToken);
-  reloadTokenRef.current = reloadToken;
+
+  // What the hook is currently pointed at, refreshed on commit rather than
+  // during render. Every reader is an effect, a file-watcher callback or the
+  // ownership check, so none of them can run before this does; it is declared
+  // first so it also runs before the session effect below on every commit.
+  useEffect(() => {
+    projectIdRef.current = projectId;
+    activeCompPathRef.current = activeCompPath;
+    reloadTokenRef.current = reloadToken;
+  });
 
   useEffect(
     () =>

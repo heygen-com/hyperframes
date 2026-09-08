@@ -46,6 +46,19 @@ import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 
+/**
+ * The store's action handles, which never change for the store's lifetime.
+ *
+ * Read through a plain function rather than `usePlayerStore.getState()` inline:
+ * the React Compiler reads the store's own name in a hook body as a hook used
+ * as a value and declines the file.
+ */
+function readPlayerStoreActions() {
+  const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
+    usePlayerStore.getState();
+  return { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements };
+}
+
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -61,7 +74,7 @@ export function useTimelinePlayer() {
   const staticSeekWarnedRef = useRef(false);
 
   const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
-    usePlayerStore.getState();
+    readPlayerStoreActions();
 
   // The fixture lease belongs at this shared synchronization boundary so every
   // iframe discovery path has the same owner for deciding whether it may write.
@@ -149,7 +162,8 @@ export function useTimelinePlayer() {
           releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
           return adapter;
         }
-        if (dur > 0) timelineAdapter ??= adapter;
+        // `??=` longhand: the React Compiler does not lower logical assignment.
+        if (dur > 0) timelineAdapter = timelineAdapter ?? adapter;
       }
 
       if (win.__timelines) {
@@ -167,7 +181,7 @@ export function useTimelinePlayer() {
             releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
             return adapter;
           }
-          if (dur > 0) timelineAdapter ??= adapter;
+          if (dur > 0) timelineAdapter = timelineAdapter ?? adapter;
         }
       }
 
@@ -475,8 +489,12 @@ export function useTimelinePlayer() {
     applyPreviewVariablesToUrl(url);
     iframe.src = url.toString();
   }, [saveSeekPosition]);
+  // Refreshed on commit rather than during render; the only reader is the
+  // visibility handler installed on mount, which fires from a document event.
   const getAdapterRef = useRef(getAdapter);
-  getAdapterRef.current = getAdapter;
+  useEffect(() => {
+    getAdapterRef.current = getAdapter;
+  }, [getAdapter]);
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);

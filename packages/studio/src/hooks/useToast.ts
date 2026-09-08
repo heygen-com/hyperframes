@@ -15,6 +15,19 @@ const MAX_TOASTS = 3;
 let nextToastId = 1;
 
 /**
+ * The next id, and advance the counter.
+ *
+ * A plain function rather than `nextToastId++` at the call site: the React
+ * Compiler declines to lower an update expression on a module-level binding,
+ * and the increment has no reason to live inside the hook.
+ */
+function takeToastId(): number {
+  const id = nextToastId;
+  nextToastId += 1;
+  return id;
+}
+
+/**
  * Stacked toasts (max 3). Info toasts auto-dismiss after 4s; error toasts
  * persist until explicitly dismissed so failures can't silently vanish.
  */
@@ -51,7 +64,7 @@ export function useToast() {
 
   const showToast = useCallback(
     (message: string, tone: AppToast["tone"] = "error") => {
-      const id = nextToastId++;
+      const id = takeToastId();
       setToasts((prev) => {
         const next = [...prev, { id, message, tone }];
         // Cap the stack; drop the oldest (and its pending timer).

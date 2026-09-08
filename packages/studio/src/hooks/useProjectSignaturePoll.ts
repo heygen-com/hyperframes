@@ -33,8 +33,15 @@ export function useProjectSignaturePoll(
 ): void {
   const signatureRef = useRef(currentSignature);
   const onChangeRef = useRef(onChange);
-  signatureRef.current = currentSignature;
-  onChangeRef.current = onChange;
+
+  // Refreshed on commit rather than during render: only the interval callback
+  // below reads these, and it cannot run before the commit that produced the
+  // values. Declared above the polling effect so it also runs first on every
+  // commit, which is what keeps the comparison baseline current.
+  useEffect(() => {
+    signatureRef.current = currentSignature;
+    onChangeRef.current = onChange;
+  });
 
   useEffect(() => {
     if (!projectId) return;

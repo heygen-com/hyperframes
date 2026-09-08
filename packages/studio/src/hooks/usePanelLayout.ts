@@ -57,12 +57,10 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     initialState?.rightPanelTab ?? "design",
   );
   const rightPanelTabRef = useRef(rightPanelTab);
-  rightPanelTabRef.current = rightPanelTab;
   const [rightInspectorPanes, setRightInspectorPanes] = useState<RightInspectorPanes>(() =>
     getInitialRightInspectorPanes(initialState?.rightPanelTab),
   );
   const rightInspectorPanesRef = useRef(rightInspectorPanes);
-  rightInspectorPanesRef.current = rightInspectorPanes;
   // Set when the user explicitly reopens a panel the window had auto-collapsed,
   // so the rail cannot immediately swallow it again. Cleared once the window is
   // wide enough that auto-collapse is no longer in play.
@@ -96,7 +94,6 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   // Rendered widths, which the drag handles measure from so the seam does not
   // jump when a panel is currently narrower than its stored preference.
   const fittedRef = useRef(fitted);
-  fittedRef.current = fitted;
 
   const panelDragRef = useRef<{
     side: PanelSide;
@@ -152,8 +149,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   // auto-collapsed state: intent was already false, so the click flipped it to
   // true (persisting a collapse the user never asked for) while the rail stayed
   // railed and nothing visibly happened.
-  const effectiveLeftCollapsedRef = useRef(false);
-  effectiveLeftCollapsedRef.current = leftCollapsed || leftCollapsedByWidth;
+  const effectiveLeftCollapsedRef = useRef(leftCollapsed || leftCollapsedByWidth);
 
   const toggleLeftSidebar = useCallback(() => {
     const next = !effectiveLeftCollapsedRef.current;
@@ -244,6 +240,20 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const setExclusiveRightInspectorPane = useCallback((pane: RightInspectorPane) => {
     setRightInspectorPanes({ design: pane === "design", layers: pane === "layers" });
   }, []);
+
+  // Every ref above is a latest-value mirror read only from an event handler
+  // (a pointer drag, a keyboard nudge, a tab click), so it is refreshed on
+  // commit rather than during render: a handler cannot run before the commit
+  // that produced the value it reads. `trackedSetRightPanelTab` still writes
+  // the two tab refs itself, so a burst of calls inside one React batch
+  // accumulates instead of every call reading the same pre-render value; this
+  // effect then re-settles them onto what actually rendered.
+  useEffect(() => {
+    rightPanelTabRef.current = rightPanelTab;
+    rightInspectorPanesRef.current = rightInspectorPanes;
+    fittedRef.current = fitted;
+    effectiveLeftCollapsedRef.current = leftCollapsed || leftCollapsedByWidth;
+  });
 
   return {
     leftWidth: fitted.left,

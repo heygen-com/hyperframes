@@ -84,8 +84,16 @@ export function useTimelineSelectionPreviewSync({
   const domEditGroupSelectionsRef = useRef(domEditGroupSelections);
   const lastSyncedSelectedKeyRef = useRef("");
   const missingSelectionKeyRef = useRef("");
-  domEditSelectionRef.current = domEditSelection;
-  domEditGroupSelectionsRef.current = domEditGroupSelections;
+
+  // The canvas selection is read through refs so the effect below does not
+  // depend on it: depending on it directly would let the preview-to-timeline
+  // echo cancel an in-flight timeline click. Refreshed on commit rather than
+  // during render, and declared first so it has run by the time the sync effect
+  // reads it.
+  useEffect(() => {
+    domEditSelectionRef.current = domEditSelection;
+    domEditGroupSelectionsRef.current = domEditGroupSelections;
+  });
 
   useEffect(() => {
     const previousSelectedKey = lastSyncedSelectedKeyRef.current;
@@ -180,9 +188,6 @@ export function useTimelineSelectionPreviewSync({
     return () => {
       cancelled = true;
     };
-    // DOM selection changes are read through refs. Depending on them directly
-    // would let the preview-to-timeline echo cancel an in-flight timeline click.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeCompPath,
     applyDomSelection,

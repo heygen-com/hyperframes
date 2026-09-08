@@ -15,20 +15,27 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/** A stand-in for the preview frame, carrying only the manifest the hook reads. */
+function fakePreviewFrame(scenes: unknown): HTMLIFrameElement {
+  return { contentWindow: { __clipManifest: { scenes } } } as unknown as HTMLIFrameElement;
+}
+
 function renderHook(params: {
   editingFileContent: string | null | undefined;
   rightPanelTab: RightPanelTab;
+  previewIframe?: HTMLIFrameElement | null;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   const setRightPanelTabCalls: RightPanelTab[] = [];
   let current: ReturnType<typeof useSlideshowTabState> | null = null;
+  const previewIframeRef = { current: params.previewIframe ?? null };
 
   function Harness() {
     current = useSlideshowTabState({
       editingFileContent: params.editingFileContent,
-      previewIframeRef: { current: null },
+      previewIframeRef,
       refreshKey: 0,
       rightPanelTab: params.rightPanelTab,
       setRightPanelTab: (tab) => setRightPanelTabCalls.push(tab),
@@ -91,6 +98,48 @@ describe("useSlideshowTabState", () => {
   it("does not bounce a tab other than 'slideshow'", () => {
     const harness = renderHook({ editingFileContent: PLAIN_HTML, rightPanelTab: "renders" });
     expect(harness.setRightPanelTabCalls).toEqual([]);
+    harness.unmount();
+  });
+
+  it("derives the scene list from the preview frame's clip manifest", () => {
+    const harness = renderHook({
+      editingFileContent: SLIDESHOW_HTML,
+      rightPanelTab: "slideshow",
+      previewIframe: fakePreviewFrame([
+        { id: "s1", label: "Intro", start: 0, duration: 2, extra: "dropped" },
+        { id: "s2", label: "Outro", start: 2, duration: 3 },
+      ]),
+    });
+    expect(harness.getState().slideshowScenes).toEqual([
+      { id: "s1", label: "Intro", start: 0, duration: 2 },
+      { id: "s2", label: "Outro", start: 2, duration: 3 },
+    ]);
+    harness.unmount();
+  });
+
+  it("reports no scenes when the preview frame has no manifest yet", () => {
+    const harness = renderHook({
+      editingFileContent: SLIDESHOW_HTML,
+      rightPanelTab: "slideshow",
+      previewIframe: { contentWindow: {} } as unknown as HTMLIFrameElement,
+    });
+    expect(harness.getState().slideshowScenes).toEqual([]);
+    harness.unmount();
+  });
+
+  it("reports no scenes when reading the frame throws (cross-origin preview)", () => {
+    const hostile = {} as HTMLIFrameElement;
+    Object.defineProperty(hostile, "contentWindow", {
+      get() {
+        throw new Error("blocked a frame with origin");
+      },
+    });
+    const harness = renderHook({
+      editingFileContent: SLIDESHOW_HTML,
+      rightPanelTab: "slideshow",
+      previewIframe: hostile,
+    });
+    expect(harness.getState().slideshowScenes).toEqual([]);
     harness.unmount();
   });
 });

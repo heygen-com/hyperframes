@@ -11,7 +11,7 @@
  * that instead, which is what lets a readout follow the playhead while it is being
  * dragged as well as while it is playing.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 // The store's own module, not the `player` barrel: the barrel pulls the whole
 // timeline in, and a timeline component importing this hook closes a cycle.
 import { liveTime, usePlayerStore } from "../player/store/playerStore";
@@ -22,30 +22,31 @@ const THROTTLE_MS = 33;
 export function useLivePlayheadTime(): number {
   const storeTime = usePlayerStore((s) => s.currentTime);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const liveRef = useRef(storeTime);
-  const [, forceRender] = useState(0);
-
-  // Paused, the ref tracks the store so the first frame of playback is never a
-  // stale value from the last time the transport ran.
-  if (!isPlaying) liveRef.current = storeTime;
+  // Null means "nothing heard from this playback run yet", which is why the
+  // subscription clears it on teardown: the first frame after the transport
+  // starts must never show a time left over from the last time it ran, and the
+  // store is the truth up to that point anyway.
+  const [runTime, setRunTime] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isPlaying) return;
+    let latest: number | null = null;
     let timerId: ReturnType<typeof setTimeout> | 0 = 0;
     const unsubscribe = liveTime.subscribe((t) => {
-      liveRef.current = t;
+      latest = t;
       if (!timerId) {
         timerId = setTimeout(() => {
           timerId = 0;
-          forceRender((v) => v + 1);
+          setRunTime(latest);
         }, THROTTLE_MS);
       }
     });
     return () => {
       unsubscribe();
       if (timerId) clearTimeout(timerId);
+      setRunTime(null);
     };
   }, [isPlaying]);
 
-  return isPlaying ? liveRef.current : storeTime;
+  return isPlaying ? (runTime ?? storeTime) : storeTime;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import {
   createThumbnailRequestIdentity,
   thumbnailScheduler,
@@ -14,10 +14,20 @@ export function useThumbnailLease(
   scheduler: ThumbnailScheduler = thumbnailScheduler,
 ): ThumbnailSnapshot {
   const requestRef = useRef(request);
-  requestRef.current = request;
   const leaseRef = useRef<ReturnType<ThumbnailScheduler["acquire"]> | null>(null);
   const identity = request ? createThumbnailRequestIdentity(request) : null;
   const priority = request?.priority;
+
+  // `subscribe` is keyed on the identity, not on the request object, so that a
+  // fresh object with the same identity does not release and re-acquire the
+  // lease every render. It still has to reach the CURRENT request for its
+  // `load` and `priority`, hence the ref, refreshed on commit: React calls
+  // `subscribe` from a passive effect, and this effect is declared first, so it
+  // has already run by then.
+  useEffect(() => {
+    requestRef.current = request;
+  });
+
   const subscribe = useCallback(
     (listener: () => void) => {
       const current = requestRef.current;
@@ -31,10 +41,14 @@ export function useThumbnailLease(
     },
     [identity, scheduler],
   );
-  const getSnapshot = useCallback(() => {
-    const current = requestRef.current;
-    return current && identity !== null ? scheduler.getSnapshot(current) : IDLE;
-  }, [identity, scheduler]);
+
+  // Read during render, so it takes the request straight from the arguments: a
+  // ref would still hold the previous one on the render that changes identity,
+  // and the scheduler derives the entry it looks up from what it is handed.
+  const getSnapshot = useCallback(
+    () => (request && identity !== null ? scheduler.getSnapshot(request) : IDLE),
+    [request, identity, scheduler],
+  );
 
   useLayoutEffect(() => {
     if (priority) leaseRef.current?.updatePriority(priority);

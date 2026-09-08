@@ -309,7 +309,14 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
   const storeRef = useRef<ReturnType<typeof createPersistentEditHistoryStore> | null>(null);
   const storeProjectIdRef = useRef<string | null>(null);
   const activeProjectIdRef = useRef(projectId);
-  activeProjectIdRef.current = projectId;
+
+  // Which project is on screen, refreshed on commit rather than during render.
+  // Only the callbacks below read it, to refuse an edit aimed at a project the
+  // user has already navigated away from; declared above the loader so a
+  // project switch updates it before the store is torn down.
+  useEffect(() => {
+    activeProjectIdRef.current = projectId;
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;

@@ -49,9 +49,11 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
           const msg = err instanceof Error ? err.message : String(err);
           setLintModal([{ severity: "error", message: `Failed to run lint: ${msg}` }]);
         }
-      } finally {
-        if (!opts?.background) setLinting(false);
       }
+      // Reached on both paths — the catch above swallows the failure rather than
+      // rethrowing it, so this is what the `finally` clause it replaces did. The
+      // React Compiler declines any function with a `finally`.
+      if (!opts?.background) setLinting(false);
     },
     [projectId],
   );

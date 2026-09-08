@@ -289,7 +289,13 @@ function readNumberInput(input: object, key: string): number {
  */
 export function useStudioAgentTools(deps: StudioAgentToolsDeps): void {
   const depsRef = useRef(deps);
-  depsRef.current = deps;
+
+  // Refreshed on commit rather than during render. The tools built below read
+  // it when the agent calls one, which is long after registration, itself an
+  // async step inside the mount effect below.
+  useEffect(() => {
+    depsRef.current = deps;
+  });
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {

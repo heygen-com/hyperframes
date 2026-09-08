@@ -1,5 +1,5 @@
 {
-  "total": 126,
+  "total": 104,
   "files": {
     "src/App.tsx": 1,
     "src/captions/components/CaptionOverlay.tsx": 1,
@@ -87,25 +87,6 @@
     "src/hooks/useGsapScriptCommits.ts": 1,
     "src/hooks/useGsapSelectionHandlers.ts": 1,
     "src/hooks/useGsapTweenCache.ts": 1,
-    "src/hooks/useLintModal.ts": 1,
-    "src/hooks/useLivePlayheadTime.ts": 1,
-    "src/hooks/useMountEffect.ts": 1,
-    "src/hooks/useMusicBeatAnalysis.ts": 1,
-    "src/hooks/usePanelLayout.ts": 1,
-    "src/hooks/usePersistentEditHistory.ts": 1,
-    "src/hooks/usePreviewPersistence.ts": 1,
-    "src/hooks/useProjectCompositionVariables.ts": 1,
-    "src/hooks/useProjectSignaturePoll.ts": 1,
-    "src/hooks/useRazorSplit.ts": 1,
-    "src/hooks/useRemoveBackground.ts": 1,
-    "src/hooks/useSdkSession.ts": 1,
-    "src/hooks/useSlideshowTabState.ts": 1,
-    "src/hooks/useThumbnailLease.ts": 1,
-    "src/hooks/useTimelineDeleteOps.ts": 1,
-    "src/hooks/useTimelineEditing.ts": 1,
-    "src/hooks/useTimelineGroupEditing.ts": 1,
-    "src/hooks/useTimelineSelectionPreviewSync.ts": 1,
-    "src/hooks/useToast.ts": 1,
     "src/player/components/Player.tsx": 1,
     "src/player/components/PlayerControls.tsx": 1,
     "src/player/components/Timeline.tsx": 1,
@@ -123,9 +104,6 @@
     "src/player/components/useTimelineSelectionLifecycle.ts": 1,
     "src/player/components/useTimelineStackingSync.ts": 1,
     "src/player/components/useTimelineTrackLayout.ts": 1,
-    "src/player/components/useTimelineVirtualRows.ts": 1,
-    "src/player/hooks/usePlaybackKeyboard.ts": 1,
-    "src/player/hooks/useTimelinePlayer.ts": 1,
-    "src/webmcp/useStudioAgentTools.ts": 1
+    "src/player/components/useTimelineVirtualRows.ts": 1
   }
 }
