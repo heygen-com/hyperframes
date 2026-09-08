@@ -1,0 +1,189 @@
+---
+title: "Pendulum Swing"
+description: "Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pendulum-swing.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pendulum-swing.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add pendulum-swing" item="pendulum-swing" />
+
+That writes one file: `compositions/components/pendulum-swing.html`.
+
+## Paste it into your composition
+
+Open `compositions/components/pendulum-swing.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `pivot` | `top-center` | `top-center`, `top-left`, `top-right` | Where the content hangs from. The swing rotates about this point, so the top edge stays pinned. |
+| `amplitude` | `standard` | `gentle`, `standard`, `wide` | How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright. |
+| `direction` | `right` | `right`, `left` | Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it. |
+| `tone` | `ink` | `ink`, `paper`, `accent` | Content colour: ink for light frames, paper for dark ones, accent rides --brand. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="pendulum-swing"
+  data-composition-src="compositions/components/pendulum-swing.html"
+  data-variable-values='{"pivot":"top-center","amplitude":"standard","direction":"right","tone":"ink"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`pendulum-swing.html`}>
+
+```html
+<!--
+  Pendulum Swing - motion primitive for HyperFrames.
+
+  Paste the markup, CSS and script into a composition. Drive the timeline
+  integration from a paused GSAP timeline so renders remain deterministic.
+
+  Variables. The script reads each one, falls back to the declared default on
+  anything missing or unrecognised, and writes the result as a custom property
+  the CSS below consumes. The timeline recipe stays untouched by them: it keeps
+  easing one unitless swing value from 1 down to 0, and these decide where the
+  content hangs from, how far the first swing reaches, which way it enters and
+  what colour it is.
+
+    - pivot (top-center | top-left | top-right, default top-center): where the
+      content hangs from. The swing rotates about this point, so the pinned top
+      edge never drifts.
+    - amplitude (gentle | standard | wide, default standard): how far the first
+      swing reaches, 18deg, 34deg or 52deg. Every later swing scales with it, so
+      whatever the reach the pendulum still comes to rest upright.
+    - direction (right | left, default right): which side the pendulum swings in
+      from. right lifts the first swing clockwise, left mirrors it.
+    - tone (ink | paper | accent, default ink): content colour. ink is
+      near-black for light frames, paper near-white for dark ones, accent rides
+      --brand.
+
+  On every default the result is identical to the original: a near-black sign
+  hanging from its top centre, entering from the right through a 34deg swing.
+
+  Motion note. The swing is one rotation about the pivot, animated through a
+  single unitless custom property (--hf-swing-angle). Rotation interpolates
+  sub-pixel and stays smooth under the seek-by-frame capture engine; nothing
+  here animates a layout or reflow property.
+-->
+
+<div
+  class="hf-catalog-pendulum-swing"
+  data-composition-variables='[
+    { "id": "pivot", "type": "enum", "role": "layout", "label": "Pivot", "description": "Where the content hangs from. The swing rotates about this point, so the top edge stays pinned.", "default": "top-center", "options": [{ "value": "top-center", "label": "Top center" }, { "value": "top-left", "label": "Top left" }, { "value": "top-right", "label": "Top right" }] },
+    { "id": "amplitude", "type": "enum", "role": "motion", "label": "Amplitude", "description": "How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright.", "default": "standard", "options": [{ "value": "gentle", "label": "Gentle" }, { "value": "standard", "label": "Standard" }, { "value": "wide", "label": "Wide" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it.", "default": "right", "options": [{ "value": "right", "label": "Right" }, { "value": "left", "label": "Left" }] },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "description": "Content colour: ink for light frames, paper for dark ones, accent rides --brand.", "default": "ink", "options": [{ "value": "ink", "label": "Ink" }, { "value": "paper", "label": "Paper" }, { "value": "accent", "label": "Accent" }] }
+  ]'
+>
+  <span class="hf-catalog-pendulum-swing__body">Hanging&nbsp;Sign</span>
+</div>
+
+<style>
+  .hf-catalog-pendulum-swing {
+    display: inline-block;
+    /* The pendulum is one rotation about the hanging pivot. The angle stays a
+       unitless factor so the timeline can ease it 1 -> 0 while amplitude and
+       direction, set once from the variables, decide the reach and the side. */
+    transform-origin: var(--hf-swing-origin, 50% 0%);
+    transform: rotate(
+      calc(
+        var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) *
+          var(--hf-swing-max, 34deg)
+      )
+    );
+  }
+  .hf-catalog-pendulum-swing__body {
+    display: inline-block;
+    padding: 22px 40px;
+    border-radius: 14px;
+    /* Tone sets a background/foreground pair so the sign stays legible whatever
+       the frame: the fill is the tone colour, the text its paired contrast. */
+    background: var(--hf-swing-bg, #18181b);
+    color: var(--hf-swing-fg, #fafafa);
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 54px;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  (function () {
+    "use strict";
+
+    var vars =
+      window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+
+    // Unrecognised overrides return to their declared defaults.
+    function pick(table, value, fallback) {
+      return Object.prototype.hasOwnProperty.call(table, value) ? value : fallback;
+    }
+
+    var pivots = {
+      "top-center": "50% 0%",
+      "top-left": "0% 0%",
+      "top-right": "100% 0%",
+    };
+    var amplitudes = { gentle: "18deg", standard: "34deg", wide: "52deg" };
+    var directions = { right: 1, left: -1 };
+    // Each tone is a fill/text pair so the sign keeps AA contrast on any frame.
+    var tones = {
+      ink: { bg: "#18181b", fg: "#fafafa" },
+      paper: { bg: "#fafafa", fg: "#18181b" },
+      accent: { bg: "var(--brand, #34d399)", fg: "#0b0b0c" },
+    };
+
+    var origin = pivots[pick(pivots, vars.pivot, "top-center")];
+    var maxAngle = amplitudes[pick(amplitudes, vars.amplitude, "standard")];
+    var dir = directions[pick(directions, vars.direction, "right")];
+    var tone = tones[pick(tones, vars.tone, "ink")];
+
+    var roots = document.querySelectorAll(".hf-catalog-pendulum-swing");
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      root.style.setProperty("--hf-swing-origin", origin);
+      root.style.setProperty("--hf-swing-max", maxAngle);
+      root.style.setProperty("--hf-swing-dir", String(dir));
+      root.style.setProperty("--hf-swing-bg", tone.bg);
+      root.style.setProperty("--hf-swing-fg", tone.fg);
+    }
+  })();
+</script>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-catalog-pendulum-swing', { '--hf-swing-angle': 1 }, { '--hf-swing-angle': 0, duration: 2.6, ease: 'elastic.out(1, 0.35)' }, startTime);
+-->
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `motion-primitive` `physics` `swing` `settle` `reveal`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

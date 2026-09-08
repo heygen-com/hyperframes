@@ -1172,6 +1172,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "pendulum-swing",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "per-word-crossfade",
       "type": "hyperframes:component"
     },

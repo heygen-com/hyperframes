@@ -3407,6 +3407,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/particle-text-dissolve.png"
   },
   {
+    "name": "pendulum-swing",
+    "type": "component",
+    "title": "Pendulum Swing",
+    "description": "Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook.",
+    "tags": [
+      "motion-primitive",
+      "physics",
+      "swing",
+      "settle",
+      "reveal"
+    ],
+    "href": "/catalog/components/pendulum-swing",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pendulum-swing.png"
+  },
+  {
     "name": "per-word-crossfade",
     "type": "component",
     "title": "Per-Word Crossfade",
