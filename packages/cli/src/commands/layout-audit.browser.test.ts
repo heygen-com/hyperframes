@@ -1544,7 +1544,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
   it("does not blame a staged halo that sits on a live node", () => {
     document.body.innerHTML = orphanDom.replace(
       '<div id="n2"></div>',
-      '<div id="n2"></div>\n        <div id="n2-halo"></div>',
+      '<div id="n2-halo"></div>\n        <div id="n2"></div>',
     );
     installGeometry(
       { ...orphanRects, "n2-halo": rect({ left: 1390, top: 390, width: 180, height: 180 }) },
