@@ -132,6 +132,8 @@ const commandLoaders = {
   publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
+  ledger: () => import("./commands/ledger.js").then((m) => m.default),
+  vendor: () => import("./commands/vendor.js").then((m) => m.default),
   check: () => import("./commands/check.js").then((m) => m.default),
   beats: () => import("./commands/beats.js").then((m) => m.default),
   "normalize-audio": () => import("./commands/normalize-audio.js").then((m) => m.default),

@@ -14,6 +14,13 @@ export default defineConfig({
         find: /^@hyperframes\/core$/,
         replacement: resolve(__dirname, "../core/src/index.ts"),
       },
+      // The ledger/vendor command tests import this node-only subpath; its
+      // "node" export condition points at an unbuilt dist in the test job,
+      // so resolve it to source like the bare entry above.
+      {
+        find: /^@hyperframes\/core\/asset-ledger$/,
+        replacement: resolve(__dirname, "../core/src/assets/ledger.ts"),
+      },
       // Same reason the tsup build aliases this specifier to source: the CLI
       // bundles the producer rather than depending on it at runtime, so its
       // dist is not built for the test job. Without the alias, vite's import
