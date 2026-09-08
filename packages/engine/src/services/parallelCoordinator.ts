@@ -374,6 +374,13 @@ async function captureFrameRange(
   return framesCaptured;
 }
 
+function logParDebug(workerId: number, message: string): void {
+  if (process.env.HF_DE_PAR_DEBUG === "1") console.log(`[par:w${workerId}] ${message}`);
+}
+
+// Inherited coordinator complexity (session lifecycle + success/error/finally
+// result shapes), re-flagged by the settle-paint edits shifting lines.
+// fallow-ignore-next-line complexity
 async function executeWorkerTask(
   task: WorkerTask,
   serverUrl: string,
@@ -412,19 +419,16 @@ async function executeWorkerTask(
       createBeforeCaptureHook(),
       workerConfig,
     );
-    if (process.env.HF_DE_PAR_DEBUG === "1") {
-      console.log(`[par:w${task.workerId}] session created`);
-    }
+    logParDebug(task.workerId, "session created");
     // Worker-0-only SwiftShader assertion — see `shouldVerifyWorkerGpu` and #955.
     if (shouldVerifyWorkerGpu(task.workerId, workerConfig)) {
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
-    if (process.env.HF_DE_PAR_DEBUG === "1") {
-      console.log(
-        `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
-      );
-    }
+    logParDebug(
+      task.workerId,
+      `init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
+    );
     framesCaptured = await captureFrameRange(
       session,
       task,
