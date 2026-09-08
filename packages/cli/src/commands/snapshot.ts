@@ -186,6 +186,7 @@ export const examples: Example[] = [
     "Pair each frame with the reference footage at the same time",
     "snapshot --at 1.5,4.3,8.1 --against ref.mp4",
   ],
+  ["Refresh the committed golden baselines", "snapshot --update-golden"],
 ];
 
 /** `--zoom-scale`: the deviceScaleFactor used for zoomed crops. Defaults to 3;
@@ -704,6 +705,12 @@ export default defineCommand({
         "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
       default: undefined,
     },
+    "update-golden": {
+      type: "boolean",
+      description:
+        "Refresh the committed golden baselines (golden/<compositionId>/<timeMs>.png) instead of capturing review snapshots; --at overrides the sample times",
+      default: false,
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -752,6 +759,32 @@ export default defineCommand({
         : String(args.describe) === "false"
           ? null
           : String(args.describe);
+
+    if (args["update-golden"] === true) {
+      try {
+        const { runGoldenGate } = await import("../golden/baseline.js");
+        const summary = await runGoldenGate(project, {
+          update: true,
+          at: atTimestamps,
+          timeoutMs: timeout,
+          autoProxy: args.proxy as boolean | undefined,
+          browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+        });
+        console.log(
+          `${c.success("◇")}  ${summary.baselines.length} golden baseline(s) written for ${c.accent(summary.compositionId)}`,
+        );
+        for (const baseline of summary.baselines) console.log(`   ${baseline}`);
+        console.log(
+          `   ${c.dim(`Commit golden/${summary.compositionId}/ and gate with hyperframes check --golden`)}`,
+        );
+      } catch (err) {
+        console.error(
+          `\n${c.error("✗")} Golden baseline update failed: ${normalizeErrorMessage(err)}`,
+        );
+        failCommand();
+      }
+      return;
+    }
 
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
     const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;
