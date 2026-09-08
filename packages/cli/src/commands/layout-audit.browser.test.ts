@@ -1437,6 +1437,110 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
   });
 
+  const guardDom = (edge: string) => `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        ${edge === "in-svg" ? "" : '<div id="edge"></div>'}
+        <svg id="connectors">
+          <defs><marker id="arrowhead"><path id="tip" d="M 0 0 L 8 4 L 0 8" /></marker></defs>
+          ${edge === "in-svg" ? '<rect id="edge" />' : ""}
+          <path id="path-input" d="M 360 480 L 1400 480" marker-end="url(#arrowhead)" />
+        </svg>
+      </div>
+    `;
+  const guardBase = {
+    root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+    n1: rect({ left: 200, top: 400, width: 160, height: 160 }),
+    connectors: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+  };
+  const opaqueHidden = { backgroundColor: "rgb(30, 40, 50)", opacity: "0" };
+  const endpointGuardCases = [
+    {
+      name: "an element inside the connector svg is never an endpoint",
+      dom: "in-svg",
+      edgeRect: rect({ left: 1400, top: 400, width: 160, height: 160 }),
+      edgeStyle: opaqueHidden,
+    },
+    {
+      name: "a box with neither paint nor text is never an endpoint",
+      dom: "outside",
+      edgeRect: rect({ left: 1400, top: 400, width: 160, height: 160 }),
+      edgeStyle: { opacity: "0" },
+    },
+    {
+      name: "a box below the area floor is never an endpoint",
+      dom: "outside",
+      edgeRect: rect({ left: 1400, top: 470, width: 16, height: 16 }),
+      edgeStyle: opaqueHidden,
+    },
+    {
+      name: "a box larger than a stage fraction is never an endpoint",
+      dom: "outside",
+      edgeRect: rect({ left: 1000, top: 200, width: 1200, height: 600 }),
+      edgeStyle: opaqueHidden,
+    },
+  ];
+  for (const guard of endpointGuardCases) {
+    it(guard.name, () => {
+      document.body.innerHTML = guardDom(guard.dom);
+      installGeometry(
+        { ...guardBase, edge: guard.edgeRect },
+        { n1: { backgroundColor: "rgb(30, 40, 50)" }, edge: guard.edgeStyle },
+      );
+      installConnectorGeometry({ e: 0, f: 0 });
+      installAuditScript();
+
+      expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+    });
+  }
+
+  it("skips a connector layer the composition has taken off screen", () => {
+    document.body.innerHTML = orphanDom;
+    installGeometry(
+      orphanRects,
+      orphanStyles({
+        n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" },
+        connectors: { display: "none" },
+      }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+  });
+
+  it("skips the arrowhead glyph living in defs", () => {
+    document.body.innerHTML = orphanDom.replace(
+      '<path id="tip" d="M 0 0 L 8 4 L 0 8" />',
+      '<path id="tip" class="connector" d="M 360 480 L 1400 480" marker-end="url(#arrowhead)" />',
+    );
+    installGeometry(
+      orphanRects,
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "connector_orphan");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ selector: "#path-input" });
+  });
+
+  it("skips a marked stub too short to read as a link", () => {
+    document.body.innerHTML = orphanDom.replace(
+      'd="M 360 480 L 1400 480"',
+      'd="M 360 480 L 400 480"',
+    );
+    installGeometry(
+      { ...orphanRects, n2: rect({ left: 400, top: 400, width: 160, height: 160 }) },
+      orphanStyles({ n2: { backgroundColor: "rgb(30, 40, 50)", opacity: "0" } }),
+    );
+    installConnectorGeometry({ e: 0, f: 0 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_orphan")).toEqual([]);
+  });
+
   it("does not blame a staged halo that sits on a live node", () => {
     document.body.innerHTML = orphanDom.replace(
       '<div id="n2"></div>',
