@@ -2238,7 +2238,12 @@ async function processUploadedFiles(
     let written = false;
     while (n < MAX_COPY_INDEX && isSafePath(projectDir, finalPath)) {
       try {
-        writeFileSync(finalPath, buffer, { flag: "wx" });
+        const fd = openSync(finalPath, "wx");
+        try {
+          writeFileSync(fd, buffer);
+        } finally {
+          closeSync(fd);
+        }
         written = true;
         break;
       } catch (error) {
