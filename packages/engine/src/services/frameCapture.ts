@@ -2788,7 +2788,17 @@ async function captureFrameCore(
     );
 
     const screenshotStart = Date.now();
-    if (settlePaint) await pageScreenshotCapture(page, options);
+    // Paint-settlement barrier (fresh non-zero screenshot workers): the seek
+    // above may have scheduled rAF/compositor work that has not painted yet.
+    // One throwaway Page.captureScreenshot lets that work land so the retained
+    // screenshot below reads settled pixels — same seek, no second
+    // prepareFrameForCapture. Screenshot mode only, enforced here and not just
+    // at the call site: interleaving an extra captureScreenshot with
+    // BeginFrame/drawElement capture risks the duplicate-compositor-tick
+    // stalls documented on discardWarmupCapture.
+    if (settlePaint && session.captureMode === "screenshot") {
+      await pageScreenshotCapture(page, options);
+    }
     let screenshotBuffer: Buffer;
 
     if (session.captureMode === "beginframe") {

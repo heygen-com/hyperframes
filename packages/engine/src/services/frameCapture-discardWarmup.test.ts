@@ -24,7 +24,7 @@ import { existsSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { captureFrameToBuffer, discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
-import { pageScreenshotCapture } from "./screenshotService.js";
+import { beginFrameCapture, pageScreenshotCapture } from "./screenshotService.js";
 
 vi.mock("./screenshotService.js");
 
@@ -73,6 +73,27 @@ describe("discardWarmupCapture", () => {
     expect(evaluate.mock.calls.filter((call) => call.length === 2)).toHaveLength(1);
     expect(pageScreenshotCapture).toHaveBeenCalledTimes(2);
     expect(result.buffer.toString()).toBe("retained");
+    cleanupSession(session);
+  });
+
+  it("ignores settlePaint in BeginFrame mode so no extra screenshot interleaves the tick", async () => {
+    // The parallelCoordinator only requests settlement for screenshot workers,
+    // but captureFrameCore must enforce the mode itself: a throwaway
+    // Page.captureScreenshot interleaved with HeadlessExperimental.beginFrame
+    // is the duplicate-compositor-tick hazard class discardWarmupCapture guards.
+    const session = makeFakeSession();
+    session.captureMode = "beginframe";
+    const evaluate = vi.fn(async () => false);
+    session.page = { evaluate } as unknown as CaptureSession["page"];
+    vi.mocked(pageScreenshotCapture).mockClear();
+    vi.mocked(beginFrameCapture).mockResolvedValue({
+      buffer: Buffer.from("beginframe"),
+      hasDamage: true,
+    });
+    const result = await captureFrameToBuffer(session, 36, 1.2, true);
+    expect(pageScreenshotCapture).not.toHaveBeenCalled();
+    expect(beginFrameCapture).toHaveBeenCalledTimes(1);
+    expect(result.buffer.toString()).toBe("beginframe");
     cleanupSession(session);
   });
 
