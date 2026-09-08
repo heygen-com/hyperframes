@@ -74,8 +74,21 @@ describe("useThumbnailLease", () => {
       resolve = accept;
     });
     const load = vi.fn(() => pending);
-    let priority: ThumbnailRequest["priority"] = "overscan";
-    function Probe() {
+    // The lease is the only place the new priority becomes observable: the scheduler
+    // keeps it per lease and exposes no getter.
+    const priorityUpdates: ThumbnailRequest["priority"][] = [];
+    const acquire = scheduler.acquire.bind(scheduler);
+    scheduler.acquire = (request, listener) => {
+      const lease = acquire(request, listener);
+      return {
+        release: () => lease.release(),
+        updatePriority: (next) => {
+          priorityUpdates.push(next);
+          lease.updatePriority(next);
+        },
+      };
+    };
+    function Probe({ priority }: { priority: ThumbnailRequest["priority"] }) {
       useThumbnailLease(
         {
           key: "same-content",
@@ -90,10 +103,10 @@ describe("useThumbnailLease", () => {
       return null;
     }
     const root = createRoot(document.createElement("div"));
-    act(() => root.render(React.createElement(Probe)));
-    priority = "interaction";
-    act(() => root.render(React.createElement(Probe)));
+    act(() => root.render(React.createElement(Probe, { priority: "overscan" })));
+    act(() => root.render(React.createElement(Probe, { priority: "interaction" })));
     expect(load).toHaveBeenCalledTimes(1);
+    expect(priorityUpdates).toEqual(["interaction"]);
 
     await act(async () => {
       resolve({ value: { kind: "image", url: "blob:done", aspect: 1 }, weight: 1 });
