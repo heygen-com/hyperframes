@@ -28,5 +28,5 @@ export {
   MenuShortcut,
   popupSurface,
 } from "./Menu";
-export type { MenuItemTone, PopupPreviewState } from "./Menu";
+export type { MenuItemTone, MenuPoint, PopupPreviewState } from "./Menu";
 export { Popover } from "./Popover";

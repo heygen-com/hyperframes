@@ -1,6 +1,5 @@
 import { memo } from "react";
-import { createPortal } from "react-dom";
-import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { ContextMenu, MenuItem } from "../../components/ui";
 
 interface TrackGapContextMenuProps {
   x: number;
@@ -30,7 +29,10 @@ interface TrackGapContextMenuProps {
  * an inapplicable action dims with a tooltip explaining why, rather than
  * vanishing into a one-item menu. Hovering an actionable row highlights the
  * gap strip(s) it would close (via onHoverAction → TimelineCanvas overlay).
- * Styling mirrors ClipContextMenu.
+ *
+ * The highlight is cleared per row rather than on the popup: leaving a row
+ * fires before entering the next one, so a move between rows still ends on the
+ * row the pointer landed on, and a move out of the menu ends on null.
  */
 export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   x,
@@ -44,21 +46,6 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   onCloseAllGaps,
   onHoverAction,
 }: TrackGapContextMenuProps) {
-  const menuRef = useContextMenuDismiss(onClose);
-
-  const menuWidth = 200;
-  const menuHeight = 68;
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
-
-  const itemClass = (enabled: boolean) =>
-    `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left ${
-      enabled
-        ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-        : "text-neutral-600 cursor-not-allowed"
-    }`;
-
   // Disabled reasons: no gap under the pointer beats the lock reason — a
   // pointer not on a gap has nothing to close regardless of movability.
   const closeGapTitle = canCloseGap
@@ -72,45 +59,34 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
       ? "A clip on this track can't be moved"
       : "No gaps on this track";
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
-      style={{ left: adjustedX, top: adjustedY }}
-      onPointerLeave={() => onHoverAction(null)}
+  return (
+    <ContextMenu
+      anchor={{ x, y }}
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      aria-label="Track gap actions"
     >
-      <button
-        type="button"
-        className={itemClass(canCloseGap)}
+      <MenuItem
+        shortcut={gapWidth == null ? undefined : `${gapWidth.toFixed(2)}s`}
         disabled={!canCloseGap}
         title={closeGapTitle}
         onPointerEnter={() => onHoverAction(canCloseGap ? "close-gap" : null)}
-        onClick={() => {
-          if (!canCloseGap) return;
-          onCloseGap();
-          onClose();
-        }}
+        onPointerLeave={() => onHoverAction(null)}
+        onClick={onCloseGap}
       >
-        <span>Close gap</span>
-        {gapWidth != null && (
-          <span className="text-neutral-500 text-[10px] ml-3">{gapWidth.toFixed(2)}s</span>
-        )}
-      </button>
-      <button
-        type="button"
-        className={itemClass(canCloseAllGaps)}
+        Close gap
+      </MenuItem>
+      <MenuItem
         disabled={!canCloseAllGaps}
         title={closeAllTitle}
         onPointerEnter={() => onHoverAction(canCloseAllGaps ? "close-all" : null)}
-        onClick={() => {
-          if (!canCloseAllGaps) return;
-          onCloseAllGaps();
-          onClose();
-        }}
+        onPointerLeave={() => onHoverAction(null)}
+        onClick={onCloseAllGaps}
       >
-        <span>Close all gaps</span>
-      </button>
-    </div>,
-    document.body,
+        Close all gaps
+      </MenuItem>
+    </ContextMenu>
   );
 });

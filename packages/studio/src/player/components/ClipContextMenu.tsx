@@ -1,9 +1,7 @@
 import { memo } from "react";
-import { createPortal } from "react-dom";
 import type { TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
-import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
-import { useMenuKeyboardNav } from "./menuKeyboardNav";
+import { ContextMenu, MenuItem, MenuSeparator } from "../../components/ui";
 
 interface ClipContextMenuProps {
   x: number;
@@ -15,6 +13,14 @@ interface ClipContextMenuProps {
   onDelete: (element: TimelineElement) => void;
 }
 
+/**
+ * Right-click actions for a timeline clip.
+ *
+ * The clip is painted on a canvas, so there is no element to hang a trigger
+ * off: Timeline captures the pointer position and this opens at it. The portal,
+ * the edge clamping, the arrow keys and the outside-press dismiss all come from
+ * the shared `ContextMenu` now.
+ */
 export const ClipContextMenu = memo(function ClipContextMenu({
   x,
   y,
@@ -24,15 +30,6 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onSplit,
   onDelete,
 }: ClipContextMenuProps) {
-  const menuRef = useContextMenuDismiss(onClose);
-  useMenuKeyboardNav(menuRef);
-
-  const menuWidth = 200;
-  const menuHeight = 80;
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
-
   const isSplittable = canSplitElement(element) && ["video", "audio", "img"].includes(element.tag);
   const canSplit =
     isSplittable && currentTime > element.start && currentTime < element.start + element.duration;
@@ -43,52 +40,27 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ? `Split at ${currentTime.toFixed(2)}s`
       : "Split (move playhead inside clip)";
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
+  return (
+    <ContextMenu
+      anchor={{ x, y }}
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
       aria-label="Clip actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
-      style={{ left: adjustedX, top: adjustedY }}
     >
       {splitLabel && (
         <>
-          <button
-            type="button"
-            role="menuitem"
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden focus-visible:bg-neutral-800 ${
-              canSplit
-                ? "text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                : "text-neutral-600 cursor-not-allowed"
-            }`}
-            disabled={!canSplit}
-            onClick={() => {
-              if (canSplit) {
-                onSplit(element, currentTime);
-                onClose();
-              }
-            }}
-          >
-            <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">S</span>
-          </button>
-          <div className="my-1 border-t border-neutral-700/60" />
+          <MenuItem shortcut="S" disabled={!canSplit} onClick={() => onSplit(element, currentTime)}>
+            {splitLabel}
+          </MenuItem>
+          <MenuSeparator />
         </>
       )}
 
-      <button
-        type="button"
-        role="menuitem"
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left"
-        onClick={() => {
-          onDelete(element);
-          onClose();
-        }}
-      >
-        <span>Delete</span>
-        <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
-      </button>
-    </div>,
-    document.body,
+      <MenuItem tone="danger" shortcut="⌫" onClick={() => onDelete(element)}>
+        Delete
+      </MenuItem>
+    </ContextMenu>
   );
 });

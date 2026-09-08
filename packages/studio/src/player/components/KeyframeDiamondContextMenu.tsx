@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { createPortal } from "react-dom";
-import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
-import { useMenuKeyboardNav } from "./menuKeyboardNav";
+import { ContextMenu, MenuItem, MenuSeparator } from "../../components/ui";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 
@@ -39,11 +37,11 @@ interface KeyframeDiamondContextMenuProps {
   onMoveToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;
 }
 
-const ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
-const DESTRUCTIVE_ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
-
+/**
+ * Right-click actions for a keyframe diamond. Opened at the stored pointer
+ * position: diamonds are painted on the timeline canvas, so there is no element
+ * to trigger from.
+ */
 export function KeyframeDiamondContextMenu({
   state,
   onClose,
@@ -53,7 +51,6 @@ export function KeyframeDiamondContextMenu({
   onCopyProperties,
   onMoveToPlayhead,
 }: KeyframeDiamondContextMenuProps) {
-  const menuRef = useContextMenuDismiss(onClose);
   // The clicked diamond's identity, built once: the menu's mutating entries
   // all act on it, and they must not disagree about which keyframe was clicked.
   const keyframe: TimelineKeyframeTarget = {
@@ -62,7 +59,6 @@ export function KeyframeDiamondContextMenu({
     propertyGroup: state.propertyGroup,
     animationId: state.animationId,
   };
-  useMenuKeyboardNav(menuRef);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const handleCopyProperties = async () => {
@@ -77,65 +73,42 @@ export function KeyframeDiamondContextMenu({
     setTimeout(onClose, 700);
   };
 
-  const menuWidth = 200;
-  // Measured off the rendered rows, so the flip-up test below stays right as
-  // optional entries drop out. The separator counts as roughly a third of a row.
-  const rows =
-    1 +
-    (onMoveToPlayhead ? 1 : 0) +
-    (onEditEase ? 1 : 0) +
-    (onCopyProperties ? 1 : 0) +
-    (onDelete ? 1 : 0);
-  const menuHeight = 10 + rows * 30 + 9;
-  const overflowY = state.y + menuHeight - window.innerHeight;
-  const adjustedX = state.x + menuWidth > window.innerWidth ? state.x - menuWidth : state.x;
-  const adjustedY = Math.max(8, overflowY > 0 ? state.y - overflowY - 8 : state.y);
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
+  return (
+    <ContextMenu
+      anchor={{ x: state.x, y: state.y }}
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
       aria-label="Keyframe actions"
-      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px] overflow-y-auto"
-      style={{ left: adjustedX, top: adjustedY, maxHeight: `calc(100vh - ${adjustedY + 8}px)` }}
     >
       {onMoveToPlayhead && (
-        <button
-          type="button"
-          role="menuitem"
-          className={ITEM_CLS}
+        <MenuItem
           onClick={() => {
             // Pass clip-% — resolveKeyframeTarget keys the cache lookup on clip-%
             // and returns the tween-% for the mutation. Passing tween-% here would
             // miss the lookup on any tween whose window is shorter than the clip.
             onMoveToPlayhead(state.element, keyframe);
-            onClose();
           }}
         >
           Move to Playhead
-        </button>
+        </MenuItem>
       )}
 
       {onEditEase && (
-        <button
-          type="button"
-          role="menuitem"
-          className={`${ITEM_CLS} justify-between`}
-          onClick={() => {
-            onEditEase(state.elementId, keyframe);
-            onClose();
-          }}
+        <MenuItem
+          shortcut={state.currentEase ?? "default"}
+          onClick={() => onEditEase(state.elementId, keyframe)}
         >
-          <span>Edit Ease…</span>
-          <span className="text-[10px] text-neutral-500">{state.currentEase ?? "default"}</span>
-        </button>
+          Edit Ease…
+        </MenuItem>
       )}
 
       {onCopyProperties && (
-        <button
-          type="button"
-          role="menuitem"
-          className={ITEM_CLS}
+        // The row reports the outcome in its own label, so it stays open past
+        // the click and closes itself once the result has been read.
+        <MenuItem
+          closeOnClick={false}
           onClick={() => {
             void handleCopyProperties();
           }}
@@ -145,42 +118,22 @@ export function KeyframeDiamondContextMenu({
             : copyStatus === "failed"
               ? "Copy failed — check permissions"
               : "Copy Properties"}
-        </button>
+        </MenuItem>
       )}
 
-      {/* Delete */}
       {onDelete && (
-        <button
-          type="button"
-          role="menuitem"
-          className={DESTRUCTIVE_ITEM_CLS}
-          onClick={() => {
-            onDelete(state.elementId, keyframe);
-            onClose();
-          }}
-        >
+        <MenuItem tone="danger" onClick={() => onDelete(state.elementId, keyframe)}>
           Delete Keyframe
-        </button>
+        </MenuItem>
       )}
 
       {/* Deleting every keyframe sat adjacent to the single delete and styled
           identically. Separate and mark it so the two cannot be misread. */}
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
+      <MenuSeparator />
 
-      <div className="my-1 border-t border-neutral-700/60" role="separator" />
-
-      <button
-        type="button"
-        role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/40 focus-visible:bg-red-950/40 outline-hidden cursor-pointer text-left"
-        onClick={() => {
-          onDeleteAll(state.element, state.animationId);
-          onClose();
-        }}
-      >
+      <MenuItem tone="danger" onClick={() => onDeleteAll(state.element, state.animationId)}>
         Delete All Keyframes
-      </button>
-    </div>,
-    document.body,
+      </MenuItem>
+    </ContextMenu>
   );
 }

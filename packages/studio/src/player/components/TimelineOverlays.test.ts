@@ -150,11 +150,13 @@ describe("TimelineOverlays context lifecycle", () => {
       currentElement: current,
       onDeleteAllKeyframes,
     });
-    const button = Array.from(document.body.querySelectorAll("button")).find(
+    // The rows are the shared Menu's, so they carry the role rather than being
+    // `<button>`s: the role is what the hotkey selector lists match on too.
+    const row = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
       (candidate) => candidate.textContent === "Delete All Keyframes",
     );
 
-    act(() => button?.click());
+    act(() => row?.click());
 
     expect(onDeleteAllKeyframes).toHaveBeenCalledExactlyOnceWith(current, "child-position");
   });

@@ -15,7 +15,9 @@
  * class these components emit is compiled against Studio's real stylesheet and
  * a class that produces no selector fails, naming itself.
  *
- * happy-dom has no layout, so nothing here asserts a pixel or a position.
+ * happy-dom has no layout, so nothing here asserts a pixel. The one placement
+ * assertion is the anchored context menu, and it works only because the anchor
+ * is a rect the test supplies rather than one the environment measures.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -299,6 +301,133 @@ describe("ContextMenu", () => {
 
     expect(activated).toEqual(["split"]);
     expect(popup()).toBeNull();
+  });
+});
+
+describe("ContextMenu anchored at a point", () => {
+  const stop = (event: React.SyntheticEvent) => event.stopPropagation();
+
+  /**
+   * The timeline's clips and keyframes are painted on a canvas, so the thing
+   * that was right-clicked has no element to trigger from: those menus store
+   * the pointer position and hand it over as `anchor`. This is the shape they
+   * all use, controlled open included, so a close from any source (an item, an
+   * outside press, Escape) unmounts through the caller.
+   */
+  function AnchoredMenu({ closes }: { closes: string[] }): React.JSX.Element {
+    const [open, setOpen] = useState(false);
+    return (
+      <div onPointerDown={stop} onMouseDown={stop}>
+        <button data-testid="opener" onClick={() => setOpen(true)}>
+          Clip
+        </button>
+        <div data-testid="overlay" aria-label="Composition canvas">
+          overlay
+        </div>
+        {open && (
+          <ContextMenu
+            anchor={{ x: 120, y: 240 }}
+            open
+            onOpenChange={(next) => {
+              if (next) return;
+              closes.push("closed");
+              setOpen(false);
+            }}
+            aria-label="Clip actions"
+          >
+            <MenuItem>Split</MenuItem>
+          </ContextMenu>
+        )}
+      </div>
+    );
+  }
+
+  /**
+   * happy-dom reports every rect as zero, so with no viewport the collision
+   * clamp pins the popup to the padding and the anchor cannot be seen in the
+   * output at all. Stubbing the document element's box is what makes the
+   * placement observable; it is not a claim about layout.
+   */
+  function withViewport(width: number, height: number): void {
+    for (const [key, value] of [
+      ["clientWidth", width],
+      ["clientHeight", height],
+    ] as const) {
+      Object.defineProperty(document.documentElement, key, { value, configurable: true });
+    }
+  }
+
+  /** Opens the menu the way the timeline does, from an element that has focus. */
+  async function openAtPoint(closes: string[]): Promise<HTMLElement> {
+    withViewport(1200, 800);
+    render(<AnchoredMenu closes={closes} />);
+    const opener = one<HTMLElement>('[data-testid="opener"]', "opener");
+    act(() => {
+      opener.focus();
+      opener.click();
+    });
+    await settle();
+    expect(popup()).not.toBeNull();
+    return opener;
+  }
+
+  it("places the popup at the anchor point rather than against a trigger", async () => {
+    await openAtPoint([]);
+
+    // Base UI offsets a context menu +2 across and -5 down from the pointer,
+    // and positions it against the viewport, which is the frame the stored
+    // point is in.
+    const positioner = popup()!.parentElement!;
+    expect(positioner.style.transform).toBe("translate(122px, 235px)");
+    expect(positioner.style.position).toBe("fixed");
+    // No trigger was rendered, so nothing but the anchor could have placed it.
+    expect(document.querySelector("[data-popup-open]")).toBeNull();
+  });
+
+  it("closes on an outside press that a parent stops in the bubble phase", async () => {
+    const closes: string[] = [];
+    const opener = await openAtPoint(closes);
+
+    // Base UI holds off outside-press dismissal for 500 ms on a context menu it
+    // did not itself open from a `contextmenu` event, so the press has to come
+    // after that window or it lands in the grace period and does nothing.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 520));
+    });
+
+    // U3's finding on the trigger-less path: the canvas overlay swallows
+    // bubble-phase presses, and Base UI's dismissal listens in capture.
+    let sawBubblePress = false;
+    const witness = () => {
+      sawBubblePress = true;
+    };
+    document.addEventListener("pointerdown", witness);
+    press(one('[data-testid="overlay"]', "overlay"));
+    document.removeEventListener("pointerdown", witness);
+    await settle();
+
+    expect(sawBubblePress).toBe(false);
+    expect(closes).not.toHaveLength(0);
+    expect(popup()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("restores focus to the element that had it when Escape closes the menu", async () => {
+    const closes: string[] = [];
+    const opener = await openAtPoint(closes);
+
+    // Focus is inside the popup while it is open, so Escape has somewhere to
+    // return from. Without a trigger there is no element Base UI could send it
+    // to except the one that had it, which is what the deleted
+    // `menuKeyboardNav` restored by hand.
+    expect(popup()!.contains(document.activeElement)).toBe(true);
+
+    key("Escape");
+    await settle();
+
+    expect(closes).toEqual(["closed"]);
+    expect(popup()).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
 });
 

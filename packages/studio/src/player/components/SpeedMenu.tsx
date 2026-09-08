@@ -1,7 +1,6 @@
-import { useState, useCallback, memo } from "react";
+import { forwardRef, memo, type ComponentPropsWithoutRef } from "react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
-import { Tooltip } from "../../components/ui";
-import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { Menu, MenuRadioGroup, MenuRadioItem, Tooltip } from "../../components/ui";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
 
@@ -11,62 +10,65 @@ interface SpeedMenuProps {
   disabled: boolean;
 }
 
+/**
+ * The trigger is a component rather than a bare element because two Base UI
+ * parts want to render it: the Menu's trigger and the Tooltip's. Each merges
+ * its props into the element it is given, so the outer one (the Menu) hands
+ * this component its props and ref, and this passes them through the Tooltip
+ * to the same button. Nesting the two elements directly would leave the Menu
+ * cloning a `Tooltip`, which drops every prop on the floor.
+ */
+const SpeedTrigger = forwardRef<HTMLButtonElement, ComponentPropsWithoutRef<"button">>(
+  function SpeedTrigger({ children, ...props }, ref) {
+    return (
+      <Tooltip label="Playback speed">
+        <button
+          ref={ref}
+          type="button"
+          aria-label="Playback speed"
+          className="h-7 w-8 rounded-md font-mono text-step-10 tabular-nums text-text-3 transition-colors ease-out-quint duration-hover hover:text-text-0 disabled:opacity-30"
+          {...props}
+        >
+          {children}
+        </button>
+      </Tooltip>
+    );
+  },
+);
+
 export const SpeedMenu = memo(function SpeedMenu({
   playbackRate,
   setPlaybackRate,
   disabled,
 }: SpeedMenuProps) {
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const closeMenu = useCallback(() => setShowSpeedMenu(false), []);
-  // Ref on the container (trigger + menu) so trigger clicks toggle instead of
-  // close-then-reopen; Escape also dismisses.
-  const speedMenuContainerRef = useContextMenuDismiss(closeMenu);
-
   return (
-    <div ref={speedMenuContainerRef} className="relative shrink-0">
-      <Tooltip label="Playback speed">
-        <button
-          type="button"
-          onClick={() => setShowSpeedMenu((v) => !v)}
-          disabled={disabled}
-          aria-haspopup="menu"
-          aria-expanded={showSpeedMenu}
-          aria-label="Playback speed"
-          className="h-7 w-8 rounded-md font-mono text-[10px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-200 disabled:opacity-30"
+    <div className="shrink-0">
+      <Menu
+        side="top"
+        align="end"
+        aria-label="Playback speed options"
+        className="min-w-14"
+        trigger={
+          <SpeedTrigger disabled={disabled}>
+            {playbackRate === 1 ? "1x" : `${playbackRate}x`}
+          </SpeedTrigger>
+        }
+      >
+        <MenuRadioGroup
+          value={playbackRate}
+          onValueChange={(rate) => {
+            if (typeof rate !== "number") return;
+            trackStudioEvent("playback", { action: "speed_change", rate });
+            setPlaybackRate(rate);
+          }}
         >
-          {playbackRate === 1 ? "1x" : `${playbackRate}x`}
-        </button>
-      </Tooltip>
-      {showSpeedMenu && (
-        <div
-          role="menu"
-          aria-label="Playback speed options"
-          className="absolute bottom-full right-0 mb-1.5 rounded-lg shadow-xl z-50 min-w-[56px] overflow-hidden"
-          style={{ background: "#161618", border: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          {SPEED_OPTIONS.map((rate) => {
-            const isCurrent = rate === playbackRate;
-            return (
-              <button
-                key={rate}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isCurrent}
-                onClick={() => {
-                  trackStudioEvent("playback", { action: "speed_change", rate });
-                  setPlaybackRate(rate);
-                  setShowSpeedMenu(false);
-                }}
-                className={`block w-full px-3 py-1.5 text-[11px] text-left font-mono tabular-nums transition-colors outline-hidden focus-visible:bg-white/4 ${
-                  isCurrent ? "text-neutral-50 bg-white/6" : "text-neutral-500 hover:bg-white/4"
-                }`}
-              >
-                {rate}x
-              </button>
-            );
-          })}
-        </div>
-      )}
+          {SPEED_OPTIONS.map((rate) => (
+            <MenuRadioItem key={rate} value={rate} className="font-mono tabular-nums">
+              {rate}x
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+      </Menu>
     </div>
   );
 });

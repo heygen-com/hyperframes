@@ -1,5 +1,5 @@
 {
-  "total": 452,
+  "total": 450,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -73,7 +73,6 @@
     "packages/studio/src/player/components/PlayerControls.tsx": 1,
     "packages/studio/src/player/components/PlayheadIndicator.tsx": 1,
     "packages/studio/src/player/components/ShortcutsPanel.tsx": 7,
-    "packages/studio/src/player/components/SpeedMenu.tsx": 2,
     "packages/studio/src/player/components/TimelineAutomationLane.tsx": 4,
     "packages/studio/src/player/components/TimelineCanvas.tsx": 15,
     "packages/studio/src/player/components/TimelineClip.tsx": 2,

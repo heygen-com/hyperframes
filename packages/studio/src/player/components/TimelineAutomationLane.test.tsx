@@ -1490,8 +1490,10 @@ describe("TimelineAutomationLane selection menu", () => {
   it("inserting a swell replaces the range and commits once", () => {
     const { svg, props } = mount(ramp, { rangeSelection: { t0: 1, t1: 3, v0: 0, v1: 1 } });
     fire(svg, "contextmenu", at(2, 0.5));
+    // Base UI renders each row as a `<div role="menuitem">`, so the role is the
+    // handle now — the same one the hotkey selector lists match on.
     const swell = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(".hf-automation-menu button"),
+      document.querySelectorAll<HTMLElement>('.hf-automation-menu [role="menuitem"]'),
     ).find((b) => b.textContent === "Swell");
     expect(swell).toBeTruthy();
     act(() => swell?.click());

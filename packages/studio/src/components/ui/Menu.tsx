@@ -31,6 +31,7 @@
 
 import { ContextMenu as BaseContextMenu } from "@base-ui/react/context-menu";
 import { Menu as BaseMenu } from "@base-ui/react/menu";
+import { useMemo } from "react";
 import type { ComponentPropsWithoutRef, ElementType, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -158,35 +159,90 @@ export function Menu({
   );
 }
 
-interface ContextMenuProps
+/**
+ * A viewport point to open at, for a menu that has no trigger element.
+ *
+ * Studio's timeline menus are opened by a canvas handler, not by an element:
+ * the canvas paints its clips, so the thing that was right-clicked has no DOM
+ * node to hang a trigger off. They store the pointer position and render the
+ * menu at it. Base UI's positioner takes a `VirtualElement` for exactly this,
+ * which is also how its own ContextMenu anchors to the pointer.
+ */
+export interface MenuPoint {
+  x: number;
+  y: number;
+}
+
+interface ContextMenuBaseProps
   extends PositionedProps, Omit<ComponentPropsWithoutRef<typeof BaseContextMenu.Root>, "children"> {
-  /**
-   * The right-clickable area, as the caller's own element. Its children are
-   * kept: the trigger renders that element rather than wrapping it.
-   */
-  trigger: ReactElement;
   children: ReactNode;
 }
+
+/**
+ * A trigger and an anchor are the two ways to say where the menu opens, and a
+ * caller has exactly one of them: an element to right-click, or a point it
+ * already captured. A union rather than two optionals, so "neither" and "both"
+ * do not typecheck.
+ */
+type ContextMenuProps = Omit<ContextMenuBaseProps, "side" | "align" | "sideOffset"> &
+  (
+    | {
+        /**
+         * The right-clickable area, as the caller's own element. Its children are
+         * kept: the trigger renders that element rather than wrapping it.
+         */
+        trigger: ReactElement;
+        anchor?: never;
+      }
+    | {
+        /** Viewport point to open at. Pair it with a controlled `open`. */
+        anchor: MenuPoint;
+        trigger?: never;
+      }
+  );
 
 /**
  * A menu opened by right click or long press, at the pointer. `side` and
  * `align` are not offered: the anchor is the pointer, so there is nothing to
  * sit beside.
+ *
+ * With `anchor` instead of `trigger` the menu opens wherever the caller says,
+ * and the caller owns `open`. Collision avoidance still applies, so a point
+ * near the viewport edge flips the popup rather than clipping it, and the
+ * hand-rolled edge clamping every timeline menu used to carry is gone.
  */
 export function ContextMenu({
   trigger,
+  anchor,
   children,
   container,
   className,
   "aria-label": ariaLabel,
   "data-preview-state": previewState,
   ...root
-}: Omit<ContextMenuProps, "side" | "align" | "sideOffset">) {
+}: ContextMenuProps) {
+  // A fresh object each render would make the positioner re-measure on every
+  // render, so the virtual element is rebuilt only when the point moves. The
+  // coordinates are read out first because the point itself is usually a fresh
+  // object literal, which would defeat the memo.
+  const anchorX = anchor?.x;
+  const anchorY = anchor?.y;
+  const virtualAnchor = useMemo(
+    () =>
+      anchorX === undefined || anchorY === undefined
+        ? undefined
+        : { getBoundingClientRect: () => new DOMRect(anchorX, anchorY, 0, 0) },
+    [anchorX, anchorY],
+  );
   return (
     <BaseContextMenu.Root {...root}>
-      <BaseContextMenu.Trigger render={trigger} />
+      {trigger ? <BaseContextMenu.Trigger render={trigger} /> : null}
       <BaseContextMenu.Portal container={container}>
-        <BaseContextMenu.Positioner collisionPadding={VIEWPORT_MARGIN} className={POPUP_LAYER}>
+        <BaseContextMenu.Positioner
+          anchor={virtualAnchor}
+          collisionPadding={VIEWPORT_MARGIN}
+          className={POPUP_LAYER}
+        >
           <BaseContextMenu.Popup
             aria-label={ariaLabel}
             data-preview-state={previewState}

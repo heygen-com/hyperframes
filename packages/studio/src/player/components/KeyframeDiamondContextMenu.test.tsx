@@ -27,6 +27,13 @@ const state: KeyframeDiamondContextMenuState = {
   animationId: "box-to-1-position",
 };
 
+/**
+ * The rows are Base UI's, so they are `<div role="menuitem">`, not `<button>`.
+ * The role is what both hotkey selector lists match on (KTD13), so it is the
+ * right handle for these tests too.
+ */
+const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+
 function clickMenuItem(label: string, props: Partial<Record<string, unknown>>) {
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -42,10 +49,8 @@ function clickMenuItem(label: string, props: Partial<Record<string, unknown>>) {
       />,
     ),
   );
-  const button = Array.from(document.body.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === label,
-  );
-  act(() => button?.click());
+  const item = menuItems().find((candidate) => candidate.textContent === label);
+  act(() => item?.click());
   act(() => root.unmount());
   host.remove();
 }
@@ -83,9 +88,7 @@ describe("KeyframeDiamondContextMenu", () => {
       ),
     );
 
-    const labels = Array.from(document.body.querySelectorAll("button")).map(
-      (button) => button.textContent,
-    );
+    const labels = menuItems().map((item) => item.textContent);
     expect(labels).toEqual(["Delete All Keyframes"]);
 
     act(() => root.unmount());
