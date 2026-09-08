@@ -41,6 +41,14 @@ import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback"
 // into one another's undo entry (module-local counter, not Date.now()).
 let groupDragCommitCounter = 0;
 
+/**
+ * Module scope, not the hook's: the React Compiler cannot lower `++` on a module
+ * binding and declines the hook that holds it.
+ */
+function nextGroupDragCoalesceKey(): string {
+  return `group-drag:${++groupDragCommitCounter}`;
+}
+
 function firstPreflightFailure(
   results: PromiseSettledResult<void>[],
   updates: DomEditGroupPathOffsetCommit[],
@@ -182,7 +190,7 @@ export function useGsapAwareEditing({
       // a single undo entry by forcing a shared coalesceKey (infinite window, so
       // it survives the N sequential server round-trips) onto each commit —
       // otherwise each member records its own entry and it takes N presses to undo.
-      const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
+      const coalesceKey = nextGroupDragCoalesceKey();
       // Members are written one at a time, and a write that re-renders the preview
       // re-runs the whole script — which still holds the OLD position of every
       // member not yet written. Those members snap back to where they started and
@@ -255,7 +263,10 @@ export function useGsapAwareEditing({
         );
         throw preflightFailure.error;
       }
-      for (const [index, { selection, next }] of updates.entries()) {
+      // Destructured inside the loop, not in its head: the React Compiler cannot
+      // lower a pattern in a `for..of` init and declines the whole hook.
+      for (const [index, update] of updates.entries()) {
+        const { selection, next } = update;
         renderOnCommit = index === updates.length - 1;
         try {
           const outcome = await tryGsapDragIntercept(

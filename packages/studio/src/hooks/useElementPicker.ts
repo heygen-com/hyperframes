@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
 import { resolveSourceFile, applyPatch } from "../utils/sourcePatcher";
 import {
@@ -146,9 +146,16 @@ export function useElementPicker(
     return () => window.removeEventListener("message", handleMessage);
   });
 
-  // Ref for options to avoid stale closures in debounced callback
+  // Ref for options to avoid stale closures in debounced callback.
+  //
+  // Written after commit, not during render: a ref write in the hook body is a
+  // render side effect and the React Compiler declines the whole hook when it
+  // sees one. Every reader is a sync callback driven by a user edit, which
+  // cannot run before the render that produced `options` has committed.
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+  useEffect(() => {
+    optionsRef.current = options;
+  });
 
   // Sync immediately (not debounced) — save on every change for reliability
   const syncToSource = useCallback(
@@ -286,9 +293,14 @@ export function useElementPicker(
     [pickedElement, getActiveIframe, syncToSource],
   );
 
-  // Ref-like object that always points to the active iframe (override or primary)
+  // Ref-like object that always points to the active iframe (override or primary).
+  // Refreshed after commit rather than during render, both because a ref write in
+  // the hook body makes the React Compiler decline the hook and because the
+  // iframe element this reads only exists once React has attached it.
   const activeIframeRef = useRef<HTMLIFrameElement | null>(null);
-  activeIframeRef.current = getActiveIframe();
+  useEffect(() => {
+    activeIframeRef.current = getActiveIframe();
+  });
 
   return {
     isPickMode,

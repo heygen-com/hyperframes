@@ -75,7 +75,12 @@ export function useGsapAnimationsForElement(
   sourceFile: string,
   target: GsapElementTarget | null,
   version: number,
-  iframeRef?: React.RefObject<HTMLIFrameElement | null>,
+  // The element, not a ref to it. A ref read during render is a render side
+  // effect: the React Compiler declines any hook that does it, and the two memos
+  // below read the live preview DOM through this. The caller already holds the
+  // same element as state, and passing it makes it a real dependency, so a
+  // replaced iframe re-resolves instead of waiting for the next `version` bump.
+  previewIframe?: HTMLIFrameElement | null,
 ): {
   animations: GsapAnimation[];
   multipleTimelines: boolean;
@@ -151,14 +156,22 @@ export function useGsapAnimationsForElement(
 
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
+  // The preview document, tagged with the composition generation that produced
+  // it. A soft reload swaps the document inside the SAME iframe element, so the
+  // element alone cannot say the DOM changed; `version` can. Carrying it in the
+  // value makes it a real input to the resolution below instead of an extra name
+  // on that dependency list, which is what needed suppressing before.
+  const previewDocument = useMemo(
+    () => ({ generation: version, doc: previewIframe?.contentDocument ?? null }),
+    [previewIframe, version],
+  );
   const rawAnimations = useMemo(() => {
     if (!targetId && !targetSelector) return [];
     // Resolve the live element so class / descendant tweens (e.g.
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
-    // just the one whose exact selector equals the tween's. `version` re-runs
-    // this after composition reloads.
+    // just the one whose exact selector equals the tween's.
     let element: Element | null = null;
-    const doc = iframeRef?.current?.contentDocument;
+    const doc = previewDocument.doc;
     if (doc) {
       try {
         element =
@@ -173,12 +186,11 @@ export function useGsapAnimationsForElement(
       { id: targetId, selector: targetSelector },
       element,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, targetId, targetSelector, version, iframeRef]);
+  }, [allAnimations, targetId, targetSelector, previewDocument]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
-    const iframe = iframeRef?.current;
+    const iframe = previewIframe ?? null;
     let result = rawAnimations;
 
     // Enrich animations with unresolved keyframes from runtime
@@ -237,7 +249,7 @@ export function useGsapAnimationsForElement(
     }
 
     return result;
-  }, [rawAnimations, allAnimations, iframeRef, targetId]);
+  }, [rawAnimations, allAnimations, previewIframe, targetId]);
 
   // Populate keyframe cache for the selected element.
   // Key format must match timeline element keys: "sourceFile#domId".
@@ -327,7 +339,10 @@ export function useGsapAnimationsForElement(
         draft.keyframeCache.set(key, merged);
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `domClipChildrenKey` is a trigger, not a value this body reads: the store
+    // is read imperatively above, and the key is what says the sub-comp children
+    // changed. It was suppressed to stand; a suppression is a bail-out the React
+    // Compiler counts, and it cost this hook every memo in it.
   }, [elementId, sourceFile, animations, domClipChildrenKey]);
 
   return { animations, multipleTimelines, unsupportedTimelinePattern };
@@ -345,11 +360,33 @@ export function useGsapCacheVersion() {
  * requiring a selection.
  */
 
+/**
+ * Run `attempt` now, then every `everyMs` until it reports done or `maxTries`
+ * are spent. Returns the stop function an effect can hand back as its cleanup.
+ *
+ * Module scope, not the effect body: the retry counter has to be incremented
+ * from inside the interval callback, and the React Compiler cannot lower `++` on
+ * a variable a lambda captures. It declines the whole hook when it finds one.
+ */
+function pollUntilDone(attempt: () => boolean, everyMs: number, maxTries: number): () => void {
+  if (attempt()) return () => {};
+  let tries = 0;
+  const interval = setInterval(() => {
+    tries++;
+    if (attempt() || tries >= maxTries) clearInterval(interval);
+  }, everyMs);
+  return () => clearInterval(interval);
+}
+
 export function usePopulateKeyframeCacheForFile(
   projectId: string | null,
   sourceFile: string,
   version: number,
-  iframeRef?: React.RefObject<HTMLIFrameElement | null>,
+  // The element, not a ref to it: a parameter ref's `.current` can never be a
+  // true dependency, and the omission had to be suppressed to stand. A
+  // suppression is a bail-out the React Compiler counts, and it cost this hook
+  // every memo in it.
+  previewIframe?: HTMLIFrameElement | null,
 ): void {
   const elementCount = usePlayerStore((s) => s.elements.length);
   // Every sub-composition file the timeline shows rows for. The cache is loaded
@@ -387,7 +424,7 @@ export function usePopulateKeyframeCacheForFile(
     const files = Array.from(
       new Set([sourceFile, ...(compositionSrcKey ? compositionSrcKey.split("|") : [])]),
     );
-    const doc = iframeRef?.current?.contentDocument;
+    const doc = previewIframe?.contentDocument;
     // Everything the previous scan cached for a file this one no longer covers
     // (the composition just switched away from) has no owner left to clear it.
     pruneKeyframeCacheToFiles(files);
@@ -396,11 +433,18 @@ export function usePopulateKeyframeCacheForFile(
     });
     // elementCount is in the deps because new timeline elements (e.g. after a
     // sub-composition expand) need their keyframe cache populated immediately;
-    // without it the effect won't re-run when elements appear/disappear.
-    // iframeRef is read for DOM selector resolution but intentionally not a dep
-    // (it's a stable ref; the separate runtime-scan effect owns iframe timing).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, sourceFile, version, elementCount, domClipChildrenKey, compositionSrcKey]);
+    // without it the effect won't re-run when elements appear/disappear. A
+    // replaced iframe re-enters here and leaves on the fetch-key guard above,
+    // which is what it did before it was a dependency at all.
+  }, [
+    projectId,
+    sourceFile,
+    version,
+    elementCount,
+    domClipChildrenKey,
+    compositionSrcKey,
+    previewIframe,
+  ]);
 
   // Separate effect for runtime keyframe discovery — polls until the iframe
   // has loaded GSAP timelines, independent of the AST fetch lifecycle.
@@ -408,14 +452,11 @@ export function usePopulateKeyframeCacheForFile(
     if (!projectId) return;
     const sf = sourceFile;
 
-    let attempts = 0;
-    const maxAttempts = 10;
-
     // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
       const iframe =
-        iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
+        previewIframe ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
       if (!iframe) return false;
       // Clip dims per element so the scan converts tween-relative keyframes to
       // clip-relative (matching the static path) instead of timeline-relative.
@@ -451,13 +492,6 @@ export function usePopulateKeyframeCacheForFile(
       return true;
     };
 
-    if (tryRuntimeScan()) return;
-
-    const interval = setInterval(() => {
-      attempts++;
-      if (tryRuntimeScan() || attempts >= maxAttempts) clearInterval(interval);
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [projectId, sourceFile, version, iframeRef]);
+    return pollUntilDone(tryRuntimeScan, 500, 10);
+  }, [projectId, sourceFile, version, previewIframe]);
 }

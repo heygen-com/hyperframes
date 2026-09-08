@@ -72,8 +72,15 @@ export function useGsapPropertyDebounce(
   // re-render — so a playhead tick mid-slider-drag would flush + record an undo
   // entry per render. Hold the latest value in a ref instead so every callback
   // reads current deps without re-subscribing on identity churn.
+  //
+  // The write is in an effect, not in the body: a ref write during render is a
+  // render side effect and the React Compiler declines the whole hook when it
+  // sees one. Every reader below is a debounce timer or an unmount flush, and
+  // neither can run before the render that produced `sdk` has committed.
   const sdkRef = useRef(sdk);
-  sdkRef.current = sdk;
+  useEffect(() => {
+    sdkRef.current = sdk;
+  });
 
   // fallow-ignore-next-line complexity
   const flushPendingPropertyEdit = useCallback(async () => {

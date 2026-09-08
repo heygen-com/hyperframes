@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
@@ -115,8 +115,14 @@ export function useGsapSelectionHandlers({
   selectedGsapAnimations: GsapAnimation[];
   showToast: (message: string, tone?: "error" | "info") => void;
 }) {
+  // After commit, not during render: a ref write in the hook body is a render
+  // side effect and the React Compiler declines the whole hook when it sees one.
+  // The two readers are both edit handlers, which cannot run before the render
+  // that changed the selection has committed.
   const lastSelectionRef = useRef<DomEditSelection | null>(null);
-  if (domEditSelection) lastSelectionRef.current = domEditSelection;
+  useEffect(() => {
+    if (domEditSelection) lastSelectionRef.current = domEditSelection;
+  });
 
   // `undefined` means the caller passed no override and accepts the current
   // selection. An explicit `null` means the caller RESOLVED a selection for the

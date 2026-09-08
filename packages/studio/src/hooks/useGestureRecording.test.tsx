@@ -53,6 +53,13 @@ describe("useGestureRecording", () => {
     nowMs = 30;
     act(() => animationFrames.shift()?.(30));
 
+    // The live overlay reads through samplesRef while the gesture is still
+    // running, so the alias has to point at the array the frames append to.
+    expect(recording!.samplesRef.current).toEqual([
+      { time: 0, properties: { x: 10, y: 0 } },
+      { time: 1 / 30, properties: { x: 40, y: 0 } },
+    ]);
+
     let samples: GestureSample[] = [];
     act(() => {
       samples = recording?.stopRecording() ?? [];

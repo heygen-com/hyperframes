@@ -3,7 +3,7 @@
  * Extracted from App.tsx to keep file sizes under the 600-line limit.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useGestureRecording } from "./useGestureRecording";
+import { useGestureRecording, type GestureSample } from "./useGestureRecording";
 import { simplifyGestureSamples } from "../utils/rdpSimplify";
 import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
 import { smoothGestureKeyframes } from "../utils/gestureSmoother";
@@ -82,6 +82,232 @@ function reloadOnlyLast(index: number, count: number): Partial<CommitMutationOpt
 
 let gestureRecordingCommitCounter = 0;
 
+/**
+ * A fresh coalesce key per commit. Module scope, not the hook's: the React
+ * Compiler cannot lower `++` on a module binding and declines the hook that
+ * holds it.
+ */
+function nextGestureCoalesceKey(): string {
+  return `gesture-recording:${++gestureRecordingCommitCounter}`;
+}
+
+interface GestureCommitRun {
+  frozenSamples: GestureSample[];
+  coalesceOptions: Partial<CommitMutationOptions>;
+  liveSession: GestureSessionRef;
+  selection: DomEditSelection | null;
+  recStart: number;
+  showToast: (message: string, tone?: "error" | "info") => void;
+}
+
+/**
+ * The commit itself, in module scope rather than in the hook that triggers it.
+ *
+ * The React Compiler cannot reorder across a `finally`, so a `try`/`finally`
+ * anywhere inside a hook (including a callback the hook creates) makes it
+ * decline the whole hook and silently drop every memo in it. Out here the same
+ * control flow is just a function. `after` IS the `finally` clause: the early
+ * returns below rely on it running, so it stays inside this function rather
+ * than after the call.
+ */
+// fallow-ignore-next-line complexity
+async function commitRecordedGesture(run: GestureCommitRun, after: () => void): Promise<void> {
+  const { liveSession, selection: sel, frozenSamples, coalesceOptions, recStart, showToast } = run;
+  try {
+    if (!sel) {
+      if (frozenSamples.length > 2) {
+        showToast("Selection lost during recording", "error");
+      }
+      return;
+    }
+    const duration =
+      frozenSamples.length > 0 ? (frozenSamples[frozenSamples.length - 1]?.time ?? 0) : 0;
+
+    if (frozenSamples.length <= 2) {
+      showToast("No gesture detected — move the pointer while recording", "error");
+      return;
+    }
+    if (duration <= 0) {
+      showToast("Recording too short — try again", "error");
+      return;
+    }
+
+    // Per-property epsilon: small-range properties (opacity 0–1, scale ~0.01–10)
+    // need a much tighter tolerance than positional properties (x/y in px).
+    // fallow-ignore-next-line complexity
+    const simplified = simplifyGestureSamples(frozenSamples, duration, (key) => {
+      if (key === "opacity") return 0.01;
+      if (key === "scale" || key === "scaleX" || key === "scaleY") return 0.01;
+      return 5;
+    });
+    const sortedPcts = Array.from(simplified.keys()).sort((a, b) => a - b);
+
+    // Ensure a 0% keyframe exists with the element's start-of-recording position
+    if (!simplified.has(0) && frozenSamples.length > 0) {
+      simplified.set(0, frozenSamples[0]!.properties);
+      if (!sortedPcts.includes(0)) sortedPcts.unshift(0);
+    }
+
+    // Two different jobs, two different selectors. `selector` is the string an
+    // ALREADY-AUTHORED tween is matched against (and retargeted with, so a
+    // tween aimed at a whole group stays aimed at it). `writeSelector` is what
+    // a NEW tween is authored with: the bare class the id-less case yields here
+    // would record the gesture onto every sibling sharing it.
+    const selector = sel.id ? idSelector(sel.id) : sel.selector;
+    if (!selector) {
+      showToast("Cannot save — element has no selector", "error");
+      return;
+    }
+    // A recorded gesture becomes a NEW tween, so its target must address one
+    // element; the selection's own selector would record the motion onto
+    // every sibling sharing its class (see writeTargetSelector).
+    const writeSelector = writeTargetSelector(sel);
+    if (!writeSelector) {
+      showToast("Cannot save: element has no unique selector", "error");
+      return;
+    }
+    if (liveSession.commitMutation) {
+      const rawKeyframes = sortedPcts.map((pct) => ({
+        percentage: pct,
+        properties: simplified.get(pct) as Record<string, number | string>,
+      }));
+      const smoothed = smoothGestureKeyframes(rawKeyframes, 3);
+      const keyframes = fitEasesFromVelocity(smoothed, frozenSamples, duration);
+      const hasPositionProps = keyframes.some((kf) =>
+        Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
+      );
+      const allAnims = liveSession.selectedGsapAnimations ?? [];
+      const existingPositionTween = hasPositionProps
+        ? allAnims.find(
+            (a) =>
+              a.propertyGroup === "position" &&
+              tweenTargetsElement(a.targetSelector, selector, sel.element),
+          )
+        : undefined;
+      if (existingPositionTween) {
+        if (isInstantHold(existingPositionTween)) {
+          // An instant hold is not a tween to merge into — replace it with the
+          // recorded motion (which already starts from the held position).
+          await liveSession.commitMutation(
+            {
+              type: "replace-with-keyframes",
+              animationId: existingPositionTween.id,
+              targetSelector: selector,
+              position: roundTo3(recStart),
+              duration: roundTo3(duration),
+              keyframes,
+            },
+            { label: "Gesture recording (replace set)", softReload: true },
+          );
+        } else {
+          const tweenStart = existingPositionTween.resolvedStart ?? 0;
+          const tweenDur = existingPositionTween.duration ?? duration;
+          const tweenEnd = tweenStart + tweenDur;
+          const recEnd = recStart + duration;
+
+          // Only merge if the recording overlaps the existing tween's time range.
+          // No overlap → fall through to add-with-keyframes (creates a separate tween).
+          const overlaps = recStart < tweenEnd + 0.05 && recEnd > tweenStart - 0.05;
+
+          if (overlaps) {
+            const existingKfs = existingPositionTween.keyframes?.keyframes ?? [];
+            const rangeStartPct =
+              tweenDur > 0 ? Math.max(0, ((recStart - tweenStart) / tweenDur) * 100) : 0;
+            const rangeEndPct =
+              tweenDur > 0 ? Math.min(100, ((recEnd - tweenStart) / tweenDur) * 100) : 100;
+
+            const preserved = existingKfs
+              .filter(
+                (kf) => kf.percentage < rangeStartPct - 0.5 || kf.percentage > rangeEndPct + 0.5,
+              )
+              .map((kf) => ({
+                percentage: kf.percentage,
+                properties: kf.properties,
+                ...(kf.ease ? { ease: kf.ease } : {}),
+              }));
+
+            const mapped = keyframes.map((kf) => ({
+              percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
+              properties: kf.properties,
+              ...(kf.ease ? { ease: kf.ease } : {}),
+            }));
+
+            const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
+
+            await liveSession.commitMutation(
+              {
+                type: "replace-with-keyframes",
+                animationId: existingPositionTween.id,
+                targetSelector: selector,
+                position:
+                  typeof existingPositionTween.position === "number"
+                    ? existingPositionTween.position
+                    : tweenStart,
+                duration: tweenDur,
+                keyframes: merged,
+              },
+              { label: "Gesture recording (merge)", softReload: true },
+            );
+          } else {
+            // Emit one tween per property group so a mixed-prop gesture (e.g.
+            // x/y + opacity) doesn't collapse into an untagged legacy mixed
+            // tween that the position-only drag intercept can't edit.
+            const keyframeGroups = partitionKeyframesByGroup(keyframes);
+            for (const [index, groupKfs] of keyframeGroups.entries()) {
+              await liveSession.commitMutation(
+                {
+                  type: "add-with-keyframes",
+                  targetSelector: writeSelector,
+                  position: roundTo3(recStart),
+                  duration: roundTo3(duration),
+                  keyframes: groupKfs,
+                  // Linear fallback: the velocity fitter assigns a per-keyframe
+                  // ease to non-constant segments and intentionally leaves
+                  // constant-speed segments undefined → they must stay linear,
+                  // not inherit a sigmoid.
+                  easeEach: "none",
+                },
+                {
+                  label: "Gesture recording (new range)",
+                  ...coalesceOptions,
+                  ...reloadOnlyLast(index, keyframeGroups.length),
+                },
+              );
+            }
+          }
+        }
+      } else {
+        // No existing tween — same per-group split as the new-range branch above.
+        const keyframeGroups = partitionKeyframesByGroup(keyframes);
+        for (const [index, groupKfs] of keyframeGroups.entries()) {
+          await liveSession.commitMutation(
+            {
+              type: "add-with-keyframes",
+              targetSelector: writeSelector,
+              position: roundTo3(recStart),
+              duration: roundTo3(duration),
+              keyframes: groupKfs,
+              // Linear fallback (see above) — constant-speed segments stay linear.
+              easeEach: "none",
+            },
+            {
+              label: "Gesture recording",
+              ...coalesceOptions,
+              ...reloadOnlyLast(index, keyframeGroups.length),
+            },
+          );
+        }
+      }
+    }
+    showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+  } catch (err) {
+    console.error("[GR:error]", err);
+    showToast(`Gesture commit failed: ${err}`, "error");
+  } finally {
+    after();
+  }
+}
+
 interface UseGestureCommitParams {
   domEditSessionRef: React.MutableRefObject<GestureSessionRef>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -115,7 +341,6 @@ export function useGestureCommit({
   // Unmount: clear auto-stop interval
   useEffect(() => () => clearInterval(recordingAutoStopRef.current), []);
 
-  // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
     clearInterval(recordingAutoStopRef.current);
     if (commitInFlightRef.current) {
@@ -123,7 +348,7 @@ export function useGestureCommit({
     }
     commitInFlightRef.current = true;
     const coalesceOptions = {
-      coalesceKey: `gesture-recording:${++gestureRecordingCommitCounter}`,
+      coalesceKey: nextGestureCoalesceKey(),
       coalesceMs: Number.POSITIVE_INFINITY,
     };
     gestureStateRef.current = "idle";
@@ -131,205 +356,22 @@ export function useGestureCommit({
     const frozenSamples = gestureRecording.stopRecording();
     const store = usePlayerStore.getState();
     store.setIsPlaying(false);
-    try {
-      const liveSession = domEditSessionRef.current;
-      const sel = capturedSelectionRef.current;
-      if (!sel) {
-        if (frozenSamples.length > 2) {
-          showToast("Selection lost during recording", "error");
-        }
-        return;
-      }
-      const duration =
-        frozenSamples.length > 0 ? (frozenSamples[frozenSamples.length - 1]?.time ?? 0) : 0;
-
-      if (frozenSamples.length <= 2) {
-        showToast("No gesture detected — move the pointer while recording", "error");
-        return;
-      }
-      if (duration <= 0) {
-        showToast("Recording too short — try again", "error");
-        return;
-      }
-
-      // Per-property epsilon: small-range properties (opacity 0–1, scale ~0.01–10)
-      // need a much tighter tolerance than positional properties (x/y in px).
-      // fallow-ignore-next-line complexity
-      const simplified = simplifyGestureSamples(frozenSamples, duration, (key) => {
-        if (key === "opacity") return 0.01;
-        if (key === "scale" || key === "scaleX" || key === "scaleY") return 0.01;
-        return 5;
-      });
-      const sortedPcts = Array.from(simplified.keys()).sort((a, b) => a - b);
-
-      // Ensure a 0% keyframe exists with the element's start-of-recording position
-      if (!simplified.has(0) && frozenSamples.length > 0) {
-        simplified.set(0, frozenSamples[0]!.properties);
-        if (!sortedPcts.includes(0)) sortedPcts.unshift(0);
-      }
-
-      // Two different jobs, two different selectors. `selector` is the string an
-      // ALREADY-AUTHORED tween is matched against (and retargeted with, so a
-      // tween aimed at a whole group stays aimed at it). `writeSelector` is what
-      // a NEW tween is authored with: the bare class the id-less case yields here
-      // would record the gesture onto every sibling sharing it.
-      const selector = sel.id ? idSelector(sel.id) : sel.selector;
-      if (!selector) {
-        showToast("Cannot save — element has no selector", "error");
-        return;
-      }
-      // A recorded gesture becomes a NEW tween, so its target must address one
-      // element; the selection's own selector would record the motion onto
-      // every sibling sharing its class (see writeTargetSelector).
-      const writeSelector = writeTargetSelector(sel);
-      if (!writeSelector) {
-        showToast("Cannot save: element has no unique selector", "error");
-        return;
-      }
-      if (liveSession.commitMutation) {
-        const recStart = recordingStartTimeRef.current;
-        const rawKeyframes = sortedPcts.map((pct) => ({
-          percentage: pct,
-          properties: simplified.get(pct) as Record<string, number | string>,
-        }));
-        const smoothed = smoothGestureKeyframes(rawKeyframes, 3);
-        const keyframes = fitEasesFromVelocity(smoothed, frozenSamples, duration);
-        const hasPositionProps = keyframes.some((kf) =>
-          Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
-        );
-        const allAnims = liveSession.selectedGsapAnimations ?? [];
-        const existingPositionTween = hasPositionProps
-          ? allAnims.find(
-              (a) =>
-                a.propertyGroup === "position" &&
-                tweenTargetsElement(a.targetSelector, selector, sel.element),
-            )
-          : undefined;
-        if (existingPositionTween) {
-          if (isInstantHold(existingPositionTween)) {
-            // An instant hold is not a tween to merge into — replace it with the
-            // recorded motion (which already starts from the held position).
-            await liveSession.commitMutation(
-              {
-                type: "replace-with-keyframes",
-                animationId: existingPositionTween.id,
-                targetSelector: selector,
-                position: roundTo3(recStart),
-                duration: roundTo3(duration),
-                keyframes,
-              },
-              { label: "Gesture recording (replace set)", softReload: true },
-            );
-          } else {
-            const tweenStart = existingPositionTween.resolvedStart ?? 0;
-            const tweenDur = existingPositionTween.duration ?? duration;
-            const tweenEnd = tweenStart + tweenDur;
-            const recEnd = recStart + duration;
-
-            // Only merge if the recording overlaps the existing tween's time range.
-            // No overlap → fall through to add-with-keyframes (creates a separate tween).
-            const overlaps = recStart < tweenEnd + 0.05 && recEnd > tweenStart - 0.05;
-
-            if (overlaps) {
-              const existingKfs = existingPositionTween.keyframes?.keyframes ?? [];
-              const rangeStartPct =
-                tweenDur > 0 ? Math.max(0, ((recStart - tweenStart) / tweenDur) * 100) : 0;
-              const rangeEndPct =
-                tweenDur > 0 ? Math.min(100, ((recEnd - tweenStart) / tweenDur) * 100) : 100;
-
-              const preserved = existingKfs
-                .filter(
-                  (kf) => kf.percentage < rangeStartPct - 0.5 || kf.percentage > rangeEndPct + 0.5,
-                )
-                .map((kf) => ({
-                  percentage: kf.percentage,
-                  properties: kf.properties,
-                  ...(kf.ease ? { ease: kf.ease } : {}),
-                }));
-
-              const mapped = keyframes.map((kf) => ({
-                percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
-                properties: kf.properties,
-                ...(kf.ease ? { ease: kf.ease } : {}),
-              }));
-
-              const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
-
-              await liveSession.commitMutation(
-                {
-                  type: "replace-with-keyframes",
-                  animationId: existingPositionTween.id,
-                  targetSelector: selector,
-                  position:
-                    typeof existingPositionTween.position === "number"
-                      ? existingPositionTween.position
-                      : tweenStart,
-                  duration: tweenDur,
-                  keyframes: merged,
-                },
-                { label: "Gesture recording (merge)", softReload: true },
-              );
-            } else {
-              // Emit one tween per property group so a mixed-prop gesture (e.g.
-              // x/y + opacity) doesn't collapse into an untagged legacy mixed
-              // tween that the position-only drag intercept can't edit.
-              const keyframeGroups = partitionKeyframesByGroup(keyframes);
-              for (const [index, groupKfs] of keyframeGroups.entries()) {
-                await liveSession.commitMutation(
-                  {
-                    type: "add-with-keyframes",
-                    targetSelector: writeSelector,
-                    position: roundTo3(recStart),
-                    duration: roundTo3(duration),
-                    keyframes: groupKfs,
-                    // Linear fallback: the velocity fitter assigns a per-keyframe
-                    // ease to non-constant segments and intentionally leaves
-                    // constant-speed segments undefined → they must stay linear,
-                    // not inherit a sigmoid.
-                    easeEach: "none",
-                  },
-                  {
-                    label: "Gesture recording (new range)",
-                    ...coalesceOptions,
-                    ...reloadOnlyLast(index, keyframeGroups.length),
-                  },
-                );
-              }
-            }
-          }
-        } else {
-          // No existing tween — same per-group split as the new-range branch above.
-          const keyframeGroups = partitionKeyframesByGroup(keyframes);
-          for (const [index, groupKfs] of keyframeGroups.entries()) {
-            await liveSession.commitMutation(
-              {
-                type: "add-with-keyframes",
-                targetSelector: writeSelector,
-                position: roundTo3(recStart),
-                duration: roundTo3(duration),
-                keyframes: groupKfs,
-                // Linear fallback (see above) — constant-speed segments stay linear.
-                easeEach: "none",
-              },
-              {
-                label: "Gesture recording",
-                ...coalesceOptions,
-                ...reloadOnlyLast(index, keyframeGroups.length),
-              },
-            );
-          }
-        }
-      }
-      showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
-    } catch (err) {
-      console.error("[GR:error]", err);
-      showToast(`Gesture commit failed: ${err}`, "error");
-    } finally {
-      store.requestSeek(recordingStartTimeRef.current);
-      gestureRecording.clearSamples();
-      setGestureState("idle");
-      commitInFlightRef.current = false;
-    }
+    await commitRecordedGesture(
+      {
+        frozenSamples,
+        coalesceOptions,
+        liveSession: domEditSessionRef.current,
+        selection: capturedSelectionRef.current,
+        recStart: recordingStartTimeRef.current,
+        showToast,
+      },
+      () => {
+        store.requestSeek(recordingStartTimeRef.current);
+        gestureRecording.clearSamples();
+        setGestureState("idle");
+        commitInFlightRef.current = false;
+      },
+    );
   }, [gestureRecording, showToast, isGestureRecordingRef, domEditSessionRef]);
 
   // fallow-ignore-next-line complexity
