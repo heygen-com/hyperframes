@@ -1,7 +1,5 @@
-// fallow-ignore-file dead-code
 /**
- * Shared playhead visual used by TimelineCanvas (real playhead) and
- * TimelineEditorNotice (animated illustration).
+ * The timeline's playhead: a vertical line, a glow, and a grab-handle head.
  *
  * The vertical line + glow span the full track height; the grab-handle HEAD is
  * `position: sticky; top: 0` so it pins to the top of the (vertically) scrolling
@@ -11,26 +9,22 @@
  */
 import { PLAYHEAD_HEAD_W } from "./timelineLayout";
 
+/**
+ * The playhead's reserved colour (R3, AE7). Not the accent: the playhead
+ * crosses selected clips and accented controls constantly, and while all three
+ * were the same green the eye could not tell which was which. The line, the
+ * head and the glow all read this one token, so they cannot drift apart, and
+ * changing the playhead's colour is an edit to `theme.css` rather than here.
+ */
+const PLAYHEAD_COLOR = "var(--color-playhead)";
+const PLAYHEAD_GLOW = "color-mix(in srgb, var(--color-playhead) 14%, transparent)";
+
 interface PlayheadIndicatorProps {
-  /** CSS color, defaults to the HF accent variable */
-  color?: string;
-  /** Glow shadow color, defaults to translucent accent */
-  glowColor?: string;
   /** Whether the playhead is being actively scrubbed — fills the head. */
   scrubbing?: boolean;
-  /**
-   * When false, the head chip is rendered in normal flow (top:1) instead of the
-   * sticky pin — used by the static illustration where there is no scroll area.
-   */
-  stickyHead?: boolean;
 }
 
-export function PlayheadIndicator({
-  color = "var(--hf-accent, #3CE6AC)",
-  glowColor = "rgba(60,230,172,0.14)",
-  scrubbing = false,
-  stickyHead = true,
-}: PlayheadIndicatorProps) {
+export function PlayheadIndicator({ scrubbing = false }: PlayheadIndicatorProps) {
   // Head chip dimensions — used to compute the centering offset and the
   // point where the vertical line starts (so it begins at the head's bottom
   // edge rather than running through the hollow diamond center). The width is
@@ -52,7 +46,7 @@ export function PlayheadIndicator({
           left: "50%",
           width: 13,
           transform: "translateX(-50%)",
-          background: `radial-gradient(closest-side, ${glowColor}, transparent)`,
+          background: `radial-gradient(closest-side, ${PLAYHEAD_GLOW}, transparent)`,
         }}
       />
       {/* Vertical line — starts at the bottom edge of the head chip so nothing
@@ -64,8 +58,8 @@ export function PlayheadIndicator({
           top: HEAD_TOTAL_H,
           width: 1,
           marginLeft: -0.5,
-          background: color,
-          boxShadow: `0 0 6px ${glowColor}`,
+          background: PLAYHEAD_COLOR,
+          boxShadow: `0 0 6px ${PLAYHEAD_GLOW}`,
         }}
       />
       {/* Head chip — sticky so it pins to the ruler while tracks scroll.
@@ -74,15 +68,8 @@ export function PlayheadIndicator({
           natural flow position is wrapper.left; so placing it there with no
           horizontal translate puts its LEFT edge at wrapper.left and its CENTER
           at wrapper.left + HEAD_W/2 — exactly on the line. */}
-      <div
-        className={stickyHead ? "sticky" : "absolute"}
-        style={{
-          left: 0,
-          top: stickyHead ? 0 : 1,
-          // Zero height keeps it from covering rows (sticky strip trick).
-          height: stickyHead ? 0 : undefined,
-        }}
-      >
+      {/* Zero height keeps it from covering rows (sticky strip trick). */}
+      <div className="sticky top-0 left-0 h-0">
         <div
           style={{
             width: HEAD_W,
@@ -90,10 +77,15 @@ export function PlayheadIndicator({
             borderRadius: 2,
             marginTop: 1,
             // Outline-only at rest, filled while scrubbing.
-            background: scrubbing ? color : "transparent",
-            border: `1.5px solid ${color}`,
+            background: scrubbing ? PLAYHEAD_COLOR : "transparent",
+            // Longhands, not the `border` shorthand: a shorthand carrying a
+            // `var()` is a pending-substitution value that the CSSOM will not
+            // read back, so nothing could assert the head's colour.
+            borderWidth: 1.5,
+            borderStyle: "solid",
+            borderColor: PLAYHEAD_COLOR,
             boxSizing: "border-box",
-            boxShadow: `0 1px 3px rgba(0,0,0,0.55), 0 0 5px ${glowColor}`,
+            boxShadow: `0 1px 3px rgba(0,0,0,0.55), 0 0 5px ${PLAYHEAD_GLOW}`,
             transform: "rotate(45deg)",
           }}
         />

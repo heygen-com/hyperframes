@@ -26,11 +26,19 @@ import { useMemo } from "react";
 
 /** Accent rail + inset marking a row as a group MEMBER, matching the level-2
  *  nesting its `aria-level` already reports. */
-const GROUP_MEMBER_RAIL = "#3CE6AC59";
+const GROUP_MEMBER_RAIL = "border-l-2 border-accent/35";
 const GROUP_MEMBER_INDENT = 14;
 /** A hair lighter than `gutterBackground`, so a member row reads as sitting
  *  INSIDE its group rather than beside it. Overlaid rather than hard-coded so
- *  it tracks whatever the theme's gutter is. */
+ *  it tracks whatever the theme's gutter is.
+ *
+ *  Still a literal, unlike the rail above, because it has to be composed with
+ *  the theme's own gutter fill at runtime and a class cannot layer over a value
+ *  it does not know. A `color-mix()` here would parse in every browser and in
+ *  none of Studio's tests: happy-dom rejects the whole `background` declaration
+ *  and silently keeps the previous value, so the tint would look correct on
+ *  screen and be unassertable. Its token is U12's, along with the rest of the
+ *  timeline's runtime colours. */
 const GROUP_MEMBER_TINT = "rgba(255,255,255,0.035)";
 
 /** The gutter fill for a row, tinted when it belongs to a group. */
@@ -259,23 +267,19 @@ export function TimelineTrackHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className="sticky left-0 z-12 shrink-0"
+      // A group's member rows are `aria-level="2"`, and until this they read as
+      // level 2 to a screen reader while looking identical to every top-level
+      // row on screen. The rail is the accent-tinted left border B2's design
+      // called for; the inset is what actually makes the nesting legible.
+      // Padding rather than margin so the rail stays flush with the gutter's
+      // own edge. The rail is a class, not an inline style, so its colour is
+      // one Tailwind alpha on the accent token rather than a literal.
+      className={`sticky left-0 z-12 shrink-0${isGroupMember ? " " + GROUP_MEMBER_RAIL : ""}`}
       style={{
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
         background: gutterFill(theme.gutterBackground, isGroupMember),
         borderRight: `1px solid ${theme.gutterBorder}`,
-        // A group's member rows are `aria-level="2"`, and until this they read
-        // as level 2 to a screen reader while looking identical to every
-        // top-level row on screen. The rail is the accent-tinted left border
-        // B2's design called for; the inset is what actually makes the nesting
-        // legible. Padding rather than margin so the rail stays flush with the
-        // gutter's own edge.
-        ...(isGroupMember
-          ? {
-              borderLeft: `2px solid ${GROUP_MEMBER_RAIL}`,
-              paddingLeft: GROUP_MEMBER_INDENT,
-            }
-          : {}),
+        ...(isGroupMember ? { paddingLeft: GROUP_MEMBER_INDENT } : {}),
       }}
     >
       {!isKeyframeLayer ? (

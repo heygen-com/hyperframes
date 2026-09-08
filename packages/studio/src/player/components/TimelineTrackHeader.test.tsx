@@ -782,7 +782,7 @@ describe("TimelineTrackHeader", () => {
       const header = () => view.host.querySelector<HTMLElement>('[role="rowheader"]');
 
       expect(header()?.style.paddingLeft).toBe("");
-      expect(header()?.style.borderLeft).toBe("");
+      expect(header()?.className).not.toContain("border-l-2");
       expect(header()?.style.background).not.toContain("linear-gradient");
 
       view.rerender({
@@ -793,7 +793,10 @@ describe("TimelineTrackHeader", () => {
         isGroupMember: true,
       });
       expect(header()?.style.paddingLeft).toBe("14px");
-      expect(header()?.style.borderLeft).toContain("2px");
+      // The rail is the accent token, dimmed — not a hex of its own, so it
+      // follows the token if the accent ever moves. The token gate proves the
+      // class resolves; this proves the row asks for it.
+      expect(header()?.className).toContain("border-l-2 border-accent/35");
       // And a lighter gutter, so the row reads as sitting INSIDE its group
       // rather than beside it. Overlaid on the theme's own fill rather than a
       // hard-coded colour, so it follows whatever the gutter is.
