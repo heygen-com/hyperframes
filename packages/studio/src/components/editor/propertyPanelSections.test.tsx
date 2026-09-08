@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import type { DomEditSelection } from "./domEditingTypes";
+import { chooseFlatSelectOption } from "./flatSelectHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -104,7 +105,7 @@ describe("FlatTextSection", () => {
     act(() => root.unmount());
   });
 
-  it("commits a font-weight change through onSetTextFieldStyle", () => {
+  it("commits a font-weight change through onSetTextFieldStyle", async () => {
     const onSetTextFieldStyle = vi.fn();
     const host = document.createElement("div");
     document.body.append(host);
@@ -123,12 +124,9 @@ describe("FlatTextSection", () => {
         />,
       );
     });
-    const select = host.querySelector<HTMLSelectElement>("select");
-    if (!select) throw new Error("expected a weight <select>");
-    act(() => {
-      select.value = "700";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    // The literal weight, not its display label: the row's options carry a
+    // "700 · Bold" label, and the style has to receive "700".
+    await chooseFlatSelectOption(host, "Weight", "700 · Bold");
     expect(onSetTextFieldStyle).toHaveBeenCalledWith("field-0", "font-weight", "700");
     act(() => root.unmount());
   });

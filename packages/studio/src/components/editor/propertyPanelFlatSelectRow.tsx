@@ -54,13 +54,16 @@ export function FlatSelectRow({
       <span className={`text-step-11 ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
       <span className="flex min-w-0 shrink-0 items-center gap-1.5">
         {/* Same box as the row's CommitField sibling (R10): the field's own
-            boundary is what says "this is editable", and the tier tints it. */}
+            boundary is what says "this is editable", and the tier tints it.
+            Width floors at the metric field's 96px so a row of short values
+            stays a column, and ceilings before a long option ("900 · Black",
+            "color-burn") can push the label off the row. */}
         <Select
           label={trackName}
           value={value}
           options={renderedOptions}
           disabled={disabled}
-          className={`w-24 font-mono ${VALUE_TIER_VALUE_CLASS[tier]} ${
+          className={`w-auto min-w-24 max-w-40 font-mono ${VALUE_TIER_VALUE_CLASS[tier]} ${
             tier === "explicitCustom" ? "border-accent/30 hover:border-accent/70" : ""
           }`}
           onCommit={onChange}

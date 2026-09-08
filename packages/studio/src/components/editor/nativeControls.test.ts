@@ -24,7 +24,6 @@ const NATIVE_SELECT_ALLOWED = [
   "propertyPanelColorGradingSection.tsx",
   "propertyPanelFill.tsx",
   "propertyPanelFlatColorGradingSection.tsx",
-  "propertyPanelFlatTextSection.tsx",
   "propertyPanelFxControls.tsx",
   "propertyPanelSections.tsx",
 ];

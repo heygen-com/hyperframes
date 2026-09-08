@@ -401,15 +401,20 @@ describe("FlatStyleSection — blur sliders", () => {
     act(() => root.unmount());
   });
 
-  it("does not render a fill/knob highlight for a zero-value blur (default tier)", () => {
+  it("puts both blur sliders at zero when no blur is set", () => {
+    // This replaces an assertion that the two unset blur tracks drew no fill.
+    // The shared Slider has one look, so the track no longer says whether a
+    // property is explicitly set; the row's value text and its reset button
+    // are what carry the tier now. Zero is still the thing worth pinning,
+    // and the thumb is where it is readable.
     const { host, root } = renderSection({});
-    const tracks = host.querySelectorAll("[data-slider-control]");
-    // Only the first two tracks are the blur sliders (Layer blur, Backdrop); Opacity
-    // (the third track) always renders a fill by design, so it's excluded here.
-    const blurTracks = Array.from(tracks).slice(0, 2);
-    for (const track of blurTracks) {
-      expect(track.querySelectorAll('[data-flat-slider-fill="true"]')).toHaveLength(0);
-    }
+    const [layerBlur, backdrop] = [
+      ...host.querySelectorAll<HTMLInputElement>('input[type="range"]'),
+    ];
+    expect(layerBlur?.getAttribute("aria-label")).toBe("Layer blur");
+    expect(layerBlur?.value).toBe("0");
+    expect(backdrop?.getAttribute("aria-label")).toBe("Backdrop");
+    expect(backdrop?.value).toBe("0");
     act(() => root.unmount());
   });
 });
