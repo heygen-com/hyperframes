@@ -32,6 +32,20 @@ It runs for 6 seconds at 1920×1080. Paste this into your composition:
 Move it in time with `data-start`. Put it on a different timeline row with
 `data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
+## Controls
+
+The designed levers this item publishes, set in its top-of-script `CONFIG`
+object. Anything not listed here — and not a content field or a documented
+CSS token — is locked: changing it means editing the item source.
+
+| Control | Type | Accepts | Default | Drives |
+| --- | --- | --- | --- | --- |
+| `scheme` | variant | `chalk`, `ink` | `chalk` | which authored token set inks the letterforms (chalk-white over footage / marker-ink on boards) |
+| `animation` (`animationIn` + `animationOut`) | toggle | `true` / `false` | `animationIn: true`, `animationOut: true` | entrance (the write-on itself; false = hard-on) and exit fade — durations derived, never exposed |
+| `boil` | variant | `off`, `calm`, `lively` | `calm` | boil amp/rot as authored pairs over the family-locked frameDrop 3; seed locked |
+| `writeOn` | variant | `trace`, `reveal`, `off` | `trace` | reveal mechanic: pen-traced stroke order with velocity physics / per-glyph staggered fade / hard-on — trace duration derived from stroke count |
+| `underline` | toggle | `true` / `false` | `true` | seeded accent squiggle underline drawn after the write lands |
+
 ## Source
 
 <Accordion title={`hw-write-title.html`}>

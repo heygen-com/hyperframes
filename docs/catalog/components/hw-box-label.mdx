@@ -25,6 +25,19 @@ Open `compositions/components/hw-box-label.html` and copy what is inside into yo
 A component has no size or duration of its own. It takes both from the composition
 you paste it into.
 
+## Controls
+
+The designed levers this item publishes, set in its top-of-script `CONFIG`
+object. Anything not listed here — and not a content field or a documented
+CSS token — is locked: changing it means editing the item source.
+
+| Control | Type | Accepts | Default | Drives |
+| --- | --- | --- | --- | --- |
+| `entrance` | variant | `draw`, `drop` | `draw` | how the box arrives: stroke draw-on + label fade, or the landing squash (drop-in, contact squash on the deform wrapper, label counter-scaled to net identity, bouncy spring recovery) — travel/duration derived, never exposed |
+| `strokeType` | variant | `plain`, `soft`, `sharp`, `spray` | `plain` | authored stroke texture on the box path (per-type constants: blur, dry-marker dash, seeded spray dots); draw-on composes via the mask clone |
+| `labelPos` | variant | `above`, `inside` | `above` | label placement: above the box or vertically centered inside it |
+| `boil` | variant | `off`, `calm`, `lively` | `calm` | boil amp/rot as authored pairs over the family-locked frameDrop 3; seed locked |
+
 ## Source
 
 <Accordion title={`hw-box-label.html`}>
