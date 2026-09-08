@@ -316,28 +316,28 @@ export function useTimelineGroupEditing({
         // GSAP read is stale whether or not the position rewrite succeeded —
         // invalidate on the error path too (matches the single-element path's
         // `.finally`), or a failed rewrite leaves the editor reading old tweens.
-        try {
-          await finishGroupTimingGsapFallback({
-            projectId,
-            iframe: previewIframeRef.current,
-            reloadPreview,
-            label: "Move timeline clips",
-            errorLabel: "Failed to shift GSAP positions",
-            coalesceKey,
-            recordEdit,
-            activeCompPath,
-            changes,
-            resolveChangePath: (element) => targetPathFor(element, activeCompPath),
-            mutateChange: (change, changePath) => {
-              const delta = change.start - change.element.start;
-              const domId = change.element.domId;
-              if (delta === 0 || !domId) return null;
-              return shiftGsapPositions(projectId, changePath, domId, delta);
-            },
-          });
-        } finally {
-          invalidateGsapCache?.();
-        }
+        // `.finally` on the promise rather than a `try`/`finally` block: the
+        // React Compiler cannot reorder across a `finally` and declines the
+        // whole hook. `finishGroupTimingGsapFallback` is async, so it can only
+        // reject, never throw before returning its promise.
+        await finishGroupTimingGsapFallback({
+          projectId,
+          iframe: previewIframeRef.current,
+          reloadPreview,
+          label: "Move timeline clips",
+          errorLabel: "Failed to shift GSAP positions",
+          coalesceKey,
+          recordEdit,
+          activeCompPath,
+          changes,
+          resolveChangePath: (element) => targetPathFor(element, activeCompPath),
+          mutateChange: (change, changePath) => {
+            const delta = change.start - change.element.start;
+            const domId = change.element.domId;
+            if (delta === 0 || !domId) return null;
+            return shiftGsapPositions(projectId, changePath, domId, delta);
+          },
+        }).finally(() => invalidateGsapCache?.());
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
@@ -419,38 +419,37 @@ export function useTimelineGroupEditing({
         }
         // See the move path: the timing persist is already on disk, so the GSAP
         // cache must be invalidated even when the position rewrite throws.
-        try {
-          await finishGroupTimingGsapFallback({
-            projectId,
-            iframe: previewIframeRef.current,
-            reloadPreview,
-            label: "Resize timeline clips",
-            errorLabel: "Failed to scale GSAP positions",
-            coalesceKey,
-            recordEdit,
-            activeCompPath,
-            changes,
-            resolveChangePath: (element) => targetPathFor(element, activeCompPath),
-            mutateChange: (change, changePath) => {
-              const domId = change.element.domId;
-              const timingChanged =
-                change.start !== change.element.start ||
-                change.duration !== change.element.duration;
-              if (!timingChanged || !domId) return null;
-              return scaleGsapPositions(
-                projectId,
-                changePath,
-                domId,
-                change.element.start,
-                change.element.duration,
-                change.start,
-                change.duration,
-              );
-            },
-          });
-        } finally {
-          invalidateGsapCache?.();
-        }
+        // `.finally` on the promise rather than a `try`/`finally` block: the
+        // React Compiler cannot reorder across a `finally` and declines the
+        // whole hook. `finishGroupTimingGsapFallback` is async, so it can only
+        // reject, never throw before returning its promise.
+        await finishGroupTimingGsapFallback({
+          projectId,
+          iframe: previewIframeRef.current,
+          reloadPreview,
+          label: "Resize timeline clips",
+          errorLabel: "Failed to scale GSAP positions",
+          coalesceKey,
+          recordEdit,
+          activeCompPath,
+          changes,
+          resolveChangePath: (element) => targetPathFor(element, activeCompPath),
+          mutateChange: (change, changePath) => {
+            const domId = change.element.domId;
+            const timingChanged =
+              change.start !== change.element.start || change.duration !== change.element.duration;
+            if (!timingChanged || !domId) return null;
+            return scaleGsapPositions(
+              projectId,
+              changePath,
+              domId,
+              change.element.start,
+              change.element.duration,
+              change.start,
+              change.duration,
+            );
+          },
+        }).finally(() => invalidateGsapCache?.());
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.

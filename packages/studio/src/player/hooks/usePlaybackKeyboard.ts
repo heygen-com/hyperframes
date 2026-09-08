@@ -6,7 +6,7 @@
  * and iframe listener setup function. Has no side effects of its own.
  */
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { useCaptionStore } from "../../captions/store";
 import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
@@ -181,8 +181,13 @@ export function usePlaybackKeyboard({
     pressedKeysRef.current.delete(e.key.toLowerCase());
   }, []);
 
-  playbackKeyDownRef.current = handlePlaybackKeyDown;
-  playbackKeyUpRef.current = handlePlaybackKeyUp;
+  // Refreshed on commit rather than during render. The window and iframe
+  // listeners call through these refs so they never have to be re-attached when
+  // a handler's identity changes, and a key event cannot arrive before commit.
+  useEffect(() => {
+    playbackKeyDownRef.current = handlePlaybackKeyDown;
+    playbackKeyUpRef.current = handlePlaybackKeyUp;
+  }, [handlePlaybackKeyDown, handlePlaybackKeyUp]);
 
   // fallow-ignore-next-line complexity
   const attachIframeShortcutListeners = useCallback(() => {

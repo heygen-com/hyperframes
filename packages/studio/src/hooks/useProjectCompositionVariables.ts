@@ -61,6 +61,11 @@ export function useProjectCompositionVariables(
   const [groups, setGroups] = useState<CompositionVariableGroup[]>([]);
 
   useEffect(() => {
+    // `refreshKey` is a re-read token rather than a value the scan consumes, so
+    // the dependency list used to need a suppression to keep it. Naming it here
+    // makes the list true instead: re-running only replaces `groups` with a
+    // fresh read of the same files, so the extra run is idempotent.
+    void refreshKey;
     let cancelled = false;
     const htmlFiles = fileTree.filter((p) => p.endsWith(".html") && p !== excludePath);
 
@@ -76,7 +81,6 @@ export function useProjectCompositionVariables(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileTree, excludePath, readProjectFile, refreshKey]);
 
   return groups;
@@ -88,6 +92,26 @@ interface EditVariablesDeps {
   recordEdit: RecordEditFn;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
+}
+
+/**
+ * Open a throwaway session on `content`, apply `mutate`, and serialize it back,
+ * disposing the session whether the mutation succeeds or throws.
+ *
+ * A plain function rather than an inline callback: the React Compiler cannot
+ * reorder across a `finally` and declines any hook body that holds one.
+ */
+async function mutateComposition(
+  content: string,
+  mutate: (session: Composition) => void,
+): Promise<string> {
+  const comp = await openComposition(content, { history: false });
+  try {
+    mutate(comp);
+    return comp.serialize();
+  } finally {
+    comp.dispose();
+  }
 }
 
 /**
@@ -104,15 +128,7 @@ export function useEditVariablesInFile(deps: EditVariablesDeps) {
     async (path: string, label: string, mutate: (session: Composition) => void): Promise<void> => {
       const originalContent = await readProjectFile(path);
       await persistSdkSerialize(
-        async (onDiskBefore) => {
-          const comp = await openComposition(onDiskBefore, { history: false });
-          try {
-            mutate(comp);
-            return comp.serialize();
-          } finally {
-            comp.dispose();
-          }
-        },
+        (onDiskBefore) => mutateComposition(onDiskBefore, mutate),
         path,
         originalContent,
         {

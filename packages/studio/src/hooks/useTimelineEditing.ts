@@ -1,5 +1,5 @@
 // fallow-ignore-file complexity
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
@@ -56,8 +56,14 @@ export function useTimelineEditing({
   handleDomZIndexReorderCommitRef,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
   const editQueueRef = useRef(Promise.resolve());
+
+  // Refreshed on commit rather than during render. Every reader is a timeline
+  // edit handler or a sub-hook that runs from one, so none can see it before
+  // the commit that produced the value.
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
 
   const enqueueEdit = useCallback(
     (

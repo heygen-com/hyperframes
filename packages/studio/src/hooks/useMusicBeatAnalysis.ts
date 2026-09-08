@@ -117,10 +117,15 @@ export function useMusicBeatAnalysis(): void {
   const ioRef = useRef<
     (ProjectIo & { writeProjectFile: (p: string, c: string) => Promise<void> }) | null
   >(null);
-  ioRef.current =
-    readOptionalProjectFile && writeProjectFile
-      ? { readOptionalProjectFile, writeProjectFile }
-      : null;
+  // Refreshed on commit, not during render. Declared above the two effects
+  // below so it runs first on every commit, which is what lets them keep
+  // reading `ioRef.current` at the moment they run.
+  useEffect(() => {
+    ioRef.current =
+      readOptionalProjectFile && writeProjectFile
+        ? { readOptionalProjectFile, writeProjectFile }
+        : null;
+  });
 
   const { musicSrc, isFallbackTrack } = useMemo(() => {
     const resolved = resolveBeatSourceTrack(elements);

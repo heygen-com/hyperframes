@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
@@ -34,7 +34,12 @@ export function useRazorSplit({
   isRecordingRef,
 }: UseRazorSplitOptions) {
   const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
+
+  // Refreshed on commit rather than during render. Only `runCut` reads it, and
+  // it runs from a razor gesture, which cannot fire before the commit.
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
 
   const synchronize = useCallback(() => {
     let failure: unknown;
@@ -46,7 +51,10 @@ export function useRazorSplit({
     try {
       reloadPreview();
     } catch (error) {
-      failure ??= error;
+      // Longhand for `failure ??= error`, which the React Compiler does not
+      // lower. Same nullish test, so a first failure that is not itself
+      // nullish still wins.
+      if (failure === undefined || failure === null) failure = error;
     }
     if (failure) throw failure;
   }, [forceReloadSdkSession, reloadPreview]);

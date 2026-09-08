@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
   installStudioManualEditSeekReapply,
@@ -111,14 +111,24 @@ export function usePreviewPersistence({
 
   const domTextCommitVersionRef = useRef(0);
   const showToastRef = useRef(showToast);
-  showToastRef.current = showToast;
   const domEditSaveQueueRef = useRef<ReturnType<typeof createDomEditSaveQueue> | null>(null);
-  const applyStudioManualEditsToPreviewRef = useRef<
-    (iframe?: HTMLIFrameElement | null) => Promise<void>
-  >(async () => {});
 
-  if (!domEditSaveQueueRef.current) {
-    domEditSaveQueueRef.current = createDomEditSaveQueue({
+  // Refreshed on commit rather than during render: the only reader is the save
+  // queue's `onOpen`, which fires from a failed request.
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
+
+  // Built on first use rather than during render. The old shape
+  // (`if (!ref.current) ref.current = createDomEditSaveQueue(...)`) read and
+  // wrote a ref while rendering, and moving it into a `useState` initializer
+  // only relocated the problem: the compiler follows the ref through any
+  // function render calls. Every reader goes through this, so the queue is
+  // still created at most once and nobody ever sees a missing one.
+  const ensureDomEditSaveQueue = useCallback(() => {
+    const existing = domEditSaveQueueRef.current;
+    if (existing) return existing;
+    const created = createDomEditSaveQueue({
       onOpen: (event) => {
         const message =
           event.statusCode === 409
@@ -137,19 +147,22 @@ export function usePreviewPersistence({
         setDomEditSaveQueuePaused(null);
       },
     });
-  }
+    domEditSaveQueueRef.current = created;
+    return created;
+  }, []);
 
   // ── Queue / drain helpers ──
 
-  const queueDomEditSave = useCallback(<T>(save: () => Promise<T>): Promise<T> => {
-    return domEditSaveQueueRef.current?.enqueue(save) ?? save();
-  }, []);
+  const queueDomEditSave = useCallback(
+    <T>(save: () => Promise<T>): Promise<T> => ensureDomEditSaveQueue().enqueue(save),
+    [ensureDomEditSaveQueue],
+  );
 
   const drainPendingDomEditSaves = useCallback(async () => {
-    return drainStudioSaveQueues(flushStudioPendingEdits, async () => {
-      return (await domEditSaveQueueRef.current?.waitForIdle()) ?? { status: "clean" as const };
-    });
-  }, []);
+    return drainStudioSaveQueues(flushStudioPendingEdits, () =>
+      ensureDomEditSaveQueue().waitForIdle(),
+    );
+  }, [ensureDomEditSaveQueue]);
 
   const waitForPendingDomEditSaves = useCallback(async (): Promise<void> => {
     const result = await drainPendingDomEditSaves();
@@ -157,9 +170,9 @@ export function usePreviewPersistence({
   }, [drainPendingDomEditSaves]);
 
   const resetDomEditSaveQueueBreaker = useCallback(() => {
-    domEditSaveQueueRef.current?.reset();
+    ensureDomEditSaveQueue().reset();
     setDomEditSaveQueuePaused(null);
-  }, []);
+  }, [ensureDomEditSaveQueue]);
 
   useMountEffect(() => () => {
     domEditSaveQueueRef.current?.destroy();
@@ -168,22 +181,39 @@ export function usePreviewPersistence({
   // ── Apply manual edits (HTML-baked — install seek hooks) ──
   // reapplyPositionEditsAfterSeek now also handles motion reapply from DOM attributes.
 
+  // The live preview frame is resolved in the body rather than as a default
+  // parameter value, which the React Compiler reads as a render-time ref
+  // access. `=== undefined` and not `??`, so an explicit `null` argument still
+  // means "no frame" rather than falling back to the current one.
   const applyCurrentStudioManualEditsToPreview = useCallback(
-    (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
-      if (!iframe) return;
-      if (!readIframeDocument(iframe)) return;
-      installManualEditReapply(iframe);
+    (iframe?: HTMLIFrameElement | null) => {
+      const target = iframe === undefined ? previewIframeRef.current : iframe;
+      if (!target) return;
+      if (!readIframeDocument(target)) return;
+      installManualEditReapply(target);
     },
     [previewIframeRef],
   );
 
   const applyStudioManualEditsToPreview = useCallback(
-    async (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
-      applyCurrentStudioManualEditsToPreview(iframe);
+    async (iframe?: HTMLIFrameElement | null) => {
+      applyCurrentStudioManualEditsToPreview(
+        iframe === undefined ? previewIframeRef.current : iframe,
+      );
     },
     [applyCurrentStudioManualEditsToPreview, previewIframeRef],
   );
-  applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
+
+  // Handed to callers so they can invoke the latest closure without holding it.
+  // Seeded with the first render's function (not a no-op) and refreshed on
+  // commit, so it is never less current than the render-time assignment it
+  // replaces by the time a caller can reach it.
+  const applyStudioManualEditsToPreviewRef = useRef<
+    (iframe?: HTMLIFrameElement | null) => Promise<void>
+  >(applyStudioManualEditsToPreview);
+  useEffect(() => {
+    applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
+  }, [applyStudioManualEditsToPreview]);
 
   // ── Sync preview after undo/redo ──
 
@@ -231,7 +261,6 @@ export function usePreviewPersistence({
 
   return {
     domTextCommitVersionRef,
-    domEditSaveQueueRef,
     applyStudioManualEditsToPreviewRef,
     queueDomEditSave,
     drainPendingDomEditSaves,
