@@ -110,7 +110,10 @@ export function useElementLifecycleOps({
       const sameFile = selections.filter(
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
-      try {
+      // A `.catch` and not a `try`: the React Compiler cannot lower a `throw`
+      // inside a `try`/`catch`, and declines the whole hook when it finds one.
+      // fallow-ignore-next-line complexity
+      const removeSelection = async (): Promise<DomEditCommitOutcome> => {
         const originalContent = await readProjectFileContent(pid, targetPath);
 
         const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
@@ -211,13 +214,14 @@ export function useElementLifecycleOps({
           "info",
         );
         return { ok: true } as const;
-      } catch (error) {
+      };
+      return await removeSelection().catch((error: unknown) => {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
         // The toast is what tells the human. The returned outcome is what tells
         // a caller that has no screen to read.
         return domEditCommitDeclined("persist-failed");
-      }
+      });
     },
     [
       activeCompPath,
@@ -259,7 +263,11 @@ export function useElementLifecycleOps({
       // fallow-ignore-next-line complexity
       return (async () => {
         const releaseZPersists = entries.map((entry) => beginLayerZPersist(entry.element));
-        try {
+        // `.finally` and `.catch` on the promise, not `try`/`finally` and
+        // `try`/`catch` statements: the React Compiler can lower neither, and
+        // declines the whole hook the moment it finds one.
+        // fallow-ignore-next-line complexity
+        const reorder = async () => {
           // Resolver shadow (telemetry-only, decoupled from cutover): record whether
           // the SDK resolves each reordered element — the reorderElements op's targets.
           onReorderShadow?.(
@@ -361,7 +369,7 @@ export function useElementLifecycleOps({
           // inline-style-only — a full iframe remount would only blink the preview.
           // commitDomEditPatchBatches still falls back to reloading whenever the
           // server reports an unmatched patch target (live DOM ≠ disk).
-          try {
+          const persist = async () => {
             const result = await commitDomEditPatchBatches(batches, {
               label: "Reorder layers",
               coalesceKey,
@@ -382,13 +390,15 @@ export function useElementLifecycleOps({
               completeLayerRevealCommit(element, ownership);
             }
             return result;
-          } catch (error) {
+          };
+          return await persist().catch((error: unknown) => {
             rollbackOptimisticState();
             throw error;
-          }
-        } finally {
+          });
+        };
+        return await reorder().finally(() => {
           for (const release of releaseZPersists) release();
-        }
+        });
       })();
     },
     [commitDomEditPatchBatches, onReorderShadow],

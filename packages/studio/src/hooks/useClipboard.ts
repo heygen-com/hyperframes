@@ -62,8 +62,6 @@ export function useClipboard({
   previewIframeRef,
 }: UseClipboardOptions) {
   const clipboardRef = useRef<ClipboardPayload | null>(null);
-  const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
 
   // The copy-mode branches predate this change; this diff only replaces its
   // duplicated DOM lookup with the canonical composition-aware resolver.
@@ -139,7 +137,7 @@ export function useClipboard({
       showToast("Nothing to paste.", "info");
       return;
     }
-    const pid = projectIdRef.current;
+    const pid = projectId;
     if (!pid) return;
 
     const targetPath = activeCompPath || "index.html";
@@ -191,6 +189,7 @@ export function useClipboard({
   }, [
     activeCompPath,
     domEditSaveTimestampRef,
+    projectId,
     recordEdit,
     reloadPreview,
     showToast,

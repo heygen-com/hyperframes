@@ -64,7 +64,6 @@ export function useDomSelection({
   // ── Refs ──
 
   const rightPanelTabRef = useRef(rightPanelTab);
-  rightPanelTabRef.current = rightPanelTab;
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
@@ -74,11 +73,20 @@ export function useDomSelection({
   // resolution land after B and restore the wrong selection.
   const timelineSelectSeqRef = useRef(0);
 
-  // Keep refs in sync with state
-  domEditSelectionRef.current = domEditSelection;
-  domEditGroupSelectionsRef.current = domEditGroupSelections;
-  domEditHoverSelectionRef.current = domEditHoverSelection;
-  activeGroupElementRef.current = activeGroupElement;
+  // Keep refs in sync with state.
+  //
+  // After commit, not during render: a ref write in the hook body is a render
+  // side effect and the React Compiler declines the whole hook when it sees one.
+  // The handlers below already write these refs eagerly, ahead of the state they
+  // set, so this is the catch-up for a state change that did not come through
+  // them, and every reader is a handler or an effect declared after this one.
+  useEffect(() => {
+    rightPanelTabRef.current = rightPanelTab;
+    domEditSelectionRef.current = domEditSelection;
+    domEditGroupSelectionsRef.current = domEditGroupSelections;
+    domEditHoverSelectionRef.current = domEditHoverSelection;
+    activeGroupElementRef.current = activeGroupElement;
+  });
 
   // ── Callbacks ──
 

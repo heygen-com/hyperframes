@@ -36,6 +36,24 @@ function loadCatalog(): Promise<CatalogItem[]> {
   return catalogRequest;
 }
 
+/**
+ * The catalog fetch, as a value rather than a throw.
+ *
+ * The React Compiler cannot reorder across a `finally`, so a `try`/`finally`
+ * anywhere in a hook body makes it decline the whole hook and silently drop every
+ * memo in it. Out here the same control flow is just a function, and the effect
+ * below is left with one branch instead of three clauses.
+ */
+type CatalogLoad = { readonly items: CatalogItem[] } | { readonly error: string };
+
+async function loadCatalogResult(): Promise<CatalogLoad> {
+  try {
+    return { items: await loadCatalog() };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to load catalog" };
+  }
+}
+
 export function useBlockCatalog() {
   const [blocks, setBlocks] = useState<CatalogItem[]>(() => catalogCache ?? []);
   const [loading, setLoading] = useState(catalogCache === null);
@@ -43,22 +61,15 @@ export function useBlockCatalog() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<BlockCategory | null>(null);
 
-  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (catalogCache) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const items = await loadCatalog();
-        if (cancelled) return;
-        setBlocks(items);
-      } catch (err) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load catalog");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    void loadCatalogResult().then((result) => {
+      if (cancelled) return;
+      if ("items" in result) setBlocks(result.items);
+      else setError(result.error);
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };

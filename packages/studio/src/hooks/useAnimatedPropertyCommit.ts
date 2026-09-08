@@ -428,9 +428,8 @@ async function commitKeyframeProps(
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const { selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache } = deps;
 
+  // The single routing boundary for set, keyframe, whole-tween and first-group writes.
   const commitAnimatedProperties = useCallback(
-    // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
-    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
       if (!gsapCommitMutation) return;
       const propEntries = Object.entries(props);
@@ -461,10 +460,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
 
       // The picked anim comes from the (possibly stale) panel cache: if keyframes
       // were just removed or the script changed underneath us, its id is gone
-      // server-side and the commit 404s. The raw commit already toasts; we catch
-      // so the rejection doesn't escape as an uncaught promise, and bump the cache
-      // so selectedGsapAnimations re-syncs and the user's next edit self-heals.
-      try {
+      // server-side and the commit 404s. The raw commit already toasts; the
+      // handler below bumps the cache so selectedGsapAnimations re-syncs and the
+      // next edit self-heals. A `.catch` and not a `try`: the React Compiler
+      // cannot lower a `throw` inside a `try`/`catch`, and declines the hook.
+      // fallow-ignore-next-line complexity
+      const write = async (): Promise<void> => {
         // Animated element → keyframe at the playhead, EXACTLY like manual drag /
         // resize / rotate: if the picked anim is still a static `set`,
         // commitKeyframeProps converts it to keyframes first, then writes the new
@@ -580,10 +581,11 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
         throw new GsapEditBlockedError("no-selector");
-      } catch (error) {
+      };
+      await write().catch((error: unknown) => {
         bumpGsapCache();
         throw error;
-      }
+      });
     },
     [selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache],
   );

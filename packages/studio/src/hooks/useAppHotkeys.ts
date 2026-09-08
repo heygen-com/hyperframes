@@ -484,25 +484,31 @@ export function useAppHotkeys({
 
   // ── Stable callback ref (one ref replaces fifteen) ──
 
+  // Written after commit, not during render: a ref write in the hook body is a
+  // render side effect and the React Compiler declines the whole hook when it
+  // sees one. Every reader below is a keydown handler, which cannot fire before
+  // the render that produced these callbacks has committed.
   const cbRef = useRef<HotkeyCallbacks>(null!);
-  cbRef.current = {
-    handleTimelineElementsDelete,
-    handleTimelineElementSplit,
-    handleDomEditElementDelete,
-    handleUndo,
-    handleRedo,
-    handleCopy,
-    handlePaste,
-    handleCut,
-    onResetKeyframes,
-    onDeleteSelectedKeyframes,
-    onToggleRecording,
-    onGroupSelection,
-    onUngroupSelection,
-    leftSidebarRef,
-    domEditSelectionRef,
-    showToast,
-  };
+  useEffect(() => {
+    cbRef.current = {
+      handleTimelineElementsDelete,
+      handleTimelineElementSplit,
+      handleDomEditElementDelete,
+      handleUndo,
+      handleRedo,
+      handleCopy,
+      handlePaste,
+      handleCut,
+      onResetKeyframes,
+      onDeleteSelectedKeyframes,
+      onToggleRecording,
+      onGroupSelection,
+      onUngroupSelection,
+      leftSidebarRef,
+      domEditSelectionRef,
+      showToast,
+    };
+  });
 
   // ── Keydown dispatch ──
 

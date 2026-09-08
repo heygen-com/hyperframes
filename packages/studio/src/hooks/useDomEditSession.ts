@@ -309,11 +309,11 @@ export function useDomEditSession({
     // the SDK resolves each reordered element (the reorderElements op's targets).
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
-          // Single-flight: every target in one reorder batch shares the same file, so
-          // memoize the read instead of firing one fetch per unresolved target.
+          // Single-flight: one file per reorder batch, so memoize the read. Assigned
+          // inside the `??`, not with `??=`, which the React Compiler cannot lower.
           let reorderSrcPromise: Promise<string> | undefined;
           const reorderSrc = activeCompPath
-            ? () => (reorderSrcPromise ??= readProjectFile(activeCompPath))
+            ? () => reorderSrcPromise ?? (reorderSrcPromise = readProjectFile(activeCompPath))
             : undefined;
           for (const target of targets)
             void recordResolverParity(sdkSession, target, "reorderElements", reorderSrc);
