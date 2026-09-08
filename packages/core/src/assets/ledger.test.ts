@@ -123,6 +123,37 @@ describe("extractAssetRefs", () => {
     expect(ref?.url).toBe("https://cdn.example.com/a.js?v=1&x=2");
     expect(ref?.rawUrl).toBe("https://cdn.example.com/a.js?v=1&amp;x=2");
   });
+
+  it("decodes each entity exactly once — no double-unescape", () => {
+    // `&amp;lt;` is the author writing a literal `&lt;`: one decode pass must
+    // yield `&lt;`, never a second pass down to `<`.
+    const html = `<img src="a.png?q=&amp;lt;&amp;amp;x=&amp;#039;">`;
+    const [ref] = extractAssetRefs(html);
+    expect(ref?.url).toBe("a.png?q=&lt;&amp;x=&#039;");
+  });
+
+  it("leaves unknown entities untouched", () => {
+    const html = `<img src="a.png?c=&copy;&x=1">`;
+    const [ref] = extractAssetRefs(html);
+    expect(ref?.url).toBe("a.png?c=&copy;&x=1");
+  });
+
+  it("ignores urls inside CSS comments, including pathological comment runs", () => {
+    const html = `<style>
+      /* .old { background: url("assets/img/commented.png"); } */
+      .live { background: url("assets/img/live.png"); }
+    </style>`;
+    const refs = extractAssetRefs(html);
+    expect(refs.map((r) => r.url)).toEqual(["assets/img/live.png"]);
+
+    // Long unterminated-star runs must not hang the scanner (linear, not
+    // backtracking): finish quickly and still find the live url after.
+    const hostile = `<style>/*${"*".repeat(50_000)}*/ .a { background: url(x.png); }</style>`;
+    const started = Date.now();
+    const hostileRefs = extractAssetRefs(hostile);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(hostileRefs.map((r) => r.url)).toEqual(["x.png"]);
+  });
 });
 
 describe("buildAssetLedger", () => {

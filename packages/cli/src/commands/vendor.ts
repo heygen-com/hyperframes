@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { join, posix, resolve, sep } from "node:path";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import type { LedgerAssetKind } from "@hyperframes/core/asset-ledger";
@@ -18,6 +18,9 @@ export const examples: Example[] = [
 
 /** Only these URL schemes are ever fetched. Everything else stays remote. */
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
+
+/** Per-download size cap unless --max-bytes overrides it. */
+const DEFAULT_MAX_BYTES = 100 * 1024 * 1024;
 
 /**
  * Kinds worth downloading. A remote iframe is a live page, not a static
@@ -110,16 +113,36 @@ export function vendorFileName(url: string, contentType?: string): string {
   return `${safeBase}-${hash}${safeExt}`;
 }
 
+/**
+ * Resolve a vendor file target and refuse anything that would escape the
+ * vendor directory (defense in depth — `vendorFileName` already sanitizes).
+ */
+export function resolveVendorTarget(outDir: string, fileName: string): string {
+  const target = resolve(outDir, fileName);
+  if (target !== outDir && !target.startsWith(outDir + sep)) {
+    throw new Error(`refusing to write outside the vendor directory: ${fileName}`);
+  }
+  return target;
+}
+
 async function downloadAsset(
   url: string,
   timeoutMs: number,
+  maxBytes: number,
 ): Promise<{ body: Buffer; contentType?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal, redirect: "follow" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      throw new Error(`asset exceeds size cap (${declared} > ${maxBytes} bytes)`);
+    }
     const body = Buffer.from(await response.arrayBuffer());
+    if (body.length > maxBytes) {
+      throw new Error(`asset exceeds size cap (${body.length} > ${maxBytes} bytes)`);
+    }
     const contentType = response.headers.get("content-type") ?? undefined;
     return { body, ...(contentType !== undefined ? { contentType } : {}) };
   } finally {
@@ -213,19 +236,29 @@ export default defineCommand({
       description: "Per-download timeout in ms (default: 30000)",
       default: "30000",
     },
+    "max-bytes": {
+      type: "string",
+      description: "Per-download size cap in bytes (default: 104857600 = 100 MB)",
+      default: String(DEFAULT_MAX_BYTES),
+    },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const strictOffline = Boolean(args["strict-offline"]);
     const dryRun = Boolean(args["dry-run"]);
     const timeoutMs = Number.parseInt(String(args.timeout), 10) || 30000;
+    const maxBytes = Number.parseInt(String(args["max-bytes"]), 10) || DEFAULT_MAX_BYTES;
     try {
       const project = resolveProject(args.dir, { requireIndex: false });
       const { buildProjectAssetLedger } = await import("@hyperframes/core/asset-ledger");
       const ledger = buildProjectAssetLedger(project.dir);
 
       const outRel = String(args.out ?? "assets/vendor").replace(/\\/g, "/");
-      const outDir = resolve(project.dir, outRel);
+      const projectRoot = resolve(project.dir);
+      const outDir = resolve(projectRoot, outRel);
+      if (outDir !== projectRoot && !outDir.startsWith(projectRoot + sep)) {
+        throw new Error(`--out must stay inside the project directory (got "${outRel}")`);
+      }
 
       // Unique fetchable URLs, keyed by DECODED url; remember raw forms per file.
       const candidates = new Map<string, string>();
@@ -258,10 +291,17 @@ export default defineCommand({
       if (candidates.size > 0) mkdirSync(outDir, { recursive: true });
       for (const [declaredUrl, fetchUrl] of candidates) {
         try {
-          const { body, contentType } = await downloadAsset(fetchUrl, timeoutMs);
+          const { body, contentType } = await downloadAsset(fetchUrl, timeoutMs, maxBytes);
           const fileName = vendorFileName(fetchUrl, contentType);
           const vendorPath = posix.join(outRel, fileName);
-          writeFileSync(join(outDir, fileName), body);
+          // Network→file is this command's entire purpose (download remote
+          // assets so renders run offline), so a CodeQL network-to-file-write
+          // finding here is expected. Guards: http(s)-only scheme allowlist +
+          // URL validation (toFetchableUrl), sanitized hash-suffixed filenames
+          // (vendorFileName), a traversal check pinning every write under the
+          // vendor directory (resolveVendorTarget, with outDir itself pinned
+          // under the project root), and a per-download size cap.
+          writeFileSync(resolveVendorTarget(outDir, fileName), body);
           vendorPathByUrl.set(declaredUrl, vendorPath);
           vendored.push({
             url: declaredUrl,
