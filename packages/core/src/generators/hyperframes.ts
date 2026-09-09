@@ -88,13 +88,16 @@ function generateGoogleFontsUrl(fontFamilies: string[]): string | null {
 }
 
 export interface SerializeOptions {
+  /** Trusted animations: __raw: values are emitted as executable JavaScript. */
   animations?: GsapAnimation[];
+  /** Trusted authored CSS, preserved as code; may load external resources. */
   styles?: string;
   generateDefaultAnimations?: boolean;
   resolution?: CanvasResolution;
   compositionId?: string;
   keyframes?: Record<string, Keyframe[]>;
   stageZoomKeyframes?: StageZoomKeyframe[];
+  /** Emit executable timeline code; animations and __raw: expressions must be trusted. */
   includeScripts?: boolean;
   includeStyles?: boolean;
 }
@@ -128,6 +131,7 @@ function sortElements(elements: TimelineElement[]): TimelineElement[] {
   });
 }
 
+/** Generate CSS from trusted authors. customStyles is authored code, not sanitized CSS. */
 export function generateHyperframesStyles(
   elements: TimelineElement[],
   resolution: CanvasResolution,
@@ -210,6 +214,7 @@ function generateElementStyles(element: TimelineElement): string {
   }
 }
 
+/** Generate executable JavaScript. Animation __raw: expressions require trusted authors. */
 export function generateGsapTimelineScript(
   elements: TimelineElement[],
   totalDuration: number,
@@ -330,6 +335,7 @@ ${initialPositionSets ? initialPositionSets + "\n" : ""}    tl.to({}, { duration
   return gsapScript;
 }
 
+/** Generate a document for trusted authors. Authored CSS and animation __raw: expressions retain their executable capabilities. Context encoding is not a sandbox: do not supply untrusted code-bearing options or serve untrusted compositions in a privileged origin. Text uses the inline-formatting sanitizer; parseHtml flattens inner formatting to text. */
 export function generateHyperframesHtml(
   elements: TimelineElement[],
   totalDuration: number,

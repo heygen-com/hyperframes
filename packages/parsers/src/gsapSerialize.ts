@@ -222,6 +222,12 @@ export interface SplitAnimationsResult {
 
 // ── Serialization ───────────────────────────────────────────────────────────
 
+/**
+ * Construct executable JavaScript from trusted composition-author inputs.
+ * __raw: values, preamble, postamble, and timelineVar are code-bearing inputs
+ * and are deliberately not sanitized. Never populate them from untrusted data.
+ * Quoting ordinary values does not sandbox authored code or its side effects.
+ */
 export function serializeGsapAnimations(
   animations: GsapAnimation[],
   timelineVar = "tl",

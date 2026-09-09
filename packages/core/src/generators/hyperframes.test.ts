@@ -114,6 +114,9 @@ describe("generateHyperframesHtml", () => {
       const html = generateHyperframesHtml([makeTextElement({ content })], 1);
       const doc = new DOMParser().parseFromString(html, "text/html");
       expect(doc.querySelector("#text-1")?.textContent).toBe(content ? "&quot; &#39; &lt;" : "");
+      expect(parseHtml(html).elements[0]).toMatchObject({
+        content: content ? "&quot; &#39; &lt;" : "",
+      });
     },
   );
 

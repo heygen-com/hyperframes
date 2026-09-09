@@ -269,7 +269,7 @@ export function parseHtml(html: string): ParsedHtml {
 
     if (type === "text") {
       const textEl = el.firstElementChild;
-      const content = textEl?.textContent || name;
+      const content = textEl?.textContent ?? name;
       const color = el.getAttribute("data-color") || undefined;
       const fontSizeAttr = el.getAttribute("data-font-size");
       const fontSize = fontSizeAttr ? parseInt(fontSizeAttr, 10) : undefined;
