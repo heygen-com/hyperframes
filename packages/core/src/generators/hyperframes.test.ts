@@ -37,6 +37,28 @@ function makeVideoElement(overrides: Partial<TimelineMediaElement> = {}): Timeli
 }
 
 describe("generateHyperframesHtml", () => {
+  it("keeps composition identifiers inside their attribute and round-trips entities", () => {
+    const compositionId = `x" autofocus onfocus="alert(1)'><script>bad()</script>&quot;&`;
+    const doc = new DOMParser().parseFromString(
+      generateHyperframesHtml([], 1, { compositionId }),
+      "text/html",
+    );
+    expect(doc.documentElement.getAttribute("data-composition-id")).toBe(compositionId);
+    expect(doc.documentElement.hasAttribute("autofocus")).toBe(false);
+    expect(doc.documentElement.hasAttribute("onfocus")).toBe(false);
+    expect(doc.querySelector("script")).toBeNull();
+  });
+
+  it("round-trips entity-bearing CSS through the JSON metadata attribute", () => {
+    const styles = `.x::after { content: "&quot; &#39; &amp; < > '"; }`;
+    const doc = new DOMParser().parseFromString(
+      generateHyperframesHtml([], 1, { styles }),
+      "text/html",
+    );
+    expect(JSON.parse(doc.documentElement.getAttribute("data-custom-styles")!)).toBe(styles);
+    expect(doc.querySelector("style")).toBeNull();
+  });
+
   it("generates valid HTML with proper data attributes", () => {
     const elements = [makeTextElement()];
     const html = generateHyperframesHtml(elements, 5);
@@ -153,7 +175,7 @@ describe("generateHyperframesHtml", () => {
     const elements = [makeTextElement({ id: "text-kf" })];
     const keyframes = {
       "text-kf": [
-        { id: "kf1", time: 0, properties: { opacity: 0 } },
+        { id: "kf1 &quot; &#39; < >", time: 0, properties: { opacity: 0 } },
         { id: "kf2", time: 1, properties: { opacity: 1 } },
       ],
     };
@@ -162,17 +184,25 @@ describe("generateHyperframesHtml", () => {
     expect(html).toContain("data-keyframes=");
     expect(html).toContain("kf1");
     expect(html).toContain("kf2");
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(JSON.parse(doc.getElementById("text-kf")!.getAttribute("data-keyframes")!)).toEqual(
+      keyframes["text-kf"],
+    );
   });
 
   it("serializes zoom keyframes on zoom container", () => {
     const elements = [makeTextElement()];
     const stageZoomKeyframes = [
-      { id: "z1", time: 0, zoom: { scale: 1, focusX: 960, focusY: 540 } },
+      { id: "z1 &quot; &#39; < >", time: 0, zoom: { scale: 1, focusX: 960, focusY: 540 } },
       { id: "z2", time: 5, zoom: { scale: 2, focusX: 400, focusY: 300 } },
     ];
     const html = generateHyperframesHtml(elements, 10, { stageZoomKeyframes });
 
     expect(html).toContain("data-zoom-keyframes=");
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(
+      JSON.parse(doc.getElementById("stage-zoom-container")!.getAttribute("data-zoom-keyframes")!),
+    ).toEqual(stageZoomKeyframes);
   });
 
   it("includes x, y, scale data attributes for non-default values", () => {

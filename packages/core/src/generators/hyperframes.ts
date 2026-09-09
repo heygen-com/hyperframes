@@ -10,6 +10,15 @@ import { serializeGsapAnimations, keyframesToGsapAnimations } from "@hyperframes
 import { GSAP_CDN, BASE_STYLES, ZOOM_CONTAINER_STYLES } from "../templates/constants";
 import { COMPOSITION_ATTRIBUTES } from "../compositionContract.js";
 
+function escapeHtmlAttributeValue(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const GOOGLE_FONTS_BASE = "https://fonts.googleapis.com/css2";
 const FONT_WEIGHTS: Record<string, string> = {
   Inter: "400;500;600;700;800;900",
@@ -318,7 +327,7 @@ export function generateHyperframesHtml(
   // Serialize zoom keyframes to data attribute
   const zoomKeyframesAttr =
     stageZoomKeyframes && stageZoomKeyframes.length > 0
-      ? ` data-zoom-keyframes='${JSON.stringify(stageZoomKeyframes).replace(/'/g, "&#39;")}'`
+      ? ` data-zoom-keyframes='${escapeHtmlAttributeValue(JSON.stringify(stageZoomKeyframes))}'`
       : "";
 
   let styleTags = "";
@@ -361,13 +370,13 @@ ${gsapScript}
     : "";
 
   const customStylesAttr = customStyles
-    ? ` data-custom-styles='${JSON.stringify(customStyles).replace(/'/g, "&#39;")}'`
+    ? ` data-custom-styles='${escapeHtmlAttributeValue(JSON.stringify(customStyles))}'`
     : "";
 
   const resolutionAttr = ` data-resolution="${resolution}"`;
 
   return `<!DOCTYPE html>
-<html data-composition-id="${compositionId}" data-composition-duration="${calculatedDuration}"${resolutionAttr}${customStylesAttr}>
+<html data-composition-id="${escapeHtmlAttributeValue(compositionId)}" data-composition-duration="${calculatedDuration}"${resolutionAttr}${customStylesAttr}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -470,7 +479,7 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
   // Serialize keyframes to data attribute if present
   if (keyframes && keyframes.length > 0) {
     const kfJson = JSON.stringify(keyframes);
-    baseAttrs.push(`data-keyframes='${kfJson.replace(/'/g, "&#39;")}'`);
+    baseAttrs.push(`data-keyframes='${escapeHtmlAttributeValue(kfJson)}'`);
   }
 
   if (isTextElement(element)) {
@@ -532,7 +541,7 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
     }
     if (element.variableValues && Object.keys(element.variableValues).length > 0) {
       const varJson = JSON.stringify(element.variableValues);
-      compositionAttrs.push(`data-variable-values='${varJson.replace(/'/g, "&#39;")}'`);
+      compositionAttrs.push(`data-variable-values='${escapeHtmlAttributeValue(varJson)}'`);
     }
     const attrs = compositionAttrs.join(" ");
     // Build iframe src with variable values as query params if present
