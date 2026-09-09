@@ -217,6 +217,35 @@ async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
 }
 
 /**
+ * Where a file's bytes actually live.
+ *
+ * Most files sit beside their manifest in the registry, so the URL is the base
+ * plus the item's directory plus `file.path`. A file that declares `url` is
+ * hosted elsewhere — binary assets go to a CDN so the registry stays text-only
+ * — and is fetched from there verbatim.
+ *
+ * Only `https://` is honoured. Anything else (`http://`, `file://`, a bare
+ * hostname) is a mistake in a manifest a user did not write, and silently
+ * treating it as a relative path would produce a nonsense URL and a 404 no one
+ * can read, so it is rejected where the manifest is at fault.
+ */
+export function assetSourceUrl(
+  item: RegistryItem,
+  file: FileTarget,
+  baseUrl: string = DEFAULT_REGISTRY_URL,
+): string {
+  if (file.url === undefined) {
+    return `${baseUrl}/${ITEM_TYPE_DIRS[item.type]}/${item.name}/${file.path}`;
+  }
+  if (!file.url.startsWith("https://")) {
+    throw new Error(
+      `Unsafe file.url "${file.url}" for "${item.name}/${file.path}": must be an absolute https:// URL.`,
+    );
+  }
+  return file.url;
+}
+
+/**
  * Download a single file referenced by an item to a local destination.
  * Caller is responsible for target-path validation (see installer.ts).
  */
@@ -230,7 +259,7 @@ export async function fetchItemFile(
   if (/(^|[/\\])\.\.([/\\]|$)/.test(file.path)) {
     throw new Error(`Unsafe file.path "${file.path}": path segments may not contain "..".`);
   }
-  const url = `${baseUrl}/${ITEM_TYPE_DIRS[item.type]}/${item.name}/${file.path}`;
+  const url = assetSourceUrl(item, file, baseUrl);
   let res: Response;
   try {
     res = await fetchWithRetry(url);

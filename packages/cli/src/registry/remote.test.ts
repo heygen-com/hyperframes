@@ -13,6 +13,7 @@ vi.mock("node:os", async (importOriginal) => ({
 }));
 
 const {
+  assetSourceUrl,
   describeCauseChain,
   fetchItemFile,
   fetchItemManifest,
@@ -207,6 +208,40 @@ describe("describeCauseChain", () => {
 
   it("returns the plain message when there is no cause", () => {
     expect(describeCauseChain(new Error("HTTP 404"))).toBe("HTTP 404");
+  });
+});
+
+describe("assetSourceUrl", () => {
+  const item = { name: "carousel-orbit-1", type: "hyperframes:block" } as never;
+
+  it("resolves a plain file against the registry base", () => {
+    const file = { path: "carousel-orbit-1.html" } as never;
+
+    expect(assetSourceUrl(item, file, "https://registry.example")).toBe(
+      "https://registry.example/blocks/carousel-orbit-1/carousel-orbit-1.html",
+    );
+  });
+
+  it("fetches a hosted asset from its own URL, not from the registry base", () => {
+    // The bug this guards: joining the base to an absolute URL yields
+    // "https://registry.example/blocks/…/https://cdn.example/…", which 404s
+    // with a message no reader can act on.
+    const file = {
+      path: "assets/carousel-images/one.jpg",
+      url: "https://cdn.example/registry-assets/deadbeefdeadbeef.jpg",
+    } as never;
+
+    expect(assetSourceUrl(item, file, "https://registry.example")).toBe(
+      "https://cdn.example/registry-assets/deadbeefdeadbeef.jpg",
+    );
+  });
+
+  it("refuses a url that is not absolute https, rather than silently mis-joining it", () => {
+    const file = { path: "assets/one.jpg", url: "http://cdn.example/one.jpg" } as never;
+
+    expect(() => assetSourceUrl(item, file, "https://registry.example")).toThrow(
+      /must be an absolute https:\/\/ URL/,
+    );
   });
 });
 
