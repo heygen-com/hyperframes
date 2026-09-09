@@ -168,8 +168,12 @@
         window.addEventListener("click", unlock, true);
 
         window.addEventListener("message", function (e) {
+          var player = slideshow && slideshow.querySelector("hyperframes-player");
+          var frame = player && player.iframeElement;
+          if (!frame || !frame.contentWindow || e.source !== frame.contentWindow) return;
           var d = e.data;
           if (!d || d.type !== "hf-sfx") return;
+          if (typeof d.name !== "string" || !Object.hasOwn(clips, d.name)) return;
           // Skip playback when muted — the component owns mute state.
           if (muted) return;
           var el = clips[d.name];
