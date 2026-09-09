@@ -5,6 +5,7 @@ import {
   writeFileSync,
   symlinkSync,
   lstatSync,
+  chmodSync,
   linkSync,
   rmSync,
   readdirSync,
@@ -82,3 +83,23 @@ it("publishes through an internal leaf alias to its physical target", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.skipIf(process.platform === "win32")(
+  "preserves executable mode when replacing an installed file",
+  () => {
+    const root = registryRoot(mkdtempSync(join(tmpdir(), "hf-mode-")));
+    try {
+      const path = join(root, "script.sh");
+      writeFileSync(path, "old");
+      chmodSync(path, 0o755);
+      publishRegistryFile(root, "script.sh", "new");
+      expect(lstatSync(path).mode & 0o777).toBe(0o755);
+      symlinkSync(path, join(root, "alias"), "file");
+      publishRegistryFile(root, "alias", "via alias");
+      expect(lstatSync(path).mode & 0o777).toBe(0o755);
+      expect(lstatSync(join(root, "alias")).isSymbolicLink()).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

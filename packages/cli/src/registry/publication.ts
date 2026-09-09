@@ -1,5 +1,6 @@
 import {
   lstatSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -60,6 +61,8 @@ export function publishRegistryFile(
   try {
     const stagedFile = join(stage, "file");
     writeFileSync(stagedFile, bytes, { flag: "wx" });
+    const previous = lstatSync(destination, { throwIfNoEntry: false });
+    if (previous?.isFile()) chmodSync(stagedFile, previous.mode & 0o777);
     renameSync(stagedFile, destination);
     return destination;
   } finally {

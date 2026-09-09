@@ -109,7 +109,8 @@ const server = createServer((req, res) => {
   res.end(hit.body);
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const registryUrl = `http://127.0.0.1:${server.address().port}`;
+const fixtureTransportUrl = `http://127.0.0.1:${server.address().port}`;
+const registryUrl = `https://registry-${server.address().port}.fixture.invalid`;
 
 const sandbox = mkdtempSync(join(tmpdir(), "hf-telemetry-e2e-"));
 const hookPath = join(sandbox, "capture-hook.cjs");
@@ -124,6 +125,12 @@ globalThis.fetch = async function (input, init) {
   if (url.includes("posthog")) {
     appendFileSync(OUT, (init && init.body) + "\\n");
     return new Response('{"status":1}', { status: 200 });
+  }
+  // Test-only transport mapping: exercise the HTTPS registry contract without
+  // provisioning TLS. Redirect enforcement has separate transport unit tests.
+  const parsed = new URL(url);
+  if (parsed.origin === ${JSON.stringify(registryUrl)}) {
+    return realFetch(${JSON.stringify(fixtureTransportUrl)} + parsed.pathname + parsed.search, init);
   }
   return realFetch(input, init);
 };

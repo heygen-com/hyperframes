@@ -86,6 +86,34 @@ describe("installItem", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  it.each(["darwin", "win32"] as const)(
+    "rejects absent case and Unicode aliases on %s before downloads",
+    async (platform) => {
+      vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+      try {
+        for (const names of [
+          ["Foo.html", "foo.html"],
+          ["Café.html", "Cafe\u0301.html"],
+        ]) {
+          const dir = project();
+          try {
+            const conflicting = {
+              ...item,
+              files: names.map((name) => ({ ...item.files[0]!, target: `components/${name}` })),
+            };
+            await expect(installItem(conflicting, { destDir: dir, force: true })).rejects.toThrow(
+              /duplicate/,
+            );
+            expect(existsSync(join(dir, "components"))).toBe(false);
+          } finally {
+            rmSync(dir, { recursive: true, force: true });
+          }
+        }
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
   it("records what it installed, so a later install can tell", async () => {
     const dir = project();
     const result = await installItem(item, { destDir: dir });

@@ -251,14 +251,15 @@ export async function installItem(
 
 function validatePhysicalTargets(root: string, files: FileTarget[]): void {
   const targets = new Set<string>();
-  const recordPath = registryTargetPath(root, INSTALL_RECORD);
+  const aliasKey = (path: string): string =>
+    process.platform === "win32" || process.platform === "darwin"
+      ? path.normalize("NFC").toLowerCase()
+      : path;
+  const recordKey = aliasKey(registryTargetPath(root, INSTALL_RECORD));
   for (const file of files) {
     const path = registryTargetPath(root, file.target);
-    const key = process.platform === "win32" ? path.toLowerCase() : path;
-    if (
-      targets.has(key) ||
-      key === (process.platform === "win32" ? recordPath.toLowerCase() : recordPath)
-    )
+    const key = aliasKey(path);
+    if (targets.has(key) || key === recordKey)
       throw new Error("Unsafe target: duplicate or reserved install record");
     targets.add(key);
   }
