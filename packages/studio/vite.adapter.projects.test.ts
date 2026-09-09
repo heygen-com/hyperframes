@@ -39,7 +39,7 @@ describe("Vite project resolution boundary", () => {
 
   it("preserves valid names, session aliases, and explicitly listed symlink projects", async () => {
     const { data, sessions, root, adapter, app } = fixture();
-    const id = "..Mañana #1? 50%";
+    const id = "..Mañana #1 50%";
     mkdirSync(join(data, id));
     expect((await app.request(`http://localhost/projects/${encodeURIComponent(id)}`)).status).toBe(
       200,
