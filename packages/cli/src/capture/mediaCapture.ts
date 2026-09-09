@@ -24,6 +24,8 @@ import {
 export interface DiscoveredLottie {
   url: string;
   data?: unknown;
+  /** Internal discovery accounting: avoid charging the same buffered data twice. */
+  dataBudget?: DownloadByteBudget;
   dimensions?: { w: number; h: number };
   frameRate?: number;
 }
@@ -63,8 +65,11 @@ export async function saveLottieAnimations(
         // Already have the JSON data from network interception
         jsonData = JSON.stringify(lottieItem.data);
         const size = Buffer.byteLength(jsonData);
-        if (size > MAX_LOTTIE_BYTES || size > byteBudget.remainingBytes) continue;
-        byteBudget.remainingBytes -= size;
+        if (size > MAX_LOTTIE_BYTES) continue;
+        if (lottieItem.dataBudget !== byteBudget) {
+          if (size > byteBudget.remainingBytes) continue;
+          byteBudget.remainingBytes -= size;
+        }
       } else if (lottieItem.url) {
         const requestTimeoutMs = Math.min(10_000, liveRemainingMs(budget, 10_000));
         if (requestTimeoutMs <= 0) break;

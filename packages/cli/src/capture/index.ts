@@ -1,3 +1,4 @@
+import { discoverLottieResponse } from "./lottieDiscovery.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 /**
  * Website capture orchestrator.
@@ -217,39 +218,8 @@ export async function captureWebsite(
         if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(responseUrl)) {
           discoveredVideoUrls.add(responseUrl);
         }
-        const contentType = response.headers()["content-type"] || "";
-        const isJsonUrl = responseUrl.endsWith(".json");
-        const isLottieUrl = responseUrl.endsWith(".lottie");
-        const isJson =
-          contentType.includes("application/json") || contentType.includes("text/plain");
-
-        if (isLottieUrl) {
-          discoveredLotties.push({ url: responseUrl });
-          return;
-        }
-
-        if (isJsonUrl || isJson) {
-          // Check Content-Length before downloading to avoid OOM on huge responses
-          const cl = parseInt(response.headers()["content-length"] || "0", 10);
-          if (cl > 5_000_000) return;
-          const buffer = await response.buffer();
-          if (buffer.length < 100 || buffer.length > 5_000_000) return; // Skip tiny or huge
-          const text = buffer.toString("utf-8");
-          const json = JSON.parse(text);
-          // Validate Lottie structure: must have version, in/out points, layers, dimensions, framerate
-          if (
-            json &&
-            typeof json === "object" &&
-            ["v", "ip", "op", "layers", "w", "h", "fr"].every((k: string) => k in json)
-          ) {
-            discoveredLotties.push({
-              url: responseUrl,
-              data: json,
-              dimensions: { w: json.w, h: json.h },
-              frameRate: json.fr,
-            });
-          }
-        }
+        const lottie = await discoverLottieResponse(response, downloadByteBudget);
+        if (lottie) discoveredLotties.push(lottie);
       } catch {
         /* not JSON or parse error — skip */
       }

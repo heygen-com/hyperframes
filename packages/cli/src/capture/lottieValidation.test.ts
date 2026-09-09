@@ -11,6 +11,13 @@ function archive(path: string, content = animation): Buffer {
 }
 
 describe("Lottie archive validation", () => {
+  it("rejects excessive EOCD entry counts before entry materialization", () => {
+    const bytes = archive("a/demo.json");
+    const end = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    bytes.writeUInt16LE(1000, end + 8);
+    bytes.writeUInt16LE(1000, end + 10);
+    expect(readLottieArchive(bytes)).toBeNull();
+  });
   it.each(["a/demo.json", "animations/demo.json"])("preserves valid %s animation JSON", (path) => {
     expect(readLottieArchive(archive(path))).toBe(animation);
   });
@@ -36,6 +43,9 @@ describe("Lottie JSON validation", () => {
     '{"w":100000,"h":100000,"layers":[]}',
     '{"w":100,"h":100,"layers":[],"__proto__":{}}',
     '{"w":100,"h":100,"layers":[],"fr":1e999}',
+    '{"w":100,"h":100,"layers":[true,null,"x"],"fr":30,"ip":0,"op":30}',
+    '{"w":100,"h":100,"layers":[],"fr":5e-324,"ip":0,"op":10000000}',
+    '{"w":100,"h":100,"layers":[],"assets":[{"layers":[false]}]}',
   ])("rejects invalid animation data %s", (source) => {
     expect(validLottieJson(source)).toBe(false);
   });

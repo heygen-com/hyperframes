@@ -6,16 +6,11 @@ export const MAX_LOTTIE_BYTES = 10 * 1024 * 1024;
 export function readLottieArchive(bytes: Buffer): string | null {
   if (bytes.length > MAX_LOTTIE_BYTES) return null;
   try {
-    const entries = new AdmZip(bytes).getEntries();
+    const zip = new AdmZip(bytes);
+    if (zip.getEntryCount() > 256) return null;
+    const entries = zip.getEntries();
     if (entries.length > 256) return null;
-    let total = 0;
-    for (const entry of entries) {
-      if (!safeArchivePath(entry.entryName)) return null;
-      const size = entry.header.size;
-      if (!Number.isSafeInteger(size) || size < 0 || size > MAX_LOTTIE_BYTES) return null;
-      total += size;
-      if (total > 50 * 1024 * 1024) return null;
-    }
+    if (!validArchiveEntries(entries)) return null;
     const animation = entries.find((entry) =>
       /^(?:a|animations)\/[^/]+\.json$/.test(entry.entryName),
     );
@@ -27,6 +22,18 @@ export function readLottieArchive(bytes: Buffer): string | null {
   } catch {
     return null;
   }
+}
+
+function validArchiveEntries(entries: { entryName: string; header: { size: number } }[]): boolean {
+  let total = 0;
+  for (const entry of entries) {
+    if (!safeArchivePath(entry.entryName)) return false;
+    const size = entry.header.size;
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_LOTTIE_BYTES) return false;
+    total += size;
+    if (total > 50 * 1024 * 1024) return false;
+  }
+  return true;
 }
 
 function safeArchivePath(path: string): boolean {
@@ -64,7 +71,15 @@ function validLottieTiming(value: Record<string, unknown>): boolean {
   if (value.fr !== undefined && (typeof value.fr !== "number" || value.fr <= 0 || value.fr > 240))
     return false;
   if (![value.ip, value.op].every(validOptionalFrame)) return false;
-  return !(typeof value.ip === "number" && typeof value.op === "number" && value.op < value.ip);
+  const start = numberOr(value.ip, 0);
+  const end = numberOr(value.op, 0);
+  const rate = numberOr(value.fr, 30);
+  const duration = (end - start) / rate;
+  return Number.isFinite(duration) && duration >= 0 && duration <= 3600;
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === "number" ? value : fallback;
 }
 
 function validOptionalFrame(frame: unknown): boolean {
@@ -86,10 +101,15 @@ function boundedLottieTree(root: unknown): boolean {
     if (++count > 100000 || item.depth > 128) return false;
     if (typeof item.value === "number" && !Number.isFinite(item.value)) return false;
     for (const [key, value] of jsonChildren(item.value)) {
-      if (["__proto__", "constructor", "prototype"].includes(key)) return false;
+      if (!validLottieEntry(key, value)) return false;
       if (count + pending.length >= 100000) return false;
       pending.push({ value, depth: item.depth + 1 });
     }
   }
   return true;
+}
+
+function validLottieEntry(key: string, value: unknown): boolean {
+  if (["__proto__", "constructor", "prototype"].includes(key)) return false;
+  return key !== "layers" || (Array.isArray(value) && value.every(record));
 }
