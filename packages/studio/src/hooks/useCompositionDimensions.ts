@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { useMountEffect } from "./useMountEffect";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
@@ -29,13 +29,14 @@ function readPositiveDimensions(width: unknown, height: unknown): CompositionDim
   return { width: parsedWidth, height: parsedHeight };
 }
 
-export function useCompositionDimensions() {
+export function useCompositionDimensions(iframeRef: RefObject<HTMLIFrameElement | null>) {
   const [compositionDimensions, setCompositionDimensions] = useState<CompositionDimensions | null>(
     null,
   );
 
   useMountEffect(() => {
     const handleMessage = (e: MessageEvent) => {
+      if (!e.source || e.source !== iframeRef.current?.contentWindow) return;
       const dimensions = readCompositionSizeMessage(e.data);
       if (!dimensions) return;
       setCompositionDimensions((prev) =>

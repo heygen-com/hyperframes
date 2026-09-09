@@ -131,6 +131,7 @@ export function useCaptionDetection({
     };
 
     const handleMessage = (e: MessageEvent) => {
+      if (!e.source || e.source !== previewIframeRef.current?.contentWindow) return;
       const data = e.data;
       if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
         if (!acceptStudioRuntimeMessage(data)) return;

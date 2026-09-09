@@ -333,7 +333,7 @@ export function StudioApp() {
         : null,
     effectiveTimelineDuration,
   });
-  const compositionDimensions = useCompositionDimensions();
+  const compositionDimensions = useCompositionDimensions(previewIframeRef);
   const { lintModal, linting, handleLint, closeLintModal, findingsByFile } = useLintModal(
     projectId,
     refreshKey,

@@ -116,6 +116,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     // messages, element resize, window resize.
     const unsubPlayer = usePlayerStore.subscribe(scheduleTick);
     const handleMessage = (e: MessageEvent) => {
+      if (!e.source || e.source !== iframeRef.current?.contentWindow) return;
       const data = e.data;
       if (data?.source === "hf-preview") scheduleTick();
     };

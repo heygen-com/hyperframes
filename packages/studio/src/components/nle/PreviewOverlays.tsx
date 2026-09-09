@@ -139,7 +139,7 @@ export function PreviewOverlays({
 }: PreviewOverlaysProps) {
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
-  const compositionDimensions = useCompositionDimensions();
+  const compositionDimensions = useCompositionDimensions(previewIframeRef);
 
   // Caption edit mode is entered automatically when captions are detected;
   // these give the author an explicit way OUT (and back in). Without them the
