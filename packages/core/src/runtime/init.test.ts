@@ -169,6 +169,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
       }),
     );
@@ -239,6 +240,7 @@ describe("initSandboxRuntimeModular", () => {
     window.addEventListener("error", onError);
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: { source: "hf-parent", type: "control", action: "set-volume", volume: 1 },
       }),
     );
@@ -2846,6 +2848,7 @@ describe("initSandboxRuntimeModular", () => {
       if (payload.source !== "hf-preview" || payload.type !== "ready") return;
       window.dispatchEvent(
         new MessageEvent("message", {
+          source: window.parent,
           data: {
             source: "hf-parent",
             type: "control",
@@ -2856,6 +2859,7 @@ describe("initSandboxRuntimeModular", () => {
       );
       window.dispatchEvent(
         new MessageEvent("message", {
+          source: window.parent,
           data: {
             source: "hf-parent",
             type: "control",
@@ -3049,6 +3053,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: { source: "hf-parent", type: "control", action: "set-muted", muted: false },
       }),
     );
@@ -3058,6 +3063,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: { source: "hf-parent", type: "control", action: "set-muted", muted: true },
       }),
     );
@@ -3067,6 +3073,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: { source: "hf-parent", type: "control", action: "set-muted", muted: false },
       }),
     );
@@ -3100,6 +3107,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: {
           source: "hf-parent",
           type: "control",
@@ -3148,6 +3156,7 @@ describe("initSandboxRuntimeModular", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
+        source: window.parent,
         data: {
           source: "hf-parent",
           type: "control",

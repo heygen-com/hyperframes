@@ -27,11 +27,54 @@ function createMockDeps() {
 
 function makeControlMessage(action: string, extra?: Record<string, unknown>) {
   return new MessageEvent("message", {
+    source: window.parent,
     data: { source: "hf-parent", type: "control", action, ...extra },
   });
 }
 
 describe("installRuntimeControlBridge", () => {
+  it("rejects foreign and null senders before dispatching controls", () => {
+    const foreign = document.createElement("iframe");
+    document.body.append(foreign);
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      for (const source of [foreign.contentWindow, null]) {
+        handler(
+          new MessageEvent("message", {
+            source,
+            data: { source: "hf-parent", type: "control", action: "play" },
+          }),
+        );
+      }
+      expect(deps.onPlay).not.toHaveBeenCalled();
+      handler(
+        new MessageEvent("message", {
+          source: window,
+          data: { source: "hf-parent", type: "control", action: "play" },
+        }),
+      );
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+      foreign.remove();
+    }
+  });
+  it("accepts an embedding parent distinct from the runtime window", () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    vi.stubGlobal("parent", frame.contentWindow);
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      handler(makeControlMessage("play"));
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+      vi.unstubAllGlobals();
+      frame.remove();
+    }
+  });
   it("dispatches play command", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);

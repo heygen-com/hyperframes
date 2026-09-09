@@ -123,6 +123,7 @@ function handleFlashElements(data: BridgeControlData): void {
 
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
   const handler = (event: MessageEvent) => {
+    if (event.source !== window.parent && event.source !== window) return;
     const data = event.data as BridgeControlData | null;
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
     if (rejectUnsupportedProtocol(data)) return;
