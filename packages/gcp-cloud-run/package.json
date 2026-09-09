@@ -72,9 +72,9 @@
     "@google-cloud/workflows": "^4.2.0",
     "@hono/node-server": "^2.0.5",
     "@hyperframes/producer": "workspace:^",
-    "hono": "^4.6.0",
+    "hono": "^4.13.5",
     "puppeteer-core": "^25.8.0",
-    "tar": "^7.4.3"
+    "tar": "^7.5.21"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

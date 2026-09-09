@@ -76,7 +76,7 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "puppeteer-core": "^25.8.0",
-    "tar": "^7.4.3"
+    "tar": "^7.5.21"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.146",
