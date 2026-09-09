@@ -186,18 +186,38 @@ async function fetchHostedFiles(projectDir: string): Promise<void> {
  * declares variables, and rewriting a file the payload never reads would be a
  * change with no reader.
  */
+/** Downloading is the default: a caller that says nothing wants to render. */
+async function materializeHostedAssets(
+  projectDir: string,
+  mode: PrepareOptions["hostedAssets"],
+): Promise<void> {
+  if (mode === "cdn") return pointHostedAssetsAtCdn(projectDir);
+  await fetchHostedFiles(projectDir);
+}
+
 function pointHostedAssetsAtCdn(projectDir: string): void {
   const manifestPath = join(projectDir, "registry-item.json");
   if (!existsSync(manifestPath)) return;
   const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
 
-  const entry = manifest.files?.find((file) => file.type === "hyperframes:composition");
-  if (!entry) return;
-  const entryPath = join(projectDir, entry.path);
-  if (!existsSync(entryPath)) return;
+  const entryPath = compositionPathOf(projectDir, manifest);
+  if (entryPath === undefined) return;
 
   const html = readFileSync(entryPath, "utf-8");
-  const rewritten = html.replace(
+  const rewritten = rewriteVariableDefaults(html, manifest);
+  if (rewritten !== html) writeFileSync(entryPath, rewritten, "utf-8");
+}
+
+/** The item's own composition file, when it is where the manifest says it is. */
+function compositionPathOf(projectDir: string, manifest: RegistryItem): string | undefined {
+  const entry = manifest.files?.find((file) => file.type === "hyperframes:composition");
+  if (entry === undefined) return undefined;
+  const entryPath = join(projectDir, entry.path);
+  return existsSync(entryPath) ? entryPath : undefined;
+}
+
+function rewriteVariableDefaults(html: string, manifest: RegistryItem): string {
+  return html.replace(
     /(\sdata-composition-variables=')([^']*)(')/i,
     (whole, open: string, encoded: string, close: string) => {
       try {
@@ -211,7 +231,6 @@ function pointHostedAssetsAtCdn(projectDir: string): void {
       }
     },
   );
-  if (rewritten !== html) writeFileSync(entryPath, rewritten, "utf-8");
 }
 
 /** The attribute is single-quoted, so only `&#39;` has to survive the round trip. */
@@ -289,11 +308,7 @@ export async function prepareProjectDir(
 ): Promise<string> {
   const tmpDir = createCatalogPreviewTempDir(item.name);
   cpSync(item.sourceDir, tmpDir, { recursive: true });
-  if (options.hostedAssets === "cdn") {
-    pointHostedAssetsAtCdn(tmpDir);
-  } else {
-    await fetchHostedFiles(tmpDir);
-  }
+  await materializeHostedAssets(tmpDir, options.hostedAssets);
   mirrorRegistryTargets(tmpDir);
 
   // The HyperFrames producer navigates to index.html at the project root.
