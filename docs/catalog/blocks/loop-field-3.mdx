@@ -1,0 +1,489 @@
+---
+title: "Loop Field 3"
+description: "A field of image cards drifts past the camera in true perspective. 8 image slots, 15s seamless loop, 1:1."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-3.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-3.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add loop-field-3" item="loop-field-3" />
+
+That writes one file: `compositions/loop-field-3.html`.
+
+## Add it to your video
+
+It runs for 15 seconds at 1080×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="loop-field-3"
+  data-composition-src="compositions/loop-field-3.html"
+  data-start="0"
+  data-duration="15"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `mediaFit` | `natural` | `natural`, `crop` | Natural keeps each image's own ratio; Crop fills the card box at the media aspect below. |
+| `cropAspectRatio` | `1:1` | `16:9`, `9:16`, `1:1`, `4:5`, `3:2`, `3:4`, `2:3` | Card aspect used when Fit is Crop. |
+| `backgroundType` | `gradient` | `gradient`, `color`, `image` | Gradient (start → end colours), flat Colour, or your own Image. |
+| `backgroundGradientStart` | `#111111` | color | Top colour of the gradient. |
+| `backgroundGradientEnd` | `#444444` | color | Bottom colour of the gradient. |
+| `backgroundColor` | `#0b0b0f` | color | Flat colour when Type is Color; also the ground under an Image. |
+| `backgroundImage` | `` | image | Cover-fitted background when Type is Image. |
+| `blurAmount` | `0` | 0px to 60px, step 1px | Blur on the background image, px. |
+| `backgroundGradientNoise` | `0` | 0% to 100%, step 1% | Film-grain overlay strength. |
+| `backgroundOpacity` | `1` | 0 to 1, step 0.05 | Opacity of the whole background layer (0 = transparent ground). |
+| `borderRadius` | `0` | 0px to 200px, step 1px | Card corner radius in px at 1080. |
+| `fade` | `20` | 0 to 100, step 1 | Fade (engine parameter; see the block header comment). |
+| `cycles` | `1` | 0 to 12, step 0.1 | Number of motion cycles per loop. |
+| `cycleDeg` | `360` | -180° to 180°, step 1° | Degrees turned per cycle. |
+| `delay` | `0` | 0s to 2s, step 0.01s | Hold time between steps, seconds. |
+| `direction` | `reverse` | `forward`, `reverse` | Direction of travel. |
+| `count` | `40` | 0 to 100, step 1 | Count (engine parameter; see the block header comment). |
+| `spread` | `3150` | 0 to 6300, step 10 | Spread (engine parameter; see the block header comment). |
+| `planeSize` | `600` | 0 to 1200, step 10 | Card size in scene units. |
+| `farZ` | `10000` | 0 to 29900, step 10 | Far Z (engine parameter; see the block header comment). |
+| `nearZ` | `2600` | 0 to 5200, step 10 | Near Z (engine parameter; see the block header comment). |
+| `distance` | `9400` | 0 to 18800, step 10 | Camera distance from the formation. |
+| `perspective` | `100` | 0 to 200, step 1 | Camera focal length: smaller = stronger perspective. |
+| `offsetX` | `0` | -100% to 100%, step 1% | Horizontal offset of the formation, % of width. |
+| `offsetY` | `0` | -100% to 100%, step 1% | Vertical offset of the formation, % of height. |
+| `image1` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 1 of 8. Any aspect; fitted per mediaFit. |
+| `image2` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 2 of 8. Any aspect; fitted per mediaFit. |
+| `image3` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 3 of 8. Any aspect; fitted per mediaFit. |
+| `image4` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 4 of 8. Any aspect; fitted per mediaFit. |
+| `image5` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 5 of 8. Any aspect; fitted per mediaFit. |
+| `image6` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 6 of 8. Any aspect; fitted per mediaFit. |
+| `image7` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 7 of 8. Any aspect; fitted per mediaFit. |
+| `image8` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 8 of 8. Any aspect; fitted per mediaFit. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="loop-field-3"
+  data-composition-src="compositions/loop-field-3.html"
+  data-variable-values='{"mediaFit":"natural","cropAspectRatio":"1:1","backgroundType":"gradient","backgroundGradientStart":"#111111","backgroundGradientEnd":"#444444","backgroundColor":"#0b0b0f","backgroundImage":"","blurAmount":0,"backgroundGradientNoise":0,"backgroundOpacity":1,"borderRadius":0,"fade":20,"cycles":1,"cycleDeg":360,"delay":0,"direction":"reverse","count":40,"spread":3150,"planeSize":600,"farZ":10000,"nearZ":2600,"distance":9400,"perspective":100,"offsetX":0,"offsetY":0,"image1":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image2":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image3":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image4":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image5":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image6":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image7":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image8":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`loop-field-3.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"mediaFit","type":"enum","role":"style","label":"Media · Fit","description":"Natural keeps each image&#39;s own ratio; Crop fills the card box at the media aspect below.","default":"natural","options":[{"value":"natural","label":"Natural (original ratio)"},{"value":"crop","label":"Crop"}]},{"id":"cropAspectRatio","type":"enum","role":"style","label":"Media · Aspect","description":"Card aspect used when Fit is Crop.","default":"1:1","options":[{"value":"16:9","label":"16:9"},{"value":"9:16","label":"9:16"},{"value":"1:1","label":"1:1"},{"value":"4:5","label":"4:5"},{"value":"3:2","label":"3:2"},{"value":"3:4","label":"3:4"},{"value":"2:3","label":"2:3"}]},{"id":"backgroundType","type":"enum","role":"style","label":"Background · Type","description":"Gradient (start → end colours), flat Colour, or your own Image.","default":"gradient","options":[{"value":"gradient","label":"Gradient"},{"value":"color","label":"Color"},{"value":"image","label":"Image"}]},{"id":"backgroundGradientStart","type":"color","role":"style","label":"Background · Gradient start","description":"Top colour of the gradient.","default":"#111111"},{"id":"backgroundGradientEnd","type":"color","role":"style","label":"Background · Gradient end","description":"Bottom colour of the gradient.","default":"#444444"},{"id":"backgroundColor","type":"color","role":"style","label":"Background · Color","description":"Flat colour when Type is Color; also the ground under an Image.","default":"#0b0b0f"},{"id":"backgroundImage","type":"image","role":"style","label":"Background · Image","description":"Cover-fitted background when Type is Image.","portrays":["background_image"],"default":""},{"id":"blurAmount","type":"number","role":"style","label":"Background · Blur","description":"Blur on the background image, px.","default":0,"min":0,"max":60,"step":1,"unit":"px"},{"id":"backgroundGradientNoise","type":"number","role":"style","label":"Background · Grain","description":"Film-grain overlay strength.","default":0,"min":0,"max":100,"step":1,"unit":"%"},{"id":"backgroundOpacity","type":"number","role":"style","label":"Background · Opacity","description":"Opacity of the whole background layer (0 = transparent ground).","default":1,"min":0,"max":1,"step":0.05},{"id":"borderRadius","type":"number","role":"style","label":"Appearance · Border radius","description":"Card corner radius in px at 1080.","default":0,"min":0,"max":200,"step":1,"unit":"px"},{"id":"fade","type":"number","role":"style","label":"Animation · Fade","description":"Fade (engine parameter; see the block header comment).","default":20,"min":0,"max":100,"step":1},{"id":"cycles","type":"number","role":"style","label":"Animation · Cycles","description":"Number of motion cycles per loop.","default":1,"min":0,"max":12,"step":0.1},{"id":"cycleDeg","type":"number","role":"style","label":"Animation · Cycle Deg","description":"Degrees turned per cycle.","default":360,"min":-180,"max":180,"step":1,"unit":"°"},{"id":"delay","type":"number","role":"style","label":"Animation · Delay","description":"Hold time between steps, seconds.","default":0,"min":0,"max":2,"step":0.01,"unit":"s"},{"id":"direction","type":"enum","role":"style","label":"Animation · Direction","description":"Direction of travel.","default":"reverse","options":[{"value":"forward","label":"Forward"},{"value":"reverse","label":"Reverse"}]},{"id":"count","type":"number","role":"style","label":"Template options · Count","description":"Count (engine parameter; see the block header comment).","default":40,"min":0,"max":100,"step":1},{"id":"spread","type":"number","role":"style","label":"Template options · Spread","description":"Spread (engine parameter; see the block header comment).","default":3150,"min":0,"max":6300,"step":10},{"id":"planeSize","type":"number","role":"style","label":"Template options · Media size","description":"Card size in scene units.","default":600,"min":0,"max":1200,"step":10},{"id":"farZ","type":"number","role":"style","label":"Template options · Far Z","description":"Far Z (engine parameter; see the block header comment).","default":10000,"min":0,"max":29900,"step":10},{"id":"nearZ","type":"number","role":"style","label":"Template options · Near Z","description":"Near Z (engine parameter; see the block header comment).","default":2600,"min":0,"max":5200,"step":10},{"id":"distance","type":"number","role":"style","label":"Template options · Distance","description":"Camera distance from the formation.","default":9400,"min":0,"max":18800,"step":10},{"id":"perspective","type":"number","role":"style","label":"Template options · Perspective","description":"Camera focal length: smaller = stronger perspective.","default":100,"min":0,"max":200,"step":1},{"id":"offsetX","type":"number","role":"style","label":"Template options · Offset X","description":"Horizontal offset of the formation, % of width.","default":0,"min":-100,"max":100,"step":1,"unit":"%"},{"id":"offsetY","type":"number","role":"style","label":"Template options · Offset Y","description":"Vertical offset of the formation, % of height.","default":0,"min":-100,"max":100,"step":1,"unit":"%"},{"id":"image1","type":"image","role":"content","label":"Media · Image 1","description":"Image on card 1 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image2","type":"image","role":"content","label":"Media · Image 2","description":"Image on card 2 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image3","type":"image","role":"content","label":"Media · Image 3","description":"Image on card 3 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image4","type":"image","role":"content","label":"Media · Image 4","description":"Image on card 4 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image5","type":"image","role":"content","label":"Media · Image 5","description":"Image on card 5 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image6","type":"image","role":"content","label":"Media · Image 6","description":"Image on card 6 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image7","type":"image","role":"content","label":"Media · Image 7","description":"Image on card 7 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image8","type":"image","role":"content","label":"Media · Image 8","description":"Image on card 8 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"}]'
+>
+  <head>
+    <title>loop-field-3</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0b0f;
+      }
+      #loop-field-3-bg {
+        position: absolute;
+        inset: 0;
+      }
+      #loop-field-3-stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 0;
+        height: 0;
+      }
+      .card {
+        transform-origin: 0 0;
+      }
+      .card img {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="loop-field-3-root"
+      data-composition-id="loop-field-3"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="15"
+    >
+      <div
+        id="loop-field-3-loop"
+        class="clip"
+        data-start="0"
+        data-duration="15"
+        data-track-index="1"
+        data-layout-allow-overflow
+      >
+        <div id="loop-field-3-bg"></div>
+        <div id="loop-field-3-stage"></div>
+      </div>
+    </div>
+    <script>
+      // Shared runtime for the the reference tool loop ports. Loaded by every family engine.
+      // Everything here is a pure function of the HyperFrames variables + t.
+      //
+      // Reference constants (measured on the 512x512 preview library, 2026-09-08):
+      //   Marquee planeSize -> 0.3% of frame height per unit (7 variants, all 1.54px/unit @512)
+      //   Marquee gap       -> 0.2% of frame height per unit
+      //   3D perspective    -> CSS focal length f = 1000px * (100/perspective) at H=1080
+      //                        (3D01/02/08/11: card widths & far-card spacing match to <3%)
+      // Both are calibrated on a SQUARE canvas; for 16:9 we scale by H. ponytail: if the
+      // dashboard 16:9 reference shows width-relative scaling, flip REF below to W.
+      window.RF = (() => {
+        // Variables are injected by the inline script via RF.use(): HyperFrames wraps INLINE scripts in a
+        // per-composition scope where getVariables() resolves; this external file only sees the host window.
+        const V = {},
+          MEDIA = [];
+        const use = (vars, media) => {
+          Object.assign(V, vars || {});
+          MEDIA.splice(0, MEDIA.length, ...(media || []));
+        };
+        const root = document.querySelector("[data-composition-id]");
+        const W = +root.dataset.width,
+          H = +root.dataset.height;
+        const REF = H;
+        const num = (k, d) => (V[k] !== undefined && V[k] !== "" && !isNaN(+V[k]) ? +V[k] : d);
+        const str = (k, d) => (V[k] !== undefined && V[k] !== "" ? String(V[k]) : d);
+        const on = (k, d) => /^(true|on|1)$/i.test(str(k, d ? "on" : "off")); // spec booleans arrive as "true"/"false", enums as on/off
+
+        function pick(n) {
+          n = Math.max(1, Math.min(MEDIA.length, n | 0));
+          return MEDIA.slice(0, n);
+        }
+        // aspect (w/h) a card takes for a media item under mediaFit + cropAspectRatio
+        function aspect(m, fit, cropAR) {
+          if (fit === "natural") return m.w / m.h;
+          const [a, b] = String(cropAR || "1:1")
+            .split(":")
+            .map(Number);
+          return a && b ? a / b : 1;
+        }
+        function card(m, w, h, radius) {
+          const el = document.createElement("div");
+          el.className = "card";
+          el.style.cssText = `position:absolute;width:${w}px;height:${h}px;overflow:hidden;border-radius:${radius}px;`;
+          const img = document.createElement("img");
+          img.src = m.src;
+          img.width = Math.round(w);
+          img.height = Math.round(h);
+          img.style.cssText = `display:block;width:${w}px;height:${h}px;object-fit:cover;`;
+          el.appendChild(img);
+          return el;
+        }
+        function background(el) {
+          // the editor's Background panel: type gradient | color | image, gradient start/end, grain (noise %), opacity, image blur
+          const type = str("backgroundType", "gradient");
+          const c = str("backgroundColor", "#0b0b0f");
+          el.style.background = c;
+          if (type === "gradient") {
+            const g1 = str("backgroundGradientStart", "#111111"),
+              g2 = str("backgroundGradientEnd", "#444444");
+            el.style.background = `linear-gradient(180deg, ${g1}, ${g2})`;
+          } else if (type === "image") {
+            const im = V.backgroundImage,
+              src = im && typeof im === "object" ? im.url || im.src || "" : im || "";
+            if (src) {
+              el.style.background = `${c} url("${src}") center / cover no-repeat`;
+              const b = num("blurAmount", 0);
+              if (b > 0) el.style.filter = `blur(${b}px)`;
+            }
+          }
+          el.style.opacity = String(Math.max(0, Math.min(1, num("backgroundOpacity", 1))));
+          const noise = num("backgroundGradientNoise", 0);
+          if (noise > 0) {
+            const g = document.createElement("div");
+            g.style.cssText = `position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:${((noise / 100) * 0.7).toFixed(3)};background:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'256'%20height%3D'256'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%20seed%3D'7'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200.5%200%200%200%200%200.5%200%200%200%200%200.5%200%200%200%201%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'256'%20height%3D'256'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E") 0 0 / 256px 256px repeat`;
+            el.appendChild(g);
+          }
+        }
+        const expoInOut = (x) =>
+          x <= 0
+            ? 0
+            : x >= 1
+              ? 1
+              : x < 0.5
+                ? Math.pow(2, 20 * x - 10) / 2
+                : (2 - Math.pow(2, -20 * x + 10)) / 2;
+        const frac = (x) => x - Math.floor(x);
+        return {
+          V,
+          use,
+          W,
+          H,
+          REF,
+          num,
+          str,
+          on,
+          MEDIA,
+          pick,
+          aspect,
+          card,
+          background,
+          expoInOut,
+          frac,
+        };
+      })();
+    </script>
+    <script>
+      (async () => {
+        // Field loop family — a field of `count` cards drifts past the camera: true perspective
+        // dolly along z (offset/w constant on every track, 1/w linear in t, resid < 0.0002), cards face the camera.
+        // Measured on the 512 previews (2026-09-08), f = 1000·(100/perspective)·REF/1080 (3D convention), S = planeSize:
+        //   travel per loop = (farZ − nearZ)·cycles·cycleDeg/360 : 01 7334 vs 7400, 02 14600 vs 2×7400 (6×120°),
+        //   03 7363 vs 7400, 04 36760 vs 3×12350 — all within 1%.
+        //   far cutoff: cards appear (01/02) / vanish (03/04 reverse) at w = 42..44px @512 => depth 6800 = distance − nearZ
+        //   (checked on 01 and 04: 04 has farZ 14950 but the same 43px cutoff). Cards pass the camera at the near end.
+        //   lateral: offset/w up to ±3.1 (01, spread 1900 -> ±1870) and ±4.9 (03, spread 3150) => uniform ±spread in x, y.
+        //   count 12 -> ~8 visible (median comps/frame 8) ✓.
+        // Guesses: depth draws for the unrecovered cards (LCG, stratified over the period, axial hole 0.7·S); `fade` 20 (03/04) -> opacity ramp over the last
+        // fade% of the visible depth; a 0.04·SPAN opacity ramp at the near clip (reverse variants birth cards there; ref 03 has no pops); offsetX/Y in % of H; `delay` = phase offset in loop fractions (0 everywhere).
+        const __V = Object.assign(
+          {},
+          (window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : null) || {},
+          { loopDuration: 15, loopRepeat: 2, imageCount: 8 },
+        );
+        const __PH = [
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+        ];
+        const __MEDIA = await Promise.all(
+          ["image1", "image2", "image3", "image4", "image5", "image6", "image7", "image8"].map(
+            async (id, i) => {
+              const v = __V[id];
+              const src = (v && typeof v === "object" ? v.url || v.src : v) || __PH[i];
+              const img = new Image();
+              img.src = src;
+              try {
+                await img.decode();
+              } catch (e) {}
+              return { src, w: img.naturalWidth || 1400, h: img.naturalHeight || 1050 };
+            },
+          ),
+        );
+        RF.use(__V, __MEDIA);
+        const { W, H, REF, num, str, pick, aspect, card, background, frac } = RF;
+        const DUR = num("loopDuration", 14);
+        const FIT = str("mediaFit", "natural");
+        const CROP_AR = str("cropAspectRatio", "1:1");
+        const COUNT = Math.max(1, num("count", 12) | 0);
+        const SPREAD = num("spread", 1900);
+        const S = num("planeSize", 600);
+        const FARZ = num("farZ", 10000),
+          NEARZ = num("nearZ", 2600),
+          DIST = num("distance", 9400);
+        const PERSP = Math.max(1, num("perspective", 100));
+        const FADE = num("fade", 0) / 100;
+        const OX = (num("offsetX", 0) / 100) * REF,
+          OY = (num("offsetY", 0) / 100) * REF;
+        const CYCLES = num("cycles", 1),
+          CDEG = num("cycleDeg", 360);
+        const DELAY = num("delay", 0);
+        const DIR = str("direction", "forward") === "forward" ? 1 : -1;
+        const RADIUS = (num("borderRadius", 0) * REF) / 1080;
+        const IMAGES = pick(num("imageCount", 16));
+        const N = IMAGES.length;
+
+        document.getElementById("loop-field-3-loop").dataset.duration = DUR;
+        background(document.getElementById("loop-field-3-bg"));
+        const stage = document.getElementById("loop-field-3-stage");
+        const f = 1000 * (100 / PERSP) * (REF / 1080);
+        const SPAN = FARZ - NEARZ,
+          DFAR = DIST - NEARZ,
+          TRAVEL = (SPAN * CYCLES * CDEG) / 360;
+        // card draws recovered from the previews by tracking: [depth phase, x/S, y/S]; depth is stratified (k + c)/count in the
+        // ref, so missing cards (02: 5 of 18, 03: 12 of 40, 04: 35 of 50) are LCG-filled into the empty depth slots.
+        // The ref never puts a card within ~0.7·S of the axis (min radius 0.65..1.4 over 69 tracks) — a card on the axis
+        // would fill the frame and pop (ref adjacent-diff max is 1.4), so the LCG rejects that hole too.
+        const REFD = {
+          12: [
+            [0.034, -0.43, 1.06],
+            [0.118, 2.58, -0.55],
+            [0.203, 2.06, 1.26],
+            [0.285, 1.16, -2.01],
+            [0.368, -0.78, -1.52],
+            [0.447, -2.55, -2.56],
+            [0.538, 0.71, 1.7],
+            [0.622, 1.1, 0.49],
+            [0.701, 0.49, -0.91],
+            [0.783, -2.28, 0.42],
+            [0.865, -3.12, 1.82],
+            [0.949, -2.56, -1.7],
+          ],
+          18: [
+            [0.101, -1.62, 2.09],
+            [0.323, 2.57, -0.55],
+            [0.386, 2.06, 1.26],
+            [0.492, 1.15, -2.01],
+            [0.542, -0.78, -1.51],
+            [0.594, -2.54, -2.55],
+            [0.653, 0.7, 1.68],
+            [0.712, 1.09, 0.49],
+            [0.767, 0.49, -0.91],
+            [0.824, -2.28, 0.42],
+            [0.831, -0.88, -1.07],
+            [0.884, -3.14, 1.84],
+            [0.988, -0.63, 0.36],
+          ],
+          40: [
+            [0.025, -1.81, 0.65],
+            [0.039, -3.45, -3.01],
+            [0.07, -3.09, 2.59],
+            [0.122, 2.99, -0.84],
+            [0.167, -2.68, -2.46],
+            [0.189, 3.84, 4.39],
+            [0.314, -1.35, -4.82],
+            [0.343, 1.69, 4.96],
+            [0.362, -0.5, 0.41],
+            [0.364, -1.21, 3.07],
+            [0.396, 0.59, 1.37],
+            [0.421, 2.51, -2.78],
+            [0.436, -0.9, 0.45],
+            [0.469, -1.84, -3.36],
+            [0.491, -2.6, 3.4],
+            [0.514, -2.7, 1.72],
+            [0.558, -0.56, 1.63],
+            [0.587, 4.21, -0.76],
+            [0.638, 3.31, 1.96],
+            [0.699, 1.49, -0.95],
+            [0.712, 1.8, -3.24],
+            [0.749, -1.16, -2.43],
+            [0.767, 1.53, 0.53],
+            [0.8, 1.04, 2.75],
+            [0.822, 1.71, 0.67],
+            [0.867, -3.73, 0.56],
+            [0.909, -4.58, -1.93],
+            [0.996, -1.22, -0.73],
+          ],
+          50: [
+            [0.11, 0.58, 1.36],
+            [0.134, 2.51, -2.78],
+            [0.171, -1.84, -3.35],
+            [0.328, 3.3, 1.95],
+            [0.377, 1.49, -0.94],
+            [0.393, 1.81, -3.26],
+            [0.415, -1.16, -2.43],
+            [0.475, 1.71, 0.67],
+            [0.491, 0.67, -1.38],
+            [0.576, -2.31, -0.82],
+            [0.653, 2.16, -0.38],
+            [0.794, -1.22, -0.73],
+            [0.813, -1.8, 0.64],
+            [0.848, -3.06, 2.55],
+            [0.93, -2.68, -2.45],
+          ],
+        };
+        const SPR = SPREAD / S; // lateral half-range in card units
+        let seed = 4242;
+        const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+        const draws = (REFD[COUNT] || [])
+          .filter((d) => Math.abs(d[1]) <= SPR * 1.05 && Math.abs(d[2]) <= SPR * 1.05)
+          .slice(0, COUNT);
+        const taken = new Set(draws.map((d) => Math.floor(d[0] * COUNT)));
+        for (let k = 0; draws.length < COUNT; k = (k + 1) % COUNT) {
+          if (taken.has(k)) continue;
+          taken.add(k);
+          let x, y;
+          do {
+            x = (rnd() * 2 - 1) * SPR;
+            y = (rnd() * 2 - 1) * SPR;
+          } while (Math.hypot(x, y) < 0.7);
+          draws.push([(k + 0.2 + 0.6 * rnd()) / COUNT, x, y]);
+        }
+        const cards = [];
+        draws.forEach((d, i) => {
+          const m = IMAGES[i % N],
+            a = aspect(m, FIT, CROP_AR);
+          const cw = S * Math.min(1, a),
+            ch = S * Math.min(1, 1 / a); // world units, fits in S×S
+          const el = card(m, cw, ch, RADIUS);
+          stage.appendChild(el);
+          cards.push({ el, cw, ch, x: d[1] * S, y: d[2] * S, z0: d[0] * SPAN });
+        });
+        function renderAt(t) {
+          const travel = DIR * frac(t + DELAY / 100) * TRAVEL;
+          for (const c of cards) {
+            const d = frac((c.z0 - travel) / SPAN) * SPAN; // depth ahead of the camera, [0, SPAN)
+            const sc = f / Math.max(d, 1e-3); // world -> px at this depth
+            if (d > DFAR || d < 0.02 * SPAN) {
+              c.el.style.display = "none";
+              continue;
+            }
+            c.el.style.display = "";
+            const cx = OX + c.x * sc,
+              cy = OY + c.y * sc;
+            c.el.style.transform = `translate3d(${cx - (c.cw * sc) / 2}px,${cy - (c.ch * sc) / 2}px,0) scale(${sc})`;
+            const nearFade = Math.min(1, (d - 0.02 * SPAN) / (0.04 * SPAN)); // cards born/dying at the near clip (reverse) never pop
+            c.el.style.opacity = (
+              nearFade * (FADE > 0 ? Math.min(1, (DFAR - d) / (FADE * DFAR)) : 1)
+            ).toFixed(3);
+            c.el.style.zIndex = Math.round(1000 - (d / SPAN) * 999);
+          }
+        }
+        // one paused linear tween drives t; every frame is recomputed from t alone (seek-safe)
+        const state = { t: 0 };
+        const tl = gsap.timeline({ paused: true });
+        tl.to(state, { t: 1, duration: DUR, ease: "none", onUpdate: () => renderAt(state.t) }, 0);
+        renderAt(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["loop-field-3"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `loop` `images` `showcase` `gallery` `field` `3d`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)

@@ -2845,6 +2845,3883 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/logo-wall.png"
   },
   {
+    "name": "loop-3d-1",
+    "type": "block",
+    "title": "Loop 3D Ring 1",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-1.png"
+  },
+  {
+    "name": "loop-3d-10",
+    "type": "block",
+    "title": "Loop 3D Ring 10",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-10.png"
+  },
+  {
+    "name": "loop-3d-11",
+    "type": "block",
+    "title": "Loop 3D Ring 11",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-11.png"
+  },
+  {
+    "name": "loop-3d-12",
+    "type": "block",
+    "title": "Loop 3D Ring 12",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-12",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-12.png"
+  },
+  {
+    "name": "loop-3d-2",
+    "type": "block",
+    "title": "Loop 3D Ring 2",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-2.png"
+  },
+  {
+    "name": "loop-3d-3",
+    "type": "block",
+    "title": "Loop 3D Ring 3",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-3.png"
+  },
+  {
+    "name": "loop-3d-4",
+    "type": "block",
+    "title": "Loop 3D Ring 4",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-4.png"
+  },
+  {
+    "name": "loop-3d-5",
+    "type": "block",
+    "title": "Loop 3D Ring 5",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-5.png"
+  },
+  {
+    "name": "loop-3d-6",
+    "type": "block",
+    "title": "Loop 3D Ring 6",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-6.png"
+  },
+  {
+    "name": "loop-3d-7",
+    "type": "block",
+    "title": "Loop 3D Ring 7",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-7.png"
+  },
+  {
+    "name": "loop-3d-8",
+    "type": "block",
+    "title": "Loop 3D Ring 8",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-8.png"
+  },
+  {
+    "name": "loop-3d-9",
+    "type": "block",
+    "title": "Loop 3D Ring 9",
+    "description": "Image cards ring a vertical axis facing outward while the ring spins under a 3D camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-3d-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-3d-9.png"
+  },
+  {
+    "name": "loop-bento-1",
+    "type": "block",
+    "title": "Loop Bento 1",
+    "description": "Frame-sized bento pages ride a staircase belt; the camera steps to the next page each beat. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "bento"
+    ],
+    "href": "/catalog/blocks/loop-bento-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-bento-1.png"
+  },
+  {
+    "name": "loop-board",
+    "type": "block",
+    "title": "Loop Board",
+    "description": "An endless square lattice of image tiles drifts linearly across the frame. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "board"
+    ],
+    "href": "/catalog/blocks/loop-board",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-board.png"
+  },
+  {
+    "name": "loop-book-1",
+    "type": "block",
+    "title": "Loop Book 1",
+    "description": "A book-page spread whose pages turn one after another to reveal each image. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "book",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-book-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-book-1.png"
+  },
+  {
+    "name": "loop-book-2",
+    "type": "block",
+    "title": "Loop Book 2",
+    "description": "A book-page spread whose pages turn one after another to reveal each image. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "book",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-book-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-book-2.png"
+  },
+  {
+    "name": "loop-book-3",
+    "type": "block",
+    "title": "Loop Book 3",
+    "description": "A book-page spread whose pages turn one after another to reveal each image. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "book",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-book-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-book-3.png"
+  },
+  {
+    "name": "loop-book-4",
+    "type": "block",
+    "title": "Loop Book 4",
+    "description": "A book-page spread whose pages turn one after another to reveal each image. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "book",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-book-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-book-4.png"
+  },
+  {
+    "name": "loop-book-5",
+    "type": "block",
+    "title": "Loop Book 5",
+    "description": "A book-page spread whose pages turn one after another to reveal each image. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "book",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-book-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-book-5.png"
+  },
+  {
+    "name": "loop-box",
+    "type": "block",
+    "title": "Loop Box",
+    "description": "A cube of images seen from outside turns a quarter every beat to show its next face. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "box",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-box",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-box.png"
+  },
+  {
+    "name": "loop-cardtoss",
+    "type": "block",
+    "title": "Loop Card Toss",
+    "description": "Image cards are tossed up from below the frame, hang at the apex, and fall back. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "cardtoss"
+    ],
+    "href": "/catalog/blocks/loop-cardtoss",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-cardtoss.png"
+  },
+  {
+    "name": "loop-cardtotem",
+    "type": "block",
+    "title": "Loop Card Totem",
+    "description": "One vertical strip of image cards glides upward through the frame centre. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "cardtotem",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-cardtotem",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-cardtotem.png"
+  },
+  {
+    "name": "loop-carousel-1",
+    "type": "block",
+    "title": "Loop Carousel 1",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-1.png"
+  },
+  {
+    "name": "loop-carousel-10",
+    "type": "block",
+    "title": "Loop Carousel 10",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-10.png"
+  },
+  {
+    "name": "loop-carousel-11",
+    "type": "block",
+    "title": "Loop Carousel 11",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-11.png"
+  },
+  {
+    "name": "loop-carousel-12",
+    "type": "block",
+    "title": "Loop Carousel 12",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-12",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-12.png"
+  },
+  {
+    "name": "loop-carousel-13",
+    "type": "block",
+    "title": "Loop Carousel 13",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-13",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-13.png"
+  },
+  {
+    "name": "loop-carousel-14",
+    "type": "block",
+    "title": "Loop Carousel 14",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-14",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-14.png"
+  },
+  {
+    "name": "loop-carousel-15",
+    "type": "block",
+    "title": "Loop Carousel 15",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-15",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-15.png"
+  },
+  {
+    "name": "loop-carousel-16",
+    "type": "block",
+    "title": "Loop Carousel 16",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-16",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-16.png"
+  },
+  {
+    "name": "loop-carousel-17",
+    "type": "block",
+    "title": "Loop Carousel 17",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-17",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-17.png"
+  },
+  {
+    "name": "loop-carousel-18",
+    "type": "block",
+    "title": "Loop Carousel 18",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-18",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-18.png"
+  },
+  {
+    "name": "loop-carousel-2",
+    "type": "block",
+    "title": "Loop Carousel 2",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-2.png"
+  },
+  {
+    "name": "loop-carousel-3",
+    "type": "block",
+    "title": "Loop Carousel 3",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-3.png"
+  },
+  {
+    "name": "loop-carousel-4",
+    "type": "block",
+    "title": "Loop Carousel 4",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-4.png"
+  },
+  {
+    "name": "loop-carousel-5",
+    "type": "block",
+    "title": "Loop Carousel 5",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-5.png"
+  },
+  {
+    "name": "loop-carousel-6",
+    "type": "block",
+    "title": "Loop Carousel 6",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-6.png"
+  },
+  {
+    "name": "loop-carousel-7",
+    "type": "block",
+    "title": "Loop Carousel 7",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-7.png"
+  },
+  {
+    "name": "loop-carousel-8",
+    "type": "block",
+    "title": "Loop Carousel 8",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-8.png"
+  },
+  {
+    "name": "loop-carousel-9",
+    "type": "block",
+    "title": "Loop Carousel 9",
+    "description": "One lane of image cards steps past the centre, the focused card featured. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel-9.png"
+  },
+  {
+    "name": "loop-carousel3d-1",
+    "type": "block",
+    "title": "Loop Carousel 3D 1",
+    "description": "Radial image panes spin around a vertical axis like a paddle wheel under a 3D camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel3d",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel3d-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel3d-1.png"
+  },
+  {
+    "name": "loop-carousel3d-2",
+    "type": "block",
+    "title": "Loop Carousel 3D 2",
+    "description": "Radial image panes spin around a vertical axis like a paddle wheel under a 3D camera. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel3d",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel3d-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel3d-2.png"
+  },
+  {
+    "name": "loop-carousel3d-3",
+    "type": "block",
+    "title": "Loop Carousel 3D 3",
+    "description": "Radial image panes spin around a vertical axis like a paddle wheel under a 3D camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel3d",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel3d-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel3d-3.png"
+  },
+  {
+    "name": "loop-carousel3d-4",
+    "type": "block",
+    "title": "Loop Carousel 3D 4",
+    "description": "Radial image panes spin around a vertical axis like a paddle wheel under a 3D camera. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel3d",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel3d-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel3d-4.png"
+  },
+  {
+    "name": "loop-carousel3d-5",
+    "type": "block",
+    "title": "Loop Carousel 3D 5",
+    "description": "Radial image panes spin around a vertical axis like a paddle wheel under a 3D camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carousel3d",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carousel3d-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carousel3d-5.png"
+  },
+  {
+    "name": "loop-carouselflow",
+    "type": "block",
+    "title": "Loop Carousel Flow",
+    "description": "A stepped belt of cards; the centred card is full size and its neighbours shrink away. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "carouselflow",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-carouselflow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-carouselflow.png"
+  },
+  {
+    "name": "loop-cascadedeck",
+    "type": "block",
+    "title": "Loop Cascade Deck",
+    "description": "A centre stack fans into a diagonal deck, flips, and restacks in a loop. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "cascadedeck"
+    ],
+    "href": "/catalog/blocks/loop-cascadedeck",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-cascadedeck.png"
+  },
+  {
+    "name": "loop-cascadedrop",
+    "type": "block",
+    "title": "Loop Cascade Drop",
+    "description": "Image cards drop in from above one by one onto a loose centre stack. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "cascadedrop"
+    ],
+    "href": "/catalog/blocks/loop-cascadedrop",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-cascadedrop.png"
+  },
+  {
+    "name": "loop-centerstage",
+    "type": "block",
+    "title": "Loop Center Stage",
+    "description": "One image card at a time exits left while fading, a beat of empty stage, then the next enters. 6 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "centerstage"
+    ],
+    "href": "/catalog/blocks/loop-centerstage",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-centerstage.png"
+  },
+  {
+    "name": "loop-circle",
+    "type": "block",
+    "title": "Loop Circle",
+    "description": "Concentric rings of upright image cards rotate in the frame. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "circle"
+    ],
+    "href": "/catalog/blocks/loop-circle",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-circle.png"
+  },
+  {
+    "name": "loop-columndrift",
+    "type": "block",
+    "title": "Loop Column Drift",
+    "description": "Three columns of square image cards drift vertically inside a padded mask. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "columndrift"
+    ],
+    "href": "/catalog/blocks/loop-columndrift",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-columndrift.png"
+  },
+  {
+    "name": "loop-columns-1",
+    "type": "block",
+    "title": "Loop Columns 1",
+    "description": "Four columns of square image cards climb through a padded mask at alternating speeds. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "columns"
+    ],
+    "href": "/catalog/blocks/loop-columns-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-columns-1.png"
+  },
+  {
+    "name": "loop-corridor",
+    "type": "block",
+    "title": "Loop Corridor",
+    "description": "The camera flies down a rectangular wireframe corridor lined with image panels. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "corridor",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-corridor",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-corridor.png"
+  },
+  {
+    "name": "loop-coverflow",
+    "type": "block",
+    "title": "Loop Cover Flow",
+    "description": "A horizontal cover-flow fan: the focused card faces the camera while its neighbours fold away. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "coverflow",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-coverflow",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-coverflow.png"
+  },
+  {
+    "name": "loop-coverflowvertical",
+    "type": "block",
+    "title": "Loop Cover Flow Vertical",
+    "description": "A vertical cover-flow fold: the focused card faces the camera while cards above and below tilt away. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "coverflowvertical",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-coverflowvertical",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-coverflowvertical.png"
+  },
+  {
+    "name": "loop-coverring",
+    "type": "block",
+    "title": "Loop Cover Ring",
+    "description": "Image cards on a horizontal 3D band seen from outside, spinning past the camera. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "coverring",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-coverring",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-coverring.png"
+  },
+  {
+    "name": "loop-deck-1",
+    "type": "block",
+    "title": "Loop Deck 1",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-1.png"
+  },
+  {
+    "name": "loop-deck-10",
+    "type": "block",
+    "title": "Loop Deck 10",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-10.png"
+  },
+  {
+    "name": "loop-deck-11",
+    "type": "block",
+    "title": "Loop Deck 11",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-11.png"
+  },
+  {
+    "name": "loop-deck-12",
+    "type": "block",
+    "title": "Loop Deck 12",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-12",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-12.png"
+  },
+  {
+    "name": "loop-deck-2",
+    "type": "block",
+    "title": "Loop Deck 2",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-2.png"
+  },
+  {
+    "name": "loop-deck-3",
+    "type": "block",
+    "title": "Loop Deck 3",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-3.png"
+  },
+  {
+    "name": "loop-deck-4",
+    "type": "block",
+    "title": "Loop Deck 4",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-4.png"
+  },
+  {
+    "name": "loop-deck-5",
+    "type": "block",
+    "title": "Loop Deck 5",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-5.png"
+  },
+  {
+    "name": "loop-deck-6",
+    "type": "block",
+    "title": "Loop Deck 6",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-6.png"
+  },
+  {
+    "name": "loop-deck-7",
+    "type": "block",
+    "title": "Loop Deck 7",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-7.png"
+  },
+  {
+    "name": "loop-deck-8",
+    "type": "block",
+    "title": "Loop Deck 8",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-8.png"
+  },
+  {
+    "name": "loop-deck-9",
+    "type": "block",
+    "title": "Loop Deck 9",
+    "description": "Image cards flip through a stacked deck, the front card leaving to reveal the next. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deck",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-deck-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deck-9.png"
+  },
+  {
+    "name": "loop-deckpeel",
+    "type": "block",
+    "title": "Loop Deck Peel",
+    "description": "A centred deck where the front card peels away in turn. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "deckpeel"
+    ],
+    "href": "/catalog/blocks/loop-deckpeel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-deckpeel.png"
+  },
+  {
+    "name": "loop-depthstackscroll",
+    "type": "block",
+    "title": "Loop Depth Stack Scroll",
+    "description": "The camera dives straight through a scattered depth stack of image cards. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "depthstackscroll",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-depthstackscroll",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-depthstackscroll.png"
+  },
+  {
+    "name": "loop-diagonalcarousel",
+    "type": "block",
+    "title": "Loop Diagonal Carousel",
+    "description": "A fanned deck of overlapping image cards slides along a diagonal. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "diagonalcarousel",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-diagonalcarousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-diagonalcarousel.png"
+  },
+  {
+    "name": "loop-diagonalwipe",
+    "type": "block",
+    "title": "Loop Diagonal Wipe",
+    "description": "One rounded image card; each new image wipes in along a diagonal. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "diagonalwipe"
+    ],
+    "href": "/catalog/blocks/loop-diagonalwipe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-diagonalwipe.png"
+  },
+  {
+    "name": "loop-eye",
+    "type": "block",
+    "title": "Loop Eye",
+    "description": "Two rows of upright image cards ride opposing parabolic bows, forming an eye shape. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "eye"
+    ],
+    "href": "/catalog/blocks/loop-eye",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-eye.png"
+  },
+  {
+    "name": "loop-field-1",
+    "type": "block",
+    "title": "Loop Field 1",
+    "description": "A field of image cards drifts past the camera in true perspective. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "field",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-field-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-1.png"
+  },
+  {
+    "name": "loop-field-2",
+    "type": "block",
+    "title": "Loop Field 2",
+    "description": "A field of image cards drifts past the camera in true perspective. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "field",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-field-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-2.png"
+  },
+  {
+    "name": "loop-field-3",
+    "type": "block",
+    "title": "Loop Field 3",
+    "description": "A field of image cards drifts past the camera in true perspective. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "field",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-field-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-3.png"
+  },
+  {
+    "name": "loop-field-4",
+    "type": "block",
+    "title": "Loop Field 4",
+    "description": "A field of image cards drifts past the camera in true perspective. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "field",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-field-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-field-4.png"
+  },
+  {
+    "name": "loop-filmstrip",
+    "type": "block",
+    "title": "Loop Film Strip",
+    "description": "One horizontal band of image cards glides through the frame like a film strip. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "filmstrip",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-filmstrip",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-filmstrip.png"
+  },
+  {
+    "name": "loop-flicker-1",
+    "type": "block",
+    "title": "Loop Flicker 1",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-1.png"
+  },
+  {
+    "name": "loop-flicker-10",
+    "type": "block",
+    "title": "Loop Flicker 10",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 4s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-10.png"
+  },
+  {
+    "name": "loop-flicker-2",
+    "type": "block",
+    "title": "Loop Flicker 2",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-2.png"
+  },
+  {
+    "name": "loop-flicker-3",
+    "type": "block",
+    "title": "Loop Flicker 3",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-3.png"
+  },
+  {
+    "name": "loop-flicker-4",
+    "type": "block",
+    "title": "Loop Flicker 4",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-4.png"
+  },
+  {
+    "name": "loop-flicker-5",
+    "type": "block",
+    "title": "Loop Flicker 5",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-5.png"
+  },
+  {
+    "name": "loop-flicker-6",
+    "type": "block",
+    "title": "Loop Flicker 6",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-6.png"
+  },
+  {
+    "name": "loop-flicker-7",
+    "type": "block",
+    "title": "Loop Flicker 7",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-7.png"
+  },
+  {
+    "name": "loop-flicker-8",
+    "type": "block",
+    "title": "Loop Flicker 8",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-8.png"
+  },
+  {
+    "name": "loop-flicker-9",
+    "type": "block",
+    "title": "Loop Flicker 9",
+    "description": "One centred image card at a time, hard-cut to the next on the beat. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flicker"
+    ],
+    "href": "/catalog/blocks/loop-flicker-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flicker-9.png"
+  },
+  {
+    "name": "loop-flip-1",
+    "type": "block",
+    "title": "Loop Flip 1",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-1.png"
+  },
+  {
+    "name": "loop-flip-2",
+    "type": "block",
+    "title": "Loop Flip 2",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-2.png"
+  },
+  {
+    "name": "loop-flip-3",
+    "type": "block",
+    "title": "Loop Flip 3",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-3.png"
+  },
+  {
+    "name": "loop-flip-4",
+    "type": "block",
+    "title": "Loop Flip 4",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-4.png"
+  },
+  {
+    "name": "loop-flip-5",
+    "type": "block",
+    "title": "Loop Flip 5",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-5.png"
+  },
+  {
+    "name": "loop-flip-6",
+    "type": "block",
+    "title": "Loop Flip 6",
+    "description": "A centred stack of image cards that advances by flipping the front card over. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flip",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flip-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flip-6.png"
+  },
+  {
+    "name": "loop-flipgrid",
+    "type": "block",
+    "title": "Loop Flip Grid",
+    "description": "A padded grid of two-sided tiles; each tile flips to reveal its second image. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "flipgrid",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-flipgrid",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-flipgrid.png"
+  },
+  {
+    "name": "loop-focusorbit",
+    "type": "block",
+    "title": "Loop Focus Orbit",
+    "description": "Upright rounded image cards on a screen-space circle pivot so the focused card comes forward. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "focusorbit"
+    ],
+    "href": "/catalog/blocks/loop-focusorbit",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-focusorbit.png"
+  },
+  {
+    "name": "loop-focusshift",
+    "type": "block",
+    "title": "Loop Focus Shift",
+    "description": "One large image slot on the left and a rail of thumbnails on the right; each step the top thumbnail relays into the slot. 6 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "focusshift"
+    ],
+    "href": "/catalog/blocks/loop-focusshift",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-focusshift.png"
+  },
+  {
+    "name": "loop-focusslider",
+    "type": "block",
+    "title": "Loop Focus Slider",
+    "description": "A row of image cards steps sideways; the focused card grows and the rest hold back. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "focusslider"
+    ],
+    "href": "/catalog/blocks/loop-focusslider",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-focusslider.png"
+  },
+  {
+    "name": "loop-fold",
+    "type": "block",
+    "title": "Loop Fold",
+    "description": "One two-faced image card at the centre makes a half turn every beat to show its next image. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "fold",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-fold",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-fold.png"
+  },
+  {
+    "name": "loop-frames-1",
+    "type": "block",
+    "title": "Loop Frames 1",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-1.png"
+  },
+  {
+    "name": "loop-frames-2",
+    "type": "block",
+    "title": "Loop Frames 2",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-2.png"
+  },
+  {
+    "name": "loop-frames-3",
+    "type": "block",
+    "title": "Loop Frames 3",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-3.png"
+  },
+  {
+    "name": "loop-frames-4",
+    "type": "block",
+    "title": "Loop Frames 4",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-4.png"
+  },
+  {
+    "name": "loop-frames-5",
+    "type": "block",
+    "title": "Loop Frames 5",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-5.png"
+  },
+  {
+    "name": "loop-frames-6",
+    "type": "block",
+    "title": "Loop Frames 6",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-6.png"
+  },
+  {
+    "name": "loop-frames-7",
+    "type": "block",
+    "title": "Loop Frames 7",
+    "description": "A sheet of large square image frames; each cycle the whole sheet shifts to the next frame. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "frames"
+    ],
+    "href": "/catalog/blocks/loop-frames-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-frames-7.png"
+  },
+  {
+    "name": "loop-globe-1",
+    "type": "block",
+    "title": "Loop Globe 1",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-1.png"
+  },
+  {
+    "name": "loop-globe-10",
+    "type": "block",
+    "title": "Loop Globe 10",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-10.png"
+  },
+  {
+    "name": "loop-globe-11",
+    "type": "block",
+    "title": "Loop Globe 11",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-11.png"
+  },
+  {
+    "name": "loop-globe-2",
+    "type": "block",
+    "title": "Loop Globe 2",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-2.png"
+  },
+  {
+    "name": "loop-globe-3",
+    "type": "block",
+    "title": "Loop Globe 3",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-3.png"
+  },
+  {
+    "name": "loop-globe-4",
+    "type": "block",
+    "title": "Loop Globe 4",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-4.png"
+  },
+  {
+    "name": "loop-globe-5",
+    "type": "block",
+    "title": "Loop Globe 5",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-5.png"
+  },
+  {
+    "name": "loop-globe-6",
+    "type": "block",
+    "title": "Loop Globe 6",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-6.png"
+  },
+  {
+    "name": "loop-globe-7",
+    "type": "block",
+    "title": "Loop Globe 7",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-7.png"
+  },
+  {
+    "name": "loop-globe-8",
+    "type": "block",
+    "title": "Loop Globe 8",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-8.png"
+  },
+  {
+    "name": "loop-globe-9",
+    "type": "block",
+    "title": "Loop Globe 9",
+    "description": "Image cards scattered evenly over a sphere that rotates under a 3D camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "globe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-globe-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-globe-9.png"
+  },
+  {
+    "name": "loop-gravity-1",
+    "type": "block",
+    "title": "Loop Gravity 1",
+    "description": "Image cards fall from above, tip flat onto the floor and pile up. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "gravity"
+    ],
+    "href": "/catalog/blocks/loop-gravity-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-gravity-1.png"
+  },
+  {
+    "name": "loop-gravity-2",
+    "type": "block",
+    "title": "Loop Gravity 2",
+    "description": "Image cards fall from above, tip flat onto the floor and pile up. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "gravity"
+    ],
+    "href": "/catalog/blocks/loop-gravity-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-gravity-2.png"
+  },
+  {
+    "name": "loop-gravity-3",
+    "type": "block",
+    "title": "Loop Gravity 3",
+    "description": "Image cards fall from above, tip flat onto the floor and pile up. 8 image slots, 11s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "gravity"
+    ],
+    "href": "/catalog/blocks/loop-gravity-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-gravity-3.png"
+  },
+  {
+    "name": "loop-grid-1",
+    "type": "block",
+    "title": "Loop Grid 1",
+    "description": "A camera pans over an infinite lattice of image cards. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "grid"
+    ],
+    "href": "/catalog/blocks/loop-grid-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-grid-1.png"
+  },
+  {
+    "name": "loop-grid-2",
+    "type": "block",
+    "title": "Loop Grid 2",
+    "description": "A camera pans over an infinite lattice of image cards. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "grid"
+    ],
+    "href": "/catalog/blocks/loop-grid-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-grid-2.png"
+  },
+  {
+    "name": "loop-grid-3",
+    "type": "block",
+    "title": "Loop Grid 3",
+    "description": "A camera pans over an infinite lattice of image cards. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "grid"
+    ],
+    "href": "/catalog/blocks/loop-grid-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-grid-3.png"
+  },
+  {
+    "name": "loop-grid-4",
+    "type": "block",
+    "title": "Loop Grid 4",
+    "description": "A camera pans over an infinite lattice of image cards. 8 image slots, 24s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "grid"
+    ],
+    "href": "/catalog/blocks/loop-grid-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-grid-4.png"
+  },
+  {
+    "name": "loop-grid-5",
+    "type": "block",
+    "title": "Loop Grid 5",
+    "description": "A camera pans over an infinite lattice of image cards. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "grid"
+    ],
+    "href": "/catalog/blocks/loop-grid-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-grid-5.png"
+  },
+  {
+    "name": "loop-gridreveal",
+    "type": "block",
+    "title": "Loop Grid Reveal",
+    "description": "A padded mosaic grid assembles tile by tile, holds, then disperses. 8 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "gridreveal"
+    ],
+    "href": "/catalog/blocks/loop-gridreveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-gridreveal.png"
+  },
+  {
+    "name": "loop-gridzoomstrip",
+    "type": "block",
+    "title": "Loop Grid Zoom Strip",
+    "description": "A 3x3 grid of image cards flies into a single strip and back. 9 image slots, 6s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "gridzoomstrip"
+    ],
+    "href": "/catalog/blocks/loop-gridzoomstrip",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-gridzoomstrip.png"
+  },
+  {
+    "name": "loop-heroreel",
+    "type": "block",
+    "title": "Loop Hero Reel",
+    "description": "A row of thumbnails with the active one lifted and enlarged, stepping along the row. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "heroreel"
+    ],
+    "href": "/catalog/blocks/loop-heroreel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-heroreel.png"
+  },
+  {
+    "name": "loop-imagetrail",
+    "type": "block",
+    "title": "Loop Image Trail",
+    "description": "A head point sweeps along an arc and image cards pop in behind it as a trail. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "imagetrail"
+    ],
+    "href": "/catalog/blocks/loop-imagetrail",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-imagetrail.png"
+  },
+  {
+    "name": "loop-iso",
+    "type": "block",
+    "title": "Loop Iso",
+    "description": "One diagonal ribbon of isometric-skewed image cards flows through the frame centre. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "iso"
+    ],
+    "href": "/catalog/blocks/loop-iso",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-iso.png"
+  },
+  {
+    "name": "loop-isofocus",
+    "type": "block",
+    "title": "Loop Iso Focus",
+    "description": "A queue of isometric-skewed image cards on a rising line, the focused block brought forward. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "isofocus"
+    ],
+    "href": "/catalog/blocks/loop-isofocus",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-isofocus.png"
+  },
+  {
+    "name": "loop-isoorbit",
+    "type": "block",
+    "title": "Loop Iso Orbit",
+    "description": "A 3x3 terrace of image cards lying on a ground plane seen from above, orbiting under the camera. 9 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "isoorbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-isoorbit",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-isoorbit.png"
+  },
+  {
+    "name": "loop-marquee-1",
+    "type": "block",
+    "title": "Loop Marquee 1",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-1.png"
+  },
+  {
+    "name": "loop-marquee-10",
+    "type": "block",
+    "title": "Loop Marquee 10",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-10.png"
+  },
+  {
+    "name": "loop-marquee-11",
+    "type": "block",
+    "title": "Loop Marquee 11",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-11.png"
+  },
+  {
+    "name": "loop-marquee-12",
+    "type": "block",
+    "title": "Loop Marquee 12",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-12",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-12.png"
+  },
+  {
+    "name": "loop-marquee-13",
+    "type": "block",
+    "title": "Loop Marquee 13",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-13",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-13.png"
+  },
+  {
+    "name": "loop-marquee-14",
+    "type": "block",
+    "title": "Loop Marquee 14",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-14",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-14.png"
+  },
+  {
+    "name": "loop-marquee-15",
+    "type": "block",
+    "title": "Loop Marquee 15",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-15",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-15.png"
+  },
+  {
+    "name": "loop-marquee-16",
+    "type": "block",
+    "title": "Loop Marquee 16",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-16",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-16.png"
+  },
+  {
+    "name": "loop-marquee-17",
+    "type": "block",
+    "title": "Loop Marquee 17",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-17",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-17.png"
+  },
+  {
+    "name": "loop-marquee-18",
+    "type": "block",
+    "title": "Loop Marquee 18",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-18",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-18.png"
+  },
+  {
+    "name": "loop-marquee-19",
+    "type": "block",
+    "title": "Loop Marquee 19",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-19",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-19.png"
+  },
+  {
+    "name": "loop-marquee-2",
+    "type": "block",
+    "title": "Loop Marquee 2",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-2.png"
+  },
+  {
+    "name": "loop-marquee-20",
+    "type": "block",
+    "title": "Loop Marquee 20",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 19s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-20",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-20.png"
+  },
+  {
+    "name": "loop-marquee-21",
+    "type": "block",
+    "title": "Loop Marquee 21",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 19s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-21",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-21.png"
+  },
+  {
+    "name": "loop-marquee-22",
+    "type": "block",
+    "title": "Loop Marquee 22",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-22",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-22.png"
+  },
+  {
+    "name": "loop-marquee-3",
+    "type": "block",
+    "title": "Loop Marquee 3",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 5s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-3.png"
+  },
+  {
+    "name": "loop-marquee-4",
+    "type": "block",
+    "title": "Loop Marquee 4",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 5s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-4.png"
+  },
+  {
+    "name": "loop-marquee-5",
+    "type": "block",
+    "title": "Loop Marquee 5",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-5.png"
+  },
+  {
+    "name": "loop-marquee-6",
+    "type": "block",
+    "title": "Loop Marquee 6",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-6.png"
+  },
+  {
+    "name": "loop-marquee-7",
+    "type": "block",
+    "title": "Loop Marquee 7",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 11s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-7.png"
+  },
+  {
+    "name": "loop-marquee-8",
+    "type": "block",
+    "title": "Loop Marquee 8",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 11s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-8.png"
+  },
+  {
+    "name": "loop-marquee-9",
+    "type": "block",
+    "title": "Loop Marquee 9",
+    "description": "Lanes of image cards scroll across the frame like a marquee. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "marquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-marquee-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-marquee-9.png"
+  },
+  {
+    "name": "loop-mosaicmarquee",
+    "type": "block",
+    "title": "Loop Mosaic Marquee",
+    "description": "One horizontal masonry belt of mixed-size image cards scrolls across the frame. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "mosaicmarquee",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-mosaicmarquee",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-mosaicmarquee.png"
+  },
+  {
+    "name": "loop-mosaicwipe",
+    "type": "block",
+    "title": "Loop Mosaic Wipe",
+    "description": "Images reassemble through a tiled iris or venetian-blind wipe. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "mosaicwipe"
+    ],
+    "href": "/catalog/blocks/loop-mosaicwipe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-mosaicwipe.png"
+  },
+  {
+    "name": "loop-orbit-1",
+    "type": "block",
+    "title": "Loop Orbit 1",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-1.png"
+  },
+  {
+    "name": "loop-orbit-10",
+    "type": "block",
+    "title": "Loop Orbit 10",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-10",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-10.png"
+  },
+  {
+    "name": "loop-orbit-11",
+    "type": "block",
+    "title": "Loop Orbit 11",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-11",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-11.png"
+  },
+  {
+    "name": "loop-orbit-12",
+    "type": "block",
+    "title": "Loop Orbit 12",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-12",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-12.png"
+  },
+  {
+    "name": "loop-orbit-2",
+    "type": "block",
+    "title": "Loop Orbit 2",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-2.png"
+  },
+  {
+    "name": "loop-orbit-3",
+    "type": "block",
+    "title": "Loop Orbit 3",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-3.png"
+  },
+  {
+    "name": "loop-orbit-4",
+    "type": "block",
+    "title": "Loop Orbit 4",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-4.png"
+  },
+  {
+    "name": "loop-orbit-5",
+    "type": "block",
+    "title": "Loop Orbit 5",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-5.png"
+  },
+  {
+    "name": "loop-orbit-6",
+    "type": "block",
+    "title": "Loop Orbit 6",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-6.png"
+  },
+  {
+    "name": "loop-orbit-7",
+    "type": "block",
+    "title": "Loop Orbit 7",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-7.png"
+  },
+  {
+    "name": "loop-orbit-8",
+    "type": "block",
+    "title": "Loop Orbit 8",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-8.png"
+  },
+  {
+    "name": "loop-orbit-9",
+    "type": "block",
+    "title": "Loop Orbit 9",
+    "description": "Image cards on a 3D ring, always parallel to the screen, orbit under a perspective camera. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbit-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbit-9.png"
+  },
+  {
+    "name": "loop-orbitbloom",
+    "type": "block",
+    "title": "Loop Orbit Bloom",
+    "description": "Image cards as wheel spokes bloom around a centre and turn. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbitbloom",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbitbloom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbitbloom.png"
+  },
+  {
+    "name": "loop-orbitcarousel",
+    "type": "block",
+    "title": "Loop Orbit Carousel",
+    "description": "Flat rounded image cards orbit a crown ring under a 3D camera, sized by depth. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbitcarousel",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-orbitcarousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbitcarousel.png"
+  },
+  {
+    "name": "loop-orbitglobe",
+    "type": "block",
+    "title": "Loop Orbit Globe",
+    "description": "Upright billboard image cards on the latitude rings of a globe that rotates. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbitglobe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbitglobe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbitglobe.png"
+  },
+  {
+    "name": "loop-orbitshowcase",
+    "type": "block",
+    "title": "Loop Orbit Showcase",
+    "description": "Upright rounded image cards on a screen-space ellipse, the front card featured. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "orbitshowcase",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-orbitshowcase",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-orbitshowcase.png"
+  },
+  {
+    "name": "loop-pages-1",
+    "type": "block",
+    "title": "Loop Pages 1",
+    "description": "An open two-page spread; pages turn about the spine to reveal each image. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "pages",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-pages-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-pages-1.png"
+  },
+  {
+    "name": "loop-pages-2",
+    "type": "block",
+    "title": "Loop Pages 2",
+    "description": "An open two-page spread; pages turn about the spine to reveal each image. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "pages",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-pages-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-pages-2.png"
+  },
+  {
+    "name": "loop-parallax-1",
+    "type": "block",
+    "title": "Loop Parallax 1",
+    "description": "Image cards scattered in a 3D slab drift with parallax under a moving camera. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "parallax",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-parallax-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-parallax-1.png"
+  },
+  {
+    "name": "loop-parallax-2",
+    "type": "block",
+    "title": "Loop Parallax 2",
+    "description": "Image cards scattered in a 3D slab drift with parallax under a moving camera. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "parallax",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-parallax-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-parallax-2.png"
+  },
+  {
+    "name": "loop-parallax-3",
+    "type": "block",
+    "title": "Loop Parallax 3",
+    "description": "Image cards scattered in a 3D slab drift with parallax under a moving camera. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "parallax",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-parallax-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-parallax-3.png"
+  },
+  {
+    "name": "loop-parallaxtotem",
+    "type": "block",
+    "title": "Loop Parallax Totem",
+    "description": "Scattered image cards on a concave drum drift with mirage-like parallax. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "parallaxtotem",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-parallaxtotem",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-parallaxtotem.png"
+  },
+  {
+    "name": "loop-photoorbit",
+    "type": "block",
+    "title": "Loop Photo Orbit",
+    "description": "Upright rounded image cards cluster on a screen-space ellipse and orbit. 8 image slots, 18s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "photoorbit"
+    ],
+    "href": "/catalog/blocks/loop-photoorbit",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-photoorbit.png"
+  },
+  {
+    "name": "loop-popgrid",
+    "type": "block",
+    "title": "Loop Pop Grid",
+    "description": "A padded grid of image tiles; each tile pops out and back on its own phase. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "popgrid"
+    ],
+    "href": "/catalog/blocks/loop-popgrid",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-popgrid.png"
+  },
+  {
+    "name": "loop-positiondance",
+    "type": "block",
+    "title": "Loop Position Dance",
+    "description": "Six image cards cycle through arrangements, changing position and size each beat. 6 image slots, 4s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "positiondance"
+    ],
+    "href": "/catalog/blocks/loop-positiondance",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-positiondance.png"
+  },
+  {
+    "name": "loop-posterburst",
+    "type": "block",
+    "title": "Loop Poster Burst",
+    "description": "Images burst from the centre one after another, each growing toward the camera. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "posterburst"
+    ],
+    "href": "/catalog/blocks/loop-posterburst",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-posterburst.png"
+  },
+  {
+    "name": "loop-proximity-1",
+    "type": "block",
+    "title": "Loop Proximity 1",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-1.png"
+  },
+  {
+    "name": "loop-proximity-2",
+    "type": "block",
+    "title": "Loop Proximity 2",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-2.png"
+  },
+  {
+    "name": "loop-proximity-3",
+    "type": "block",
+    "title": "Loop Proximity 3",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-3.png"
+  },
+  {
+    "name": "loop-proximity-4",
+    "type": "block",
+    "title": "Loop Proximity 4",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-4.png"
+  },
+  {
+    "name": "loop-proximity-5",
+    "type": "block",
+    "title": "Loop Proximity 5",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-5.png"
+  },
+  {
+    "name": "loop-proximity-6",
+    "type": "block",
+    "title": "Loop Proximity 6",
+    "description": "A field of image tiles swells as the camera passes over them. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "proximity"
+    ],
+    "href": "/catalog/blocks/loop-proximity-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-proximity-6.png"
+  },
+  {
+    "name": "loop-ring",
+    "type": "block",
+    "title": "Loop Ring",
+    "description": "Image cards evenly spaced on an ellipse, each rotated to follow the track, orbiting. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "ring"
+    ],
+    "href": "/catalog/blocks/loop-ring",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-ring.png"
+  },
+  {
+    "name": "loop-scale-1",
+    "type": "block",
+    "title": "Loop Scale 1",
+    "description": "A new image swells up out of nothing at the centre each beat, over the previous ones. 8 image slots, 4s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "scale"
+    ],
+    "href": "/catalog/blocks/loop-scale-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-scale-1.png"
+  },
+  {
+    "name": "loop-scale-2",
+    "type": "block",
+    "title": "Loop Scale 2",
+    "description": "A new image swells up out of nothing at the centre each beat, over the previous ones. 8 image slots, 4s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "scale"
+    ],
+    "href": "/catalog/blocks/loop-scale-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-scale-2.png"
+  },
+  {
+    "name": "loop-scale-3",
+    "type": "block",
+    "title": "Loop Scale 3",
+    "description": "A new image swells up out of nothing at the centre each beat, over the previous ones. 8 image slots, 4s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "scale"
+    ],
+    "href": "/catalog/blocks/loop-scale-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-scale-3.png"
+  },
+  {
+    "name": "loop-scale-4",
+    "type": "block",
+    "title": "Loop Scale 4",
+    "description": "A new image swells up out of nothing at the centre each beat, over the previous ones. 8 image slots, 5s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "scale"
+    ],
+    "href": "/catalog/blocks/loop-scale-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-scale-4.png"
+  },
+  {
+    "name": "loop-shelf",
+    "type": "block",
+    "title": "Loop Shelf",
+    "description": "The focused image card stands upright while its neighbours fall back on a shelf. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "shelf",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-shelf",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-shelf.png"
+  },
+  {
+    "name": "loop-slats",
+    "type": "block",
+    "title": "Loop Slats",
+    "description": "The focused image card is full size; every other card is a thin slat beside it. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "slats"
+    ],
+    "href": "/catalog/blocks/loop-slats",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-slats.png"
+  },
+  {
+    "name": "loop-spherecascade",
+    "type": "block",
+    "title": "Loop Sphere Cascade",
+    "description": "A concave curtain of image cards curves around the camera and scrolls. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spherecascade",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spherecascade",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spherecascade.png"
+  },
+  {
+    "name": "loop-sphereglobe",
+    "type": "block",
+    "title": "Loop Sphere Globe",
+    "description": "A brick globe of image cards tangent to a sphere that rotates. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "sphereglobe",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-sphereglobe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-sphereglobe.png"
+  },
+  {
+    "name": "loop-spherewall",
+    "type": "block",
+    "title": "Loop Sphere Wall",
+    "description": "A concave bowed wall of image cards scrolls past the camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spherewall",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spherewall",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spherewall.png"
+  },
+  {
+    "name": "loop-spin-1",
+    "type": "block",
+    "title": "Loop Spin 1",
+    "description": "One image card at the frame centre turns on the spot, showing the next image each half turn. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spin-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spin-1.png"
+  },
+  {
+    "name": "loop-spin-2",
+    "type": "block",
+    "title": "Loop Spin 2",
+    "description": "One image card at the frame centre turns on the spot, showing the next image each half turn. 8 image slots, 7s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spin-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spin-2.png"
+  },
+  {
+    "name": "loop-spin-3",
+    "type": "block",
+    "title": "Loop Spin 3",
+    "description": "One image card at the frame centre turns on the spot, showing the next image each half turn. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spin-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spin-3.png"
+  },
+  {
+    "name": "loop-spin-4",
+    "type": "block",
+    "title": "Loop Spin 4",
+    "description": "One image card at the frame centre turns on the spot, showing the next image each half turn. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spin-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spin-4.png"
+  },
+  {
+    "name": "loop-spiral-1",
+    "type": "block",
+    "title": "Loop Spiral 1",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-1.png"
+  },
+  {
+    "name": "loop-spiral-2",
+    "type": "block",
+    "title": "Loop Spiral 2",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-2.png"
+  },
+  {
+    "name": "loop-spiral-3",
+    "type": "block",
+    "title": "Loop Spiral 3",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-3.png"
+  },
+  {
+    "name": "loop-spiral-4",
+    "type": "block",
+    "title": "Loop Spiral 4",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-4.png"
+  },
+  {
+    "name": "loop-spiral-5",
+    "type": "block",
+    "title": "Loop Spiral 5",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-5.png"
+  },
+  {
+    "name": "loop-spiral-6",
+    "type": "block",
+    "title": "Loop Spiral 6",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-6.png"
+  },
+  {
+    "name": "loop-spiral-7",
+    "type": "block",
+    "title": "Loop Spiral 7",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-7",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-7.png"
+  },
+  {
+    "name": "loop-spiral-8",
+    "type": "block",
+    "title": "Loop Spiral 8",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 15s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-8",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-8.png"
+  },
+  {
+    "name": "loop-spiral-9",
+    "type": "block",
+    "title": "Loop Spiral 9",
+    "description": "Image cards evenly spaced along a helix that advances toward the camera. 8 image slots, 24s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiral",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiral-9",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiral-9.png"
+  },
+  {
+    "name": "loop-spiralstream",
+    "type": "block",
+    "title": "Loop Spiral Stream",
+    "description": "A helical ribbon of image slots winds toward the camera. 8 image slots, 24s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spiralstream",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-spiralstream",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spiralstream.png"
+  },
+  {
+    "name": "loop-splitreveal",
+    "type": "block",
+    "title": "Loop Split Reveal",
+    "description": "Paired image panels slide in from opposite edges and meet. 4 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "splitreveal"
+    ],
+    "href": "/catalog/blocks/loop-splitreveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-splitreveal.png"
+  },
+  {
+    "name": "loop-spotlightzoom",
+    "type": "block",
+    "title": "Loop Spotlight Zoom",
+    "description": "A padded grid of image tiles; tiles take turns growing to fill the frame. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "spotlightzoom"
+    ],
+    "href": "/catalog/blocks/loop-spotlightzoom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-spotlightzoom.png"
+  },
+  {
+    "name": "loop-stack-1",
+    "type": "block",
+    "title": "Loop Stack 1",
+    "description": "Image cards deal onto a receding stack. 8 image slots, 11s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stack",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-stack-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stack-1.png"
+  },
+  {
+    "name": "loop-stack-2",
+    "type": "block",
+    "title": "Loop Stack 2",
+    "description": "Image cards deal onto a receding stack. 8 image slots, 11s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stack",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-stack-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stack-2.png"
+  },
+  {
+    "name": "loop-stack-3",
+    "type": "block",
+    "title": "Loop Stack 3",
+    "description": "Image cards deal onto a receding stack. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stack",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-stack-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stack-3.png"
+  },
+  {
+    "name": "loop-stack-4",
+    "type": "block",
+    "title": "Loop Stack 4",
+    "description": "Image cards deal onto a receding stack. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stack",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-stack-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stack-4.png"
+  },
+  {
+    "name": "loop-stackslide",
+    "type": "block",
+    "title": "Loop Stack Slide",
+    "description": "Image cards slide up one over another with a springy landing. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stackslide"
+    ],
+    "href": "/catalog/blocks/loop-stackslide",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stackslide.png"
+  },
+  {
+    "name": "loop-stories-1",
+    "type": "block",
+    "title": "Loop Stories 1",
+    "description": "The current image fills the frame with a slow drift; the next slides in like a story. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stories"
+    ],
+    "href": "/catalog/blocks/loop-stories-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-1.png"
+  },
+  {
+    "name": "loop-stories-2",
+    "type": "block",
+    "title": "Loop Stories 2",
+    "description": "The current image fills the frame with a slow drift; the next slides in like a story. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stories"
+    ],
+    "href": "/catalog/blocks/loop-stories-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-2.png"
+  },
+  {
+    "name": "loop-stories-3",
+    "type": "block",
+    "title": "Loop Stories 3",
+    "description": "The current image fills the frame with a slow drift; the next slides in like a story. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stories"
+    ],
+    "href": "/catalog/blocks/loop-stories-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-3.png"
+  },
+  {
+    "name": "loop-stories-4",
+    "type": "block",
+    "title": "Loop Stories 4",
+    "description": "The current image fills the frame with a slow drift; the next slides in like a story. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stories"
+    ],
+    "href": "/catalog/blocks/loop-stories-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-4.png"
+  },
+  {
+    "name": "loop-streak",
+    "type": "block",
+    "title": "Loop Streak",
+    "description": "A point wanders the frame and image cards drop along its streak. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "streak"
+    ],
+    "href": "/catalog/blocks/loop-streak",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-streak.png"
+  },
+  {
+    "name": "loop-stripereveal",
+    "type": "block",
+    "title": "Loop Stripe Reveal",
+    "description": "Images reassemble from sliding strips. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "stripereveal"
+    ],
+    "href": "/catalog/blocks/loop-stripereveal",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stripereveal.png"
+  },
+  {
+    "name": "loop-swipe",
+    "type": "block",
+    "title": "Loop Swipe",
+    "description": "A fanned deck; the top image card is swiped to the back each beat. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "swipe"
+    ],
+    "href": "/catalog/blocks/loop-swipe",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-swipe.png"
+  },
+  {
+    "name": "loop-swirl",
+    "type": "block",
+    "title": "Loop Swirl",
+    "description": "Image cards ride an Archimedean spiral that swirls around the centre. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "swirl"
+    ],
+    "href": "/catalog/blocks/loop-swirl",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-swirl.png"
+  },
+  {
+    "name": "loop-tabs",
+    "type": "block",
+    "title": "Loop Tabs",
+    "description": "A hero image above an arc of round tab buttons; the arc rotates to select the next image. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "tabs",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-tabs",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-tabs.png"
+  },
+  {
+    "name": "loop-ticker",
+    "type": "block",
+    "title": "Loop Ticker",
+    "description": "Marquee rows of image cards on one plane tilted away at the top. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "ticker",
+      "3d",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-ticker",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-ticker.png"
+  },
+  {
+    "name": "loop-tickerloop",
+    "type": "block",
+    "title": "Loop Ticker Loop",
+    "description": "A zoomed grid of marquee rows crawls across the frame at an angle. 8 image slots, 12s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "tickerloop",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-tickerloop",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-tickerloop.png"
+  },
+  {
+    "name": "loop-totemwall",
+    "type": "block",
+    "title": "Loop Totem Wall",
+    "description": "A concave drum of image cards, horizontal axis, rolls past the camera. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "totemwall",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-totemwall",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-totemwall.png"
+  },
+  {
+    "name": "loop-tour01-1",
+    "type": "block",
+    "title": "Loop Tour Room 1",
+    "description": "A tour through a room of hanging image frames. 8 image slots, 23s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "tour",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-tour01-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-tour01-1.png"
+  },
+  {
+    "name": "loop-tour02-2",
+    "type": "block",
+    "title": "Loop Tour Space 2",
+    "description": "A tour through images set in open space. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "tour",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-tour02-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-tour02-2.png"
+  },
+  {
+    "name": "loop-tunnel",
+    "type": "block",
+    "title": "Loop Tunnel",
+    "description": "A square tunnel built from rings of image panels flies past the camera. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "tunnel",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-tunnel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-tunnel.png"
+  },
+  {
+    "name": "loop-vortexspin",
+    "type": "block",
+    "title": "Loop Vortex Spin",
+    "description": "Concentric copies of one image ring recede into a vortex and spin. 8 image slots, 20s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "vortexspin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-vortexspin",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-vortexspin.png"
+  },
+  {
+    "name": "loop-wheel-1",
+    "type": "block",
+    "title": "Loop Wheel 1",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-1.png"
+  },
+  {
+    "name": "loop-wheel-2",
+    "type": "block",
+    "title": "Loop Wheel 2",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-2.png"
+  },
+  {
+    "name": "loop-wheel-3",
+    "type": "block",
+    "title": "Loop Wheel 3",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-3.png"
+  },
+  {
+    "name": "loop-wheel-4",
+    "type": "block",
+    "title": "Loop Wheel 4",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 10s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-4.png"
+  },
+  {
+    "name": "loop-wheel-5",
+    "type": "block",
+    "title": "Loop Wheel 5",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 16s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-5.png"
+  },
+  {
+    "name": "loop-wheel-6",
+    "type": "block",
+    "title": "Loop Wheel 6",
+    "description": "A 2D ring of image thumbnails turns around a centre that may sit off frame. 8 image slots, 8s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheel"
+    ],
+    "href": "/catalog/blocks/loop-wheel-6",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheel-6.png"
+  },
+  {
+    "name": "loop-wheelcarousel",
+    "type": "block",
+    "title": "Loop Wheel Carousel",
+    "description": "Big image cards roll on a giant 2D wheel whose hub sits below the frame. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheelcarousel",
+      "carousel"
+    ],
+    "href": "/catalog/blocks/loop-wheelcarousel",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheelcarousel.png"
+  },
+  {
+    "name": "loop-wheelspin",
+    "type": "block",
+    "title": "Loop Wheel Spin",
+    "description": "Image cards on a 2D wheel centred in the frame, each rotated to its spoke, spin. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheelspin",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-wheelspin",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheelspin.png"
+  },
+  {
+    "name": "loop-wheelspinbottom",
+    "type": "block",
+    "title": "Loop Wheel Spin Bottom",
+    "description": "Doubled-up image cards on a 2D wheel whose hub sits below the frame spin past. 8 image slots, 14s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wheelspinbottom",
+      "3d"
+    ],
+    "href": "/catalog/blocks/loop-wheelspinbottom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wheelspinbottom.png"
+  },
+  {
+    "name": "loop-wipe-1",
+    "type": "block",
+    "title": "Loop Wipe 1",
+    "description": "Each incoming image wipes over the last. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wipe"
+    ],
+    "href": "/catalog/blocks/loop-wipe-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wipe-1.png"
+  },
+  {
+    "name": "loop-wipe-2",
+    "type": "block",
+    "title": "Loop Wipe 2",
+    "description": "Each incoming image wipes over the last. 8 image slots, 13s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wipe"
+    ],
+    "href": "/catalog/blocks/loop-wipe-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wipe-2.png"
+  },
+  {
+    "name": "loop-wipe-3",
+    "type": "block",
+    "title": "Loop Wipe 3",
+    "description": "Each incoming image wipes over the last. 8 image slots, 21s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wipe"
+    ],
+    "href": "/catalog/blocks/loop-wipe-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wipe-3.png"
+  },
+  {
+    "name": "loop-wipe-4",
+    "type": "block",
+    "title": "Loop Wipe 4",
+    "description": "Each incoming image wipes over the last. 8 image slots, 21s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "wipe"
+    ],
+    "href": "/catalog/blocks/loop-wipe-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-wipe-4.png"
+  },
+  {
+    "name": "loop-zoomparallax",
+    "type": "block",
+    "title": "Loop Zoom Parallax",
+    "description": "One padded rounded frame; each image holds with a slow zoom, then the next parallaxes in. 8 image slots, 9s seamless loop, 1:1.",
+    "tags": [
+      "loop",
+      "images",
+      "showcase",
+      "gallery",
+      "zoomparallax"
+    ],
+    "href": "/catalog/blocks/loop-zoomparallax",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-zoomparallax.png"
+  },
+  {
     "name": "lower-third-bild",
     "type": "block",
     "title": "Lower Third — BILD Style",
