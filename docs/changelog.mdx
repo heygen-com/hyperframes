@@ -7,6 +7,20 @@ rss: true
 Recent HyperFrames releases, including user-facing features, fixes, and migration notes.
 
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
+<Update
+  label="HyperFrames v0.8.33"
+  description="Released - 2026-09-09"
+  tags={["Release", "Engine"]}
+>
+Patch release: fixes static-frame dedup freezing motion driven by timeline `onUpdate` callbacks in tween-free windows.
+
+## Fixes
+
+- **Engine:** Detect `onUpdate` callbacks on timelines and exclude their spans from static-frame prediction; enable events during verification seeks so callback-driven motion is visible to the verifier ([1aaa35d07](https://github.com/heygen-com/hyperframes/commit/1aaa35d073), [#3794](https://github.com/heygen-com/hyperframes/pull/3794)). Fixes [#3793](https://github.com/heygen-com/hyperframes/issues/3793).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.32...v0.8.33).
+</Update>
+
 
 <Update
   label="HyperFrames v0.8.32"
