@@ -33,6 +33,27 @@ function makeControlMessage(action: string, extra?: Record<string, unknown>) {
 }
 
 describe("installRuntimeControlBridge", () => {
+  it("ignores inherited and unknown action names from an authorized sender", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      for (const action of [
+        "__proto__",
+        "constructor",
+        "hasOwnProperty",
+        "__defineGetter__",
+        "toString",
+        "unknown",
+      ]) {
+        expect(() => handler(makeControlMessage(action))).not.toThrow();
+      }
+      expect(deps.onPlay).not.toHaveBeenCalled();
+      handler(makeControlMessage("play"));
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+    }
+  });
   it("rejects foreign and null senders before dispatching controls", () => {
     const foreign = document.createElement("iframe");
     document.body.append(foreign);
