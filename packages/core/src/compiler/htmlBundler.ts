@@ -727,12 +727,33 @@ export interface BundleOptions {
  * - Inlines small textual assets as data URLs
  */
 
+type DeferredScriptChunk = string | (() => string);
+
+function preserveLocalScriptIntegrity(
+  doc: Document,
+  src: string,
+  resolvePath: (src: string) => string | null,
+): boolean {
+  const path = resolvePath(src);
+  if (!path) return false;
+  const pinned = [...doc.querySelectorAll("script[src][integrity]")].filter((el) => {
+    const candidate = el.getAttribute("src") || "";
+    return (
+      isRelativeUrl(candidate) &&
+      resolvePath(candidate) === path &&
+      el.getAttribute("integrity")?.trim()
+    );
+  });
+  for (const el of pinned) ensureExternalScriptTag(doc, src, readExternalScriptAttributes(el));
+  return pinned.length > 0;
+}
+
 function hoistExternalScript(
   src: string,
   projectDir: string,
   doc: Document,
   seenSrcs: Set<string>,
-  chunks: string[],
+  chunks: DeferredScriptChunk[],
   attributes: ExternalScriptAttributes,
 ): void {
   if (attributes.integrity?.trim()) {
@@ -746,7 +767,11 @@ function hoistExternalScript(
     const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js != null) {
-      chunks.push(js);
+      chunks.push(() =>
+        preserveLocalScriptIntegrity(doc, src, (value) => resolveWithinProject(projectDir, value))
+          ? ""
+          : js,
+      );
       return;
     }
   }
@@ -763,7 +788,7 @@ function hoistCompositionScripts(
     runtimeCompId: string | undefined;
     authoredRootId: string | undefined;
     seenCompScriptSrcs: Set<string>;
-    compScriptChunks: string[];
+    compScriptChunks: DeferredScriptChunk[];
   },
 ): void {
   for (const scriptEl of [...container.querySelectorAll("script")]) {
@@ -862,42 +887,6 @@ export async function bundleToSingleHtml(
     }
   }
 
-  // Inline local JS
-  const localJsChunks: string[] = [];
-  let jsAnchorPlaced = false;
-  for (const el of [...document.querySelectorAll("script[src]")]) {
-    const src = el.getAttribute("src");
-    if (!src || !isRelativeUrl(src)) continue;
-    // Module scripts can contain static imports whose resolution is relative
-    // to the script URL. Folding their source into a classic inline script
-    // both drops module semantics and changes the import base URL.
-    if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
-    const jsPath = resolveEntryPath(src);
-    const js = jsPath ? safeReadFile(jsPath) : null;
-    if (js == null) continue;
-    localJsChunks.push(js);
-    if (!jsAnchorPlaced) {
-      const anchor = document.createElement("script");
-      anchor.setAttribute("data-hf-bundled-local-js", "1");
-      el.replaceWith(anchor);
-      jsAnchorPlaced = true;
-    } else {
-      el.remove();
-    }
-  }
-  if (localJsChunks.length > 0) {
-    const anchor = document.querySelector('script[data-hf-bundled-local-js="1"]');
-    const joinedJs = joinJsChunks(localJsChunks);
-    if (anchor) {
-      anchor.removeAttribute("data-hf-bundled-local-js");
-      anchor.textContent = joinedJs;
-    } else {
-      const script = document.createElement("script");
-      script.textContent = joinedJs;
-      document.body.appendChild(script);
-    }
-  }
-
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
   const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
@@ -932,7 +921,7 @@ export async function bundleToSingleHtml(
     },
   });
   const compStyleChunks: string[] = [...subCompResult.styles];
-  const compScriptChunks: string[] = [];
+  const compScriptChunks: DeferredScriptChunk[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
@@ -955,7 +944,9 @@ export async function bundleToSingleHtml(
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
-        compScriptChunks.push(js);
+        compScriptChunks.push(() =>
+          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js,
+        );
         continue;
       }
     }
@@ -1074,6 +1065,43 @@ export async function bundleToSingleHtml(
     templateEl.remove();
   }
 
+  // Inline local JS
+  const localJsChunks: string[] = [];
+  let jsAnchorPlaced = false;
+  for (const el of [...document.querySelectorAll("script[src]")]) {
+    const src = el.getAttribute("src");
+    if (!src || !isRelativeUrl(src)) continue;
+    if (preserveLocalScriptIntegrity(document, src, resolveEntryPath)) continue;
+    // Module scripts can contain static imports whose resolution is relative
+    // to the script URL. Folding their source into a classic inline script
+    // both drops module semantics and changes the import base URL.
+    if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
+    const jsPath = resolveEntryPath(src);
+    const js = jsPath ? safeReadFile(jsPath) : null;
+    if (js == null) continue;
+    localJsChunks.push(js);
+    if (!jsAnchorPlaced) {
+      const anchor = document.createElement("script");
+      anchor.setAttribute("data-hf-bundled-local-js", "1");
+      el.replaceWith(anchor);
+      jsAnchorPlaced = true;
+    } else {
+      el.remove();
+    }
+  }
+  if (localJsChunks.length > 0) {
+    const anchor = document.querySelector('script[data-hf-bundled-local-js="1"]');
+    const joinedJs = joinJsChunks(localJsChunks);
+    if (anchor) {
+      anchor.removeAttribute("data-hf-bundled-local-js");
+      anchor.textContent = joinedJs;
+    } else {
+      const script = document.createElement("script");
+      script.textContent = joinedJs;
+      document.body.appendChild(script);
+    }
+  }
+
   // Inject external scripts from sub-compositions (e.g., Lottie CDN)
   // that aren't already present in the main document.
   for (const link of compExternalLinks) {
@@ -1098,7 +1126,9 @@ export async function bundleToSingleHtml(
   }
   if (compScriptChunks.length) {
     const compScript = document.createElement("script");
-    compScript.textContent = joinJsChunks(compScriptChunks);
+    compScript.textContent = joinJsChunks(
+      compScriptChunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
+    );
     document.body.appendChild(compScript);
   }
 

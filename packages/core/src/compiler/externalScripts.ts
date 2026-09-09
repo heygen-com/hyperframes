@@ -21,7 +21,14 @@ export function ensureExternalScriptTag(
   );
   const requirements = new Set(
     [attributes.integrity, ...existing.map((el) => el.getAttribute("integrity"))]
-      .map((value) => value?.trim())
+      .map((value) =>
+        value
+          ?.trim()
+          .replace(
+            /(^|[\t\n\f\r ])(sha256|sha384|sha512)-/gi,
+            (_match, space: string, algorithm: string) => `${space}${algorithm.toLowerCase()}-`,
+          ),
+      )
       .filter((value): value is string => Boolean(value)),
   );
   if (requirements.size > 1) {

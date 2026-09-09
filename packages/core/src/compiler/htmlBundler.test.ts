@@ -1685,3 +1685,43 @@ it("keeps protected local scripts external when hoisting an inline template", as
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it.each(["root", "sibling", "template"])(
+  "does not inline local bytes before a later %s integrity requirement",
+  async (placement) => {
+    const unpinned = '<script src="local.js"></script>';
+    const pinned =
+      '<script src="./local.js" integrity="sHa384-YQ==" crossorigin="anonymous"></script>';
+    const rootScript = placement === "root" ? unpinned : "";
+    const first =
+      placement === "sibling"
+        ? '<div data-composition-id="first" data-composition-src="first.html"></div>'
+        : "";
+    const templates =
+      placement === "template"
+        ? `<template id="first-template"><div data-composition-id="first">${unpinned}</div></template><template id="child-template"><div data-composition-id="child">${pinned}</div></template>`
+        : "";
+    const children =
+      placement === "template"
+        ? '<div data-composition-id="first" data-start="0" data-duration="1"></div><div data-composition-id="child" data-start="0" data-duration="1"></div>'
+        : `${first}<div data-composition-id="child" data-composition-src="child.html"></div>`;
+    const dir = makeTempProject({
+      "index.html": `<html><head>${rootScript}</head><body>${templates}<div data-composition-id="root" data-width="320" data-height="180" data-duration="1">${children}</div></body></html>`,
+      "first.html": `<html><head>${unpinned}</head><body><div data-composition-id="first" data-width="320" data-height="180" data-duration="1">First</div></body></html>`,
+      "child.html": `<html><head>${pinned}</head><body><div data-composition-id="child" data-width="320" data-height="180" data-duration="1">Child</div></body></html>`,
+      "local.js": "window.alteredLocalBytes = true;",
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      expect(bundled).not.toContain("window.alteredLocalBytes = true;");
+      const { document } = parseHTML(bundled);
+      const local = [...document.querySelectorAll("script[src]")].filter((el) =>
+        /local\.js$/.test(el.getAttribute("src") || ""),
+      );
+      expect(local.length).toBeGreaterThan(0);
+      for (const el of local) expect(el.getAttribute("integrity")).toBe("sha384-YQ==");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
