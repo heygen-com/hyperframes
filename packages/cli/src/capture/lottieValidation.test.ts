@@ -1,6 +1,7 @@
 import AdmZip from "adm-zip";
 import { describe, expect, it } from "vitest";
 import { MAX_LOTTIE_BYTES, readLottieArchive, validLottieJson } from "./lottieValidation.js";
+import { preflightLottieArchive } from "./lottieArchivePreflight.js";
 
 const animation = JSON.stringify({ w: 100, h: 100, fr: 30, ip: 0, op: 30, layers: [] });
 
@@ -11,6 +12,19 @@ function archive(path: string, content = animation): Buffer {
 }
 
 describe("Lottie archive validation", () => {
+  it("rejects one deeply segmented name before constructing adm-zip entries", () => {
+    const bytes = archive(`a/${"x/".repeat(5000)}demo.json`);
+    expect(preflightLottieArchive(bytes)).toBe(false);
+    expect(readLottieArchive(bytes)).toBeNull();
+  });
+  it.each([0x06054b50, 0x06064b50, 0x07064b50])("rejects ambiguous footer marker %s", (marker) => {
+    const bytes = archive("a/demo.json");
+    const end = bytes.length - 22;
+    const injected = Buffer.alloc(4);
+    injected.writeUInt32LE(marker);
+    const ambiguous = Buffer.concat([bytes.subarray(0, end), injected, bytes.subarray(end)]);
+    expect(preflightLottieArchive(ambiguous)).toBe(false);
+  });
   it("rejects excessive EOCD entry counts before entry materialization", () => {
     const bytes = archive("a/demo.json");
     const end = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));

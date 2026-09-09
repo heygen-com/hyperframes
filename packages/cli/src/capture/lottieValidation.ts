@@ -1,10 +1,12 @@
 import AdmZip from "adm-zip";
+import { preflightLottieArchive, safeLottieArchivePath } from "./lottieArchivePreflight.js";
 
 export const MAX_LOTTIE_BYTES = 10 * 1024 * 1024;
 
 /** Read animation JSON without extracting remote archive paths onto the filesystem. */
 export function readLottieArchive(bytes: Buffer): string | null {
   if (bytes.length > MAX_LOTTIE_BYTES) return null;
+  if (!preflightLottieArchive(bytes)) return null;
   try {
     const zip = new AdmZip(bytes);
     if (zip.getEntryCount() > 256) return null;
@@ -27,23 +29,13 @@ export function readLottieArchive(bytes: Buffer): string | null {
 function validArchiveEntries(entries: { entryName: string; header: { size: number } }[]): boolean {
   let total = 0;
   for (const entry of entries) {
-    if (!safeArchivePath(entry.entryName)) return false;
+    if (!safeLottieArchivePath(entry.entryName)) return false;
     const size = entry.header.size;
     if (!Number.isSafeInteger(size) || size < 0 || size > MAX_LOTTIE_BYTES) return false;
     total += size;
     if (total > 50 * 1024 * 1024) return false;
   }
   return true;
-}
-
-function safeArchivePath(path: string): boolean {
-  if (
-    path.startsWith("/") ||
-    /[\\:]/.test(path) ||
-    Array.from(path).some((char) => char.charCodeAt(0) < 32)
-  )
-    return false;
-  return path.split("/").every((segment) => segment !== ".." && segment !== ".");
 }
 
 function record(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { discoverLottieResponse } from "./lottieDiscovery.js";
+import { LottieDiscovery } from "./lottieDiscovery.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 /**
  * Website capture orchestrator.
@@ -206,20 +206,20 @@ export async function captureWebsite(
 
     // Intercept network responses to detect Lottie JSON files
     const discoveredLotties: DiscoveredLottie[] = [];
+    const lottieDiscovery = new LottieDiscovery();
     // Layer 1 (passive video discovery): every direct-video URL the page fetches
     // over the whole session (load / scroll / carousel rotation), independent of
     // whether a <video> for it exists at snapshot time. captureVideoManifest
     // downloads these (guarded) and merges them into the manifest.
     const discoveredVideoUrls = new Set<string>();
     // fallow-ignore-next-line complexity
-    page1.on("response", async (response) => {
+    page1.on("response", (response) => {
       try {
         const responseUrl = response.url();
         if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(responseUrl)) {
           discoveredVideoUrls.add(responseUrl);
         }
-        const lottie = await discoverLottieResponse(response, downloadByteBudget);
-        if (lottie) discoveredLotties.push(lottie);
+        lottieDiscovery.collect(response);
       } catch {
         /* not JSON or parse error — skip */
       }
@@ -351,6 +351,12 @@ export async function captureWebsite(
       }
     } catch {
       /* DOM scan failed — non-critical */
+    }
+
+    for (const found of await lottieDiscovery.run(downloadByteBudget, remainingMs)) {
+      const existing = discoveredLotties.findIndex((item) => item.url === found.url);
+      if (existing < 0) discoveredLotties.push(found);
+      else discoveredLotties[existing] = found;
     }
 
     if (discoveredLotties.length > 0 && remainingMs() > 0) {

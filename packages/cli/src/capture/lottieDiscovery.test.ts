@@ -1,7 +1,55 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { discoverLottieResponse } from "./lottieDiscovery.js";
+import { discoverLottieResponse, LottieDiscovery } from "./lottieDiscovery.js";
 
 describe("bounded Lottie discovery", () => {
+  it("awaits delayed candidates and ignores response events after its save boundary", async () => {
+    const discovery = new LottieDiscovery();
+    const response = { url: () => "https://public.example/a.json", headers: () => ({}) };
+    discovery.collect(response);
+    discovery.collect(response);
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const budget = { remainingBytes: 1000 };
+    let settled = false;
+    const pending = discovery
+      .run(budget, () => 10000)
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish(
+      new Response(JSON.stringify({ v: "5", w: 100, h: 100, fr: 30, ip: 0, op: 30, layers: [] })),
+    );
+    expect(await pending).toHaveLength(1);
+    const remaining = budget.remainingBytes;
+    discovery.collect({ url: () => "https://public.example/late.json", headers: () => ({}) });
+    expect(await discovery.run(budget, () => 10000)).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(budget.remainingBytes).toBe(remaining);
+  });
+
+  it("caps ordinary JSON candidates and their aggregate byte consumption", async () => {
+    const discovery = new LottieDiscovery();
+    for (let n = 0; n < 100; n++)
+      discovery.collect({
+        url: () => `https://public.example/api/${n}`,
+        headers: () => ({ "content-type": "application/json" }),
+      });
+    const fetchMock = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const budget = { remainingBytes: 1000 };
+    expect(await discovery.run(budget, () => 10000)).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(32);
+    expect(budget.remainingBytes).toBe(936);
+  });
   afterEach(() => vi.unstubAllGlobals());
   it.each([undefined, "1"])(
     "does not trust intercepted Content-Length %s or materialize Puppeteer bodies",
