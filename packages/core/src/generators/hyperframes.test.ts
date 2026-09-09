@@ -54,6 +54,20 @@ describe("generateHyperframesHtml", () => {
     expect(doc.querySelector("script")).toBeNull();
   });
 
+  it("contains resolution values supplied by JavaScript callers inside their attribute", () => {
+    const resolution = `x" autofocus onfocus="alert(1)'><script>bad()</script>&quot;&`;
+    const html = Reflect.apply(generateHyperframesHtml, undefined, [
+      [],
+      1,
+      { resolution, includeStyles: false, includeScripts: false },
+    ]);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.documentElement.getAttribute("data-resolution")).toBe(resolution);
+    expect(doc.documentElement.hasAttribute("autofocus")).toBe(false);
+    expect(doc.documentElement.hasAttribute("onfocus")).toBe(false);
+    expect(doc.querySelector("script")).toBeNull();
+  });
+
   it("round-trips entity-bearing CSS through the JSON metadata attribute", () => {
     const styles = `.x::after { content: "&quot; &#39; &amp; < > '"; }`;
     const doc = new DOMParser().parseFromString(

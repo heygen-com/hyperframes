@@ -373,7 +373,7 @@ ${gsapScript}
     ? ` data-custom-styles='${escapeHtmlAttributeValue(JSON.stringify(customStyles))}'`
     : "";
 
-  const resolutionAttr = ` data-resolution="${resolution}"`;
+  const resolutionAttr = ` data-resolution="${escapeHtmlAttributeValue(resolution)}"`;
 
   return `<!DOCTYPE html>
 <html data-composition-id="${escapeHtmlAttributeValue(compositionId)}" data-composition-duration="${calculatedDuration}"${resolutionAttr}${customStylesAttr}>
