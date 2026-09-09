@@ -116,11 +116,8 @@ function combineCaptureCostEstimates(
  * - Auto-sized renders only (`requestedWorkers === undefined`) — the field
  *   failure was auto sizing, and an explicit `--workers N` is the operator's
  *   own call.
- * - Not enforced as a cap yet — the per-worker budget constant is derived
- *   from one field report; the `workers_heap_*` telemetry emitted with the
- *   sizing decides whether to enforce (see the TODO on HEAP_PER_WORKER_MB in
- *   @hyperframes/engine's parallelCoordinator). The message gives the
- *   operator the actionable knobs today.
+ * - Auto-sizing now applies the heap cap. Keep this defensive warning for
+ *   sizing values supplied by older callers or a future alternate policy.
  *
  * Pure so the message shape + firing condition are unit-testable with a
  * synthetic `WorkerSizing` (the real one depends on the host's heap).
