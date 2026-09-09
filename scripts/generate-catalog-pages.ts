@@ -1274,8 +1274,13 @@ function main(): void {
     { section: "Data & charts", groups: ["Data"] },
     {
       section: "Scenes & demos",
-      groups: ["Showcases", "Carousels", "Product Demo", "Social Overlays", "Motion Scenes"],
+      groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
+    // Its own section rather than a shelf inside Scenes & demos. At 25 items it
+    // is larger than Data & charts (17) and Blocks (13), which are both
+    // sections on their own, and pulling it out takes the largest section in
+    // the catalog from 120 items down to 95.
+    { section: "Carousels", groups: ["Carousels"] },
     { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },
