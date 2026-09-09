@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
-import { ensureHfIds, walkCompositionDescendants } from "./hfIds.js";
+import { parseHtmlWithHfIds, walkCompositionDescendants } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
@@ -178,16 +178,14 @@ function resolveResolutionFromDimensions(width: number, height: number): CanvasR
 }
 
 export function parseHtml(html: string): ParsedHtml {
-  const withIds = ensureHfIds(html);
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(withIds, "text/html");
+  const doc = parseHtmlWithHfIds(html);
 
   const elements: TimelineElement[] = [];
   const keyframes: Record<string, Keyframe[]> = {};
   let idCounter = 0;
 
   const htmlEl = doc.documentElement;
-  if (!htmlEl) {
+  if (!htmlEl || (!/<!doctype|<html[\s>]/i.test(html) && !doc.body.firstElementChild)) {
     throw new CompositionHtmlParseError("parseHtml: input HTML is empty or could not be parsed");
   }
   const customStylesAttr = htmlEl.getAttribute("data-custom-styles");

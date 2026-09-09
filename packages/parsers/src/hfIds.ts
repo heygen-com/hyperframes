@@ -169,7 +169,7 @@ function walkElements(root: Element, visit: (el: Element) => void): void {
   walkCompositionDescendants(root, visit);
 }
 
-export function ensureHfIds(html: string): string {
+export function parseHtmlWithHfIds(html: string): Document {
   // Mirror parseSourceDocument's fragment-wrapping so bare fragments don't land
   // outside <body> in linkedom, which would cause body.querySelectorAll to return [].
   const hasDocumentShell = /<!doctype|<html[\s>]/i.test(html);
@@ -178,7 +178,7 @@ export function ensureHfIds(html: string): string {
     ? parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`)
     : parseHTML(html);
   const body = document.body;
-  if (!body) return html;
+  if (!body) return document;
 
   const assigned = new Set<string>();
   // Seed with already-present ids (pin) so fresh mints never collide with them.
@@ -195,5 +195,11 @@ export function ensureHfIds(html: string): string {
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   });
 
-  return wrapped ? document.body.innerHTML || "" : document.toString();
+  return document;
+}
+
+export function ensureHfIds(html: string): string {
+  const document = parseHtmlWithHfIds(html);
+  if (!document.body) return html;
+  return /<!doctype|<html[\s>]/i.test(html) ? document.toString() : document.body.innerHTML || "";
 }

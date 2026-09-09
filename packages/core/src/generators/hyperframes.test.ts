@@ -7,8 +7,13 @@ import {
   generateGsapTimelineScript,
   generateHyperframesStyles,
 } from "./hyperframes.js";
+import { parseHtml } from "@hyperframes/parsers";
 import { GSAP_CDN } from "../templates/constants.js";
-import type { TimelineTextElement, TimelineMediaElement } from "../core.types";
+import type {
+  TimelineTextElement,
+  TimelineMediaElement,
+  TimelineCompositionElement,
+} from "../core.types";
 
 function makeTextElement(overrides: Partial<TimelineTextElement> = {}): TimelineTextElement {
   return {
@@ -57,6 +62,31 @@ describe("generateHyperframesHtml", () => {
     );
     expect(JSON.parse(doc.documentElement.getAttribute("data-custom-styles")!)).toBe(styles);
     expect(doc.querySelector("style")).toBeNull();
+    expect(parseHtml(generateHyperframesHtml([], 1, { styles })).styles).toBe(styles);
+  });
+
+  it("round-trips composition variable metadata through the public parser", () => {
+    const variableValues = { label: `&quot; &#39; &amp; < > '`, count: 2, enabled: true };
+    const element: TimelineCompositionElement = {
+      id: "nested",
+      type: "composition",
+      name: "Nested",
+      startTime: 0,
+      duration: 1,
+      zIndex: 0,
+      src: "nested.html",
+      compositionId: "nested-comp",
+      variableValues,
+    };
+    const html = generateHyperframesHtml([element], 1);
+    const parsed = parseHtml(html).elements[0];
+    expect(parsed?.type).toBe("composition");
+    if (parsed?.type !== "composition") throw new Error("Expected composition");
+    expect(parsed.variableValues).toEqual(variableValues);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(JSON.parse(doc.getElementById("nested")!.getAttribute("data-variable-values")!)).toEqual(
+      variableValues,
+    );
   });
 
   it("generates valid HTML with proper data attributes", () => {
@@ -184,6 +214,7 @@ describe("generateHyperframesHtml", () => {
     expect(html).toContain("data-keyframes=");
     expect(html).toContain("kf1");
     expect(html).toContain("kf2");
+    expect(parseHtml(html).keyframes["text-kf"]?.[0]?.id).toBe(keyframes["text-kf"][0]!.id);
     const doc = new DOMParser().parseFromString(html, "text/html");
     expect(JSON.parse(doc.getElementById("text-kf")!.getAttribute("data-keyframes")!)).toEqual(
       keyframes["text-kf"],
@@ -199,6 +230,7 @@ describe("generateHyperframesHtml", () => {
     const html = generateHyperframesHtml(elements, 10, { stageZoomKeyframes });
 
     expect(html).toContain("data-zoom-keyframes=");
+    expect(parseHtml(html).stageZoomKeyframes?.[0]?.id).toBe(stageZoomKeyframes[0]!.id);
     const doc = new DOMParser().parseFromString(html, "text/html");
     expect(
       JSON.parse(doc.getElementById("stage-zoom-container")!.getAttribute("data-zoom-keyframes")!),
