@@ -43,12 +43,29 @@ describe("bounded Lottie discovery", () => {
         url: () => `https://public.example/api/${n}`,
         headers: () => ({ "content-type": "application/json" }),
       });
-    const fetchMock = vi.fn(async () => new Response("{}"));
+    const fetchMock = vi.fn(async (_url: string | URL | Request) => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
     const budget = { remainingBytes: 1000 };
     expect(await discovery.run(budget, () => 10000)).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(32);
     expect(budget.remainingBytes).toBe(936);
+  });
+  it("retains explicit JSON when a later archive displaces a generic candidate", async () => {
+    const discovery = new LottieDiscovery();
+    discovery.collect({ url: () => "https://public.example/real.json", headers: () => ({}) });
+    for (let n = 0; n < 31; n++)
+      discovery.collect({
+        url: () => `https://public.example/api/${n}`,
+        headers: () => ({ "content-type": "application/json" }),
+      });
+    discovery.collect({ url: () => "https://public.example/anim.lottie", headers: () => ({}) });
+    const fetchMock = vi.fn(async (_url: string | URL | Request) => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    await discovery.run({ remainingBytes: 1000 }, () => 10000);
+    const urls = fetchMock.mock.calls.map((call) => call[0]);
+    expect(urls).toContain("https://public.example/real.json");
+    expect(urls).not.toContain("https://public.example/api/0");
+    expect(urls).toHaveLength(31);
   });
   afterEach(() => vi.unstubAllGlobals());
   it.each([undefined, "1"])(

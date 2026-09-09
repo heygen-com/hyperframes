@@ -56,9 +56,9 @@ export class LottieDiscovery {
     const priority = candidatePriority(url, contentType);
     if (priority === null) return;
     if (this.candidates.size >= 32) {
-      const worst = [...this.candidates.values()].find(
-        (candidate) => candidate.priority > priority,
-      );
+      const worst = [...this.candidates.values()]
+        .sort((a, b) => b.priority - a.priority)
+        .find((candidate) => candidate.priority > priority);
       if (!worst) return;
       this.candidates.delete(worst.url);
     }
