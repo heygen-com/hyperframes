@@ -12,6 +12,21 @@ import {
 } from "./htmlParser.js";
 
 describe("parseHtml", () => {
+  it("preserves runtime HTML normalization for mixed-case attributes", () => {
+    const result = parseHtml(`<!doctype html><HTML DATA-RESOLUTION="square"><BODY>
+      <DIV ID="x" DATA-START="2" DATA-DURATION="3" DATA-TRACK-INDEX="4" DATA-NAME="UP"><DIV>hello</DIV></DIV>
+    </BODY></HTML>`);
+    expect(result.resolution).toBe("square");
+    expect(result.elements).toHaveLength(1);
+    expect(result.elements[0]).toMatchObject({
+      startTime: 2,
+      duration: 3,
+      zIndex: 4,
+      name: "UP",
+      content: "hello",
+    });
+  });
+
   it("extracts elements with data-start and data-end", () => {
     const html = `
       <html>
