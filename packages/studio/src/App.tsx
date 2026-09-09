@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "./utils/projectRouting";
 import { useState, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
@@ -326,9 +327,10 @@ export function StudioApp() {
   const renderClipContent = useRenderClipContent({
     projectIdRef: fileManager.projectIdRef,
     compIdToSrc,
-    activePreviewUrl: activeCompPath
-      ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
-      : null,
+    activePreviewUrl:
+      activeCompPath && projectId
+        ? buildProjectApiPath(projectId, `/preview/comp/${activeCompPath}`)
+        : null,
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions();

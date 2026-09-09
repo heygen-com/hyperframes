@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useMemo, useRef, useState } from "react";
 import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
 import {
@@ -158,7 +159,7 @@ export function ImageFillField({
             {selectedAsset && (
               <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80">
                 <img
-                  src={`/api/projects/${projectId}/preview/${selectedAsset}`}
+                  src={buildProjectApiPath(projectId, `/preview/${selectedAsset}`)}
                   alt={selectedAsset.split("/").pop() ?? selectedAsset}
                   className="h-28 w-full object-contain bg-neutral-950/80"
                 />

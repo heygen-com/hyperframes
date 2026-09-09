@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { SearchInput } from "../ui/SearchInput";
@@ -216,7 +217,7 @@ export const AssetsTab = memo(function AssetsTab({
   useEffect(() => {
     if (manifest404Ref.current.has(projectId)) return;
     let cancelled = false;
-    fetch(`/api/projects/${projectId}/preview/.media/manifest.jsonl`)
+    fetch(buildProjectApiPath(projectId, `/preview/.media/manifest.jsonl`))
       .then((r) => {
         if (!r.ok) {
           manifest404Ref.current.add(projectId);

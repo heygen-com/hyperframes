@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -92,7 +93,7 @@ export function useCaptionSync(projectId: string | null) {
     const seqAtSave = editSeqRef.current;
     const overrides = buildOverrides(state.model);
 
-    fetch(`/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`, {
+    fetch(buildProjectApiPath(pid, `/files/${encodeURIComponent("caption-overrides.json")}`), {
       method: "PUT",
       headers: { "Content-Type": "text/plain", ...studioWriteHeaders() },
       body: JSON.stringify(overrides, null, 2),
@@ -171,7 +172,7 @@ export function useCaptionSync(projectId: string | null) {
     let data: { content?: string };
     try {
       const res = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
+        buildProjectApiPath(pid, `/files/${encodeURIComponent("caption-overrides.json")}`),
       );
       if (!res.ok) return; // no overrides file yet — normal
       data = await res.json();

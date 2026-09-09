@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useEffect, useRef } from "react";
 import { useCaptionStore } from "../captions/store";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
@@ -107,7 +108,7 @@ export function useCaptionDetection({
 
       activating = true;
       const srcPath = captionSrcPath;
-      fetch(`/api/projects/${projectId}/files/${encodeURIComponent(srcPath)}`)
+      fetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(srcPath)}`))
         .then((r) => r.json())
         .then((data: { content?: string }) => {
           if (!data.content || !doc || !win || useCaptionStore.getState().isEditMode) return;

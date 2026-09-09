@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 // ---------------------------------------------------------------------------
 // How this project came to exist, and roughly what shape it is.
 //
@@ -53,7 +54,9 @@ export async function captureProjectProvenance(
   if (!scaffolded) return;
 
   try {
-    const res = await fetch(`/api/projects/${projectId}/files/${encodeURIComponent(CONFIG_FILE)}`);
+    const res = await fetch(
+      buildProjectApiPath(projectId, `/files/${encodeURIComponent(CONFIG_FILE)}`),
+    );
     if (!res.ok) return;
     // The route answers with an envelope, not the file: {filename, content,
     // version}. The config is the `content` string inside it.

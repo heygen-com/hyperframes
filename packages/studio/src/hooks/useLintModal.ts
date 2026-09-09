@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { LintFinding } from "../components/LintModal";
 import { usePlayerStore } from "../player";
@@ -35,7 +36,7 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
       if (!projectId) return;
       if (!opts?.background) setLinting(true);
       try {
-        const res = await fetch(`/api/projects/${projectId}/lint`);
+        const res = await fetch(buildProjectApiPath(projectId, `/lint`));
         const data = await res.json();
         const parsed = ((data.findings ?? []) as RawFinding[]).map(parseFinding);
         if (opts?.background) {

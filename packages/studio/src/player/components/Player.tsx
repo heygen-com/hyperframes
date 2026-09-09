@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -158,6 +159,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const container = containerRef.current;
       if (!container) return;
 
+      const previewSource =
+        directUrl || (projectId ? buildProjectApiPath(projectId, "/preview") : null);
+      if (!previewSource) return;
+
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
@@ -167,10 +172,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
-        const srcUrl = new URL(
-          directUrl || `/api/projects/${projectId}/preview`,
-          window.location.origin,
-        );
+        const srcUrl = new URL(previewSource, window.location.origin);
         applyPreviewVariablesToUrl(srcUrl);
         const src = srcUrl.pathname + srcUrl.search;
         const retryPreview = () => {

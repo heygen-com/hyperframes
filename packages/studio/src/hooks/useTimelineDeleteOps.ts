@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 // Timeline clip deletion: the marquee/multi path and the single-clip wrapper
 // the context menu uses. Extracted verbatim from useTimelineEditing.ts to keep
 // it under the studio 600-line cap, following useTimelineAssetDropOps.
@@ -76,7 +77,10 @@ export function useTimelineDeleteOps({
           }
 
           const removeResponse = await fetch(
-            `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+            buildProjectApiPath(
+              pid,
+              `/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+            ),
             {
               method: "POST",
               headers: { "Content-Type": "application/json", ...studioWriteHeaders() },

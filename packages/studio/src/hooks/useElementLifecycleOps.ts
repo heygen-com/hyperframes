@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
 import {
@@ -152,7 +153,10 @@ export function useElementLifecycleOps({
         // selection runs to hundreds of members — the file ended up correct, but
         // only after long enough that Delete looked like it had done nothing.
         const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+          buildProjectApiPath(
+            pid,
+            `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+          ),
           {
             method: "POST",
             headers: { "Content-Type": "application/json", ...studioWriteHeaders() },

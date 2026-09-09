@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState } from "react";
 import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../utils/mediaTypes";
 
@@ -28,7 +29,7 @@ function MediaErrorPanel({ name, filePath }: { name: string; filePath: string })
 }
 
 export function MediaPreview({ projectId, filePath }: { projectId: string; filePath: string }) {
-  const serveUrl = `/api/projects/${projectId}/preview/${filePath}`;
+  const serveUrl = buildProjectApiPath(projectId, `/preview/${filePath}`);
   const name = filePath.split("/").pop() ?? filePath;
   // Keyed by path so switching to another file clears a previous failure.
   const [failedPath, setFailedPath] = useState<string | null>(null);

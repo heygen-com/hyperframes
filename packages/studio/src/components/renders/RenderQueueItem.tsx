@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useState } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { Button } from "../ui/Button";
@@ -36,7 +37,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Direct file URL — serves from disk, survives server restarts
-  const fileSrc = `/api/projects/${projectId}/renders/file/${job.filename}`;
+  const fileSrc = buildProjectApiPath(projectId, `/renders/file/${job.filename}`);
 
   const handleOpen = useCallback(() => {
     window.open(fileSrc, "_blank");

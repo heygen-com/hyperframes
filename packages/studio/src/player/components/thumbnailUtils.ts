@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 /** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
 export const THUMBNAIL_CLIP_HEIGHT = 66;
 
@@ -113,7 +114,7 @@ export function resolveMediaPreviewUrl(
       return src;
     }
     if (!studioOrigin || parsed.origin !== studioOrigin) return src;
-    const previewPath = new URL(`/api/projects/${projectId}/preview/`, studioOrigin).pathname;
+    const previewPath = new URL(buildProjectApiPath(projectId, `/preview/`), studioOrigin).pathname;
     if (parsed.pathname.startsWith(previewPath)) return src;
     if (parsed.pathname.startsWith("/api/")) return src;
     try {
@@ -128,5 +129,8 @@ export function resolveMediaPreviewUrl(
     suffix = `${parsed.search}${parsed.hash}`;
   }
 
-  return `/api/projects/${projectId}/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`;
+  return buildProjectApiPath(
+    projectId,
+    `/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`,
+  );
 }

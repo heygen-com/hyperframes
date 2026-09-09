@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
@@ -173,7 +174,7 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
-  const previewUrl = `/api/projects/${projectId}/preview/comp/${comp}`;
+  const previewUrl = buildProjectApiPath(projectId, `/preview/comp/${comp}`);
   const thumbnailUrl = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime: THUMBNAIL_SEEK_TIME_SECONDS,

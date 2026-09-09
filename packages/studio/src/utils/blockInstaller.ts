@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "./projectRouting";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
@@ -64,7 +65,7 @@ async function installRegistryItem({
   block: RegistryItem;
   compositionFile: string;
 } | null> {
-  const response = await fetch(`/api/projects/${projectId}/registry/install`, {
+  const response = await fetch(buildProjectApiPath(projectId, `/registry/install`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ blockName }),

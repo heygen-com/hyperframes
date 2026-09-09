@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
@@ -185,7 +186,7 @@ export function NLEProvider({
     setCompositionSourceMap(emptyMap);
     onCompIdToSrcChangeRef.current?.(emptyMap);
 
-    fetch(`/api/projects/${projectId}/files/index.html`, {
+    fetch(buildProjectApiPath(projectId, `/files/index.html`), {
       signal: controller.signal,
     })
       .then((r) => {

@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useEffect, useState } from "react";
 import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
 
@@ -51,7 +52,7 @@ export function FramePoster({
     );
   }
   let url = buildCompositionThumbnailUrl({
-    previewUrl: `/api/projects/${projectId}/preview/comp/${src}`,
+    previewUrl: buildProjectApiPath(projectId, `/preview/comp/${src}`),
     seekTime: seconds,
     duration: 0,
     origin: window.location.origin,

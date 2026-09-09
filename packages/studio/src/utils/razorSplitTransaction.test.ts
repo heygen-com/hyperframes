@@ -103,7 +103,7 @@ describe("runAtomicCutTransaction", () => {
     const synchronize = vi.fn();
 
     const result = await runAtomicCutTransaction({
-      projectId: "launch/demo",
+      projectId: "launch#demo",
       intents: buildAtomicCutIntents([element()], 2, "index.html"),
       label: "Split timeline clip",
       writeProjectFile,
@@ -114,8 +114,8 @@ describe("runAtomicCutTransaction", () => {
 
     expect(requests.filter((request) => request.url.includes("split-batch"))).toHaveLength(1);
     expect(requests.map((request) => request.url)).toEqual([
-      "/api/projects/launch%2Fdemo/files/index.html",
-      "/api/projects/launch%2Fdemo/file-mutations/split-batch",
+      "/api/projects/launch%23demo/files/index.html",
+      "/api/projects/launch%23demo/file-mutations/split-batch",
     ]);
     const splitRequest = requests.find((request) => request.url.includes("split-batch"));
     const writeToken = new Headers(splitRequest?.headers).get("X-Hyperframes-Write-Token");

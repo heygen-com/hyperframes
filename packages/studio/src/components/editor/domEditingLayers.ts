@@ -1,3 +1,4 @@
+import { probeSourceElement } from "./probeSourceElement";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import {
   resolveEditingAffordances,
@@ -279,31 +280,6 @@ export function resolveDomEditCapabilities(args: {
       existsInSource: args.existsInSource ?? true,
     }),
   ).capabilities;
-}
-
-async function probeSourceElement(
-  projectId: string,
-  sourceFile: string,
-  target: { id?: string; hfId?: string; selector?: string; selectorIndex?: number },
-): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `/api/projects/${projectId}/file-mutations/probe-element/${encodeURIComponent(sourceFile)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target }),
-      },
-    );
-    if (!response.ok) return true;
-    const data = await response.json();
-    if (data && typeof data === "object" && "exists" in data && data.exists === false) {
-      return false;
-    }
-    return true;
-  } catch {
-    return true;
-  }
 }
 
 // fallow-ignore-next-line complexity

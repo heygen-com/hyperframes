@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { CanvasResolution } from "@hyperframes/parsers";
 import { trackStudioRenderStart } from "../../telemetry/events";
@@ -125,7 +126,7 @@ export function useRenderQueue(
   const loadRenders = useCallback(async () => {
     if (!projectId) return;
     try {
-      const res = await fetch(`/api/projects/${projectId}/renders`);
+      const res = await fetch(buildProjectApiPath(projectId, `/renders`));
       if (!res.ok) {
         setLoadError(`Couldn't load render history (server error ${res.status}).`);
         return;
@@ -261,7 +262,7 @@ export function useRenderQueue(
       }
       let res: Response;
       try {
-        res = await fetch(`/api/projects/${projectId}/render`, {
+        res = await fetch(buildProjectApiPath(projectId, `/render`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),

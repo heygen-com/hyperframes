@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback, useRef } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
@@ -127,11 +128,11 @@ export function useDomEditCommits({
           FONT_EXT.test(path) &&
           fontFamilyFromAssetPath(path).toLowerCase() === family.toLowerCase(),
       );
-      if (!asset) return null;
+      if (!asset || !projectId) return null;
       return {
         family: fontFamilyFromAssetPath(asset),
         path: asset,
-        url: `/api/projects/${projectId}/preview/${asset}`,
+        url: buildProjectApiPath(projectId, `/preview/${asset}`),
       };
     },
     [fileTree, projectId, importedFontAssetsRef],
@@ -161,7 +162,7 @@ export function useDomEditCommits({
       };
 
       const readResponse = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        buildProjectApiPath(pid, `/files/${encodeURIComponent(targetPath)}`),
       );
       if (!readResponse.ok) {
         throw await createStudioSaveHttpError(readResponse, `Failed to read ${targetPath}`);
@@ -219,7 +220,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef.current = Date.now();
 
       const patchResponse = await fetch(
-        `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
+        buildProjectApiPath(pid, `/file-mutations/patch-element/${encodeURIComponent(targetPath)}`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
