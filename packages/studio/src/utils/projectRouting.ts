@@ -11,6 +11,7 @@ export function isValidProjectId(value: string): boolean {
     value.length > 0 &&
     value !== "." &&
     value !== ".." &&
+    !value.includes(":") &&
     !value.includes("/") &&
     !value.includes("\\") &&
     !Array.from(value).some((char) => char.charCodeAt(0) < 32)

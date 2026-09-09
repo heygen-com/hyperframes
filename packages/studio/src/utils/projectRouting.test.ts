@@ -9,7 +9,7 @@ import {
 } from "./projectRouting";
 
 describe("project routing utilities", () => {
-  it.each([".", "..", "../sessions", "a/b", "a\\b", "a\u0000b", "a\nb"])(
+  it.each(["C:", "C:demo", ".", "..", "../sessions", "a/b", "a\\b", "a\u0000b", "a\nb"])(
     "rejects unsafe decoded project IDs: %s",
     (id) => {
       expect(parseProjectIdFromHash(`#project/${encodeURIComponent(id)}`)).toBeNull();

@@ -186,6 +186,7 @@ export function createViteAdapter(
       return readdirSync(dataDir, { withFileTypes: true })
         .filter(
           (d) =>
+            isValidProjectId(d.name) &&
             (d.isDirectory() || d.isSymbolicLink()) &&
             (existsSync(join(dataDir, d.name, "index.html")) ||
               existsSync(join(dataDir, d.name, `${d.name}.html`))),

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
+import { isValidProjectId } from "./src/utils/projectRouting";
 import { createStudioApi } from "@hyperframes/studio-server";
 import type { ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
@@ -29,7 +30,7 @@ function fixture() {
 }
 
 describe("Vite project resolution boundary", () => {
-  it.each(["..%2Fsessions", "a%2Fb", "a%5Cb", "%2E%2E%2Fsessions", "a%00b"])(
+  it.each(["C%3A", "C%3Ademo", "..%2Fsessions", "a%2Fb", "a%5Cb", "%2E%2E%2Fsessions", "a%00b"])(
     "rejects a router-decoded unsafe ID: %s",
     async (id) => {
       const { app } = fixture();
@@ -51,6 +52,25 @@ describe("Vite project resolution boundary", () => {
     symlinkSync(linked, join(data, "shortcut"), "junction");
     expect(adapter.resolveProject("shortcut")?.dir).toBe(realpathSync(linked));
   });
+
+  it("rejects drive-relative IDs that Windows resolves as root or sibling aliases", () => {
+    expect(win32.resolve("C:\\hf\\data", "C:")).toBe("C:\\hf\\data");
+    expect(win32.resolve("C:\\hf\\data", "C:demo")).toBe("C:\\hf\\data\\demo");
+    expect(isValidProjectId("C:")).toBe(false);
+    expect(isValidProjectId("C:demo")).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not discover POSIX directory names outside the portable ID contract",
+    async () => {
+      const { data, adapter } = fixture();
+      for (const id of ["valid", "bad\\name", "bad\nname", "C:demo"]) {
+        mkdirSync(join(data, id));
+        writeFileSync(join(data, id, "index.html"), "<html></html>");
+      }
+      expect((await adapter.listProjects()).map((project) => project.id)).toEqual(["valid"]);
+    },
+  );
 
   it("rejects traversal in a session's project mapping", () => {
     const { sessions, adapter } = fixture();
