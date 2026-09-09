@@ -1166,17 +1166,18 @@ function injectTextRenderingRule(html: string): string {
 function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
   const hashes = [
     ...metadata.matchAll(
-      /(?:^|[\t\n\f\r ])(sha256|sha384|sha512)-([A-Za-z0-9+/_-]+={0,2})(?:\?[\x21-\x7e]*)?(?=$|[\t\n\f\r ])/g,
+      /(?:^|[\t\n\f\r ])(sha256|sha384|sha512)-([A-Za-z0-9+/_-]+={0,2})(?:\?[\x21-\x7e]*)?(?=$|[\t\n\f\r ])/gi,
     ),
   ];
   const strongest = ["sha512", "sha384", "sha256"].find((alg) =>
-    hashes.some((hash) => hash[1] === alg),
+    hashes.some((hash) => hash[1]?.toLowerCase() === alg),
   );
   // Browsers ignore metadata containing no supported, syntactically valid hash.
   if (!strongest) return true;
   const actual = createHash(strongest).update(bytes).digest();
   return hashes.some(
-    (hash) => hash[1] === strongest && actual.equals(Buffer.from(hash[2]!, "base64")),
+    (hash) =>
+      hash[1]?.toLowerCase() === strongest && actual.equals(Buffer.from(hash[2]!, "base64")),
   );
 }
 

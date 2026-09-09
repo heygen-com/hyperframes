@@ -331,6 +331,10 @@ describe("inlineExternalScripts", () => {
     const bad384 = digest("sha384", Buffer.from("changed CDN bytes"));
     const cases = [
       { metadata: good384, accepted: true },
+      { metadata: good384.replace("sha384", "SHA384"), accepted: true },
+      { metadata: bad384.replace("sha384", "SHA384"), accepted: false },
+      { metadata: bad384.replace("sha384", "sHa384"), accepted: false },
+      { metadata: `${digest("sha256")} ${bad384.replace("sha384", "SHA384")}`, accepted: false },
       { metadata: bad384, accepted: false },
       { metadata: `${digest("sha256")} ${bad384}`, accepted: false },
       { metadata: `${bad384} ${good384}`, accepted: true },
