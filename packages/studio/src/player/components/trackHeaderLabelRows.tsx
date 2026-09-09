@@ -39,7 +39,7 @@ function PropertyGroupNavigation({
   // bigger box; focus-visible matches every other control in this header.
   const CHEVRON_BUTTON_CLASS =
     "relative h-5 w-3 border-0 bg-transparent p-0 text-white/55 hover:text-white disabled:text-white/15 " +
-    "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] " +
+    "focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC] " +
     "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 " +
     "before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
   const seekTo = (keyframe: { percentage: number } | null) => {
@@ -154,7 +154,7 @@ export function PropertyGroupHeaderRow({
           aria-label={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           title={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           // h-6 w-6 = the 24x24 WCAG 2.2 minimum target; the ◆ glyph stays 11px.
-          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-[#3CE6AC] focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
           onClick={(event) => {
             // Same as the disclosure caret and the eye: a control in the label
             // column owns its click, it does not also hit the track row behind it.
@@ -262,7 +262,7 @@ export function AutomationLaneHeaderRow({
         aria-label={onReveal ? `Show ${label} in the effect rack` : undefined}
         title={onReveal ? `Show ${label} in the effect rack` : label}
         disabled={!onReveal}
-        className="flex min-w-0 flex-1 flex-col justify-center rounded border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+        className="flex min-w-0 flex-1 flex-col justify-center rounded-sm border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           // The label column owns its click; it does not also fall through to
@@ -311,7 +311,7 @@ export function AutomationLaneHeaderRow({
           aria-label={`Remove ${label} automation`}
           title={`Remove ${label} automation`}
           // h-6 w-6 is the 24x24 WCAG 2.2 target; the glyph stays small.
-          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-white/35 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-white/35 hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             // A control in the label column owns its click; it does not also hit

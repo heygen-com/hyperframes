@@ -181,8 +181,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
   // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
   const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
-  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
-  const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
+  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-neutral-200 active:scale-[0.98]`;
+  const flatActive = `${flatBtn} bg-white/8 text-neutral-100 active:scale-[0.98]`;
   const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
 
   return (
@@ -272,7 +272,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               className={
                 !onToggleKeyframe
                   ? flatDisabled
-                  : `${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
+                  : `${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
                       keyframeState === "active"
                         ? "text-studio-accent"
                         : keyframeState === "inactive"
@@ -307,7 +307,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
               aria-label="Auto-record manual edits as keyframes"
               aria-pressed={autoKeyframeEnabled}
-              className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
+              className={`${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
                 autoKeyframeEnabled
                   ? "text-red-400 hover:text-red-300"
                   : "text-neutral-600 hover:text-neutral-400"
@@ -404,7 +404,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   }}
                   className={
                     canAdd
-                      ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
+                      ? `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-[#22c55e] active:scale-[0.98]`
                       : flatDisabled
                   }
                 >
@@ -442,7 +442,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 thumbnailsVisible
                   ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
               <Image size={16} aria-hidden="true" />
@@ -455,7 +455,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
                   ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
               Fit

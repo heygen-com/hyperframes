@@ -107,7 +107,7 @@ export function ContextMenu({
         <>
           <button
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-hidden cursor-pointer text-left"
             onClick={() => {
               onNewFile(state.targetPath);
               onClose();
@@ -118,7 +118,7 @@ export function ContextMenu({
           </button>
           <button
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-hidden cursor-pointer text-left"
             onClick={() => {
               onNewFolder(state.targetPath);
               onClose();
@@ -134,7 +134,7 @@ export function ContextMenu({
         <>
           <button
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-hidden cursor-pointer text-left"
             onClick={() => {
               onNewFile(parentPath);
               onClose();
@@ -148,7 +148,7 @@ export function ContextMenu({
       )}
       <button
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-hidden cursor-pointer text-left"
         onClick={() => {
           onRename(state.targetPath);
           onClose();
@@ -160,7 +160,7 @@ export function ContextMenu({
       {!state.targetIsFolder && (
         <button
           role="menuitem"
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-hidden cursor-pointer text-left"
           onClick={() => {
             onDuplicate(state.targetPath);
             onClose();
@@ -173,7 +173,7 @@ export function ContextMenu({
       <div className="border-t border-neutral-700 my-1" />
       <button
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 focus-visible:bg-red-900/30 active:bg-red-900/50 outline-none cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 focus-visible:bg-red-900/30 active:bg-red-900/50 outline-hidden cursor-pointer text-left"
         onClick={() => {
           onDelete(state.targetPath);
           onClose();
@@ -263,7 +263,7 @@ export function InlineInput({
       style={{ paddingLeft: `${8 + depth * 12 + (isFolder ? 0 : 14)}px` }}
     >
       {isFolder ? (
-        <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="flex-shrink-0" />
+        <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="shrink-0" />
       ) : (
         <FileIcon path={value} />
       )}
@@ -278,7 +278,7 @@ export function InlineInput({
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           aria-invalid={error ? true : undefined}
-          className={`w-full min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border outline-none ${
+          className={`w-full min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border outline-hidden ${
             error ? "border-red-500/70" : "border-neutral-600 focus:border-[#3CE6AC]"
           }`}
           spellCheck={false}
@@ -344,13 +344,13 @@ export function DeleteConfirm({
       <div className="flex gap-1.5">
         <button
           onClick={onCancel}
-          className="flex-1 px-2 py-1 rounded bg-neutral-700 text-neutral-300 hover:bg-neutral-600 transition-colors"
+          className="flex-1 px-2 py-1 rounded-sm bg-neutral-700 text-neutral-300 hover:bg-neutral-600 transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={onConfirm}
-          className="flex-1 px-2 py-1 rounded bg-red-900/60 text-red-300 hover:bg-red-800/60 transition-colors"
+          className="flex-1 px-2 py-1 rounded-sm bg-red-900/60 text-red-300 hover:bg-red-800/60 transition-colors"
         >
           Delete
         </button>
@@ -419,7 +419,7 @@ export const TreeFile = memo(function TreeFile({
       <span className="truncate flex-1">{node.name}</span>
       {lintInfo && lintInfo.count > 0 && (
         <span
-          className="flex-shrink-0 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400 text-center mr-1"
+          className="shrink-0 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400 text-center mr-1"
           title={lintInfo.messages.join("\n")}
         >
           {lintInfo.count}
@@ -505,11 +505,11 @@ export const TreeFolder = memo(function TreeFolder({
         }}
         onDragLeave={onDragLeave}
         className={`w-full flex items-center gap-1.5 px-2.5 py-1 min-h-7 text-left text-xs text-neutral-400 hover:bg-neutral-800/30 hover:text-neutral-300 transition-colors ${
-          isDragOver ? "bg-[#3CE6AC]/10 outline outline-1 outline-[#3CE6AC]/40" : ""
+          isDragOver ? "bg-[#3CE6AC]/10 outline-solid outline-1 outline-[#3CE6AC]/40" : ""
         }`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
       >
-        <Chevron size={10} className="flex-shrink-0 text-neutral-600" />
+        <Chevron size={10} className="shrink-0 text-neutral-600" />
         <span className="truncate font-medium">{node.name}</span>
       </button>
       {isOpen && (

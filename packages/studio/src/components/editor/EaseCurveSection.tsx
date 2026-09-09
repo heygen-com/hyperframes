@@ -518,7 +518,7 @@ export function EaseCurveSection({
                       aria-valuemax={1}
                       aria-valuenow={key === "p1" ? x1 : x2}
                       aria-valuetext={`x ${key === "p1" ? x1 : x2}, y ${key === "p1" ? y1 : y2}`}
-                      className="cursor-grab stroke-transparent outline-none active:cursor-grabbing focus-visible:stroke-white focus-visible:stroke-[2px]"
+                      className="cursor-grab stroke-transparent outline-hidden active:cursor-grabbing focus-visible:stroke-white focus-visible:stroke-[2px]"
                       onPointerDown={(e) => handlePointerDown(key, e)}
                       onKeyDown={(event) => handleKeyDown(key, event)}
                       onPointerEnter={() => setHover(key)}

@@ -159,7 +159,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
           {Array.from({ length: frameCount }, (_, index) => (
             <div
               key={index}
-              className="relative h-full flex-shrink-0 overflow-hidden"
+              className="relative h-full shrink-0 overflow-hidden"
               style={{ width: frameW }}
             >
               <img

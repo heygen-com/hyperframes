@@ -167,7 +167,7 @@ export function ChildRectOutlines({
       {rects.map((rect, index) => (
         <div
           key={index}
-          className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
+          className="pointer-events-none absolute border border-dashed border-white/20 rounded-xs"
           style={{
             left: rect.left,
             top: rect.top,

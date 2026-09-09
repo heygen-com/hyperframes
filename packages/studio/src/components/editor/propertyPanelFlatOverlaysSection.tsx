@@ -95,7 +95,7 @@ export function FlatOverlaysSection({
             )}
             <Plus
               size={12}
-              className="absolute right-1.5 top-1.5 text-white opacity-70 drop-shadow group-hover:text-panel-accent group-hover:opacity-100"
+              className="absolute right-1.5 top-1.5 text-white opacity-70 drop-shadow-sm group-hover:text-panel-accent group-hover:opacity-100"
             />
           </span>
           <span className="block truncate px-2 py-1.5 text-[10px] text-panel-text-2">

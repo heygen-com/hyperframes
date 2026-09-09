@@ -168,7 +168,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             }}
             placeholder="What should change?"
             rows={2}
-            className="w-full px-3 py-2 text-xs bg-neutral-800/60 border border-neutral-700/40 rounded-lg text-neutral-200 placeholder:text-neutral-600 resize-none focus:outline-none focus:border-studio-accent/40 transition-colors"
+            className="w-full px-3 py-2 text-xs bg-neutral-800/60 border border-neutral-700/40 rounded-lg text-neutral-200 placeholder:text-neutral-600 resize-none focus:outline-hidden focus:border-studio-accent/40 transition-colors"
           />
         </div>
 

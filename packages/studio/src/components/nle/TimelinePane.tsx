@@ -256,7 +256,7 @@ export function TimelinePane({
       {/* Timeline section — inner padding (not margin) keeps the divider's
           height math exact while giving the panel a gap from the shell edges. */}
       <div
-        className="relative flex flex-col flex-shrink-0 px-px pb-px"
+        className="relative flex flex-col shrink-0 px-px pb-px"
         style={{ height: timelineH }}
         aria-disabled={timelineDisabled || undefined}
       >
@@ -270,7 +270,7 @@ export function TimelinePane({
             }
           }}
         >
-          <div className="flex-shrink-0">{timelineToolbar}</div>
+          <div className="shrink-0">{timelineToolbar}</div>
           <Timeline
             sessionEpoch={timelineSessionEpoch}
             onSeek={seek}
@@ -290,7 +290,7 @@ export function TimelinePane({
             onSelectElement={onSelectTimelineElement}
           />
         </div>
-        {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
+        {timelineFooter && <div className="shrink-0">{timelineFooter}</div>}
         {timelineDisabled && (
           <div
             className="absolute inset-0 z-30 cursor-not-allowed bg-black/18 flex items-center justify-center"

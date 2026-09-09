@@ -118,9 +118,10 @@ function EmptyState({ path }: { path: string }) {
       <div className="rounded-lg border border-dashed border-neutral-800 px-6 py-10 text-center">
         <h2 className="text-base font-semibold text-neutral-300">No storyboard yet</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
-          Add a <code className="rounded bg-neutral-900 px-1 py-0.5 text-neutral-400">{path}</code>{" "}
-          at the project root to plan this video frame by frame. Hand this prompt to your coding
-          agent to scaffold it.
+          Add a{" "}
+          <code className="rounded-sm bg-neutral-900 px-1 py-0.5 text-neutral-400">{path}</code> at
+          the project root to plan this video frame by frame. Hand this prompt to your coding agent
+          to scaffold it.
         </p>
 
         <div className="mx-auto mt-6 max-w-2xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left">
@@ -154,13 +155,13 @@ function SkeletonPreview() {
       <div className="mb-4 text-center text-xs uppercase tracking-wide text-neutral-600">
         Preview
       </div>
-      <div className="grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+      <div className="grid gap-x-6 gap-y-8 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
         {[0, 1, 2].map((i) => (
           <div key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
-            <div className="aspect-video w-full rounded bg-neutral-800/60" />
-            <div className="mt-3 h-3 w-2/3 rounded bg-neutral-800/60" />
-            <div className="mt-2 h-2.5 w-full rounded bg-neutral-800/40" />
-            <div className="mt-1.5 h-2.5 w-4/5 rounded bg-neutral-800/40" />
+            <div className="aspect-video w-full rounded-sm bg-neutral-800/60" />
+            <div className="mt-3 h-3 w-2/3 rounded-sm bg-neutral-800/60" />
+            <div className="mt-2 h-2.5 w-full rounded-sm bg-neutral-800/40" />
+            <div className="mt-1.5 h-2.5 w-4/5 rounded-sm bg-neutral-800/40" />
           </div>
         ))}
       </div>

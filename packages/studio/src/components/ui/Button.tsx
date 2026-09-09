@@ -84,7 +84,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           // so a wrapping Tooltip can explain WHY they're disabled (A5).
           "disabled:opacity-40 disabled:cursor-not-allowed",
           "select-none cursor-pointer",
-          "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
+          "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
           variantStyles[variant],
           sizeStyles[size],
           className,
@@ -108,7 +108,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             />
           </svg>
         ) : icon ? (
-          <span className="flex-shrink-0">{icon}</span>
+          <span className="shrink-0">{icon}</span>
         ) : null}
         {children && <span>{children}</span>}
       </button>
@@ -144,7 +144,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
           "transition-all duration-press ease-standard",
           "disabled:opacity-40 disabled:cursor-not-allowed",
           "select-none cursor-pointer",
-          "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
+          "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
           variantStyles[variant],
           iconSizeStyles[size],
           className,

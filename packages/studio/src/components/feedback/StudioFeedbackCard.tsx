@@ -243,7 +243,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                 if (req) trackStudioFeedbackInterviewClick({ reason: req.reason });
                 close("sent");
               }}
-              className="h-6 flex-shrink-0 whitespace-nowrap rounded-full border border-white/20 bg-white/[0.08] px-2.5 text-[11px] leading-6 text-neutral-100 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-white/35 hover:bg-white/[0.16] active:scale-[0.97] motion-reduce:transition-none"
+              className="h-6 shrink-0 whitespace-nowrap rounded-full border border-white/20 bg-white/8 px-2.5 text-[11px] leading-6 text-neutral-100 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-white/35 hover:bg-white/16 active:scale-[0.97] motion-reduce:transition-none"
             >
               Talk to us, 30 min
             </a>
@@ -251,7 +251,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
           <button
             type="button"
             onClick={() => close("close")}
-            className="-mr-1 -mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors duration-150 hover:bg-white/10 hover:text-neutral-200"
+            className="-mr-1 -mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors duration-150 hover:bg-white/10 hover:text-neutral-200"
             aria-label="Dismiss"
           >
             <svg
@@ -283,7 +283,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                   key={n}
                   // A resting fill, so the row reads as eleven controls rather
                   // than as a line of text that happens to be clickable.
-                  className="flex h-7 cursor-pointer items-center justify-center rounded-md bg-white/[0.04] text-[11px] tabular-nums text-neutral-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/[0.14] hover:text-neutral-100 active:scale-[0.97] has-[:checked]:bg-white/90 has-[:checked]:text-neutral-900 has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-white/50 motion-reduce:transition-none"
+                  className="flex h-7 cursor-pointer items-center justify-center rounded-md bg-white/4 text-[11px] tabular-nums text-neutral-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/[0.14] hover:text-neutral-100 active:scale-[0.97] has-checked:bg-white/90 has-checked:text-neutral-900 has-focus-visible:ring-1 has-focus-visible:ring-white/50 motion-reduce:transition-none"
                 >
                   <input
                     type="radio"
@@ -328,8 +328,8 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                   // attached to nothing.
                   className={`h-6 rounded-full border px-2.5 text-[11px] transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transition-none ${
                     failed
-                      ? "border-red-300/20 bg-red-100/[0.06] text-red-100/80 hover:border-red-200/70 hover:bg-red-100/25 hover:text-white"
-                      : "border-white/10 bg-white/[0.04] text-neutral-300 hover:border-white/60 hover:bg-white/25 hover:text-white"
+                      ? "border-red-300/20 bg-red-100/6 text-red-100/80 hover:border-red-200/70 hover:bg-red-100/25 hover:text-white"
+                      : "border-white/10 bg-white/4 text-neutral-300 hover:border-white/60 hover:bg-white/25 hover:text-white"
                   }`}
                 >
                   {preset.label}
@@ -355,12 +355,12 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                 placeholder={followUp.placeholder}
                 aria-label={followUp.prompt}
                 maxLength={500}
-                className="h-7 min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2 text-[11px] text-neutral-100 outline-none transition-colors duration-150 placeholder:text-neutral-500 focus:border-white/25"
+                className="h-7 min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2 text-[11px] text-neutral-100 outline-hidden transition-colors duration-150 placeholder:text-neutral-500 focus:border-white/25"
               />
               <button
                 type="button"
                 onClick={() => submit()}
-                className="h-7 flex-shrink-0 rounded-md bg-white/10 px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-white/[0.16] active:scale-[0.97] motion-reduce:transition-none"
+                className="h-7 shrink-0 rounded-md bg-white/10 px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-white/16 active:scale-[0.97] motion-reduce:transition-none"
               >
                 Send
               </button>

@@ -353,7 +353,7 @@ export function StudioRightPanel({
         aria-label="Resize inspector panel"
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[3px] shrink-0 cursor-col-resize outline-hidden focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
@@ -370,12 +370,12 @@ export function StudioRightPanel({
         {/* Asymmetric hit zone: 8px into the preview's p-2 gutter (the only dead
             space), the 3px seam, 2px into the card. Stops short of the 24px WCAG
             2.5.8 target because the next pixel each way is live. */}
-        <div className="absolute inset-y-0 -left-[8px] w-[13px]" />
+        <div className="absolute inset-y-0 left-[-8px] w-[13px]" />
         {/* Visible hairline */}
         <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
+        className="flex min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
         style={{ width: rightWidth }}
       >
         {captionEditMode ? (
@@ -451,7 +451,7 @@ export function StudioRightPanel({
                     role="separator"
                     aria-label="Resize Layers and Design panes"
                     aria-orientation="horizontal"
-                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
+                    className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
                     style={{ touchAction: "none" }}
                     onPointerDown={handleInspectorSplitResizeStart}
                     onPointerMove={handleInspectorSplitResizeMove}

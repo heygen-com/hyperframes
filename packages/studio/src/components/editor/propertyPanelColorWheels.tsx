@@ -204,7 +204,7 @@ function TonalWheel({
           }
         }}
         onBlur={onSettle}
-        className="relative mx-auto aspect-square w-full max-w-[112px] touch-none rounded-full border border-panel-border-input outline-none focus:ring-1 focus:ring-panel-accent disabled:opacity-40"
+        className="relative mx-auto aspect-square w-full max-w-[112px] touch-none rounded-full border border-panel-border-input outline-hidden focus:ring-1 focus:ring-panel-accent disabled:opacity-40"
         style={{
           background:
             "radial-gradient(circle, rgb(128 128 128) 0%, transparent 72%), conic-gradient(from 90deg, #f33, #f3f, #33f, #3ff, #3f3, #ff3, #f33)",

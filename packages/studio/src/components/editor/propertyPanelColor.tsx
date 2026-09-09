@@ -79,7 +79,7 @@ function ColorSlider({
         aria-valuemax={max}
         aria-valuenow={value}
         aria-disabled={disabled}
-        className={`relative h-4 rounded-full border border-neutral-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] outline-none focus:border-panel-accent focus:ring-2 focus:ring-panel-accent/40 ${
+        className={`relative h-4 rounded-full border border-neutral-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] outline-hidden focus:border-panel-accent focus:ring-2 focus:ring-panel-accent/40 ${
           disabled ? "cursor-not-allowed opacity-50" : "cursor-ew-resize"
         }`}
         style={{ background }}
@@ -328,7 +328,7 @@ export function ColorField({
           role="dialog"
           aria-label={`${label} color picker`}
           tabIndex={-1}
-          className="fixed z-[9999] w-[292px] overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl shadow-black/50 outline-none"
+          className="fixed z-9999 w-[292px] overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl shadow-black/50 outline-hidden"
           style={{
             left: panelPosition?.left ?? -9999,
             top: panelPosition?.top ?? -9999,
@@ -367,8 +367,8 @@ export function ColorField({
               onPointerUp={settleColorGesture}
               onPointerCancel={cancelColorGesture}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-r from-white to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-black to-transparent" />
               <div
                 className="pointer-events-none absolute top-0 h-full w-px -translate-x-1/2 bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
                 style={{ left: `${hsv.saturation * 100}%` }}
@@ -389,7 +389,7 @@ export function ColorField({
 
             <div className="flex min-w-0 items-center gap-3">
               <div
-                className="h-9 w-9 flex-shrink-0 rounded-xl border border-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                className="h-9 w-9 shrink-0 rounded-xl border border-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                 style={{ backgroundColor: currentColor }}
               />
               <div className="min-w-0 flex-1">
@@ -442,7 +442,7 @@ export function ColorField({
                 value={hexDraft}
                 onChange={(event) => handleHexChange(event.target.value)}
                 onBlur={settleColorGesture}
-                className={`${FIELD} h-10 w-full text-[11px] font-medium outline-none`}
+                className={`${FIELD} h-10 w-full text-[11px] font-medium outline-hidden`}
                 spellCheck={false}
               />
             </label>
@@ -475,7 +475,7 @@ export function ColorField({
           className="flex items-center gap-2 disabled:cursor-not-allowed"
         >
           <span
-            className="h-4 w-4 flex-shrink-0 rounded-[4px]"
+            className="h-4 w-4 shrink-0 rounded-[4px]"
             style={{ backgroundColor: open ? currentColor : value || "transparent" }}
           />
           <span className="font-mono text-[11px] text-panel-text-0">
@@ -484,7 +484,7 @@ export function ColorField({
           {mixed && (
             <span
               data-color-mixed-indicator="true"
-              className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+              className="rounded-sm bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
             >
               Mixed
             </span>
@@ -504,7 +504,7 @@ export function ColorField({
             type="button"
             disabled={disabled}
             onClick={onReset}
-            className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4 transition-colors hover:text-panel-text-0 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-sm bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4 transition-colors hover:text-panel-text-0 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Reset
           </button>
@@ -519,7 +519,7 @@ export function ColorField({
         className={`${FIELD} flex items-center gap-3 text-left hover:border-neutral-700 disabled:cursor-not-allowed ${open ? "border-neutral-600" : ""}`}
       >
         <div
-          className="relative h-7 w-7 flex-shrink-0 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          className="relative h-7 w-7 shrink-0 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
           style={{ backgroundColor: value || "transparent" }}
         />
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-100">
@@ -528,7 +528,7 @@ export function ColorField({
         {mixed && (
           <span
             data-color-mixed-indicator="true"
-            className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+            className="rounded-sm bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
           >
             Mixed
           </span>

@@ -124,11 +124,11 @@ const PREVIEW_PROSE =
   "[&_h2]:mb-1.5 [&_h2]:mt-5 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-neutral-100 " +
   "[&_h3]:mt-4 [&_h3]:font-semibold [&_h3]:text-neutral-200 " +
   "[&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 " +
-  "[&_code]:rounded [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:text-[0.85em] [&_code]:text-neutral-200 " +
-  "[&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-neutral-900 [&_pre]:p-3 " +
+  "[&_code]:rounded-sm [&_code]:bg-neutral-800 [&_code]:px-1 [&_code]:text-[0.85em] [&_code]:text-neutral-200 " +
+  "[&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded-sm [&_pre]:bg-neutral-900 [&_pre]:p-3 " +
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
   "[&_hr]:my-4 [&_hr]:border-neutral-800 [&_a]:text-sky-400 [&_strong]:text-neutral-100 " +
-  "[&_img]:my-2 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded " +
+  "[&_img]:my-2 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-sm " +
   "[&_table]:my-3 [&_th]:border [&_th]:border-neutral-800 [&_th]:px-2 [&_th]:py-1 " +
   "[&_td]:border [&_td]:border-neutral-800 [&_td]:px-2 [&_td]:py-1";
 
@@ -203,7 +203,7 @@ export function StoryboardSourceEditor({
             type="button"
             onClick={file.save}
             disabled={!file.dirty || file.saving}
-            className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+            className="rounded-sm bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
           >
             Save
           </button>

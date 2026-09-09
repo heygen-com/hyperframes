@@ -88,7 +88,7 @@ export function AutomationToggle({
     <Tooltip label={automated ? "Automated" : "Automate"}>
       <button
         type="button"
-        className={`hf-fx-automate w-[16px] flex-shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
+        className={`hf-fx-automate w-[16px] shrink-0 rounded-[3px] border font-mono text-[9px] leading-none ${
           automated
             ? "border-panel-accent text-panel-accent"
             : "border-panel-border-input text-panel-text-2 hover:text-panel-text-0"
@@ -192,10 +192,10 @@ export function FxParamRow({
             big the space is" — so 86px of truncation left "How big the sp…", and
             three rows of that read as the same word four times. A title only
             answers it on hover, one row at a time; wrapping answers it for the
-            whole column at rest. `break-words` so a long single token breaks
+            whole column at rest. `wrap-break-word` so a long single token breaks
             instead of widening the column. The row keeps `title={param.hint}`:
             the name and the explanation are different questions. */}
-        <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
+        <span className="hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight text-panel-text-2">
           {param.label}
         </span>
         <select
@@ -236,7 +236,7 @@ export function FxParamRow({
     >
       {/* See the enum row above for why the name wraps instead of truncating. */}
       <span
-        className={`hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight ${
+        className={`hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight ${
           automated ? "text-panel-accent" : "text-panel-text-2"
         }`}
       >
@@ -258,7 +258,7 @@ export function FxParamRow({
         onBlur={commit}
       />
       <input
-        className="hf-fx-number w-[54px] flex-shrink-0 rounded-[3px] bg-panel-surface px-1 py-0.5 text-right font-mono text-[10px] text-panel-text-0"
+        className="hf-fx-number w-[54px] shrink-0 rounded-[3px] bg-panel-surface px-1 py-0.5 text-right font-mono text-[10px] text-panel-text-0"
         type="number"
         min={param.min}
         max={param.max}
@@ -287,7 +287,7 @@ export function FxParamRow({
         }}
       />
       {param.unit ? (
-        <span className="hf-fx-unit w-[22px] flex-shrink-0 font-mono text-[9px] text-panel-text-2">
+        <span className="hf-fx-unit w-[22px] shrink-0 font-mono text-[9px] text-panel-text-2">
           {param.unit}
         </span>
       ) : null}

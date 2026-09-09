@@ -23,7 +23,7 @@ export const SpeedMenu = memo(function SpeedMenu({
   const speedMenuContainerRef = useContextMenuDismiss(closeMenu);
 
   return (
-    <div ref={speedMenuContainerRef} className="relative flex-shrink-0">
+    <div ref={speedMenuContainerRef} className="relative shrink-0">
       <Tooltip label="Playback speed">
         <button
           type="button"
@@ -57,10 +57,8 @@ export const SpeedMenu = memo(function SpeedMenu({
                   setPlaybackRate(rate);
                   setShowSpeedMenu(false);
                 }}
-                className={`block w-full px-3 py-1.5 text-[11px] text-left font-mono tabular-nums transition-colors outline-none focus-visible:bg-white/[0.04] ${
-                  isCurrent
-                    ? "text-neutral-50 bg-white/[0.06]"
-                    : "text-neutral-500 hover:bg-white/[0.04]"
+                className={`block w-full px-3 py-1.5 text-[11px] text-left font-mono tabular-nums transition-colors outline-hidden focus-visible:bg-white/4 ${
+                  isCurrent ? "text-neutral-50 bg-white/6" : "text-neutral-500 hover:bg-white/4"
                 }`}
               >
                 {rate}x

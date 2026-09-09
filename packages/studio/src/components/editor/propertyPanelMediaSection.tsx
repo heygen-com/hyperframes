@@ -182,7 +182,7 @@ export function MediaSection({
                   event.stopPropagation();
                   void runBackgroundRemoval();
                 }}
-                className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   canRemoveBackground
                     ? "Remove background and save a transparent asset"

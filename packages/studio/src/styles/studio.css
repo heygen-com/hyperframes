@@ -1,6 +1,40 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+
+/*
+ * Explicit sources: Studio's own TypeScript and its shell HTML. Automatic
+ * detection would walk up to the repository root and scan `data/projects`,
+ * which is gitignored user content, not Studio's markup.
+ */
+@source "../**/*.{ts,tsx}";
+@source "../../index.html";
+
+@theme {
+  --color-studio-bg: #0a0a0a;
+  --color-studio-surface: #141414;
+  --color-studio-border: #262626;
+  --color-studio-text: #e5e5e5;
+  --color-studio-muted: #737373;
+  --color-studio-accent: #3ce6ac;
+
+  --color-panel-bg: #0c0c0e;
+  --color-panel-bg-inset: #121214;
+  --color-panel-input: #161618;
+  --color-panel-surface: #18181b;
+  --color-panel-hover: #27272a;
+  --color-panel-border: #1e1e1e;
+  --color-panel-border-input: #27272a;
+  --color-panel-hairline: #1a1a1c;
+  --color-panel-text-0: #fafafa;
+  --color-panel-text-1: #e4e4e7;
+  --color-panel-text-2: #a1a1aa;
+  --color-panel-text-3: #71717a;
+  --color-panel-text-4: #52525b;
+  --color-panel-text-5: #3f3f46;
+  --color-panel-accent: #3ce6ac;
+  --color-panel-danger: #ef4444;
+  --color-panel-media: #00e3ff;
+  --color-panel-container: #f5a623;
+}
 
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that

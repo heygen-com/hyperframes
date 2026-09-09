@@ -140,7 +140,7 @@ export function TimelineGroupRow({
           around the labels alone does not work either, because as a flex item
           after the header it starts at x = columnWidth, i.e. inside the lanes. */}
       <div
-        className="sticky left-0 z-[12] shrink-0"
+        className="sticky left-0 z-12 shrink-0"
         style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}
       >
         <TimelineGroupHeader

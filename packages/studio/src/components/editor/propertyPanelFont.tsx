@@ -425,7 +425,7 @@ export function FontFamilyField({
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
+          className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-hidden placeholder:text-neutral-600 focus:border-neutral-600"
         />
         {canQueryLocalFonts && (
           <button
@@ -487,12 +487,12 @@ export function FontFamilyField({
                   {option.family}
                 </span>
                 {renderAliasFor(option.family) && (
-                  <span className="flex-shrink-0 text-[9px] text-neutral-500">
+                  <span className="shrink-0 text-[9px] text-neutral-500">
                     → {renderAliasFor(option.family)}
                   </span>
                 )}
               </span>
-              <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
+              <span className="shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
                 {option.source}
               </span>
             </button>
@@ -524,7 +524,7 @@ export function FontFamilyField({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
+            className="shrink-0 text-panel-text-5"
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -549,7 +549,7 @@ export function FontFamilyField({
         >
           {currentFamily}
         </span>
-        <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
+        <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
           Font
         </span>
       </button>

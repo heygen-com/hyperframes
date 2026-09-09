@@ -259,7 +259,7 @@ export function TimelineTrackHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className="sticky left-0 z-[12] shrink-0"
+      className="sticky left-0 z-12 shrink-0"
       style={{
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
         background: gutterFill(theme.gutterBackground, isGroupMember),

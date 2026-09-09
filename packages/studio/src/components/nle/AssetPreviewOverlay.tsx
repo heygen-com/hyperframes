@@ -42,7 +42,11 @@ function AssetPreviewMedia({
 }) {
   if (kind === "image") {
     return (
-      <img src={serveUrl} alt={name} className="max-w-full max-h-[40vh] rounded object-contain" />
+      <img
+        src={serveUrl}
+        alt={name}
+        className="max-w-full max-h-[40vh] rounded-sm object-contain"
+      />
     );
   }
   if (kind === "video") {
@@ -53,7 +57,7 @@ function AssetPreviewMedia({
         autoPlay
         muted
         playsInline
-        className="max-w-full max-h-[40vh] rounded"
+        className="max-w-full max-h-[40vh] rounded-sm"
       />
     );
   }

@@ -161,7 +161,7 @@ export function StoryboardFrameFocus({
         <button
           type="button"
           onClick={handleBack}
-          className="rounded px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800"
+          className="rounded-sm px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800"
         >
           ← Board
         </button>
@@ -264,7 +264,7 @@ export function StoryboardFrameFocus({
               onChange={(e) => setDraft(e.target.value)}
               rows={3}
               placeholder="What the narrator says over this frame…"
-              className="w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              className="w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 outline-hidden focus:border-neutral-600"
             />
             <p className="mt-1 text-[11px] text-neutral-600">
               {dirty
@@ -288,7 +288,7 @@ export function StoryboardFrameFocus({
               rows={3}
               placeholder="Tell your agent what to change in this frame…"
               aria-label={`Comment on ${title}`}
-              className="w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-sky-700"
+              className="w-full resize-y rounded-sm border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 placeholder:text-neutral-600 outline-hidden focus:border-sky-700"
             />
             {pendingCommentCount > 0 ? (
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-900/70 bg-sky-950/20 px-2.5 py-2">
@@ -357,7 +357,7 @@ function NavButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800 enabled:active:scale-[0.98] transition-transform disabled:opacity-30"
+      className="rounded-sm px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800 enabled:active:scale-[0.98] transition-transform disabled:opacity-30"
     >
       {label}
     </button>
@@ -371,7 +371,7 @@ function ReadOnlyStatus({ status }: { status: StoryboardFrameView["status"] }) {
       <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
         Status
       </span>
-      <span className={`rounded px-2 py-1 text-xs font-medium ${meta.chipClass}`}>
+      <span className={`rounded-sm px-2 py-1 text-xs font-medium ${meta.chipClass}`}>
         {meta.label}
       </span>
       <span className="text-[11px] text-neutral-600">Updated by your agent</span>
@@ -385,7 +385,7 @@ function FramePlan({ frame }: { frame: StoryboardFrameView }) {
   const title = frame.title ?? `Frame ${frame.index}`;
   const isOutline = frame.status === "outline";
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_center,_rgba(38,38,38,0.8),_rgba(10,10,10,1))] p-10">
+    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(38,38,38,0.8),rgba(10,10,10,1))] p-10">
       <div className="max-w-xl text-center">
         <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
           {isOutline ? "Planned frame" : "Preview unavailable"}

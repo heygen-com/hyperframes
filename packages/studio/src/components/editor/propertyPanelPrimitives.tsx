@@ -70,21 +70,21 @@ export function MetricField({
     scrub && !disabled
       ? ({
           className:
-            "flex-shrink-0 text-[11px] font-medium text-neutral-500 cursor-ew-resize select-none",
+            "shrink-0 text-[11px] font-medium text-neutral-500 cursor-ew-resize select-none",
           onPointerDown: handleScrubPointerDown,
           onPointerMove: handleScrubPointerMove,
           onPointerUp: handleScrubPointerUp,
           onPointerCancel: handleScrubPointerUp,
           onLostPointerCapture: handleScrubPointerUp,
         } as const)
-      : ({ className: "flex-shrink-0 text-[11px] font-medium text-neutral-500" } as const);
+      : ({ className: "shrink-0 text-[11px] font-medium text-neutral-500" } as const);
 
   return (
     <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{label}</span>
         <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
-        {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
+        {suffix && <span className="shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>
   );
@@ -262,7 +262,7 @@ export function SelectField({
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <span className="shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
       <select
         value={value}
         disabled={disabled}
@@ -270,7 +270,7 @@ export function SelectField({
           track("select", label);
           onChange(e.target.value);
         }}
-        className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+        className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
       >
         {renderedOptions.map((option) => (
           <option key={option} value={option}>
@@ -302,7 +302,7 @@ export function Section({
       height="10"
       viewBox="0 0 10 10"
       fill="currentColor"
-      className={`flex-shrink-0 text-panel-text-5 transition-transform duration-150 ${
+      className={`shrink-0 text-panel-text-5 transition-transform duration-150 ${
         collapsed ? "-rotate-90" : ""
       }`}
     >
@@ -324,7 +324,7 @@ export function Section({
             <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
             {collapseIcon}
           </button>
-          {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
+          {accessory && <div className="flex shrink-0 items-center">{accessory}</div>}
         </div>
         {!collapsed && <div className="px-4 pb-3">{children}</div>}
       </section>

@@ -104,7 +104,7 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
       {visible &&
         createPortal(
           <div
-            className="fixed z-[200] pointer-events-none"
+            className="fixed z-200 pointer-events-none"
             style={{
               left: clampedX,
               top: pos.y,
