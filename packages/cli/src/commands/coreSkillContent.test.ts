@@ -132,6 +132,25 @@ describe("media treatment routing documentation", () => {
     }
   });
 
+  it("makes the motion-graphics build path run a live catalog search, not read a snapshot", () => {
+    // The failure this pins: a user inside /motion-graphics asked for "CRT scanlines
+    // and glitch effects" and the agent hand-authored both, while `caption-glitch-rgb`
+    // ("RGB chromatic aberration with CRT scanline overlay") ranks first for that exact
+    // query on either tier. Every reuse instruction in the workflow pointed at
+    // catalog-map.md, a hand-maintained snapshot, and none named the search. The search
+    // needs nothing installed, so "I forgot to install the components" was never the cause.
+    for (const file of [
+      ["skills", "motion-graphics", "catalog-map.md"],
+      ["skills", "motion-graphics", "agents", "director.md"],
+      ["skills", "motion-graphics", "agents", "builder.md"],
+    ]) {
+      expect(read(...file)).toContain("npx hyperframes catalog --query");
+    }
+    // And it must say the search stands alone, or the next reader re-derives the
+    // creator's wrong diagnosis: that a catalog you have not installed cannot be searched.
+    expect(read("skills", "motion-graphics", "catalog-map.md")).toContain("needs nothing installed");
+  });
+
   it("gives agents a process-owned preview lifecycle in new project instructions", () => {
     for (const file of ["AGENTS.md", "CLAUDE.md"]) {
       const template = read("packages", "cli", "src", "templates", "_shared", file);
