@@ -1,3 +1,5 @@
+import { isSafeAttributeValue } from "../utils/htmlAttrSafety";
+import { richTextHtml } from "./richTextHtml";
 import type { TimelineElement, CanvasResolution, Keyframe, StageZoomKeyframe } from "../core.types";
 import {
   CANVAS_DIMENSIONS,
@@ -17,6 +19,41 @@ function escapeHtmlAttributeValue(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function elementSelector(id: string): string {
+  // Hex escapes preserve ID identity without letting punctuation add selectors.
+  const escaped = id.replace(/[^a-zA-Z0-9_-]|^-?\d/g, (match) =>
+    Array.from(match, (char) => `\\${char.codePointAt(0)?.toString(16)} `).join(""),
+  );
+  return `#${escaped}`;
+}
+
+function cssString(value: string): string {
+  return value.replace(/[\\'\r\n\f]/g, (char) => `\\${char.codePointAt(0)?.toString(16)} `);
+}
+
+function sourceAttribute(src: string, composition = false): string {
+  // URL parsing ignores embedded ASCII tabs/newlines before detecting a scheme.
+  const normalized = Array.from(src)
+    .filter((char) => char.charCodeAt(0) > 32)
+    .join("");
+  if (!isSafeAttributeValue("src", normalized) || (composition && /^data:/i.test(normalized))) {
+    throw new Error("Unsafe media or composition source URL");
+  }
+  return escapeHtmlAttributeValue(src);
+}
+
+function finiteNumber(value: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("Expected a finite generator numeric value");
+  }
+  return value;
+}
+
+function cssValue(value: string): string {
+  if (/[;{}<>\r\n]/.test(value)) throw new Error("Invalid generated CSS value");
+  return value;
 }
 
 const GOOGLE_FONTS_BASE = "https://fonts.googleapis.com/css2";
@@ -140,36 +177,36 @@ function generateElementStyles(element: TimelineElement): string {
 
     // Text outline using -webkit-text-stroke
     const textOutline = element.textOutline
-      ? `-webkit-text-stroke: ${element.textOutlineWidth ?? 2}px ${
-          element.textOutlineColor ?? "#000000"
-        }; paint-order: stroke fill;`
+      ? `-webkit-text-stroke: ${finiteNumber(element.textOutlineWidth ?? 2)}px ${cssValue(
+          element.textOutlineColor ?? "#000000",
+        )}; paint-order: stroke fill;`
       : "";
 
     // Text highlight using background
     const textHighlight = element.textHighlight
-      ? `background-color: ${element.textHighlightColor ?? "yellow"}; padding: ${element.textHighlightPadding ?? 4}px ${
-          (element.textHighlightPadding ?? 4) * 1.5
-        }px; border-radius: ${
-          element.textHighlightRadius ?? 4
-        }px; box-decoration-break: clone; -webkit-box-decoration-break: clone;`
+      ? `background-color: ${cssValue(element.textHighlightColor ?? "yellow")}; padding: ${finiteNumber(element.textHighlightPadding ?? 4)}px ${finiteNumber(
+          (element.textHighlightPadding ?? 4) * 1.5,
+        )}px; border-radius: ${finiteNumber(
+          element.textHighlightRadius ?? 4,
+        )}px; box-decoration-break: clone; -webkit-box-decoration-break: clone;`
       : "";
 
-    return `    #${element.id} { ${baseStyles} width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-    #${element.id} > div { font-family: '${fontFamily}', sans-serif; font-size: ${fontSize}px; font-weight: ${fontWeight}; color: ${color}; ${textShadow} ${textOutline} ${textHighlight} pointer-events: auto; cursor: grab; white-space: pre-wrap; text-align: center; }`;
+    return `    ${elementSelector(element.id)} { ${baseStyles} width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    ${elementSelector(element.id)} > div { font-family: '${cssString(fontFamily)}', sans-serif; font-size: ${finiteNumber(fontSize)}px; font-weight: ${finiteNumber(fontWeight)}; color: ${cssValue(color)}; ${textShadow} ${textOutline} ${textHighlight} pointer-events: auto; cursor: grab; white-space: pre-wrap; text-align: center; }`;
   }
 
   switch (element.type) {
     case "video":
       // Videos fill the stage with standard CSS positioning (0,0 = top-left)
-      return `    #${element.id} { ${baseStyles} width: 100%; height: 100%; object-fit: contain; transform-origin: center center; }`;
+      return `    ${elementSelector(element.id)} { ${baseStyles} width: 100%; height: 100%; object-fit: contain; transform-origin: center center; }`;
     case "image":
       // Images use standard CSS positioning (0,0 = top-left)
-      return `    #${element.id} { ${baseStyles} max-width: 100%; max-height: 100%; transform-origin: center center; }`;
+      return `    ${elementSelector(element.id)} { ${baseStyles} max-width: 100%; max-height: 100%; transform-origin: center center; }`;
     case "audio":
-      return `    #${element.id} { ${baseStyles} }`;
+      return `    ${elementSelector(element.id)} { ${baseStyles} }`;
     case "composition":
       // Compositions use standard CSS positioning (0,0 = top-left)
-      return `    #${element.id} { ${baseStyles} width: 100%; height: 100%; position: absolute; }`;
+      return `    ${elementSelector(element.id)} { ${baseStyles} width: 100%; height: 100%; position: absolute; }`;
   }
 }
 
@@ -209,7 +246,12 @@ export function generateGsapTimelineScript(
             scale: baseScale,
           },
         );
-        keyframeAnimations = keyframeAnimations.concat(converted);
+        keyframeAnimations = keyframeAnimations.concat(
+          converted.map((animation) => ({
+            ...animation,
+            targetSelector: elementSelector(element.id),
+          })),
+        );
       }
     }
   }
@@ -277,7 +319,7 @@ export function generateGsapTimelineScript(
   } else {
     gsapScript = `
     const tl = gsap.timeline({ paused: true });
-${initialPositionSets ? initialPositionSets + "\n" : ""}    tl.to({}, { duration: ${totalDuration || 1} });
+${initialPositionSets ? initialPositionSets + "\n" : ""}    tl.to({}, { duration: ${finiteNumber(totalDuration || 1)} });
     `;
     // Append zoom animations
     if (zoomAnimations) {
@@ -338,12 +380,18 @@ export function generateHyperframesHtml(
     styleTags = [
       styles.coreCss
         ? `  <style data-hf-core="true">
-    ${styles.coreCss.split("\n").join("\n    ")}
+    ${styles.coreCss
+      .replace(/<\/style/gi, (match) => `<\\${match.slice(1)}`)
+      .split("\n")
+      .join("\n    ")}
   </style>`
         : "",
       styles.customCss
         ? `  <style data-hf-custom="true">
-    ${styles.customCss.split("\n").join("\n    ")}
+    ${styles.customCss
+      .replace(/<\/style/gi, (match) => `<\\${match.slice(1)}`)
+      .split("\n")
+      .join("\n    ")}
   </style>`
         : "",
     ]
@@ -365,7 +413,7 @@ export function generateHyperframesHtml(
 
   const gsapScriptTag = includeScripts
     ? `  <script>
-${gsapScript}
+${gsapScript.replace(/<\/script/gi, (match) => `<\\${match.slice(1)}`)}
   </script>`
     : "";
 
@@ -436,15 +484,15 @@ function generateZoomGsapAnimations(
 
     if (i === 0) {
       animations.push(
-        `    tl.set("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y} }, ${kf.time});`,
+        `    tl.set("#stage-zoom-container", { scale: ${finiteNumber(kf.zoom.scale)}, x: ${finiteNumber(x)}, y: ${finiteNumber(y)} }, ${finiteNumber(kf.time)});`,
       );
     } else {
       const prevKf = sortedKeyframes[i - 1];
       if (!prevKf) continue;
       const duration = kf.time - prevKf.time;
-      const ease = kf.ease ? `, ease: "${kf.ease}"` : "";
+      const ease = kf.ease ? `, ease: ${JSON.stringify(kf.ease)}` : "";
       animations.push(
-        `    tl.to("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y}, duration: ${duration}${ease} }, ${prevKf.time});`,
+        `    tl.to("#stage-zoom-container", { scale: ${finiteNumber(kf.zoom.scale)}, x: ${finiteNumber(x)}, y: ${finiteNumber(y)}, duration: ${finiteNumber(duration)}${ease} }, ${finiteNumber(prevKf.time)});`,
       );
     }
   }
@@ -454,26 +502,26 @@ function generateZoomGsapAnimations(
 
 function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): string {
   const baseAttrs = [
-    `id="${element.id}"`,
-    `data-hf-id="${element.id}"`,
-    `${COMPOSITION_ATTRIBUTES.start}="${element.startTime}"`,
-    `${COMPOSITION_ATTRIBUTES.duration}="${element.duration}"`,
-    `${COMPOSITION_ATTRIBUTES.trackIndex}="${element.zIndex}"`,
-    `data-name="${element.name}"`,
+    `id="${escapeHtmlAttributeValue(String(element.id))}"`,
+    `data-hf-id="${escapeHtmlAttributeValue(String(element.id))}"`,
+    `${COMPOSITION_ATTRIBUTES.start}="${escapeHtmlAttributeValue(String(element.startTime))}"`,
+    `${COMPOSITION_ATTRIBUTES.duration}="${escapeHtmlAttributeValue(String(element.duration))}"`,
+    `${COMPOSITION_ATTRIBUTES.trackIndex}="${escapeHtmlAttributeValue(String(element.zIndex))}"`,
+    `data-name="${escapeHtmlAttributeValue(String(element.name))}"`,
   ];
 
   // Serialize transform properties (x, y, scale, opacity) if non-default
   if (element.x !== undefined && element.x !== 0) {
-    baseAttrs.push(`data-x="${element.x}"`);
+    baseAttrs.push(`data-x="${escapeHtmlAttributeValue(String(element.x))}"`);
   }
   if (element.y !== undefined && element.y !== 0) {
-    baseAttrs.push(`data-y="${element.y}"`);
+    baseAttrs.push(`data-y="${escapeHtmlAttributeValue(String(element.y))}"`);
   }
   if (element.scale !== undefined && element.scale !== 1) {
-    baseAttrs.push(`data-scale="${element.scale}"`);
+    baseAttrs.push(`data-scale="${escapeHtmlAttributeValue(String(element.scale))}"`);
   }
   if (element.opacity !== undefined && element.opacity !== 1) {
-    baseAttrs.push(`data-opacity="${element.opacity}"`);
+    baseAttrs.push(`data-opacity="${escapeHtmlAttributeValue(String(element.opacity))}"`);
   }
 
   // Serialize keyframes to data attribute if present
@@ -485,16 +533,16 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
   if (isTextElement(element)) {
     const textAttrs = [...baseAttrs, `data-type="text"`];
     if (element.color) {
-      textAttrs.push(`data-color="${element.color}"`);
+      textAttrs.push(`data-color="${escapeHtmlAttributeValue(String(element.color))}"`);
     }
     if (element.fontSize) {
-      textAttrs.push(`data-font-size="${element.fontSize}"`);
+      textAttrs.push(`data-font-size="${escapeHtmlAttributeValue(String(element.fontSize))}"`);
     }
     if (element.fontWeight) {
-      textAttrs.push(`data-font-weight="${element.fontWeight}"`);
+      textAttrs.push(`data-font-weight="${escapeHtmlAttributeValue(String(element.fontWeight))}"`);
     }
     if (element.fontFamily) {
-      textAttrs.push(`data-font-family="${element.fontFamily}"`);
+      textAttrs.push(`data-font-family="${escapeHtmlAttributeValue(String(element.fontFamily))}"`);
     }
     if (element.textShadow === false) {
       textAttrs.push(`data-text-shadow="false"`);
@@ -502,25 +550,35 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
     if (element.textOutline) {
       textAttrs.push(`data-text-outline="true"`);
       if (element.textOutlineColor) {
-        textAttrs.push(`data-text-outline-color="${element.textOutlineColor}"`);
+        textAttrs.push(
+          `data-text-outline-color="${escapeHtmlAttributeValue(String(element.textOutlineColor))}"`,
+        );
       }
       if (element.textOutlineWidth) {
-        textAttrs.push(`data-text-outline-width="${element.textOutlineWidth}"`);
+        textAttrs.push(
+          `data-text-outline-width="${escapeHtmlAttributeValue(String(element.textOutlineWidth))}"`,
+        );
       }
     }
     if (element.textHighlight) {
       textAttrs.push(`data-text-highlight="true"`);
       if (element.textHighlightColor) {
-        textAttrs.push(`data-text-highlight-color="${element.textHighlightColor}"`);
+        textAttrs.push(
+          `data-text-highlight-color="${escapeHtmlAttributeValue(String(element.textHighlightColor))}"`,
+        );
       }
       if (element.textHighlightPadding) {
-        textAttrs.push(`data-text-highlight-padding="${element.textHighlightPadding}"`);
+        textAttrs.push(
+          `data-text-highlight-padding="${escapeHtmlAttributeValue(String(element.textHighlightPadding))}"`,
+        );
       }
       if (element.textHighlightRadius) {
-        textAttrs.push(`data-text-highlight-radius="${element.textHighlightRadius}"`);
+        textAttrs.push(
+          `data-text-highlight-radius="${escapeHtmlAttributeValue(String(element.textHighlightRadius))}"`,
+        );
       }
     }
-    const content = element.content || element.name;
+    const content = richTextHtml(element.content ?? element.name);
     return `<div ${textAttrs.join(" ")}><div>${content}</div></div>`;
   }
 
@@ -528,16 +586,22 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
     const compositionAttrs = [
       ...baseAttrs,
       `data-type="composition"`,
-      `data-composition-id="${element.compositionId}"`,
+      `data-composition-id="${escapeHtmlAttributeValue(String(element.compositionId))}"`,
     ];
     if (element.sourceDuration) {
-      compositionAttrs.push(`data-source-duration="${element.sourceDuration}"`);
+      compositionAttrs.push(
+        `data-source-duration="${escapeHtmlAttributeValue(String(element.sourceDuration))}"`,
+      );
     }
     if (element.sourceWidth) {
-      compositionAttrs.push(`data-source-width="${element.sourceWidth}"`);
+      compositionAttrs.push(
+        `data-source-width="${escapeHtmlAttributeValue(String(element.sourceWidth))}"`,
+      );
     }
     if (element.sourceHeight) {
-      compositionAttrs.push(`data-source-height="${element.sourceHeight}"`);
+      compositionAttrs.push(
+        `data-source-height="${escapeHtmlAttributeValue(String(element.sourceHeight))}"`,
+      );
     }
     if (element.variableValues && Object.keys(element.variableValues).length > 0) {
       const varJson = JSON.stringify(element.variableValues);
@@ -546,7 +610,7 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
     const attrs = compositionAttrs.join(" ");
     // Build iframe src with variable values as query params if present
     // Strip any existing query params first to avoid duplication
-    let iframeSrc = element.src.split("?")[0];
+    let iframeSrc = element.src.split("?")[0] ?? "";
     if (element.variableValues && Object.keys(element.variableValues).length > 0) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(element.variableValues)) {
@@ -558,23 +622,27 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
     // The motion design HTML handles its own internal positioning
     // Wrap iframe in container with click overlay for selection
     return `<div ${attrs} style="width: 100%; height: 100%;">
-      <iframe src="${iframeSrc}" sandbox="allow-scripts allow-same-origin" style="width: 100%; height: 100%; border: none; pointer-events: none;"></iframe>
+      <iframe src="${sourceAttribute(iframeSrc, true)}" sandbox="allow-scripts allow-same-origin" style="width: 100%; height: 100%; border: none; pointer-events: none;"></iframe>
       <div class="composition-click-overlay" style="position: absolute; inset: 0; cursor: pointer;"></div>
     </div>`;
   }
 
   if (isMediaElement(element)) {
     if (element.mediaStartTime) {
-      baseAttrs.push(`data-media-start="${element.mediaStartTime}"`);
+      baseAttrs.push(
+        `data-media-start="${escapeHtmlAttributeValue(String(element.mediaStartTime))}"`,
+      );
     }
     if (element.sourceDuration) {
-      baseAttrs.push(`data-source-duration="${element.sourceDuration}"`);
+      baseAttrs.push(
+        `data-source-duration="${escapeHtmlAttributeValue(String(element.sourceDuration))}"`,
+      );
     }
     if (element.isAroll) {
       baseAttrs.push(`data-aroll="true"`);
     }
     if (element.volume !== undefined && element.volume !== 1) {
-      baseAttrs.push(`data-volume="${element.volume}"`);
+      baseAttrs.push(`data-volume="${escapeHtmlAttributeValue(String(element.volume))}"`);
     }
     if (element.type === "video" && element.hasAudio) {
       baseAttrs.push(`data-has-audio="true"`);
@@ -585,11 +653,11 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
 
   switch (element.type) {
     case "video":
-      return `<video ${attrs} src="${element.src}" playsinline></video>`;
+      return `<video ${attrs} src="${sourceAttribute(element.src)}" playsinline></video>`;
     case "image":
-      return `<img ${attrs} src="${element.src}" alt="${element.name}" />`;
+      return `<img ${attrs} src="${sourceAttribute(element.src)}" alt="${escapeHtmlAttributeValue(String(element.name))}" />`;
     case "audio":
-      return `<audio ${attrs} src="${element.src}"></audio>`;
+      return `<audio ${attrs} src="${sourceAttribute(element.src)}"></audio>`;
     default:
       return "";
   }
@@ -642,9 +710,13 @@ function generateInitialPositionSets(
 
     // Set position and scale (xPercent/yPercent applied at player init)
     if (scaleVal !== 1) {
-      sets.push(`    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal}, scale: ${scaleVal} }, 0);`);
+      sets.push(
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { x: ${finiteNumber(xVal)}, y: ${finiteNumber(yVal)}, scale: ${finiteNumber(scaleVal)} }, 0);`,
+      );
     } else if (xVal !== 0 || yVal !== 0) {
-      sets.push(`    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal} }, 0);`);
+      sets.push(
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { x: ${finiteNumber(xVal)}, y: ${finiteNumber(yVal)} }, 0);`,
+      );
     }
   }
 
@@ -671,9 +743,10 @@ function generateVisibilityForElementsWithoutKeyframes(
     const start = el.startTime;
     const end = el.startTime + el.duration;
 
-    const safeName = el.name.replace(/[\r\n]+/g, " ");
-    animations.push(`    // ${safeName} (visibility)`);
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, 0);`);
+    animations.push("    // Element visibility");
+    animations.push(
+      `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "hidden" }, 0);`,
+    );
 
     let elementOpacity = el.opacity ?? 1;
     if (opacityKeyframes.length > 0) {
@@ -686,13 +759,17 @@ function generateVisibilityForElementsWithoutKeyframes(
     const needsOpacity = elementOpacity !== 1 || opacityKeyframes.length > 0;
     if (needsOpacity) {
       animations.push(
-        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "visible", opacity: ${finiteNumber(elementOpacity)} }, ${finiteNumber(start)});`,
       );
     } else {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
+      animations.push(
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "visible" }, ${finiteNumber(start)});`,
+      );
     }
 
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, ${end});`);
+    animations.push(
+      `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "hidden" }, ${finiteNumber(end)});`,
+    );
   }
 
   return animations.length > 0 ? animations.join("\n") : "";
@@ -708,7 +785,7 @@ function generateDefaultGsapAnimations(
   if (elements.length === 0 && (!stageZoomKeyframes || stageZoomKeyframes.length === 0)) {
     return `
     const tl = gsap.timeline({ paused: true });
-    tl.to({}, { duration: ${totalDuration || 1} });
+    tl.to({}, { duration: ${finiteNumber(totalDuration || 1)} });
     `;
   }
 
@@ -724,19 +801,24 @@ function generateDefaultGsapAnimations(
     const start = el.startTime;
     const end = el.startTime + el.duration;
 
-    const safeName = el.name.replace(/[\r\n]+/g, " ");
     const elementOpacity = el.opacity ?? 1;
-    animations.push(`    // ${safeName}`);
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, 0);`);
+    animations.push("    // Element visibility");
+    animations.push(
+      `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "hidden" }, 0);`,
+    );
     // Only include opacity if non-default
     if (elementOpacity !== 1) {
       animations.push(
-        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "visible", opacity: ${finiteNumber(elementOpacity)} }, ${finiteNumber(start)});`,
       );
     } else {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
+      animations.push(
+        `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "visible" }, ${finiteNumber(start)});`,
+      );
     }
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, ${end});`);
+    animations.push(
+      `    tl.set(${JSON.stringify(elementSelector(el.id))}, { visibility: "hidden" }, ${finiteNumber(end)});`,
+    );
   }
 
   const mediaElements = elements.filter((el) => el.type === "video" || el.type === "audio");

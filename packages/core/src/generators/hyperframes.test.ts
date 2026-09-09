@@ -42,6 +42,108 @@ function makeVideoElement(overrides: Partial<TimelineMediaElement> = {}): Timeli
 }
 
 describe("generateHyperframesHtml", () => {
+  it("contains mixed-case style closing tags in authored CSS", () => {
+    const styles = '.label::after { content: "</StYlE><script>bad()</script>"; }';
+    const doc = new DOMParser().parseFromString(
+      generateHyperframesHtml([], 1, { styles, includeStyles: true }),
+      "text/html",
+    );
+    expect(doc.querySelectorAll("style")).toHaveLength(2);
+    expect(doc.querySelector("script")).toBeNull();
+    expect(doc.querySelector("style[data-hf-custom]")?.textContent).toContain("StYlE");
+  });
+
+  it("contains script closing tags while retaining JS string values and raw expressions", () => {
+    const targetSelector = '#x"</ScRiPt><script>bad()</script>';
+    const position = 'label"; bad(); //';
+    const doc = new DOMParser().parseFromString(
+      generateHyperframesHtml([], 1, {
+        includeScripts: true,
+        animations: [
+          { targetSelector, method: "to", position, properties: { x: "__raw:1 < 2 ? 3 : 4" } },
+        ],
+      }),
+      "text/html",
+    );
+    expect(doc.querySelectorAll("script")).toHaveLength(2);
+    const script = doc.querySelector("script:not([src])")?.textContent ?? "";
+    const calls: unknown[][] = [];
+    const gsap = { timeline: () => ({ to: (...args: unknown[]) => calls.push(args) }) };
+    new Function("gsap", script)(gsap);
+    expect(calls).toEqual([[targetSelector, { x: 3 }, position]]);
+  });
+
+  it("round-trips element attribute values without creating event handlers", () => {
+    const marker = `x" onmouseover="bad()&quot;<`;
+    const element = makeVideoElement({ id: marker, name: marker, src: marker });
+    const doc = new DOMParser().parseFromString(generateHyperframesHtml([element], 1), "text/html");
+    const video = doc.querySelector("video");
+    for (const name of ["id", "data-hf-id", "data-name", "src"])
+      expect(video?.getAttribute(name)).toBe(marker);
+    expect(video?.hasAttribute("onmouseover")).toBe(false);
+    expect(doc.querySelector("script")).toBeNull();
+  });
+
+  it("keeps special IDs targeted by generated visibility animations", () => {
+    const element = makeTextElement({ id: '9 title"[x],#other', name: "Title" });
+    const doc = new DOMParser().parseFromString(generateHyperframesHtml([element], 1), "text/html");
+    const targets: string[] = [];
+    const gsap = { timeline: () => ({ set: (selector: string) => targets.push(selector) }) };
+    new Function("gsap", generateGsapTimelineScript([element], 1))(gsap);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const selector of targets) expect(doc.querySelector(selector)?.id).toBe(element.id);
+  });
+
+  it("preserves supported rich text while removing executable markup", () => {
+    const content =
+      '<strong>A<span style="font-size: 32px; color: red" onclick="bad()">B</span></strong><br><sup>C</sup><script>bad()</script><svg onload="bad()"></svg><span style="background-color: url(evil)">D</span>';
+    const html = generateHyperframesHtml([makeTextElement({ content })], 1);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.querySelector("strong span")?.getAttribute("style")).toContain("font-size: 32px");
+    expect(doc.querySelector("strong span")?.hasAttribute("onclick")).toBe(false);
+    expect(doc.querySelector("br")).not.toBeNull();
+    expect(doc.querySelector("script,svg,sup,[onclick]")).toBeNull();
+    expect(doc.querySelector("#text-1")?.textContent).toBe("ABCD");
+    expect(html).not.toContain("url(evil)");
+    expect(parseHtml(html).elements[0]).toMatchObject({ content: "ABCD" });
+  });
+
+  it.each(["", "&amp;quot; &amp;#39; &amp;lt;"])(
+    "preserves empty and entity-looking caption content: %s",
+    (content) => {
+      const html = generateHyperframesHtml([makeTextElement({ content })], 1);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      expect(doc.querySelector("#text-1")?.textContent).toBe(content ? "&quot; &#39; &lt;" : "");
+    },
+  );
+
+  it.each([
+    "javascript:bad()",
+    "java\nscript:bad()",
+    "vbscript:bad()",
+    "data:text/html,<script>bad()</script>",
+  ])("rejects executable source URLs: %s", (src) => {
+    expect(() => generateHyperframesHtml([makeVideoElement({ src })], 1)).toThrow(
+      "Unsafe media or composition source URL",
+    );
+  });
+
+  it("rejects JavaScript supplied through a numeric element field", () => {
+    const element = { ...makeTextElement(), startTime: "0); bad(); //" };
+    expect(() => Reflect.apply(generateGsapTimelineScript, undefined, [[element], 1])).toThrow(
+      "finite generator numeric value",
+    );
+  });
+
+  it("rejects declaration breakouts in generated color values", () => {
+    expect(() =>
+      generateHyperframesStyles(
+        [makeTextElement({ color: "red; } body { color: blue" })],
+        "landscape",
+      ),
+    ).toThrow("Invalid generated CSS value");
+  });
+
   it("keeps composition identifiers inside their attribute and round-trips entities", () => {
     const compositionId = `x" autofocus onfocus="alert(1)'><script>bad()</script>&quot;&`;
     const doc = new DOMParser().parseFromString(

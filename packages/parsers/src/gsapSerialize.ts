@@ -236,7 +236,7 @@ export function serializeGsapAnimations(
   });
   // fallow-ignore-next-line complexity
   const lines = sorted.map((anim) => {
-    const selector = `"${anim.targetSelector}"`;
+    const selector = JSON.stringify(anim.targetSelector);
     const props: Record<string, number | string> = { ...anim.properties };
     if (anim.duration !== undefined) props.duration = anim.duration;
     if (anim.ease) props.ease = anim.ease;
@@ -250,7 +250,7 @@ export function serializeGsapAnimations(
         propsStr = propsStr.slice(0, -2) + `, ${extrasStr} }`;
       }
     }
-    const posStr = typeof anim.position === "string" ? `"${anim.position}"` : anim.position;
+    const posStr = JSON.stringify(anim.position);
     switch (anim.method) {
       case "set":
         // A global set is a base `gsap.set` — off the timeline, no position arg.
