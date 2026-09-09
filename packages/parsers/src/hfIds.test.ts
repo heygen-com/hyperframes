@@ -53,6 +53,29 @@ describe("ensureHfIds", () => {
     expect(collect(native)).toEqual(collect(persisted));
   });
 
+  it.each([
+    '<svg><linearGradient VIEWBOX="0 0 1 1"></linearGradient></svg>',
+    '<svg><linearGradient GRADIENTUNITS="userSpaceOnUse"></linearGradient></svg>',
+    '<svg><linearGradient ID="g" CLASS="paint" ARIA-LABEL="Gradient" DATA-HF-STATE="ignored"></linearGradient></svg>',
+    '<svg><linearGradient DATA-HF-ID="pinned" VIEWBOX="0 0 1 1"></linearGradient></svg>',
+  ])("matches persisted IDs for mixed-case SVG attributes: %s", (body) => {
+    const html = doc(body);
+    const native = new DOMParser().parseFromString(html, "text/html");
+    assignHfIds(native.body);
+    const persisted = new DOMParser().parseFromString(ensureHfIds(html), "text/html");
+    const collect = (document: Document) =>
+      Array.from(document.querySelectorAll("svg, linearGradient")).map((el) =>
+        el.getAttribute("data-hf-id"),
+      );
+    expect(collect(native)).toHaveLength(2);
+    expect(collect(native)).not.toContain(null);
+    expect(collect(native)).toEqual(collect(persisted));
+    expect(ensureHfIds(ensureHfIds(html))).toBe(ensureHfIds(html));
+    const gradient = persisted.querySelector("linearGradient");
+    if (body.includes("VIEWBOX")) expect(gradient?.getAttribute("viewBox")).toBe("0 0 1 1");
+    if (body.includes("DATA-HF-ID")) expect(gradient?.getAttribute("data-hf-id")).toBe("pinned");
+  });
+
   it("mints a hf- id on every editable element node in body", () => {
     const html = `<!doctype html><html><body>
       <div class="card"><h1>Hi</h1><img src="a.png"><span>x</span></div>

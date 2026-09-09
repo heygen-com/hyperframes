@@ -39,22 +39,18 @@ function ownText(el: Element): string {
   return text.trim();
 }
 
-function attributeName(el: Element, name: string): string {
-  return el.namespaceURI === "http://www.w3.org/1999/xhtml" ? name.toLowerCase() : name;
-}
-
 function getContractAttribute(el: Element, name: string): string | null {
-  return (
-    Array.from(el.attributes).find((attr) => attributeName(el, attr.name) === name)?.value ?? null
-  );
+  return Array.from(el.attributes).find((attr) => attr.name.toLowerCase() === name)?.value ?? null;
 }
 
 function contentKey(el: Element): string {
+  // HTML parsers normalize foreign-content attribute names differently too.
+  // Canonicalize only the hash input; retain actual SVG attribute spelling.
   // Exclude all data-hf-* attrs (ids, studio state) — they must not influence the hash.
   // Use \x00 / \x01 separators (invalid in HTML attrs) to prevent ambiguous serialization.
   const attrs = Array.from(el.attributes)
-    .filter((a) => !attributeName(el, a.name).startsWith("data-hf-"))
-    .map((a) => `${attributeName(el, a.name)}\x00${a.value}`)
+    .filter((a) => !a.name.toLowerCase().startsWith("data-hf-"))
+    .map((a) => `${a.name.toLowerCase()}\x00${a.value}`)
     .sort()
     .join("\x01");
   return `${el.tagName.toLowerCase()}|${attrs}|${ownText(el)}`;
