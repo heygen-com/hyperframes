@@ -129,4 +129,4 @@ Storyboard files follow a grammar you can parse mechanically — don't eyeball, 
 
 ## Determinism
 
-Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.
+Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1` without a finite root `data-duration`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.

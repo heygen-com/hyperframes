@@ -47,7 +47,7 @@ output but visually-identical video, so SSIM passes — just flag it.
 A bounded GSAP repeat can reproduce _visual_ repetition when its finite count is derived
 from the visible duration. If the looped child has cross-iteration state (a counter, a
 randomness seed), HF won't reproduce it identically per iteration. Bow out unless the child
-is fully deterministic per-iteration; never use `repeat: -1`.
+is fully deterministic per-iteration; use `repeat: -1` only when the root declares a finite `data-duration`.
 
 ### Remotion's `<Img>` with crossOrigin
 
