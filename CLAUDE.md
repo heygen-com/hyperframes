@@ -87,6 +87,16 @@ npx hyperframes check      # Browser gate (headless Chrome — runtime errors, l
 
 Both must pass before previewing or considering work complete.
 
+## React Rules
+
+Studio code does not call `useEffect` or `useLayoutEffect`. Derive state during render, do work in
+event handlers, fetch with a data library, and reset a subtree with a `key` instead of choreographing
+dependency arrays. For the rare one-time sync with an external system, use `useMountEffect()` from
+`packages/studio/src/hooks/useMountEffect.ts` — the one sanctioned wrapper. `bun run check:no-use-effect`
+(part of `bun run lint`) enforces this with a per-file budget seeded from the call sites that already
+existed: a new file with an effect fails, a budgeted file that grows fails, and a budgeted file that
+shrinks fails until its number is lowered, so the list can only ever be paid down.
+
 ## Project Structure
 
 ```
