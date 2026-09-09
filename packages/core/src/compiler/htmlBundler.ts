@@ -1,3 +1,8 @@
+import {
+  ensureExternalScriptTag,
+  readExternalScriptAttributes,
+  type ExternalScriptAttributes,
+} from "./externalScripts";
 import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
 export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
@@ -722,20 +727,19 @@ export interface BundleOptions {
  * - Inlines small textual assets as data URLs
  */
 
-function ensureExternalScriptTag(doc: Document, src: string): void {
-  if (queryByAttr(doc, "src", src, "script")) return;
-  const el = doc.createElement("script");
-  el.setAttribute("src", src);
-  doc.body.appendChild(el);
-}
-
 function hoistExternalScript(
   src: string,
   projectDir: string,
   doc: Document,
   seenSrcs: Set<string>,
   chunks: string[],
+  attributes: ExternalScriptAttributes,
 ): void {
+  if (attributes.integrity?.trim()) {
+    ensureExternalScriptTag(doc, src, attributes);
+    seenSrcs.add(src);
+    return;
+  }
   if (seenSrcs.has(src)) return;
   seenSrcs.add(src);
   if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
@@ -746,7 +750,7 @@ function hoistExternalScript(
       return;
     }
   }
-  ensureExternalScriptTag(doc, src);
+  ensureExternalScriptTag(doc, src, attributes);
 }
 
 function hoistCompositionScripts(
@@ -771,6 +775,7 @@ function hoistCompositionScripts(
         opts.document,
         opts.seenCompScriptSrcs,
         opts.compScriptChunks,
+        readExternalScriptAttributes(scriptEl),
       );
     } else {
       opts.compScriptChunks.push(
@@ -939,6 +944,11 @@ export async function bundleToSingleHtml(
       continue;
     }
     const extSrc = scriptItem.src;
+    if (scriptItem.integrity?.trim()) {
+      ensureExternalScriptTag(document, extSrc, scriptItem);
+      seenCompScriptSrcs.add(extSrc);
+      continue;
+    }
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
     if (isRelativeUrl(extSrc)) {
@@ -949,11 +959,7 @@ export async function bundleToSingleHtml(
         continue;
       }
     }
-    if (!queryByAttr(document, "src", extSrc, "script")) {
-      const extScript = document.createElement("script");
-      extScript.setAttribute("src", extSrc);
-      document.body.appendChild(extScript);
-    }
+    ensureExternalScriptTag(document, extSrc, scriptItem);
   }
 
   // Inline template compositions: inject <template id="X-template"> content into

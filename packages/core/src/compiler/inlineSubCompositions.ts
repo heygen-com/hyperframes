@@ -1,3 +1,4 @@
+import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -128,7 +129,10 @@ export interface InlineSubCompositionsResult {
   styles: string[];
   scripts: string[];
   externalScriptSrcs: string[];
-  scriptItems: Array<{ kind: "inline"; content: string } | { kind: "external"; src: string }>;
+  scriptItems: Array<
+    | { kind: "inline"; content: string }
+    | ({ kind: "external"; src: string } & ExternalScriptAttributes)
+  >;
   externalLinks: { href: string; rel: string; crossorigin?: string }[];
   variablesByComp: Record<string, Record<string, unknown>>;
 }
@@ -335,7 +339,11 @@ export function inlineSubCompositions(
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
         }
-        scriptItems.push({ kind: "external", src: externalSrc });
+        scriptItems.push({
+          kind: "external",
+          src: externalSrc,
+          ...readExternalScriptAttributes(scriptEl),
+        });
       } else {
         const wrappedScript = scriptCompositionId
           ? wrapScopedCompositionScript(

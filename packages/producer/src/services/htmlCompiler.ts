@@ -39,6 +39,7 @@ import {
   type BundledHostCompositionIdentity,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
+  ensureExternalScriptTag,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
@@ -1062,19 +1063,9 @@ function inlineSubCompositions(
   // Inject external CDN scripts before inline scripts so plugins (e.g.
   // TextPlugin, ScrollTrigger) are registered before composition code runs.
   // Deduplicate against scripts already present in the document.
-  if (result.externalScriptSrcs.length && body) {
-    const existingScriptSrcs = new Set(
-      Array.from(document.querySelectorAll("script[src]")).map((el: Element) =>
-        (el.getAttribute("src") || "").trim(),
-      ),
-    );
-    for (const src of result.externalScriptSrcs) {
-      if (!existingScriptSrcs.has(src)) {
-        const scriptEl = document.createElement("script");
-        scriptEl.setAttribute("src", src);
-        body.appendChild(scriptEl);
-        existingScriptSrcs.add(src);
-      }
+  if (body) {
+    for (const item of result.scriptItems) {
+      if (item.kind === "external") ensureExternalScriptTag(document, item.src, item);
     }
   }
 

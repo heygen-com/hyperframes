@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { bundleToSingleHtml, emitRootCompositionVariableStyles } from "./htmlBundler";
+import { ensureExternalScriptTag } from "./externalScripts";
 import { resetUnknownEnumWarnings } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
@@ -1628,4 +1629,59 @@ describe("emitRootCompositionVariableStyles — <style> breakout", () => {
     const { css } = scriptsAfterRoundTrip({ "comp-a": { brand: "#ff0066" } });
     expect(css).toContain("#ff0066");
   });
+});
+
+describe("nested script integrity", () => {
+  it("preserves and deduplicates a nested pin even when the root already loads that URL", async () => {
+    const src = "https://cdn.example.com/pinned.js";
+    const dir = makeTempProject({
+      "index.html": `<html><head><script src="${src}"></script></head><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1"><div data-composition-id="child" data-composition-src="child.html"></div></div></body></html>`,
+      "child.html": `<html><head><script src="${src}" integrity="sha384-YQ==" crossorigin="anonymous"></script></head><body><div data-composition-id="child" data-width="320" data-height="180" data-duration="1">Child</div></body></html>`,
+    });
+    try {
+      const bundled = await bundleToSingleHtml(dir);
+      const { document } = parseHTML(bundled);
+      const scripts = [...document.querySelectorAll("script[src]")].filter(
+        (el) => el.getAttribute("src") === src,
+      );
+      expect(scripts).toHaveLength(1);
+      expect(scripts[0]?.getAttribute("integrity")).toBe("sha384-YQ==");
+      expect(scripts[0]?.getAttribute("crossorigin")).toBe("anonymous");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+it("preserves every duplicate script pin and rejects conflicting requirements", () => {
+  const { document } = parseHTML(
+    '<html><body><script src="https://cdn.example.com/a.js"></script><script src="https://cdn.example.com/a.js"></script></body></html>',
+  );
+  const src = "https://cdn.example.com/a.js";
+  ensureExternalScriptTag(document, src, { integrity: "sha384-YQ==", crossorigin: "anonymous" });
+  ensureExternalScriptTag(document, src);
+  for (const el of document.querySelectorAll("script")) {
+    expect(el.getAttribute("integrity")).toBe("sha384-YQ==");
+    expect(el.getAttribute("crossorigin")).toBe("anonymous");
+  }
+  expect(() => ensureExternalScriptTag(document, src, { integrity: "sha384-Yg==" })).toThrow(
+    "Conflicting script integrity",
+  );
+});
+
+it("keeps protected local scripts external when hoisting an inline template", async () => {
+  const dir = makeTempProject({
+    "index.html": `<html><body><template id="child-template"><div data-composition-id="child" data-width="320" data-height="180"><script src="local.js" integrity="sha384-YQ==" crossorigin="anonymous"></script></div></template><div data-composition-id="root" data-width="320" data-height="180" data-duration="1"><div data-composition-id="child" data-start="0" data-duration="1"></div></div></body></html>`,
+    "local.js": "window.localPinWitness = true;",
+  });
+  try {
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const script = document.querySelector('script[src="local.js"]');
+    expect(script?.getAttribute("integrity")).toBe("sha384-YQ==");
+    expect(script?.getAttribute("crossorigin")).toBe("anonymous");
+    expect(bundled).not.toContain("window.localPinWitness = true;");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

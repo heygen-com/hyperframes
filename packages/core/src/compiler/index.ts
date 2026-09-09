@@ -95,3 +95,5 @@ export {
   MEDIA_RENDER_ID_ATTR,
   assignMediaRenderIds,
 } from "./mediaRenderIds";
+
+export { ensureExternalScriptTag } from "./externalScripts";
