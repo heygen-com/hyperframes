@@ -165,6 +165,8 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
     expect(spawn).toHaveBeenCalledOnce();
+    const spawnOptions = (spawn.mock.calls[0] as unknown[] | undefined)?.[2];
+    expect(spawnOptions).toEqual(expect.objectContaining({ windowsHide: true }));
   });
 
   it.each([
