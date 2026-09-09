@@ -1,4 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { openBrowser } from "./openBrowser.js";
+
+const { spawnMock } = vi.hoisted(() => ({
+  spawnMock: vi.fn(() => ({ on: vi.fn(), unref: vi.fn() })),
+}));
+vi.mock("node:child_process", () => ({ spawn: spawnMock }));
 import {
   buildBrowserArgs,
   parseRemoteDebuggingPort,
@@ -66,6 +72,18 @@ describe("buildBrowserArgs", () => {
       "--remote-debugging-port=9222",
       "http://localhost:3002",
     ]);
+  });
+});
+
+describe("openBrowser", () => {
+  it("hides a detached browser process on Windows", () => {
+    openBrowser("http://localhost:3002", { browserPath: "/usr/bin/chromium" });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/bin/chromium",
+      ["http://localhost:3002"],
+      expect.objectContaining({ detached: true, windowsHide: true }),
+    );
   });
 });
 
