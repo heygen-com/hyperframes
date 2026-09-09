@@ -1162,6 +1162,8 @@ function injectTextRenderingRule(html: string): string {
   return document.toString();
 }
 
+class ScriptIntegrityError extends Error {}
+
 /** Match SRI's strongest supported digest before decoding or rewriting script bytes. */
 function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
   const hashes = [
@@ -1209,7 +1211,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (!matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")) {
-        throw new Error(`Subresource integrity mismatch for ${src}`);
+        throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
       }
       return { src, text: new TextDecoder().decode(bytes) };
     }),
@@ -1232,6 +1234,9 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       el.replaceWith(inlineScript);
       defaultLogger.info(`[Compiler] Inlined CDN script: ${src}`);
     } else {
+      // A verified mismatch must never fall back to an executable external tag:
+      // browser support for integrity metadata (including casing) can differ.
+      if (download.reason instanceof ScriptIntegrityError) throw download.reason;
       defaultLogger.warn(
         `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
           `The render may fail if this script is required (e.g. GSAP). ` +

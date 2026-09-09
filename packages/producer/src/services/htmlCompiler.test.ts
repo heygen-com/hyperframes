@@ -350,14 +350,15 @@ describe("inlineExternalScripts", () => {
     try {
       for (const { metadata, accepted } of cases) {
         const html = `<script src="https://cdn.example.com/script.js" integrity="${metadata}" crossorigin="anonymous"></script>`;
-        const result = await inlineExternalScripts(html);
-        expect(result.includes("window.integrityWitness = true;")).toBe(accepted);
-        expect(result.includes('src="https://cdn.example.com/script.js"')).toBe(!accepted);
-        // Failed verification keeps the protected external tag for browser enforcement.
         if (!accepted) {
-          expect(result).toContain(`integrity="${metadata}"`);
-          expect(result).toContain('crossorigin="anonymous"');
+          await expect(inlineExternalScripts(html)).rejects.toThrow(
+            "Subresource integrity mismatch",
+          );
+          continue;
         }
+        const result = await inlineExternalScripts(html);
+        expect(result).toContain("window.integrityWitness = true;");
+        expect(result).not.toContain('src="https://cdn.example.com/script.js"');
       }
     } finally {
       globalThis.fetch = originalFetch;
