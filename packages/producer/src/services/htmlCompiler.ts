@@ -10,6 +10,7 @@
  * recursively extracting nested media from sub-sub-compositions.
  */
 
+import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
@@ -1161,6 +1162,24 @@ function injectTextRenderingRule(html: string): string {
   return document.toString();
 }
 
+/** Match SRI's strongest supported digest before decoding or rewriting script bytes. */
+function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
+  const hashes = [
+    ...metadata.matchAll(
+      /(?:^|[\t\n\f\r ])(sha256|sha384|sha512)-([A-Za-z0-9+/_-]+={0,2})(?:\?[\x21-\x7e]*)?(?=$|[\t\n\f\r ])/g,
+    ),
+  ];
+  const strongest = ["sha512", "sha384", "sha256"].find((alg) =>
+    hashes.some((hash) => hash[1] === alg),
+  );
+  // Browsers ignore metadata containing no supported, syntactically valid hash.
+  if (!strongest) return true;
+  const actual = createHash(strongest).update(bytes).digest();
+  return hashes.some(
+    (hash) => hash[1] === strongest && actual.equals(Buffer.from(hash[2]!, "base64")),
+  );
+}
+
 /**
  * Download external CDN scripts and inline them into the HTML so rendering
  * works without network access (Docker, CI, restricted environments).
@@ -1182,12 +1201,16 @@ export async function inlineExternalScripts(html: string): Promise<string> {
   if (externalScripts.length === 0) return html;
 
   const downloads = await Promise.allSettled(
-    externalScripts.map(async ({ src }) => {
+    externalScripts.map(async ({ el, src }) => {
       const response = await fetch(src, {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-      return { src, text: await response.text() };
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")) {
+        throw new Error(`Subresource integrity mismatch for ${src}`);
+      }
+      return { src, text: new TextDecoder().decode(bytes) };
     }),
   );
 

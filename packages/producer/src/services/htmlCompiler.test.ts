@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -316,6 +317,44 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain("/* inlined: https://cdn.example.com/gsap.min.js */");
       expect(result).toContain("var gsap = {};");
       expect(result).not.toContain('src="https://cdn.example.com/gsap.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("verifies raw script bytes using the strongest supported SRI metadata", async () => {
+    // Include a BOM: decoding before hashing would incorrectly reject these bytes.
+    const bytes = Buffer.from("\ufeffwindow.integrityWitness = true;");
+    const digest = (algorithm: string, data = bytes) =>
+      `${algorithm}-${createHash(algorithm).update(data).digest("base64")}`;
+    const good384 = digest("sha384");
+    const bad384 = digest("sha384", Buffer.from("changed CDN bytes"));
+    const cases = [
+      { metadata: good384, accepted: true },
+      { metadata: bad384, accepted: false },
+      { metadata: `${digest("sha256")} ${bad384}`, accepted: false },
+      { metadata: `${bad384} ${good384}`, accepted: true },
+      { metadata: `${good384} ${digest("sha512", Buffer.from("changed"))}`, accepted: false },
+      { metadata: `${bad384} ${digest("sha512")}`, accepted: true },
+      { metadata: `\t${good384}?reserved\n`, accepted: true },
+      { metadata: good384.replaceAll("+", "-").replaceAll("/", "_"), accepted: true },
+      { metadata: "sha384-YQ==", accepted: false },
+      { metadata: "sha1-unknown malformed", accepted: true },
+    ];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(bytes)) as any;
+    try {
+      for (const { metadata, accepted } of cases) {
+        const html = `<script src="https://cdn.example.com/script.js" integrity="${metadata}" crossorigin="anonymous"></script>`;
+        const result = await inlineExternalScripts(html);
+        expect(result.includes("window.integrityWitness = true;")).toBe(accepted);
+        expect(result.includes('src="https://cdn.example.com/script.js"')).toBe(!accepted);
+        // Failed verification keeps the protected external tag for browser enforcement.
+        if (!accepted) {
+          expect(result).toContain(`integrity="${metadata}"`);
+          expect(result).toContain('crossorigin="anonymous"');
+        }
+      }
     } finally {
       globalThis.fetch = originalFetch;
     }
