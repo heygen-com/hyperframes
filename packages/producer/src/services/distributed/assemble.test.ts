@@ -16,7 +16,16 @@
 
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -245,7 +254,23 @@ describe("assemble()", () => {
       makeMp4Chunk(chunkBPath, 5);
 
       const outputPath = join(planDir, "output.mp4");
-      const result = await assemble(planDir, [chunkAPath, chunkBPath], null, outputPath);
+      const oldWorkDir = `${outputPath}.assemble-work`;
+      mkdirSync(oldWorkDir);
+      const sentinel = join(oldWorkDir, "keep.txt");
+      writeFileSync(sentinel, "unrelated data");
+      const pending = assemble(planDir, [chunkAPath, chunkBPath], null, outputPath);
+      const staging = readdirSync(planDir).filter((name) =>
+        name.startsWith("output.mp4.assemble-work-"),
+      );
+      const stagingMode =
+        staging.length === 1 ? statSync(join(planDir, staging[0]!)).mode & 0o777 : null;
+      const result = await pending;
+      expect(staging).toHaveLength(1);
+      if (process.platform !== "win32") expect(stagingMode).toBe(0o700);
+      expect(readFileSync(sentinel, "utf8")).toBe("unrelated data");
+      expect(
+        readdirSync(planDir).filter((name) => name.startsWith("output.mp4.assemble-work-")),
+      ).toEqual([]);
 
       expect(result.outputPath).toBe(outputPath);
       expect(existsSync(outputPath)).toBe(true);
@@ -297,6 +322,34 @@ describe("assemble()", () => {
         cursor += size;
       }
       expect(moovBeforeMdat).toBe(true);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "cleans private staging after a failed concat without deleting existing scratch data",
+    async () => {
+      if (!hasFfmpeg) return;
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      const invalidChunk = join(planDir, "invalid.mp4");
+      writeFileSync(invalidChunk, "not a video");
+      const outputPath = join(planDir, "failed.mp4");
+      const oldWorkDir = `${outputPath}.assemble-work`;
+      mkdirSync(oldWorkDir);
+      const sentinel = join(oldWorkDir, "keep.txt");
+      writeFileSync(sentinel, "unrelated data");
+      await expect(
+        assemble(planDir, [invalidChunk, invalidChunk], null, outputPath),
+      ).rejects.toThrow("concat-copy failed");
+      expect(readFileSync(sentinel, "utf8")).toBe("unrelated data");
+      expect(
+        readdirSync(planDir).filter((name) => name.startsWith("failed.mp4.assemble-work-")),
+      ).toEqual([]);
+      expect(existsSync(outputPath)).toBe(false);
     },
     TIMEOUT_MS,
   );
