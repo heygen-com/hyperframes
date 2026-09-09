@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { ensureHfIds, mintHfId } from "./hfIds.js";
+import { ensureHfIds, mintHfId, walkCompositionDescendants } from "./hfIds.js";
 import { parseHTML } from "linkedom";
+import { assignHfIds } from "./hfIdAssignment.js";
 
 function ids(html: string): string[] {
   const { document } = parseHTML(html);
@@ -18,6 +19,63 @@ function idOf(html: string, selector: string): string | null {
 const doc = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
 
 describe("ensureHfIds", () => {
+  it("ignores HTML attribute case and editor state while retaining pinned IDs", () => {
+    const lower = doc(`<div id="x" data-start="2" data-hf-state="a">hello</div>`);
+    const upper = doc(`<DIV ID="x" DATA-START="2" DATA-HF-STATE="b">hello</DIV>`);
+    expect(ids(ensureHfIds(upper))).toEqual(ids(ensureHfIds(lower)));
+    const pinned = ensureHfIds(doc(`<DIV DATA-HF-ID="pinned" DATA-START="2">hello</DIV>`));
+    expect(
+      new DOMParser()
+        .parseFromString(pinned, "text/html")
+        .querySelector("[data-start]")
+        ?.getAttribute("data-hf-id"),
+    ).toBe("pinned");
+  });
+
+  it.each([
+    `<TEMPLATE DATA-COMPOSITION-ID="sub"><DIV ID="x" DATA-START="2">hello</DIV></TEMPLATE>`,
+    `<TEMPLATE><DIV DATA-COMPOSITION-ID="sub"><DIV ID="x" DATA-START="2">hello</DIV></DIV></TEMPLATE>`,
+  ])("assigns matching IDs inside mixed-case composition templates: %s", (body) => {
+    const html = doc(body);
+    const native = new DOMParser().parseFromString(html, "text/html");
+    assignHfIds(native.body);
+    const persisted = new DOMParser().parseFromString(ensureHfIds(html), "text/html");
+    const collect = (document: Document): string[] => {
+      const result: string[] = [];
+      walkCompositionDescendants(document.body, (el) => {
+        if (el.tagName.toLowerCase() !== "template")
+          result.push(el.getAttribute("data-hf-id") ?? "missing");
+      });
+      return result;
+    };
+    expect(collect(native).length).toBeGreaterThan(0);
+    expect(collect(native)).not.toContain("missing");
+    expect(collect(native)).toEqual(collect(persisted));
+  });
+
+  it.each([
+    '<svg><linearGradient VIEWBOX="0 0 1 1"></linearGradient></svg>',
+    '<svg><linearGradient GRADIENTUNITS="userSpaceOnUse"></linearGradient></svg>',
+    '<svg><linearGradient ID="g" CLASS="paint" ARIA-LABEL="Gradient" DATA-HF-STATE="ignored"></linearGradient></svg>',
+    '<svg><linearGradient DATA-HF-ID="pinned" VIEWBOX="0 0 1 1"></linearGradient></svg>',
+  ])("matches persisted IDs for mixed-case SVG attributes: %s", (body) => {
+    const html = doc(body);
+    const native = new DOMParser().parseFromString(html, "text/html");
+    assignHfIds(native.body);
+    const persisted = new DOMParser().parseFromString(ensureHfIds(html), "text/html");
+    const collect = (document: Document) =>
+      Array.from(document.querySelectorAll("svg, linearGradient")).map((el) =>
+        el.getAttribute("data-hf-id"),
+      );
+    expect(collect(native)).toHaveLength(2);
+    expect(collect(native)).not.toContain(null);
+    expect(collect(native)).toEqual(collect(persisted));
+    expect(ensureHfIds(ensureHfIds(html))).toBe(ensureHfIds(html));
+    const gradient = persisted.querySelector("linearGradient");
+    if (body.includes("VIEWBOX")) expect(gradient?.getAttribute("viewBox")).toBe("0 0 1 1");
+    if (body.includes("DATA-HF-ID")) expect(gradient?.getAttribute("data-hf-id")).toBe("pinned");
+  });
+
   it("mints a hf- id on every editable element node in body", () => {
     const html = `<!doctype html><html><body>
       <div class="card"><h1>Hi</h1><img src="a.png"><span>x</span></div>

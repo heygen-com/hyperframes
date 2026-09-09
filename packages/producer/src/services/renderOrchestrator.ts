@@ -1044,6 +1044,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
   let missingRanges: FrameRange[] | null = null;
   let attempt = 0;
   let transientRetriesUsed = 0;
+  let initializationRetriesUsed = 0;
   // Set when the *previous* iteration retried after a transient browser death,
   // so the attempt it spawns is tagged `"transient-retry"` (vs the worker-halving
   // `"retry"`) for telemetry. Reset after each attempt is recorded.
@@ -1207,6 +1208,32 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         missingRanges = remaining;
         attempt++;
         pendingTransientRetry = true;
+        continue;
+      }
+
+      // CDP initialization can time out before any frame exists. Give that
+      // specific startup failure one fresh attempt with less concurrency;
+      // arbitrary zero-progress authoring/capture errors still fail below.
+      if (
+        options.allowRetry &&
+        !madeProgress &&
+        initializationRetriesUsed === 0 &&
+        failure.kind === "protocol_timeout" &&
+        /\bNetwork\.enable timed out/i.test(failure.message)
+      ) {
+        initializationRetriesUsed++;
+        const nextWorkers = getNextRetryWorkerCount(currentWorkers);
+        options.log.warn(
+          "[Render] Browser initialization timed out; retrying once with fresh sessions.",
+          {
+            fromWorkers: currentWorkers,
+            toWorkers: nextWorkers,
+            error: failure.message,
+          },
+        );
+        currentWorkers = nextWorkers;
+        missingRanges = remaining;
+        attempt++;
         continue;
       }
 

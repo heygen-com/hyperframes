@@ -27,6 +27,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -157,9 +158,7 @@ export async function assemble(
   if (!existsSync(dirname(outputPath))) {
     mkdirSync(dirname(outputPath), { recursive: true });
   }
-  const workDir = `${outputPath}.assemble-work`;
-  if (existsSync(workDir)) rmSync(workDir, { recursive: true, force: true });
-  mkdirSync(workDir, { recursive: true });
+  const workDir = mkdtempSync(`${outputPath}.assemble-work-`);
 
   try {
     const concatOutputPath = join(workDir, `concat.${plan.dimensions.format}`);

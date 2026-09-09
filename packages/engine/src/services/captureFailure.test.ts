@@ -6,6 +6,8 @@ describe("classifyCaptureFailure", () => {
     ["Target closed", "transient_browser"],
     ["Runtime.callFunctionOn timed out after 30000ms", "protocol_timeout"],
     ["Runtime.evaluate timed out", "protocol_timeout"],
+    ["Network.enable timed out. Increase the protocolTimeout setting.", "protocol_timeout"],
+    ["[Parallel] Capture failed: Worker 0: Network.enable timed out", "protocol_timeout"],
     [
       "Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
       "protocol_timeout",

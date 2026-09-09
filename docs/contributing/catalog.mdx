@@ -86,6 +86,31 @@ Other useful optional fields include `author`, `authorUrl`, `relatedSkill`,
 current authority. The published JSON schema validates the shared manifest
 fields but does not yet describe the block-only `params` field.
 
+### Binary assets
+
+The registry is served straight out of the repository, so every byte an item
+ships stays in the history forever. Compositions are text and cost nothing;
+images, video, audio and fonts do not.
+
+Commit those assets in your pull request as usual. Before merging, a maintainer
+runs `bun run host:registry-assets <item-name>`, which uploads them to the CDN,
+adds a `url` to each `files[]` entry and removes the bytes from the tree:
+
+```json
+{
+  "path": "assets/carousel-images/one.jpg",
+  "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/deadbeefdeadbeef.jpg",
+  "target": "assets/carousel-images/one.jpg",
+  "type": "hyperframes:asset"
+}
+```
+
+`path` does not change. It is still where the file lands relative to the item,
+so your composition HTML, the Catalog preview renderer and `hyperframes add`
+all behave exactly as they did — only the source of the bytes moves. Keys are
+content-addressed, so an image shared by several items uploads once and a
+changed image gets a new URL rather than a stale cached one.
+
 ### Installer metadata
 
 Use `registryDependencies` to name registry items that must be installed first.

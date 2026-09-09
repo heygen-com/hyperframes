@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
 import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes/engine";
-import { executeParallelCapture, mergeWorkerFrames } from "@hyperframes/engine";
+import { DEFAULT_CONFIG, executeParallelCapture, mergeWorkerFrames } from "@hyperframes/engine";
 import type { CompiledComposition } from "./htmlCompiler.js";
 
 // Replace only the two engine functions the adaptive-retry loop uses to touch
@@ -312,43 +312,43 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     }
   });
 
-  it("does NOT retry a transient error when the render was aborted", async () => {
-    const workDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-work-"));
-    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-frames-"));
+  it("retries Network.enable startup timeout once with fewer workers and zero progress", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-transient-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-frames-"));
     const log = makeLog();
-    const controller = new AbortController();
-    // Cancellation tears the browser down, surfacing as a transient-looking
-    // "Target closed" — but an aborted render must fail immediately, not retry.
+    let call = 0;
     vi.mocked(executeParallelCapture).mockImplementation(async () => {
-      controller.abort();
-      throw new Error("Target closed");
+      call++;
+      if (call === 1) {
+        throw new Error("[Parallel] Capture failed: Worker 0: Network.enable timed out");
+      }
+      writeAllFrames(framesDir, 4);
+      return [];
     });
     vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
 
     try {
-      await expect(
-        executeDiskCaptureWithAdaptiveRetry({
-          serverUrl: "http://localhost:0",
-          workDir,
-          framesDir,
-          totalFrames: 4,
-          initialWorkerCount: 2,
-          allowRetry: true,
-          frameExt: "jpg",
-          captureOptions: {} as CaptureOptions,
-          createBeforeCaptureHook: () => null,
-          abortSignal: controller.signal,
-          cfg: {} as EngineConfig,
-          log,
-          dedupPerfs: [],
-        }),
-      ).rejects.toThrow(/Target closed/);
+      const attempts = await executeDiskCaptureWithAdaptiveRetry({
+        serverUrl: "http://localhost:0",
+        workDir,
+        framesDir,
+        totalFrames: 4,
+        initialWorkerCount: 4,
+        allowRetry: true,
+        frameExt: "jpg",
+        captureOptions: { width: 64, height: 64, fps: { num: 30, den: 1 } },
+        createBeforeCaptureHook: () => null,
+        cfg: DEFAULT_CONFIG,
+        log,
+        dedupPerfs: [],
+      });
 
-      // Exactly one attempt — no transient retry burned on a cancelled render.
-      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(1);
-      expect(log.warn).not.toHaveBeenCalledWith(
-        expect.stringContaining("Transient browser failure"),
-        expect.anything(),
+      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(2);
+      expect(attempts.map((a) => a.workers)).toEqual([4, 2]);
+      expect(attempts.map((a) => a.reason)).toEqual(["initial", "retry"]);
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Browser initialization timed out"),
+        expect.objectContaining({ fromWorkers: 4, toWorkers: 2 }),
       );
     } finally {
       rmSync(workDir, { recursive: true, force: true });
@@ -356,40 +356,90 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     }
   });
 
-  it("gives up after MAX_TRANSIENT_CAPTURE_RETRIES when the tab keeps dying", async () => {
-    const workDir = mkdtempSync(join(tmpdir(), "hf-transient2-work-"));
-    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient2-frames-"));
-    const log = makeLog();
-    vi.mocked(executeParallelCapture).mockRejectedValue(new Error("Session closed"));
-    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+  it.each(["Target closed", "Network.enable timed out"])(
+    "does NOT retry %s after cancellation",
+    async (message) => {
+      const workDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-work-"));
+      const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-frames-"));
+      const log = makeLog();
+      const controller = new AbortController();
+      // Cancellation tears the browser down, surfacing as a transient-looking
+      // "Target closed" — but an aborted render must fail immediately, not retry.
+      vi.mocked(executeParallelCapture).mockImplementation(async () => {
+        controller.abort();
+        throw new Error(message);
+      });
+      vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
 
-    try {
-      await expect(
-        executeDiskCaptureWithAdaptiveRetry({
-          serverUrl: "http://localhost:0",
-          workDir,
-          framesDir,
-          totalFrames: 4,
-          initialWorkerCount: 1,
-          allowRetry: true,
-          frameExt: "jpg",
-          captureOptions: {} as CaptureOptions,
-          createBeforeCaptureHook: () => null,
-          cfg: {} as EngineConfig,
-          log,
-          dedupPerfs: [],
-        }),
-      ).rejects.toThrow(/Session closed/);
+      try {
+        await expect(
+          executeDiskCaptureWithAdaptiveRetry({
+            serverUrl: "http://localhost:0",
+            workDir,
+            framesDir,
+            totalFrames: 4,
+            initialWorkerCount: 2,
+            allowRetry: true,
+            frameExt: "jpg",
+            captureOptions: {} as CaptureOptions,
+            createBeforeCaptureHook: () => null,
+            abortSignal: controller.signal,
+            cfg: {} as EngineConfig,
+            log,
+            dedupPerfs: [],
+          }),
+        ).rejects.toThrow(message);
 
-      // 1 initial attempt + exactly MAX_TRANSIENT_CAPTURE_RETRIES retries.
-      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(
-        1 + MAX_TRANSIENT_CAPTURE_RETRIES,
-      );
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-      rmSync(framesDir, { recursive: true, force: true });
-    }
-  });
+        // Exactly one attempt — no transient retry burned on a cancelled render.
+        expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(1);
+        expect(log.warn).not.toHaveBeenCalledWith(
+          expect.stringContaining("Transient browser failure"),
+          expect.anything(),
+        );
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+        rmSync(framesDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["Session closed", "Network.enable timed out"])(
+    "bounds repeated %s failures",
+    async (message) => {
+      const workDir = mkdtempSync(join(tmpdir(), "hf-transient2-work-"));
+      const framesDir = mkdtempSync(join(tmpdir(), "hf-transient2-frames-"));
+      const log = makeLog();
+      vi.mocked(executeParallelCapture).mockRejectedValue(new Error(message));
+      vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+      try {
+        await expect(
+          executeDiskCaptureWithAdaptiveRetry({
+            serverUrl: "http://localhost:0",
+            workDir,
+            framesDir,
+            totalFrames: 4,
+            initialWorkerCount: 1,
+            allowRetry: true,
+            frameExt: "jpg",
+            captureOptions: {} as CaptureOptions,
+            createBeforeCaptureHook: () => null,
+            cfg: {} as EngineConfig,
+            log,
+            dedupPerfs: [],
+          }),
+        ).rejects.toThrow(message);
+
+        // 1 initial attempt + exactly MAX_TRANSIENT_CAPTURE_RETRIES retries.
+        expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(
+          1 + MAX_TRANSIENT_CAPTURE_RETRIES,
+        );
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+        rmSync(framesDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("describeMemoryExhaustion", () => {

@@ -125,6 +125,41 @@ describe("runEnvironmentChecks", () => {
     }
   });
 
+  it.each([
+    { failure: { status: 133, signal: "SIGTRAP" }, detail: "SIGTRAP" },
+    { failure: { code: "EACCES" }, detail: "EACCES" },
+    { failure: { code: "ETIMEDOUT", signal: "SIGKILL" }, detail: "ETIMEDOUT" },
+  ])("rejects an existing browser that fails --version: $detail", async ({ failure, detail }) => {
+    execFileSync.mockImplementation((_path, args) => {
+      if (args[0] === "--version") throw Object.assign(new Error("cannot execute"), failure);
+      return "ffmpeg version 7.1.1\n";
+    });
+    const findBrowser = vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "cache",
+    });
+    try {
+      for (const browserPath of [undefined, process.execPath]) {
+        const result = await runEnvironmentChecks({ includeBrowser: true, browserPath });
+        const chrome = result.outcomes.find((outcome) => outcome.name === "Chrome");
+        expect(chrome).toMatchObject({ ok: false, level: "error", title: "Chrome cannot start" });
+        expect(chrome?.detail).toContain(detail);
+        expect(result.browser).toBeUndefined();
+      }
+      expect(execFileSync).toHaveBeenCalledWith(
+        process.execPath,
+        ["--version"],
+        expect.objectContaining({
+          timeout: 5000,
+          killSignal: "SIGKILL",
+          windowsHide: true,
+        }),
+      );
+    } finally {
+      findBrowser.mockRestore();
+    }
+  });
+
   it("reports an explicit missing browser path before render starts", async () => {
     const result = await runEnvironmentChecks({
       includeBrowser: true,

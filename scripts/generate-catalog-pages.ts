@@ -23,6 +23,7 @@ import {
   isBlockItem,
   ITEM_TYPE_DIRS,
 } from "../packages/core/src/registry/types.js";
+import { withHostedDefaults } from "./registry-hosted-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -883,7 +884,11 @@ function previewSection(
     // An item that declares variables gets the panel, which mounts the same
     // payload and re-mounts it as values change. Everything else gets the
     // plain player.
-    const variables = itemVariables(manifest);
+    // CDN defaults, not the local paths the manifest declares. The explorer
+    // posts every value to the preview frame on mount, including the untouched
+    // ones, so a local path here would override the payload's own default and
+    // ask the frame for a file that was deliberately never published.
+    const variables = withHostedDefaults(itemVariables(manifest), manifest);
     if (variables.length > 0) {
       const primaryTarget =
         primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;
@@ -1175,6 +1180,7 @@ function main(): void {
     "Shader Transitions": 5,
     "CSS Transitions": 6,
     Showcases: 7,
+    Carousels: 7.2,
     "Code Snippets": 7.5,
     Data: 8,
     "Motion Primitives": 9,
@@ -1211,6 +1217,12 @@ function main(): void {
     // Showcases they were two thirds of it, and the handful of actual showcase
     // scenes were unfindable underneath them.
     if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
+    // Same story, same fix: 25 image carousels are half of Showcases, and the
+    // scenes that shelf is for disappear underneath them. Keyed on the FIRST
+    // tag, which is this file's stated grouping rule, so an item that merely
+    // uses a carousel — `screen-flow-carousel` leads with `product-demo` —
+    // stays on the shelf that describes what it is for.
+    if (tags[0] === "carousel") return "Carousels";
     if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
     if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
     // Split what used to be one 267-item "Effects" list. Ordered most specific
@@ -1264,6 +1276,11 @@ function main(): void {
       section: "Scenes & demos",
       groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
+    // Its own section rather than a shelf inside Scenes & demos. At 25 items it
+    // is larger than Data & charts (17) and Blocks (13), which are both
+    // sections on their own, and pulling it out takes the largest section in
+    // the catalog from 120 items down to 95.
+    { section: "Carousels", groups: ["Carousels"] },
     { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
     { section: "Blocks", groups: ["Blocks"] },

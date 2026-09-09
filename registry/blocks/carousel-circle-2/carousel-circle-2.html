@@ -1,0 +1,1001 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"image1","type":"image","role":"content","label":"Card image 1","description":"Image on card 1 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-bob-seger.jpg"},{"id":"image2","type":"image","role":"content","label":"Card image 2","description":"Image on card 2 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-dire-straits.jpg"},{"id":"image3","type":"image","role":"content","label":"Card image 3","description":"Image on card 3 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-faces.jpg"},{"id":"image4","type":"image","role":"content","label":"Card image 4","description":"Image on card 4 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-little-feat.jpg"},{"id":"image5","type":"image","role":"content","label":"Card image 5","description":"Image on card 5 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-north-mississippi-allstars.jpg"},{"id":"image6","type":"image","role":"content","label":"Card image 6","description":"Image on card 6 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-sea-level.jpg"},{"id":"image7","type":"image","role":"content","label":"Card image 7","description":"Image on card 7 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-taj-mahal.jpg"},{"id":"image8","type":"image","role":"content","label":"Card image 8","description":"Image on card 8 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-tool.jpg"},{"id":"image9","type":"image","role":"content","label":"Card image 9","description":"Image on card 9 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/artist-van-morrison.jpg"},{"id":"image10","type":"image","role":"content","label":"Card image 10","description":"Image on card 10 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/pl-10-songs.jpg"},{"id":"image11","type":"image","role":"content","label":"Card image 11","description":"Image on card 11 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/pl-bangers.jpg"},{"id":"image12","type":"image","role":"content","label":"Card image 12","description":"Image on card 12 of 12. Any aspect; it is fitted into the card box.","portrays":["subject_image"],"default":"assets/carousel-images/pl-bhindi-bhagee.jpg"},{"id":"speed","type":"number","role":"style","label":"Speed","description":"Time scale of the carousel motion. 1 = the designed pace.","default":1,"min":0.25,"max":3,"step":0.05},{"id":"background","type":"color","role":"style","label":"Background","description":"Composition ground.","default":"#EDEDEF"}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Image Carousel · Circle 2</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        background: #ededef;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--background, #ededef);
+      }
+      .scaler {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 3840px;
+        height: 2160px;
+        transform-origin: 0 0;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+      }
+      .stage.is-3d {
+        transform-style: preserve-3d;
+      }
+      .card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        will-change: transform;
+        backface-visibility: visible;
+      }
+      .card-inner {
+        width: 100%;
+        height: 100%;
+        border-radius: var(--card-radius);
+        overflow: hidden;
+        box-shadow: var(--card-shadow);
+        background: #fff;
+      }
+      .card-inner img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .textline {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: "Inter", system-ui, sans-serif;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .textline.above.cards-over-right {
+        clip-path: inset(0 50% 0 0);
+      }
+      .textline.above.cards-over-left {
+        clip-path: inset(0 0 0 50%);
+      }
+      .textdrift {
+        display: flex;
+        align-items: center;
+        will-change: transform;
+      }
+      .word {
+        display: inline-block;
+        overflow: hidden;
+        padding: 0.06em 0;
+      }
+      .word + .word {
+        margin-left: 0.26em;
+      }
+      .word > span {
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-0m1b"
+      id="root"
+      data-composition-id="carousel-circle-2"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+      data-fps="30"
+      data-layout-allow-overflow=""
+    >
+      <div id="carousel-circle-2-partA" class="clip" data-start="0" data-duration="6">
+        <div data-hf-id="hf-elyu" id="carousel-circle-2-scaler" class="scaler">
+          <div data-hf-id="hf-mi5e" id="carousel-circle-2-stage" class="stage"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function (global) {
+        "use strict";
+
+        const lerp = (a, b, t) => a + (b - a) * t;
+        const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
+
+        const aeLinear = (v, a, b, c, d) => (a === b ? c : lerp(c, d, clamp01((v - a) / (b - a))));
+
+        const aeEase = (v, a, b, c, d) => {
+          const t = clamp01((v - a) / (b - a));
+          const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          return lerp(c, d, e);
+        };
+        const wrap01 = (x) => {
+          let p = x % 1;
+          if (p < 0) p += 1;
+          return p;
+        };
+        const DEG = 180 / Math.PI;
+
+        function buildPath(vertices, closed, samplesPerSeg, center) {
+          samplesPerSeg = samplesPerSeg || 64;
+          const n = vertices.length;
+          const segCount = closed ? n : n - 1;
+          const pts = [];
+          for (let s = 0; s < segCount; s++) {
+            const a = vertices[s],
+              b = vertices[(s + 1) % n];
+            const p0 = a.p,
+              p1 = [a.p[0] + a.out[0], a.p[1] + a.out[1]];
+            const p2 = [b.p[0] + b.in[0], b.p[1] + b.in[1]],
+              p3 = b.p;
+            const last = s === segCount - 1 ? samplesPerSeg : samplesPerSeg - 1;
+            for (let k = 0; k <= last; k++) {
+              const t = k / samplesPerSeg,
+                mt = 1 - t;
+              const x =
+                mt * mt * mt * p0[0] +
+                3 * mt * mt * t * p1[0] +
+                3 * mt * t * t * p2[0] +
+                t * t * t * p3[0];
+              const y =
+                mt * mt * mt * p0[1] +
+                3 * mt * mt * t * p1[1] +
+                3 * mt * t * t * p2[1] +
+                t * t * t * p3[1];
+              pts.push([x, y]);
+            }
+          }
+          if (center) {
+            let x0 = Infinity,
+              x1 = -Infinity,
+              y0 = Infinity,
+              y1 = -Infinity;
+            for (const q of pts) {
+              x0 = Math.min(x0, q[0]);
+              x1 = Math.max(x1, q[0]);
+              y0 = Math.min(y0, q[1]);
+              y1 = Math.max(y1, q[1]);
+            }
+            const sx = center[0] - (x0 + x1) / 2,
+              sy = center[1] - (y0 + y1) / 2;
+            for (const q of pts) {
+              q[0] += sx;
+              q[1] += sy;
+            }
+          }
+          const cum = [0];
+          for (let i = 1; i < pts.length; i++) {
+            const dx = pts[i][0] - pts[i - 1][0],
+              dy = pts[i][1] - pts[i - 1][1];
+            cum.push(cum[i - 1] + Math.hypot(dx, dy));
+          }
+          const total = cum[cum.length - 1];
+          function locate(pct) {
+            const target = pct * total;
+            let lo = 0,
+              hi = cum.length - 1;
+            while (hi - lo > 1) {
+              const mid = (lo + hi) >> 1;
+              if (cum[mid] <= target) lo = mid;
+              else hi = mid;
+            }
+            const segLen = cum[hi] - cum[lo] || 1;
+            return { i: lo, j: hi, f: (target - cum[lo]) / segLen };
+          }
+          return {
+            closed,
+            length: total,
+            pointOnPath(pct) {
+              pct = closed ? wrap01(pct) : clamp01(pct);
+              const { i, j, f } = locate(pct);
+              return [lerp(pts[i][0], pts[j][0], f), lerp(pts[i][1], pts[j][1], f)];
+            },
+            tangentOnPath(pct) {
+              pct = closed ? wrap01(pct) : clamp01(pct);
+              const { i, j } = locate(pct);
+              const dx = pts[j][0] - pts[i][0],
+                dy = pts[j][1] - pts[i][1];
+              const l = Math.hypot(dx, dy) || 1;
+              return [dx / l, dy / l];
+            },
+          };
+        }
+
+        function pathRig(path, ctl, comp, n, u) {
+          const spc = ctl.spacing / 100;
+          const phase = ctl.phaseOffset / 100;
+          const manual = ctl.moveCarousel / 100;
+          const dAng = (ctl.depthAngle || 0) / DEG;
+          const rotAmt = (ctl.rotationFollow || 0) / 100;
+          const cx = comp.width / 2,
+            cy = comp.height / 2;
+          const maxDist = Math.hypot(cx, cy);
+          const out = new Array(n);
+          for (let idx = 0; idx < n; idx++) {
+            const off = (idx / n) * spc + phase;
+            const pct = wrap01(u + off + manual);
+            const pos = path.pointOnPath(pct);
+
+            const dx = pos[0] - cx,
+              dy = pos[1] - cy;
+            const projected = dx * Math.sin(dAng) + dy * Math.cos(dAng);
+            const norm = (projected / maxDist + 1) / 2;
+            const depthScale = aeLinear(norm, 0, 1, ctl.scaleMin, 100);
+            const mixed = aeLinear(ctl.scaleDepth / 100, 0, 1, 100, depthScale);
+            const scale = (mixed * (ctl.globalScale / 100)) / 100;
+
+            const tang = path.tangentOnPath(pct);
+            const rotZ = Math.atan2(tang[1], tang[0]) * DEG * rotAmt;
+
+            let x = pos[0],
+              y = pos[1],
+              z = 0;
+            if (ctl.parent) {
+              const rx = (ctl.xSlider || 0) / DEG,
+                ry = (ctl.ySlider || 0) / DEG;
+              const a = ctl.parent.anchor,
+                P = ctl.parent.position;
+
+              let l = [pos[0] - a[0], pos[1] - a[1], 0];
+              l = [
+                l[0] * Math.cos(ry) + l[2] * Math.sin(ry),
+                l[1],
+                -l[0] * Math.sin(ry) + l[2] * Math.cos(ry),
+              ];
+              l = [
+                l[0],
+                l[1] * Math.cos(rx) - l[2] * Math.sin(rx),
+                l[1] * Math.sin(rx) + l[2] * Math.cos(rx),
+              ];
+              x = P[0] + l[0];
+              y = P[1] + l[1];
+              z = (P[2] || 0) + l[2];
+            }
+
+            let rotY = 0,
+              rotX = 0;
+            if (ctl.parent) {
+              const camZ = -(comp.cameraDistance || comp.cameraZoom || 5669);
+              const vx = cx - x,
+                vy = cy - y,
+                vz = camZ - z;
+              rotY = Math.atan2(vx, -vz) * DEG;
+              rotX = -Math.atan2(vy, Math.hypot(vx, vz)) * DEG;
+            }
+            if (ctl.yAngle3d) {
+              const dist = Math.abs(x - cx);
+              let r = aeEase(dist, 0, comp.width * (700 / 1920), 0, ctl.yAngle3d);
+              if (ctl.mirrorY !== false && x < cx) r = -r;
+              rotY += r;
+            }
+            out[idx] = { x, y, z, scale, rotZ, rotY, rotX, pct, depth: norm };
+          }
+          return out;
+        }
+
+        function orbitRig(ctl, comp, n, u) {
+          const r = ctl.radius;
+          const rawCnt = Math.max(1, ctl.elementCount);
+          const cnt = Math.floor(rawCnt);
+          const off = ctl.offset;
+
+          const st = ctl.spinTurns || { x: 0, y: 1, z: 0 };
+          const rx = ((ctl.rotationX || 0) + u * 360 * (st.x || 0)) / DEG;
+          const ry = ((ctl.rotationY || 0) + u * 360 * (st.y || 0)) / DEG;
+          const rz = ((ctl.rotationZ || 0) + u * 360 * (st.z || 0)) / DEG;
+          const cx = comp.width / 2,
+            cy = comp.height / 2;
+          const camZ = -(comp.cameraDistance || comp.cameraZoom || 2000);
+          const cd = Math.abs(camZ);
+          const ga = Math.PI * (3 - Math.sqrt(5));
+          const getP = (index, c) => {
+            const i = (((index - 0.5 + off) % c) + c) % c;
+            const inc = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (i / c))));
+            const azi = ga * i;
+            return [
+              Math.sin(inc) * Math.cos(azi) * r,
+              Math.cos(inc) * r,
+              Math.sin(inc) * Math.sin(azi) * r,
+            ];
+          };
+          const out = new Array(n);
+          for (let k = 0; k < n; k++) {
+            const index = k + 1;
+            const a = getP(index, cnt),
+              b = getP(index, cnt + 1),
+              f = rawCnt % 1;
+            let p = [lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f)];
+
+            p = [
+              p[0],
+              p[1] * Math.cos(rx) - p[2] * Math.sin(rx),
+              p[1] * Math.sin(rx) + p[2] * Math.cos(rx),
+            ];
+            p = [
+              p[0] * Math.cos(ry) + p[2] * Math.sin(ry),
+              p[1],
+              -p[0] * Math.sin(ry) + p[2] * Math.cos(ry),
+            ];
+            p = [
+              p[0] * Math.cos(rz) - p[1] * Math.sin(rz),
+              p[0] * Math.sin(rz) + p[1] * Math.cos(rz),
+              p[2],
+            ];
+            const jitter = 1 + (index % 2) * 0.01;
+            const x = cx + p[0] * jitter,
+              y = cy + p[1] * jitter,
+              z = p[2] * jitter;
+
+            const d = Math.hypot(x - cx, y - cy, z - camZ);
+            const t = clamp01(aeLinear(d, cd - r, cd + r, 0, 1));
+            const s = aeLinear(t, 0, 1, ctl.scaleMax, ctl.scaleMin);
+            const finalS = aeLinear(ctl.perspectiveBoost, 0, 100, 100, s);
+
+            const behindCam = z <= camZ * 0.92;
+
+            const vx = cx - x,
+              vy = cy - y,
+              vz = camZ - z;
+            const yaw = Math.atan2(vx, -vz) * DEG;
+            const pitch = -Math.atan2(vy, Math.hypot(vx, vz)) * DEG;
+            out[k] = {
+              x,
+              y,
+              z,
+              scale: finalS / 100,
+              rotZ: 0,
+              rotY: yaw,
+              rotX: pitch,
+              visible: index <= cnt && !behindCam,
+              depth: 1 - t,
+            };
+          }
+          return out;
+        }
+
+        function aeCurve(keys) {
+          const segs = [];
+          for (let i = 0; i < keys.length - 1; i++) {
+            const a = keys[i],
+              b = keys[i + 1],
+              T = b.time - a.time;
+            const linear = !a.easeOut || !b.easeIn || (a.flags && a.flags.startsWith("0101"));
+            let P1, P2;
+            if (linear) {
+              P1 = [a.time + T / 3, a.value + (b.value - a.value) / 3];
+              P2 = [a.time + (2 * T) / 3, a.value + (2 * (b.value - a.value)) / 3];
+            } else {
+              const lo = a.easeOut.influence * T,
+                li = b.easeIn.influence * T;
+              P1 = [a.time + lo, a.value + a.easeOut.speed * lo];
+              P2 = [b.time - li, b.value - b.easeIn.speed * li];
+            }
+            segs.push({
+              t0: a.time,
+              t1: b.time,
+              P0: [a.time, a.value],
+              P1,
+              P2,
+              P3: [b.time, b.value],
+            });
+          }
+          const bez = (p0, p1, p2, p3, s) => {
+            const m = 1 - s;
+            return m * m * m * p0 + 3 * m * m * s * p1 + 3 * m * s * s * p2 + s * s * s * p3;
+          };
+          return {
+            first: keys[0].value,
+            last: keys[keys.length - 1].value,
+            duration: keys[keys.length - 1].time - keys[0].time,
+            at(t) {
+              if (t <= segs[0].t0) return keys[0].value;
+              const sg = segs.find((g) => t <= g.t1) || segs[segs.length - 1];
+              if (t >= sg.t1) return sg.P3[1];
+
+              let s = (t - sg.t0) / (sg.t1 - sg.t0);
+              for (let k = 0; k < 8; k++) {
+                const x = bez(sg.P0[0], sg.P1[0], sg.P2[0], sg.P3[0], s) - t;
+                const m = 1 - s;
+                const dx =
+                  3 * m * m * (sg.P1[0] - sg.P0[0]) +
+                  6 * m * s * (sg.P2[0] - sg.P1[0]) +
+                  3 * s * s * (sg.P3[0] - sg.P2[0]);
+                if (Math.abs(dx) < 1e-9) break;
+                s -= x / dx;
+                s = s < 0 ? 0 : s > 1 ? 1 : s;
+              }
+              return bez(sg.P0[1], sg.P1[1], sg.P2[1], sg.P3[1], s);
+            },
+          };
+        }
+
+        function chainedDrive(keys, mode) {
+          const c = aeCurve(keys),
+            T = c.duration,
+            delta = c.last - c.first;
+          return {
+            cycle: T,
+            at(t) {
+              if (T <= 0) return c.first;
+              const k = Math.floor(t / T),
+                r = t - k * T;
+              if (mode === "pingpong")
+                return k % 2 === 0 ? c.at(keys[0].time + r) : c.at(keys[0].time + (T - r));
+              return c.at(keys[0].time + r) + k * delta;
+            },
+          };
+        }
+
+        function buildProgress(opts) {
+          const dur = opts.duration,
+            cruise = opts.cruise;
+          const sign = cruise < 0 ? -1 : 1;
+          const c = Math.abs(cruise);
+          const cap = opts.boostCap == null ? 0.5 : opts.boostCap;
+          const vIn = Math.max(
+            Math.min(c * (opts.arriveMul || 4), c + cap),
+            opts.arriveMin || 0.16,
+          );
+          const vOut = Math.max(Math.min(c * (opts.exitMul || 6), c + cap), opts.exitMin || 0.22);
+          const tA = opts.arrive || 1.6,
+            tX = opts.exit || 0.9;
+          const N = Math.max(600, Math.round(dur * 120));
+          const lut = new Float64Array(N + 1);
+          let acc = 0,
+            prevV = null;
+          for (let i = 0; i <= N; i++) {
+            const t = (i / N) * dur;
+            let v;
+            if (t < tA) {
+              const k = 1 - Math.pow(1 - t / tA, 4);
+              v = lerp(vIn, c, k);
+            } else if (t > dur - tX) {
+              const k = Math.pow((t - (dur - tX)) / tX, 3);
+              v = lerp(c, vOut, k);
+            } else v = c;
+            if (prevV !== null) acc += ((prevV + v) / 2) * (dur / N);
+            prevV = v;
+            lut[i] = acc * sign;
+          }
+          return {
+            duration: dur,
+            travel: lut[N],
+            at(t) {
+              const f = clamp01(t / dur) * N,
+                i = Math.floor(f),
+                g = f - i;
+              return i >= N ? lut[N] : lerp(lut[i], lut[i + 1], g);
+            },
+          };
+        }
+
+        global.CarouselRig = {
+          buildPath,
+          pathRig,
+          orbitRig,
+          buildProgress,
+          aeCurve,
+          chainedDrive,
+          aeLinear,
+          aeEase,
+        };
+      })(typeof window !== "undefined" ? window : globalThis);
+    </script>
+    <script>
+      const DATA = {
+        id: "carousel-circle-2",
+        family: "circle",
+        controls: {
+          speed: 40,
+          spacing: 100,
+          phaseOffset: 0,
+          globalScale: 57,
+          scaleDepth: 160,
+          scaleMin: -47,
+          depthAngle: 37,
+          moveCarousel: 42.55,
+          rotationFollow: 0,
+        },
+        comp: {
+          width: 3840,
+          height: 2160,
+          outWidth: 1920,
+          outHeight: 1080,
+          cameraZoom: 5669.29,
+          cameraDistance: 5669.29,
+          duration: 6,
+          fps: 30,
+        },
+        n: 12,
+        cards: [
+          { file: "artist-bob-seger.jpg", width: 640, height: 640 },
+          { file: "artist-dire-straits.jpg", width: 640, height: 640 },
+          { file: "artist-faces.jpg", width: 640, height: 500 },
+          { file: "artist-little-feat.jpg", width: 640, height: 640 },
+          { file: "artist-north-mississippi-allstars.jpg", width: 640, height: 640 },
+          { file: "artist-sea-level.jpg", width: 640, height: 495 },
+          { file: "artist-taj-mahal.jpg", width: 640, height: 640 },
+          { file: "artist-tool.jpg", width: 640, height: 640 },
+          { file: "artist-van-morrison.jpg", width: 640, height: 640 },
+          { file: "pl-10-songs.jpg", width: 640, height: 640 },
+          { file: "pl-bangers.jpg", width: 640, height: 640 },
+          { file: "pl-bhindi-bhagee.jpg", width: 640, height: 640 },
+        ],
+        path: {
+          vertices: [
+            { p: [2246.001, 365.023], in: [-358.618, 0], out: [358.618, 0] },
+            { p: [2895.342, 1170.206], in: [0, -444.686], out: [0, 444.686] },
+            { p: [2246.001, 1975.388], in: [358.618, 0], out: [-358.618, 0] },
+            { p: [1596.66, 1170.206], in: [0, 444.686], out: [0, -444.686] },
+          ],
+          closed: true,
+        },
+        keys: {
+          "Move Carousel": [
+            {
+              time: 0,
+              value: 0,
+              flags: "02020000",
+              easeIn: { speed: 0, influence: 0.333333 },
+              easeOut: { speed: 238.51658, influence: 0.124734 },
+            },
+            {
+              time: 1.51667,
+              value: 75.5,
+              flags: "02020000",
+              easeIn: { speed: 563.152726, influence: 0.063927 },
+              easeOut: { speed: 0, influence: 0.333333 },
+            },
+          ],
+        },
+        motion: {
+          arrive: 1.6,
+          arriveMul: 4,
+          arriveMin: 0.16,
+          exit: 0.9,
+          exitMul: 6,
+          exitMin: 0.22,
+          entryStaggerTotal: 0.45,
+          entryDuration: 0.55,
+          entryLead: 0.25,
+          orbitSpinDegPerSec: 24,
+          orbitSpinScale: 1,
+          boostCap: 0.5,
+          speedScale: 1,
+        },
+        look: {
+          background: "#EDEDEF",
+          cardRadius: 0,
+          cardShadow: "none",
+          imageHeight: null,
+          centerPath: true,
+          endFade: 0.06,
+          fitBox: 1500,
+        },
+        text: null,
+        ending: null,
+        outro: null,
+        ring: null,
+        registry: {
+          imageVars: [
+            "image1",
+            "image2",
+            "image3",
+            "image4",
+            "image5",
+            "image6",
+            "image7",
+            "image8",
+            "image9",
+            "image10",
+            "image11",
+            "image12",
+          ],
+          textVars: null,
+          speedVar: "speed",
+        },
+        cutAt: null,
+      };
+      (async function () {
+        const R = window.CarouselRig;
+
+        const REG = DATA.registry || null;
+        const V =
+          REG && window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables() || {}
+            : {};
+        const varUrl = (v) => (v && typeof v === "object" ? v.url || v.src || "" : v || "");
+        if (REG) {
+          const srcs = REG.imageVars.map(
+            (id, i) => varUrl(V[id]) || DATA.cards[i % DATA.cards.length].file,
+          );
+          DATA.cards = await Promise.all(
+            srcs.map(async (src, i) => {
+              const img = new Image();
+              img.src = src;
+              try {
+                await img.decode();
+              } catch (e) {}
+              return {
+                file: src,
+                abs: true,
+                width: img.naturalWidth || DATA.cards[i % DATA.cards.length].width,
+                height: img.naturalHeight || DATA.cards[i % DATA.cards.length].height,
+              };
+            }),
+          );
+          if (DATA.text && REG.textVars && REG.textVars.line1 && V[REG.textVars.line1])
+            DATA.text.words = String(V[REG.textVars.line1]).trim().split(/\s+/);
+          if (DATA.outro && REG.textVars && REG.textVars.line2 && V[REG.textVars.line2])
+            DATA.outro.words = String(V[REG.textVars.line2]).trim().split(/\s+/);
+          if (REG.speedVar && V[REG.speedVar] != null && isFinite(+V[REG.speedVar]))
+            DATA.motion.speedScale = +V[REG.speedVar];
+        }
+        const { family, controls: ctl, comp, n, cards, motion, look } = DATA;
+        const root = document.getElementById("root");
+        const stage = document.getElementById(DATA.id + "-stage");
+        root.style.setProperty("--card-radius", look.cardRadius + "px");
+        root.style.setProperty("--card-shadow", look.cardShadow);
+
+        document.getElementById(DATA.id + "-scaler").style.transform =
+          "scale(" + comp.outWidth / comp.width + ")";
+
+        const is3d = family === "orbit" || family === "vision";
+        if (is3d) {
+          stage.style.perspective = comp.cameraZoom + "px";
+          stage.style.perspectiveOrigin = "50% 50%";
+        }
+
+        const camShift = (comp.cameraDistance || comp.cameraZoom) - comp.cameraZoom;
+        const group = document.createElement("div");
+        group.className = "stage" + (is3d ? " is-3d" : "");
+        group.id = DATA.id + "-group";
+        const gx = [];
+        if (look.zoom && look.zoom !== 1) gx.push("scale(" + look.zoom + ")");
+        if (camShift) gx.push("translateZ(" + -camShift + "px)");
+        if (gx.length) group.style.transform = gx.join(" ");
+
+        const squeeze = document.createElement("div");
+        squeeze.className = "stage" + (is3d ? " is-3d" : "");
+        squeeze.id = DATA.id + "-squeeze";
+        group.appendChild(squeeze);
+
+        const TXT = DATA.text || null;
+        const textLayers = [];
+        if (TXT) {
+          for (const cls of ["below", "above"]) {
+            const line = document.createElement("div");
+            line.className = "textline " + cls + " cards-over-" + (TXT.cardsOverOn || "right");
+            line.id = DATA.id + "-text-" + cls;
+            line.style.fontSize = TXT.fontSize + "px";
+            line.style.color = TXT.color || "#111";
+            const drift = document.createElement("div");
+            drift.className = "textdrift";
+            drift.id = DATA.id + "-drift-" + cls;
+            TXT.words.forEach((w, k) => {
+              const box = document.createElement("span");
+              box.className = "word";
+              const inner = document.createElement("span");
+              inner.textContent = w;
+              inner.id = DATA.id + "-w" + k + "-" + cls;
+              box.appendChild(inner);
+              drift.appendChild(box);
+            });
+            line.appendChild(drift);
+            textLayers.push(line);
+          }
+          stage.appendChild(textLayers[0]);
+        }
+        stage.appendChild(group);
+        if (TXT) stage.appendChild(textLayers[1]);
+
+        const els = [],
+          inners = [];
+        for (let i = 0; i < n; i++) {
+          const c = cards[i];
+          let w = c.width,
+            h = c.height;
+          if (look.imageHeight) {
+            w = c.width * (look.imageHeight / c.height);
+            h = look.imageHeight;
+          } else if (look.fitBox) {
+            const k = look.fitBox / Math.max(c.width, c.height);
+            w = c.width * k;
+            h = c.height * k;
+          }
+          const el = document.createElement("div");
+          el.className = "card";
+          el.id = DATA.id + "-card-" + i;
+          el.style.width = w + "px";
+          el.style.height = h + "px";
+          el.style.marginLeft = -w / 2 + "px";
+          el.style.marginTop = -h / 2 + "px";
+          const inner = document.createElement("div");
+          inner.className = "card-inner";
+          inner.id = el.id + "-inner";
+          const img = document.createElement("img");
+          img.src = c.abs ? c.file : "assets/carousel-images/" + c.file;
+          img.alt = "";
+
+          if (!is3d) el.style.zIndex = String(n - i);
+          inner.appendChild(img);
+          el.appendChild(inner);
+          squeeze.appendChild(el);
+          els.push(el);
+          inners.push(inner);
+        }
+
+        const path = DATA.path
+          ? R.buildPath(
+              DATA.path.vertices,
+              DATA.path.closed,
+              64,
+              look.centerPath ? [comp.width / 2, comp.height / 2] : null,
+            )
+          : null;
+
+        const K = DATA.keys || {};
+        const drives = {};
+        for (const name in K) {
+          const cumulative =
+            /^(Move Carousel|Rotation [XYZ])$/.test(name) &&
+            Math.abs(K[name][K[name].length - 1].value - K[name][0].value) > 1e-6;
+          drives[name] = R.chainedDrive(K[name], cumulative ? "accumulate" : "pingpong");
+        }
+        const speedScale = motion.speedScale == null ? 1 : motion.speedScale;
+        const tt = (t) => t * speedScale;
+        const baseSpeed = (ctl.speed || 0) / 1000;
+
+        const fallbackCruise =
+          family === "orbit" ? (motion.orbitSpinDegPerSec || 24) / 360 : baseSpeed;
+        const prog = R.buildProgress(
+          Object.assign({ duration: comp.duration, cruise: fallbackCruise }, motion),
+        );
+        const hasMove = !!drives["Move Carousel"],
+          hasSpin = !!(drives["Rotation X"] || drives["Rotation Y"] || drives["Rotation Z"]);
+        function controlsAt(t) {
+          const c = Object.assign({}, ctl);
+          for (const name in drives) {
+            const v = drives[name].at(tt(t));
+            if (name === "Move Carousel") c.moveCarousel = v;
+            else if (name === "Depth Angle") c.depthAngle = v;
+            else if (name === "Rotation Follow") c.rotationFollow = v;
+            else if (name === "Rotation X") c.rotationX = v;
+            else if (name === "Rotation Y") c.rotationY = v;
+            else if (name === "Rotation Z") c.rotationZ = v;
+          }
+          if (family === "orbit") c.spinTurns = { x: 0, y: 0, z: 0 };
+          return c;
+        }
+        function uAt(t) {
+          if (family === "orbit") return hasSpin ? 0 : prog.at(t);
+          return hasMove ? baseSpeed * tt(t) : prog.at(t);
+        }
+        const endFade = path && !path.closed ? (look.endFade ?? 0.06) : 0;
+
+        const RING = DATA.ring || null;
+        const converge = RING && RING.entry === "converge";
+        const cvE = converge ? gsap.parseEase(RING.ease || "power3.out") : null;
+        let ringStartRef = 0;
+        function convergeFactor(i, t) {
+          const per = (RING.stagger || 0.5) / n,
+            s0 = ringStartRef + i * per,
+            d = RING.duration || 0.8;
+          const e = t <= s0 ? 0 : t >= s0 + d ? 1 : cvE((t - s0) / d);
+          return 1 + ((RING.from || 3) - 1) * (1 - e);
+        }
+        function render(t) {
+          const u = uAt(t),
+            c = controlsAt(t);
+          const poses =
+            family === "orbit" ? R.orbitRig(c, comp, n, u) : R.pathRig(path, c, comp, n, u);
+          const cx = comp.width / 2,
+            cy = comp.height / 2;
+          for (let i = 0; i < n; i++) {
+            const p = poses[i],
+              el = els[i];
+            if (converge) {
+              const f = convergeFactor(i, t);
+              p.x = cx + (p.x - cx) * f;
+              p.y = cy + (p.y - cy) * f;
+            }
+            let alpha = p.visible === false ? 0 : 1;
+            if (endFade) {
+              const e = Math.min(p.pct, 1 - p.pct) / endFade;
+              alpha *= e < 1 ? e : 1;
+            }
+            el.style.opacity = alpha;
+            el.style.transform =
+              "translate3d(" +
+              p.x.toFixed(2) +
+              "px," +
+              p.y.toFixed(2) +
+              "px," +
+              (-p.z).toFixed(2) +
+              "px)" +
+              (p.rotY ? " rotateY(" + p.rotY.toFixed(3) + "deg)" : "") +
+              (p.rotX ? " rotateX(" + p.rotX.toFixed(3) + "deg)" : "") +
+              (p.rotZ ? " rotateZ(" + p.rotZ.toFixed(3) + "deg)" : "") +
+              " scale(" +
+              p.scale.toFixed(5) +
+              ")";
+          }
+        }
+
+        const clock = { t: 0 };
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          clock,
+          { t: 0 },
+          {
+            t: comp.duration,
+            duration: comp.duration,
+            ease: "none",
+            onUpdate: () => render(clock.t),
+          },
+          0,
+        );
+
+        let ringStart = 0;
+        if (TXT) {
+          const wd = TXT.wordDuration,
+            ws = TXT.wordStagger;
+          TXT.words.forEach((w, k) => {
+            const targets = textLayers.map((L) => L.firstChild.children[k].firstChild);
+            tl.fromTo(
+              targets,
+              { xPercent: 110 },
+              { xPercent: 0, duration: wd, ease: "power3.out", immediateRender: true },
+              k * ws,
+            );
+          });
+          ringStart = (TXT.words.length - 1) * ws;
+
+          if (TXT.driftPx) {
+            const d0 = wd * (TXT.driftOverlapAt == null ? 0.61 : TXT.driftOverlapAt);
+            const px = TXT.driftPx * (comp.width / comp.outWidth);
+
+            const DE = TXT.driftEase || { power: 1, linear: 1 };
+            const k = DE.linear == null ? 0.35 : DE.linear,
+              pw = DE.power || 3;
+            const driftEase = (x) => (1 - k) * (1 - Math.pow(1 - x, pw)) + k * x;
+
+            const xFrom = TXT.driftEndsCentered ? px : 0,
+              xTo = TXT.driftEndsCentered ? 0 : -px;
+            tl.fromTo(
+              textLayers.map((L) => L.firstChild),
+              { x: xFrom },
+              {
+                x: xTo,
+                duration: (DATA.cutAt || comp.duration) - d0,
+                ease: driftEase,
+                immediateRender: true,
+              },
+              d0,
+            );
+          }
+        }
+        ringStartRef = ringStart;
+        const each = motion.entryStaggerTotal / n,
+          lead = TXT ? 0 : motion.entryLead || 0,
+          eDur = motion.entryDuration;
+        const E = gsap.parseEase("power3.out");
+        for (let i = 0; i < n; i++) {
+          if (converge) break;
+          const start = ringStart + i * each - lead;
+          if (start >= 0) {
+            tl.fromTo(
+              inners[i],
+              { autoAlpha: 0, scale: 0.72 },
+              { autoAlpha: 1, scale: 1, duration: eDur, ease: "power3.out", immediateRender: true },
+              start,
+            );
+            continue;
+          }
+          if (start + eDur <= 0) continue;
+
+          const p0 = -start / eDur,
+            e0 = E(p0);
+          const tail = (x) => (E(p0 + x * (1 - p0)) - e0) / (1 - e0);
+          tl.fromTo(
+            inners[i],
+            { autoAlpha: e0, scale: 0.72 + 0.28 * e0 },
+            { autoAlpha: 1, scale: 1, duration: eDur - -start, ease: tail, immediateRender: true },
+            0,
+          );
+        }
+
+        const END = DATA.ending || null;
+        const cutAt = DATA.cutAt || comp.duration;
+        if (END) {
+          const tA = END.textScaleAt,
+            tB = tA + (END.imagesDelay == null ? 0.2 : END.imagesDelay);
+          if (TXT && END.textScaleTo != null)
+            tl.fromTo(
+              textLayers,
+              { scale: 1 },
+              {
+                scale: END.textScaleTo,
+                duration: cutAt - tA,
+                ease: END.ease || "power2.in",
+                immediateRender: true,
+              },
+              tA,
+            );
+          if (END.imagesTo != null)
+            tl.fromTo(
+              squeeze,
+              { scale: 1 },
+              {
+                scale: END.imagesTo,
+                duration: cutAt - tB,
+                ease: END.ease || "power2.in",
+                immediateRender: true,
+              },
+              tB,
+            );
+        }
+
+        const OUT = DATA.outro || null;
+        if (OUT) {
+          const line = document.getElementById(DATA.id + "-outro-line");
+          const driftEl = document.getElementById(DATA.id + "-outro-drift");
+          line.style.fontSize = (OUT.fontSize || (TXT && TXT.fontSize) || 190) + "px";
+          line.style.color = OUT.color || (TXT && TXT.color) || "#111";
+          OUT.words.forEach((w) => {
+            const s = document.createElement("span");
+            s.className = "word";
+            s.textContent = w;
+            driftEl.appendChild(s);
+          });
+          const sd = OUT.scaleDuration || 0.8,
+            outEnd = comp.duration;
+          tl.fromTo(
+            line,
+            { scale: OUT.scaleFrom == null ? 1.4 : OUT.scaleFrom },
+            {
+              scale: OUT.scaleTo == null ? 1 : OUT.scaleTo,
+              duration: sd,
+              ease: OUT.ease || "power2.out",
+              immediateRender: true,
+            },
+            cutAt,
+          );
+          if (OUT.driftPx) {
+            const d0 = cutAt + sd * (OUT.driftOverlapAt == null ? 0.61 : OUT.driftOverlapAt);
+            const px = OUT.driftPx * (comp.width / comp.outWidth);
+            tl.fromTo(
+              driftEl,
+              { x: 0 },
+              { x: -px, duration: outEnd - d0, ease: "none", immediateRender: true },
+              d0,
+            );
+          }
+        }
+        render(0);
+        window.__timelines[DATA.id] = tl;
+      })();
+    </script>
+  </body>
+</html>

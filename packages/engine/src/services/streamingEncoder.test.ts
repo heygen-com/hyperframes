@@ -10,6 +10,8 @@
  * master-display / max-cll and ship as SDR BT.2020 again.
  */
 
+import { validJpeg } from "./__fixtures__/jpeg.js";
+
 import { EventEmitter } from "events";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
@@ -711,6 +713,41 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(threw).toBe(false);
   });
 
+  it("rejects a malformed JPEG before writing it and reports its input frame index", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-jpeg-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+    const proc = calls[0]!.proc;
+    const write = vi.spyOn(proc.stdin, "write");
+    expect(await encoder.writeFrame(validJpeg)).toBe(true);
+    const malformed = Buffer.from(validJpeg);
+    malformed[malformed.indexOf(Buffer.from([0xff, 0xdb])) + 4] = 0x20;
+    await expect(encoder.writeFrame(malformed)).rejects.toThrow(
+      "Invalid JPEG input at frame 1: invalid JPEG DQT precision 2",
+    );
+    expect(write).toHaveBeenCalledTimes(1);
+    process.nextTick(() => proc.emit("close", 0));
+    await encoder.close();
+  });
+
+  it.each([
+    { ...baseOptions, imageFormat: "png" as const },
+    { ...baseOptions, rawInputFormat: "rgb48le" as const },
+  ])("does not apply JPEG validation to PNG or raw frames", async (options) => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-non-jpeg-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), options);
+    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(true);
+    process.nextTick(() => calls[0]!.proc.emit("close", 0));
+    await encoder.close();
+  });
+
   it("writeFrame returns false after ffmpeg has exited", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -720,7 +757,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const dir = mkdtempSync(join(tmpdir(), "se-writefail-"));
     const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
 
-    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(true);
+    expect(await encoder.writeFrame(validJpeg)).toBe(true);
 
     const proc = calls[0]!.proc;
     await new Promise<void>((resolve) => {
@@ -730,7 +767,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       });
     });
 
-    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(false);
+    expect(await encoder.writeFrame(validJpeg)).toBe(false);
   });
 
   it("waits for child close when stdin dies first so the interruption reason is observable", async () => {
@@ -744,7 +781,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const proc = calls[0]!.proc;
     proc.stdin.destroyed = true;
 
-    const writePromise = encoder.writeFrame(Buffer.from([0]));
+    const writePromise = encoder.writeFrame(validJpeg);
     await expect(resolveWithin(writePromise, 10)).resolves.toBe("timeout");
 
     proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
@@ -766,7 +803,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const proc = calls[0]!.proc;
     proc.stdin.write = (_chunk: Buffer): boolean => false;
 
-    const writeResult = encoder.writeFrame(Buffer.from([1])) as unknown;
+    const writeResult = encoder.writeFrame(validJpeg) as unknown;
     expect(writeResult).toBeInstanceOf(Promise);
 
     const writePromise = writeResult as Promise<boolean>;
@@ -804,7 +841,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     proc.stdin.write = (_chunk: Buffer): boolean => false;
 
     for (let i = 0; i < 12; i++) {
-      const writePromise = encoder.writeFrame(Buffer.from([i]));
+      const writePromise = encoder.writeFrame(validJpeg);
 
       await Promise.resolve();
       expect(proc.stdin.listenerCount("drain")).toBe(baselineDrainListeners + 1);
@@ -833,7 +870,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const proc = calls[0]!.proc;
     proc.stdin.write = (_chunk: Buffer): boolean => false;
 
-    const writeResult = encoder.writeFrame(Buffer.from([1])) as unknown;
+    const writeResult = encoder.writeFrame(validJpeg) as unknown;
     expect(writeResult).toBeInstanceOf(Promise);
 
     const writePromise = writeResult as Promise<boolean>;
@@ -872,7 +909,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       return false;
     };
 
-    const writePromise = encoder.writeFrame(Buffer.from([1]));
+    const writePromise = encoder.writeFrame(validJpeg);
 
     await expect(resolveWithin(writePromise)).resolves.toBe(false);
     expect(encoder.getExitStatus()).toBe("error");
@@ -927,7 +964,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       // progressing" capture the encoder must still be alive. The old total-
       // render timeout would have fired SIGTERM at ~1000ms.
       for (let i = 0; i < 9; i++) {
-        await encoder.writeFrame(Buffer.from([i]));
+        await encoder.writeFrame(validJpeg);
         vi.advanceTimersByTime(900);
       }
       expect(proc.kill).not.toHaveBeenCalled();
@@ -964,7 +1001,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       // A buffered write should remain pending and must NOT reset the timer.
       // The 1000ms timer (last reset on spawn) therefore elapses while the
       // caller is correctly back-pressured on the first frame.
-      const writePromise = encoder.writeFrame(Buffer.from([0]));
+      const writePromise = encoder.writeFrame(validJpeg);
       await Promise.resolve();
 
       vi.advanceTimersByTime(1100);

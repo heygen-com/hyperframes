@@ -29,6 +29,7 @@ import {
   type CatalogItem,
   type ItemKind,
 } from "./generate-catalog-previews.js";
+import { isLocalAsset } from "./registry-hosted-assets.ts";
 import { componentFiles } from "./catalog/component-files.ts";
 import { runAsCommand } from "./entrypoint.ts";
 import {
@@ -90,8 +91,12 @@ function needsOwnDirectory(item: CatalogItem, unresolved: string[]): boolean {
   try {
     const manifest = JSON.parse(
       readFileSync(join(item.sourceDir, "registry-item.json"), "utf-8"),
-    ) as { files?: { type?: string }[] };
-    return (manifest.files ?? []).some((f) => f.type === "hyperframes:asset");
+    ) as { files?: { type?: string; url?: string }[] };
+    // A hosted file is deliberately absent from the copied project and is
+    // referenced by URL, so it is not a path this directory could satisfy.
+    // Counting it here published 24 images per block to serve references that
+    // already point somewhere else.
+    return (manifest.files ?? []).some(isLocalAsset);
   } catch {
     return false;
   }
@@ -191,6 +196,10 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
     projectDir = await prepareProjectDir(entry, {
       compile: !interactive,
       uiFragment: fromSnippet,
+      // A payload is fetched by a browser, not rendered here, so a hosted asset
+      // is already reachable at its URL. Downloading it would only move the
+      // bytes into `docs/public/`, which the repository carries just the same.
+      hostedAssets: "cdn",
     });
   } catch (err) {
     // Some items are a stylesheet and a paragraph of prose — a class you add to

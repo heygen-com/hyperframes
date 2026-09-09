@@ -1,5 +1,12 @@
 // fallow-ignore-file code-duplication
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const fixtureRoot = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
+const framesDir = join(fixtureRoot, "frames");
+afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));
 import { getCaptureStageBrowserConsole } from "../captureStageError.js";
 import { createCapturePlan } from "../capturePlan.js";
 
@@ -191,7 +198,7 @@ function createInput(cfg: MinimalEngineConfig) {
       addPreHeadScript: () => {},
     },
     workDir: "/tmp/hf-test-work",
-    framesDir: "/tmp/hf-test-frames",
+    framesDir: framesDir,
     videoOnlyPath: "/tmp/hf-test-video-only.mp4",
     job: {
       id: "streaming-config-test",
@@ -487,7 +494,7 @@ describe("runCaptureStage", () => {
     const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
     const probeSession = await createCaptureSession(
       "http://127.0.0.1:4173",
-      "/tmp/hf-test-frames",
+      framesDir,
       {},
       null,
       cfg,
@@ -599,7 +606,7 @@ describe("runCaptureHdrStage", () => {
         },
         projectDir: "/tmp/hf-test-project",
         compiledDir: "/tmp/hf-test-compiled",
-        framesDir: "/tmp/hf-test-frames",
+        framesDir: framesDir,
         videoOnlyPath: "/tmp/hf-test-video-only.mp4",
         width: 1920,
         height: 1080,

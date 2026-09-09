@@ -180,10 +180,56 @@ function chromeSharedLibOutcome(
   };
 }
 
+function chromeLaunchFailureDetails(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "";
+  const status = "status" in error ? error.status : undefined;
+  const signal = "signal" in error ? error.signal : undefined;
+  const code = "code" in error ? error.code : undefined;
+  return [
+    typeof status === "number" ? `exit code ${status}` : "",
+    typeof signal === "string" ? `signal ${signal}` : "",
+    typeof code === "string" ? code : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function chromeLaunchOutcome(
+  executablePath: string,
+  found: EnvironmentCheckOutcome,
+): EnvironmentCheckOutcome {
+  const libraries = chromeSharedLibOutcome(executablePath, found);
+  if (!libraries.ok) return libraries;
+  try {
+    execFileSync(executablePath, ["--version"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+      killSignal: "SIGKILL",
+      maxBuffer: 64 * 1024,
+      windowsHide: true,
+    });
+    return found;
+  } catch (error) {
+    const details = chromeLaunchFailureDetails(error);
+    return {
+      name: "Chrome",
+      ok: false,
+      level: "error",
+      title: "Chrome cannot start",
+      detail: `Failed to run "${executablePath}" --version${details ? ` (${details})` : ""}.`,
+      hint:
+        "Select a working Chrome/Chromium binary for this OS and architecture with " +
+        "HYPERFRAMES_BROWSER_PATH, or reinstall with: npx hyperframes browser ensure --force",
+      path: executablePath,
+    };
+  }
+}
+
 async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcome> {
   if (browserPath) {
     if (existsSync(browserPath)) {
-      return chromeSharedLibOutcome(browserPath, {
+      return chromeLaunchOutcome(browserPath, {
         name: "Chrome",
         ok: true,
         level: "ok",
@@ -213,7 +259,7 @@ async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcom
     info = undefined;
   }
   if (info) {
-    return chromeSharedLibOutcome(info.executablePath, {
+    return chromeLaunchOutcome(info.executablePath, {
       name: "Chrome",
       ok: true,
       level: "ok",

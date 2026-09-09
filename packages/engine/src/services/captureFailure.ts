@@ -55,6 +55,7 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
 ];
 
 const PROTOCOL_TIMEOUT_PATTERNS = [
+  /Network\.enable timed out/i,
   /Runtime\.callFunctionOn timed out/i,
   /Runtime\.evaluate timed out/i,
   /Page\.captureScreenshot timed out/i,

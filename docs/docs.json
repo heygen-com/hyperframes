@@ -593,6 +593,41 @@
             ]
           },
           {
+            "group": "Carousels",
+            "pages": [
+              {
+                "group": "Carousels",
+                "pages": [
+                  "catalog/blocks/carousel-circle-1",
+                  "catalog/blocks/carousel-circle-2",
+                  "catalog/blocks/carousel-circle-3",
+                  "catalog/blocks/carousel-circle-4",
+                  "catalog/blocks/carousel-circle-5",
+                  "catalog/blocks/carousel-orbit-1",
+                  "catalog/blocks/carousel-orbit-2",
+                  "catalog/blocks/carousel-orbit-3",
+                  "catalog/blocks/carousel-orbit-4",
+                  "catalog/blocks/carousel-orbit-5",
+                  "catalog/blocks/carousel-path-1",
+                  "catalog/blocks/carousel-path-2",
+                  "catalog/blocks/carousel-path-3",
+                  "catalog/blocks/carousel-path-4",
+                  "catalog/blocks/carousel-path-5",
+                  "catalog/blocks/carousel-text-circle-1",
+                  "catalog/blocks/carousel-text-circle-2",
+                  "catalog/blocks/carousel-text-circle-3",
+                  "catalog/blocks/carousel-text-circle-4",
+                  "catalog/blocks/carousel-text-circle-5",
+                  "catalog/blocks/carousel-vision-1",
+                  "catalog/blocks/carousel-vision-2",
+                  "catalog/blocks/carousel-vision-3",
+                  "catalog/blocks/carousel-vision-4",
+                  "catalog/blocks/carousel-vision-5"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Motion & effects",
             "pages": [
               {

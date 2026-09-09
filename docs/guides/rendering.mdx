@@ -81,6 +81,19 @@ MP4 is the normal opaque delivery format. After rendering transparency, inspect
 the file over a contrasting background rather than trusting a player that
 always shows black behind alpha.
 
+For VP9 WebM, `ffprobe` reporting `pix_fmt=yuv420p` does not by itself mean
+transparency was lost. FFmpeg's default VP9 decoder can also produce an opaque
+image from a file that contains alpha. To inspect a frame, explicitly select
+the alpha-aware decoder **before** the input:
+
+```bash
+ffmpeg -c:v libvpx-vp9 -i overlay.webm -frames:v 1 -pix_fmt rgba overlay-frame.png
+```
+
+View the PNG over a checkerboard or contrasting background. If it is still
+opaque, compare it with the composition's PNG-sequence output to check whether
+transparency was already missing before video encoding.
+
 ## Input video codecs
 
 Studio, preview, `check`, and published projects normally create cached browser

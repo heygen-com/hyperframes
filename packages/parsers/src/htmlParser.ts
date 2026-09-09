@@ -13,7 +13,8 @@ import type {
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
-import { ensureHfIds, walkCompositionDescendants } from "./hfIds.js";
+import { walkCompositionDescendants } from "./hfIds.js";
+import { assignHfIds } from "./hfIdAssignment.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
@@ -178,9 +179,8 @@ function resolveResolutionFromDimensions(width: number, height: number): CanvasR
 }
 
 export function parseHtml(html: string): ParsedHtml {
-  const withIds = ensureHfIds(html);
   const parser = new DOMParser();
-  const doc = parser.parseFromString(withIds, "text/html");
+  const doc = parser.parseFromString(html, "text/html");
 
   const elements: TimelineElement[] = [];
   const keyframes: Record<string, Keyframe[]> = {};
@@ -190,6 +190,7 @@ export function parseHtml(html: string): ParsedHtml {
   if (!htmlEl) {
     throw new CompositionHtmlParseError("parseHtml: input HTML is empty or could not be parsed");
   }
+  if (doc.body) assignHfIds(doc.body);
   const customStylesAttr = htmlEl.getAttribute("data-custom-styles");
   let customStyles: string | null = null;
   if (customStylesAttr) {
@@ -268,7 +269,7 @@ export function parseHtml(html: string): ParsedHtml {
 
     if (type === "text") {
       const textEl = el.firstElementChild;
-      const content = textEl?.textContent || name;
+      const content = textEl?.textContent ?? name;
       const color = el.getAttribute("data-color") || undefined;
       const fontSizeAttr = el.getAttribute("data-font-size");
       const fontSize = fontSizeAttr ? parseInt(fontSizeAttr, 10) : undefined;

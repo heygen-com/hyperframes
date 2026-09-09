@@ -13,6 +13,7 @@
  *      exposes an async `writeFrame(buffer)` + `close()` API.
  */
 
+import { jpegInputError } from "../utils/jpegInput.js";
 import { spawn, type ChildProcess } from "child_process";
 import { once } from "events";
 import { trackChildProcess } from "../utils/processTracker.js";
@@ -537,6 +538,7 @@ export async function spawnStreamingEncoder(
     }
   };
 
+  let inputFrameIndex = 0;
   const encoder: StreamingEncoder = {
     writeFrame: async (buffer: Buffer): Promise<boolean> => {
       const stdin = ffmpeg.stdin;
@@ -557,7 +559,12 @@ export async function spawnStreamingEncoder(
       // so without this copy the pipe would read partially-overwritten data
       // and flicker.
       const copy = Buffer.from(buffer);
+      if (!options.rawInputFormat && (options.imageFormat ?? "jpeg") === "jpeg") {
+        const error = jpegInputError(copy);
+        if (error) throw new Error(`Invalid JPEG input at frame ${inputFrameIndex}: ${error}`);
+      }
       const accepted = stdin.write(copy);
+      inputFrameIndex++;
       // Reset inactivity timer immediately ONLY on `accepted === true`. `true`
       // means the write went through to the kernel pipe without buffering in
       // Node — proof FFmpeg is actually consuming. `false` means Node's writable
