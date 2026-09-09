@@ -144,6 +144,37 @@ function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
   return forcesOpacityZero;
 }
 
+const CSS_TRANSITION_PROPERTY_PATTERN = /^(?:-webkit-)?transition(?:-[a-z][a-z-]*)?$/i;
+
+function isSeekUnsafeTransition(declaration: postcss.Declaration): boolean {
+  const property = declaration.prop.trim().toLowerCase();
+  if (property.startsWith("--") || !CSS_TRANSITION_PROPERTY_PATTERN.test(property)) return false;
+
+  const value = declaration.value.trim().toLowerCase();
+  const disablesTransition =
+    [
+      "transition",
+      "-webkit-transition",
+      "transition-property",
+      "-webkit-transition-property",
+    ].includes(property) && value === "none";
+  return !disablesTransition;
+}
+
+function cssTransitionFinding(
+  declaration: postcss.Declaration,
+  details: Pick<HyperframeLintFinding, "selector" | "elementId" | "snippet">,
+): HyperframeLintFinding {
+  return {
+    code: "css_transition_used",
+    severity: "error",
+    message: `CSS declaration \`${declaration.prop}: ${declaration.value}\` runs on the browser clock and cannot be seeked deterministically across render workers.`,
+    fixHint:
+      "Keep the class or attribute swap for state; put the visual change on the paused GSAP timeline.",
+    ...details,
+  };
+}
+
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
   if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) {
     return false;
@@ -377,6 +408,55 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         });
       }
     }
+    return findings;
+  },
+
+  // css_transition_used
+  ({ styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+
+    for (const style of styles) {
+      if (!/transition/i.test(style.content)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        // The CSS syntax rule reports malformed style blocks separately.
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        const selector =
+          declaration.parent?.type === "rule" ? declaration.parent.selector : undefined;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            selector,
+            snippet: truncateSnippet(declaration.toString()),
+          }),
+        );
+      });
+    }
+
+    for (const tag of tags) {
+      const inlineStyle = readDecodedAttr(tag.raw, "style");
+      if (!inlineStyle || !/transition/i.test(inlineStyle)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(inlineStyle);
+      } catch {
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            elementId: readDecodedAttr(tag.raw, "id") || undefined,
+            snippet: truncateSnippet(tag.raw),
+          }),
+        );
+      });
+    }
+
     return findings;
   },
 
