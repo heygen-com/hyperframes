@@ -67,6 +67,7 @@
         "adm-zip": "^0.6.0",
         "citty": "^0.2.1",
         "compare-versions": "^6.1.1",
+        "css-tree": "^3.2.1",
         "debug": "^4.4.0",
         "esbuild": "^0.25.12",
         "fontkit": "^2.0.4",
@@ -91,6 +92,7 @@
         "@hyperframes/producer": "workspace:*",
         "@hyperframes/studio": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
+        "@types/css-tree": "^3.2.0",
         "@types/fontkit": "^2.0.9",
         "@types/mime-types": "^3.0.1",
         "@types/node": "^25.0.10",
@@ -1159,6 +1161,8 @@
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
 
     "@types/chrome": ["@types/chrome@0.0.326", "", { "dependencies": { "@types/filesystem": "*", "@types/har-format": "*" } }, "sha512-WS7jKf3ZRZFHOX7dATCZwqNJgdfiSF0qBRFxaO0LhIOvTNBrfkab26bsZwp6EBpYtqp8loMHJTnD6vDTLWPKYw=="],
+
+    "@types/css-tree": ["@types/css-tree@3.2.0", "", {}, "sha512-J5KXmk6BFIepOT7280FdFyNs4c5fh0Uee0otjKEvzchrRs38Ii9qminqc4ds0L19X8Zd/rT+brR9jkBthygjWw=="],
 
     "@types/deep-eql": ["@types/deep-eql@4.0.2", "", {}, "sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw=="],
 

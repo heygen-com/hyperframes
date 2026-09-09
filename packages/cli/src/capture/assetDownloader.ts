@@ -13,6 +13,9 @@ import type { CatalogedAsset } from "./assetCataloger.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
 import { classifyIcon, type IconShape } from "./iconClassifier.js";
+import { readBoundedResponse } from "./readBoundedResponse.js";
+import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
+import { captureImageExtension } from "./captureImageValidation.js";
 
 interface DownloadBudgetOptions {
   remainingMs?: () => number;
@@ -190,9 +193,10 @@ async function fetchAndInspectIcon(
   outputDir: string,
   timeoutMs: number,
 ): Promise<{ record: IconRecord; buffer: Buffer } | null> {
-  const ext = extname(new URL(icon.href).pathname) || ".ico";
   const buffer = await fetchBuffer(icon.href, timeoutMs);
   if (!buffer) return null;
+  const ext = await captureImageExtension(buffer);
+  if (!ext) return null;
 
   const file = `assets/${stem}${ext}`;
   writeFileSync(join(outputDir, file), buffer);
@@ -405,14 +409,17 @@ export async function downloadAssets(
     const results = await Promise.allSettled(
       batch.map(async ({ url, isPoster, catalog }) => {
         const parsedUrl = new URL(url);
-        const pathExt = extname(parsedUrl.pathname);
-        const ext = pathExt && pathExt.length <= 5 ? pathExt : ".jpg";
         const buffer = await fetchBuffer(url, Math.min(10_000, remainingMs));
         if (!buffer) {
           drops.unavailable++;
           return null;
         }
-        const isSvg = ext === ".svg" || url.includes(".svg");
+        const ext = await captureImageExtension(buffer);
+        if (!ext) {
+          drops.unavailable++;
+          return null;
+        }
+        const isSvg = ext === ".svg";
         const minSize = isSvg ? 200 : 10000;
         if (buffer.length < minSize) {
           drops["size-floor"]++;
@@ -464,17 +471,17 @@ export async function downloadAssets(
   if (tokens.ogImage && !downloadedUrls.has(normalizeUrl(tokens.ogImage))) {
     const remainingMs = options.remainingMs?.() ?? 10_000;
     try {
-      const ext = extname(new URL(tokens.ogImage).pathname) || ".jpg";
-      const localPath = `assets/og-image${ext}`;
       if (remainingMs <= 0) {
         drops["budget-exhausted"]++;
       } else {
         const buffer = await fetchBuffer(tokens.ogImage, Math.min(10_000, remainingMs));
-        if (!buffer) {
+        const ext = buffer && (await captureImageExtension(buffer));
+        if (!buffer || !ext) {
           drops.unavailable++;
         } else if (buffer.length <= 5000) {
           drops["size-floor"]++;
         } else {
+          const localPath = `assets/og-image${ext}`;
           writeFileSync(join(outputDir, localPath), buffer);
           assets.push({ url: tokens.ogImage, localPath, type: "image" });
         }
@@ -575,13 +582,12 @@ export async function downloadAndRewriteFonts(
     count++;
 
     try {
-      const urlObj = new URL(fontUrl);
-      const filename = urlObj.pathname.split("/").pop() || `font-${count}.woff2`;
-      const localPath = join(assetsDir, filename);
-      const relativePath = `assets/fonts/${filename}`;
-
       const buffer = await fetchBuffer(fontUrl, Math.min(10_000, remainingMs));
-      if (buffer) {
+      const extension = buffer && captureFontExtension(buffer);
+      if (buffer && extension) {
+        const filename = captureFontFilename(fontUrl, extension);
+        const localPath = join(assetsDir, filename);
+        const relativePath = `assets/fonts/${filename}`;
         writeFileSync(localPath, buffer);
         rewritten = rewritten.split(fontUrl).join(relativePath);
       } else {
@@ -697,8 +703,8 @@ async function fetchBuffer(url: string, timeoutMs = 10_000): Promise<Buffer | nu
     if (ct.includes("text/xml") || ct.includes("text/html") || ct.includes("application/xml")) {
       return null;
     }
-    const ab = await res.arrayBuffer();
-    return Buffer.from(ab);
+    // Match capture's existing per-video ceiling; count streamed bytes even without a header.
+    return await readBoundedResponse(res, 75 * 1024 * 1024);
   } catch {
     return null;
   }

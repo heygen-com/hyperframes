@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -289,7 +289,20 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
     await withTempDir(async (dir) => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(new Uint8Array(2048), { status: 200 })),
+        vi.fn(
+          async () =>
+            new Response(
+              new Uint8Array(
+                readFileSync(
+                  new URL(
+                    "../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2",
+                    import.meta.url,
+                  ),
+                ),
+              ),
+              { status: 200 },
+            ),
+        ),
       );
       const { css, drops } = await downloadAndRewriteFonts(fontCss(1), dir);
       expect(css).toContain("assets/fonts/font-0.woff2");
@@ -303,11 +316,21 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
   });
 
   it("counts an image dropped for being under the raster floor", async () => {
-    // 9 KB is under the 10 KB floor. Nothing lands, and the reason is now on the record.
+    // A valid small PNG is under the 10 KB floor; preserve the recorded drop reason.
     await withTempDir(async (dir) => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(new Uint8Array(9000), { status: 200 })),
+        vi.fn(
+          async () =>
+            new Response(
+              new Uint8Array(
+                await sharp({ create: { width: 2, height: 2, channels: 4, background: "red" } })
+                  .png()
+                  .toBuffer(),
+              ),
+              { status: 200 },
+            ),
+        ),
       );
       const { assets, drops } = await downloadAssets(tokensWithNoSvgs(), dir, [
         { type: "Image", url: "https://cdn.example/hero.png", contexts: ["img[src]"] },
@@ -374,7 +397,8 @@ describe("asset fetches present the same identity as the page navigation", () =>
           headers: { "content-type": "text/html" },
         });
       }
-      const body = new Uint8Array(4096);
+      const body =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24"/></svg>';
       return new Response(body, { status: 200, headers: { "content-type": "image/svg+xml" } });
     });
   }
@@ -403,6 +427,22 @@ describe("asset fetches present the same identity as the page navigation", () =>
     });
   });
 });
+
+async function testIco(): Promise<Buffer> {
+  const png = await sharp({ create: { width: 16, height: 16, channels: 4, background: "red" } })
+    .png()
+    .toBuffer();
+  const header = Buffer.alloc(22);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(1, 4);
+  header[6] = 16;
+  header[7] = 16;
+  header.writeUInt16LE(1, 10);
+  header.writeUInt16LE(32, 12);
+  header.writeUInt32LE(png.length, 14);
+  header.writeUInt32LE(22, 18);
+  return Buffer.concat([header, png]);
+}
 
 describe("declared icons — keep them all, headline the bare mark", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -451,7 +491,7 @@ describe("declared icons — keep them all, headline the bare mark", () => {
         "fetch",
         serve({
           "favicon.svg": BADGE_SVG,
-          "favicon.ico": Buffer.from("not a decodable ico"),
+          "favicon.ico": await testIco(),
           "apple-icon.png": await solidPng(1),
         }),
       );
@@ -474,7 +514,7 @@ describe("declared icons — keep them all, headline the bare mark", () => {
         "fetch",
         serve({
           "favicon.svg": BADGE_SVG,
-          "favicon.ico": Buffer.from("not a decodable ico"),
+          "favicon.ico": await testIco(),
           "apple-icon.png": await solidPng(1),
         }),
       );
@@ -534,6 +574,88 @@ describe("declared icons — keep them all, headline the bare mark", () => {
         { rel: "icon", href: "https://x.test/favicon.svg", sizes: null, type: "image/svg+xml" },
       ] as IconCandidate[]);
       expect(assets.map((a) => a.localPath)).toContain("assets/favicon.svg");
+    });
+  });
+});
+
+describe("capture download security boundaries", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("canonicalizes an icon ADS suffix and its promoted copy while preserving SVG bytes", async () => {
+    await withTempDir(async (dir) => {
+      const body =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24"/></svg>';
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(body)),
+      );
+      const { icons } = await downloadAssets(
+        tokensWithNoSvgs(),
+        dir,
+        [],
+        [
+          {
+            rel: "icon",
+            href: "https://public.example/favicon.svg:payload",
+            sizes: null,
+            type: null,
+          },
+        ],
+      );
+      expect(icons.icons[0]?.file).toBe("assets/icon-icon-unsized.svg");
+      expect(icons.headline?.file).toBe("assets/favicon.svg");
+      expect(readFileSync(join(dir, "assets/favicon.svg"), "utf8")).toBe(body);
+    });
+  });
+
+  it("does not publish arbitrary bytes as an OG image", async () => {
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(new Uint8Array(6000).fill(65))),
+      );
+      const tokens = tokensWithNoSvgs();
+      tokens.ogImage = "https://public.example/og.jpg::$DATA";
+      const { assets, drops } = await downloadAssets(tokens, dir);
+      expect(assets).toEqual([]);
+      expect(drops.unavailable).toBe(1);
+      expect(readdirSync(join(dir, "assets"))).not.toContain("og-image.jpg::$DATA");
+    });
+  });
+
+  it.each(["font.woff2:ads", "CON.woff2"])(
+    "writes valid font %s under a safe name and rewrites CSS",
+    async (name) => {
+      await withTempDir(async (dir) => {
+        const bytes = readFileSync(
+          new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+        );
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => new Response(new Uint8Array(bytes))),
+        );
+        const source = `@font-face{font-family:Demo;src:url(https://public.example/${name})}`;
+        const result = await downloadAndRewriteFonts(source, dir);
+        const names = readdirSync(join(dir, "assets/fonts"));
+        expect(names).toHaveLength(1);
+        expect(names[0]).not.toMatch(/:|^CON\./i);
+        expect(result.css).toContain(`assets/fonts/${names[0]}`);
+        expect(readFileSync(join(dir, "assets/fonts", names[0]!))).toEqual(bytes);
+      });
+    },
+  );
+
+  it("leaves invalid font URLs unchanged and records their rejection", async () => {
+    await withTempDir(async (dir) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(new Uint8Array(2048))),
+      );
+      const source = "@font-face{font-family:Demo;src:url(https://public.example/font.woff2)}";
+      const result = await downloadAndRewriteFonts(source, dir);
+      expect(result.css).toBe(source);
+      expect(result.drops.unavailable).toBe(1);
+      expect(readdirSync(join(dir, "assets/fonts"))).toEqual([]);
     });
   });
 });
