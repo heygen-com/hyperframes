@@ -1,19 +1,24 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { RegistryItem } from "@hyperframes/core";
 
 // The installer fetches over the network; the point of these tests is what it
-// does to files on disk, so the fetch is replaced by a local write.
+// does to files on disk, so the fetch returns controlled bytes.
 const remote = vi.hoisted(() => ({ contents: "REGISTRY VERSION\n" }));
 vi.mock("./remote.js", () => ({
   DEFAULT_REGISTRY_URL: "https://example.test/r",
-  fetchItemFile: vi.fn(async (_item: unknown, _file: unknown, destPath: string): Promise<void> => {
-    mkdirSync(dirname(destPath), { recursive: true });
-    writeFileSync(destPath, remote.contents, "utf-8");
-  }),
+  fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
 }));
 
 const { hasLocalEdits, installItem } = await import("./installer.js");
@@ -24,9 +29,11 @@ function project(): string {
 
 const item = {
   name: "data-chart",
+  title: "Data chart",
+  description: "Chart component",
   type: "hyperframes:component",
   files: [
-    { path: "data-chart.html", target: "components/data-chart.html", type: "hyperframes:file" },
+    { path: "data-chart.html", target: "components/data-chart.html", type: "hyperframes:snippet" },
   ],
 } as unknown as RegistryItem;
 
@@ -52,6 +59,33 @@ describe("hasLocalEdits", () => {
 });
 
 describe("installItem", () => {
+  it("rejects a target directory symlink that escapes the project even with force", async () => {
+    const dir = project();
+    const outside = project();
+    try {
+      symlinkSync(outside, join(dir, "components"), "junction");
+      await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(
+        /Unsafe target/,
+      );
+      expect(existsSync(join(outside, "data-chart.html"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+  it("preserves directory symlinks whose destination stays inside the project", async () => {
+    const dir = project();
+    try {
+      mkdirSync(join(dir, "actual"));
+      symlinkSync(join(dir, "actual"), join(dir, "components"), "junction");
+      await installItem(item, { destDir: dir, force: true });
+      expect(readFileSync(join(dir, "actual/data-chart.html"), "utf8")).toContain(
+        "REGISTRY VERSION",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it("records what it installed, so a later install can tell", async () => {
     const dir = project();
     const result = await installItem(item, { destDir: dir });
@@ -113,6 +147,10 @@ describe("installItem", () => {
     // the pre-marker bytes would make every reinstall look like an edit.
     const block = {
       name: "hero",
+      title: "Hero",
+      description: "Hero block",
+      dimensions: { width: 100, height: 100 },
+      duration: 1,
       type: "hyperframes:block",
       files: [{ path: "hero.html", target: "blocks/hero.html", type: "hyperframes:composition" }],
     } as unknown as RegistryItem;
@@ -129,12 +167,14 @@ describe("installItem", () => {
 describe("installing several items, as a dependency plan does", () => {
   const other = {
     name: "shared-caption",
+    title: "Shared caption",
+    description: "Shared component",
     type: "hyperframes:component",
     files: [
       {
         path: "shared-caption.html",
         target: "components/shared-caption.html",
-        type: "hyperframes:file",
+        type: "hyperframes:snippet",
       },
     ],
   } as unknown as RegistryItem;

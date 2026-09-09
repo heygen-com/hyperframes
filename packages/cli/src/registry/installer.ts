@@ -1,3 +1,6 @@
+import { validRegistryItem } from "./validation.js";
+import { registryRoot, registryTargetPath, publishRegistryFile } from "./publication.js";
+import type { DownloadByteBudget } from "../capture/readBoundedResponse.js";
 /**
  * Registry installer — copies item files into a destination project.
  *
@@ -7,7 +10,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
@@ -57,7 +60,7 @@ function digest(contents: Buffer | string): string {
 }
 
 function readInstallRecord(destDir: string): InstallRecord {
-  const path = resolve(destDir, INSTALL_RECORD);
+  const path = registryTargetPath(destDir, INSTALL_RECORD);
   if (!existsSync(path)) return {};
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
@@ -77,7 +80,7 @@ function readInstallRecord(destDir: string): InstallRecord {
 
 function writeInstallRecord(destDir: string, record: InstallRecord): void {
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(resolve(destDir, INSTALL_RECORD), `${JSON.stringify(sorted, null, 2)}\n`, "utf-8");
+  publishRegistryFile(destDir, INSTALL_RECORD, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
 /**
@@ -157,8 +160,9 @@ async function installOneFile(
   baseUrl: string,
   record: InstallRecord,
   options: InstallOptions,
+  budget: DownloadByteBudget,
 ): Promise<FileOutcome> {
-  const destPath = resolve(destDir, file.target);
+  const destPath = registryTargetPath(destDir, file.target);
 
   // Decided before fetching rather than after: a file we are going to keep
   // should never be overwritten and then put back, because a crash in
@@ -171,27 +175,23 @@ async function installOneFile(
     return { destPath, target: file.target, preserved: true, hash: null, vars: null };
   }
 
-  await fetchItemFile(item, file, destPath, baseUrl);
+  let bytes = await fetchItemFile(item, file, baseUrl, budget);
   if (isInstalledRegistryBlockComposition(item, file)) {
-    const source = readFileSync(destPath, "utf-8");
-    writeFileSync(destPath, addRegistryItemMarker(source, item), "utf-8");
+    bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
   }
-  // A component has no mount element to hang values on, so the chosen
-  // values go into its own declaration or they go nowhere. See
-  // variableDefaults.ts for why that is the only surviving home.
   let vars: ApplyResult | null = null;
   if (options.variableValues && isInstalledComponentSnippet(item, file)) {
-    const source = readFileSync(destPath, "utf-8");
-    vars = applyVariableDefaults(source, options.variableValues);
-    if (vars.applied.length > 0) writeFileSync(destPath, vars.html, "utf-8");
+    vars = applyVariableDefaults(bytes.toString("utf8"), options.variableValues);
+    if (vars.applied.length > 0) bytes = Buffer.from(vars.html);
   }
+  publishRegistryFile(destDir, file.target, bytes);
   // Hash what actually landed, marker and baked defaults included, or the
   // next install reads its own output as the project's edit.
   return {
     destPath,
     target: file.target,
     preserved: false,
-    hash: digest(readFileSync(destPath)),
+    hash: digest(bytes),
     vars,
   };
 }
@@ -204,6 +204,7 @@ export async function installItem(
   item: RegistryItem,
   options: InstallOptions,
 ): Promise<InstallResult> {
+  if (!validRegistryItem(item, item.name, item.type)) throw new Error("Invalid registry item");
   const baseUrl = options.baseUrl ?? DEFAULT_REGISTRY_URL;
   const destDir = resolve(options.destDir);
 
@@ -212,12 +213,13 @@ export async function installItem(
     assertSafeTarget(destDir, file.target);
   }
 
-  const record = readInstallRecord(destDir);
+  const root = registryRoot(destDir);
+  validatePhysicalTargets(root, item.files);
+  const record = readInstallRecord(root);
+  const budget = { remainingBytes: 512 * 1024 * 1024 };
 
-  const outcomes = await Promise.all(
-    item.files.map((file: FileTarget) =>
-      installOneFile(item, file, destDir, baseUrl, record, options),
-    ),
+  const outcomes = await installFileBatches(item.files, (file) =>
+    installOneFile(item, file, root, baseUrl, record, options, budget),
   );
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);
@@ -227,7 +229,7 @@ export async function installItem(
     for (const outcome of outcomes) {
       if (outcome.hash) record[outcome.target] = outcome.hash;
     }
-    writeInstallRecord(destDir, record);
+    writeInstallRecord(root, record);
   }
 
   const vars = outcomes.map((o) => o.vars).filter((v): v is ApplyResult => v !== null);
@@ -245,4 +247,34 @@ export async function installItem(
       : [],
     variablesInvalid: vars.flatMap((v) => v.invalid),
   };
+}
+
+function validatePhysicalTargets(root: string, files: FileTarget[]): void {
+  const targets = new Set<string>();
+  const recordPath = registryTargetPath(root, INSTALL_RECORD);
+  for (const file of files) {
+    const path = registryTargetPath(root, file.target);
+    const key = process.platform === "win32" ? path.toLowerCase() : path;
+    if (
+      targets.has(key) ||
+      key === (process.platform === "win32" ? recordPath.toLowerCase() : recordPath)
+    )
+      throw new Error("Unsafe target: duplicate or reserved install record");
+    targets.add(key);
+  }
+}
+
+async function installFileBatches(
+  files: FileTarget[],
+  install: (file: FileTarget) => Promise<FileOutcome>,
+): Promise<FileOutcome[]> {
+  const outcomes: FileOutcome[] = [];
+  for (let at = 0; at < files.length; at += 4) {
+    const batch = await Promise.allSettled(files.slice(at, at + 4).map(install));
+    for (const result of batch) {
+      if (result.status === "rejected") throw result.reason;
+      outcomes.push(result.value);
+    }
+  }
+  return outcomes;
 }

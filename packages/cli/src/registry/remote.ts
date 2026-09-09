@@ -1,3 +1,8 @@
+import { readBoundedRegistryFile } from "./boundedFile.js";
+import { publishRegistryFile, registryRoot } from "./publication.js";
+import { fetchRegistryHttps, registryHttpsUrl, registryPathUrl } from "./transport.js";
+import { readBoundedResponse, type DownloadByteBudget } from "../capture/readBoundedResponse.js";
+import { validRegistryName, validRegistryManifest, validRegistryItem } from "./validation.js";
 /**
  * Remote Registry Fetching
  *
@@ -12,8 +17,7 @@
  * `<type-dir>` comes from ITEM_TYPE_DIRS in @hyperframes/core.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import {
   ITEM_TYPE_DIRS,
@@ -27,6 +31,7 @@ export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 
 const FETCH_TIMEOUT_MS = 10_000;
+const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 
 // ── Caching ─────────────────────────────────────────────────────────────────
 // 24h TTL on manifest fetches so the interactive picker stays snappy offline.
@@ -54,17 +59,23 @@ function cachePath(baseUrl: string, key: string): string {
  * host reported the entire catalog as unreachable and sent authors off to
  * hand-write what they already had on disk.
  */
-function readCacheEntry<T>(path: string): CacheEntry<T> | undefined {
+function readCacheEntry<T>(
+  path: string,
+  validate: (value: unknown) => value is T,
+): CacheEntry<T> | undefined {
   try {
-    const entry = JSON.parse(readFileSync(path, "utf-8")) as CacheEntry<T>;
-    if (typeof entry.fetchedAt !== "number") return undefined;
+    const entry = JSON.parse(
+      readBoundedRegistryFile(path, MAX_MANIFEST_BYTES).toString("utf8"),
+    ) as CacheEntry<unknown>;
+    if (!entry || typeof entry.fetchedAt !== "number" || !Number.isFinite(entry.fetchedAt))
+      return undefined;
     // The callers now test the entry rather than the payload, so an empty
     // payload would satisfy them: `null` data would short-circuit the fetch
     // and be handed back as a RegistryItem. Rejecting it here keeps the miss
     // failing toward "go ask the network" rather than toward "the catalog is
     // empty", which is the whole point of the change around it.
-    if (entry.data === undefined || entry.data === null) return undefined;
-    return entry;
+    if (!validate(entry.data)) return undefined;
+    return { fetchedAt: entry.fetchedAt, data: entry.data };
   } catch {
     // Missing file or corrupt JSON → cache miss.
     return undefined;
@@ -77,9 +88,9 @@ function isFresh<T>(entry: CacheEntry<T>): boolean {
 
 function writeCache<T>(path: string, data: T): void {
   try {
-    mkdirSync(dirname(path), { recursive: true });
+    const root = registryRoot(CACHE_DIR);
     const entry: CacheEntry<T> = { fetchedAt: Date.now(), data };
-    writeFileSync(path, JSON.stringify(entry), "utf-8");
+    publishRegistryFile(root, basename(path), JSON.stringify(entry));
   } catch {
     // Cache writes are opportunistic. A read-only home directory or sandboxed
     // environment should not make the registry appear unreachable.
@@ -88,12 +99,16 @@ function writeCache<T>(path: string, data: T): void {
 
 // ── Fetchers ────────────────────────────────────────────────────────────────
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+async function fetchJson<T>(url: string, validate: (value: unknown) => value is T): Promise<T> {
+  const res = await fetchRegistryHttps(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
   if (!res.ok) {
     throw new Error(`Registry fetch failed: ${url} — HTTP ${res.status}`);
   }
-  return (await res.json()) as T;
+  const bytes = await readBoundedResponse(res, MAX_MANIFEST_BYTES);
+  if (!bytes) throw new Error("Registry manifest exceeds download limit");
+  const data: unknown = JSON.parse(bytes.toString("utf8"));
+  if (!validate(data)) throw new Error("Invalid registry manifest");
+  return data;
 }
 
 /**
@@ -110,12 +125,13 @@ export async function fetchRegistryManifest(
   baseUrl: string = DEFAULT_REGISTRY_URL,
   options?: { skipCache?: boolean },
 ): Promise<RegistryManifest | undefined> {
+  const url = registryPathUrl(baseUrl, "registry.json");
   const cacheFile = cachePath(baseUrl, "registry");
-  const cached = readCacheEntry<RegistryManifest>(cacheFile);
+  const cached = readCacheEntry(cacheFile, validRegistryManifest);
   if (!options?.skipCache && cached && isFresh(cached)) return cached.data;
 
   try {
-    const manifest = await fetchJson<RegistryManifest>(`${baseUrl}/registry.json`);
+    const manifest = await fetchJson(url, validRegistryManifest);
     writeCache(cacheFile, manifest);
     return manifest;
   } catch {
@@ -134,14 +150,17 @@ export async function fetchItemManifest(
   type: ItemType,
   baseUrl: string = DEFAULT_REGISTRY_URL,
 ): Promise<RegistryItem> {
+  if (!validRegistryName(name) || !Object.hasOwn(ITEM_TYPE_DIRS, type))
+    throw new Error("Invalid registry item name or type");
   const dir = ITEM_TYPE_DIRS[type];
+  const validate = (value: unknown): value is RegistryItem => validRegistryItem(value, name, type);
+  const url = registryPathUrl(baseUrl, dir, name, "registry-item.json");
   const cacheFile = cachePath(baseUrl, `${dir}__${name}`);
-  const cached = readCacheEntry<RegistryItem>(cacheFile);
+  const cached = readCacheEntry(cacheFile, validate);
   if (cached && isFresh(cached)) return cached.data;
 
-  const url = `${baseUrl}/${dir}/${name}/registry-item.json`;
   try {
-    const item = await fetchJson<RegistryItem>(url);
+    const item = await fetchJson(url, validate);
     writeCache(cacheFile, item);
     return item;
   } catch (err) {
@@ -202,9 +221,10 @@ function isRetryableTransport(err: unknown): boolean {
  */
 async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
   let lastErr: unknown;
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      return await fetchRegistryHttps(url, signal);
     } catch (err) {
       lastErr = err;
       if (attempt === attempts || !isRetryableTransport(err)) break;
@@ -235,26 +255,25 @@ export function assetSourceUrl(
   baseUrl: string = DEFAULT_REGISTRY_URL,
 ): string {
   if (file.url === undefined) {
-    return `${baseUrl}/${ITEM_TYPE_DIRS[item.type]}/${item.name}/${file.path}`;
+    return registryPathUrl(baseUrl, ITEM_TYPE_DIRS[item.type], item.name, file.path);
   }
   if (!file.url.startsWith("https://")) {
     throw new Error(
       `Unsafe file.url "${file.url}" for "${item.name}/${file.path}": must be an absolute https:// URL.`,
     );
   }
-  return file.url;
+  return registryHttpsUrl(file.url).href;
 }
 
 /**
- * Download a single file referenced by an item to a local destination.
- * Caller is responsible for target-path validation (see installer.ts).
+ * Read bounded item bytes; the installer owns transforms and safe publication.
  */
 export async function fetchItemFile(
   item: RegistryItem,
   file: FileTarget,
-  destPath: string,
   baseUrl: string = DEFAULT_REGISTRY_URL,
-): Promise<void> {
+  budget: DownloadByteBudget = { remainingBytes: 512 * 1024 * 1024 },
+): Promise<Buffer> {
   // Reject path-traversal in file.path (mirrors assertSafeTarget for file.target).
   if (/(^|[/\\])\.\.([/\\]|$)/.test(file.path)) {
     throw new Error(`Unsafe file.path "${file.path}": path segments may not contain "..".`);
@@ -274,7 +293,7 @@ export async function fetchItemFile(
   if (!res.ok) {
     throw new Error(`File fetch failed: ${url} — HTTP ${res.status}`);
   }
-  const buf = new Uint8Array(await res.arrayBuffer());
-  mkdirSync(dirname(destPath), { recursive: true });
-  writeFileSync(destPath, buf);
+  const bytes = await readBoundedResponse(res, 128 * 1024 * 1024, budget);
+  if (!bytes) throw new Error("Registry file exceeds download budget");
+  return bytes;
 }
