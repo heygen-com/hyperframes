@@ -1180,6 +1180,7 @@ function main(): void {
     "Shader Transitions": 5,
     "CSS Transitions": 6,
     Showcases: 7,
+    Carousels: 7.2,
     "Code Snippets": 7.5,
     Data: 8,
     "Motion Primitives": 9,
@@ -1216,6 +1217,12 @@ function main(): void {
     // Showcases they were two thirds of it, and the handful of actual showcase
     // scenes were unfindable underneath them.
     if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
+    // Same story, same fix: 25 image carousels are half of Showcases, and the
+    // scenes that shelf is for disappear underneath them. Keyed on the FIRST
+    // tag, which is this file's stated grouping rule, so an item that merely
+    // uses a carousel — `screen-flow-carousel` leads with `product-demo` —
+    // stays on the shelf that describes what it is for.
+    if (tags[0] === "carousel") return "Carousels";
     if (tags.includes("showcase") || tags.includes("3d")) return "Showcases";
     if (tags.includes("data") || tags.includes("chart") || tags.includes("ascii")) return "Data";
     // Split what used to be one 267-item "Effects" list. Ordered most specific
@@ -1267,7 +1274,7 @@ function main(): void {
     { section: "Data & charts", groups: ["Data"] },
     {
       section: "Scenes & demos",
-      groups: ["Showcases", "Product Demo", "Social Overlays", "Motion Scenes"],
+      groups: ["Showcases", "Carousels", "Product Demo", "Social Overlays", "Motion Scenes"],
     },
     { section: "Motion & effects", groups: ["Motion Primitives", "Effects", "Camera & 3D"] },
     { section: "Surfaces", groups: ["Texture", "HTML-in-Canvas"] },
