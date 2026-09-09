@@ -23,6 +23,7 @@ import {
   isBlockItem,
   ITEM_TYPE_DIRS,
 } from "../packages/core/src/registry/types.js";
+import { withHostedDefaults } from "./registry-hosted-assets.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -883,7 +884,11 @@ function previewSection(
     // An item that declares variables gets the panel, which mounts the same
     // payload and re-mounts it as values change. Everything else gets the
     // plain player.
-    const variables = itemVariables(manifest);
+    // CDN defaults, not the local paths the manifest declares. The explorer
+    // posts every value to the preview frame on mount, including the untouched
+    // ones, so a local path here would override the payload's own default and
+    // ask the frame for a file that was deliberately never published.
+    const variables = withHostedDefaults(itemVariables(manifest), manifest);
     if (variables.length > 0) {
       const primaryTarget =
         primaryFileFor(manifest)?.target ?? `compositions/${manifest.name}.html`;

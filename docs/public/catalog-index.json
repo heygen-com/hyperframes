@@ -667,6 +667,396 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
   },
   {
+    "name": "carousel-circle-1",
+    "type": "block",
+    "title": "Circle Carousel 1",
+    "description": "Image cards ride a circle with a size gradient by depth angle, sweeping in fast-slow-fast swings (Circle style 1); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-circle-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-circle-1.png"
+  },
+  {
+    "name": "carousel-circle-2",
+    "type": "block",
+    "title": "Circle Carousel 2",
+    "description": "Image cards ride a circle with a size gradient by depth angle, sweeping in fast-slow-fast swings (Circle style 2); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-circle-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-circle-2.png"
+  },
+  {
+    "name": "carousel-circle-3",
+    "type": "block",
+    "title": "Circle Carousel 3",
+    "description": "Image cards ride a circle with a size gradient by depth angle, sweeping in fast-slow-fast swings (Circle style 3); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-circle-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-circle-3.png"
+  },
+  {
+    "name": "carousel-circle-4",
+    "type": "block",
+    "title": "Circle Carousel 4",
+    "description": "Image cards ride a circle with a size gradient by depth angle, sweeping in fast-slow-fast swings (Circle style 4); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-circle-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-circle-4.png"
+  },
+  {
+    "name": "carousel-circle-5",
+    "type": "block",
+    "title": "Circle Carousel 5",
+    "description": "Image cards ride a circle with a size gradient by depth angle, sweeping in fast-slow-fast swings (Circle style 5); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-circle-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-circle-5.png"
+  },
+  {
+    "name": "carousel-orbit-1",
+    "type": "block",
+    "title": "Orbit Carousel 1",
+    "description": "Image cards on a spinning 3D Fibonacci sphere, billboarded to the camera, sized by camera distance (Orbit style 1); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-orbit-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-orbit-1.png"
+  },
+  {
+    "name": "carousel-orbit-2",
+    "type": "block",
+    "title": "Orbit Carousel 2",
+    "description": "Image cards on a spinning 3D Fibonacci sphere, billboarded to the camera, sized by camera distance (Orbit style 2); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-orbit-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-orbit-2.png"
+  },
+  {
+    "name": "carousel-orbit-3",
+    "type": "block",
+    "title": "Orbit Carousel 3",
+    "description": "Image cards on a spinning 3D Fibonacci sphere, billboarded to the camera, sized by camera distance (Orbit style 3); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-orbit-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-orbit-3.png"
+  },
+  {
+    "name": "carousel-orbit-4",
+    "type": "block",
+    "title": "Orbit Carousel 4",
+    "description": "Image cards on a spinning 3D Fibonacci sphere, billboarded to the camera, sized by camera distance (Orbit style 4); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-orbit-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-orbit-4.png"
+  },
+  {
+    "name": "carousel-orbit-5",
+    "type": "block",
+    "title": "Orbit Carousel 5",
+    "description": "Image cards on a spinning 3D Fibonacci sphere, billboarded to the camera, sized by camera distance (Orbit style 5); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "orbit",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-orbit-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-orbit-5.png"
+  },
+  {
+    "name": "carousel-path-1",
+    "type": "block",
+    "title": "Path Carousel 1",
+    "description": "Image cards ride an open bezier path (arc, V, diagonal, wave, S-curve) with depth scaling and tangent rotation (Path style 1); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "path"
+    ],
+    "href": "/catalog/blocks/carousel-path-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-path-1.png"
+  },
+  {
+    "name": "carousel-path-2",
+    "type": "block",
+    "title": "Path Carousel 2",
+    "description": "Image cards ride an open bezier path (arc, V, diagonal, wave, S-curve) with depth scaling and tangent rotation (Path style 2); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "path"
+    ],
+    "href": "/catalog/blocks/carousel-path-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-path-2.png"
+  },
+  {
+    "name": "carousel-path-3",
+    "type": "block",
+    "title": "Path Carousel 3",
+    "description": "Image cards ride an open bezier path (arc, V, diagonal, wave, S-curve) with depth scaling and tangent rotation (Path style 3); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "path"
+    ],
+    "href": "/catalog/blocks/carousel-path-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-path-3.png"
+  },
+  {
+    "name": "carousel-path-4",
+    "type": "block",
+    "title": "Path Carousel 4",
+    "description": "Image cards ride an open bezier path (arc, V, diagonal, wave, S-curve) with depth scaling and tangent rotation (Path style 4); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "path"
+    ],
+    "href": "/catalog/blocks/carousel-path-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-path-4.png"
+  },
+  {
+    "name": "carousel-path-5",
+    "type": "block",
+    "title": "Path Carousel 5",
+    "description": "Image cards ride an open bezier path (arc, V, diagonal, wave, S-curve) with depth scaling and tangent rotation (Path style 5); 24 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "path"
+    ],
+    "href": "/catalog/blocks/carousel-path-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-path-5.png"
+  },
+  {
+    "name": "carousel-text-circle-1",
+    "type": "block",
+    "title": "Text + Circle Carousel 1",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 1).",
+    "tags": [
+      "carousel",
+      "title-card",
+      "kinetic-text",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-text-circle-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-text-circle-1.png"
+  },
+  {
+    "name": "carousel-text-circle-2",
+    "type": "block",
+    "title": "Text + Circle Carousel 2",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 2).",
+    "tags": [
+      "carousel",
+      "title-card",
+      "kinetic-text",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-text-circle-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-text-circle-2.png"
+  },
+  {
+    "name": "carousel-text-circle-3",
+    "type": "block",
+    "title": "Text + Circle Carousel 3",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 3).",
+    "tags": [
+      "carousel",
+      "title-card",
+      "kinetic-text",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-text-circle-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-text-circle-3.png"
+  },
+  {
+    "name": "carousel-text-circle-4",
+    "type": "block",
+    "title": "Text + Circle Carousel 4",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 4).",
+    "tags": [
+      "carousel",
+      "title-card",
+      "kinetic-text",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-text-circle-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-text-circle-4.png"
+  },
+  {
+    "name": "carousel-text-circle-5",
+    "type": "block",
+    "title": "Text + Circle Carousel 5",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 5).",
+    "tags": [
+      "carousel",
+      "title-card",
+      "kinetic-text",
+      "images",
+      "showcase",
+      "circle"
+    ],
+    "href": "/catalog/blocks/carousel-text-circle-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-text-circle-5.png"
+  },
+  {
+    "name": "carousel-vision-1",
+    "type": "block",
+    "title": "Vision Carousel 1",
+    "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 1); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "vision",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-vision-1",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-vision-1.png"
+  },
+  {
+    "name": "carousel-vision-2",
+    "type": "block",
+    "title": "Vision Carousel 2",
+    "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 2); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "vision",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-vision-2",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-vision-2.png"
+  },
+  {
+    "name": "carousel-vision-3",
+    "type": "block",
+    "title": "Vision Carousel 3",
+    "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 3); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "vision",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-vision-3",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-vision-3.png"
+  },
+  {
+    "name": "carousel-vision-4",
+    "type": "block",
+    "title": "Vision Carousel 4",
+    "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 4); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "vision",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-vision-4",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-vision-4.png"
+  },
+  {
+    "name": "carousel-vision-5",
+    "type": "block",
+    "title": "Vision Carousel 5",
+    "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 5); 12 image slots.",
+    "tags": [
+      "carousel",
+      "gallery",
+      "images",
+      "showcase",
+      "vision",
+      "3d"
+    ],
+    "href": "/catalog/blocks/carousel-vision-5",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/carousel-vision-5.png"
+  },
+  {
     "name": "char-slam-explode",
     "type": "component",
     "title": "Char Slam Explode",
