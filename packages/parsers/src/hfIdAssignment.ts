@@ -39,12 +39,22 @@ function ownText(el: Element): string {
   return text.trim();
 }
 
+function attributeName(el: Element, name: string): string {
+  return el.namespaceURI === "http://www.w3.org/1999/xhtml" ? name.toLowerCase() : name;
+}
+
+function getContractAttribute(el: Element, name: string): string | null {
+  return (
+    Array.from(el.attributes).find((attr) => attributeName(el, attr.name) === name)?.value ?? null
+  );
+}
+
 function contentKey(el: Element): string {
   // Exclude all data-hf-* attrs (ids, studio state) — they must not influence the hash.
   // Use \x00 / \x01 separators (invalid in HTML attrs) to prevent ambiguous serialization.
   const attrs = Array.from(el.attributes)
-    .filter((a) => !a.name.startsWith("data-hf-"))
-    .map((a) => `${a.name}\x00${a.value}`)
+    .filter((a) => !attributeName(el, a.name).startsWith("data-hf-"))
+    .map((a) => `${attributeName(el, a.name)}\x00${a.value}`)
     .sort()
     .join("\x01");
   return `${el.tagName.toLowerCase()}|${attrs}|${ownText(el)}`;
@@ -60,7 +70,7 @@ function contentKey(el: Element): string {
  * `data-hf-id` to source the attribute is physically bound to its element.
  * Reordering identical siblings carries the attribute along → zero
  * order-dependence post-persist. `ensureHfIds` skips pinned elements
- * (`if (el.getAttribute("data-hf-id")) continue`), so normal operation
+ * (`if (getContractAttribute(el, "data-hf-id")) continue`), so normal operation
  * never re-exposes the ordering after first persist.
  */
 // WIRE CONTRACT: id minting is content-keyed (FNV1a of innerHTML + tag). R7's
@@ -112,9 +122,9 @@ function getChildElements(parent: Element): Element[] {
 
 export function isCompositionTemplate(el: Element): boolean {
   if (el.tagName.toLowerCase() !== "template") return false;
-  if (el.getAttribute("data-composition-id") !== null) return true;
+  if (getContractAttribute(el, "data-composition-id") !== null) return true;
   for (const child of getChildElements(el)) {
-    if (child.getAttribute("data-composition-id") !== null) return true;
+    if (getContractAttribute(child, "data-composition-id") !== null) return true;
   }
   return false;
 }
@@ -149,12 +159,12 @@ export function walkCompositionDescendants(
 export function assignHfIds(body: Element): void {
   const assigned = new Set<string>();
   walkCompositionDescendants(body, (el) => {
-    const existing = el.getAttribute("data-hf-id");
+    const existing = getContractAttribute(el, "data-hf-id");
     if (existing) assigned.add(existing);
   });
   walkCompositionDescendants(body, (el) => {
     if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) return;
-    if (el.getAttribute("data-hf-id")) return;
+    if (getContractAttribute(el, "data-hf-id")) return;
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   });
 }

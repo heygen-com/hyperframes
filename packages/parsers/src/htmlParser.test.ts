@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from "vitest";
+import { ensureHfIds } from "./hfIds.js";
 import {
   parseHtml,
   updateElementInHtml,
@@ -25,6 +26,19 @@ describe("parseHtml", () => {
       name: "UP",
       content: "hello",
     });
+  });
+
+  it.each([
+    `<DIV ID="x" DATA-START="2" DATA-DURATION="3" DATA-NAME="UP"><DIV>hello</DIV></DIV>`,
+    `<DIV ID="x" DATA-START="2" DATA-HF-ID="pinned" DATA-HF-STATE="ignored"><DIV>hello</DIV></DIV>`,
+  ])("matches persisted and runtime IDs for mixed-case HTML: %s", (body) => {
+    const html = `<!doctype html><html><body>${body}</body></html>`;
+    const first = parseHtml(html);
+    const persisted = parseHtml(ensureHfIds(html));
+    expect(first.elements.length).toBeGreaterThan(0);
+    expect(first.elements.map((element) => element.id)).toEqual(
+      persisted.elements.map((element) => element.id),
+    );
   });
 
   it("extracts elements with data-start and data-end", () => {
