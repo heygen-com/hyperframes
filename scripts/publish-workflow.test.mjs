@@ -7,6 +7,7 @@ import test from "node:test";
 import { parse } from "yaml";
 
 const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8");
+const rootPackage = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const config = parse(workflow);
 const publish = config.jobs.publish;
 const checkout = publish.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
@@ -63,6 +64,32 @@ test("the executable checkout guard cannot be conditionally disabled", () => {
       "  exit 1",
       "fi",
     ].join("\n"),
+  );
+});
+
+test("the release build orders generated artifacts before their consumers", () => {
+  const packagesByStage = rootPackage.scripts.build.split(/\s*&&\s*/).map((stage) => {
+    const filter = stage.match(/@hyperframes\/(?:\{([^}]+)\}|([a-z0-9-]+))/);
+    const packages = filter?.[1]?.split(",") ?? [filter?.[2]].filter(Boolean);
+    return new Set(packages);
+  });
+  const firstStageWith = (packageName) =>
+    packagesByStage.findIndex((packages) => packages.has(packageName));
+
+  const coreIndex = firstStageWith("core");
+  const producerIndex = firstStageWith("producer");
+  const cloudRunIndex = firstStageWith("gcp-cloud-run");
+
+  assert.notEqual(coreIndex, -1, "root build must include Core");
+  assert.notEqual(producerIndex, -1, "root build must include Producer");
+  assert.notEqual(cloudRunIndex, -1, "root build must include GCP Cloud Run");
+  assert.ok(
+    packagesByStage.slice(coreIndex + 1).every((packages) => !packages.has("core")),
+    "Core rewrites generated source and must not rebuild in a later parallel group",
+  );
+  assert.ok(
+    producerIndex < cloudRunIndex,
+    "Producer declaration emit must finish before GCP Cloud Run consumes it",
   );
 });
 
