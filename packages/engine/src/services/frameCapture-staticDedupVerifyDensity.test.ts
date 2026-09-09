@@ -70,7 +70,7 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
     expect(result.badFrame).toBe(changeAt);
   });
 
-  it("uses silent verification seeks and restores the playhead to frame zero", async () => {
+  it("uses event-enabled verification seeks and restores the playhead to frame zero", async () => {
     const seekCalls: Array<{ t: number; options?: { suppressEvents?: boolean } }> = [];
     const page = {
       evaluate: vi.fn(async (fn: (tt: number) => void, t: number) => {
@@ -103,7 +103,7 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
 
     expect(result.outcome).toBe("verified");
     expect(seekCalls.map((call) => Math.round(call.t * fps))).toEqual([0, 3, 0]);
-    expect(seekCalls.every((call) => call.options?.suppressEvents === true)).toBe(true);
+    expect(seekCalls.every((call) => call.options?.suppressEvents === false)).toBe(true);
   });
 
   it("disarms within a wall-clock budget instead of spending minutes verifying a long static run", async () => {

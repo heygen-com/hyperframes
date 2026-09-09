@@ -2736,6 +2736,13 @@ export async function computeStaticFrameSet(
     let hasTimelineCall = false;
     function walk(tl: AnyTween, offset: number): void {
       if (typeof tl.getChildren !== "function") return;
+      // A timeline with an onUpdate callback can drive motion without any
+      // visible tween (e.g. setting x/y from Math.random inside onUpdate).
+      // Mark its entire span as animated so those frames are never deduped.
+      if (typeof tl.vars?.onUpdate === "function") {
+        const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
+        if (total > 0) intervals.push({ start: offset, end: offset + total });
+      }
       for (const child of tl.getChildren(false, true, true)) {
         const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
         const single = typeof child.duration === "function" ? child.duration() : 0;
@@ -3054,8 +3061,9 @@ interface StaticVerificationDependencies {
 
 /**
  * Prepare an isolated page for static-frame verification. Verification seeks
- * intentionally visit frames out of capture order, so they must never mutate
- * the page that will later be captured sequentially.
+ * intentionally visit frames out of capture order on a SEPARATE page that is
+ * never used for the real capture — out-of-order event-callback side effects
+ * are contained to this disposable page and cannot corrupt sequential capture.
  */
 export async function createStaticVerificationPage(session: CaptureSession): Promise<Page> {
   const page = await session.browser.newPage();
@@ -3167,7 +3175,7 @@ export async function verifyStaticFramesSafe(
           __hf?: { seek?: (t: number, options?: { suppressEvents?: boolean }) => void };
         }
       ).__hf;
-      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
+      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: false });
     }, t);
   };
   const hardCap = Math.max(
