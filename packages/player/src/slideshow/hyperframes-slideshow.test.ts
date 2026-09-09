@@ -199,6 +199,30 @@ describe("<hyperframes-slideshow>", () => {
     el.remove();
   });
 
+  it("accepts embedding-parent and self navigation but rejects other senders", () => {
+    const onNext = vi.fn();
+    const el = makeEl({ onNext });
+    const embedding = document.createElement("iframe");
+    const foreign = document.createElement("iframe");
+    document.body.append(embedding, foreign);
+    vi.stubGlobal("parent", embedding.contentWindow);
+    try {
+      for (const source of [foreign.contentWindow, null]) {
+        window.dispatchEvent(new MessageEvent("message", { source, data: { type: "next" } }));
+      }
+      expect(onNext).not.toHaveBeenCalled();
+      for (const source of [window, embedding.contentWindow]) {
+        window.dispatchEvent(new MessageEvent("message", { source, data: { type: "next" } }));
+      }
+      expect(onNext).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      embedding.remove();
+      foreign.remove();
+      el.remove();
+    }
+  });
+
   it("handles postMessage next", () => {
     const el = document.createElement("hyperframes-slideshow") as any;
     document.body.appendChild(el);
@@ -215,7 +239,7 @@ describe("<hyperframes-slideshow>", () => {
       currentSlide: { hotspots: [] },
       nextSlide: null,
     });
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "next" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "next" } }));
     expect(nextCalled).toBe(true);
     el.remove();
   });
@@ -1981,7 +2005,7 @@ describe("<hyperframes-slideshow> Fix 7 — audience mode ignores window postMes
       currentSlide: { hotspots: [] },
       nextSlide: null,
     });
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "next" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "next" } }));
     expect(nextCalled).toBe(false);
     el.remove();
   });
@@ -2003,7 +2027,7 @@ describe("<hyperframes-slideshow> Fix 7 — audience mode ignores window postMes
       currentSlide: { hotspots: [] },
       nextSlide: null,
     });
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "next" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "next" } }));
     expect(nextCalled).toBe(true);
     el.remove();
   });
@@ -2474,7 +2498,7 @@ describe("<hyperframes-slideshow> Fix 4 — back affordance (postMessage only; c
         backCalled = true;
       },
     });
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "back" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "back" } }));
     expect(backCalled).toBe(true);
     el.remove();
   });
@@ -2488,7 +2512,7 @@ describe("<hyperframes-slideshow> Fix 4 — back affordance (postMessage only; c
       },
     });
     el.setAttribute("mode", "audience");
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "back" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "back" } }));
     expect(backCalled).toBe(false);
     el.remove();
   });

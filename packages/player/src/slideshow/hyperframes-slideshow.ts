@@ -914,6 +914,7 @@ export class HyperframesSlideshow extends HTMLElement {
 
   // fallow-ignore-next-line complexity
   private onMessage = (e: MessageEvent): void => {
+    if (e.source !== window.parent && e.source !== window) return;
     // Audience mode is driven by BroadcastChannel; ignore embed postMessage nav.
     if (this.resolveMode() === "audience") return;
     const data = e.data as { type?: unknown; slideIndex?: unknown } | null;
