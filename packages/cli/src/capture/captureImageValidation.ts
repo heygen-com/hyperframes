@@ -8,14 +8,19 @@ const SVG_ELEMENTS = new Set(
     .split(" "),
 );
 
-function localImageReference(value: string): boolean {
+function localImageReference(value: string, embedded: Set<string>): boolean {
   const ref = value.trim();
-  return (
-    ref.startsWith("#") || /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(ref)
-  );
+  if (ref.startsWith("#")) return true;
+  if (!/^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(ref)) return false;
+  embedded.add(ref);
+  return true;
 }
 
-function passiveCss(source: string, context: "stylesheet" | "declarationList" | "value"): boolean {
+function passiveCss(
+  source: string,
+  context: "stylesheet" | "declarationList" | "value",
+  embedded: Set<string>,
+): boolean {
   // Escapes can disguise fetch-bearing tokens; keep the accepted spelling unambiguous.
   if (source.includes("\\")) return false;
   let safe = true;
@@ -29,7 +34,7 @@ function passiveCss(source: string, context: "stylesheet" | "declarationList" | 
         )
       )
         safe = false;
-      if (node.type === "Url" && !localImageReference(node.value)) safe = false;
+      if (node.type === "Url" && !localImageReference(node.value, embedded)) safe = false;
       if (
         node.type === "Atrule" &&
         !["media", "supports", "keyframes"].includes(node.name.toLowerCase())
@@ -43,7 +48,7 @@ function passiveCss(source: string, context: "stylesheet" | "declarationList" | 
 }
 
 /** Accept passive SVG without reserializing it or losing theme-dependent paint. */
-function passiveSvg(bytes: Buffer): boolean {
+function passiveSvg(bytes: Buffer, embedded: Set<string>): boolean {
   const source = bytes.toString("utf8");
   if (/<!DOCTYPE|<!ENTITY|<\?xml-stylesheet/i.test(source)) return false;
   const document = new DOMParser().parseFromString(source, "image/svg+xml");
@@ -53,21 +58,28 @@ function passiveSvg(bytes: Buffer): boolean {
   if (elements.length > 10000) return false;
   return elements.every((element) => {
     if (!SVG_ELEMENTS.has(element.localName.toLowerCase())) return false;
-    if (element.localName === "style" && !passiveCss(element.textContent ?? "", "stylesheet"))
+    if (
+      element.localName === "style" &&
+      !passiveCss(element.textContent ?? "", "stylesheet", embedded)
+    )
       return false;
     return element
       .getAttributeNames()
       .every((attribute: string) =>
-        passiveSvgAttribute(attribute.toLowerCase(), element.getAttribute(attribute) ?? ""),
+        passiveSvgAttribute(
+          attribute.toLowerCase(),
+          element.getAttribute(attribute) ?? "",
+          embedded,
+        ),
       );
   });
 }
 
-function passiveSvgAttribute(name: string, value: string): boolean {
+function passiveSvgAttribute(name: string, value: string, embedded: Set<string>): boolean {
   if (name.startsWith("on") || name === "xml:base") return false;
-  if (["href", "xlink:href", "src"].includes(name)) return localImageReference(value);
-  if (name === "style") return passiveCss(value, "declarationList");
-  return !/url\s*\(|\\/i.test(value) || passiveCss(value, "value");
+  if (["href", "xlink:href", "src"].includes(name)) return localImageReference(value, embedded);
+  if (name === "style") return passiveCss(value, "declarationList", embedded);
+  return !/url\s*\(|\\/i.test(value) || passiveCss(value, "value", embedded);
 }
 
 async function validIco(bytes: Buffer): Promise<boolean> {
@@ -125,11 +137,15 @@ function validIconDimensions(width: number, height: number): boolean {
 export async function captureImageExtension(bytes: Buffer): Promise<string | null> {
   if (await validIco(bytes)) return ".ico";
   try {
+    const embedded = new Set<string>();
     // Reject active XML before passing it to an image decoder.
-    if (/^\s*</.test(bytes.toString("utf8", 0, 256)) && !passiveSvg(bytes)) return null;
+    if (/^\s*</.test(bytes.toString("utf8", 0, 256)) && !passiveSvg(bytes, embedded)) return null;
     const image = sharp(bytes, { limitInputPixels: 40_000_000 });
     const metadata = await image.metadata();
-    if (metadata.format === "svg") return passiveSvg(bytes) ? ".svg" : null;
+    if (metadata.format === "svg") {
+      if (!passiveSvg(bytes, embedded) || !(await validEmbeddedImages(embedded))) return null;
+      return ".svg";
+    }
     const extensions: Record<string, string> = {
       jpeg: ".jpg",
       png: ".png",
@@ -146,4 +162,26 @@ export async function captureImageExtension(bytes: Buffer): Promise<string | nul
   } catch {
     return null;
   }
+}
+
+async function validEmbeddedImages(references: Set<string>): Promise<boolean> {
+  let remainingBytes = 10 * 1024 * 1024;
+  let remainingPixels = 40_000_000;
+  for (const reference of references) {
+    const comma = reference.indexOf(",");
+    const type = reference.slice(11, reference.indexOf(";")).toLowerCase();
+    const encoded = reference.slice(comma + 1).replace(/\s/g, "");
+    if (encoded.length > Math.ceil(remainingBytes / 3) * 4) return false;
+    const bytes = Buffer.from(encoded, "base64");
+    remainingBytes -= bytes.length;
+    if (remainingBytes < 0) return false;
+    const image = sharp(bytes, { limitInputPixels: remainingPixels });
+    const metadata = await image.metadata();
+    if (metadata.format !== type || !metadata.width || !metadata.height) return false;
+    const pixels = metadata.width * metadata.height * (metadata.pages ?? 1);
+    remainingPixels -= pixels;
+    if (remainingPixels < 0) return false;
+    await image.resize(1, 1).raw().toBuffer();
+  }
+  return true;
 }

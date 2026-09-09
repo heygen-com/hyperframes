@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { readBoundedResponse } from "./readBoundedResponse.js";
 
 describe("bounded capture responses", () => {
+  it("shares a byte budget across concurrent responses", async () => {
+    const budget = { remainingBytes: 5 };
+    const result = await Promise.all([
+      readBoundedResponse(new Response(new Uint8Array(3)), 4, budget),
+      readBoundedResponse(new Response(new Uint8Array(3)), 4, budget),
+    ]);
+    expect(result.filter((value) => value !== null)).toHaveLength(1);
+    expect(budget.remainingBytes).toBe(0);
+  });
   it("preserves exact bytes at the limit across chunks", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

@@ -1,3 +1,4 @@
+import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 /**
  * Website capture orchestrator.
  *
@@ -608,8 +609,10 @@ export async function captureWebsite(
     // `budget-exhausted` for every one of them replaces a warning string that could only ever
     // say "some". A zero budget means it breaks on the first url, so this costs no network.
     phase("fonts", "started");
+    const downloadByteBudget = createCaptureDownloadBudget();
     const fontPass = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
       remainingMs,
+      byteBudget: downloadByteBudget,
     });
     extracted.headHtml = fontPass.css;
     phase(
@@ -681,6 +684,7 @@ export async function captureWebsite(
       progress("assets", "Downloading assets...");
       const assetPass = await downloadAssets(tokens, outputDir, catalogedAssets, faviconLinks, {
         remainingMs,
+        byteBudget: downloadByteBudget,
       });
       assets = assetPass.assets;
       assetDrops = assetPass.drops;

@@ -13,11 +13,16 @@ import type { CatalogedAsset } from "./assetCataloger.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import { rankIconCandidates, type IconCandidate } from "./faviconRanker.js";
 import { classifyIcon, type IconShape } from "./iconClassifier.js";
-import { readBoundedResponse } from "./readBoundedResponse.js";
+import {
+  readBoundedResponse,
+  createCaptureDownloadBudget,
+  type DownloadByteBudget,
+} from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
 import { captureImageExtension } from "./captureImageValidation.js";
 
 interface DownloadBudgetOptions {
+  byteBudget?: DownloadByteBudget;
   remainingMs?: () => number;
 }
 
@@ -192,8 +197,9 @@ async function fetchAndInspectIcon(
   stem: string,
   outputDir: string,
   timeoutMs: number,
+  byteBudget?: DownloadByteBudget,
 ): Promise<{ record: IconRecord; buffer: Buffer } | null> {
-  const buffer = await fetchBuffer(icon.href, timeoutMs);
+  const buffer = await fetchBuffer(icon.href, timeoutMs, 2 * 1024 * 1024, byteBudget);
   if (!buffer) return null;
   const ext = await captureImageExtension(buffer);
   if (!ext) return null;
@@ -275,6 +281,7 @@ async function downloadDeclaredIcons(
         stem,
         outputDir,
         Math.min(10_000, remainingMs),
+        options.byteBudget,
       );
       if (!got) {
         drops.unavailable++;
@@ -306,6 +313,7 @@ export async function downloadAssets(
   faviconLinks?: IconCandidate[],
   options: DownloadBudgetOptions = {},
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
+  options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
   mkdirSync(assetsDir, { recursive: true });
 
@@ -409,7 +417,12 @@ export async function downloadAssets(
     const results = await Promise.allSettled(
       batch.map(async ({ url, isPoster, catalog }) => {
         const parsedUrl = new URL(url);
-        const buffer = await fetchBuffer(url, Math.min(10_000, remainingMs));
+        const buffer = await fetchBuffer(
+          url,
+          Math.min(10_000, remainingMs),
+          20 * 1024 * 1024,
+          options.byteBudget,
+        );
         if (!buffer) {
           drops.unavailable++;
           return null;
@@ -474,7 +487,12 @@ export async function downloadAssets(
       if (remainingMs <= 0) {
         drops["budget-exhausted"]++;
       } else {
-        const buffer = await fetchBuffer(tokens.ogImage, Math.min(10_000, remainingMs));
+        const buffer = await fetchBuffer(
+          tokens.ogImage,
+          Math.min(10_000, remainingMs),
+          20 * 1024 * 1024,
+          options.byteBudget,
+        );
         const ext = buffer && (await captureImageExtension(buffer));
         if (!buffer || !ext) {
           drops.unavailable++;
@@ -520,6 +538,7 @@ export async function downloadAndRewriteFonts(
   outputDir: string,
   options: DownloadBudgetOptions = {},
 ): Promise<{ css: string; drops: AssetDropCounts }> {
+  options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets", "fonts");
   mkdirSync(assetsDir, { recursive: true });
   const drops = noDrops();
@@ -559,6 +578,7 @@ export async function downloadAndRewriteFonts(
     return aLatin - bLatin;
   });
 
+  const usedFontNames = new Set<string>();
   let rewritten = css;
   let count = 0;
 
@@ -582,10 +602,15 @@ export async function downloadAndRewriteFonts(
     count++;
 
     try {
-      const buffer = await fetchBuffer(fontUrl, Math.min(10_000, remainingMs));
+      const buffer = await fetchBuffer(
+        fontUrl,
+        Math.min(10_000, remainingMs),
+        10 * 1024 * 1024,
+        options.byteBudget,
+      );
       const extension = buffer && captureFontExtension(buffer);
       if (buffer && extension) {
-        const filename = captureFontFilename(fontUrl, extension);
+        const filename = captureFontFilename(fontUrl, extension, usedFontNames);
         const localPath = join(assetsDir, filename);
         const relativePath = `assets/fonts/${filename}`;
         writeFileSync(localPath, buffer);
@@ -691,7 +716,13 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
   return null; // too many redirects
 }
 
-async function fetchBuffer(url: string, timeoutMs = 10_000): Promise<Buffer | null> {
+async function fetchBuffer(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number,
+  budget: DownloadByteBudget = createCaptureDownloadBudget(),
+): Promise<Buffer | null> {
+  if (budget.remainingBytes <= 0) return null;
   try {
     const res = await safeFetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
@@ -703,8 +734,7 @@ async function fetchBuffer(url: string, timeoutMs = 10_000): Promise<Buffer | nu
     if (ct.includes("text/xml") || ct.includes("text/html") || ct.includes("application/xml")) {
       return null;
     }
-    // Match capture's existing per-video ceiling; count streamed bytes even without a header.
-    return await readBoundedResponse(res, 75 * 1024 * 1024);
+    return await readBoundedResponse(res, maxBytes, budget);
   } catch {
     return null;
   }

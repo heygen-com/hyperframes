@@ -579,6 +579,54 @@ describe("declared icons — keep them all, headline the bare mark", () => {
 });
 
 describe("capture download security boundaries", () => {
+  it("preserves two different fonts whose URL extensions canonicalize to the same name", async () => {
+    await withTempDir(async (dir) => {
+      const first = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+      );
+      const second = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/8963f64fa28dc4ae.woff2", import.meta.url),
+      );
+      expect(first.equals(second)).toBe(false);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async (url: string) =>
+            new Response(new Uint8Array(url.endsWith(".ttf") ? first : second)),
+        ),
+      );
+      const css =
+        "@font-face{font-family:A;src:url(https://fonts.example/site.ttf)} @font-face{font-family:B;src:url(https://fonts.example/site.woff2)}";
+      const result = await downloadAndRewriteFonts(css, dir);
+      expect(result.css).toContain("assets/fonts/site.woff2");
+      expect(result.css).toContain("assets/fonts/site-2.woff2");
+      expect(readFileSync(join(dir, "assets/fonts/site.woff2"))).toEqual(first);
+      expect(readFileSync(join(dir, "assets/fonts/site-2.woff2"))).toEqual(second);
+    });
+  });
+
+  it("shares the capture byte budget between fonts and icons", async () => {
+    await withTempDir(async (dir) => {
+      const bytes = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+      );
+      const fetchMock = vi.fn(async () => new Response(new Uint8Array(bytes)));
+      vi.stubGlobal("fetch", fetchMock);
+      const byteBudget = { remainingBytes: bytes.length };
+      await downloadAndRewriteFonts(
+        "@font-face{font-family:A;src:url(https://fonts.example/site.woff2)}",
+        dir,
+        { byteBudget },
+      );
+      const result = await downloadAssets(tokensWithNoSvgs(), dir, [], OPENAI_ICONS, {
+        byteBudget,
+      });
+      expect(result.icons.icons).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(byteBudget.remainingBytes).toBe(0);
+    });
+  });
+
   afterEach(() => vi.unstubAllGlobals());
 
   it("canonicalizes an icon ADS suffix and its promoted copy while preserving SVG bytes", async () => {

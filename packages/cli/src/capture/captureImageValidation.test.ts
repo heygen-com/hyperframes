@@ -9,6 +9,40 @@ function svg(content: string): Buffer {
 }
 
 describe("captured image validation", () => {
+  it("validates embedded raster bytes and rejects false MIME claims", async () => {
+    const png = await sharp({ create: { width: 2, height: 2, channels: 4, background: "red" } })
+      .png()
+      .toBuffer();
+    expect(
+      await captureImageExtension(
+        svg(`<image href="data:image/png;base64,${png.toString("base64")}"/>`),
+      ),
+    ).toBe(".svg");
+    expect(
+      await captureImageExtension(svg('<image href="data:image/png;base64,QUFBQUFBQUFB"/>')),
+    ).toBeNull();
+    expect(
+      await captureImageExtension(
+        svg(`<image href="data:image/jpeg;base64,${png.toString("base64")}"/>`),
+      ),
+    ).toBeNull();
+  });
+
+  it("limits the aggregate decoded pixel count of embedded rasters", async () => {
+    const png = await sharp({
+      create: { width: 5000, height: 5000, channels: 3, background: "red" },
+    })
+      .png()
+      .toBuffer();
+    const encoded = png.toString("base64");
+    expect(
+      await captureImageExtension(
+        svg(
+          `<image href="data:image/png;base64,${encoded}"/><image href="data:image/PNG;base64,${encoded}"/>`,
+        ),
+      ),
+    ).toBeNull();
+  });
   it("recognizes actual PNG bytes without needing a trusted URL or content type", async () => {
     const bytes = await sharp({ create: { width: 2, height: 2, channels: 4, background: "red" } })
       .png()

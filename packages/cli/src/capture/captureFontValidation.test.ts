@@ -8,6 +8,18 @@ const font = readFileSync(
 );
 
 describe("capture font publication", () => {
+  it("keeps canonicalized font names distinct on case-insensitive filesystems", () => {
+    const used = new Set<string>();
+    expect(captureFontFilename("https://fonts.example/site.ttf", ".woff2", used)).toBe(
+      "site.woff2",
+    );
+    expect(captureFontFilename("https://fonts.example/site.woff2", ".woff2", used)).toBe(
+      "site-2.woff2",
+    );
+    expect(captureFontFilename("https://fonts.example/SITE.woff2", ".woff2", used)).toBe(
+      "SITE-3.woff2",
+    );
+  });
   it("accepts the existing catalog WOFF2 font without changing its bytes", () => {
     expect(captureFontExtension(font)).toBe(".woff2");
     expect(captureFontFilename("https://fonts.example/font-0.woff2", ".woff2")).toBe(

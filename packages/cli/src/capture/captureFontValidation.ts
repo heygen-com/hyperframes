@@ -44,7 +44,7 @@ export function captureFontExtension(bytes: Buffer): string | null {
 }
 
 /** Preserve ordinary names; remote URL spelling must never select a Windows device or stream. */
-export function captureFontFilename(url: string, extension: string): string {
+function preferredFontFilename(url: string, extension: string): string {
   const basename = new URL(url).pathname.split("/").pop() ?? "";
   const dot = basename.lastIndexOf(".");
   const stem = dot > 0 ? basename.slice(0, dot) : basename;
@@ -56,4 +56,17 @@ export function captureFontFilename(url: string, extension: string): string {
     return `${stem}${extension}`;
   }
   return `font-${createHash("sha256").update(url).digest("hex").slice(0, 16)}${extension}`;
+}
+
+export function captureFontFilename(
+  url: string,
+  extension: string,
+  used = new Set<string>(),
+): string {
+  const preferred = preferredFontFilename(url, extension);
+  const stem = preferred.slice(0, -extension.length);
+  let name = preferred;
+  for (let n = 2; used.has(name.toLowerCase()); n++) name = `${stem}-${n}${extension}`;
+  used.add(name.toLowerCase());
+  return name;
 }
