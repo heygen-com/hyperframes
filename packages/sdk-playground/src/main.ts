@@ -1466,5 +1466,9 @@ async function init() {
 }
 
 init().catch((err) => {
-  document.body.innerHTML = `<pre style="color:#f87171;padding:20px">${String(err)}</pre>`;
+  const message = document.createElement("pre");
+  message.style.color = "#f87171";
+  message.style.padding = "20px";
+  message.textContent = String(err);
+  document.body.replaceChildren(message);
 });
