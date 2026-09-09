@@ -84,6 +84,7 @@ export async function captureWebsite(
     onPhase,
   } = opts;
 
+  const downloadByteBudget = createCaptureDownloadBudget();
   const warnings: string[] = [];
   const progress = (stage: string, detail?: string) => {
     onProgress?.(stage, detail);
@@ -385,7 +386,7 @@ export async function captureWebsite(
     if (discoveredLotties.length > 0 && remainingMs() > 0) {
       const lottieDir = join(outputDir, "assets", "lottie");
       mkdirSync(lottieDir, { recursive: true });
-      const lottieBudget = { remainingMs };
+      const lottieBudget = { remainingMs, byteBudget: downloadByteBudget };
       const savedCount = await saveLottieAnimations(discoveredLotties, lottieDir, lottieBudget);
       // Generate manifest + preview thumbnails so the agent can SEE what each animation is
       if (savedCount > 0 && remainingMs() > 0) {
@@ -609,7 +610,6 @@ export async function captureWebsite(
     // `budget-exhausted` for every one of them replaces a warning string that could only ever
     // say "some". A zero budget means it breaks on the first url, so this costs no network.
     phase("fonts", "started");
-    const downloadByteBudget = createCaptureDownloadBudget();
     const fontPass = await downloadAndRewriteFonts(extracted.headHtml, outputDir, {
       remainingMs,
       byteBudget: downloadByteBudget,

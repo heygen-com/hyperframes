@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
@@ -56,6 +64,8 @@ describe("Lottie capture budget", () => {
 
     let remainingMs = 10_000;
     const previewPage = {
+      setRequestInterception: vi.fn(async () => undefined),
+      on: vi.fn(),
       setViewport: vi.fn(async () => undefined),
       setContent: vi.fn(async () => undefined),
       evaluate: vi.fn(async () => undefined),
@@ -96,6 +106,8 @@ describe("Lottie capture budget", () => {
 
     const screenshot = vi.fn(async () => undefined);
     const previewPage = {
+      setRequestInterception: vi.fn(async () => undefined),
+      on: vi.fn(),
       setViewport: vi.fn(async () => undefined),
       setContent: vi.fn(async () => undefined),
       evaluate: vi.fn(async () => undefined),
@@ -183,5 +195,26 @@ describe("remainingVideoDownloadTimeoutMs", () => {
 
   it("retains the existing per-request ceiling when more budget remains", () => {
     expect(remainingVideoDownloadTimeoutMs(1_000, 300_000, 2_000)).toBe(120_000);
+  });
+});
+
+describe("Lottie capture rejects unsafe persistence", () => {
+  it("does not write corrupt archives as raw Lottie files", async () => {
+    const dir = tempDir();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not a zip")),
+    );
+    expect(await saveLottieAnimations([{ url: "https://public.example/bad.lottie" }], dir)).toBe(0);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+  it("does not publish truthy non-array layers", async () => {
+    const dir = tempDir();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response('{"w":100,"h":100,"layers":true}')),
+    );
+    expect(await saveLottieAnimations([{ url: "https://public.example/bad.json" }], dir)).toBe(0);
+    expect(readdirSync(dir)).toEqual([]);
   });
 });
