@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import {
-  createScrollContactSheet,
-  createSvgContactSheet,
-} from "./contactSheet.js";
+import { createScrollContactSheet, createSvgContactSheet } from "./contactSheet.js";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-contact-sheet-test-"));
