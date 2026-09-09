@@ -1,4 +1,10 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
+afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
 import {
   hasAutoStartVideos,
@@ -239,7 +245,7 @@ function makeProbeInput(overrides: {
 
   return {
     projectDir: "/tmp/hf-probe-test-project",
-    workDir: "/tmp/hf-probe-test-work",
+    workDir: workDir,
     job: {
       id: "probe-test",
       config: { fps: { num: 30, den: 1 }, quality: "standard" },

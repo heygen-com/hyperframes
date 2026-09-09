@@ -963,6 +963,10 @@ export async function checkStreamDurationParity(
 
 // ── Test Execution ───────────────────────────────────────────────────────────
 
+export function createRegressionTempRoot(suiteId: string, parent: string = tmpdir()): string {
+  return mkdtempSync(join(parent, `hyperframes-test-${suiteId}-`));
+}
+
 async function runTestSuite(
   suite: TestSuite,
   options: {
@@ -971,17 +975,7 @@ async function runTestSuite(
     mode: HarnessMode;
   },
 ): Promise<TestResult> {
-  // Use predictable temp location: /tmp/hyperframes-tests/{test-id}/
-  const testsRoot = join(tmpdir(), "hyperframes-tests");
-  if (!existsSync(testsRoot)) {
-    mkdirSync(testsRoot, { recursive: true });
-  }
-
-  const tempRoot = join(testsRoot, suite.id);
-  if (existsSync(tempRoot)) {
-    rmSync(tempRoot, { recursive: true, force: true });
-  }
-  mkdirSync(tempRoot, { recursive: true });
+  const tempRoot = createRegressionTempRoot(suite.id);
 
   const tempDownloadDir = join(tempRoot, "downloads");
   const outputFormat = suite.meta.renderConfig.format ?? "mp4";
