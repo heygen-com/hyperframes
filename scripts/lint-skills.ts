@@ -12,6 +12,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
+import type { RegistryManifest } from "../packages/core/src/index.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 // Every location that ships SKILL.md files gets linted. `skills/` is the
@@ -279,10 +280,10 @@ const REGISTRY_ITEM_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
 
 function registryItemNames(): Set<string> {
   const raw = readFileSync(join(REPO_ROOT, "registry", "registry.json"), "utf-8");
-  const parsed = JSON.parse(raw) as { items?: { name?: unknown }[] };
-  const names = (parsed.items ?? [])
-    .map((item) => item.name)
-    .filter((name): name is string => typeof name === "string");
+  // The cast describes the file; it does not validate it. The runtime filter and
+  // the throw below are what actually stop us linting against an empty set.
+  const parsed = JSON.parse(raw) as RegistryManifest;
+  const names = (parsed.items ?? []).map((item) => item.name).filter((name) => Boolean(name));
   if (names.length === 0) {
     throw new Error("registry/registry.json parsed to zero item names — refusing to lint blind.");
   }
@@ -308,11 +309,9 @@ export function lintRegistryItemRefs(content: string, known: Set<string>): LineV
 }
 
 function collectMarkdownFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) return collectMarkdownFiles(full);
-    return entry.isFile() && entry.name.endsWith(".md") ? [full] : [];
-  });
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => join(entry.parentPath, entry.name));
 }
 
 function lintFile(filePath: string): Violation[] {
@@ -340,13 +339,16 @@ if (files.length === 0) {
 
 let totalViolations = 0;
 
-for (const file of files) {
-  const violations = lintFile(file);
+function report(file: string, violations: LineViolation[]): void {
   for (const v of violations) {
-    console.error(`${v.file}:${v.line}: ${v.message}`);
+    console.error(`${file}:${v.line}: ${v.message}`);
     console.error(`  ${v.text}\n`);
     totalViolations++;
   }
+}
+
+for (const file of files) {
+  report(relative(process.cwd(), file), lintFile(file));
 }
 
 const knownItems = registryItemNames();
@@ -357,11 +359,7 @@ for (const dir of SKILLS_DIRS) {
     const content = readFileSync(path, "utf-8");
     if (!REGISTRY_MARKER.test(content)) continue;
     snapshotsChecked++;
-    for (const v of lintRegistryItemRefs(content, knownItems)) {
-      console.error(`${relative(process.cwd(), path)}:${v.line}: ${v.message}`);
-      console.error(`  ${v.text}\n`);
-      totalViolations++;
-    }
+    report(relative(process.cwd(), path), lintRegistryItemRefs(content, knownItems));
   }
 }
 
