@@ -631,10 +631,15 @@ export function psnrAtFrames(
   const statsDir = mkdtempSync(join(tmpdir(), "hf-psnr-"));
   const statsFile = join(statsDir, "psnr.log");
   try {
-    // ffmpeg treats `:` and `\` in filter option values as syntax, so a temp
-    // path containing either would break the filtergraph. mkdtemp under
-    // tmpdir() does not produce those on POSIX, but escape defensively.
-    const escaped = statsFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+    // ffmpeg treats `:` and `\` in filter option values as syntax, and a
+    // filtergraph argument is unescaped TWICE: once when the graph is split
+    // into filters and their options, then again when the option value itself
+    // is read. One round of escaping only survives the first pass, so on
+    // Windows `C:\Users\...` reaches the option parser as `C:\Users\...`,
+    // whose bare `:` starts a new option and fails the whole graph with
+    // "No option name near '\Users\...'". Escaping for both passes is a no-op
+    // on POSIX, where mkdtemp under tmpdir() produces neither character.
+    const escaped = statsFile.replace(/\\/g, "\\\\\\\\").replace(/:/g, "\\\\:");
     const selectExpr = wanted.map((frame) => `eq(n\\,${frame})`).join("+");
     const stream = (index: number, label: string) =>
       `[${index}:v]select='${selectExpr}',settb=1/1,setpts=N[${label}]`;
