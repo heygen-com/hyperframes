@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
-import { assignBundledRuntimeCompositionIds } from "./htmlBundler";
 import { JSDOM } from "jsdom";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
@@ -679,6 +678,45 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
   });
 });
 
+/**
+ * Mirror of the bundler's runtime-id assignment (`assignBundledRuntimeCompositionIds`
+ * in htmlBundler.ts): a host whose authored composition id appears more than
+ * once gets a document-unique `<id>__hf<n>` runtime id. Reproduced here rather
+ * than imported because htmlBundler.ts statically imports esbuild, which
+ * refuses to load inside a jsdom test realm on Windows.
+ */
+function assignTestRuntimeCompositionIds(
+  hosts: Element[],
+): Map<Element, { authoredCompositionId: string | null; runtimeCompositionId: string | null }> {
+  const counts = new Map<string, number>();
+  for (const host of hosts) {
+    const id = host.getAttribute("data-composition-id");
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const identities = new Map<
+    Element,
+    { authoredCompositionId: string | null; runtimeCompositionId: string | null }
+  >();
+  for (const host of hosts) {
+    const authored = host.getAttribute("data-composition-id");
+    if (!authored) {
+      identities.set(host, { authoredCompositionId: null, runtimeCompositionId: null });
+      continue;
+    }
+    let runtime = authored;
+    if ((counts.get(authored) ?? 0) > 1) {
+      const index = (seen.get(authored) ?? 0) + 1;
+      seen.set(authored, index);
+      runtime = `${authored}__hf${index}`;
+      host.setAttribute("data-hf-original-composition-id", authored);
+      host.setAttribute("data-composition-id", runtime);
+    }
+    identities.set(host, { authoredCompositionId: authored, runtimeCompositionId: runtime });
+  }
+  return identities;
+}
+
 /** Inline `hostEntries` (each pointing at a source in `sources`) into one
  *  bundler-shaped document with runtime composition ids assigned. */
 function inlineScenes(
@@ -697,7 +735,7 @@ function inlineScenes(
   <div data-composition-id="main">${hostsMarkup}</div>
 </body></html>`);
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
-  const hostIdentityMap = assignBundledRuntimeCompositionIds(hosts);
+  const hostIdentityMap = assignTestRuntimeCompositionIds(hosts);
   const result = inlineSubCompositions(document, hosts, {
     resolveHtml: (src) => sources[src] ?? null,
     parseHtml: (html) => parseHTML(html).document,
