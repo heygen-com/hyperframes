@@ -3571,8 +3571,14 @@ export function initSandboxRuntimeModular(): void {
         // so posting it is what discharges the pending flag — whichever path
         // got here. Clearing it when the change is merely SEEN would drop it
         // whenever the rate limit deferred the post.
-        compositionChangePending = false;
+        //
+        // And clearing it AFTER the post, not before: postTimeline walks author
+        // DOM and can throw. The tail scheduler runs in this tick's `finally`
+        // either way, so clearing first would let it see nothing owed and park
+        // with the change undelivered — permanently, until some unrelated
+        // change happens to wake the loop again.
         postTimeline();
+        compositionChangePending = false;
       }
       if (changeDrivenService || transportTickCount % MEDIA_BIND_INTERVAL_FRAMES === 0) {
         bindMediaMetadataListeners();

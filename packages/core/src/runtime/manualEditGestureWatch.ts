@@ -81,8 +81,12 @@ export function createManualEditGestureWatch(
       // watch correct within a task, not just across tasks.
       //
       // Through `notify`, because taking records SUPPRESSES the observer's own
-      // callback for them: a reader that drained first would otherwise consume
-      // somebody else's change notification and nobody would ever hear about it.
+      // callback for them. Defensive rather than a fix for a live bug: there
+      // is exactly one caller of `isActive` today (`transportTick`), and a
+      // tick is its own task, so the observer's microtask has already run and
+      // called `onChange` before any drain happens here. Adding a second
+      // caller that ran earlier in the task would silently eat that callback,
+      // and the callback is what un-parks the transport.
       notify(observer.takeRecords());
       for (const element of marked) {
         if (element.isConnected && element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) {

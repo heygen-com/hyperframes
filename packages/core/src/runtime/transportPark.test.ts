@@ -357,6 +357,54 @@ describe("parked transport loop", () => {
     expect(posts).toBeLessThanOrEqual(2);
   });
 
+  it("does not park when the manifest post throws with a change still pending", async () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+
+    // postTimeline walks author DOM, which can throw. Fail it exactly once.
+    const NODE_SELECTOR =
+      "[data-start], [data-track-index], [data-composition-id], video, audio, img";
+    const realQueryAll = Document.prototype.querySelectorAll;
+    let failuresLeft = 1;
+    vi.spyOn(Document.prototype, "querySelectorAll").mockImplementation(function (
+      this: Document,
+      selector: string,
+    ) {
+      if (selector === NODE_SELECTOR && failuresLeft > 0) {
+        failuresLeft -= 1;
+        throw new Error("author DOM blew up");
+      }
+      return realQueryAll.call(this, selector);
+    } as typeof Document.prototype.querySelectorAll);
+
+    const late = document.createElement("div");
+    late.id = "late-after-throw";
+    late.setAttribute("data-start", "1");
+    late.setAttribute("data-duration", "2");
+    document.getElementById("root")!.appendChild(late);
+    await flushObservers();
+
+    // Run frames until the manifest post is attempted and throws. The post is
+    // rate-limited, so it lands on the frame counter's boundary, not the first
+    // woken frame.
+    let thrown: unknown = null;
+    for (let frame = 0; frame < 60 && thrown == null; frame += 1) {
+      if (raf.pending() === 0) break;
+      try {
+        raf.step();
+      } catch (error) {
+        thrown = error;
+      }
+    }
+    expect(String(thrown)).toContain("author DOM blew up");
+    // The change is still owed, so the loop must not have parked on it.
+    expect(raf.pending()).toBeGreaterThan(0);
+
+    settle();
+    expect(window.__clipManifest!.clips.some((clip) => clip.id === "late-after-throw")).toBe(true);
+  });
+
   it("delivers an adapter duration that grows while parked, with no DOM mutation and no event", () => {
     mount();
     initSandboxRuntimeModular();
