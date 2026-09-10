@@ -62,7 +62,7 @@ export {
   getTimelineScrollTopForGeometryChange,
   getTimelineVisibleTimeRange,
 } from "./timelineViewportGeometry";
-export const Timeline = memo(function Timeline({
+export const Timeline = memo<TimelineProps>(function Timeline({
   onSeek,
   onDrillDown,
   renderClipContent,

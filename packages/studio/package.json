@@ -47,7 +47,7 @@
   "scripts": {
     "dev": "bun --bun ./node_modules/.bin/vite --host 127.0.0.1",
     "build": "vite build && tsup",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ./node_modules/typescript-native/bin/tsc --noEmit",
     "test": "vitest run",
     "test:webmcp-edit-loop": "node tests/e2e/webmcp-edit-loop.mjs",
     "test:timeline-virtualization": "TIMELINE_ROW_VIRTUALIZATION=on TIMELINE_ELEMENT_COUNT=50000 node tests/e2e/timeline-virtualization.mjs",
@@ -94,6 +94,7 @@
     "tailwindcss": "^3.4.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
+    "typescript-native": "npm:typescript@7.0.2",
     "vite": "^6.4.2",
     "vitest": "^3.2.4",
     "zustand": "^5.0.0"
