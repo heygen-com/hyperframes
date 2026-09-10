@@ -98,7 +98,9 @@ describe("parked transport loop", () => {
    */
   const quiesce = (): void => {
     settle();
-    for (let i = 0; i < 40; i += 1) {
+    // Up to ~400 ms of 1 ms steps: the transport holds a deferred manifest
+    // post for one cadence interval before it may park.
+    for (let i = 0; i < 400; i += 1) {
       if (raf.pending() === 0 && vi.getTimerCount() <= 1) return;
       vi.advanceTimersByTime(1);
       settle();
@@ -132,6 +134,7 @@ describe("parked transport loop", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__HF_EXPORT_RENDER_SEEK_CONFIG;
+    delete (window as { __hfLottie?: unknown }).__hfLottie;
     vi.restoreAllMocks();
     vi.useRealTimers();
     window.requestAnimationFrame = originalRaf;
@@ -320,8 +323,53 @@ describe("parked transport loop", () => {
 
     window.__hfRuntimeTeardown?.();
     posted.length = 0;
+    // The count, not just the silence: a heartbeat that is still armed but
+    // returns early on `tornDown` posts nothing either, so counting posts
+    // alone passes with the clearTimeout deleted.
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(PARK_HEARTBEAT_MS * 5);
     expect(raf.pending()).toBe(0);
     expect(posted.filter((m) => m["type"] === "state")).toHaveLength(0);
+  });
+
+  it("keeps the manifest on its frame cadence while playing, whatever the DOM does", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    // Two seconds in, so the rebind policy's play hold is not what is doing
+    // the work — this has to hold for the rest of playback too.
+    for (let i = 0; i < 130; i += 1) raf.step();
+
+    const root = document.getElementById("root")!;
+    const before = posted.filter((m) => m["type"] === "timeline").length;
+    for (let frame = 0; frame < 30; frame += 1) {
+      // A composition that appends a node every frame. The manifest is a full
+      // document walk; posting it per frame is the regression this guards.
+      const node = document.createElement("div");
+      node.setAttribute("data-start", String(frame));
+      node.setAttribute("data-duration", "1");
+      root.appendChild(node);
+      raf.step();
+    }
+    const posts = posted.filter((m) => m["type"] === "timeline").length - before;
+    // Main's cadence over 30 frames is one post per 20 frames, so at most two.
+    expect(posts).toBeLessThanOrEqual(2);
+  });
+
+  it("delivers an adapter duration that grows while parked, with no DOM mutation and no event", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    const before = window.__player!.getDuration();
+
+    // A Lottie instance lengthening is a live animation object changing. No
+    // observer and no event can see it; only the parked poll can.
+    window.__hfLottie = [{ goToAndStop: () => {}, totalFrames: 600, frameRate: 30 }] as never;
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+
+    expect(before).toBeLessThan(20);
+    expect(window.__player!.getDuration()).toBeCloseTo(20, 3);
   });
 });

@@ -3,6 +3,13 @@ import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 export interface ManualEditGestureWatch {
   /** True while any element in the document carries the gesture marker. */
   isActive: () => boolean;
+  /**
+   * True when an observer is attached and `onChange` will therefore fire.
+   * False on the fallback below, where the answer is only ever produced when
+   * somebody asks — a caller that would otherwise stop asking must keep
+   * asking instead.
+   */
+  observing: boolean;
   disconnect: () => void;
 }
 
@@ -31,6 +38,9 @@ export function createManualEditGestureWatch(
     // No observer to trust: keep answering from the document, as before.
     return {
       isActive: () => doc.querySelector(SELECTOR) != null,
+      // Nothing to push from: `onChange` is never called on this path, so a
+      // caller that parks on it would never be woken by a gesture.
+      observing: false,
       disconnect: () => {},
     };
   }
@@ -49,10 +59,13 @@ export function createManualEditGestureWatch(
     }
   };
 
-  const observer = new Observer((records) => {
+  const notify = (records: MutationRecord[]): void => {
+    if (records.length === 0) return;
     ingest(records);
     onChange();
-  });
+  };
+
+  const observer = new Observer(notify);
   observer.observe(doc.documentElement, {
     subtree: true,
     attributes: true,
@@ -60,12 +73,17 @@ export function createManualEditGestureWatch(
   });
 
   return {
+    observing: true,
     isActive: () => {
       // Records are delivered in a microtask, so a caller reading back in the
       // same synchronous block as the gesture's own attribute write would
       // otherwise be served the pre-write answer. Draining here makes the
       // watch correct within a task, not just across tasks.
-      ingest(observer.takeRecords());
+      //
+      // Through `notify`, because taking records SUPPRESSES the observer's own
+      // callback for them: a reader that drained first would otherwise consume
+      // somebody else's change notification and nobody would ever hear about it.
+      notify(observer.takeRecords());
       for (const element of marked) {
         if (element.isConnected && element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) {
           return true;

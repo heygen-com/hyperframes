@@ -64,7 +64,12 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
-import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import {
+  CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
+  MEDIA_BIND_INTERVAL_FRAMES,
+  TIMELINE_POST_INTERVAL_FRAMES,
+  shouldAttemptPeriodicTimelineBind,
+} from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
@@ -3162,8 +3167,11 @@ export function initSandboxRuntimeModular(): void {
   // Set while the transport is parked (see scheduleNextTransportFrame).
   let transportParkTimerId: number | null = null;
   let transportWakeRequested = false;
-  let parkedTimingRevision = -1;
-  let lastServicedTimingRevision = -1;
+  let parkedPollWitness = "";
+  let lastSeenTimingRevision = -1;
+  /** A composition change has been seen and not yet carried to consumers. */
+  let compositionChangePending = false;
+  let lastChangeDrivenServiceAtMs = Number.NEGATIVE_INFINITY;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -3396,8 +3404,25 @@ export function initSandboxRuntimeModular(): void {
   const canParkTransport = (): boolean =>
     !clock.isPlaying() &&
     !isExportRenderDrivingFrames() &&
+    // Without MutationObserver nothing can PUSH a DOM change: neither the
+    // composition-timing watcher nor the gesture watch attaches, and both fall
+    // back to answering from the document only when asked. Looking every frame
+    // is then the only correct behaviour, so such a host keeps the loop it had.
+    //
+    // Unreachable today, and the reason is worth recording rather than
+    // trusting: `createColorGradingRuntime` constructs a MutationObserver
+    // unconditionally earlier in this same init (colorGrading.ts, the
+    // `document.body` branch), so a host without one never gets as far as a
+    // running transport. This stays as the explicit statement of the
+    // invariant, one boolean, for the day that guard is added there.
+    manualEditGestureWatch.observing &&
     // A drop/cancel owes one reconciling seek that has not happened yet.
     !pausedSeekDeferredByManualGesture &&
+    // A composition change is owed a manifest post that the rate limit has
+    // deferred. Parking here would strand it until the next unrelated change,
+    // so the loop stays awake — for at most one cadence interval — until the
+    // post goes out.
+    !compositionChangePending &&
     // The playhead and the bound timeline are both where the last seek left
     // them, so re-seeking on the next frame would render the same frame again.
     state.currentTime === lastTransportSeekTime &&
@@ -3409,12 +3434,29 @@ export function initSandboxRuntimeModular(): void {
    * 1. Keep the control bridge's paused heartbeat on its documented interval
    *    (`state.bridgeMaxPostIntervalMs`) so a paused timeline still confirms
    *    its position to any listener.
-   * 2. Re-read the timeline registry. A composition script registering into
-   *    `window.__timelines`, or lengthening one already there, is the single
-   *    input no MutationObserver and no event can report — see
-   *    `readCompositionTimingRevision`. Polling it 12 times a second instead
-   *    of 60 is the whole reason the safety net exists.
+   * 2. Re-read everything nothing can push (`readParkedPollWitness`). Polling
+   *    that 12 times a second instead of 60 is the whole reason the safety net
+   *    exists.
    */
+  /**
+   * Everything a parked transport still has to LOOK at, because no observer
+   * and no event can tell it.
+   *
+   * Two inputs qualify, and both are documented at their source:
+   *   - the timeline registry, a plain object a composition script writes into
+   *     (see `readCompositionTimingRevision`); and
+   *   - the adapter duration floor, which adapters infer from live animation
+   *     objects — CSS, WAAPI, Lottie — that can lengthen with no DOM mutation
+   *     and no media event (see the comment on `resolveAdapterDurationFloorSeconds`
+   *     in `getSafeTimelineDurationSeconds`).
+   *
+   * Calling `readCompositionTimingRevision` here is also what DRAINS the
+   * mutation observer, so a record that arrived without its callback running
+   * is caught on this path too.
+   */
+  const readParkedPollWitness = (): string =>
+    `${readCompositionTimingRevision()}|${resolveAdapterDurationFloorSeconds() ?? ""}`;
+
   const armParkTimer = () => {
     transportParkTimerId = window.setTimeout(
       parkedTransportHeartbeat,
@@ -3425,9 +3467,10 @@ export function initSandboxRuntimeModular(): void {
   const parkedTransportHeartbeat = () => {
     transportParkTimerId = null;
     if (state.tornDown) return;
-    if (readCompositionTimingRevision() !== parkedTimingRevision) {
-      // Through wakeTransport, not straight to rAF: reading the revision can
-      // itself bump it (the registry compare), and that already woke us.
+    if (readParkedPollWitness() !== parkedPollWitness) {
+      // Through wakeTransport, not straight to rAF: reading the witness can
+      // itself wake us (the registry compare bumps the revision, and that
+      // invalidation hook calls wakeTransport).
       wakeTransport();
       return;
     }
@@ -3448,7 +3491,7 @@ export function initSandboxRuntimeModular(): void {
     // may have run postTimeline, which stamps authored-timing attributes the
     // observer watches. Parking on the pre-postTimeline revision would make
     // the very first heartbeat see a change and wake for the loop's own writes.
-    parkedTimingRevision = readCompositionTimingRevision();
+    parkedPollWitness = readParkedPollWitness();
     armParkTimer();
   };
 
@@ -3472,26 +3515,42 @@ export function initSandboxRuntimeModular(): void {
     try {
       transportTickCount += 1;
 
-      // The three periodic jobs below used to fire on a frame counter, which
-      // was only ever a proxy for "the document may have changed since last
-      // time". Now that the loop parks, the counter stops advancing while it
-      // is parked, so the question is asked directly instead: the composition
-      // timing revision moves on exactly the inputs these three derive from —
-      // timing attributes, mounted/removed elements, media metadata, and the
-      // timeline registry. The counter stays as the belt to that braces, so
-      // playback behaviour is unchanged.
+      // The three periodic jobs below fire on a frame counter, which is only a
+      // proxy for "the document may have changed since last time". The counter
+      // stops advancing while the loop is parked, so on THAT path the question
+      // is asked directly: the composition timing revision moves on exactly the
+      // inputs these three derive from.
+      //
+      // Only on that path. While the clock is playing the counter advances at
+      // frame rate and is already a good cadence, and raising it is a real
+      // regression: postTimeline walks the whole document, so a composition
+      // that mutates the DOM every frame would turn one post per 20 frames into
+      // one per frame. And the change-driven path is rate-limited to the same
+      // posts-per-second the counter yields at 60 Hz, so no consumer ever sees
+      // a faster cadence than the frame counter alone produced.
       const timingRevision = readCompositionTimingRevision();
-      const compositionChanged = timingRevision !== lastServicedTimingRevision;
-      lastServicedTimingRevision = timingRevision;
+      if (timingRevision !== lastSeenTimingRevision) {
+        lastSeenTimingRevision = timingRevision;
+        compositionChangePending = true;
+      }
+      const nowMs = Date.now();
+      const changeDrivenService =
+        compositionChangePending &&
+        !clock.isPlaying() &&
+        nowMs - lastChangeDrivenServiceAtMs >= CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS;
+      if (changeDrivenService) lastChangeDrivenServiceAtMs = nowMs;
 
-      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
+      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps).
+      // `compositionChanged` goes IN to the policy, never around it: the policy
+      // owns the hold that keeps an async rebind off the first two seconds of
+      // playback, and ORing past it removed that hold.
       if (
-        compositionChanged ||
         shouldAttemptPeriodicTimelineBind({
           tick: transportTickCount,
           isPlaying: clock.isPlaying(),
           hasCapturedTimeline: state.capturedTimeline != null,
           currentTimeSeconds: clock.now(),
+          compositionChanged: changeDrivenService,
         })
       ) {
         const prevTimeline = state.capturedTimeline;
@@ -3507,10 +3566,15 @@ export function initSandboxRuntimeModular(): void {
           postTimeline();
         }
       }
-      if (compositionChanged || transportTickCount % 20 === 0) {
+      if (changeDrivenService || transportTickCount % TIMELINE_POST_INTERVAL_FRAMES === 0) {
+        // The manifest is what carries a composition change to its consumers,
+        // so posting it is what discharges the pending flag — whichever path
+        // got here. Clearing it when the change is merely SEEN would drop it
+        // whenever the rate limit deferred the post.
+        compositionChangePending = false;
         postTimeline();
       }
-      if (compositionChanged || transportTickCount % 30 === 0) {
+      if (changeDrivenService || transportTickCount % MEDIA_BIND_INTERVAL_FRAMES === 0) {
         bindMediaMetadataListeners();
       }
 
