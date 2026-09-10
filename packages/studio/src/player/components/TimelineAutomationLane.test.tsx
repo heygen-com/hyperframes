@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { createRoot } from "react-dom/client";
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { PAD_X } from "./automationLaneGeometry";
@@ -602,8 +602,8 @@ const mount = (automation: HfAutomation, over: Record<string, unknown> = {}) => 
   // assertion below reads the calls the lane made.
   const props = {
     ...base,
-    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
-    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+    onPreview: base.onPreview as Mock,
+    onCommit: base.onCommit as Mock,
   };
   const { container } = render(<TimelineAutomationLane {...props} />);
   const svg = container.querySelector("svg")!;
@@ -685,7 +685,7 @@ describe("TimelineAutomationLane segment drag", () => {
     ],
   };
 
-  const previewedPoints = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const previewedPoints = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as {
       t: number;
       v: number;
@@ -787,8 +787,8 @@ const mountRerenderable = (automation: HfAutomation, over: Record<string, unknow
   const base = laneProps({ automation, ...over });
   const props = {
     ...base,
-    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
-    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+    onPreview: base.onPreview as Mock,
+    onCommit: base.onCommit as Mock,
   };
   const { container, rerender } = renderRerenderable(<TimelineAutomationLane {...props} />);
   const svg = container.querySelector("svg")!;
@@ -944,7 +944,7 @@ describe("TimelineAutomationLane modifiers", () => {
       },
     ],
   };
-  const draggedTimes = (props: { onPreview: ReturnType<typeof vi.fn> }) => {
+  const draggedTimes = (props: { onPreview: Mock }) => {
     const points = props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as
       | { t: number }[]
       | undefined;
@@ -1204,7 +1204,7 @@ describe("TimelineAutomationLane group drag", () => {
       },
     ],
   };
-  const pointsOf = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const pointsOf = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as { t: number; v: number }[];
 
   it("moves every selected point by the same distance", () => {
@@ -1346,7 +1346,7 @@ describe("TimelineAutomationLane shift axis lock", () => {
       },
     ],
   };
-  const lastPoints = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const lastPoints = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as { t: number; v: number }[];
 
   it("holds the value when the pointer travels mostly sideways", () => {

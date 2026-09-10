@@ -232,7 +232,7 @@ function devProjectApi(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), devProjectApi()],
+  plugins: [react({ compiler: true }), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },
