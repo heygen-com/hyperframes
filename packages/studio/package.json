@@ -95,7 +95,7 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vite": "^6.4.2",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.11",
     "zustand": "^5.0.0"
   },
   "peerDependencies": {

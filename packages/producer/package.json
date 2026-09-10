@@ -114,7 +114,7 @@
     "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"
