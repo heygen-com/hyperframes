@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
-import { writeGeneratedFile } from "./write-generated-file.js";
+import { writeGeneratedFile } from "./writeGeneratedFile.js";
 
 const workDir = mkdtempSync(join(tmpdir(), "write-generated-"));
 after(() => rmSync(workDir, { recursive: true, force: true }));

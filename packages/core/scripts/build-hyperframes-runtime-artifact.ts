@@ -7,7 +7,7 @@ import {
   HYPERFRAME_RUNTIME_CONTRACT,
   loadHyperframeRuntimeSource,
 } from "../src/inline-scripts/hyperframe";
-import { writeGeneratedFile } from "../../../scripts/write-generated-file.js";
+import { writeGeneratedFile } from "./writeGeneratedFile.js";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(thisDir, "../dist");

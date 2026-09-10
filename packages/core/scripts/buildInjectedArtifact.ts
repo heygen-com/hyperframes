@@ -11,10 +11,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
-import {
-  formatGeneratedSource,
-  writeGeneratedFile,
-} from "../../../scripts/write-generated-file.js";
+import { formatGeneratedSource, writeGeneratedFile } from "./writeGeneratedFile.js";
 
 export interface InjectedArtifact {
   /** The build script's own `import.meta.url`, so paths resolve beside it. */

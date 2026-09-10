@@ -16,7 +16,7 @@ import { buildSync } from "esbuild";
 import {
   formatGeneratedSource,
   writeGeneratedFile,
-} from "../../../scripts/write-generated-file.js";
+} from "../../core/scripts/writeGeneratedFile.js";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(thisDir, "..");

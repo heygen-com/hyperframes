@@ -18,6 +18,11 @@
  * alone and nothing downstream that keys off mtime is needlessly invalidated.
  *
  * Returns whether the target was replaced.
+ *
+ * Lives inside `packages/core` rather than the repo-root `scripts/` because every
+ * container image that builds a package copies `packages/…` wholesale but
+ * cherry-picks root scripts one file at a time. A helper the core build imports
+ * has to travel with the package, or the image build fails on a missing module.
  */
 
 import { execFileSync } from "node:child_process";
