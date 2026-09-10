@@ -9,12 +9,23 @@
  * Failure behavior is "all or nothing": on any error we (1) listen for
  * stream errors / aborts so awaits resolve promptly instead of hanging,
  * (2) verify the final byte count matches `content-length` when the
- * server supplied one, and (3) `unlinkSync` the partial output so a
- * subsequent retry doesn't pick up a corrupted file.
+ * server supplied one, and (3) discard the private staged output. An
+ * existing destination is replaced only after the download succeeds.
  */
 
-import { createWriteStream, mkdirSync, unlinkSync } from "node:fs";
-import { dirname } from "node:path";
+import {
+  chmodSync,
+  createWriteStream,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 
 export interface DownloadOptions {
   signal?: AbortSignal;
@@ -31,9 +42,8 @@ export interface DownloadResult {
 
 /**
  * Stream `url` into `destPath`. Creates the parent directory if needed,
- * truncates any existing file at the destination, and deletes the
- * partial output on any error so the caller never observes a corrupt
- * file at the returned path.
+ * replaces an existing file only after the complete response is written,
+ * and removes staged bytes on failure while preserving the old output.
  */
 // fallow-ignore-next-line complexity
 export async function downloadToFile(
@@ -56,96 +66,48 @@ export async function downloadToFile(
   const total = totalHeader ? Number.parseInt(totalHeader, 10) : undefined;
   const totalOpt = total !== undefined && Number.isFinite(total) ? total : undefined;
 
-  const file = createWriteStream(destPath);
+  const destination = resolveDownloadDestination(destPath);
+  const previous = statSync(destination, { throwIfNoEntry: false });
+  const stage = mkdtempSync(join(dirname(destination), ".hf-download-"));
+  const stagedFile = join(stage, "download");
   let bytes = 0;
-  let errored = false;
   try {
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-      if (options.signal?.aborted) {
-        throw options.signal.reason instanceof Error
-          ? options.signal.reason
-          : new Error("Download aborted");
-      }
-      bytes += chunk.byteLength;
-      options.onProgress?.(bytes, totalOpt);
-      if (!file.write(chunk)) {
-        await waitForDrain(file, options.signal);
-      }
-    }
-    if (totalOpt !== undefined && bytes !== totalOpt) {
-      throw new Error(
-        `Truncated download: got ${bytes} bytes, expected ${totalOpt} (content-length). ` +
-          `The presigned URL may have expired mid-transfer — refetch via \`hyperframes cloud get\`.`,
-      );
-    }
-  } catch (err) {
-    errored = true;
-    throw err;
+    await pipeline(
+      async function* () {
+        for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+          bytes += chunk.byteLength;
+          options.onProgress?.(bytes, totalOpt);
+          yield chunk;
+        }
+        if (totalOpt !== undefined && bytes !== totalOpt) {
+          throw new Error(
+            `Truncated download: got ${bytes} bytes, expected ${totalOpt} (content-length). ` +
+              `The presigned URL may have expired mid-transfer — refetch via \`hyperframes cloud get\`.`,
+          );
+        }
+      },
+      createWriteStream(stagedFile, { flags: "wx" }),
+      { signal: options.signal },
+    );
+    options.signal?.throwIfAborted();
+    if (previous?.isFile()) chmodSync(stagedFile, previous.mode & 0o777);
+    renameSync(stagedFile, destination);
+  } catch (error) {
+    const reason = options.signal?.reason;
+    if (options.signal?.aborted && reason instanceof Error) throw reason;
+    throw error;
   } finally {
-    await closeFile(file);
-    if (errored) {
-      // Don't let a partial file pose as the final artifact. Best-
-      // effort unlink — if it fails (already gone, permission), we
-      // re-throw the original error.
-      try {
-        unlinkSync(destPath);
-      } catch {
-        /* swallow */
-      }
-    }
+    rmSync(stage, { recursive: true, force: true });
   }
   return { path: destPath, bytes };
 }
 
-/**
- * Resolve when the write stream emits `drain`, or reject on `error` /
- * `close` / signal abort — avoids the hang from awaiting a one-shot
- * `drain` event that never fires because the stream tore down first.
- */
-function waitForDrain(file: NodeJS.WritableStream, signal?: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      file.off("drain", onDrain);
-      file.off("error", onError);
-      file.off("close", onClose);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const onDrain = (): void => {
-      cleanup();
-      resolve();
-    };
-    const onError = (err: Error): void => {
-      cleanup();
-      reject(err);
-    };
-    const onClose = (): void => {
-      cleanup();
-      reject(new Error("write stream closed before drain"));
-    };
-    const onAbort = (): void => {
-      cleanup();
-      const reason = signal?.reason;
-      reject(reason instanceof Error ? reason : new Error("Download aborted"));
-    };
-    file.once("drain", onDrain);
-    file.once("error", onError);
-    file.once("close", onClose);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function closeFile(file: NodeJS.WritableStream): Promise<void> {
-  return new Promise<void>((resolve) => {
-    // Best-effort cleanup: any underlying failure has already been
-    // surfaced as the original throw from the for-await loop. We
-    // listen for `error` so a failing close (bad fd, late ENOSPC on
-    // flush) doesn't leak an unhandled 'error' onto the stream, and
-    // resolve either way so the finally block proceeds to unlinkSync.
-    const done = (): void => {
-      file.off("error", done);
-      resolve();
-    };
-    file.once("error", done);
-    file.end(() => done());
-  });
+/** Preserve the existing behavior of writing through a caller-selected symlink. */
+function resolveDownloadDestination(destPath: string): string {
+  let destination = resolve(destPath);
+  for (let hops = 0; hops < 40; hops++) {
+    if (!lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()) return destination;
+    destination = resolve(dirname(destination), readlinkSync(destination));
+  }
+  throw new Error(`Too many symbolic links in download destination: ${destPath}`);
 }
