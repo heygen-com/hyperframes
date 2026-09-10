@@ -147,7 +147,8 @@ export function estimateDiskCaptureBytes(
   return Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
 }
 
-export function assertDiskCaptureHeadroom(
+/** Shared 90% disk gate used by both fallback planning and disk execution. */
+export function inspectDiskCaptureHeadroom(
   framesDir: string,
   totalFrames: number,
   captureOptions: CaptureOptions,
@@ -159,14 +160,32 @@ export function assertDiskCaptureHeadroom(
       return null;
     }
   },
-): void {
+): { available: boolean; estimatedBytes: number; freeBytes: number | null } {
   const freeBytes = freeDiskBytes(framesDir);
-  if (freeBytes === null) return;
   const estimatedBytes = estimateDiskCaptureBytes(totalFrames, captureOptions);
-  if (estimatedBytes <= freeBytes * 0.9) return;
+  return {
+    available: freeBytes === null || estimatedBytes <= freeBytes * 0.9,
+    estimatedBytes,
+    freeBytes,
+  };
+}
+
+export function assertDiskCaptureHeadroom(
+  framesDir: string,
+  totalFrames: number,
+  captureOptions: CaptureOptions,
+  freeDiskBytes?: (path: string) => number | null,
+): void {
+  const headroom = inspectDiskCaptureHeadroom(
+    framesDir,
+    totalFrames,
+    captureOptions,
+    freeDiskBytes,
+  );
+  if (headroom.available || headroom.freeBytes === null) return;
   throw new Error(
-    `Disk capture may need ~${(estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
-      `but only ${(freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
+    `Disk capture may need ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
+      `but only ${(headroom.freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
       "Re-run with --low-memory-mode to stream frames, raise " +
       "PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS if streaming is supported, " +
       "or free up disk space.",
