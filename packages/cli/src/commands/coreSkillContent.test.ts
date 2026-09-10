@@ -1,11 +1,15 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
 const read = (...parts: string[]): string => readFileSync(join(REPO_ROOT, ...parts), "utf8");
+const skillTextFiles = (dir: string): string[] =>
+  readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(md|mjs|cjs|js|ts|json|html)$/.test(entry.name))
+    .map((entry) => join(entry.parentPath, entry.name));
 
 describe("hyperframes-core contract docs", () => {
   it("keeps a runnable root in the minimal composition skeleton", () => {
@@ -183,13 +187,20 @@ describe("media treatment routing documentation", () => {
     // registry item is a standalone composition with no place to mount. The
     // exemption is written into each skill so the next reader does not close
     // the gap with an instruction that would be false there.
-    for (const file of [
-      ["skills", "embedded-captions", "SKILL.md"],
-      ["skills", "talking-head-recut", "SKILL.md"],
-    ]) {
-      expect(read(...file), file.join("/")).toContain(
+    for (const skill of ["embedded-captions", "talking-head-recut"]) {
+      expect(read("skills", skill, "SKILL.md"), skill).toContain(
         "does not search the HyperFrames component registry",
       );
+      // The exemption is a capability claim, so pin the capability and not only
+      // the sentence: the day either skill gains a way to install a registry item,
+      // this fails and the exemption has to be reconsidered. `data-composition-src`
+      // is deliberately not the signal; talking-head-recut mounts its own chapters
+      // with it, which is not a registry item.
+      for (const file of skillTextFiles(join(REPO_ROOT, "skills", skill))) {
+        expect(readFileSync(file, "utf8"), file).not.toMatch(
+          /hyperframes add\b|registry\/(blocks|components)\//,
+        );
+      }
     }
 
     // The symptom-triggered description is the other half of the fix: the skill
