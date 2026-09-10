@@ -74,6 +74,14 @@ import {
   setRuntimeDataAppliedReporter,
   setRuntimeDataErrorReporter,
 } from "./runtimeData";
+import {
+  isAudioElement,
+  isElementNode,
+  isHtmlElement,
+  isImageElement,
+  isMediaElement,
+  isVideoElement,
+} from "./domRealm";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -316,7 +324,7 @@ export function initSandboxRuntimeModular(): void {
   // closure-based `resolveRootCompositionElement` does on multi-comp pages.
   const findRootCompositionEl = (): HTMLElement | null => {
     const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
-    if (explicitRoot instanceof HTMLElement) return explicitRoot;
+    if (isHtmlElement(explicitRoot)) return explicitRoot;
     const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
     return (
       nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
@@ -869,7 +877,7 @@ export function initSandboxRuntimeModular(): void {
       rootEl.querySelectorAll("[data-composition-id][data-start]"),
     );
     for (const node of compositionNodes) {
-      if (!(node instanceof Element)) continue;
+      if (!isElementNode(node)) continue;
       const parentComposition = node.parentElement?.closest("[data-composition-id]");
       if (parentComposition !== rootEl) continue;
       const start = startResolver.resolveStartForElement(node, 0);
@@ -1682,7 +1690,7 @@ export function initSandboxRuntimeModular(): void {
           for (const child of state.capturedTimeline.getChildren(true)) {
             if (typeof child.targets !== "function") continue;
             for (const target of child.targets()) {
-              if (!(target instanceof HTMLElement)) continue;
+              if (!isHtmlElement(target)) continue;
               if (target === rootComp) continue;
               if (isAudioGroupBus(target)) continue;
               if (target.hasAttribute("data-start")) continue;
@@ -1704,9 +1712,9 @@ export function initSandboxRuntimeModular(): void {
       // Stamp all ID'd children of the composition root so they appear
       // in the timeline even without animations. Enables selecting and
       // adding animations from the design panel on a blank canvas.
-      if (rootComp instanceof HTMLElement) {
+      if (isHtmlElement(rootComp)) {
         for (const el of rootComp.querySelectorAll("[id]")) {
-          if (!(el instanceof HTMLElement)) continue;
+          if (!isHtmlElement(el)) continue;
           if (el === rootComp) continue;
           if (el.hasAttribute("data-start")) continue;
           if (hasAuthoredTimedAncestor(el)) continue;
@@ -1766,7 +1774,7 @@ export function initSandboxRuntimeModular(): void {
 
   const emitRootStageLayoutDiagnostics = () => {
     const rootNode = resolveRootCompositionElement();
-    if (!(rootNode instanceof HTMLElement)) {
+    if (!isHtmlElement(rootNode)) {
       return;
     }
     const rect = rootNode.getBoundingClientRect();
@@ -1869,7 +1877,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const node of assetNodes) {
       const onError = () => {
-        if (!(node instanceof Element)) {
+        if (!isElementNode(node)) {
           return;
         }
         const tagName = node.tagName.toLowerCase();
@@ -1886,11 +1894,9 @@ export function initSandboxRuntimeModular(): void {
             tagName,
             assetUrl,
             currentSrc:
-              node instanceof HTMLImageElement || node instanceof HTMLMediaElement
-                ? node.currentSrc || null
-                : null,
-            readyState: node instanceof HTMLMediaElement ? node.readyState : null,
-            networkState: node instanceof HTMLMediaElement ? node.networkState : null,
+              isImageElement(node) || isMediaElement(node) ? node.currentSrc || null : null,
+            readyState: isMediaElement(node) ? node.readyState : null,
+            networkState: isMediaElement(node) ? node.networkState : null,
           },
           `${diagnosticCode}:${tagName}:${assetUrl ?? "unknown"}`,
         );
@@ -2054,12 +2060,12 @@ export function initSandboxRuntimeModular(): void {
   // listeners below, reusing `metadataBoundMedia` as the once-per-element
   // dedupe (no separate tracking set needed).
   const onMediaLoadedMetadataForProxy = (event: Event) => {
-    if (event.currentTarget instanceof HTMLMediaElement) {
+    if (isMediaElement(event.currentTarget)) {
       handleMetadataForProxy(event.currentTarget);
     }
   };
   const onMediaErrorForProxy = (event: Event) => {
-    if (event.currentTarget instanceof HTMLMediaElement) {
+    if (isMediaElement(event.currentTarget)) {
       handleErrorForProxy(event.currentTarget);
     }
   };
@@ -2069,7 +2075,7 @@ export function initSandboxRuntimeModular(): void {
   // cross-origin `<video>` is not affected and must not be reported as if it
   // were.
   const reportWebAudioRoute = (mediaEl: HTMLMediaElement) => {
-    if (!(mediaEl instanceof HTMLAudioElement)) return;
+    if (!isAudioElement(mediaEl)) return;
     // Before resource selection settles, the verdict is built from `<source>`
     // children the browser might still pass over — good enough for the
     // schedule path's conservative withhold, not good enough to put in front
@@ -2082,7 +2088,7 @@ export function initSandboxRuntimeModular(): void {
 
   const onMediaLoadedMetadataForRoute = (event: Event) => {
     const target = event.currentTarget;
-    if (target instanceof HTMLMediaElement) reportWebAudioRoute(target);
+    if (isMediaElement(target)) reportWebAudioRoute(target);
   };
 
   const unbindMediaMetadataListeners = () => {
@@ -2251,7 +2257,7 @@ export function initSandboxRuntimeModular(): void {
   const applyTimedElementVisibility = (currentTime: number, visibilityNodes: Element[]) => {
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
-      if (!(rawNode instanceof HTMLElement)) continue;
+      if (!isHtmlElement(rawNode)) continue;
 
       if (rawNode.hasAttribute("data-hidden")) {
         if (!dataHiddenDisplayNodes.has(rawNode)) {
@@ -2261,7 +2267,7 @@ export function initSandboxRuntimeModular(): void {
           groupMuteDirty = true;
         }
         rawNode.style.display = "none";
-        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+        if (isVideoElement(rawNode) || isImageElement(rawNode)) {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
         continue;
@@ -2288,7 +2294,7 @@ export function initSandboxRuntimeModular(): void {
         let ancestor = rawNode.parentElement;
         while (ancestor) {
           if (ancestor === rootComp) break;
-          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
+          if (isHtmlElement(ancestor) && ancestor.hasAttribute("data-start")) {
             if (!isTimedElementVisibleAt(ancestor, currentTime)) {
               isVisibleNow = false;
               break;
@@ -2298,7 +2304,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+      if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
       if (isVisibleNow) {
@@ -2785,7 +2791,7 @@ export function initSandboxRuntimeModular(): void {
     }
     const mediaEls = document.querySelectorAll("video, audio");
     for (const el of mediaEls) {
-      if (!(el instanceof HTMLMediaElement)) continue;
+      if (!isMediaElement(el)) continue;
       try {
         el.playbackRate = state.playbackRate;
       } catch (err) {
@@ -3401,7 +3407,7 @@ export function initSandboxRuntimeModular(): void {
           const audioEls = document.querySelectorAll("audio[data-start]");
           let foundActive = false;
           for (const rawEl of audioEls) {
-            if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+            if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
@@ -3492,7 +3498,7 @@ export function initSandboxRuntimeModular(): void {
   const hardSyncAllMedia = (timeSeconds: number) => {
     const mediaEls = document.querySelectorAll("video, audio");
     for (const el of mediaEls) {
-      if (!(el instanceof HTMLMediaElement)) continue;
+      if (!isMediaElement(el)) continue;
       if (!el.isConnected) continue;
       if (!el.hasAttribute("data-start")) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
@@ -3523,7 +3529,7 @@ export function initSandboxRuntimeModular(): void {
     const gen = webAudio.startGeneration();
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
-      if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+      if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
       if (isSilencedByHidden(rawEl)) continue;
       const compStart = resolveAbsoluteMediaStartSeconds(rawEl);
       if (!Number.isFinite(compStart)) continue;
@@ -3660,7 +3666,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.stopAll();
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
+        if (isMediaElement(el) && !el.paused) el.pause();
       }
     },
     onSeek: (timeSeconds, _seekMode) => {
@@ -3673,7 +3679,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         el.muted = effective || el.defaultMuted;
       }
     },
@@ -3682,7 +3688,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setVolume(volume);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         const parsed = parseFloat(el.dataset.volume ?? "");
         const clipVolume = Number.isFinite(parsed) ? parsed : 1;
         // `data-volume` carries authored gain, which goes above unity now that
@@ -3703,7 +3709,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         el.muted = effective || el.defaultMuted;
       }
     },

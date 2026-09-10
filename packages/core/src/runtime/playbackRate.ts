@@ -1,3 +1,5 @@
+import { isMediaElement } from "./domRealm";
+
 export function normalizePlaybackRate(raw: number): number {
   return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
 }
@@ -12,7 +14,7 @@ export function readElementPlaybackRate(el: Pick<Element, "getAttribute">): numb
   const raw =
     Number.isFinite(authored) && authored > 0
       ? authored
-      : typeof HTMLMediaElement !== "undefined" && el instanceof HTMLMediaElement
+      : isMediaElement(el)
         ? el.defaultPlaybackRate
         : 1;
   return normalizePlaybackRate(raw);

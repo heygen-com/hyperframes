@@ -3,6 +3,7 @@ import { swallow } from "./diagnostics";
 import { evictMediaSyncState } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
+import { isVideoElement } from "./domRealm";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -63,7 +64,7 @@ function currentSrcValue(el: HTMLMediaElement): string {
  */
 function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
-  return el instanceof HTMLVideoElement && !!findInjectedRenderFrame(el);
+  return isVideoElement(el) && !!findInjectedRenderFrame(el);
 }
 
 /**
@@ -263,7 +264,7 @@ export function swapToProxy(
  */
 export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   if (swappedElements.has(el)) return;
   const map = window.__HF_MEDIA_CODEC_MAP__;
   if (!map) return;
@@ -292,7 +293,7 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
  */
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   if (el.videoWidth !== 0) return;
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
@@ -324,7 +325,7 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
  */
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);

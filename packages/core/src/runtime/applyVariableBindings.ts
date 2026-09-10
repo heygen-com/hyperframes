@@ -32,6 +32,7 @@ import {
   isScalarVariableValue as isScalar,
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
+import { isHtmlElement } from "./domRealm";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
 // variable value assigned to a src is an XSS surface on tags whose src executes
@@ -143,7 +144,7 @@ function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void 
     const values = valuesForElement(root, cache);
     for (const [id, value] of Object.entries(values)) {
       const css = cssValueFor(value);
-      if (css !== null && root instanceof HTMLElement) {
+      if (css !== null && isHtmlElement(root)) {
         root.style.setProperty(`--${id}`, sanitizeCssValue(css));
       }
     }

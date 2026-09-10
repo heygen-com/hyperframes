@@ -12,6 +12,7 @@
 
 import type { RuntimeTimelineLike } from "./types";
 import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import { isMediaElement } from "./domRealm";
 
 export interface ClipNode {
   readonly id: string;
@@ -66,7 +67,7 @@ function durationFromTimeline(
 }
 
 function durationFromMedia(el: Element): number | null {
-  if (!(el instanceof HTMLMediaElement) || !Number.isFinite(el.duration)) return null;
+  if (!isMediaElement(el) || !Number.isFinite(el.duration)) return null;
   return resolveNaturalMediaTimelineDuration(el, el.duration);
 }
 

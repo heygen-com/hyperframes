@@ -9,6 +9,7 @@ import {
   readElementPlaybackRate,
   readMediaStart,
 } from "./playbackRate";
+import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
 import { MEDIA_START_BASIS_ATTR, resolveAbsoluteMediaStartSeconds } from "../mediaTiming";
 
@@ -40,14 +41,6 @@ export function createRuntimeStartTimeResolver(params: {
     return (
       (doc.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ?? null
     );
-  };
-
-  // Realm-safe: an iframe document's media elements are instances of THAT
-  // frame's HTMLMediaElement, never this module's global one.
-  const isMediaElement = (el: Element): el is HTMLMediaElement => {
-    const RealmMedia = el.ownerDocument.defaultView?.HTMLMediaElement;
-    if (RealmMedia) return el instanceof RealmMedia;
-    return typeof HTMLMediaElement !== "undefined" && el instanceof HTMLMediaElement;
   };
 
   const resolveDurationForElement = (element: Element): number | null => {
