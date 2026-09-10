@@ -241,10 +241,11 @@ for (const workflow of ["pr-to-video", "faceless-explainer", "product-launch-vid
         );
         execFileSync(process.execPath, [script, "build", "--hyperframes", project]);
         const html = readFileSync(join(project, "compositions/captions.html"), "utf8");
-        const inline = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)]
-          .map((match) => match[1])
-          .find((source) => source.includes("var GROUPS ="));
-        assert.ok(inline, "generated caption script exists");
+        const start = html.indexOf("var GROUPS =");
+        assert.ok(start >= 0, "generated caption data exists");
+        const end = html.toLowerCase().indexOf("</script", start);
+        assert.ok(end > start, "generated script has a closing tag");
+        const inline = html.slice(start, end);
         assert.ok(!html.includes("<img"), "transcript cannot create an HTML element");
         const data = inline.match(/var GROUPS = (.*);/);
         assert.ok(data, "entire data assignment remains inside the script element");
