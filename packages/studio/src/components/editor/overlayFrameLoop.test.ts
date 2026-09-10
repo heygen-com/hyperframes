@@ -94,6 +94,7 @@ describe("overlay frame loop", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: { source: "hf-preview", type: "state", frame, isPlaying },
+        origin: window.location.origin,
       }),
     );
   };
@@ -178,8 +179,35 @@ describe("overlay frame loop", () => {
     });
     framesOver(1000);
     runs = 0;
-    window.dispatchEvent(new MessageEvent("message", { data: { source: "some-extension" } }));
-    window.dispatchEvent(new MessageEvent("message", { data: "a string" }));
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "some-extension" },
+        origin: window.location.origin,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", { data: "a string", origin: window.location.origin }),
+    );
+    framesOver(200);
+    expect(runs).toBeLessThanOrEqual(2);
+  });
+
+  it("ignores a preview-shaped message from another origin", () => {
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    // Same payload the preview sends, from somewhere that is not the preview.
+    // Anything embedded on the page can post this; only the origin tells them
+    // apart, and waking on it would hold the overlays at full rate for free.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-preview", type: "state", frame: 42, isPlaying: false },
+        origin: "https://not-the-preview.example",
+      }),
+    );
     framesOver(200);
     expect(runs).toBeLessThanOrEqual(2);
   });
@@ -193,7 +221,10 @@ describe("overlay frame loop", () => {
     runs = 0;
     // A new clip manifest is news whatever the playhead is doing.
     window.dispatchEvent(
-      new MessageEvent("message", { data: { source: "hf-preview", type: "timeline", clips: [] } }),
+      new MessageEvent("message", {
+        data: { source: "hf-preview", type: "timeline", clips: [] },
+        origin: window.location.origin,
+      }),
     );
     framesOver(200);
     expect(runs).toBeGreaterThan(5);

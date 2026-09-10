@@ -58,21 +58,48 @@ const WINDOW_EVENTS = [
 let lastPreviewFrame: number | null = null;
 let lastPreviewPlaying: boolean | null = null;
 
+/**
+ * The preview iframe is served by the editor's own origin (`useTimelinePlayer`
+ * builds its src against `window.location.origin`), so a message from anywhere
+ * else is not the preview whatever its payload claims. Answered before the
+ * payload is read, because a sender we do not trust controls every field in it.
+ */
+function isFromPreviewOrigin(event: MessageEvent): boolean {
+  if (typeof window === "undefined") return true;
+  return event.origin === window.location.origin;
+}
+
+/**
+ * `window` also receives postMessage traffic from extensions, devtools and any
+ * other embed on the page. Waking on those would hold the overlays awake for
+ * reasons that have nothing to do with the preview.
+ */
+function isPreviewPayload(data: unknown): data is { type?: unknown } {
+  if (data == null || typeof data !== "object") return false;
+  return (data as { source?: unknown }).source === "hf-preview";
+}
+
+/** The playhead position a `state` post carries, or null for any other post. */
+function previewStateOf(data: {
+  type?: unknown;
+}): { frame: number | null; playing: boolean } | null {
+  if (data.type !== "state") return null;
+  const frame = (data as { frame?: unknown }).frame;
+  return {
+    frame: typeof frame === "number" ? frame : null,
+    playing: (data as { isPlaying?: unknown }).isPlaying === true,
+  };
+}
+
 function onPreviewMessage(event: MessageEvent): void {
+  if (!isFromPreviewOrigin(event)) return;
   const data: unknown = event.data;
-  // Only the preview's own messages are news. `window` receives postMessage
-  // traffic from extensions, devtools and any other embed on the page, and
-  // waking on those would hold the overlays awake for reasons that have
-  // nothing to do with the preview.
-  if (data == null || typeof data !== "object") return;
-  if ((data as { source?: unknown }).source !== "hf-preview") return;
-  if ((data as { type?: unknown }).type === "state") {
-    const frame = (data as { frame?: unknown }).frame;
-    const playing = (data as { isPlaying?: unknown }).isPlaying === true;
-    const frameNumber = typeof frame === "number" ? frame : null;
-    if (frameNumber === lastPreviewFrame && playing === lastPreviewPlaying) return;
-    lastPreviewFrame = frameNumber;
-    lastPreviewPlaying = playing;
+  if (!isPreviewPayload(data)) return;
+  const state = previewStateOf(data);
+  if (state) {
+    if (state.frame === lastPreviewFrame && state.playing === lastPreviewPlaying) return;
+    lastPreviewFrame = state.frame;
+    lastPreviewPlaying = state.playing;
   }
   requestOverlayFrames();
 }
