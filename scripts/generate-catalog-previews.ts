@@ -42,7 +42,8 @@ import {
   executeRenderJob,
 } from "../packages/producer/src/index.js";
 import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
-import { isContainedIn, resolveContainedCopies } from "./registry-target-paths.mjs";
+import { resolveContainedCopies } from "./registry-target-paths.mjs";
+import { fetchHostedFiles } from "./catalog-hosted-files.js";
 import { withHostedDefaults } from "./registry-hosted-assets.ts";
 import type { RegistryItem } from "../packages/core/src/index.js";
 import { openOpaqueCapture } from "./preview-capture.js";
@@ -130,45 +131,6 @@ export function discoverItems(
 function outputDir(kind: ItemKind): string {
   const typeDir = kind === "block" ? "blocks" : "components";
   return resolve(repoRoot, "docs/images/catalog", typeDir);
-}
-
-/**
- * Download the item's CDN-hosted files into the copied project.
- *
- * `cpSync` only carries what is committed. A file declaring `url` deliberately
- * is not, so without this the preview renders the composition with every image
- * missing and the failure looks like a layout bug rather than an absent file.
- *
- * Same containment rule as the target mirror, and for the same reason: this
- * runs on `pull_request`, so `files[].path` is a contributor's string deciding
- * where bytes land on the runner.
- */
-function hostedFilesOf(projectDir: string): { path: string; url: string }[] {
-  const manifestPath = join(projectDir, "registry-item.json");
-  if (!existsSync(manifestPath)) return [];
-
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
-    files?: { path?: string; url?: string }[];
-  };
-  return (manifest.files ?? []).filter(
-    (file): file is { path: string; url: string } =>
-      typeof file.path === "string" &&
-      typeof file.url === "string" &&
-      file.url.startsWith("https://") &&
-      isContainedIn(projectDir, file.path),
-  );
-}
-
-async function fetchHostedFiles(projectDir: string): Promise<void> {
-  for (const file of hostedFilesOf(projectDir)) {
-    const res = await fetch(file.url);
-    if (!res.ok) {
-      throw new Error(`Hosted asset fetch failed: ${file.url} — HTTP ${res.status}`);
-    }
-    const destPath = resolve(projectDir, file.path);
-    mkdirSync(dirname(destPath), { recursive: true });
-    writeFileSync(destPath, new Uint8Array(await res.arrayBuffer()));
-  }
 }
 
 /**
