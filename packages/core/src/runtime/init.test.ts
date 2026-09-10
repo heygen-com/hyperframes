@@ -3792,9 +3792,31 @@ describe("derived duration floor recomputation", () => {
     Object.defineProperty(media, "duration", { value: seconds, configurable: true });
   };
 
-  /** Drive the transport for `frames` animation frames and report the duration it settled on. */
-  const runFrames = (frames: number): number => {
-    for (let frame = 0; frame < frames; frame += 1) raf.step(16);
+  /**
+   * Drive the transport for `frames` animation frames and report the duration
+   * it settled on.
+   *
+   * Awaits a microtask first, and that is load-bearing rather than cosmetic:
+   * the transport parks itself when the editor is paused and settled, and what
+   * un-parks it for a DOM edit is a MutationObserver callback, which a browser
+   * delivers in a microtask before the next frame. Stepping the frame queue
+   * synchronously after an edit models a world where a paint can happen
+   * between a mutation and its observer, which cannot occur.
+   */
+  /**
+   * `window.__timelines` is a plain object: no observer and no event can
+   * report a change to it, so a parked transport only finds one on its own
+   * slow timer. A test has to wait for that timer the way the editor does.
+   */
+  const waitForParkedRegistryPoll = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, 200));
+
+  const runFrames = async (frames: number): Promise<number> => {
+    for (let frame = 0; frame < frames; frame += 1) {
+      await Promise.resolve();
+      raf.step(16);
+    }
+    await Promise.resolve();
     return window.__player!.getDuration();
   };
 
@@ -3826,6 +3848,7 @@ describe("derived duration floor recomputation", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__renderReady;
+    delete window.__HF_EXPORT_RENDER_SEEK_CONFIG;
     vi.restoreAllMocks();
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
@@ -3838,16 +3861,16 @@ describe("derived duration floor recomputation", () => {
      * still degrades linearly in production. Quadrupling the frame count must
      * not change the derivation count at all.
      */
-    it("derives the duration floor a fixed number of times however many frames elapse", () => {
+    it("derives the duration floor a fixed number of times however many frames elapse", async () => {
       mountComposition(`<video data-start="0"></video>`);
       setNativeDuration(document.querySelector("video")!, 10);
       initSandboxRuntimeModular();
 
       const afterStartup = derivations;
-      expect(runFrames(25)).toBe(10);
+      expect(await runFrames(25)).toBe(10);
       const afterShortRun = derivations - afterStartup;
 
-      expect(runFrames(100)).toBe(10);
+      expect(await runFrames(100)).toBe(10);
       const afterLongRun = derivations - afterStartup - afterShortRun;
 
       // Four times the frames, the same amount of work. Before the cache both
@@ -3856,11 +3879,11 @@ describe("derived duration floor recomputation", () => {
       expect(afterShortRun).toBe(0);
     });
 
-    it("does not re-derive for a DOM change that cannot affect the duration", () => {
+    it("does not re-derive for a DOM change that cannot affect the duration", async () => {
       mountComposition(`<video data-start="0"></video>`);
       setNativeDuration(document.querySelector("video")!, 10);
       initSandboxRuntimeModular();
-      runFrames(2);
+      await runFrames(2);
 
       const before = derivations;
       // A class and an inline transform are what an animating composition
@@ -3869,7 +3892,7 @@ describe("derived duration floor recomputation", () => {
       document.querySelector("video")!.classList.add("is-visible");
       document.querySelector("video")!.setAttribute("style", "opacity: 0.5");
 
-      expect(runFrames(5)).toBe(10);
+      expect(await runFrames(5)).toBe(10);
       expect(derivations).toBe(before);
     });
   });
@@ -3882,61 +3905,61 @@ describe("derived duration floor recomputation", () => {
      * real), and the event that always accompanies it in a browser makes it
      * fresh (proving the invalidation is real).
      */
-    it("serves a stale duration for a silent metadata change and a fresh one once the event fires", () => {
+    it("serves a stale duration for a silent metadata change and a fresh one once the event fires", async () => {
       mountComposition(`<video data-start="0"></video>`);
       const video = document.querySelector("video")!;
       setNativeDuration(video, 10);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       // Half one: the input changed, nothing signalled it, the cache answers.
       setNativeDuration(video, 30);
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       // Half two: the signal a real browser emits alongside that change.
       video.dispatchEvent(new Event("durationchange"));
-      expect(runFrames(1)).toBe(30);
+      expect(await runFrames(1)).toBe(30);
     });
 
-    it("re-derives when el.load() resets duration to NaN", () => {
+    it("re-derives when el.load() resets duration to NaN", async () => {
       mountComposition(`<video data-start="0"></video>`);
       const video = document.querySelector("video")!;
       setNativeDuration(video, 10);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       // What load() does: duration back to NaN, announced by `emptied`.
       setNativeDuration(video, Number.NaN);
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
       video.dispatchEvent(new Event("emptied"));
       const before = derivations;
-      runFrames(1);
+      await runFrames(1);
       expect(derivations).toBeGreaterThan(before);
     });
 
-    it("re-derives when a timing attribute is edited", () => {
+    it("re-derives when a timing attribute is edited", async () => {
       mountComposition(`<video data-start="0"></video>`);
       setNativeDuration(document.querySelector("video")!, 10);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       document.querySelector("video")!.setAttribute("data-duration", "25");
-      expect(runFrames(1)).toBe(25);
+      expect(await runFrames(1)).toBe(25);
     });
 
-    it("re-derives when a clip is moved later on the timeline", () => {
+    it("re-derives when a clip is moved later on the timeline", async () => {
       mountComposition(`<video data-start="0" data-duration="10"></video>`);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       document.querySelector("video")!.setAttribute("data-start", "5");
-      expect(runFrames(1)).toBe(15);
+      expect(await runFrames(1)).toBe(15);
     });
 
-    it("re-derives when a timed element is added after init", () => {
+    it("re-derives when a timed element is added after init", async () => {
       mountComposition(`<video data-start="0" data-duration="10"></video>`);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       // Nested compositions mount asynchronously, well after init — this is
       // the ordinary case, not an edge case.
@@ -3945,19 +3968,19 @@ describe("derived duration floor recomputation", () => {
       late.setAttribute("data-duration", "5");
       document.querySelector("[data-composition-id]")!.append(late);
 
-      expect(runFrames(1)).toBe(25);
+      expect(await runFrames(1)).toBe(25);
     });
 
-    it("re-derives when a timed element is removed", () => {
+    it("re-derives when a timed element is removed", async () => {
       mountComposition(
         `<video data-start="0" data-duration="10"></video>` +
           `<audio id="tail" data-start="20" data-duration="5"></audio>`,
       );
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(25);
+      expect(await runFrames(2)).toBe(25);
 
       document.querySelector("#tail")!.remove();
-      expect(runFrames(1)).toBe(10);
+      expect(await runFrames(1)).toBe(10);
     });
 
     /**
@@ -3966,15 +3989,16 @@ describe("derived duration floor recomputation", () => {
      * already registered, so the cache compares a signature of the registry on
      * every read. Nothing else in the invalidation set could catch this.
      */
-    it("re-derives when a nested composition's registered timeline grows", () => {
+    it("re-derives when a nested composition's registered timeline grows", async () => {
       mountComposition(`<div data-composition-id="scene" data-start="0" data-duration="10"></div>`);
       window.__timelines = { ...window.__timelines, scene: createMockTimeline(10) };
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       window.__timelines = { ...window.__timelines, scene: createMockTimeline(40) };
       const before = derivations;
-      runFrames(1);
+      await waitForParkedRegistryPoll();
+      await runFrames(1);
       expect(derivations).toBeGreaterThan(before);
     });
 
@@ -3985,14 +4009,14 @@ describe("derived duration floor recomputation", () => {
      * — would be handed the pre-edit value if the cache waited for the
      * callback. It drains the queue on read instead.
      */
-    it("reflects an edit read back in the same synchronous block", () => {
+    it("reflects an edit read back in the same synchronous block", async () => {
       mountComposition(`<video data-start="0" data-duration="10"></video>`);
       initSandboxRuntimeModular();
-      expect(runFrames(2)).toBe(10);
+      expect(await runFrames(2)).toBe(10);
 
       // No await, no microtask checkpoint between the write and the read.
       document.querySelector("video")!.setAttribute("data-duration", "42");
-      expect(runFrames(1)).toBe(42);
+      expect(await runFrames(1)).toBe(42);
     });
   });
 
@@ -4002,20 +4026,27 @@ describe("derived duration floor recomputation", () => {
    * the same silent metadata change that is deliberately served stale to the
    * editor must be seen immediately here.
    */
-  it("never serves a cached duration once render capture has started", () => {
+  it("never serves a cached duration once render capture has started", async () => {
+    // Constructed the way a real render is: the producer injects this config
+    // into the page before it drives a single frame, and it is what tells the
+    // runtime an export is in charge of the frame loop. Without it the
+    // runtime is in Studio-fallback territory (`playbackAdapter` also calls
+    // renderSeek), where the loop is free to park and there is no per-frame
+    // derivation to count.
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { mode: "seek" };
     mountComposition(`<video data-start="0"></video>`);
     const video = document.querySelector("video")!;
     setNativeDuration(video, 10);
     initSandboxRuntimeModular();
-    expect(runFrames(2)).toBe(10);
+    expect(await runFrames(2)).toBe(10);
 
     window.__player!.renderSeek(0);
     setNativeDuration(video, 30);
     // No `durationchange` dispatched, and the editor would still answer 10.
-    expect(runFrames(1)).toBe(30);
+    expect(await runFrames(1)).toBe(30);
 
     const before = derivations;
-    runFrames(3);
+    await runFrames(3);
     expect(derivations).toBeGreaterThan(before);
   });
 });

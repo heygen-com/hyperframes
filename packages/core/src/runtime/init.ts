@@ -55,7 +55,7 @@ import {
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame, snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
-import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
+import { createManualEditGestureWatch } from "./manualEditGestureWatch";
 import type {
   RuntimeDeterministicAdapter,
   RuntimeJson,
@@ -936,6 +936,24 @@ export function initSandboxRuntimeModular(): void {
   // derived-duration cache is bypassed entirely once it is set.
   let renderCaptureSeekStarted = false;
 
+  /**
+   * An export render is driving frames deterministically.
+   *
+   * The PAIR, never `renderCaptureSeekStarted` alone: `renderSeek` is also what
+   * Studio's own preview falls back to for overhanging timelines
+   * (`playbackAdapter.createStaticSeekPlaybackAdapter`), so the flag alone
+   * latches on the first Studio scrub of such a project and stays true for the
+   * rest of that session. `__HF_EXPORT_RENDER_SEEK_CONFIG` is injected by the
+   * producer's page script before a single frame is driven, so the pair is
+   * true for a real render and nothing else.
+   *
+   * Two callers rely on this being one decision with one owner: the async
+   * metadata rebind, which must not race the capture loop, and the transport
+   * loop, which must not park while a render is in charge of frames.
+   */
+  const isExportRenderDrivingFrames = (): boolean =>
+    renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG != null;
+
   // The media and authored-composition duration floors are derived from the
   // DOM and the timeline registry — never from the playhead — so they change
   // only when the composition changes. transportTick asks for them on EVERY
@@ -989,8 +1007,19 @@ export function initSandboxRuntimeModular(): void {
   // second cache checking for itself would be told nothing changed.
   let compositionTimingRevision = 0;
 
+  // Restarts the transport loop when it has parked itself (see
+  // `scheduleNextTransportFrame`). Held as a reassignable binding because the
+  // invalidation hooks below are installed long before the transport exists,
+  // and reaching forward into its `const` would be a temporal-dead-zone throw
+  // during init.
+  let wakeTransport: () => void = () => {};
+
   const invalidateCompositionTimingCaches = () => {
     compositionTimingRevision += 1;
+    // The same records that stale the duration caches are what a parked
+    // transport is waiting for: a timing attribute edited, a sub-composition
+    // mounted, media metadata arriving. One signal, two readers.
+    wakeTransport();
   };
 
   const deriveDurationFloors = (): DurationFloors => ({
@@ -1061,13 +1090,20 @@ export function initSandboxRuntimeModular(): void {
     return compositionTimingRevision;
   };
 
-  const resolveDurationFloors = (): DurationFloors => {
+  /**
+   * `revision` lets a caller that has ALREADY read the revision in this task
+   * hand it over instead of paying for a second read. Reading is not free —
+   * it rebuilds a signature over every registered timeline — and it is also
+   * what DRAINS the observer, so a second read in the same task is told
+   * nothing changed and the work is pure duplication.
+   */
+  const resolveDurationFloors = (revision?: number): DurationFloors => {
     // The render path never reads a cached floor. Capture depends on the exact
     // duration and a frame that rendered against a wrong one cannot be
     // recovered, so it pays the full derivation on every frame exactly as
     // before — a correct slow render beats a fast wrong one.
     if (renderCaptureSeekStarted) return deriveDurationFloors();
-    const revision = readCompositionTimingRevision();
+    revision ??= readCompositionTimingRevision();
     if (durationFloorsCache && durationFloorsRevision === revision) return durationFloorsCache;
     durationFloorsRevision = revision;
     durationFloorsCache = deriveDurationFloors();
@@ -1077,10 +1113,11 @@ export function initSandboxRuntimeModular(): void {
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
+    timingRevision?: number,
   ): number => {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const { media: mediaFloor, authoredComposition: authoredCompositionFloor } =
-      resolveDurationFloors();
+      resolveDurationFloors(timingRevision);
     // Deliberately NOT cached: adapters infer their duration from live
     // animation objects (CSS/WAAPI/Lottie), which can change without any DOM
     // mutation or media event to observe. It is also a short loop over the
@@ -2000,12 +2037,11 @@ export function initSandboxRuntimeModular(): void {
       // capture starts, so once frames are being driven there is nothing left
       // for this self-correction to usefully do.
       //
-      // renderSeek is also the entrypoint Studio's own preview iframe falls
-      // back to for overhanging timelines (useTimelinePlayer), so gate on
-      // both signals — renderCaptureSeekStarted alone would silently disable
-      // this self-correction for a live Studio scrub too, where duration
-      // hasn't been pre-resolved by a probe stage and still needs it.
-      if (renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
+      // Gated on the pair rather than renderCaptureSeekStarted alone, because
+      // the flag alone would silently disable this self-correction for a live
+      // Studio scrub too, where duration hasn't been pre-resolved by a probe
+      // stage and still needs it. See isExportRenderDrivingFrames.
+      if (isExportRenderDrivingFrames()) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
@@ -2526,6 +2562,11 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const postState = (force: boolean) => {
+    // Every transport mutation — play, pause, seek, renderSeek, a control-bridge
+    // command, the player's own state posts — ends in a forced post. That makes
+    // this the one place a parked transport needs to hear about, instead of a
+    // wake call bolted onto each mutator (and forgotten on the next one).
+    if (force) wakeTransport();
     const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
@@ -3118,6 +3159,11 @@ export function initSandboxRuntimeModular(): void {
   let lastTransportSeekTime = Number.NaN;
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
+  // Set while the transport is parked (see scheduleNextTransportFrame).
+  let transportParkTimerId: number | null = null;
+  let transportWakeRequested = false;
+  let parkedTimingRevision = -1;
+  let lastServicedTimingRevision = -1;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -3323,28 +3369,124 @@ export function initSandboxRuntimeModular(): void {
   // paused gesture the draft writer owns the element's transform, so the
   // per-frame transport re-seek must yield to it (see transportTick).
   //
-  // The query is document-global (fine for today's single-composition Studio;
+  // The watch is document-global (fine for today's single-composition Studio;
   // revisit if a multi-composition editor needs to scope this to one root).
-  // It only runs while the clock is paused — transportTick short-circuits on
-  // isPlaying() — so it is off the playback hot path; one attribute selector
-  // per paused frame is negligible.
+  // It used to be a `document.querySelector` on every paused frame, described
+  // here as negligible; measured, it was 1.8 ms/s on a 1689-element project and
+  // 3.0 ms/s — 6.4% of the whole paused main-thread budget — on a media-heavy
+  // one. An attribute-filtered observer answers the same question in O(edits),
+  // and its change callback is also what un-parks the transport when a drag
+  // starts or ends.
+  const manualEditGestureWatch = createManualEditGestureWatch(document, () => {
+    wakeTransport();
+  });
+  runtimeCleanupCallbacks.push(() => manualEditGestureWatch.disconnect());
   const hasActiveStudioManualEditGesture = (): boolean => {
     try {
-      return document.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) != null;
+      return manualEditGestureWatch.isActive();
     } catch {
       return false;
     }
+  };
+
+  /**
+   * Nothing a tick would discover can change without one of the wake signals
+   * firing, so the loop may stand down until one does.
+   */
+  const canParkTransport = (): boolean =>
+    !clock.isPlaying() &&
+    !isExportRenderDrivingFrames() &&
+    // A drop/cancel owes one reconciling seek that has not happened yet.
+    !pausedSeekDeferredByManualGesture &&
+    // The playhead and the bound timeline are both where the last seek left
+    // them, so re-seeking on the next frame would render the same frame again.
+    state.currentTime === lastTransportSeekTime &&
+    state.capturedTimeline === lastTransportSeekTimeline;
+
+  /**
+   * The parked loop. Two jobs the 60 Hz loop used to do implicitly:
+   *
+   * 1. Keep the control bridge's paused heartbeat on its documented interval
+   *    (`state.bridgeMaxPostIntervalMs`) so a paused timeline still confirms
+   *    its position to any listener.
+   * 2. Re-read the timeline registry. A composition script registering into
+   *    `window.__timelines`, or lengthening one already there, is the single
+   *    input no MutationObserver and no event can report — see
+   *    `readCompositionTimingRevision`. Polling it 12 times a second instead
+   *    of 60 is the whole reason the safety net exists.
+   */
+  const armParkTimer = () => {
+    transportParkTimerId = window.setTimeout(
+      parkedTransportHeartbeat,
+      state.bridgeMaxPostIntervalMs,
+    );
+  };
+
+  const parkedTransportHeartbeat = () => {
+    transportParkTimerId = null;
+    if (state.tornDown) return;
+    if (readCompositionTimingRevision() !== parkedTimingRevision) {
+      // Through wakeTransport, not straight to rAF: reading the revision can
+      // itself bump it (the registry compare), and that already woke us.
+      wakeTransport();
+      return;
+    }
+    postState(false);
+    armParkTimer();
+  };
+
+  const scheduleNextTransportFrame = () => {
+    state.transportRafId = null;
+    if (state.tornDown) return;
+    const woken = transportWakeRequested;
+    transportWakeRequested = false;
+    if (woken || !canParkTransport()) {
+      state.transportRafId = window.requestAnimationFrame(transportTick);
+      return;
+    }
+    // Read fresh rather than reusing the tick's own `timingRevision`: the tick
+    // may have run postTimeline, which stamps authored-timing attributes the
+    // observer watches. Parking on the pre-postTimeline revision would make
+    // the very first heartbeat see a change and wake for the loop's own writes.
+    parkedTimingRevision = readCompositionTimingRevision();
+    armParkTimer();
+  };
+
+  wakeTransport = () => {
+    if (state.tornDown) return;
+    // Inside a tick the tail is the only scheduler; setting the flag there is
+    // what stops it parking on work it has just been told about.
+    transportWakeRequested = true;
+    if (inTransportTick || state.transportRafId != null) return;
+    if (transportParkTimerId != null) {
+      window.clearTimeout(transportParkTimerId);
+      transportParkTimerId = null;
+    }
+    transportWakeRequested = false;
+    state.transportRafId = window.requestAnimationFrame(transportTick);
   };
 
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
     try {
-      state.transportRafId = window.requestAnimationFrame(transportTick);
       transportTickCount += 1;
+
+      // The three periodic jobs below used to fire on a frame counter, which
+      // was only ever a proxy for "the document may have changed since last
+      // time". Now that the loop parks, the counter stops advancing while it
+      // is parked, so the question is asked directly instead: the composition
+      // timing revision moves on exactly the inputs these three derive from —
+      // timing attributes, mounted/removed elements, media metadata, and the
+      // timeline registry. The counter stays as the belt to that braces, so
+      // playback behaviour is unchanged.
+      const timingRevision = readCompositionTimingRevision();
+      const compositionChanged = timingRevision !== lastServicedTimingRevision;
+      lastServicedTimingRevision = timingRevision;
 
       // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
       if (
+        compositionChanged ||
         shouldAttemptPeriodicTimelineBind({
           tick: transportTickCount,
           isPlaying: clock.isPlaying(),
@@ -3360,15 +3502,15 @@ export function initSandboxRuntimeModular(): void {
           if (state.capturedTimeline && state.capturedTimeline !== prevTimeline) {
             pauseTimelineIfPossible(state.capturedTimeline);
           }
-          const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+          const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision);
           if (dur > 0) clock.setDuration(dur);
           postTimeline();
         }
       }
-      if (transportTickCount % 20 === 0) {
+      if (compositionChanged || transportTickCount % 20 === 0) {
         postTimeline();
       }
-      if (transportTickCount % 30 === 0) {
+      if (compositionChanged || transportTickCount % 30 === 0) {
         bindMediaMetadataListeners();
       }
 
@@ -3376,7 +3518,7 @@ export function initSandboxRuntimeModular(): void {
       // rebinds, live data-duration edits). Never shrink while playing — transient
       // short reads cause reachedEnd() → playhead jumps to end (#1636).
       if (state.capturedTimeline) {
-        const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+        const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision);
         if (dur > 0 && (!clock.isPlaying() || dur >= clock.getDuration())) {
           clock.setDuration(dur);
         }
@@ -3486,6 +3628,10 @@ export function initSandboxRuntimeModular(): void {
       postState(false);
     } finally {
       inTransportTick = false;
+      // Re-arm here, not at the top: the reached-end branch returns early and
+      // must still schedule, and the decision to park can only be made once
+      // the tick has settled the playhead.
+      scheduleNextTransportFrame();
     }
   };
 
@@ -3776,6 +3922,10 @@ export function initSandboxRuntimeModular(): void {
     if (state.transportRafId != null) {
       window.cancelAnimationFrame(state.transportRafId);
       state.transportRafId = null;
+    }
+    if (transportParkTimerId != null) {
+      window.clearTimeout(transportParkTimerId);
+      transportParkTimerId = null;
     }
     state.transportClock = null;
     webAudio.destroy();
