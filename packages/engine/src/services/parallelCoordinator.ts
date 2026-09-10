@@ -141,8 +141,18 @@ const MEMORY_PER_WORKER_MB = 1536;
 const HEAP_RESERVED_MB = 1024;
 // Parent-process V8 heap consumed per worker (protocol buffers + in-flight
 // frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. Validate this estimate against the
-// workers_heap_* fleet telemetry before rollout (PRINFRA-341).
+// default heap ⇒ >~500MB/worker + base. ENFORCED as a cap on auto-sizing
+// below; an explicit `--workers N` bypasses it and stays authoritative.
+//
+// This and HEAP_RESERVED_MB come from a single field report, so know what
+// they cost fleet-wide before trusting or changing them:
+//   - a default ~4GB Node heap selects 4 workers for EVERY auto-sized render
+//     regardless of core count — a 32-core host the contention path would
+//     size to 10 also lands at 4;
+//   - any host whose heap_size_limit is under ~1664MB selects 1 worker, which
+//     overrides the two-worker parallel floor and serializes long renders.
+// PRINFRA-341 validates both figures against workers_heap_* fleet telemetry
+// before this leaves draft; replace this note with what validated them.
 const HEAP_PER_WORKER_MB = 640;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
