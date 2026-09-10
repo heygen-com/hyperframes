@@ -53,16 +53,28 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
 // shapes (rectangular cards, text, full-bleed media) don't have interior holes, so this
 // doesn't bite. If ring/cutout shapes become editable targets, sample more densely or
 // hit-test against the element's actual painted geometry instead of its bounding box.
+const isSourceBoundary = (node: HTMLElement): boolean =>
+  node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src");
+
+/** With a `pass`, every node on the way up is memoized rather than only the
+ *  element asked about: an element's boundary IS its parent's unless it is one
+ *  itself, so siblings share the walk instead of each repeating it. */
 function findSourceBoundary(element: HTMLElement, pass?: OverlayMeasurePass): HTMLElement | null {
-  const walk = () => {
-    for (let node: HTMLElement | null = element; node; node = node.parentElement) {
-      if (node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src")) {
-        return node;
-      }
+  const pending: HTMLElement[] = [];
+  let boundary: HTMLElement | null | undefined;
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    boundary = pass?.sourceBoundary.get(node);
+    if (boundary !== undefined) break;
+    if (isSourceBoundary(node)) {
+      boundary = node;
+      pass?.sourceBoundary.set(node, node);
+      break;
     }
-    return null;
-  };
-  return pass ? readThroughPass(pass.sourceBoundary, element, walk) : walk();
+    pending.push(node);
+  }
+  const answer = boundary ?? null;
+  if (pass) for (const node of pending) pass.sourceBoundary.set(node, answer);
+  return answer;
 }
 
 export function resolveDomEditCoordinateScale(input: {

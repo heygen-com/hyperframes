@@ -53,6 +53,12 @@ function elementRendersItself(win: Window, el: HTMLElement): boolean {
  * the length of one pass — the DOM cannot change under a pass, and every read
  * here is a read — so the caller creates it and drops it, and nothing survives
  * to be invalidated. Omitted, every call walks the chain itself.
+ *
+ * The ANSWER is what it always was. Which nodes get a style read is not: this
+ * resolves top-down and stops at the first node that is out, where the previous
+ * version resolved bottom-up and stopped at the first one that is out going the
+ * other way. Same boolean for every input, a different (and, for a subtree
+ * hidden near the root, smaller) set of reads.
  */
 export function isElementVisibleThroughAncestors(
   el: HTMLElement,
