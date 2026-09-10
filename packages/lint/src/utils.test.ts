@@ -84,27 +84,19 @@ describe("stripJsStringLiterals", () => {
 });
 
 describe("stripJsStringLiterals scaling", () => {
-  /**
-   * Guards the quadratic backtracking this scanner was rewritten to avoid: deciding
-   * regex-versus-division by re-reading the accumulated output on every candidate
-   * slash, which a composition carrying one inlined vendor bundle turns into minutes.
-   *
-   * Measured in CPU time, not wall time. CI runners are shared, so wall time also
-   * counts the milliseconds this process spent descheduled while a neighbour had the
-   * core, and an absolute millisecond ceiling is then a claim about the runner rather
-   * than about the algorithm — which is how this test failed on unrelated pull
-   * requests. `process.cpuUsage` counts only work this process actually did. Measured
-   * on a machine at load average 16, the wall-clock ratio for this same input reached
-   * 45x while the CPU ratio stayed at 20x.
-   *
-   * Only the ratio is asserted; there is deliberately no absolute bound, because how
-   * many milliseconds the scan costs is a property of the hardware and how many it
-   * costs *relative to a smaller input* is the property of the code. The bound is
-   * loose because the linear scan is not perfectly linear in measured cost: the
-   * output string grows with the input, so V8's own string handling adds overhead,
-   * and 8x input measures ~16-22x cost. A quadratic scan measures 60x or more.
-   */
-  it("stays linear in slash-dense input", () => {
+  // Guards the quadratic backtracking this scanner was rewritten to avoid:
+  // deciding regex-versus-division by re-reading the accumulated output on
+  // every candidate slash.
+  //
+  // Measured in CPU time, not wall time: `process.cpuUsage` counts only work
+  // this process did, so time spent descheduled on a shared runner does not
+  // count. Only the ratio is asserted; an absolute millisecond bound is a
+  // claim about the hardware, and it is how this test failed on unrelated
+  // pull requests. Inputs stay well under 100k characters: above that the
+  // output string's growth adds its own cost and 8x input measures ~20x even
+  // for the linear scan. Inside that range 8x input measures ~8x; a quadratic
+  // scan measures 60x or more.
+  it("stays linear in slash-dense input", { timeout: 30_000 }, () => {
     const cpuMs = (n: number) => {
       const src = "a=b/c;".repeat(n);
       stripJsStringLiterals(src); // warm up before the first sample
@@ -117,11 +109,9 @@ describe("stripJsStringLiterals scaling", () => {
       }
       return best;
     };
-    // Sized so the smaller sample costs several milliseconds of CPU — well clear of
-    // the accounting granularity, so the ratio means something.
-    const small = cpuMs(40_000);
-    const large = cpuMs(320_000);
-    expect(large / small).toBeLessThan(32);
+    const small = cpuMs(10_000);
+    const large = cpuMs(80_000);
+    expect(large / small).toBeLessThan(24);
   });
 });
 
