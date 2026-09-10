@@ -3467,6 +3467,11 @@ export function initSandboxRuntimeModular(): void {
   const parkedTransportHeartbeat = () => {
     transportParkTimerId = null;
     if (state.tornDown) return;
+    // The page can go away with the timer still armed — an embedder discarding
+    // the frame, or a test environment torn down around an abandoned runtime.
+    // Stop rather than re-arm: there is nothing left to report a state change
+    // to, and every read below would throw on a missing global.
+    if (typeof window === "undefined" || typeof document === "undefined") return;
     if (readParkedPollWitness() !== parkedPollWitness) {
       // Through wakeTransport, not straight to rAF: reading the witness can
       // itself wake us (the registry compare bumps the revision, and that
