@@ -40,7 +40,12 @@
  * layer tree.
  */
 
-import { getCompositionSourceMapRevision, isHtmlElement } from "./domEditingDom";
+import { buildElementLabel, getCompositionSourceMapRevision, isHtmlElement } from "./domEditingDom";
+import {
+  getDirectLayerChildren,
+  isInspectableLayerElement,
+  resolveDomLayerIdentity,
+} from "./domEditingElement";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** How an element is addressed. Survives style writes; see `readIdentity`. */
@@ -258,4 +263,65 @@ export function createDomEditLayerWalkCache(): DomEditLayerWalkCache {
     },
     invalidateAll,
   };
+}
+
+/** One element's contribution to a layer walk. `depth` is absent on purpose: it
+ *  belongs to the traversal, not to the element. */
+export interface DomEditLayerWalkEntry {
+  target: DomEditLayerIdentity;
+  label: string;
+  childCount: number;
+}
+
+/**
+ * Everything `collectDomEditLayerItems` needs about ONE element, served from
+ * `cache` where it is still valid. Null when the element is not a layer.
+ *
+ * The four reads go through the cache separately rather than as one record
+ * because they do not go stale together: a style write flips whether an element
+ * renders without touching how it is addressed. Without a cache this is exactly
+ * the original per-element derivation, which is what every other caller of the
+ * walk still gets.
+ *
+ * Lives here rather than in the walk so the two halves of the memoization —
+ * what is stored and what is read — sit in one file.
+ */
+export function readDomEditLayerWalkEntry(
+  el: HTMLElement,
+  activeCompositionPath: string | null,
+  cache?: DomEditLayerWalkCache,
+): DomEditLayerWalkEntry | null {
+  const inspectable = cache
+    ? cache.readInspectable(el, () => isInspectableLayerElement(el))
+    : isInspectableLayerElement(el);
+  if (!inspectable) return null;
+
+  const identity = () => resolveDomLayerIdentity(el, activeCompositionPath);
+  const target = cache ? cache.readIdentity(el, identity) : identity();
+  if (!target) return null;
+
+  const label = () => buildElementLabel(el);
+  const childCount = () => getDirectLayerChildren(el).length;
+  return {
+    target,
+    label: cache ? cache.readLabel(el, label) : label(),
+    childCount: cache ? cache.readChildCount(el, childCount) : childCount(),
+  };
+}
+
+/**
+ * Apply the records the observer has taken in but not yet delivered.
+ *
+ * Records arrive in a microtask, so an edit made earlier in THIS task would
+ * otherwise be read back against entries that predate it. Taking them suppresses
+ * the observer's own callback for them, which is equivalent here: that callback
+ * only ingests and marks a rebuild owed, and a caller draining is rebuilding
+ * regardless. A caller with no observer yet has nothing pending.
+ */
+export function drainPendingLayerMutations(
+  observer: MutationObserver | null,
+  cache: DomEditLayerWalkCache,
+): void {
+  if (!observer) return;
+  cache.ingest(observer.takeRecords());
 }

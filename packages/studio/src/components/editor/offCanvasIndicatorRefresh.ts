@@ -4,6 +4,7 @@ import {
   DOM_EDIT_LAYER_OBSERVER_INIT,
   type DomEditLayerWalkCache,
   createDomEditLayerWalkCache,
+  drainPendingLayerMutations,
 } from "./domEditLayerWalkCache";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
 
@@ -119,11 +120,7 @@ export function startOffCanvasIndicatorRefresh(
     if (!rebuildDue(options.dirtyRef.current, lastRecomputeAt, now)) return;
     lastRecomputeAt = now;
     options.dirtyRef.current = false;
-    // Records are delivered in a microtask, so an edit made earlier in THIS task
-    // would otherwise be read back against entries that predate it. Taking them
-    // suppresses the callback for them, which is equivalent here: the callback
-    // only ingests and marks dirty, and we are rebuilding regardless.
-    walkCache.ingest(options.observerRef.current?.takeRecords() ?? []);
+    drainPendingLayerMutations(options.observerRef.current, walkCache);
     recomputeOffCanvasIndicators(
       iframe,
       overlayEl,

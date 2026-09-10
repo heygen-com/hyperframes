@@ -27,15 +27,12 @@ import {
 } from "./domEditingDom";
 import {
   findElementForSelection,
-  getDirectLayerChildren,
   getSelectionCandidate,
   isDomLayerElement,
-  isInspectableLayerElement,
-  resolveDomLayerIdentity,
 } from "./domEditingElement";
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
-import type { DomEditLayerWalkCache } from "./domEditLayerWalkCache";
+import { type DomEditLayerWalkCache, readDomEditLayerWalkEntry } from "./domEditLayerWalkCache";
 
 export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
@@ -452,35 +449,20 @@ export function collectDomEditLayerItems(
   cache?.beginWalk(options.activeCompositionPath);
 
   const items: DomEditLayerItem[] = [];
-  // Each of these is derived from `el` alone, which is what makes it cacheable
-  // across walks; `depth` is not, and stays in the traversal below. They are
-  // read through the cache SEPARATELY rather than as one record because they do
-  // not go stale together: a style write flips whether an element renders
-  // without touching how it is addressed.
-  const resolveTarget = (el: HTMLElement) => {
-    const inspectable = cache
-      ? cache.readInspectable(el, () => isInspectableLayerElement(el))
-      : isInspectableLayerElement(el);
-    if (!inspectable) return null;
-    const identity = () => resolveDomLayerIdentity(el, options.activeCompositionPath);
-    return cache ? cache.readIdentity(el, identity) : identity();
-  };
-
   // fallow-ignore-next-line complexity
   const visit = (el: HTMLElement, depth: number) => {
     if (items.length >= maxItems) return;
 
-    const target = resolveTarget(el);
-    if (target) {
-      const label = () => buildElementLabel(el);
-      const childCount = () => getDirectLayerChildren(el).length;
+    const entry = readDomEditLayerWalkEntry(el, options.activeCompositionPath, cache);
+    if (entry) {
+      const { target } = entry;
       items.push({
         key: getDomEditLayerKey(target),
         element: el,
-        label: cache ? cache.readLabel(el, label) : label(),
+        label: entry.label,
         tagName: el.tagName.toLowerCase(),
         depth,
-        childCount: cache ? cache.readChildCount(el, childCount) : childCount(),
+        childCount: entry.childCount,
         id: target.id ?? undefined,
         hfId: target.hfId ?? undefined,
         selector: target.selector ?? undefined,
@@ -489,7 +471,7 @@ export function collectDomEditLayerItems(
       });
     }
 
-    const nextDepth = target ? depth + 1 : depth;
+    const nextDepth = entry ? depth + 1 : depth;
     for (const child of Array.from(el.children)) {
       if (!isHtmlElement(child)) continue;
       visit(child, nextDepth);

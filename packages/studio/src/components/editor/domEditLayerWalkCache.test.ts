@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { DOM_EDIT_LAYER_OBSERVER_INIT, createDomEditLayerWalkCache } from "./domEditLayerWalkCache";
+import {
+  DOM_EDIT_LAYER_OBSERVER_INIT,
+  type DomEditLayerWalkCache,
+  createDomEditLayerWalkCache,
+  drainPendingLayerMutations,
+} from "./domEditLayerWalkCache";
 import { collectDomEditLayerItems } from "./domEditingLayers";
 import type { DomEditLayerItem } from "./domEditingTypes";
 
@@ -56,6 +61,30 @@ function countingComputedStyle(): { calls: () => number; restore: () => void } {
   return { calls: () => calls, restore: () => (window.getComputedStyle = real) };
 }
 
+interface WarmWalk {
+  root: HTMLElement;
+  cache: DomEditLayerWalkCache;
+  observer: MutationObserver;
+}
+
+/**
+ * A mounted preview whose cache has already done one full walk, with the
+ * observer live. Every test here needs exactly this before it can measure what
+ * a SECOND walk costs, so it lives in one place.
+ */
+function withWarmWalk<T>(cardCount: number, run: (ctx: WarmWalk) => T): T {
+  const root = mountPreview(cardCount);
+  const cache = createDomEditLayerWalkCache();
+  const observer = new MutationObserver(() => {});
+  observer.observe(document.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
+  try {
+    collectDomEditLayerItems(root, opts, undefined, cache);
+    return run({ root, cache, observer });
+  } finally {
+    observer.disconnect();
+  }
+}
+
 describe("collectDomEditLayerItems incremental rebuild", () => {
   /**
    * The load-bearing assertion, and it is INVARIANCE, not a threshold: a
@@ -67,13 +96,7 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
    * every direct child re-derived on every mutation, whatever the mutation was).
    */
   function styleEditRebuildCost(cardCount: number): number {
-    const root = mountPreview(cardCount);
-    const cache = createDomEditLayerWalkCache();
-    const observer = new MutationObserver(() => {});
-    observer.observe(document.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
-    try {
-      collectDomEditLayerItems(root, opts, undefined, cache);
-
+    return withWarmWalk(cardCount, ({ root, cache, observer }) => {
       // What animation writes on a frame: one element's transform, nothing that
       // can change any element's selector, membership or label.
       root.querySelector<HTMLElement>(".box")!.style.transform = "translateX(4px)";
@@ -86,9 +109,7 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
       } finally {
         probe.restore();
       }
-    } finally {
-      observer.disconnect();
-    }
+    });
   }
 
   it("costs the same for one style edit at n cards and at 4n", () => {
@@ -103,12 +124,7 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
   });
 
   it("performs no document query at all for an edit that touches no selector", () => {
-    const root = mountPreview(12);
-    const cache = createDomEditLayerWalkCache();
-    const observer = new MutationObserver(() => {});
-    observer.observe(document.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
-    try {
-      collectDomEditLayerItems(root, opts, undefined, cache);
+    withWarmWalk(12, ({ root, cache, observer }) => {
       root.querySelector<HTMLElement>(".tag")!.style.opacity = "0.5";
       cache.ingest(observer.takeRecords());
 
@@ -129,9 +145,7 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
       // The only document query in the walk resolves a selector's occurrence
       // index, and no cached selector was invalidated.
       expect(queries).toBe(0);
-    } finally {
-      observer.disconnect();
-    }
+    });
   });
 
   /**
@@ -236,5 +250,35 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
     expect(shape(collectDomEditLayerItems(root, rescoped, undefined, cache))).toEqual(
       shape(collectDomEditLayerItems(root, rescoped)),
     );
+  });
+});
+
+describe("drainPendingLayerMutations", () => {
+  it("applies records the observer has not delivered yet", () => {
+    withWarmWalk(6, ({ root, cache, observer }) => {
+      const card = root.querySelector<HTMLElement>(".box")!;
+      // Not delivered: the callback runs in a microtask, and this test never
+      // yields to one.
+      card.id = "renamed";
+
+      drainPendingLayerMutations(observer, cache);
+
+      // An identity attribute drops the whole cache, so the walk after the drain
+      // must agree with an uncached walk.
+      expect(shape(collectDomEditLayerItems(root, opts, undefined, cache))).toEqual(
+        shape(collectDomEditLayerItems(root, opts)),
+      );
+      // And the records really were consumed by the drain, not still queued.
+      expect(observer.takeRecords()).toHaveLength(0);
+    });
+  });
+
+  it("is a no-op when no observer is attached yet", () => {
+    withWarmWalk(6, ({ root, cache }) => {
+      expect(() => drainPendingLayerMutations(null, cache)).not.toThrow();
+      expect(collectDomEditLayerItems(root, opts, undefined, cache)).toHaveLength(
+        collectDomEditLayerItems(root, opts).length,
+      );
+    });
   });
 });

@@ -10,7 +10,6 @@ import {
   type GroupOverlayItem,
   type OverlayRect,
   type ResolvedElementRef,
-  computeOverlayRootScale,
   groupOverlayItemsEqual,
   isElementVisibleForOverlay,
   groupAwareOverlayRect,
@@ -20,6 +19,7 @@ import {
   selectionCacheKey,
   orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
+import { computeOverlayRootScale } from "./domEditOverlayBasis";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;

@@ -1,7 +1,8 @@
 import type React from "react";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import { computeOverlayRootScale, orientedGroupAwareOverlayRect } from "./domEditOverlayGeometry";
+import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import { orientedGroupAwareOverlayRect } from "./domEditOverlayGeometry";
 import { isElementComputedVisible } from "./domEditingElement";
 import type { DomEditLayerWalkCache } from "./domEditLayerWalkCache";
 import { collectDomEditLayerItems } from "./domEditingLayers";

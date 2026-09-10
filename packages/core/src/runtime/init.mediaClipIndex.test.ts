@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTimelineLike } from "./types";
+import {
+  createMockTimeline,
+  installImmediateAnimationFrame,
+  resetRuntimeFixtureDom,
+} from "./runtimeSeekFixture.test-helpers";
 
 /**
  * `visits` counts the media elements handed to `syncRuntimeMedia` — the pass's
@@ -29,28 +34,6 @@ vi.mock("./media", async (importOriginal) => {
 });
 
 const { initSandboxRuntimeModular } = await import("./init");
-
-function createMockTimeline(duration: number): RuntimeTimelineLike {
-  const state = { time: 0, paused: true };
-  return {
-    play: () => {
-      state.paused = false;
-    },
-    pause: () => {
-      state.paused = true;
-    },
-    seek: (time?: number) => (time === undefined ? state.time : (state.time = time)),
-    totalTime: (time?: number) => (time === undefined ? state.time : (state.time = time)),
-    time: () => state.time,
-    duration: () => duration,
-    add: () => {},
-    paused: (value?: boolean) =>
-      typeof value === "boolean" ? (state.paused = value) : state.paused,
-    timeScale: () => {},
-    set: () => {},
-    getChildren: () => [],
-  };
-}
 
 /**
  * `count` back-to-back one-second clips, so the transport crosses exactly one
@@ -90,14 +73,8 @@ describe("per-seek media clip index", () => {
   const originalCancelAnimationFrame = window.cancelAnimationFrame;
 
   beforeEach(() => {
-    document.body.innerHTML = "";
-    (globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS ??= {};
-    globalThis.CSS.escape ??= (value: string) => value;
-    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
-      callback(0);
-      return 1;
-    }) as typeof window.requestAnimationFrame;
-    window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
+    resetRuntimeFixtureDom();
+    installImmediateAnimationFrame();
     mediaSpy.visits = [];
     mediaSpy.disableNarrowing = false;
   });
