@@ -66,6 +66,7 @@ import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
+import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -710,16 +711,8 @@ export function initSandboxRuntimeModular(): void {
   // Single owner: `createRuntimeStartTimeResolver` (startResolver.ts). The clip
   // manifest resolves media starts through the same method, so what the studio
   // draws and what the transport plays cannot drift apart.
-  const resolveAbsoluteMediaStartSeconds = (element: Element): number => {
-    const resolver = createRuntimeStartTimeResolver({
-      timelineRegistry: (window.__timelines ?? {}) as Record<
-        string,
-        RuntimeTimelineLike | undefined
-      >,
-      includeAuthoredTimingAttrs: true,
-    });
-    return resolver.resolveMediaStartForElement(element);
-  };
+  const resolveAbsoluteMediaStartSeconds = (element: Element): number =>
+    timingResolverFor(true).resolveMediaStartForElement(element);
 
   window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;
   runtimeCleanupCallbacks.push(() => {
