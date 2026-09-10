@@ -39,6 +39,23 @@ export function resolveNaturalMediaTimelineDuration(
   );
 }
 
+/**
+ * How long a media element occupies the timeline: an explicit `data-duration`
+ * trim if authored, otherwise the natural source length adjusted for playback
+ * start and rate. `null` when the source has not reported a duration yet.
+ *
+ * Single owner for the media-window scan run by BOTH the runtime's duration
+ * floor and the clip manifest.
+ */
+export function resolveMediaElementDurationSeconds(
+  el: Pick<Element, "getAttribute"> & { duration: number },
+): number | null {
+  const declaredDuration = parseStrictFiniteTimingNumber(el.getAttribute("data-duration"));
+  if (declaredDuration != null && declaredDuration > 0) return declaredDuration;
+  if (Number.isFinite(el.duration)) return resolveNaturalMediaTimelineDuration(el, el.duration);
+  return null;
+}
+
 export function resolveNaturalMediaTimelineDurationFromValues(
   sourceDuration: number,
   mediaStart: number,

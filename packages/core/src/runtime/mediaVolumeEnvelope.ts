@@ -1,6 +1,7 @@
 import type { RuntimeTimelineLike } from "./types";
 import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
+import { createRuntimeStartTimeResolver } from "./startResolver";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -106,7 +107,16 @@ function resolveVolumeProbeWindow(
   el: HTMLAudioElement | HTMLVideoElement,
   compositionDuration: number,
 ): { start: number; end: number; staticVolume: number } {
-  const start = parseStrictFiniteTimingNumber(el.dataset.start) ?? 0;
+  // Probe samples are stamped with ROOT-timeline seek times, and
+  // `normaliseEnvelope` rebases them by this start — so it has to be the same
+  // absolute start the transport plays the clip at. Reading `data-start`
+  // directly gave a composition-local value, which put a nested clip's whole
+  // envelope at the wrong origin.
+  const start = createRuntimeStartTimeResolver({
+    timelineRegistry: (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> })
+      .__timelines,
+    includeAuthoredTimingAttrs: true,
+  }).resolveMediaStartForElement(el);
   const endAttr = parseStrictFiniteTimingNumber(el.dataset.end) ?? undefined;
   const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration) ?? undefined;
   let end = compositionDuration;

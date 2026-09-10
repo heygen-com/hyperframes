@@ -201,6 +201,41 @@ describe("probeAndCacheElementVolume", () => {
     expect(interpolateVolumeGain(envelope, 0.5)).toBeCloseTo(1, 5);
     expect(interpolateVolumeGain(envelope, 1)).toBeCloseTo(1, 5);
   });
+  it("uses the clip's absolute start, not its composition-local data-start", () => {
+    // Same fade as above, but the clip lives in a host composition that begins
+    // at t=2, so its `data-start="1"` means timeline t=3. Reading the attribute
+    // directly probed [1,2] — a window the clip is not even on screen for — and
+    // rebased the envelope 2s early.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-a");
+    host.dataset.start = "2";
+    document.body.append(host);
+    const audio = document.createElement("audio");
+    audio.dataset.start = "1";
+    audio.dataset.duration = "1";
+    audio.dataset.volume = "1";
+    host.append(audio);
+
+    const timeline = {
+      totalTime(next?: number) {
+        if (next !== undefined) {
+          // 0.05s linear fade-in at the clip's real start (timeline t=3).
+          audio.volume = Math.max(0, Math.min(1, (next - 3) / 0.05));
+        }
+        return 0;
+      },
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 4, cache);
+
+    const envelope = cache.get(audio);
+    if (!envelope) throw new Error("Expected a cached envelope");
+    expect(interpolateVolumeGain(envelope, 0)).toBeCloseTo(0, 5);
+    expect(interpolateVolumeGain(envelope, 0.05)).toBeCloseTo(1, 5);
+    expect(interpolateVolumeGain(envelope, 1)).toBeCloseTo(1, 5);
+  });
+
   it("keeps a fade that starts from an above-unity authored gain", () => {
     const audio = document.createElement("audio");
     audio.dataset.start = "0";

@@ -1,9 +1,16 @@
 import type { RuntimeTimelineLike } from "./types";
 import { swallow } from "./diagnostics";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
-import { readElementPlaybackRate } from "./media";
-import { readMediaStart } from "./playbackRate";
+// Straight from playbackRate, not through media.ts's re-export: media.ts
+// imports mediaVolumeEnvelope, which needs this resolver, and the round trip
+// would be an import cycle.
+import {
+  parseStrictFiniteTimingNumber,
+  readElementPlaybackRate,
+  readMediaStart,
+} from "./playbackRate";
 import { parseStartExpression } from "./startExpression";
+import { MEDIA_START_BASIS_ATTR, resolveAbsoluteMediaStartSeconds } from "../mediaTiming";
 
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
@@ -18,6 +25,7 @@ export function createRuntimeStartTimeResolver(params: {
 }): {
   resolveStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
+  resolveMediaStartForElement: (element: Element) => number;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
   const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
@@ -175,10 +183,39 @@ export function createRuntimeStartTimeResolver(params: {
     }
   };
 
+  /**
+   * The ONE owner of "when does this media element start on the root timeline".
+   *
+   * A media element is not a plain timed clip: `data-hf-media-start-basis`
+   * decides whether its `data-start` is composition-local (the default, so the
+   * host offset is added) or a legacy root-global timestamp (already absolute,
+   * so adding the host offset double-counts it). Anything that derives a media
+   * start from attributes — the clip manifest, the visibility pass, the media
+   * cache, WebAudio scheduling — must come through here, or the timeline the
+   * editor draws stops matching the timeline that plays.
+   */
+  const resolveMediaStartForElement = (element: Element): number => {
+    const compositionRoot = element.closest("[data-composition-id]");
+    const hostStart = compositionRoot ? resolveStartForElementInternal(compositionRoot, 0) : 0;
+    const authoredStart = parseStrictFiniteTimingNumber(element.getAttribute("data-start"));
+    // No literal start (absent, or a `data-start="intro + 2"` reference), an
+    // auto-injected start, or a host at t=0 — nothing for the basis to
+    // disambiguate, so the ordinary start resolution is already correct.
+    if (element.hasAttribute("data-hf-auto-start") || authoredStart == null || hostStart <= 0) {
+      return resolveStartForElementInternal(element, hostStart);
+    }
+    return resolveAbsoluteMediaStartSeconds({
+      authoredStart,
+      hostStart,
+      basis: element.getAttribute(MEDIA_START_BASIS_ATTR),
+    });
+  };
+
   return {
     resolveStartForElement: (element: Element, fallback = 0) =>
       resolveStartForElementInternal(element, Math.max(0, fallback)),
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
+    resolveMediaStartForElement,
   };
 }
 

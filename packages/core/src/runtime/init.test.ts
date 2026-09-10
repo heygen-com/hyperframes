@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular } from "./init";
+import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
 import type { RuntimeTimelineLike } from "./types";
@@ -2197,6 +2198,83 @@ describe("initSandboxRuntimeModular", () => {
 
     player?.seek(44);
     expect(pipVideo.style.visibility).toBe("hidden");
+  });
+
+  // The clip manifest the studio timeline draws and the runtime that actually
+  // plays the media must resolve a media element's absolute start through the
+  // same function. When they disagree the editor is a lie: the clip is drawn at
+  // one time and plays at another, and nothing fails.
+  //
+  // Both cases below are read from the SAME DOM the runtime just initialised,
+  // so the expected value is whatever playback uses, never a hardcoded number.
+  it("reports the same media start in the clip manifest as the runtime plays at", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-pip");
+    host.setAttribute("data-composition-file", "compositions/pip.html");
+    host.setAttribute("data-start", "45.40");
+    host.setAttribute("data-duration", "7.06");
+    root.appendChild(host);
+
+    // Legacy root-global authoring: data-start is already absolute, so the host
+    // offset must NOT be added on top of it.
+    const pipVideo = document.createElement("video");
+    pipVideo.id = "pip";
+    pipVideo.setAttribute("data-start", "45.40");
+    pipVideo.setAttribute("data-hf-media-start-basis", "global");
+    pipVideo.setAttribute("data-duration", "7.06");
+    host.appendChild(pipVideo);
+
+    window.__timelines = {
+      main: createMockTimeline(60),
+      "scene-pip": createMockTimeline(7.06),
+    };
+    initSandboxRuntimeModular();
+
+    const runtimeStart = window.__hfResolveMediaStartSeconds?.(pipVideo);
+    const manifestClip = collectRuntimeTimelinePayload({ canonicalFps: 30 }).clips.find(
+      (clip) => clip.id === "pip",
+    );
+    expect(runtimeStart).toBeCloseTo(45.4);
+    expect(manifestClip?.start).toBeCloseTo(runtimeStart!);
+  });
+
+  it("keeps a composition-local media clip in the manifest at the time it plays", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    document.body.appendChild(root);
+
+    // No data-duration and no registered timeline anywhere, so the media window
+    // IS the composition's duration — which is what the second, attribute-only
+    // start derivation used to get wrong.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-a");
+    host.setAttribute("data-start", "10");
+    root.appendChild(host);
+
+    const nested = document.createElement("video");
+    nested.id = "nested";
+    nested.setAttribute("data-start", "2");
+    nested.setAttribute("data-duration", "3");
+    host.appendChild(nested);
+
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+
+    const runtimeStart = window.__hfResolveMediaStartSeconds?.(nested);
+    const manifestClip = collectRuntimeTimelinePayload({ canonicalFps: 30 }).clips.find(
+      (clip) => clip.id === "nested",
+    );
+    expect(runtimeStart).toBeCloseTo(12);
+    expect(manifestClip?.start).toBeCloseTo(runtimeStart!);
+    expect(manifestClip?.duration).toBeCloseTo(3);
   });
 
   it("shows auto-injected video at host time, not at t=0", () => {
