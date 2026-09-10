@@ -123,14 +123,26 @@ describe("domRealm predicates", () => {
     try {
       const div = other.create("div");
       const video = other.create("video");
-      document.body.append(div, video);
+      const audio = other.create("audio");
+      const img = other.create("img");
+      document.body.append(div, video, audio, img);
 
       expect(div instanceof HTMLElement).toBe(false);
       expect(video instanceof HTMLVideoElement).toBe(false);
+      expect(audio instanceof HTMLAudioElement).toBe(false);
+      expect(img instanceof HTMLImageElement).toBe(false);
 
       expect(isHtmlElement(div)).toBe(true);
       expect(isVideoElement(video)).toBe(true);
       expect(isMediaElement(video)).toBe(true);
+      expect(isAudioElement(audio)).toBe(true);
+      expect(isImageElement(img)).toBe(true);
+
+      // `isMediaElement` is the audio-or-video composition, and the media sync
+      // path narrows through it, so an audio-only regression must fail here too.
+      expect(isMediaElement(audio)).toBe(true);
+      expect(isVideoElement(audio)).toBe(false);
+      expect(isAudioElement(video)).toBe(false);
 
       // Position edits apply to SVG as well as HTML, so that branch needs the
       // same cross-realm guarantee.
