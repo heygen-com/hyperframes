@@ -25,6 +25,7 @@ import {
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
   resolveNaturalMediaTimelineDuration,
+  type RuntimeMediaClip,
   syncRuntimeMedia,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
@@ -975,13 +976,21 @@ export function initSandboxRuntimeModular(): void {
     "id",
     "src",
   ];
-  const DURATION_FLOOR_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
+  const COMPOSITION_TIMING_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
   let durationFloorsCache: DurationFloors | null = null;
-  let durationFloorsRegistrySignature: string | null = null;
-  let durationFloorsObserver: MutationObserver | null = null;
+  let durationFloorsRevision = -1;
+  let timelineRegistrySignature: string | null = null;
+  let compositionTimingObserver: MutationObserver | null = null;
 
-  const invalidateDurationFloors = () => {
-    durationFloorsCache = null;
+  // Bumped whenever anything above can have moved a clip's window. Two caches
+  // read it: the duration floors, and the media clip index below. It is a
+  // counter rather than a per-cache flag because DRAINING the observer is what
+  // detects a change, and only the first reader in a task gets the records — a
+  // second cache checking for itself would be told nothing changed.
+  let compositionTimingRevision = 0;
+
+  const invalidateCompositionTimingCaches = () => {
+    compositionTimingRevision += 1;
   };
 
   const deriveDurationFloors = (): DurationFloors => ({
@@ -1000,10 +1009,10 @@ export function initSandboxRuntimeModular(): void {
     return signature;
   };
 
-  const watchDurationFloorInputs = () => {
-    if (durationFloorsObserver || typeof MutationObserver === "undefined") return;
-    durationFloorsObserver = new MutationObserver(invalidateDurationFloors);
-    durationFloorsObserver.observe(document.documentElement, {
+  const watchCompositionTimingInputs = () => {
+    if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
+    compositionTimingObserver = new MutationObserver(invalidateCompositionTimingCaches);
+    compositionTimingObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -1012,17 +1021,44 @@ export function initSandboxRuntimeModular(): void {
     // Media duration changes are published as events, not DOM mutations, and
     // they do not bubble — so listen in the capture phase, which reaches every
     // media element including ones added long after this binds.
-    for (const eventType of DURATION_FLOOR_MEDIA_EVENTS) {
-      document.addEventListener(eventType, invalidateDurationFloors, true);
+    for (const eventType of COMPOSITION_TIMING_MEDIA_EVENTS) {
+      document.addEventListener(eventType, invalidateCompositionTimingCaches, true);
     }
     runtimeCleanupCallbacks.push(() => {
-      durationFloorsObserver?.disconnect();
-      durationFloorsObserver = null;
-      invalidateDurationFloors();
-      for (const eventType of DURATION_FLOOR_MEDIA_EVENTS) {
-        document.removeEventListener(eventType, invalidateDurationFloors, true);
+      compositionTimingObserver?.disconnect();
+      compositionTimingObserver = null;
+      invalidateCompositionTimingCaches();
+      for (const eventType of COMPOSITION_TIMING_MEDIA_EVENTS) {
+        document.removeEventListener(eventType, invalidateCompositionTimingCaches, true);
       }
     });
+  };
+
+  /**
+   * The current revision, after taking every signal that could have moved it.
+   * Call this exactly once per read, and compare it with the revision a cache
+   * was built at.
+   */
+  const readCompositionTimingRevision = (): number => {
+    watchCompositionTimingInputs();
+    // MutationObserver records are delivered in a microtask, so a caller that
+    // edits a timing attribute and reads a window back in the SAME synchronous
+    // block would otherwise be served the pre-edit value. Draining the queue
+    // here makes the caches correct within a task, not just across tasks.
+    // Taking the records suppresses the callback for them, which is exactly
+    // equivalent since the callback only bumps the revision.
+    if (compositionTimingObserver && compositionTimingObserver.takeRecords().length > 0) {
+      invalidateCompositionTimingCaches();
+    }
+    // `window.__timelines` is a plain object: no MutationObserver and no event
+    // can see a composition script registering into it or lengthening what it
+    // already registered, so its shape is compared on every read.
+    const signature = readTimelineRegistrySignature();
+    if (signature !== timelineRegistrySignature) {
+      timelineRegistrySignature = signature;
+      invalidateCompositionTimingCaches();
+    }
+    return compositionTimingRevision;
   };
 
   const resolveDurationFloors = (): DurationFloors => {
@@ -1031,21 +1067,9 @@ export function initSandboxRuntimeModular(): void {
     // recovered, so it pays the full derivation on every frame exactly as
     // before — a correct slow render beats a fast wrong one.
     if (renderCaptureSeekStarted) return deriveDurationFloors();
-    watchDurationFloorInputs();
-    // MutationObserver records are delivered in a microtask, so a caller that
-    // edits a timing attribute and reads the duration back in the SAME
-    // synchronous block would otherwise be served the pre-edit value. Draining
-    // the queue here makes the cache correct within a task, not just across
-    // tasks. Taking the records suppresses the callback for them, which is
-    // exactly equivalent since the callback only marks the cache stale.
-    if (durationFloorsObserver && durationFloorsObserver.takeRecords().length > 0) {
-      invalidateDurationFloors();
-    }
-    const registrySignature = readTimelineRegistrySignature();
-    if (durationFloorsCache && registrySignature === durationFloorsRegistrySignature) {
-      return durationFloorsCache;
-    }
-    durationFloorsRegistrySignature = registrySignature;
+    const revision = readCompositionTimingRevision();
+    if (durationFloorsCache && durationFloorsRevision === revision) return durationFloorsCache;
+    durationFloorsRevision = revision;
     durationFloorsCache = deriveDurationFloors();
     return durationFloorsCache;
   };
@@ -2304,48 +2328,162 @@ export function initSandboxRuntimeModular(): void {
     visibilityNodes: Element[] = Array.from(document.querySelectorAll("[data-start]")),
   ) => withTimingResolver(() => applyTimedElementVisibility(currentTime, visibilityNodes));
 
+  /**
+   * Clip windows sorted by each endpoint, so a seek can ask which windows it
+   * crossed instead of asking every clip whether it is active.
+   *
+   * Rebuilt whenever the composition's timing inputs move — the same revision
+   * the duration floors ride on, because the two are derived from the same
+   * attributes, the same media metadata events and the same timeline registry.
+   */
+  interface MediaClipIndex {
+    revision: number;
+    clips: RuntimeMediaClip[];
+    byStart: RuntimeMediaClip[];
+    byEnd: RuntimeMediaClip[];
+  }
+  let mediaClipIndex: MediaClipIndex | null = null;
+  // The transport time the last sync ran at, and the clips whose authored window
+  // contained it. `null` means "unknown": the next pass visits everything and
+  // reseeds. Only ever advanced when `syncRuntimeMedia` actually ran, so a pass
+  // skipped for any reason widens the next sweep rather than skipping the
+  // boundaries crossed in between.
+  let lastSyncedMediaTimeSeconds: number | null = null;
+  let mediaClipsInWindow: RuntimeMediaClip[] = [];
+
+  const buildRuntimeMediaCache = (elements?: Array<HTMLVideoElement | HTMLAudioElement>) =>
+    refreshRuntimeMediaCache({
+      elements,
+      shouldIncludeElement: (element) =>
+        element.hasAttribute("data-start") ||
+        Boolean(resolveMediaCompositionContext(element).compositionRoot),
+      resolveStartSeconds: (element) => {
+        return resolveAbsoluteMediaStartSeconds(element);
+      },
+      resolveDurationSeconds: (element) => {
+        const context = resolveMediaCompositionContext(element);
+        const start = resolveAbsoluteMediaStartSeconds(element);
+        const hostRemaining =
+          context.inheritedStart != null &&
+          context.inheritedDuration != null &&
+          context.inheritedDuration > 0
+            ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
+            : null;
+        const sourceDuration = Number.isFinite(element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          : null;
+        // The element's own data-duration is an explicit clip-length trim
+        // (the studio writes it when you drag the clip edge). It must bound
+        // playback so a trimmed track stops at its edge instead of running on
+        // to the source-file or host-composition end. Absent → no cap (an
+        // untrimmed clip plays its natural source length).
+        const ownDuration = parseStrictFiniteTimingNumber(element.dataset.duration);
+        const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
+        return resolveRuntimeMediaClipDuration({
+          isVideo: element.tagName === "VIDEO",
+          sourceDuration,
+          hostRemaining,
+          explicitDuration,
+        });
+      },
+    });
+
+  const resolveMediaClipIndex = (): MediaClipIndex => {
+    const revision = readCompositionTimingRevision();
+    if (mediaClipIndex && mediaClipIndex.revision === revision) return mediaClipIndex;
+    const clips = buildRuntimeMediaCache().mediaClips;
+    mediaClipIndex = {
+      revision,
+      clips,
+      byStart: [...clips].sort((a, b) => a.start - b.start),
+      byEnd: [...clips].sort((a, b) => a.end - b.end),
+    };
+    // The windows moved, so what the sweep remembers being in-window is about
+    // clips that no longer describe this composition. Reseed on the next pass.
+    lastSyncedMediaTimeSeconds = null;
+    mediaClipsInWindow = [];
+    return mediaClipIndex;
+  };
+
+  /** Clips whose `endpoint` lies in [lo, hi], via binary search on the sorted
+   *  array. Inclusive at both ends: over-visiting is free, under-visiting is a
+   *  clip left playing. */
+  const clipsWithEndpointBetween = (
+    sorted: RuntimeMediaClip[],
+    endpoint: (clip: RuntimeMediaClip) => number,
+    lo: number,
+    hi: number,
+  ): RuntimeMediaClip[] => {
+    let low = 0;
+    let high = sorted.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (endpoint(sorted[mid]!) < lo) low = mid + 1;
+      else high = mid;
+    }
+    const crossed: RuntimeMediaClip[] = [];
+    for (let i = low; i < sorted.length && endpoint(sorted[i]!) <= hi; i += 1)
+      crossed.push(sorted[i]!);
+    return crossed;
+  };
+
+  /**
+   * The media elements this pass must visit, and the argument that the rest can
+   * be skipped.
+   *
+   * `isActive` requires `start <= t < end`, so a clip whose window excludes the
+   * new time is inactive there no matter what its element state is. A clip that
+   * is in neither the previous in-window set nor the set of windows whose
+   * endpoint the transport just crossed was therefore out of window BEFORE and
+   * is out of window NOW — the pass would only have evicted sync state that is
+   * already empty and paused an element already paused, both of which it was
+   * left in the last time it went out of window, by a pass that did visit it.
+   *
+   * The endpoint search is what makes a jump honest rather than lucky: seeking
+   * over a hundred clips visits the hundred boundaries it crossed, and a
+   * single-frame step visits the one or two that flip.
+   */
+  const collectMediaElementsToVisit = (
+    index: MediaClipIndex,
+    toSeconds: number,
+  ): Array<HTMLVideoElement | HTMLAudioElement> => {
+    const fromSeconds = lastSyncedMediaTimeSeconds;
+    if (fromSeconds === null) return index.clips.map((clip) => clip.el);
+    const lo = Math.min(fromSeconds, toSeconds);
+    const hi = Math.max(fromSeconds, toSeconds);
+    const visiting = new Set<HTMLVideoElement | HTMLAudioElement>();
+    for (const clip of mediaClipsInWindow) visiting.add(clip.el);
+    for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi)) {
+      visiting.add(clip.el);
+    }
+    for (const clip of clipsWithEndpointBetween(index.byEnd, (c) => c.end, lo, hi)) {
+      visiting.add(clip.el);
+    }
+    return [...visiting];
+  };
+
   const syncMediaForCurrentState = () => {
     // Scope 1 of 3 (see `withTimingResolver`). Closes before `syncRuntimeMedia`,
     // which may call `el.load()` and invalidate every cached duration.
-    const cache = withTimingResolver(() =>
-      refreshRuntimeMediaCache({
-        shouldIncludeElement: (element) =>
-          element.hasAttribute("data-start") ||
-          Boolean(resolveMediaCompositionContext(element).compositionRoot),
-        resolveStartSeconds: (element) => {
-          return resolveAbsoluteMediaStartSeconds(element);
-        },
-        resolveDurationSeconds: (element) => {
-          const context = resolveMediaCompositionContext(element);
-          const start = resolveAbsoluteMediaStartSeconds(element);
-          const hostRemaining =
-            context.inheritedStart != null &&
-            context.inheritedDuration != null &&
-            context.inheritedDuration > 0
-              ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
-              : null;
-          const sourceDuration = Number.isFinite(element.duration)
-            ? resolveNaturalMediaTimelineDuration(element, element.duration)
-            : null;
-          // The element's own data-duration is an explicit clip-length trim
-          // (the studio writes it when you drag the clip edge). It must bound
-          // playback so a trimmed track stops at its edge instead of running on
-          // to the source-file or host-composition end. Absent → no cap (an
-          // untrimmed clip plays its natural source length).
-          const ownDuration = parseStrictFiniteTimingNumber(element.dataset.duration);
-          const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
-          return resolveRuntimeMediaClipDuration({
-            isVideo: element.tagName === "VIDEO",
-            sourceDuration,
-            hostRemaining,
-            explicitDuration,
-          });
-        },
-      }),
-    );
+    //
+    // The render/export path never consults the index: capture depends on the
+    // exact state of every element on every frame and a frame captured against a
+    // stale one cannot be recovered, so it visits all of them exactly as before.
+    // Same reasoning, and the same latch, as the duration floors above.
+    const indexed = !renderCaptureSeekStarted;
+    const mediaClips = withTimingResolver(() => {
+      if (!indexed) return buildRuntimeMediaCache().mediaClips;
+      const index = resolveMediaClipIndex();
+      // Windows come from the index, but every field handed to `syncRuntimeMedia`
+      // is re-read here: `el.duration` is reset by any `el.load()` the retry path
+      // made last pass, and a cached copy of it would be exactly the stale
+      // duration the two-scope rule exists to prevent.
+      return buildRuntimeMediaCache(collectMediaElementsToVisit(index, state.currentTime))
+        .mediaClips;
+    });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
     // same envelope the renderer uses instead of tracking GSAP-change diffs.
-    for (const clip of cache.mediaClips) {
+    for (const clip of mediaClips) {
       const kf = volumeKeyframeCache.get(clip.el as HTMLMediaElement);
       if (kf) clip.volumeKeyframes = kf;
     }
@@ -2354,7 +2492,7 @@ export function initSandboxRuntimeModular(): void {
     if (forceSync) state.mediaForceSyncNextTick = false;
     if (!state.nativeMediaSyncDisabled) {
       syncRuntimeMedia({
-        clips: cache.mediaClips,
+        clips: mediaClips,
         timeSeconds: state.currentTime,
         playing: state.isPlaying,
         playbackRate: state.playbackRate,
@@ -2372,6 +2510,17 @@ export function initSandboxRuntimeModular(): void {
           postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
         },
       });
+      if (indexed) {
+        lastSyncedMediaTimeSeconds = state.currentTime;
+        // Every clip not visited was out of window at both ends of this seek, so
+        // the visited ones are the only possible members.
+        mediaClipsInWindow = mediaClips.filter(
+          (clip) => state.currentTime >= clip.start && state.currentTime < clip.end,
+        );
+      } else {
+        lastSyncedMediaTimeSeconds = null;
+        mediaClipsInWindow = [];
+      }
     }
     syncTimedElementVisibility(state.currentTime);
   };
