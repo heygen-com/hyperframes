@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
+import { subscribeOverlayFrame } from "./overlayFrameLoop";
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -121,7 +122,6 @@ export function useMotionPathData(
       return;
     }
     setHome(null);
-    let raf = 0;
     const tick = () => {
       const el = iframeRef.current;
       if (el) {
@@ -153,10 +153,8 @@ export function useMotionPathData(
           setPScale((p) => (Math.abs(p - ps) < 0.001 ? p : ps));
         }
       }
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return subscribeOverlayFrame(tick);
   }, [selector, iframeRef]);
 
   useEffect(() => {

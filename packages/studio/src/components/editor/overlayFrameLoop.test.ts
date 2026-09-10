@@ -140,6 +140,65 @@ describe("overlay frame loop", () => {
     expect(runs).toBeGreaterThan(5);
   });
 
+  it("keeps every other subscriber running, and the loop alive, when one throws", () => {
+    const runs = { a: 0, c: 0 };
+    // The loop rethrows out of band so the error still reaches the page's
+    // error reporting. Capture those instead of letting them escape the test,
+    // and assert every one of them was surfaced rather than swallowed.
+    const rethrown: Array<() => void> = [];
+    vi.spyOn(globalThis, "queueMicrotask").mockImplementation((fn: () => void) => {
+      rethrown.push(fn);
+    });
+
+    subscribeOverlayFrame(() => {
+      runs.a += 1;
+    });
+    subscribeOverlayFrame(() => {
+      throw new Error("subscriber blew up");
+    });
+    subscribeOverlayFrame(() => {
+      runs.c += 1;
+    });
+
+    for (let i = 0; i < 5; i += 1) step();
+
+    // The survivors ran on every frame, every failure was reported, and the
+    // loop is still asking for more frames.
+    expect(runs.a).toBe(5);
+    expect(runs.c).toBe(5);
+    expect(rethrown).toHaveLength(5);
+    expect(() => rethrown[0]()).toThrow("subscriber blew up");
+    expect(queued.length).toBeGreaterThan(0);
+  });
+
+  it("does not wake for a message that is not the preview's", () => {
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    window.dispatchEvent(new MessageEvent("message", { data: { source: "some-extension" } }));
+    window.dispatchEvent(new MessageEvent("message", { data: "a string" }));
+    framesOver(200);
+    expect(runs).toBeLessThanOrEqual(2);
+  });
+
+  it("wakes for a preview message that is not a state post", () => {
+    let runs = 0;
+    subscribeOverlayFrame(() => {
+      runs += 1;
+    });
+    framesOver(1000);
+    runs = 0;
+    // A new clip manifest is news whatever the playhead is doing.
+    window.dispatchEvent(
+      new MessageEvent("message", { data: { source: "hf-preview", type: "timeline", clips: [] } }),
+    );
+    framesOver(200);
+    expect(runs).toBeGreaterThan(5);
+  });
+
   it("stops entirely, and stops listening, once the last subscriber leaves", () => {
     let runs = 0;
     const unsubscribe = subscribeOverlayFrame(() => {

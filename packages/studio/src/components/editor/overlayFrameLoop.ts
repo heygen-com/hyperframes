@@ -60,12 +60,13 @@ let lastPreviewPlaying: boolean | null = null;
 
 function onPreviewMessage(event: MessageEvent): void {
   const data: unknown = event.data;
-  if (
-    data != null &&
-    typeof data === "object" &&
-    (data as { source?: unknown }).source === "hf-preview" &&
-    (data as { type?: unknown }).type === "state"
-  ) {
+  // Only the preview's own messages are news. `window` receives postMessage
+  // traffic from extensions, devtools and any other embed on the page, and
+  // waking on those would hold the overlays awake for reasons that have
+  // nothing to do with the preview.
+  if (data == null || typeof data !== "object") return;
+  if ((data as { source?: unknown }).source !== "hf-preview") return;
+  if ((data as { type?: unknown }).type === "state") {
     const frame = (data as { frame?: unknown }).frame;
     const playing = (data as { isPlaying?: unknown }).isPlaying === true;
     const frameNumber = typeof frame === "number" ? frame : null;
@@ -78,8 +79,22 @@ function onPreviewMessage(event: MessageEvent): void {
 
 function runFrame(): void {
   frameId = null;
-  for (const subscriber of subscribers) subscriber();
+  // Re-arm BEFORE running anything, exactly as the four separate loops this
+  // replaces did. A subscriber that throws must not take the loop down with
+  // it — and a shared loop makes that failure four overlays wide plus the
+  // idle-poll safety net, permanently, rather than one overlay's own problem.
   schedule();
+  for (const subscriber of subscribers) {
+    try {
+      subscriber();
+    } catch (error) {
+      // Rethrown out of band so it still reaches window.onerror and whatever
+      // reports errors, without any subscriber becoming the others' fate.
+      queueMicrotask(() => {
+        throw error;
+      });
+    }
+  }
 }
 
 function schedule(): void {
