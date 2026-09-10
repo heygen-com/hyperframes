@@ -1,3 +1,4 @@
+import { fetchMedia, isPublicMediaUrl } from "./media-fetch.mjs";
 import { writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -7,7 +8,7 @@ const MAX_FREEZE_BYTES = 256 * 1024 * 1024;
 
 export async function freezeUrl(url, destPath) {
   const where = String(url).slice(0, 80);
-  const res = await fetch(url);
+  const res = await fetchMedia(url);
   if (!res.ok) throw new Error(`freeze failed: HTTP ${res.status} for ${where}`);
 
   // Fail fast on an advertised oversize body before reading a single byte.
@@ -47,15 +48,6 @@ const PLATFORM_HOSTS =
   /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com)$/i;
 const MEDIA_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|png|jpe?g|webp|gif|svg|avif)$/i;
 
-// SSRF guard (m11): a user-supplied --from URL must not point at the local host
-// or a private network. Blocks loopback/localhost, RFC1918, link-local, and the
-// IPv6 equivalents on the literal hostname.
-// ponytail: literal-host check only; a DNS name that *resolves* to a private IP
-// (rebinding) still passes — add resolve-then-check if --from ever fetches from
-// untrusted hostnames at scale.
-const PRIVATE_HOST =
-  /^(localhost|.*\.local|.*\.internal|127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?(::1|::ffff:127\.|f[cd][0-9a-f]{2}:|fe80:))/i;
-
 export function isDirectMediaUrl(u) {
   let url;
   try {
@@ -65,6 +57,6 @@ export function isDirectMediaUrl(u) {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
   if (PLATFORM_HOSTS.test(url.hostname)) return false;
-  if (PRIVATE_HOST.test(url.hostname)) return false;
+  if (!isPublicMediaUrl(url)) return false;
   return MEDIA_EXT.test(url.pathname);
 }

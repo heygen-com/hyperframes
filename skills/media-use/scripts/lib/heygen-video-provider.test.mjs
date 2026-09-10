@@ -36,7 +36,7 @@ async function freshGenerate() {
   return module.heygenVideoGenerate;
 }
 
-async function listenVideoServer() {
+async function listenVideoServer(t) {
   const server = http.createServer((req, res) => {
     if (req.url !== "/video.mp4") {
       res.writeHead(404).end();
@@ -51,23 +51,33 @@ async function listenVideoServer() {
   await new Promise((resolve) => server.listen(0, resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  return {
-    server,
-    url: `http://127.0.0.1:${address.port}/video.mp4`,
-  };
+  // Keep the provider URL public; only the test transport reaches the local fixture.
+  const url = "https://media.example.com/video.mp4";
+  const originalFetch = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", (requested, options) => {
+    assert.equal(requested, url);
+    assert.equal(options.redirect, "manual");
+    return originalFetch(`http://127.0.0.1:${address.port}/video.mp4`, options);
+  });
+  return { server, url };
 }
 
-async function listenFailingVideoServer() {
+async function listenFailingVideoServer(t) {
   const server = http.createServer((req, res) => {
     res.writeHead(500).end();
   });
   await new Promise((resolve) => server.listen(0, resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  return {
-    server,
-    url: `http://127.0.0.1:${address.port}/video.mp4`,
-  };
+  // Keep the provider URL public; only the test transport reaches the local fixture.
+  const url = "https://media.example.com/video.mp4";
+  const originalFetch = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", (requested, options) => {
+    assert.equal(requested, url);
+    assert.equal(options.redirect, "manual");
+    return originalFetch(`http://127.0.0.1:${address.port}/video.mp4`, options);
+  });
+  return { server, url };
 }
 
 function closeServer(server) {
@@ -144,8 +154,8 @@ function bodyFromInvocation(invocation) {
   return JSON.parse(invocation.slice(start + marker.length));
 }
 
-test("downloads a generated avatar video and returns the generated MP4 result", async () => {
-  const { server, url } = await listenVideoServer();
+test("downloads a generated avatar video and returns the generated MP4 result", async (t) => {
+  const { server, url } = await listenVideoServer(t);
   let localPath;
   try {
     await withFakeHeygen(
@@ -191,8 +201,8 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
   }
 });
 
-test("tags video creation but not avatar or voice discovery", async () => {
-  const { server, url } = await listenVideoServer();
+test("tags video creation but not avatar or voice discovery", async (t) => {
+  const { server, url } = await listenVideoServer(t);
   let localPath;
   try {
     await withFakeHeygen(
@@ -218,8 +228,8 @@ test("tags video creation but not avatar or voice discovery", async () => {
   }
 });
 
-test("uses explicit avatar and voice overrides without discovery", async () => {
-  const { server, url } = await listenVideoServer();
+test("uses explicit avatar and voice overrides without discovery", async (t) => {
+  const { server, url } = await listenVideoServer(t);
   let localPath;
   try {
     await withFakeHeygen(
@@ -249,8 +259,8 @@ test("uses explicit avatar and voice overrides without discovery", async () => {
   }
 });
 
-test("caches discovered avatar and voice IDs for the process", async () => {
-  const { server, url } = await listenVideoServer();
+test("caches discovered avatar and voice IDs for the process", async (t) => {
+  const { server, url } = await listenVideoServer(t);
   const localPaths = new Set();
   try {
     await withFakeHeygen(
@@ -349,8 +359,8 @@ test("onboards and returns null when avatar/voice discovery itself is unauthenti
   });
 });
 
-test("download failure after a successful create returns null and logs a diagnostic", async () => {
-  const { server, url } = await listenFailingVideoServer();
+test("download failure after a successful create returns null and logs a diagnostic", async (t) => {
+  const { server, url } = await listenFailingVideoServer(t);
   try {
     await withFakeHeygen({ response: JSON.stringify({ data: { video_url: url } }) }, async () => {
       const heygenVideoGenerate = await freshGenerate();

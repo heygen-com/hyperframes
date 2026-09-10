@@ -1,3 +1,4 @@
+import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen.mjs — vendored HeyGen REST helpers (auth + transport) for the audio
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
 // usable source wins — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
@@ -125,7 +126,7 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
 
 // Download a (presigned) URL to destPath; returns byte length.
 export async function downloadTo(url, destPath) {
-  const res = await fetch(url);
+  const res = await fetchMedia(url);
   if (!res.ok) throw new Error(`download HTTP ${res.status}: ${String(url).slice(0, 80)}`);
   const bytes = Buffer.from(await res.arrayBuffer());
   mkdirSync(dirname(destPath), { recursive: true });
