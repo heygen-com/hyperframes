@@ -54,6 +54,8 @@ async function flushCaptionOverrides() {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
   Reflect.deleteProperty(window, "gsap");

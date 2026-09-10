@@ -58,11 +58,12 @@ function isProxied(el: HTMLMediaElement): boolean {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
   document.head.innerHTML = "";
   delete (window as { __HF_MEDIA_CODEC_MAP__?: unknown }).__HF_MEDIA_CODEC_MAP__;
   delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
-  vi.restoreAllMocks();
 });
 
 describe("maybeProxyProactively", () => {

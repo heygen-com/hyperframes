@@ -56,7 +56,10 @@ async function staleAfterPriming(
 
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date(Date.now() + ONE_DAY_MS + 60_000));
-  return vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("The operation was aborted"));
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockClear()
+    .mockRejectedValue(new Error("The operation was aborted"));
 }
 
 beforeEach(() => {
@@ -119,7 +122,7 @@ describe("fetchRegistryManifest", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(null));
     await fetchRegistryManifest(DEFAULT_REGISTRY_URL);
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(ok(MANIFEST));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockClear().mockResolvedValue(ok(MANIFEST));
 
     await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toEqual(MANIFEST);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
