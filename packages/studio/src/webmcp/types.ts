@@ -57,8 +57,12 @@ export interface ModelContextTool {
    * A rejection is NOT a usable error channel: the spec discards the reason and
    * rejects the caller with a bare UnknownError. Resolve with a tagged failure
    * instead. See `toolResult.ts`.
+   *
+   * `options` is optional here although the spec always passes it: the
+   * `@mcp-b/global` polyfill (through 5.1.0) calls `execute(input)` with no
+   * second argument, so a Studio handler must not depend on receiving one.
    */
-  execute: (input: object, options: ToolExecuteCallbackOptions) => Promise<unknown>;
+  execute: (input: object, options?: ToolExecuteCallbackOptions) => Promise<unknown>;
   annotations?: ModelContextToolAnnotations;
 }
 

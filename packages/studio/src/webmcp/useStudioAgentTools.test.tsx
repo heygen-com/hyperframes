@@ -6,8 +6,7 @@ import { writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { mintElementHandle } from "./handles";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
-import type { StudioLookSnapshot } from "./tools/lookTools";
-import { previewDoc, selectionFor } from "./webmcpTestUtils";
+import { lookSnapshot, previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
 
 const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/client", () => ({ trackEvent }));
@@ -15,57 +14,6 @@ vi.mock("../telemetry/client", () => ({ trackEvent }));
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 let cleanup: (() => void) | null = null;
-
-function snapshot(overrides: Partial<StudioLookSnapshot> = {}): StudioLookSnapshot {
-  return {
-    projectId: "demo",
-    compositionPath: "index.html",
-    currentTime: 0,
-    duration: 10,
-    isPlaying: false,
-    elements: [],
-    scene: { status: "ready", items: [], drillInItem: null },
-    selection: null,
-    selectionAnimationCount: 0,
-    history: { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null },
-    ...overrides,
-  };
-}
-
-/** Full deps with inert defaults; override only what the test is about. */
-function deps(overrides: Partial<StudioAgentToolsDeps> = {}): StudioAgentToolsDeps {
-  return {
-    getSnapshot: () => snapshot(),
-    getPreviewDocument: () => null,
-    buildSelection: async () => null,
-    applySelection: () => undefined,
-    requestSeek: () => undefined,
-    readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),
-    getProjectId: () => "demo",
-    getCompositionPath: () => "index.html",
-    probeFrame: async () => ({ ok: true, status: 200 }),
-    wait: async () => undefined,
-    getCurrentSelection: () => null,
-    getWriteBlockedReason: () => null,
-    setText: async () => ({ ok: true }),
-    setStyle: async () => ({ ok: true }),
-    readBox: () => ({ x: 0, y: 0, width: 100, height: 50 }),
-    moveTo: async () => undefined,
-    resizeTo: async () => undefined,
-    rotateTo: async () => undefined,
-    addAnimation: async () => true,
-    updateAnimation: async () => true,
-    addKeyframe: async () => undefined,
-    deleteAnimation: async () => true,
-    getAnimationsForSelection: async () => [],
-    getGsapDiagnostics: () => ({
-      animations: [],
-      multipleTimelines: false,
-      unsupportedTimelinePattern: false,
-    }),
-    ...overrides,
-  };
-}
 
 async function executeRegistered<T>(
   registered: ModelContextTool[],
@@ -76,6 +24,17 @@ async function executeRegistered<T>(
   const tool = registered.find((candidate) => candidate.name === name);
   if (!tool) throw new Error(`expected ${name} to be registered`);
   return (await tool.execute(input, { signal })) as T;
+}
+
+/** The call shape `@mcp-b/global` uses: the input and nothing else. */
+async function executeRegisteredWithoutOptions<T>(
+  registered: ModelContextTool[],
+  name: string,
+  input: object,
+): Promise<T> {
+  const tool = registered.find((candidate) => candidate.name === name);
+  if (!tool) throw new Error(`expected ${name} to be registered`);
+  return (await tool.execute(input)) as T;
 }
 
 function mountedTargetDeps(overrides: Partial<StudioAgentToolsDeps> = {}) {
@@ -93,7 +52,7 @@ function mountedTargetDeps(overrides: Partial<StudioAgentToolsDeps> = {}) {
     agent,
     agentHandle,
     currentSelection: selectionFor(human),
-    deps: deps({
+    deps: studioAgentToolsDeps({
       getPreviewDocument: () => doc,
       buildSelection: async (element) => selectionFor(element),
       ...overrides,
@@ -160,7 +119,7 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
 
     expect(registered.map((tool) => tool.name)).toEqual([
@@ -188,13 +147,17 @@ describe("useStudioAgentTools", () => {
 
     let harness: ReturnType<typeof mountTools> | null = null;
     await act(async () => {
-      harness = mountTools(deps({ getSnapshot: () => snapshot() }));
+      harness = mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
     expect(registerTool).toHaveBeenCalledTimes(12);
 
     await act(async () => {
-      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 5 }) }));
-      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 6 }) }));
+      harness?.rerenderWith(
+        studioAgentToolsDeps({ getSnapshot: () => lookSnapshot({ currentTime: 5 }) }),
+      );
+      harness?.rerenderWith(
+        studioAgentToolsDeps({ getSnapshot: () => lookSnapshot({ currentTime: 6 }) }),
+      );
     });
 
     expect(registerTool).toHaveBeenCalledTimes(12);
@@ -207,11 +170,15 @@ describe("useStudioAgentTools", () => {
 
     let harness: ReturnType<typeof mountTools> | null = null;
     await act(async () => {
-      harness = mountTools(deps({ getSnapshot: () => snapshot({ currentTime: 1 }) }));
+      harness = mountTools(
+        studioAgentToolsDeps({ getSnapshot: () => lookSnapshot({ currentTime: 1 }) }),
+      );
     });
 
     await act(async () => {
-      harness?.rerenderWith(deps({ getSnapshot: () => snapshot({ currentTime: 42 }) }));
+      harness?.rerenderWith(
+        studioAgentToolsDeps({ getSnapshot: () => lookSnapshot({ currentTime: 42 }) }),
+      );
     });
 
     const result = await executeFirstRegistered<{
@@ -227,7 +194,7 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
     const signal = registerTool.mock.calls[0]?.[1]?.signal;
     expect(signal?.aborted).toBe(false);
@@ -242,7 +209,7 @@ describe("useStudioAgentTools", () => {
     removeModelContext();
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
 
     // The assertion is that mounting did not throw; a browser without the
@@ -255,7 +222,7 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
 
     expect(registerTool).not.toHaveBeenCalled();
@@ -265,7 +232,7 @@ describe("useStudioAgentTools", () => {
     const { registerTool } = installModelContext();
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
 
     expect(registerTool).toHaveBeenCalledTimes(12);
@@ -276,7 +243,7 @@ describe("useStudioAgentTools", () => {
     registerTool.mockRejectedValue(new DOMException("blocked", "NotAllowedError"));
 
     await act(async () => {
-      mountTools(deps({ getSnapshot: () => snapshot() }));
+      mountTools(studioAgentToolsDeps({ getSnapshot: () => lookSnapshot() }));
     });
 
     expect(trackEvent).toHaveBeenCalledWith("webmcp_registration_failed", {
@@ -290,7 +257,7 @@ describe("useStudioAgentTools", () => {
 
     await act(async () => {
       mountTools(
-        deps({
+        studioAgentToolsDeps({
           getSnapshot: () => {
             throw new TypeError("handler signature moved");
           },
@@ -310,7 +277,7 @@ describe("useStudioAgentTools", () => {
 
   it("requires a source-safe handle on every source-writing tool", async () => {
     const { registered } = installModelContext();
-    await act(async () => mountTools(deps()));
+    await act(async () => mountTools(studioAgentToolsDeps()));
 
     for (const name of [
       "studio_set_text",
@@ -392,6 +359,53 @@ describe("useStudioAgentTools", () => {
     expect(locked).toMatchObject({ ok: false, stage: "refused" });
     expect(aborted).toMatchObject({ ok: false, stage: "refused", cancelRequested: true });
     expect(setText).not.toHaveBeenCalled();
+  });
+
+  it("runs every write tool when execute is called with the input alone", async () => {
+    // `@mcp-b/global` invokes `execute(input)` with no options object, both from
+    // its in-page server and from the descriptor it mirrors into a native
+    // `document.modelContext`. Handlers that destructured `{ signal }` threw a
+    // TypeError before running, which `runToolBody` reports as `internal`.
+    const { registered } = installModelContext();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const targeted = mountedTargetDeps();
+    const setText = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          persistence: { sourceFile: "index.html", version: '"sha256:after"', changed: true },
+        }) as const,
+    );
+    await act(async () => mountTools({ ...targeted.deps, setText }));
+
+    const writeTools = registered.filter((tool) => tool.annotations?.readOnlyHint === false);
+    expect(writeTools.map((tool) => tool.name)).toEqual([
+      "studio_select",
+      "studio_seek",
+      "studio_set_text",
+      "studio_set_style",
+      "studio_transform",
+      "studio_add_animation",
+      "studio_update_animation",
+      "studio_add_keyframe",
+      "studio_delete_animation",
+    ]);
+    for (const tool of writeTools) {
+      // One argument, exactly as the polyfill calls it. An empty input is a bad
+      // request, never a crash: the failure kind must not be `internal`.
+      const result = (await tool.execute({})) as { ok: boolean; kind?: string };
+      expect(result.ok, tool.name).toBe(false);
+      expect(result.kind, tool.name).not.toBe("internal");
+    }
+    expect(consoleError).not.toHaveBeenCalled();
+
+    const saved = await executeRegisteredWithoutOptions<{ ok: boolean; stage: string }>(
+      registered,
+      "studio_set_text",
+      { handle: targeted.agentHandle, text: "Edited without options" },
+    );
+    expect(saved).toMatchObject({ ok: true, stage: "saved" });
+    expect(setText).toHaveBeenCalledTimes(1);
   });
 
   it("reports dispatched, saved, and verified only from their corresponding evidence", async () => {

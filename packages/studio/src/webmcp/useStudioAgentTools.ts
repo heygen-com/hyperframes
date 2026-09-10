@@ -112,6 +112,32 @@ export interface StudioAgentToolsDeps
  * state. That is the whole point of the ref: see the registration note below.
  */
 function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): ModelContextTool[] {
+  /**
+   * `execute` for a tool whose handler takes the caller's abort signal.
+   *
+   * The spec shape is `execute(input, { signal })`, but `@mcp-b/global` (5.0.1
+   * through 5.1.0; the polyfill chunk is byte-identical across them) invokes a
+   * registered `execute` with the input ALONE, both from its in-page
+   * `BrowserMcpServer` wrapper and from the descriptor it mirrors into a native
+   * `document.modelContext`. A handler that destructures its second argument
+   * throws before it runs, so every write tool failed with "Cannot destructure
+   * property 'signal' of 'undefined'" while the read tools, which ignore the
+   * argument, kept working. This is the one boundary that tolerates the missing
+   * options object. Each handler already defaults an undefined signal to a
+   * never-aborted one, so nothing downstream has to.
+   */
+  const writeTool =
+    <T>(
+      name: string,
+      run: (
+        deps: StudioAgentToolsDeps,
+        input: object,
+        signal: AbortSignal | undefined,
+      ) => Promise<ToolResult<T>>,
+    ): ModelContextTool["execute"] =>
+    (input, options) =>
+      runToolBody<T>(name, () => run(depsRef.current, input, options?.signal));
+
   return [
     {
       name: "studio_look",
@@ -177,10 +203,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_SET_TEXT_DESCRIPTION,
       inputSchema: STUDIO_SET_TEXT_INPUT_SCHEMA,
       annotations: { readOnlyHint: false, untrustedContentHint: true },
-      execute: (input, { signal }): Promise<ToolResult<StudioSetTextResult>> =>
-        runToolBody<StudioSetTextResult>("studio_set_text", () =>
-          studioSetText(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioSetTextResult>("studio_set_text", (deps, input, signal) =>
+        studioSetText(deps, input, signal),
+      ),
     },
     {
       name: "studio_set_style",
@@ -188,10 +213,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_SET_STYLE_DESCRIPTION,
       inputSchema: STUDIO_SET_STYLE_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioSetStyleResult>> =>
-        runToolBody<StudioSetStyleResult>("studio_set_style", () =>
-          studioSetStyle(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioSetStyleResult>("studio_set_style", (deps, input, signal) =>
+        studioSetStyle(deps, input, signal),
+      ),
     },
     {
       name: "studio_transform",
@@ -199,10 +223,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_TRANSFORM_DESCRIPTION,
       inputSchema: STUDIO_TRANSFORM_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioTransformResult>> =>
-        runToolBody<StudioTransformResult>("studio_transform", () =>
-          studioTransform(depsRef.current, input as StudioTransformInput, signal),
-        ),
+      execute: writeTool<StudioTransformResult>("studio_transform", (deps, input, signal) =>
+        studioTransform(deps, input as StudioTransformInput, signal),
+      ),
     },
     {
       name: "studio_add_animation",
@@ -210,10 +233,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_ADD_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_ADD_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioAddAnimationResult>> =>
-        runToolBody<StudioAddAnimationResult>("studio_add_animation", () =>
-          studioAddAnimation(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioAddAnimationResult>("studio_add_animation", (deps, input, signal) =>
+        studioAddAnimation(deps, input, signal),
+      ),
     },
     {
       name: "studio_update_animation",
@@ -221,10 +243,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_UPDATE_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_UPDATE_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioUpdateAnimationResult>> =>
-        runToolBody<StudioUpdateAnimationResult>("studio_update_animation", () =>
-          studioUpdateAnimation(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioUpdateAnimationResult>(
+        "studio_update_animation",
+        (deps, input, signal) => studioUpdateAnimation(deps, input, signal),
+      ),
     },
     {
       name: "studio_add_keyframe",
@@ -232,10 +254,9 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_ADD_KEYFRAME_DESCRIPTION,
       inputSchema: STUDIO_ADD_KEYFRAME_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioAddKeyframeResult>> =>
-        runToolBody<StudioAddKeyframeResult>("studio_add_keyframe", () =>
-          studioAddKeyframe(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioAddKeyframeResult>("studio_add_keyframe", (deps, input, signal) =>
+        studioAddKeyframe(deps, input, signal),
+      ),
     },
     {
       name: "studio_delete_animation",
@@ -243,10 +264,10 @@ function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): 
       description: STUDIO_DELETE_ANIMATION_DESCRIPTION,
       inputSchema: STUDIO_DELETE_ANIMATION_INPUT_SCHEMA,
       annotations: { readOnlyHint: false },
-      execute: (input, { signal }): Promise<ToolResult<StudioDeleteAnimationResult>> =>
-        runToolBody<StudioDeleteAnimationResult>("studio_delete_animation", () =>
-          studioDeleteAnimation(depsRef.current, input, signal),
-        ),
+      execute: writeTool<StudioDeleteAnimationResult>(
+        "studio_delete_animation",
+        (deps, input, signal) => studioDeleteAnimation(deps, input, signal),
+      ),
     },
   ];
 }
