@@ -257,3 +257,51 @@ describe("collectDomEditLayerItems item budget", () => {
     expect(collectDomEditLayerItems(documentWith(200), opts, 80)).toHaveLength(80);
   });
 });
+
+describe("collectDomEditLayerItems selector-index cost", () => {
+  // Attached, unlike the fixture above: a detached subtree is invisible to
+  // document.querySelectorAll, so the occurrence lookup would find nothing.
+  function attachedRootWithSharedClass(count: number): HTMLElement {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "index.html");
+    for (let i = 0; i < count; i++) {
+      const child = document.createElement("div");
+      child.className = "box";
+      root.append(child);
+    }
+    document.body.append(root);
+    return root;
+  }
+
+  /** Class-selector document queries made by one walk over `count` sibling cards. */
+  function classSelectorQueries(count: number): number {
+    const root = attachedRootWithSharedClass(count);
+    const doc = root.ownerDocument;
+    const real = doc.querySelectorAll.bind(doc);
+    let calls = 0;
+    Object.defineProperty(doc, "querySelectorAll", {
+      configurable: true,
+      value: (selector: string) => {
+        if (selector.startsWith(".")) calls += 1;
+        return real(selector);
+      },
+    });
+    try {
+      expect(collectDomEditLayerItems(root, opts)).toHaveLength(count);
+      return calls;
+    } finally {
+      delete (doc as Partial<Document>).querySelectorAll;
+      root.remove();
+    }
+  }
+
+  // The occurrence index is resolved here, for every item, so an unshared index
+  // costs one whole-document query per element — quadratic once a composition
+  // repeats a card or tile class. Owning the pass here rather than at each call
+  // site is what keeps the layers panel, the marquee and the agent's look tool
+  // linear too; invariance across a 4x fixture fails for any per-element term.
+  it("resolves a shared selector once per walk, not once per element", () => {
+    expect(classSelectorQueries(48)).toBe(classSelectorQueries(12));
+    expect(classSelectorQueries(12)).toBe(1);
+  });
+});
