@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import { createManualEditGestureWatch } from "./manualEditGestureWatch";
 
@@ -28,6 +29,28 @@ describe("manual-edit gesture watch", () => {
       await flush();
 
       el.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+      expect(watch.isActive()).toBe(false);
+    } finally {
+      watch.disconnect();
+    }
+  });
+
+  it("sees a gesture on an element adopted from another realm", async () => {
+    // The composition body is built in the editor window and moved into the
+    // preview document, so its nodes carry another realm's prototypes and
+    // `target instanceof Element` answers false for every one of them. A
+    // gesture on such an element must still be seen, or a parked transport
+    // never wakes while the user drags.
+    const foreign = new JSDOM("<!doctype html><html><body></body></html>");
+    const el = foreign.window.document.createElement("div");
+    document.body.appendChild(document.adoptNode(el as unknown as Node));
+    const watch = createManualEditGestureWatch(document, () => {});
+    try {
+      expect(el instanceof Element).toBe(false);
+      (el as unknown as Element).setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "token");
+      expect(watch.isActive()).toBe(true);
+      await flush();
+      (el as unknown as Element).removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
       expect(watch.isActive()).toBe(false);
     } finally {
       watch.disconnect();

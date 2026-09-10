@@ -1,4 +1,5 @@
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
+import { isElementNode } from "./domRealm";
 
 export interface ManualEditGestureWatch {
   /** True while any element in the document carries the gesture marker. */
@@ -53,7 +54,10 @@ export function createManualEditGestureWatch(
   const ingest = (records: MutationRecord[]): void => {
     for (const record of records) {
       const target = record.target;
-      if (!(target instanceof Element)) continue;
+      // Structural, not `instanceof`: the composition body is adopted into the
+      // preview frame, so its nodes answer to another realm's Element and an
+      // identity check silently skips every gesture. See domRealm.ts.
+      if (!isElementNode(target)) continue;
       if (target.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) marked.add(target);
       else marked.delete(target);
     }
