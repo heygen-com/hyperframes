@@ -3,6 +3,7 @@ import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { computeOverlayRootScale, orientedGroupAwareOverlayRect } from "./domEditOverlayGeometry";
 import { isElementComputedVisible } from "./domEditingElement";
+import type { DomEditLayerWalkCache } from "./domEditLayerWalkCache";
 import { collectDomEditLayerItems } from "./domEditingLayers";
 
 function rounded(value: number): number {
@@ -47,6 +48,9 @@ export function recomputeOffCanvasIndicators(
   sigRef: React.MutableRefObject<string>,
   elementsRef: React.MutableRefObject<Map<string, HTMLElement>>,
   setRects: (rects: OffCanvasRect[]) => void,
+  /** Reuses the previous rebuild's per-element derivations for the elements no
+   *  mutation touched. Omitted (tests, one-off callers) => a full derivation. */
+  walkCache?: DomEditLayerWalkCache,
 ): void {
   if (comp.width <= 0 || !doc) {
     sigRef.current = "";
@@ -57,10 +61,12 @@ export function recomputeOffCanvasIndicators(
 
   const root = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.body;
   const acp = activeCompositionPath ?? "index.html";
-  const items = collectDomEditLayerItems(root, {
-    activeCompositionPath: acp,
-    isMasterView: !acp || acp === "index.html",
-  });
+  const items = collectDomEditLayerItems(
+    root,
+    { activeCompositionPath: acp, isMasterView: !acp || acp === "index.html" },
+    undefined,
+    walkCache,
+  );
   // The iframe→overlay basis is a property of the composition and the canvas
   // zoom, not of the element, and this loop neither writes to the DOM nor lets
   // the canvas move under it — so it is resolved ONCE here instead of inside
