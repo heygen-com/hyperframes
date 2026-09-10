@@ -4,6 +4,7 @@ import type React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { DOM_EDIT_LAYER_OBSERVER_INIT, createDomEditLayerWalkCache } from "./domEditLayerWalkCache";
 
 const realGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 afterEach(() => {
@@ -163,5 +164,266 @@ describe("recomputeOffCanvasIndicators composition-basis cost", () => {
   // fixture actually drives the per-element geometry path.
   it("measures a rebuild that really did resolve every card's rect", () => {
     expect(rebuildWithSharedSelector(12).keys).toHaveLength(12);
+  });
+});
+
+/**
+ * A group's box is the union of its MEMBERS' rects, not its own. That makes it
+ * the one item whose measurement depends on elements BELOW it, and the walk
+ * cache invalidates upward only — so a cached group union would go stale the
+ * moment a member moved, and stay stale, because nothing ever writes to the
+ * wrapper.
+ */
+describe("recomputeOffCanvasIndicators group measurement", () => {
+  function rebuildGroupTwice(): { first: string; second: string } {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe content document");
+    doc.body.innerHTML =
+      `<div data-composition-id="root" data-width="800" data-height="450">` +
+      `<div id="grp" data-hf-group="Group"><div id="member" class="member"></div></div>` +
+      `</div>`;
+    const member = doc.getElementById("member") as HTMLElement;
+
+    const overlay = document.createElement("div");
+    document.body.append(overlay);
+
+    // Only the member has a box; the wrapper measures empty, which is exactly
+    // the case the union exists for. Moving the member moves the group.
+    let memberLeft = -500;
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      if (this === iframe || this === overlay) return new DOMRect(0, 0, 800, 450);
+      if (this === member) return new DOMRect(memberLeft, 40, 100, 40);
+      return new DOMRect(0, 0, 0, 0);
+    };
+
+    const cache = createDomEditLayerWalkCache();
+    const observer = new MutationObserver(() => {});
+    observer.observe(doc.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
+
+    const sigRef = { current: "" } as React.MutableRefObject<string>;
+    const elementsRef = { current: new Map<string, HTMLElement>() } as React.MutableRefObject<
+      Map<string, HTMLElement>
+    >;
+    let rects: OffCanvasRect[] = [];
+    const rebuild = () => {
+      cache.ingest(observer.takeRecords());
+      recomputeOffCanvasIndicators(
+        iframe,
+        overlay,
+        doc,
+        { left: 0, top: 0, width: 800, height: 450 },
+        "index.html",
+        sigRef,
+        elementsRef,
+        (next) => {
+          rects = next;
+        },
+        cache,
+      );
+      const group = rects.find((rect) => rect.key.includes("grp"));
+      return group ? `${group.left},${group.top},${group.width},${group.height}` : "absent";
+    };
+
+    const first = rebuild();
+    // What an animation frame does: one inline style write on the member.
+    memberLeft = -300;
+    member.style.transform = "translateX(200px)";
+    const second = rebuild();
+
+    observer.disconnect();
+    iframe.remove();
+    overlay.remove();
+    return { first, second };
+  }
+
+  it("re-measures a group when a member moves and nothing writes to the wrapper", () => {
+    const { first, second } = rebuildGroupTwice();
+
+    expect(first).not.toBe("absent");
+    expect(second).not.toBe(first);
+  });
+});
+
+/**
+ * Layout changes that emit no mutation record at all.
+ *
+ * An `<img>` finishing decode, a web font swapping in, a CSS transition or
+ * `@keyframes` frame, a container query re-evaluating, a `CSSStyleSheet.insertRule`
+ * — every one of them moves an element's border box with nothing written to the
+ * DOM. A rebuild that re-measures everything picks them up for free; a rebuild
+ * that reuses a previous measurement cannot see them at all.
+ */
+describe("recomputeOffCanvasIndicators layout changes with no mutation record", () => {
+  /** Rebuild twice, changing only what layout REPORTS between the two, with no
+   *  DOM write of any kind in between. */
+  function rebuildAcrossSilentLayoutChange(): { first: string; second: string } {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe content document");
+    doc.body.innerHTML =
+      `<div data-composition-id="root" data-width="800" data-height="450">` +
+      `<img id="hero" class="hero">` +
+      `</div>`;
+    const hero = doc.getElementById("hero") as HTMLElement;
+
+    const overlay = document.createElement("div");
+    document.body.append(overlay);
+
+    // Before decode the image lays out at zero-ish; after decode it takes its
+    // intrinsic size, off the left edge of the composition. No attribute is
+    // written, no node is added, no text changes.
+    let heroRect = new DOMRect(-500, 40, 100, 40);
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      if (this === iframe || this === overlay) return new DOMRect(0, 0, 800, 450);
+      if (this === hero) return heroRect;
+      return new DOMRect(0, 0, 0, 0);
+    };
+
+    const cache = createDomEditLayerWalkCache();
+    const observer = new MutationObserver(() => {});
+    observer.observe(doc.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
+
+    const sigRef = { current: "" } as React.MutableRefObject<string>;
+    const elementsRef = { current: new Map<string, HTMLElement>() } as React.MutableRefObject<
+      Map<string, HTMLElement>
+    >;
+    let rects: OffCanvasRect[] = [];
+    const rebuild = () => {
+      cache.ingest(observer.takeRecords());
+      recomputeOffCanvasIndicators(
+        iframe,
+        overlay,
+        doc,
+        { left: 0, top: 0, width: 800, height: 450 },
+        "index.html",
+        sigRef,
+        elementsRef,
+        (next) => {
+          rects = next;
+        },
+        cache,
+      );
+      const marker = rects.find((rect) => rect.key.includes("hero"));
+      return marker ? `${marker.left},${marker.top},${marker.width},${marker.height}` : "absent";
+    };
+
+    const first = rebuild();
+    heroRect = new DOMRect(-500, 40, 320, 180); // decode finished
+    const second = rebuild();
+
+    observer.disconnect();
+    iframe.remove();
+    overlay.remove();
+    return { first, second };
+  }
+
+  it("re-measures an element whose own box changed with no DOM write", () => {
+    const { first, second } = rebuildAcrossSilentLayoutChange();
+
+    expect(first).toBe("-500,40,100,40");
+    expect(second).toBe("-500,40,320,180");
+  });
+});
+
+/**
+ * The ancestor work, measured through the production entry point.
+ *
+ * Everything the rebuild asks about an ancestor — does it render, what does it
+ * contribute to the composed transform, is it the source-file boundary — is the
+ * same question for every element underneath it. The guard is INVARIANCE in
+ * depth: burying the same cards under more shared wrappers may cost one style
+ * read per added wrapper, and must not cost one per wrapper PER CARD.
+ */
+describe("recomputeOffCanvasIndicators ancestor cost", () => {
+  /** `cardCount` off-canvas cards, all siblings, buried under `depth` shared
+   *  wrappers. Returns the preview document's computed-style reads for one
+   *  rebuild, and the markers it produced. */
+  function rebuildAtDepth(
+    cardCount: number,
+    depth: number,
+  ): { styleReads: number; markers: number } {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe content document");
+
+    const cards = Array.from(
+      { length: cardCount },
+      (_unused, i) => `<div class="box"><span class="label">card ${i}</span></div>`,
+    ).join("");
+    const open = Array.from({ length: depth }, (_unused, i) => `<div class="w${i}">`).join("");
+    const close = "</div>".repeat(depth);
+    doc.body.innerHTML =
+      `<div data-composition-id="root" data-width="800" data-height="450">` +
+      `${open}${cards}${close}` +
+      `</div>`;
+
+    const overlay = document.createElement("div");
+    document.body.append(overlay);
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      if (this === iframe || this === overlay) return new DOMRect(0, 0, 800, 450);
+      if (this instanceof doc.defaultView!.Element && this.classList.contains("box")) {
+        return new DOMRect(-500, 40, 100, 40);
+      }
+      return new DOMRect(0, 0, 0, 0);
+    };
+
+    const win = doc.defaultView!;
+    const realGetComputedStyle = win.getComputedStyle.bind(win);
+    let styleReads = 0;
+    win.getComputedStyle = ((el: Element, pseudo?: string | null) => {
+      styleReads += 1;
+      return realGetComputedStyle(el, pseudo ?? undefined);
+    }) as typeof win.getComputedStyle;
+
+    const sigRef = { current: "" } as React.MutableRefObject<string>;
+    const elementsRef = { current: new Map<string, HTMLElement>() } as React.MutableRefObject<
+      Map<string, HTMLElement>
+    >;
+    let rects: OffCanvasRect[] = [];
+    try {
+      recomputeOffCanvasIndicators(
+        iframe,
+        overlay,
+        doc,
+        { left: 0, top: 0, width: 800, height: 450 },
+        "index.html",
+        sigRef,
+        elementsRef,
+        (next) => {
+          rects = next;
+        },
+      );
+    } finally {
+      win.getComputedStyle = realGetComputedStyle;
+      iframe.remove();
+      overlay.remove();
+    }
+    return { styleReads, markers: rects.length };
+  }
+
+  /** What burying the same cards 8 wrappers deeper costs, at `cardCount`. */
+  function depthSurcharge(cardCount: number): number {
+    return rebuildAtDepth(cardCount, 10).styleReads - rebuildAtDepth(cardCount, 2).styleReads;
+  }
+
+  // The load-bearing assertion, and it is INVARIANCE rather than a threshold: a
+  // ceiling ("under 40 reads") passes on a small fixture and still degrades on
+  // a real preview. Eight wrappers are shared by every card, so what they cost
+  // is a property of the WRAPPERS. Asking each card about them separately makes
+  // it a property of wrappers x cards, and that is the thing that has to stay
+  // flat when the card count moves.
+  it("pays for a deeper tree per added ancestor, not per ancestor per card", () => {
+    expect(depthSurcharge(48)).toBe(depthSurcharge(24));
+  });
+
+  // Non-vacuity: the assertion above only means something if the fixture really
+  // drove the per-element geometry path for every card at both depths.
+  it("measures rebuilds that really did resolve every card's rect", () => {
+    expect(rebuildAtDepth(24, 2).markers).toBe(24);
+    expect(rebuildAtDepth(24, 10).markers).toBe(24);
   });
 });

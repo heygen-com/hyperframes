@@ -30,23 +30,57 @@ export function isTextBearingTag(tagName: string): boolean {
   return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
 }
 
-export function isElementVisibleThroughAncestors(el: HTMLElement): boolean {
+/** Does this node render AT ALL, ignoring what it inherits? Sole owner of the
+ *  rule; the walk below only decides which nodes to ask it about. */
+function elementRendersItself(win: Window, el: HTMLElement): boolean {
+  const computed = win.getComputedStyle(el);
+  if (computed.display === "none" || computed.visibility === "hidden") return false;
+  const opacity = Number.parseFloat(computed.opacity);
+  return !(
+    Number.isFinite(opacity) &&
+    opacity <= 0.01 &&
+    !el.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)
+  );
+}
+
+/**
+ * Does `el` render, given everything above it?
+ *
+ * `memo` is for a caller asking this about MANY elements in one synchronous
+ * pass. Answers are a function of the node and its ancestors, and siblings
+ * share almost all of their chain, so memoizing per node turns a walk per
+ * element into one style read per node in the tree. It is only ever valid for
+ * the length of one pass — the DOM cannot change under a pass, and every read
+ * here is a read — so the caller creates it and drops it, and nothing survives
+ * to be invalidated. Omitted, every call walks the chain itself.
+ */
+export function isElementVisibleThroughAncestors(
+  el: HTMLElement,
+  memo?: Map<HTMLElement, boolean>,
+): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return true;
-  let current: HTMLElement | null = el;
-  while (current) {
-    const computed = win.getComputedStyle(current);
-    if (computed.display === "none" || computed.visibility === "hidden") return false;
-    const opacity = Number.parseFloat(computed.opacity);
-    if (
-      Number.isFinite(opacity) &&
-      opacity <= 0.01 &&
-      !current.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)
-    )
-      return false;
-    current = current.parentElement;
+  // Up to the first node already answered for, then back down: a node's answer
+  // needs its ancestors' first, and the topmost unanswered node is where the
+  // chain of unknowns starts.
+  const pending: HTMLElement[] = [];
+  let inherited = true;
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    const answered = memo?.get(node);
+    if (answered !== undefined) {
+      inherited = answered;
+      break;
+    }
+    pending.push(node);
   }
-  return true;
+  for (let i = pending.length - 1; i >= 0; i -= 1) {
+    const node = pending[i]!;
+    // Once an ancestor is out, its descendants are out with it, and asking the
+    // platform about them would be a style read for an answer already known.
+    inherited = inherited && elementRendersItself(win, node);
+    memo?.set(node, inherited);
+  }
+  return inherited;
 }
 
 // ─── Style accessors ──────────────────────────────────────────────────────────

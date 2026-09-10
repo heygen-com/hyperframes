@@ -22,8 +22,11 @@ import {
 
 // ─── Visibility ──────────────────────────────────────────────────────────────
 
-export function isElementComputedVisible(el: HTMLElement): boolean {
-  return isElementVisibleThroughAncestors(el);
+export function isElementComputedVisible(
+  el: HTMLElement,
+  memo?: Map<HTMLElement, boolean>,
+): boolean {
+  return isElementVisibleThroughAncestors(el, memo);
 }
 
 const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);

@@ -7,6 +7,7 @@ import {
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
+import { type OverlayMeasurePass, readThroughPass } from "./domEditOverlayMeasurePass";
 
 export interface OverlayRect {
   left: number;
@@ -52,18 +53,16 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
 // shapes (rectangular cards, text, full-bleed media) don't have interior holes, so this
 // doesn't bite. If ring/cutout shapes become editable targets, sample more densely or
 // hit-test against the element's actual painted geometry instead of its bounding box.
-function findSourceBoundary(element: HTMLElement): HTMLElement | null {
-  let current: HTMLElement | null = element;
-  while (current) {
-    if (
-      current.hasAttribute("data-composition-file") ||
-      current.hasAttribute("data-composition-src")
-    ) {
-      return current;
+function findSourceBoundary(element: HTMLElement, pass?: OverlayMeasurePass): HTMLElement | null {
+  const walk = () => {
+    for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+      if (node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src")) {
+        return node;
+      }
     }
-    current = current.parentElement;
-  }
-  return null;
+    return null;
+  };
+  return pass ? readThroughPass(pass.sourceBoundary, element, walk) : walk();
 }
 
 export function resolveDomEditCoordinateScale(input: {
@@ -157,6 +156,7 @@ interface ElementTransformSnapshot {
 function readElementTransformSnapshot(
   win: Window,
   element: HTMLElement,
+  pass?: OverlayMeasurePass,
 ): ElementTransformSnapshot | null {
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
   if (!DOMMatrixCtor) return null;
@@ -170,8 +170,11 @@ function readElementTransformSnapshot(
     compose: (outer, inner) => outer.multiply(inner),
   };
   try {
-    const matrix = composeElementTransform(element, ops, (node) =>
-      node === element ? cs : win.getComputedStyle(node),
+    const matrix = composeElementTransform(
+      element,
+      ops,
+      (node) => (node === element ? cs : win.getComputedStyle(node)),
+      pass?.transform,
     );
     return matrix ? { matrix, cs } : null;
   } catch {
@@ -211,6 +214,7 @@ function toOverlayRect(
   iframe: HTMLIFrameElement,
   element: HTMLElement,
   precomputedScale?: OverlayRootScale | null,
+  pass?: OverlayMeasurePass,
 ): OverlayRect | null {
   const scale =
     precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
@@ -218,8 +222,15 @@ function toOverlayRect(
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
   const elementRect = element.getBoundingClientRect();
-  const sourceBoundary = findSourceBoundary(element);
-  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  const sourceBoundary = findSourceBoundary(element, pass);
+  // Every element inside one sub-composition shares this boundary, so its rect
+  // is one layout read per boundary rather than one per element.
+  const sourceBoundaryRect =
+    sourceBoundary && pass
+      ? readThroughPass(pass.sourceBoundaryRect, sourceBoundary, () =>
+          sourceBoundary.getBoundingClientRect(),
+        )
+      : sourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
     rootScaleX,
     rootScaleY,
@@ -363,15 +374,16 @@ export function orientedOverlayRect(
   iframe: HTMLIFrameElement,
   element: HTMLElement,
   precomputedScale?: OverlayRootScale | null,
+  pass?: OverlayMeasurePass,
 ): OverlayRect | null {
   const scale =
     precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   if (!scale) return null;
-  const base = toOverlayRect(overlayEl, iframe, element, scale);
+  const base = toOverlayRect(overlayEl, iframe, element, scale, pass);
   if (!base) return null;
 
   const win = iframe.contentWindow;
-  const transform = win ? readElementTransformSnapshot(win, element) : null;
+  const transform = win ? readElementTransformSnapshot(win, element, pass) : null;
   const angle = transform ? rotationDegreesFromMatrix(transform.matrix) : 0;
   if (Math.abs(angle) < ROTATION_GATE_EPSILON_DEG) return base;
 
@@ -482,8 +494,9 @@ export function groupAwareOverlayRect(
   iframe: HTMLIFrameElement,
   el: HTMLElement,
   precomputedScale?: OverlayRootScale | null,
+  pass?: OverlayMeasurePass,
 ): OverlayRect | null {
-  const rect = toOverlayRect(overlayEl, iframe, el, precomputedScale);
+  const rect = toOverlayRect(overlayEl, iframe, el, precomputedScale, pass);
   if (!rect || !el.hasAttribute("data-hf-group")) return rect;
   // Union the MEMBERS' rendered rects — where the content actually is — not the
   // wrapper's own box. The wrapper is invisible and its box can sit apart from the
@@ -491,7 +504,13 @@ export function groupAwareOverlayRect(
   // group's bounds (and its off-canvas marker) off to a stale position.
   const rects: OverlayRect[] = [];
   for (const child of Array.from(el.children)) {
-    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement, precomputedScale);
+    const childRect = toOverlayRect(
+      overlayEl,
+      iframe,
+      child as HTMLElement,
+      precomputedScale,
+      pass,
+    );
     if (childRect) rects.push(childRect);
   }
   const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;
@@ -519,10 +538,11 @@ export function orientedGroupAwareOverlayRect(
   iframe: HTMLIFrameElement,
   el: HTMLElement,
   precomputedScale?: OverlayRootScale | null,
+  pass?: OverlayMeasurePass,
 ): OverlayRect | null {
   return el.hasAttribute("data-hf-group")
-    ? groupAwareOverlayRect(overlayEl, iframe, el, precomputedScale)
-    : orientedOverlayRect(overlayEl, iframe, el, precomputedScale);
+    ? groupAwareOverlayRect(overlayEl, iframe, el, precomputedScale, pass)
+    : orientedOverlayRect(overlayEl, iframe, el, precomputedScale, pass);
 }
 
 export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {
