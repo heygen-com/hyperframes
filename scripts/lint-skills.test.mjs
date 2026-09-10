@@ -136,8 +136,16 @@ const MARKER = "<!-- registry-items: -->";
 test("registry refs: unmarked file is never checked", () => {
   // Opt-in is the whole design. Most kebab-case backticks in skill docs are CSS
   // properties, data-* attributes or skill directory names, and a check that
-  // flags those gets switched off.
-  assert.deepEqual(lintRegistryItemRefs("Use `not-a-real-item` here.\n", KNOWN), []);
+  // flags those gets switched off. null (not []) distinguishes "not a snapshot"
+  // from "a snapshot with nothing wrong", which is what the counter reports.
+  assert.equal(lintRegistryItemRefs("Use `not-a-real-item` here.\n", KNOWN), null);
+});
+
+test("registry refs: a marker inside a fenced block does not arm the check", () => {
+  // Otherwise a doc that documents this marker's own syntax arms the check on
+  // itself, and every identifier in it starts failing for no stated reason.
+  const doc = ["# Doc", "", "```md", MARKER, "```", "", "Use `not-a-real-item`."].join("\n");
+  assert.equal(lintRegistryItemRefs(doc, KNOWN), null);
 });
 
 test("registry refs: marked file passes when every id is real", () => {
@@ -158,7 +166,17 @@ test("registry refs: allow= exempts a legitimately non-item identifier", () => {
   assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
 });
 
-test("registry refs: single-word and non-id backticks are ignored", () => {
-  const doc = `${MARKER}\n\n\`glitch\`, \`--json\`, \`Foo-Bar\`, \`a b-c\`.\n`;
+test("registry refs: non-id backticks are ignored", () => {
+  const doc = `${MARKER}\n\n\`--json\`, \`Foo-Bar\`, \`a b-c\`, \`UPPER-CASE\`.\n`;
+  assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
+});
+
+test("registry refs: single-word ids are a KNOWN blind spot, not an accident", () => {
+  // The pattern requires a hyphen, so real single-word registry items (glitch,
+  // flowchart, typewriter, confetti, separator, vignette, vignelli) are never
+  // checked. Pinned here so the tradeoff is visible in code, not just in a
+  // comment: dropping the hyphen would cost 46 allow= entries of prose nouns
+  // across the marked files to monitor 3 more items. See lint-skills.ts header.
+  const doc = `${MARKER}\n\n\`glitch\` was renamed and this doc was not updated.\n`;
   assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
 });

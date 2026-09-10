@@ -275,6 +275,18 @@ function lintInlinePatterns(file: string, stripped: string): Violation[] {
 // people turn off. `allow=` carries the few non-item identifiers a snapshot
 // legitimately names (bare suffixes under a spelled-out prefix, ids the doc
 // itself marks as hand-authored).
+//
+// TWO KNOWN BLIND SPOTS, both deliberate, both false NEGATIVES (this check
+// never invents a violation, it only misses some):
+//
+//  1. Identifiers outside a backtick span are not seen. A bare `bar-chart-race`
+//     in prose slipped past this check while it was a live defect elsewhere.
+//  2. Single-word item names are not seen, because the pattern below requires a
+//     hyphen. Measured on the six currently-marked files: dropping the hyphen
+//     requirement would monitor 3 more real items (`glitch`, `flowchart`,
+//     `typewriter`) and force 46 new allow= entries for ordinary prose words
+//     ("add", "line", "name", "height", "text"). A 15:1 noise ratio is how a
+//     check gets switched off, so the hyphen requirement stays.
 const REGISTRY_MARKER = /<!--\s*registry-items:\s*(?:allow=([^\s]*))?\s*-->/;
 const REGISTRY_ITEM_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
 
@@ -290,9 +302,13 @@ function registryItemNames(): Set<string> {
   return new Set(names);
 }
 
-export function lintRegistryItemRefs(content: string, known: Set<string>): LineViolation[] {
-  const marker = content.match(REGISTRY_MARKER);
-  if (!marker) return [];
+/** `null` when the file is not marked as a registry snapshot; otherwise its violations. */
+export function lintRegistryItemRefs(content: string, known: Set<string>): LineViolation[] | null {
+  // Marker detection ignores fenced blocks so a doc that *documents* the marker
+  // syntax in an example does not arm the check on itself. The scan below still
+  // reads full content, so ids inside fenced examples stay covered.
+  const marker = stripFencedBlocks(content).match(REGISTRY_MARKER);
+  if (!marker) return null;
   const allowed = new Set((marker[1] ?? "").split(",").filter(Boolean));
   return content.split("\n").flatMap((line, index) => {
     const dead = [...new Set([...line.matchAll(/`([^`\n]+)`/g)].map((m) => (m[1] ?? "").trim()))]
@@ -356,10 +372,10 @@ let snapshotsChecked = 0;
 for (const dir of SKILLS_DIRS) {
   if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
   for (const path of collectMarkdownFiles(dir)) {
-    const content = readFileSync(path, "utf-8");
-    if (!REGISTRY_MARKER.test(content)) continue;
+    const found = lintRegistryItemRefs(readFileSync(path, "utf-8"), knownItems);
+    if (found === null) continue;
     snapshotsChecked++;
-    report(relative(process.cwd(), path), lintRegistryItemRefs(content, knownItems));
+    report(relative(process.cwd(), path), found);
   }
 }
 
