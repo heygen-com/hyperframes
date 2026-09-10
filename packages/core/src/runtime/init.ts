@@ -911,13 +911,140 @@ export function initSandboxRuntimeModular(): void {
     return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
   };
 
+  // Flips true on the first renderSeek call — the render/producer capture
+  // protocol's signal that it has started deterministically driving frames.
+  // One-way for this page lifetime; every producer render gets a fresh runtime.
+  // See scheduleMetadataDurationHydration for why this gates the async
+  // metadata rebind off once set, and resolveDurationFloors for why the
+  // derived-duration cache is bypassed entirely once it is set.
+  let renderCaptureSeekStarted = false;
+
+  // The media and authored-composition duration floors are derived from the
+  // DOM and the timeline registry — never from the playhead — so they change
+  // only when the composition changes. transportTick asks for them on EVERY
+  // animation frame, and deriving them scans every media element and walks
+  // each one's composition ancestry, which is the largest single cost of a
+  // paused, untouched editor. Derive once and reuse until an input changes.
+  //
+  // Every input that can change the answer, and the signal that catches it:
+  //   - timing attributes edited (Studio live editing, variables re-applied,
+  //     the runtime's own autostamping)      -> MutationObserver, attribute filter below
+  //   - media or timed elements added/removed (nested compositions mount
+  //     asynchronously, well after init)     -> MutationObserver, childList + subtree
+  //   - media metadata arriving or being reset (`el.load()` puts `duration`
+  //     back to NaN) — no DOM mutation at all -> capture-phase media events below
+  //   - a timeline registered, or an existing one's duration changing, in
+  //     `window.__timelines` (a plain object, not observable) -> registry
+  //     signature compared on read
+  // The bias is deliberate: a redundant derivation is a missed optimisation,
+  // a missed one is a wrong duration.
+  type DurationFloors = { media: number | null; authoredComposition: number | null };
+  const DURATION_FLOOR_INPUT_ATTRIBUTES = [
+    "data-start",
+    "data-duration",
+    "data-end",
+    "data-composition-id",
+    "data-composition-src",
+    "data-composition-file",
+    "data-root",
+    "data-hf-authored-duration",
+    "data-hf-authored-end",
+    "data-hf-auto-start",
+    MEDIA_START_BASIS_ATTR,
+    "data-playback-rate",
+    "data-playback-start",
+    "data-media-start",
+    // `data-start` may be an expression referencing another element by id, and
+    // a media element's `duration` follows its source.
+    "id",
+    "src",
+  ];
+  const DURATION_FLOOR_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
+  let durationFloorsCache: DurationFloors | null = null;
+  let durationFloorsRegistrySignature: string | null = null;
+  let durationFloorsObserver: MutationObserver | null = null;
+
+  const invalidateDurationFloors = () => {
+    durationFloorsCache = null;
+  };
+
+  const deriveDurationFloors = (): DurationFloors => ({
+    media: resolveMediaDurationFloorSeconds(),
+    authoredComposition: resolveAuthoredCompositionDurationFloorSeconds(),
+  });
+
+  const readTimelineRegistrySignature = (): string => {
+    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    let signature = "";
+    for (const timelineId of Object.keys(timelines)) {
+      const timeline = timelines[timelineId];
+      if (!timeline) continue;
+      signature += `${timelineId}=${getTimelineDurationSeconds(timeline) ?? "?"};`;
+    }
+    return signature;
+  };
+
+  const watchDurationFloorInputs = () => {
+    if (durationFloorsObserver || typeof MutationObserver === "undefined") return;
+    durationFloorsObserver = new MutationObserver(invalidateDurationFloors);
+    durationFloorsObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: DURATION_FLOOR_INPUT_ATTRIBUTES,
+    });
+    // Media duration changes are published as events, not DOM mutations, and
+    // they do not bubble — so listen in the capture phase, which reaches every
+    // media element including ones added long after this binds.
+    for (const eventType of DURATION_FLOOR_MEDIA_EVENTS) {
+      document.addEventListener(eventType, invalidateDurationFloors, true);
+    }
+    runtimeCleanupCallbacks.push(() => {
+      durationFloorsObserver?.disconnect();
+      durationFloorsObserver = null;
+      invalidateDurationFloors();
+      for (const eventType of DURATION_FLOOR_MEDIA_EVENTS) {
+        document.removeEventListener(eventType, invalidateDurationFloors, true);
+      }
+    });
+  };
+
+  const resolveDurationFloors = (): DurationFloors => {
+    // The render path never reads a cached floor. Capture depends on the exact
+    // duration and a frame that rendered against a wrong one cannot be
+    // recovered, so it pays the full derivation on every frame exactly as
+    // before — a correct slow render beats a fast wrong one.
+    if (renderCaptureSeekStarted) return deriveDurationFloors();
+    watchDurationFloorInputs();
+    // MutationObserver records are delivered in a microtask, so a caller that
+    // edits a timing attribute and reads the duration back in the SAME
+    // synchronous block would otherwise be served the pre-edit value. Draining
+    // the queue here makes the cache correct within a task, not just across
+    // tasks. Taking the records suppresses the callback for them, which is
+    // exactly equivalent since the callback only marks the cache stale.
+    if (durationFloorsObserver && durationFloorsObserver.takeRecords().length > 0) {
+      invalidateDurationFloors();
+    }
+    const registrySignature = readTimelineRegistrySignature();
+    if (durationFloorsCache && registrySignature === durationFloorsRegistrySignature) {
+      return durationFloorsCache;
+    }
+    durationFloorsRegistrySignature = registrySignature;
+    durationFloorsCache = deriveDurationFloors();
+    return durationFloorsCache;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
   ): number => {
     const timelineDuration = getTimelineDurationSeconds(timeline);
-    const mediaFloor = resolveMediaDurationFloorSeconds();
-    const authoredCompositionFloor = resolveAuthoredCompositionDurationFloorSeconds();
+    const { media: mediaFloor, authoredComposition: authoredCompositionFloor } =
+      resolveDurationFloors();
+    // Deliberately NOT cached: adapters infer their duration from live
+    // animation objects (CSS/WAAPI/Lottie), which can change without any DOM
+    // mutation or media event to observe. It is also a short loop over the
+    // registered adapters, not a document scan.
     const adapterFloor = resolveAdapterDurationFloorSeconds();
     const durationFloor = Math.max(
       mediaFloor ?? 0,
@@ -969,9 +1096,10 @@ export function initSandboxRuntimeModular(): void {
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
     });
-    const mediaDurationFloorSeconds = resolveMediaDurationFloorSeconds();
-    const authoredCompositionDurationFloorSeconds =
-      resolveAuthoredCompositionDurationFloorSeconds();
+    const {
+      media: mediaDurationFloorSeconds,
+      authoredComposition: authoredCompositionDurationFloorSeconds,
+    } = resolveDurationFloors();
     const durationFloorSeconds =
       Math.max(mediaDurationFloorSeconds ?? 0, authoredCompositionDurationFloorSeconds ?? 0) ||
       null;
@@ -1810,12 +1938,6 @@ export function initSandboxRuntimeModular(): void {
 
   let metadataRebindDebounceTimerId: number | null = null;
   let metadataRebindApplied = false;
-  // Flips true on the first renderSeek call — the render/producer capture
-  // protocol's signal that it has started deterministically driving frames.
-  // One-way for this page lifetime; every producer render gets a fresh runtime.
-  // See scheduleMetadataDurationHydration for why this gates the async
-  // metadata rebind off once set.
-  let renderCaptureSeekStarted = false;
   const metadataBoundMedia = new Set<HTMLMediaElement>();
   const volumeKeyframeCache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
 
