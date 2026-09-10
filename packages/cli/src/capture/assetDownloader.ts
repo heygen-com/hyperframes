@@ -5,6 +5,7 @@
  * resolution) as the single source of truth for images. Favicon links are passed separately.
  */
 
+import { isBlockedNetworkHost } from "@hyperframes/engine";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -626,61 +627,17 @@ export async function downloadAndRewriteFonts(
   return { css: rewritten, drops };
 }
 
-// Reserved/loopback/private IPv4 blocks as [firstOctet, secondOctetLo, secondOctetHi].
-const PRIVATE_V4_BLOCKS: ReadonlyArray<readonly [number, number, number]> = [
-  [0, 0, 255], // 0.0.0.0/8 (incl. 0.0.0.0, which routes to localhost)
-  [10, 0, 255], // 10.0.0.0/8
-  [127, 0, 255], // 127.0.0.0/8 loopback
-  [172, 16, 31], // 172.16.0.0/12
-  [192, 168, 168], // 192.168.0.0/16
-  [169, 254, 254], // 169.254.0.0/16 link-local (cloud metadata)
-];
-
-/** True for a dotted-quad IPv4 literal in a loopback/private/reserved range. */
-function isPrivateIpv4(host: string): boolean {
-  const octets = host.split(".").map(Number);
-  if (octets.length !== 4) return false;
-  const [a, b] = octets as [number, number, number, number];
-  return PRIVATE_V4_BLOCKS.some(([first, lo, hi]) => a === first && b >= lo && b <= hi);
-}
-
-/** True for a bracketed IPv6 hostname in a loopback/private/reserved range. */
-function isPrivateIpv6(bracketed: string): boolean {
-  const addr = bracketed.replace(/^\[|\]$/g, "").toLowerCase();
-  if (addr === "::1" || addr === "::") return true; // loopback / unspecified
-  const mapped = /^::ffff:(.+)$/.exec(addr); // IPv4-mapped ::ffff:a.b.c.d or ::ffff:hhhh:hhhh
-  if (mapped) {
-    const tail = mapped[1]!;
-    if (tail.includes(".")) return isPrivateIpv4(tail);
-    const hex = tail.split(":");
-    if (hex.length === 2) {
-      const n = ((parseInt(hex[0]!, 16) << 16) | parseInt(hex[1]!, 16)) >>> 0;
-      return isPrivateIpv4(
-        [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join("."),
-      );
-    }
-  }
-  if (/^f[cd]/.test(addr)) return true; // fc00::/7 unique-local
-  if (/^fe[89ab]/.test(addr)) return true; // fe80::/10 link-local
-  return false;
-}
-
 /**
  * Block requests to private/internal hosts to prevent SSRF. WHATWG URL parsing
  * canonicalizes alternate IPv4 encodings (decimal/octal/hex) to dotted-quad
  * before we see them, so only dotted IPv4 and bracketed IPv6 literals reach the
- * classifiers below.
+ * shared engine classifier.
  */
 export function isPrivateUrl(url: string): boolean {
   try {
     const u = new URL(url);
     if (u.protocol !== "http:" && u.protocol !== "https:") return true; // no file:, etc.
-    const hostname = u.hostname;
-    if (hostname === "localhost") return true;
-    if (hostname.endsWith(".internal") || hostname.endsWith(".local")) return true;
-    if (hostname.startsWith("[")) return isPrivateIpv6(hostname);
-    if (/^\d+(\.\d+){3}$/.test(hostname)) return isPrivateIpv4(hostname);
-    return false;
+    return isBlockedNetworkHost(u.hostname);
   } catch {
     return true; // reject unparseable URLs
   }

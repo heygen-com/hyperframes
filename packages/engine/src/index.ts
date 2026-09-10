@@ -301,6 +301,7 @@ export {
 
 export {
   assertPublicHttpsUrl,
+  isBlockedNetworkHost,
   downloadToTemp,
   fetchPublicHttpsText,
   isHttpUrl,

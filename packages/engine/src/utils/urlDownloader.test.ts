@@ -155,6 +155,19 @@ describe("assertPublicHttpsUrl — SSRF guard", () => {
     expect(() => assertPublicHttpsUrl("http://localhost:3000/secret")).toThrow();
   });
 
+  it("rejects localhost aliases and local/internal suffixes", () => {
+    for (const host of [
+      "localhost.",
+      "foo.localhost",
+      "FOO.LOCALHOST.",
+      "svc.local.",
+      "db.internal.",
+    ]) {
+      expect(() => assertPublicHttpsUrl(`https://${host}/asset`), host).toThrow("private/reserved");
+    }
+    expect(() => assertPublicHttpsUrl("https://example.com./asset")).not.toThrow();
+  });
+
   it("rejects RFC1918 — 10.x", () => {
     expect(() => assertPublicHttpsUrl("https://10.0.0.1/secret")).toThrow("private/reserved");
     expect(() => assertPublicHttpsUrl("https://10.255.255.255/secret")).toThrow("private/reserved");

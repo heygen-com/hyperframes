@@ -22,6 +22,11 @@ describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
       "http://172.16.0.1/",
       "http://192.168.1.1/",
       "http://169.254.169.254/", // cloud metadata
+      "http://100.64.0.1/",
+      "http://192.0.0.1/",
+      "http://198.18.0.1/",
+      "http://224.0.0.1/",
+      "http://240.0.0.1/",
     ]) {
       expect(isPrivateUrl(u), u).toBe(true);
     }
@@ -38,6 +43,8 @@ describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
       "http://[::ffff:169.254.169.254]/", // IPv4-mapped metadata
       "http://[fd00::1]/", // unique-local fc00::/7
       "http://[fe80::1]/", // link-local fe80::/10
+      "http://[fec0::1]/",
+      "http://[ff02::1]/",
     ]) {
       expect(isPrivateUrl(u), u).toBe(true);
     }
@@ -56,6 +63,8 @@ describe("isPrivateUrl — SSRF denylist (security: F-003)", () => {
 
   it("allows ordinary public URLs", () => {
     expect(isPrivateUrl("https://example.com/logo.png")).toBe(false);
+    expect(isPrivateUrl("http://example.com./logo.png")).toBe(false);
+    expect(isPrivateUrl("http://notlocalhost.example/logo.png")).toBe(false);
     expect(isPrivateUrl("https://cdn.jsdelivr.net/a.svg")).toBe(false);
   });
 });
@@ -94,6 +103,31 @@ describe("safeFetch — re-validates the denylist on every redirect hop (securit
     const res = await safeFetch("https://a.example/x");
     expect(res?.status).toBe(200);
     expect(await res?.text()).toBe("ok");
+  });
+
+  it("blocks localhost and internal DNS aliases initially and after redirects", async () => {
+    for (const host of [
+      "localhost.",
+      "foo.localhost",
+      "FOO.LOCALHOST.",
+      "db.internal.",
+      "svc.local.",
+    ]) {
+      const target = `http://${host}/private`;
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(null, {
+            status: 302,
+            headers: { location: target },
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      expect(isPrivateUrl(target), target).toBe(true);
+      expect(await safeFetch(target), target).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await safeFetch("https://public.example/asset"), target).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("returns null when the initial URL is private", async () => {
