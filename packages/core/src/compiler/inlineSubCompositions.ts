@@ -23,7 +23,11 @@ import {
 } from "./compositionScoping";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
-import { namespaceSvgIds, rewriteSvgIdReferencesInCss } from "./svgIdNamespacing";
+import {
+  namespaceCollidingSvgIds,
+  rewriteSvgIdReferencesInCss,
+  type SvgIdScope,
+} from "./svgIdNamespacing";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -190,6 +194,7 @@ export function inlineSubCompositions(
   const externalLinks: { href: string; rel: string; crossorigin?: string }[] = [];
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
+  const svgIdScopes: Array<SvgIdScope & { styleStart: number; styleEnd: number }> = [];
 
   const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
@@ -261,17 +266,6 @@ export function inlineSubCompositions(
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
-    // Namespace this instance's SVG ids (`<clipPath id="clip">`, `<symbol
-    // id="shape">`, `<filter id="fx">`, …) before any <style>/<script>
-    // extraction below, so `scopeSubStyle`'s CSS-text rewrite sees the exact
-    // id map this DOM pass just applied. Keyed on the document-unique
-    // runtime id (falling back to the authored id for an anonymous host with
-    // no duplicate instances) — the same identity CSS scoping and script
-    // scoping already key on. See svgIdNamespacing.ts for why this is a
-    // rename, unlike the sibling getElementById/media-id fixes.
-    const svgIdNamespace = runtimeCompId || scopeCompId;
-    const svgIdMap = namespaceSvgIds(innerRoot ?? contentDoc, svgIdNamespace);
-
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
     // (template/fragment sub-comps store their schema on the root div, not a
@@ -305,8 +299,7 @@ export function inlineSubCompositions(
     // sub-comp's html/body/:root rules from clobbering the host document (they
     // are remapped to the composition box); see compositionScoping.
     const scopeSubStyle = (raw: string): string => {
-      const withNamespacedSvgIds = rewriteSvgIdReferencesInCss(raw, svgIdMap);
-      const css = rewriteCssAssetUrls(withNamespacedSvgIds, src, assetExists);
+      const css = rewriteCssAssetUrls(raw, src, assetExists);
       return scopeCompId
         ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
             compoundAuthoredRoot: compoundAuthoredRoot === true,
@@ -334,10 +327,12 @@ export function inlineSubCompositions(
     // Head-sourced assets come first: a non-templated sub-composition's <head>
     // carries its backgrounds, positioning and fonts, and a <head> library tag
     // (GSAP from a CDN) has to run before the content scripts calling into it.
+    const styleStart = styles.length;
     for (const styleEl of plan.styleSources) {
       styles.push(scopeSubStyle(styleEl.textContent || ""));
       styleEl.remove();
     }
+    const styleEnd = styles.length;
 
     // Head- and content-sourced scripts take the same branch. The head loop
     // used to handle only `src`, so an inline <head> script was silently
@@ -456,7 +451,45 @@ export function inlineSubCompositions(
     for (const nestedHost of nested.hosts) {
       queue.push({ element: nestedHost.host, ancestry: nestedAncestry });
     }
+
+    // Remember this instance for the SVG id pass below. Keyed on the
+    // document-unique runtime id (falling back to the authored id for an
+    // anonymous host with no duplicate instances) — the same identity CSS
+    // scoping and script scoping already key on. Nested hosts are excluded
+    // because each of them is recorded as its own scope when dequeued.
+    svgIdScopes.push({
+      root: hostEl,
+      namespace: runtimeCompId || scopeCompId,
+      exclude: nested.hosts.map((nestedHost) => nestedHost.host),
+      styleStart,
+      styleEnd,
+    });
   }
+
+  // SVG ids (`<clipPath id="clip">`, `<symbol id="shape">`, `<filter
+  // id="fx">`, …) are namespaced only once EVERY instance is in the document:
+  // whether an id collides is a property of the assembled document, not of one
+  // composition file, and an id that stays unique must stay untouched so the
+  // author's own `#id` lookups keep working. Each instance's extracted
+  // `<style>` text gets the same substitution its DOM just received. See
+  // svgIdNamespacing.ts for why this is a rename, unlike the sibling
+  // getElementById/media-id fixes.
+  const svgIdMaps = namespaceCollidingSvgIds(
+    document,
+    svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
+      root,
+      namespace,
+      exclude,
+      cssTexts: styles.slice(styleStart, styleEnd),
+    })),
+  );
+  svgIdMaps.forEach((idMap, index) => {
+    if (idMap.size === 0) return;
+    const { styleStart, styleEnd } = svgIdScopes[index]!;
+    for (let i = styleStart; i < styleEnd; i += 1) {
+      styles[i] = rewriteSvgIdReferencesInCss(styles[i]!, idMap);
+    }
+  });
 
   return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };
 }

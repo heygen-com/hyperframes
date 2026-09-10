@@ -1,5 +1,5 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
-import { replaceSelectorIdTokens } from "./selectorIdTokens";
+import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -10,12 +10,6 @@ function escapeRegExp(value: string): string {
 
 function escapeCssAttributeValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function escapeCssIdentifier(value: string): string {
-  if (!value) return value;
-  const escaped = value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
-  return escaped.replace(/^-?\d/, (match) => `\\${match}`);
 }
 
 function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {
@@ -261,8 +255,19 @@ export function wrapScopedCompositionScript(
   var __hfIsSelectorNameChar = function(char) {
     return !!char && /[\\w-]/.test(char);
   };
-  var __hfReplaceAuthoredRootIdSelectors = function(selector) {
-    if (!__hfAuthoredRootSelector || !__hfAuthoredRootIdForms.length || typeof selector !== "string") {
+  var __hfCssEscape = function(value) {
+    var text = value + "";
+    if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
+      try { return CSS.escape(text); } catch {}
+    }
+    return text.replace(/[^a-zA-Z0-9_-]/g, function(char) { return "\\\\" + char; });
+  };
+  // Every entry is one authored id that no longer sits on the element's real
+  // id attribute: { forms: spellings a selector may use for it, replacement:
+  // the selector text to splice in instead }. Longest form first so a short id
+  // never eats the prefix of a longer one.
+  var __hfRewriteIdSelectors = function(selector, entries) {
+    if (!entries || !entries.length || typeof selector !== "string" || selector.indexOf("#") === -1) {
       return selector;
     }
     var result = "";
@@ -294,36 +299,100 @@ export function wrapScopedCompositionScript(
         continue;
       }
       if (char === "#" && bracketDepth === 0) {
-        var matchedForm = null;
-        for (var formIndex = 0; formIndex < __hfAuthoredRootIdForms.length; formIndex += 1) {
-          var form = __hfAuthoredRootIdForms[formIndex];
-          if (selector.slice(index + 1, index + 1 + form.length) === form) {
-            matchedForm = form;
-            break;
+        var matched = null;
+        for (var entryIndex = 0; entryIndex < entries.length && !matched; entryIndex += 1) {
+          var forms = entries[entryIndex].forms;
+          for (var formIndex = 0; formIndex < forms.length; formIndex += 1) {
+            var form = forms[formIndex];
+            if (selector.slice(index + 1, index + 1 + form.length) === form &&
+                !__hfIsSelectorNameChar(selector[index + 1 + form.length])) {
+              matched = { form: form, replacement: entries[entryIndex].replacement };
+              break;
+            }
           }
         }
-        if (matchedForm) {
-          var nextChar = selector[index + 1 + matchedForm.length];
-          if (!__hfIsSelectorNameChar(nextChar)) {
-            result += __hfAuthoredRootSelector;
-            index += matchedForm.length;
-            continue;
-          }
+        if (matched) {
+          result += matched.replacement;
+          index += matched.form.length;
+          continue;
         }
       }
       result += char;
     }
     return result;
   };
+  var __hfSortEntriesLongestFirst = function(entries) {
+    entries.forEach(function(entry) {
+      entry.forms.sort(function(a, b) { return b.length - a.length; });
+    });
+    return entries.sort(function(a, b) { return b.forms[0].length - a.forms[0].length; });
+  };
+  var __hfAuthoredRootEntries = __hfAuthoredRootSelector && __hfAuthoredRootIdForms.length
+    ? __hfSortEntriesLongestFirst([{ forms: __hfAuthoredRootIdForms.slice(), replacement: __hfAuthoredRootSelector }])
+    : [];
+  // Ids renamed at compile time to avoid a cross-composition collision (see
+  // svgIdNamespacing.ts) keep their authored value on data-hf-authored-id
+  // NEXT TO the new real id. #authored is rewritten to match either the
+  // untouched original (another instance, or this one when nothing collided)
+  // or the renamed element, so a selector keeps resolving inside whichever
+  // root it is evaluated against. Discovered from the DOM once per document:
+  // renaming is a compile-time decision and the compiled DOM is static.
+  var __hfRenamedIdEntries = function() {
+    if (window.__hfRenamedIdSelectorEntries) return window.__hfRenamedIdSelectorEntries;
+    var entries = [];
+    var seen = {};
+    var nodes;
+    try {
+      nodes = window.document.querySelectorAll("[" + __hfAuthoredRootAttr + "][id]");
+    } catch {
+      nodes = [];
+    }
+    for (var i = 0; i < nodes.length; i += 1) {
+      var authored = nodes[i].getAttribute(__hfAuthoredRootAttr);
+      if (!authored || seen[authored] || authored === nodes[i].id) continue;
+      seen[authored] = true;
+      var escaped = __hfCssEscape(authored);
+      var forms = escaped === authored ? [authored] : [authored, escaped];
+      entries.push({
+        forms: forms,
+        replacement: ":is(#" + escaped + ", [" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(authored) + '"])',
+      });
+    }
+    window.__hfRenamedIdSelectorEntries = __hfSortEntriesLongestFirst(entries);
+    return window.__hfRenamedIdSelectorEntries;
+  };
+  // element.querySelector("#authored") on an arbitrary Element never passes
+  // through the scoped document proxy, so the same rewrite is installed once
+  // per document on Element.prototype — only when at least one id was
+  // actually renamed, so a document without collisions runs untouched
+  // natives. Document.prototype is deliberately NOT patched: an unscoped
+  // document-wide lookup cannot know which instance it means, and rewriting
+  // it would only widen the ambiguity.
+  var __hfInstallRenamedIdSelectorShim = function() {
+    if (window.__hfRenamedIdSelectorShim) return;
+    var entries = __hfRenamedIdEntries();
+    if (!entries.length) return;
+    var proto = window.Element && window.Element.prototype;
+    if (!proto || typeof proto.querySelector !== "function" || typeof proto.querySelectorAll !== "function") {
+      return;
+    }
+    var nativeQuerySelector = proto.querySelector;
+    var nativeQuerySelectorAll = proto.querySelectorAll;
+    proto.querySelector = function(selector) {
+      return nativeQuerySelector.call(this, __hfRewriteIdSelectors(selector, __hfRenamedIdEntries()));
+    };
+    proto.querySelectorAll = function(selector) {
+      return nativeQuerySelectorAll.call(this, __hfRewriteIdSelectors(selector, __hfRenamedIdEntries()));
+    };
+    window.__hfRenamedIdSelectorShim = true;
+  };
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
       .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
-    if (__hfAuthoredRootSelector) {
-      normalized = __hfReplaceAuthoredRootIdSelectors(normalized);
-    }
-    return normalized;
+    normalized = __hfRewriteIdSelectors(normalized, __hfAuthoredRootEntries);
+    return __hfRewriteIdSelectors(normalized, __hfRenamedIdEntries());
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
@@ -464,8 +533,23 @@ export function wrapScopedCompositionScript(
       })
     : window;
   var __hfResolveGsapTarget = function(target) {
-    if (typeof target !== "string") return target;
-    return __hfQueryAll(target);
+    if (typeof target === "string") return __hfQueryAll(target);
+    // GSAP accepts an array of selector strings and elements; resolve the
+    // strings through the same scoped lookup so they scope like a bare
+    // string target does.
+    if (Array.isArray(target)) {
+      var resolved = [];
+      for (var i = 0; i < target.length; i += 1) {
+        var item = target[i];
+        if (typeof item === "string") {
+          resolved = resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
+        } else {
+          resolved.push(item);
+        }
+      }
+      return resolved;
+    }
+    return target;
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
@@ -561,6 +645,7 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
     }
   };
   __hfFindRoot();
+  __hfInstallRenamedIdSelectorShim();
   __hfRun();
 })();`;
 }
