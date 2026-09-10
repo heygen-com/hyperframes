@@ -200,7 +200,7 @@ export function computeAudioResidualRmsDb(
       "null",
       "-",
     ],
-    { encoding: "utf-8" },
+    { encoding: "utf-8", windowsHide: true },
   );
 
   // `spawnSync` swallows `ENOENT`, signal kills, and non-zero exits
@@ -318,7 +318,7 @@ function probeAudioDuration(file: string): { seconds: number; error?: string } {
       "--",
       file,
     ],
-    { encoding: "utf-8" },
+    { encoding: "utf-8", windowsHide: true },
   );
   if (proc.error) {
     return {
