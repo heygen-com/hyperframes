@@ -1,5 +1,6 @@
 // Media downloads use public HTTP(S) URLs. Validate every redirect target;
 // a provider result must meet the same host policy as a direct ingest URL.
+// Public HTTPS-to-HTTP redirects are allowed, matching direct HTTP support.
 // This is a literal-host policy, not DNS pinning: DNS resolution remains trusted.
 
 import { BlockList, isIP } from "node:net";
@@ -54,12 +55,12 @@ export function isPublicMediaUrl(value) {
   }
 }
 
-export async function fetchMedia(url, { signal, fetchImpl = fetch } = {}) {
+export async function fetchMedia(url, { method = "GET", signal, fetchImpl = fetch } = {}) {
   let current = String(url);
   for (let hop = 0; hop <= 5; hop++) {
     if (!isPublicMediaUrl(current))
       throw new Error("Media download blocked: URL is not public HTTP(S)");
-    const response = await fetchImpl(current, { signal, redirect: "manual" });
+    const response = await fetchImpl(current, { method, signal, redirect: "manual" });
     if (!(response.status >= 300 && response.status < 400)) return response;
     const location = response.headers.get("location");
     if (!location) return response;

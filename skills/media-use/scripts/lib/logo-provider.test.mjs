@@ -135,3 +135,20 @@ test("the real logo cascade falls through tier by tier to the first hit", async 
   assert.ok(res, "cascade must land on the favicon tier");
   assert.equal(res.metadata.provider, "favicon.ddg");
 });
+
+for (const search of [simpleIconsSearch, githubAvatarSearch]) {
+  test(`${search.name} rejects private HEAD redirects`, async (t) => {
+    const seen = [];
+    t.mock.method(globalThis, "fetch", async (url, options) => {
+      seen.push(url);
+      assert.equal(options.method, "HEAD");
+      assert.ok(options.signal);
+      return options.redirect === "manual"
+        ? new Response(null, { status: 302, headers: { location: "http://127.0.0.1/private" } })
+        : new Response(null, { status: 200 });
+    });
+    assert.equal(await search("vercel logo"), null);
+    assert.equal(seen.length, 1);
+    assert.ok(!seen[0].includes("127.0.0.1"));
+  });
+}

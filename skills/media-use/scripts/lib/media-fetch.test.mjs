@@ -49,11 +49,13 @@ test("follows public relative redirects manually and forwards cancellation", asy
   const calls = [];
   const signal = new AbortController().signal;
   const response = await fetchMedia("https://cdn.example/a", {
+    method: "HEAD",
     signal,
     fetchImpl: async (url, options) => {
       calls.push(url);
       assert.equal(options.redirect, "manual");
       assert.equal(options.signal, signal);
+      assert.equal(options.method, "HEAD");
       return calls.length === 1
         ? new Response(null, { status: 302, headers: { location: "/b" } })
         : new Response("media");

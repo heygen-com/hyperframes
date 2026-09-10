@@ -112,7 +112,7 @@ async function fetchJson(url) {
 }
 
 async function urlExists(url) {
-  const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+  const res = await fetchMedia(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
   return res.ok;
 }
 
