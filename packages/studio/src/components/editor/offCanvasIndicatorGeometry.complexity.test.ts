@@ -13,6 +13,10 @@ afterEach(() => {
 interface Rebuild {
   /** querySelectorAll calls on the preview document, per selector. */
   queriesBySelector: Map<string, number>;
+  /** querySelector (singular) calls on the preview document, per selector. This
+   *  is where the composition-root lookup that resolves the iframe→overlay
+   *  basis shows up. */
+  singleQueriesBySelector: Map<string, number>;
   /** The indicator keys, which carry each element's selector occurrence index. */
   keys: string[];
 }
@@ -58,6 +62,16 @@ function rebuildWithSharedSelector(cardCount: number): Rebuild {
     },
   });
 
+  const singleQueriesBySelector = new Map<string, number>();
+  const realQuerySelector = doc.querySelector.bind(doc);
+  Object.defineProperty(doc, "querySelector", {
+    configurable: true,
+    value: (selector: string) => {
+      singleQueriesBySelector.set(selector, (singleQueriesBySelector.get(selector) ?? 0) + 1);
+      return realQuerySelector(selector);
+    },
+  });
+
   const sigRef = { current: "" } as React.MutableRefObject<string>;
   const elementsRef = { current: new Map<string, HTMLElement>() } as React.MutableRefObject<
     Map<string, HTMLElement>
@@ -79,8 +93,13 @@ function rebuildWithSharedSelector(cardCount: number): Rebuild {
 
   iframe.remove();
   overlay.remove();
-  return { queriesBySelector, keys: rects.map((rect) => rect.key) };
+  return { queriesBySelector, singleQueriesBySelector, keys: rects.map((rect) => rect.key) };
 }
+
+/** The composition-root lookups a rebuild makes. `computeOverlayRootScale` and
+ *  `recomputeOffCanvasIndicators` each resolve the root once; nothing else in
+ *  the pass may. */
+const COMPOSITION_ROOT_SELECTOR = "[data-composition-id]";
 
 /** The queries that resolve a class selector's occurrence index — the work this
  *  guards. Excluded: the per-element `[data-composition-id]` ancestor lookup and
@@ -113,5 +132,36 @@ describe("recomputeOffCanvasIndicators selector-index cost", () => {
         Array.from({ length: cardCount }, (_unused, i) => `index.html:.box:${i}`),
       );
     }
+  });
+});
+
+describe("recomputeOffCanvasIndicators composition-basis cost", () => {
+  /**
+   * The defect this guards: the iframe→overlay basis was resolved INSIDE
+   * `orientedGroupAwareOverlayRect`, so every element in the preview paid its
+   * own `querySelector("[data-composition-id]")` plus three layout reads to
+   * rediscover a basis that is a property of the composition, not of the
+   * element. On a real preview that is one lookup per element per rebuild.
+   *
+   * The basis is hoisted to the caller and threaded through, so the count is
+   * a property of the COMPOSITION (one root, resolved twice: once for the walk
+   * root, once for the basis) and cannot grow with the element count.
+   */
+  it("resolves the composition root the same number of times at n and at 4n", () => {
+    const small = rebuildWithSharedSelector(12);
+    const large = rebuildWithSharedSelector(48);
+
+    expect(large.singleQueriesBySelector.get(COMPOSITION_ROOT_SELECTOR)).toEqual(
+      small.singleQueriesBySelector.get(COMPOSITION_ROOT_SELECTOR),
+    );
+    // A ceiling as well as invariance, so a future caller that reintroduces a
+    // per-element lookup fails here even if it happens to be element-count-flat.
+    expect(small.singleQueriesBySelector.get(COMPOSITION_ROOT_SELECTOR)).toBe(2);
+  });
+
+  // Non-vacuity guard for the assertion above: it only means something if the
+  // fixture actually drives the per-element geometry path.
+  it("measures a rebuild that really did resolve every card's rect", () => {
+    expect(rebuildWithSharedSelector(12).keys).toHaveLength(12);
   });
 });

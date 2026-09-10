@@ -1,7 +1,7 @@
 import type React from "react";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import { orientedGroupAwareOverlayRect } from "./domEditOverlayGeometry";
+import { computeOverlayRootScale, orientedGroupAwareOverlayRect } from "./domEditOverlayGeometry";
 import { isElementComputedVisible } from "./domEditingElement";
 import { collectDomEditLayerItems } from "./domEditingLayers";
 
@@ -61,6 +61,13 @@ export function recomputeOffCanvasIndicators(
     activeCompositionPath: acp,
     isMasterView: !acp || acp === "index.html",
   });
+  // The iframe→overlay basis is a property of the composition and the canvas
+  // zoom, not of the element, and this loop neither writes to the DOM nor lets
+  // the canvas move under it — so it is resolved ONCE here instead of inside
+  // every `orientedGroupAwareOverlayRect` call. Unhoisted it cost a
+  // `querySelector("[data-composition-id]")` plus three layout reads per item,
+  // which on a preview of a few hundred elements is the bulk of the rebuild.
+  const scale = computeOverlayRootScale(overlay, iframe, doc);
   const rects: OffCanvasRect[] = [];
   const elMap = new Map<string, HTMLElement>();
   for (const item of items) {
@@ -69,7 +76,7 @@ export function recomputeOffCanvasIndicators(
     // whose members sit inside the canvas isn't flagged off-canvas by a stale
     // wrapper box. Crop-hug the result so an inset crop that keeps the visible
     // part on-canvas doesn't flag the element either.
-    const base = orientedGroupAwareOverlayRect(overlay, iframe, item.element);
+    const base = orientedGroupAwareOverlayRect(overlay, iframe, item.element, scale);
     const r = base ? { ...base, ...hugRectForElement(base, item.element) } : null;
     if (!r) continue;
     // Any edge crossing the composition border → gray-zone indicator (the

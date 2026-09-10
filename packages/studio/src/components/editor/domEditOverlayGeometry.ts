@@ -102,8 +102,9 @@ export function toVisibleOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = toOverlayRect(overlayEl, iframe, element);
+  const rect = toOverlayRect(overlayEl, iframe, element, precomputedScale);
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
@@ -207,7 +208,7 @@ function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
 const ROTATION_GATE_EPSILON_DEG = 1e-4;
 
 /** iframe→overlay mapping basis shared by every overlay-geometry function. */
-interface OverlayRootScale {
+export interface OverlayRootScale {
   iframeRect: DOMRect;
   overlayRect: DOMRect;
   rootScaleX: number;
@@ -242,7 +243,7 @@ function resolveRootDimensions(root: HTMLElement | null): { width: number; heigh
  * canonical size stays fixed, and using rootRect misaligns the overlay during
  * animated playback. Returns null when the geometry is unmeasurable.
  */
-function computeOverlayRootScale(
+export function computeOverlayRootScale(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   doc: Document | null,
@@ -415,8 +416,10 @@ export function orientedOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  const scale =
+    precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   if (!scale) return null;
   const base = toOverlayRect(overlayEl, iframe, element, scale);
   if (!base) return null;
@@ -460,8 +463,9 @@ export function orientedVisibleOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = orientedOverlayRect(overlayEl, iframe, element);
+  const rect = orientedOverlayRect(overlayEl, iframe, element, precomputedScale);
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
@@ -531,8 +535,9 @@ export function groupAwareOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   el: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = toOverlayRect(overlayEl, iframe, el);
+  const rect = toOverlayRect(overlayEl, iframe, el, precomputedScale);
   if (!rect || !el.hasAttribute("data-hf-group")) return rect;
   // Union the MEMBERS' rendered rects — where the content actually is — not the
   // wrapper's own box. The wrapper is invisible and its box can sit apart from the
@@ -540,7 +545,7 @@ export function groupAwareOverlayRect(
   // group's bounds (and its off-canvas marker) off to a stale position.
   const rects: OverlayRect[] = [];
   for (const child of Array.from(el.children)) {
-    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement);
+    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement, precomputedScale);
     if (childRect) rects.push(childRect);
   }
   const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;
@@ -551,15 +556,27 @@ export function groupAwareOverlayRect(
   return { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY };
 }
 
-/** Groups stay axis-aligned unions; ordinary elements keep their oriented box. */
+/**
+ * Groups stay axis-aligned unions; ordinary elements keep their oriented box.
+ *
+ * `precomputedScale` is the iframe→overlay basis from `computeOverlayRootScale`.
+ * Without it every call resolves the composition root itself — one
+ * `querySelector("[data-composition-id]")` plus three `getBoundingClientRect`
+ * reads PER ELEMENT — and a caller measuring a whole preview therefore pays that
+ * once per element rather than once per composition. The basis is a property of
+ * the composition and the canvas zoom, not of the element, so a caller that
+ * measures many elements in one synchronous pass resolves it once and threads it
+ * through. See `toVisibleOverlayRects` for the same batching in miniature.
+ */
 export function orientedGroupAwareOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   el: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
   return el.hasAttribute("data-hf-group")
-    ? groupAwareOverlayRect(overlayEl, iframe, el)
-    : orientedOverlayRect(overlayEl, iframe, el);
+    ? groupAwareOverlayRect(overlayEl, iframe, el, precomputedScale)
+    : orientedOverlayRect(overlayEl, iframe, el, precomputedScale);
 }
 
 export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {
