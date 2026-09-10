@@ -2,6 +2,7 @@ import type { RuntimeTimelineLike } from "./types";
 import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { isMediaElement } from "./domRealm";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -235,7 +236,7 @@ export function probeAndCacheElementVolume(
 ): void {
   if (options.allowLiveTimelineSeek === false) return;
   if (!timeline) return;
-  if (!(mediaEl instanceof HTMLAudioElement) && !(mediaEl instanceof HTMLVideoElement)) return;
+  if (!isMediaElement(mediaEl)) return;
   if (compositionDuration <= 0) return;
 
   const seekFn = (t: number) => {

@@ -1,6 +1,7 @@
 import type { RuntimeJson, RuntimeOutboundMessage, RuntimePickerElementInfo } from "./types";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { swallow } from "./diagnostics";
+import { isElementNode } from "./domRealm";
 
 type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
@@ -188,7 +189,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   function onPickMouseMove(event: MouseEvent): void {
     if (!pickModeActive) return;
     const candidates = getPickCandidatesFromPoint(event.clientX, event.clientY, 1);
-    const target = candidates[0] ?? (event.target instanceof Element ? event.target : null);
+    const target = candidates[0] ?? (isElementNode(event.target) ? event.target : null);
     if (!isPickableElement(target)) return;
     if (pickModeHighlightEl === target) return;
     if (pickModeHighlightEl) {

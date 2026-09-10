@@ -1,5 +1,6 @@
 import type { RuntimeDeterministicAdapter } from "../types";
 import { swallow } from "../diagnostics";
+import { isHtmlElement } from "../domRealm";
 
 export function createCssAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;
@@ -107,7 +108,7 @@ export function createCssAdapter(params?: {
       entries = [];
       const all = document.querySelectorAll("*");
       for (const rawEl of all) {
-        if (!(rawEl instanceof HTMLElement)) continue;
+        if (!isHtmlElement(rawEl)) continue;
         const style = window.getComputedStyle(rawEl);
         if (!style.animationName || style.animationName === "none") continue;
         entries.push({

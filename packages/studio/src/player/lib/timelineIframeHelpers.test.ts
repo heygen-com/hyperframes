@@ -87,6 +87,42 @@ describe("scrubPreviewAudio", () => {
     expect(audio.volume).toBeCloseTo(0.1);
     stopScrubPreviewAudio();
   });
+
+  /**
+   * The preview document is a different realm, so `instanceof HTMLAudioElement`
+   * is false for every node in it. That threw the `musicId` hint away and left
+   * the first `<audio>` in the document as the only route — and the first
+   * `<audio>` is often the voiceover, so scrubbing previewed the wrong track.
+   * Two elements, music second, is what tells the two paths apart: with one
+   * element the fallback reaches the right node by accident.
+   */
+  it("previews the track named by musicId, not the first audio in the document", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+
+    const voiceover = previewDoc.createElement("audio");
+    voiceover.id = "voiceover";
+    voiceover.play = vi.fn(async () => {});
+    voiceover.pause = vi.fn();
+
+    const music = previewDoc.createElement("audio");
+    music.id = "music-bed";
+    music.play = vi.fn(async () => {});
+    music.pause = vi.fn();
+
+    previewDoc.body.append(voiceover, music);
+
+    // The node really is cross-realm; this is the condition, not a contrivance.
+    expect(music instanceof HTMLAudioElement).toBe(false);
+
+    scrubPreviewAudio(iframe, 0.5, "music-bed", 1);
+
+    expect(music.play).toHaveBeenCalled();
+    expect(voiceover.play).not.toHaveBeenCalled();
+    stopScrubPreviewAudio();
+  });
 });
 
 describe("applyPreviewAudioFlags", () => {

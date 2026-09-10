@@ -10,6 +10,7 @@ import {
   warnUnknownEnumValues,
   readRenderOverrides,
 } from "./getVariables";
+import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
 
 type LoadExternalCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -426,7 +427,7 @@ async function mountCompositionContent(params: {
   });
   // The mount sizes and flattens the root, which needs an HTMLElement; a root
   // that is not one mounts as plain content, exactly as before.
-  const innerRoot = plan.innerRoot instanceof HTMLElement ? plan.innerRoot : null;
+  const innerRoot = isHtmlElement(plan.innerRoot) ? plan.innerRoot : null;
   const contentNode = innerRoot ?? params.sourceNode;
   const authoredScopeCompositionId = plan.authoredCompositionId;
   // Scripts follow the id the CONTENT declares, CSS the id the HOST asked for.
@@ -449,7 +450,7 @@ async function mountCompositionContent(params: {
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
     if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
     const clonedLink = link.cloneNode(true);
-    if (!(clonedLink instanceof HTMLLinkElement)) continue;
+    if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
@@ -458,7 +459,7 @@ async function mountCompositionContent(params: {
   const injectScopedStyles = (styleEls: Iterable<Element>): void => {
     for (const style of styleEls) {
       const clonedStyle = style.cloneNode(true);
-      if (!(clonedStyle instanceof HTMLStyleElement)) continue;
+      if (!isStyleElement(clonedStyle)) continue;
       if (authoredScopeCompositionId) {
         clonedStyle.textContent = scopeCssToComposition(
           clonedStyle.textContent || "",
@@ -511,8 +512,8 @@ async function mountCompositionContent(params: {
     const heightPx = params.parseDimensionPx(heightRaw);
     if (widthRaw) params.host.setAttribute("data-width", widthRaw);
     if (heightRaw) params.host.setAttribute("data-height", heightRaw);
-    if (widthPx && params.host instanceof HTMLElement) params.host.style.width = widthPx;
-    if (heightPx && params.host instanceof HTMLElement) params.host.style.height = heightPx;
+    if (widthPx && isHtmlElement(params.host)) params.host.style.width = widthPx;
+    if (heightPx && isHtmlElement(params.host)) params.host.style.height = heightPx;
     if (innerRoot.hasAttribute("data-timeline-locked")) {
       params.host.setAttribute("data-timeline-locked", "");
     }
@@ -770,7 +771,7 @@ function stashInstanceVariables(
 ): void {
   const declaredDefaults =
     params.declaredVariableDefaults ??
-    (contentNode instanceof Element ? readDeclaredDefaults(contentNode) : {});
+    (isElementNode(contentNode) ? readDeclaredDefaults(contentNode) : {});
   const merged = {
     ...declaredDefaults,
     ...parseHostVariableValues(params.host),
@@ -779,7 +780,7 @@ function stashInstanceVariables(
   // out-of-set enum guard runs here too, against the same merged values the
   // instance reads back out of __hfVariablesByComp.
   warnUnknownEnumValues(
-    params.variableDeclarer ?? (contentNode instanceof Element ? contentNode : null),
+    params.variableDeclarer ?? (isElementNode(contentNode) ? contentNode : null),
     merged,
     runtimeScopeCompositionId,
   );

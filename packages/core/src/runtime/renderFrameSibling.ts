@@ -17,6 +17,7 @@
  */
 
 import { MEDIA_RENDER_ID_ATTR } from "../compiler/mediaRenderIds.js";
+import { isImageElement } from "./domRealm";
 
 /**
  * The render id an element is addressed by: its stamped, document-unique id
@@ -55,5 +56,5 @@ export function findInjectedRenderFrame(media: Element): HTMLImageElement | null
   const frameId = renderFrameElementId(media);
   if (!frameId) return null;
   const frame = document.getElementById(frameId);
-  return frame instanceof HTMLImageElement ? frame : null;
+  return isImageElement(frame) ? frame : null;
 }

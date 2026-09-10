@@ -47,6 +47,11 @@ describe("runtime timing resolver scoping", () => {
   });
 
   afterEach(() => {
+    // The runtime holds a timer while its transport is parked. Abandoning an
+    // initialised runtime leaves that timer to fire after the environment is
+    // torn down, which vitest reports as an unhandled error in whichever file
+    // happens to be running at the time.
+    window.__hfRuntimeTeardown?.();
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
     mediaSpy.beforeSync = null;

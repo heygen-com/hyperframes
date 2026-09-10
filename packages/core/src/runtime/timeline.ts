@@ -18,6 +18,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
+import { isElementNode, isMediaElement } from "./domRealm";
 
 function parseNum(value: string | null | undefined): number | null {
   return parseStrictFiniteTimingNumber(value);
@@ -356,7 +357,7 @@ export function collectRuntimeTimelinePayload(params: {
     if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
-    if (duration == null && node instanceof HTMLMediaElement) {
+    if (duration == null && isMediaElement(node)) {
       if (Number.isFinite(node.duration)) {
         duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
@@ -470,7 +471,7 @@ export function collectRuntimeTimelinePayload(params: {
           const tweenEnd = tweenStart + tween.duration();
           if (!Number.isFinite(tweenStart) || !Number.isFinite(tweenEnd)) continue;
           for (const target of tween.targets()) {
-            if (!(target instanceof Element)) continue;
+            if (!isElementNode(target)) continue;
             // Bubble up to the scene-level ancestor
             const scene = findSceneAncestor(target);
             if (!scene) continue;

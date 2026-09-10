@@ -10,6 +10,8 @@
  * 2. `wordIndex` — fallback, DOM traversal order across .caption-group > span
  */
 
+import { isHtmlElement } from "./domRealm";
+
 interface CaptionOverride {
   wordId?: string;
   wordIndex?: number;
@@ -70,7 +72,7 @@ function declaredCaptionState(tween: GsapTween): "dim" | "active" | undefined {
 }
 
 function resolveCaptionWordElement(el: Element | null): HTMLElement | null {
-  if (!(el instanceof HTMLElement)) return null;
+  if (!isHtmlElement(el)) return null;
   if (el.dataset.captionWrapper !== "true") return el;
 
   const inner = el.querySelector<HTMLElement>(":scope > span");
@@ -83,7 +85,7 @@ function getCaptionWordElements(): HTMLElement[] {
 
   for (const group of groups) {
     for (const child of group.children) {
-      if (!(child instanceof HTMLElement)) continue;
+      if (!isHtmlElement(child)) continue;
 
       const wordEl =
         child.dataset.captionWrapper === "true"

@@ -42,6 +42,7 @@ import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
 import { readVariablesForElement } from "./variableScope";
 import { swallow } from "./diagnostics";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
+import { isElementNode, isHtmlElement, isImageElement, isVideoElement } from "./domRealm";
 
 type ColorGradingMediaElement = HTMLVideoElement | HTMLImageElement;
 
@@ -307,12 +308,12 @@ export function installAuthoredOpacityCapture(): void {
   const root = document.documentElement;
   if (!root) return;
   const stamp = (el: Element): void => {
-    if (!(el instanceof HTMLElement)) return;
+    if (!isHtmlElement(el)) return;
     if (el.hasAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR)) return;
     el.setAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR, el.style.opacity);
   };
   const scan = (node: Node): void => {
-    if (!(node instanceof Element)) return;
+    if (!isElementNode(node)) return;
     if (node.matches("video, img")) stamp(node);
     for (const el of node.querySelectorAll("video, img")) stamp(el);
   };
@@ -1459,7 +1460,7 @@ const KUWAHARA_RESOLVE_FRAGMENT_SHADER = [
 ].join("\n");
 
 function isColorGradingMediaElement(value: Element): value is ColorGradingMediaElement {
-  return value instanceof HTMLVideoElement || value instanceof HTMLImageElement;
+  return isVideoElement(value) || isImageElement(value);
 }
 
 function isVisibleForColorGrading(element: ColorGradingMediaElement): boolean {
@@ -2443,12 +2444,12 @@ function resolveTarget(
 }
 
 function readSourceSize(source: TexImageSource): { width: number; height: number } | null {
-  if (source instanceof HTMLVideoElement) {
+  if (isVideoElement(source)) {
     return source.videoWidth > 0 && source.videoHeight > 0
       ? { width: source.videoWidth, height: source.videoHeight }
       : null;
   }
-  if (source instanceof HTMLImageElement) {
+  if (isImageElement(source)) {
     return source.naturalWidth > 0 && source.naturalHeight > 0
       ? { width: source.naturalWidth, height: source.naturalHeight }
       : null;
@@ -2457,14 +2458,14 @@ function readSourceSize(source: TexImageSource): { width: number; height: number
 }
 
 function isDrawableSource(source: TexImageSource): boolean {
-  if (source instanceof HTMLVideoElement) {
+  if (isVideoElement(source)) {
     return (
       source.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
       source.videoWidth > 0 &&
       source.videoHeight > 0
     );
   }
-  if (source instanceof HTMLImageElement) {
+  if (isImageElement(source)) {
     return source.complete && source.naturalWidth > 0 && source.naturalHeight > 0;
   }
   return false;
@@ -2476,7 +2477,7 @@ function findRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null 
 }
 
 function hasInjectedRenderFrame(element: ColorGradingMediaElement): boolean {
-  if (!(element instanceof HTMLVideoElement)) return false;
+  if (!isVideoElement(element)) return false;
   const frame = findRenderFrameImage(element);
   if (!frame) return false;
   const style = window.getComputedStyle(frame);
@@ -2484,7 +2485,7 @@ function hasInjectedRenderFrame(element: ColorGradingMediaElement): boolean {
 }
 
 function isRenderFrameImage(source: TexImageSource): source is HTMLImageElement {
-  return source instanceof HTMLImageElement && source.classList.contains("__render_frame__");
+  return isImageElement(source) && source.classList.contains("__render_frame__");
 }
 
 function keepCanvasAboveSource(entry: ColorGradingEntry, source: HTMLImageElement): void {
@@ -2494,7 +2495,7 @@ function keepCanvasAboveSource(entry: ColorGradingEntry, source: HTMLImageElemen
 }
 
 function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | null {
-  if (element instanceof HTMLVideoElement) {
+  if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
     if (renderFrame) return renderFrame;
   }
@@ -3057,7 +3058,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
   }
   const sourceSize = readSourceSize(source);
   if (!sourceSize) return false;
-  const styleSource = source instanceof HTMLElement ? source : entry.element;
+  const styleSource = isHtmlElement(source) ? source : entry.element;
   const sourceOpacity = entry.element.style.getPropertyValue("opacity");
   const sourceOpacityPriority = entry.element.style.getPropertyPriority("opacity");
   const hiddenByColorGrading =
@@ -3125,7 +3126,7 @@ function drawEntry(entry: ColorGradingEntry): boolean {
     const frameTime =
       typeof runtimeTime === "number" && Number.isFinite(runtimeTime)
         ? Math.max(0, runtimeTime)
-        : entry.element instanceof HTMLVideoElement
+        : isVideoElement(entry.element)
           ? Math.max(0, entry.element.currentTime)
           : 0;
     const grainSeed = entry.grainSeed + Math.floor(frameTime * 60);
@@ -3200,7 +3201,7 @@ function previewEffectTime(element: ColorGradingMediaElement, useMediaTime: bool
   if (typeof runtimeTime === "number" && Number.isFinite(runtimeTime)) {
     return Math.max(0, runtimeTime);
   }
-  return element instanceof HTMLVideoElement ? Math.max(0, element.currentTime) : 0;
+  return isVideoElement(element) ? Math.max(0, element.currentTime) : 0;
 }
 
 function preparePreviewFrame(
@@ -3216,7 +3217,7 @@ function preparePreviewFrame(
   const dimensions = previewDimensions(element, sourceSize, maxDimension);
   renderer.canvas.width = dimensions.width;
   renderer.canvas.height = dimensions.height;
-  const styleSource = source instanceof HTMLElement ? source : element;
+  const styleSource = isHtmlElement(source) ? source : element;
   const style = window.getComputedStyle(styleSource);
   const uv = calculateObjectFitUv(
     dimensions.width,
@@ -3233,7 +3234,7 @@ function preparePreviewFrame(
     effectTime: previewEffectTime(element, useMediaTime),
     grainSeed:
       seedForElement(element) +
-      (element instanceof HTMLVideoElement ? Math.floor(element.currentTime * 60) : 0),
+      (isVideoElement(element) ? Math.floor(element.currentTime * 60) : 0),
   };
 }
 
@@ -3337,7 +3338,7 @@ function cancelScheduledFrame(entry: ColorGradingEntry): void {
     window.cancelAnimationFrame(entry.animationFrame);
     entry.animationFrame = null;
   }
-  if (entry.videoFrameHandle !== null && entry.element instanceof HTMLVideoElement) {
+  if (entry.videoFrameHandle !== null && isVideoElement(entry.element)) {
     const videoFrameHost: VideoFrameCallbackHost = entry.element;
     videoFrameHost.cancelVideoFrameCallback?.(entry.videoFrameHandle);
     entry.videoFrameHandle = null;
@@ -3345,7 +3346,7 @@ function cancelScheduledFrame(entry: ColorGradingEntry): void {
 }
 
 function scheduleVideoDraw(entry: ColorGradingEntry): void {
-  if (entry.destroyed || !(entry.element instanceof HTMLVideoElement)) return;
+  if (entry.destroyed || !isVideoElement(entry.element)) return;
   if (entry.videoFrameHandle !== null || entry.animationFrame !== null) return;
   const video = entry.element;
   const videoFrameHost: VideoFrameCallbackHost = video;
@@ -3374,7 +3375,7 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   addListener(entry, entry.element, "seeked", redraw);
   addListener(entry, entry.element, "timeupdate", redraw);
   addListener(entry, window, "resize", redraw);
-  if (entry.element instanceof HTMLVideoElement) {
+  if (isVideoElement(entry.element)) {
     addListener(entry, entry.element, "play", () => scheduleVideoDraw(entry));
     addListener(entry, entry.element, "pause", redraw);
   }
@@ -3498,7 +3499,7 @@ export function createColorGradingRuntime(): RuntimeColorGradingApi {
       existing.grading = grading;
       existing.source = source;
       drawEntry(existing);
-      if (element instanceof HTMLVideoElement && !element.paused) scheduleVideoDraw(existing);
+      if (isVideoElement(element) && !element.paused) scheduleVideoDraw(existing);
       return true;
     }
     let renderer = idleRenderers.pop();
@@ -3553,7 +3554,7 @@ export function createColorGradingRuntime(): RuntimeColorGradingApi {
     trackedElements.add(element);
     installEntryListeners(entry);
     drawEntry(entry);
-    if (element instanceof HTMLVideoElement && !element.paused) scheduleVideoDraw(entry);
+    if (isVideoElement(element) && !element.paused) scheduleVideoDraw(entry);
     return true;
   };
 
@@ -3665,7 +3666,7 @@ export function createColorGradingRuntime(): RuntimeColorGradingApi {
         (property) => readAnimatedValue(element, property) !== null,
       );
       if (!hasAnimatedProperty) continue;
-      if (element instanceof HTMLVideoElement && !element.paused && !element.ended) continue;
+      if (isVideoElement(element) && !element.paused && !element.ended) continue;
       if (drawEntry(entry)) drawn += 1;
     }
     return drawn;
@@ -3770,7 +3771,7 @@ export function createColorGradingRuntime(): RuntimeColorGradingApi {
     target: HfColorGradingTarget | string | null | undefined,
   ): (() => void) | null => {
     const element = resolveTarget(target);
-    if (!(element instanceof HTMLVideoElement)) return null;
+    if (!isVideoElement(element)) return null;
     if (!element.paused) return () => undefined;
     const time = element.currentTime;
     const loop = element.loop;

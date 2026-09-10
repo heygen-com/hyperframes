@@ -58,6 +58,22 @@ export function individualRotateDegrees(value: string | undefined): number {
   return Number.isFinite(deg) ? deg : 0;
 }
 
+/** One node's own contribution, with the individual properties applied before
+ *  `transform` the way CSS does. Null when the node's transform is unusable. */
+function ownNodeTransform<M>(
+  node: HTMLElement,
+  ops: PlanarTransformOps<M>,
+  getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
+): M | null {
+  const style = getStyle(node);
+  if (!style) return null;
+  const transform = style.transform;
+  const own = transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
+  if (!own) return null;
+  const spin = individualRotateDegrees(style.rotate);
+  return spin === 0 ? own : ops.compose(ops.fromRotate(spin), own);
+}
+
 /**
  * The element's transform composed with every ancestor's, up to the composition
  * root.
@@ -66,23 +82,45 @@ export function individualRotateDegrees(value: string | undefined): number {
  * `rotate` composes on the left of it. Between nodes, an ancestor applies
  * outside its child. Null means some node's transform was unusable and the
  * caller should fall back rather than guess.
+ *
+ * `memo` holds each node's COMPOSED chain, for a caller walking many elements
+ * in one synchronous pass.
+ *
+ * A chain is `chain(parent)` composed with the node's own, so siblings share
+ * everything above them and the whole tree costs one style read and one
+ * compose per node instead of one per node PER DESCENDANT. Valid only for the
+ * length of one pass, which is why the caller owns it: nothing here writes to
+ * the DOM, so nothing can move under it, and it is dropped before anything
+ * else runs. Omitted, every call composes its own chain from scratch.
  */
 export function composeElementTransform<M>(
   element: HTMLElement,
   ops: PlanarTransformOps<M>,
   getStyle: (node: HTMLElement) => CSSStyleDeclaration | null,
+  memo?: Map<HTMLElement, M | null>,
 ): M | null {
-  let acc = ops.identity();
+  const pending: HTMLElement[] = [];
+  // `undefined` means nothing on the way up was already composed, so the chain
+  // starts from identity. A memoized `null` is an answer, not a miss: some node
+  // above carries a transform this algebra cannot represent.
+  let above: M | null | undefined;
   for (let node: HTMLElement | null = element; node; node = node.parentElement) {
-    const style = getStyle(node);
-    if (!style) return null;
-    const transform = style.transform;
-    let own = transform && transform !== "none" ? ops.fromTransform(transform) : ops.identity();
-    if (!own) return null;
-    const spin = individualRotateDegrees(style.rotate);
-    if (spin !== 0) own = ops.compose(ops.fromRotate(spin), own);
-    acc = ops.compose(own, acc);
+    above = memo?.get(node);
+    if (above !== undefined) break;
+    pending.push(node);
     if (node.hasAttribute(COMPOSITION_ROOT_ATTR)) break;
+  }
+
+  let acc: M | null = above === undefined ? ops.identity() : above;
+  for (let i = pending.length - 1; i >= 0; i -= 1) {
+    const node = pending[i]!;
+    if (acc !== null) {
+      const own = ownNodeTransform(node, ops, getStyle);
+      // The ancestors' chain is the OUTER of the pair, as an ancestor applies
+      // around its child.
+      acc = own === null ? null : ops.compose(acc, own);
+    }
+    memo?.set(node, acc);
   }
   return acc;
 }

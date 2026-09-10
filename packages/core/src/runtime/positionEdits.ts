@@ -25,6 +25,7 @@
  */
 
 import { emitAnalyticsEvent } from "./analytics";
+import { isStylableElement } from "./domRealm";
 
 export const EDIT_BASE_X_ATTR = "data-hf-edit-base-x";
 export const EDIT_BASE_Y_ATTR = "data-hf-edit-base-y";
@@ -176,30 +177,17 @@ export function applyPositionEditToElement(el: StylableElement, opts?: { force?:
  * longer matches and the non-forced path would silently skip the redo.
  */
 export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): number {
-  // Not `instanceof HTMLElement`: `doc` is frequently an iframe's document (the
-  // SDK's edit preview, a host embedding a composition), and its elements are
-  // HTMLElement instances of THAT frame's realm — never this module's. A
-  // module-scope `instanceof HTMLElement` check silently no-ops on every element
-  // cross-realm. Use the document's own realm's constructor; duck-type on
-  // `.style` when defaultView is unavailable (a detached/synthetic document).
-  const RealmHTMLElement = doc.defaultView?.HTMLElement;
-  const RealmSVGElement = doc.defaultView?.SVGElement;
-  // Stylable = HTML OR SVG element (SVG `<text>`/shapes are positioned via the same CSS `translate`
-  // longhand). The old HTML-only check silently dropped every SVG move. Cross-realm safe (uses the
-  // document's own realm constructors — see the note above); duck-type on `.style` when defaultView
-  // is unavailable.
-  const isStylable = (el: Element): el is StylableElement =>
-    RealmHTMLElement || RealmSVGElement
-      ? (RealmHTMLElement !== undefined && el instanceof RealmHTMLElement) ||
-        (RealmSVGElement !== undefined && el instanceof RealmSVGElement)
-      : typeof (el as HTMLElement).style?.setProperty === "function";
-
+  // `isStylableElement` covers HTML **and** SVG (SVG `<text>`/shapes are positioned via the same
+  // CSS `translate` longhand; an HTML-only check silently dropped every SVG move), and it is
+  // realm-independent, which this needs to be twice over: `doc` is frequently an iframe's document
+  // (the SDK's edit preview, a host embedding a composition), AND its elements are not necessarily
+  // from that iframe's realm either — see domRealm.ts.
   const orphaned = doc.querySelectorAll(
     `[${EDIT_ORIGINAL_TRANSLATE_ATTR}]:not([${EDIT_BASE_X_ATTR}]):not([${EDIT_BASE_Y_ATTR}])`,
   );
   for (let i = 0; i < orphaned.length; i++) {
     const el = orphaned[i];
-    if (el === undefined || !isStylable(el)) continue;
+    if (el === undefined || !isStylableElement(el)) continue;
     const original = el.getAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR) ?? "";
     if (original === "") {
       el.style.removeProperty("translate");
@@ -214,7 +202,7 @@ export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): n
   let applied = 0;
   for (let i = 0; i < marked.length; i++) {
     const el = marked[i];
-    if (el === undefined || !isStylable(el)) continue;
+    if (el === undefined || !isStylableElement(el)) continue;
     applyPositionEditToElement(el, opts);
     applied += 1;
   }

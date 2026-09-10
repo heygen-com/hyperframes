@@ -55,7 +55,7 @@ import {
 } from "../audioGroups";
 import { clampNativeMediaVolume } from "../audioGain";
 import { quantizeTimeToFrame, snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
-import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
+import { createManualEditGestureWatch } from "./manualEditGestureWatch";
 import type {
   RuntimeDeterministicAdapter,
   RuntimeJson,
@@ -64,7 +64,12 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
-import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import {
+  CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
+  MEDIA_BIND_INTERVAL_FRAMES,
+  TIMELINE_POST_INTERVAL_FRAMES,
+  shouldAttemptPeriodicTimelineBind,
+} from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { MEDIA_START_BASIS_ATTR } from "../mediaTiming";
@@ -74,6 +79,14 @@ import {
   setRuntimeDataAppliedReporter,
   setRuntimeDataErrorReporter,
 } from "./runtimeData";
+import {
+  isAudioElement,
+  isElementNode,
+  isHtmlElement,
+  isImageElement,
+  isMediaElement,
+  isVideoElement,
+} from "./domRealm";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -316,7 +329,7 @@ export function initSandboxRuntimeModular(): void {
   // closure-based `resolveRootCompositionElement` does on multi-comp pages.
   const findRootCompositionEl = (): HTMLElement | null => {
     const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
-    if (explicitRoot instanceof HTMLElement) return explicitRoot;
+    if (isHtmlElement(explicitRoot)) return explicitRoot;
     const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
     return (
       nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
@@ -869,7 +882,7 @@ export function initSandboxRuntimeModular(): void {
       rootEl.querySelectorAll("[data-composition-id][data-start]"),
     );
     for (const node of compositionNodes) {
-      if (!(node instanceof Element)) continue;
+      if (!isElementNode(node)) continue;
       const parentComposition = node.parentElement?.closest("[data-composition-id]");
       if (parentComposition !== rootEl) continue;
       const start = startResolver.resolveStartForElement(node, 0);
@@ -936,6 +949,24 @@ export function initSandboxRuntimeModular(): void {
   // derived-duration cache is bypassed entirely once it is set.
   let renderCaptureSeekStarted = false;
 
+  /**
+   * An export render is driving frames deterministically.
+   *
+   * The PAIR, never `renderCaptureSeekStarted` alone: `renderSeek` is also what
+   * Studio's own preview falls back to for overhanging timelines
+   * (`playbackAdapter.createStaticSeekPlaybackAdapter`), so the flag alone
+   * latches on the first Studio scrub of such a project and stays true for the
+   * rest of that session. `__HF_EXPORT_RENDER_SEEK_CONFIG` is injected by the
+   * producer's page script before a single frame is driven, so the pair is
+   * true for a real render and nothing else.
+   *
+   * Two callers rely on this being one decision with one owner: the async
+   * metadata rebind, which must not race the capture loop, and the transport
+   * loop, which must not park while a render is in charge of frames.
+   */
+  const isExportRenderDrivingFrames = (): boolean =>
+    renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG != null;
+
   // The media and authored-composition duration floors are derived from the
   // DOM and the timeline registry — never from the playhead — so they change
   // only when the composition changes. transportTick asks for them on EVERY
@@ -989,8 +1020,19 @@ export function initSandboxRuntimeModular(): void {
   // second cache checking for itself would be told nothing changed.
   let compositionTimingRevision = 0;
 
+  // Restarts the transport loop when it has parked itself (see
+  // `scheduleNextTransportFrame`). Held as a reassignable binding because the
+  // invalidation hooks below are installed long before the transport exists,
+  // and reaching forward into its `const` would be a temporal-dead-zone throw
+  // during init.
+  let wakeTransport: () => void = () => {};
+
   const invalidateCompositionTimingCaches = () => {
     compositionTimingRevision += 1;
+    // The same records that stale the duration caches are what a parked
+    // transport is waiting for: a timing attribute edited, a sub-composition
+    // mounted, media metadata arriving. One signal, two readers.
+    wakeTransport();
   };
 
   const deriveDurationFloors = (): DurationFloors => ({
@@ -1061,13 +1103,20 @@ export function initSandboxRuntimeModular(): void {
     return compositionTimingRevision;
   };
 
-  const resolveDurationFloors = (): DurationFloors => {
+  /**
+   * `revision` lets a caller that has ALREADY read the revision in this task
+   * hand it over instead of paying for a second read. Reading is not free —
+   * it rebuilds a signature over every registered timeline — and it is also
+   * what DRAINS the observer, so a second read in the same task is told
+   * nothing changed and the work is pure duplication.
+   */
+  const resolveDurationFloors = (revision?: number): DurationFloors => {
     // The render path never reads a cached floor. Capture depends on the exact
     // duration and a frame that rendered against a wrong one cannot be
     // recovered, so it pays the full derivation on every frame exactly as
     // before — a correct slow render beats a fast wrong one.
     if (renderCaptureSeekStarted) return deriveDurationFloors();
-    const revision = readCompositionTimingRevision();
+    revision ??= readCompositionTimingRevision();
     if (durationFloorsCache && durationFloorsRevision === revision) return durationFloorsCache;
     durationFloorsRevision = revision;
     durationFloorsCache = deriveDurationFloors();
@@ -1077,10 +1126,11 @@ export function initSandboxRuntimeModular(): void {
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
+    timingRevision?: number,
   ): number => {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const { media: mediaFloor, authoredComposition: authoredCompositionFloor } =
-      resolveDurationFloors();
+      resolveDurationFloors(timingRevision);
     // Deliberately NOT cached: adapters infer their duration from live
     // animation objects (CSS/WAAPI/Lottie), which can change without any DOM
     // mutation or media event to observe. It is also a short loop over the
@@ -1682,7 +1732,7 @@ export function initSandboxRuntimeModular(): void {
           for (const child of state.capturedTimeline.getChildren(true)) {
             if (typeof child.targets !== "function") continue;
             for (const target of child.targets()) {
-              if (!(target instanceof HTMLElement)) continue;
+              if (!isHtmlElement(target)) continue;
               if (target === rootComp) continue;
               if (isAudioGroupBus(target)) continue;
               if (target.hasAttribute("data-start")) continue;
@@ -1704,9 +1754,9 @@ export function initSandboxRuntimeModular(): void {
       // Stamp all ID'd children of the composition root so they appear
       // in the timeline even without animations. Enables selecting and
       // adding animations from the design panel on a blank canvas.
-      if (rootComp instanceof HTMLElement) {
+      if (isHtmlElement(rootComp)) {
         for (const el of rootComp.querySelectorAll("[id]")) {
-          if (!(el instanceof HTMLElement)) continue;
+          if (!isHtmlElement(el)) continue;
           if (el === rootComp) continue;
           if (el.hasAttribute("data-start")) continue;
           if (hasAuthoredTimedAncestor(el)) continue;
@@ -1766,7 +1816,7 @@ export function initSandboxRuntimeModular(): void {
 
   const emitRootStageLayoutDiagnostics = () => {
     const rootNode = resolveRootCompositionElement();
-    if (!(rootNode instanceof HTMLElement)) {
+    if (!isHtmlElement(rootNode)) {
       return;
     }
     const rect = rootNode.getBoundingClientRect();
@@ -1869,7 +1919,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const node of assetNodes) {
       const onError = () => {
-        if (!(node instanceof Element)) {
+        if (!isElementNode(node)) {
           return;
         }
         const tagName = node.tagName.toLowerCase();
@@ -1886,11 +1936,9 @@ export function initSandboxRuntimeModular(): void {
             tagName,
             assetUrl,
             currentSrc:
-              node instanceof HTMLImageElement || node instanceof HTMLMediaElement
-                ? node.currentSrc || null
-                : null,
-            readyState: node instanceof HTMLMediaElement ? node.readyState : null,
-            networkState: node instanceof HTMLMediaElement ? node.networkState : null,
+              isImageElement(node) || isMediaElement(node) ? node.currentSrc || null : null,
+            readyState: isMediaElement(node) ? node.readyState : null,
+            networkState: isMediaElement(node) ? node.networkState : null,
           },
           `${diagnosticCode}:${tagName}:${assetUrl ?? "unknown"}`,
         );
@@ -2000,12 +2048,11 @@ export function initSandboxRuntimeModular(): void {
       // capture starts, so once frames are being driven there is nothing left
       // for this self-correction to usefully do.
       //
-      // renderSeek is also the entrypoint Studio's own preview iframe falls
-      // back to for overhanging timelines (useTimelinePlayer), so gate on
-      // both signals — renderCaptureSeekStarted alone would silently disable
-      // this self-correction for a live Studio scrub too, where duration
-      // hasn't been pre-resolved by a probe stage and still needs it.
-      if (renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
+      // Gated on the pair rather than renderCaptureSeekStarted alone, because
+      // the flag alone would silently disable this self-correction for a live
+      // Studio scrub too, where duration hasn't been pre-resolved by a probe
+      // stage and still needs it. See isExportRenderDrivingFrames.
+      if (isExportRenderDrivingFrames()) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
@@ -2054,12 +2101,12 @@ export function initSandboxRuntimeModular(): void {
   // listeners below, reusing `metadataBoundMedia` as the once-per-element
   // dedupe (no separate tracking set needed).
   const onMediaLoadedMetadataForProxy = (event: Event) => {
-    if (event.currentTarget instanceof HTMLMediaElement) {
+    if (isMediaElement(event.currentTarget)) {
       handleMetadataForProxy(event.currentTarget);
     }
   };
   const onMediaErrorForProxy = (event: Event) => {
-    if (event.currentTarget instanceof HTMLMediaElement) {
+    if (isMediaElement(event.currentTarget)) {
       handleErrorForProxy(event.currentTarget);
     }
   };
@@ -2069,7 +2116,7 @@ export function initSandboxRuntimeModular(): void {
   // cross-origin `<video>` is not affected and must not be reported as if it
   // were.
   const reportWebAudioRoute = (mediaEl: HTMLMediaElement) => {
-    if (!(mediaEl instanceof HTMLAudioElement)) return;
+    if (!isAudioElement(mediaEl)) return;
     // Before resource selection settles, the verdict is built from `<source>`
     // children the browser might still pass over — good enough for the
     // schedule path's conservative withhold, not good enough to put in front
@@ -2082,7 +2129,7 @@ export function initSandboxRuntimeModular(): void {
 
   const onMediaLoadedMetadataForRoute = (event: Event) => {
     const target = event.currentTarget;
-    if (target instanceof HTMLMediaElement) reportWebAudioRoute(target);
+    if (isMediaElement(target)) reportWebAudioRoute(target);
   };
 
   const unbindMediaMetadataListeners = () => {
@@ -2251,7 +2298,7 @@ export function initSandboxRuntimeModular(): void {
   const applyTimedElementVisibility = (currentTime: number, visibilityNodes: Element[]) => {
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
-      if (!(rawNode instanceof HTMLElement)) continue;
+      if (!isHtmlElement(rawNode)) continue;
 
       if (rawNode.hasAttribute("data-hidden")) {
         if (!dataHiddenDisplayNodes.has(rawNode)) {
@@ -2261,7 +2308,7 @@ export function initSandboxRuntimeModular(): void {
           groupMuteDirty = true;
         }
         rawNode.style.display = "none";
-        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+        if (isVideoElement(rawNode) || isImageElement(rawNode)) {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
         continue;
@@ -2288,7 +2335,7 @@ export function initSandboxRuntimeModular(): void {
         let ancestor = rawNode.parentElement;
         while (ancestor) {
           if (ancestor === rootComp) break;
-          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
+          if (isHtmlElement(ancestor) && ancestor.hasAttribute("data-start")) {
             if (!isTimedElementVisibleAt(ancestor, currentTime)) {
               isVisibleNow = false;
               break;
@@ -2298,7 +2345,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+      if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
       if (isVisibleNow) {
@@ -2526,6 +2573,11 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const postState = (force: boolean) => {
+    // Every transport mutation — play, pause, seek, renderSeek, a control-bridge
+    // command, the player's own state posts — ends in a forced post. That makes
+    // this the one place a parked transport needs to hear about, instead of a
+    // wake call bolted onto each mutator (and forgotten on the next one).
+    if (force) wakeTransport();
     const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
@@ -2785,7 +2837,7 @@ export function initSandboxRuntimeModular(): void {
     }
     const mediaEls = document.querySelectorAll("video, audio");
     for (const el of mediaEls) {
-      if (!(el instanceof HTMLMediaElement)) continue;
+      if (!isMediaElement(el)) continue;
       try {
         el.playbackRate = state.playbackRate;
       } catch (err) {
@@ -3118,6 +3170,14 @@ export function initSandboxRuntimeModular(): void {
   let lastTransportSeekTime = Number.NaN;
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
+  // Set while the transport is parked (see scheduleNextTransportFrame).
+  let transportParkTimerId: number | null = null;
+  let transportWakeRequested = false;
+  let parkedPollWitness = "";
+  let lastSeenTimingRevision = -1;
+  /** A composition change has been seen and not yet carried to consumers. */
+  let compositionChangePending = false;
+  let lastChangeDrivenServiceAtMs = Number.NEGATIVE_INFINITY;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -3323,33 +3383,185 @@ export function initSandboxRuntimeModular(): void {
   // paused gesture the draft writer owns the element's transform, so the
   // per-frame transport re-seek must yield to it (see transportTick).
   //
-  // The query is document-global (fine for today's single-composition Studio;
+  // The watch is document-global (fine for today's single-composition Studio;
   // revisit if a multi-composition editor needs to scope this to one root).
-  // It only runs while the clock is paused — transportTick short-circuits on
-  // isPlaying() — so it is off the playback hot path; one attribute selector
-  // per paused frame is negligible.
+  // It used to be a `document.querySelector` on every paused frame, described
+  // here as negligible; measured, it was 1.8 ms/s on a 1689-element project and
+  // 3.0 ms/s — 6.4% of the whole paused main-thread budget — on a media-heavy
+  // one. An attribute-filtered observer answers the same question in O(edits),
+  // and its change callback is also what un-parks the transport when a drag
+  // starts or ends.
+  const manualEditGestureWatch = createManualEditGestureWatch(document, () => {
+    wakeTransport();
+  });
+  runtimeCleanupCallbacks.push(() => manualEditGestureWatch.disconnect());
   const hasActiveStudioManualEditGesture = (): boolean => {
     try {
-      return document.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) != null;
+      return manualEditGestureWatch.isActive();
     } catch {
       return false;
     }
+  };
+
+  /**
+   * Nothing a tick would discover can change without one of the wake signals
+   * firing, so the loop may stand down until one does.
+   */
+  const canParkTransport = (): boolean =>
+    !clock.isPlaying() &&
+    !isExportRenderDrivingFrames() &&
+    // Without MutationObserver nothing can PUSH a DOM change: neither the
+    // composition-timing watcher nor the gesture watch attaches, and both fall
+    // back to answering from the document only when asked. Looking every frame
+    // is then the only correct behaviour, so such a host keeps the loop it had.
+    //
+    // Unreachable today, and the reason is worth recording rather than
+    // trusting: `createColorGradingRuntime` constructs a MutationObserver
+    // unconditionally earlier in this same init (colorGrading.ts, the
+    // `document.body` branch), so a host without one never gets as far as a
+    // running transport. This stays as the explicit statement of the
+    // invariant, one boolean, for the day that guard is added there.
+    manualEditGestureWatch.observing &&
+    // A drop/cancel owes one reconciling seek that has not happened yet.
+    !pausedSeekDeferredByManualGesture &&
+    // A composition change is owed a manifest post that the rate limit has
+    // deferred. Parking here would strand it until the next unrelated change,
+    // so the loop stays awake — for at most one cadence interval — until the
+    // post goes out.
+    !compositionChangePending &&
+    // The playhead and the bound timeline are both where the last seek left
+    // them, so re-seeking on the next frame would render the same frame again.
+    state.currentTime === lastTransportSeekTime &&
+    state.capturedTimeline === lastTransportSeekTimeline;
+
+  /**
+   * The parked loop. Two jobs the 60 Hz loop used to do implicitly:
+   *
+   * 1. Keep the control bridge's paused heartbeat on its documented interval
+   *    (`state.bridgeMaxPostIntervalMs`) so a paused timeline still confirms
+   *    its position to any listener.
+   * 2. Re-read everything nothing can push (`readParkedPollWitness`). Polling
+   *    that 12 times a second instead of 60 is the whole reason the safety net
+   *    exists.
+   */
+  /**
+   * Everything a parked transport still has to LOOK at, because no observer
+   * and no event can tell it.
+   *
+   * Two inputs qualify, and both are documented at their source:
+   *   - the timeline registry, a plain object a composition script writes into
+   *     (see `readCompositionTimingRevision`); and
+   *   - the adapter duration floor, which adapters infer from live animation
+   *     objects — CSS, WAAPI, Lottie — that can lengthen with no DOM mutation
+   *     and no media event (see the comment on `resolveAdapterDurationFloorSeconds`
+   *     in `getSafeTimelineDurationSeconds`).
+   *
+   * Calling `readCompositionTimingRevision` here is also what DRAINS the
+   * mutation observer, so a record that arrived without its callback running
+   * is caught on this path too.
+   */
+  const readParkedPollWitness = (): string =>
+    `${readCompositionTimingRevision()}|${resolveAdapterDurationFloorSeconds() ?? ""}`;
+
+  const armParkTimer = () => {
+    transportParkTimerId = window.setTimeout(
+      parkedTransportHeartbeat,
+      state.bridgeMaxPostIntervalMs,
+    );
+  };
+
+  const parkedTransportHeartbeat = () => {
+    transportParkTimerId = null;
+    if (state.tornDown) return;
+    // The page can go away with the timer still armed — an embedder discarding
+    // the frame, or a test environment torn down around an abandoned runtime.
+    // Stop rather than re-arm: there is nothing left to report a state change
+    // to, and every read below would throw on a missing global.
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (readParkedPollWitness() !== parkedPollWitness) {
+      // Through wakeTransport, not straight to rAF: reading the witness can
+      // itself wake us (the registry compare bumps the revision, and that
+      // invalidation hook calls wakeTransport).
+      wakeTransport();
+      return;
+    }
+    postState(false);
+    armParkTimer();
+  };
+
+  const scheduleNextTransportFrame = () => {
+    state.transportRafId = null;
+    if (state.tornDown) return;
+    const woken = transportWakeRequested;
+    transportWakeRequested = false;
+    if (woken || !canParkTransport()) {
+      state.transportRafId = window.requestAnimationFrame(transportTick);
+      return;
+    }
+    // Read fresh rather than reusing the tick's own `timingRevision`: the tick
+    // may have run postTimeline, which stamps authored-timing attributes the
+    // observer watches. Parking on the pre-postTimeline revision would make
+    // the very first heartbeat see a change and wake for the loop's own writes.
+    parkedPollWitness = readParkedPollWitness();
+    armParkTimer();
+  };
+
+  wakeTransport = () => {
+    if (state.tornDown) return;
+    // Inside a tick the tail is the only scheduler; setting the flag there is
+    // what stops it parking on work it has just been told about.
+    transportWakeRequested = true;
+    if (inTransportTick || state.transportRafId != null) return;
+    if (transportParkTimerId != null) {
+      window.clearTimeout(transportParkTimerId);
+      transportParkTimerId = null;
+    }
+    transportWakeRequested = false;
+    state.transportRafId = window.requestAnimationFrame(transportTick);
   };
 
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
     try {
-      state.transportRafId = window.requestAnimationFrame(transportTick);
       transportTickCount += 1;
 
-      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
+      // The three periodic jobs below fire on a frame counter, which is only a
+      // proxy for "the document may have changed since last time". The counter
+      // stops advancing while the loop is parked, so on THAT path the question
+      // is asked directly: the composition timing revision moves on exactly the
+      // inputs these three derive from.
+      //
+      // Only on that path. While the clock is playing the counter advances at
+      // frame rate and is already a good cadence, and raising it is a real
+      // regression: postTimeline walks the whole document, so a composition
+      // that mutates the DOM every frame would turn one post per 20 frames into
+      // one per frame. And the change-driven path is rate-limited to the same
+      // posts-per-second the counter yields at 60 Hz, so no consumer ever sees
+      // a faster cadence than the frame counter alone produced.
+      const timingRevision = readCompositionTimingRevision();
+      if (timingRevision !== lastSeenTimingRevision) {
+        lastSeenTimingRevision = timingRevision;
+        compositionChangePending = true;
+      }
+      const nowMs = Date.now();
+      const changeDrivenService =
+        compositionChangePending &&
+        !clock.isPlaying() &&
+        nowMs - lastChangeDrivenServiceAtMs >= CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS;
+      if (changeDrivenService) lastChangeDrivenServiceAtMs = nowMs;
+
+      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps).
+      // `compositionChanged` goes IN to the policy, never around it: the policy
+      // owns the hold that keeps an async rebind off the first two seconds of
+      // playback, and ORing past it removed that hold.
       if (
         shouldAttemptPeriodicTimelineBind({
           tick: transportTickCount,
           isPlaying: clock.isPlaying(),
           hasCapturedTimeline: state.capturedTimeline != null,
           currentTimeSeconds: clock.now(),
+          compositionChanged: changeDrivenService,
         })
       ) {
         const prevTimeline = state.capturedTimeline;
@@ -3360,15 +3572,26 @@ export function initSandboxRuntimeModular(): void {
           if (state.capturedTimeline && state.capturedTimeline !== prevTimeline) {
             pauseTimelineIfPossible(state.capturedTimeline);
           }
-          const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+          const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision);
           if (dur > 0) clock.setDuration(dur);
           postTimeline();
         }
       }
-      if (transportTickCount % 20 === 0) {
+      if (changeDrivenService || transportTickCount % TIMELINE_POST_INTERVAL_FRAMES === 0) {
+        // The manifest is what carries a composition change to its consumers,
+        // so posting it is what discharges the pending flag — whichever path
+        // got here. Clearing it when the change is merely SEEN would drop it
+        // whenever the rate limit deferred the post.
+        //
+        // And clearing it AFTER the post, not before: postTimeline walks author
+        // DOM and can throw. The tail scheduler runs in this tick's `finally`
+        // either way, so clearing first would let it see nothing owed and park
+        // with the change undelivered — permanently, until some unrelated
+        // change happens to wake the loop again.
         postTimeline();
+        compositionChangePending = false;
       }
-      if (transportTickCount % 30 === 0) {
+      if (changeDrivenService || transportTickCount % MEDIA_BIND_INTERVAL_FRAMES === 0) {
         bindMediaMetadataListeners();
       }
 
@@ -3376,7 +3599,7 @@ export function initSandboxRuntimeModular(): void {
       // rebinds, live data-duration edits). Never shrink while playing — transient
       // short reads cause reachedEnd() → playhead jumps to end (#1636).
       if (state.capturedTimeline) {
-        const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+        const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision);
         if (dur > 0 && (!clock.isPlaying() || dur >= clock.getDuration())) {
           clock.setDuration(dur);
         }
@@ -3401,7 +3624,7 @@ export function initSandboxRuntimeModular(): void {
           const audioEls = document.querySelectorAll("audio[data-start]");
           let foundActive = false;
           for (const rawEl of audioEls) {
-            if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+            if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
@@ -3486,13 +3709,17 @@ export function initSandboxRuntimeModular(): void {
       postState(false);
     } finally {
       inTransportTick = false;
+      // Re-arm here, not at the top: the reached-end branch returns early and
+      // must still schedule, and the decision to park can only be made once
+      // the tick has settled the playhead.
+      scheduleNextTransportFrame();
     }
   };
 
   const hardSyncAllMedia = (timeSeconds: number) => {
     const mediaEls = document.querySelectorAll("video, audio");
     for (const el of mediaEls) {
-      if (!(el instanceof HTMLMediaElement)) continue;
+      if (!isMediaElement(el)) continue;
       if (!el.isConnected) continue;
       if (!el.hasAttribute("data-start")) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
@@ -3523,7 +3750,7 @@ export function initSandboxRuntimeModular(): void {
     const gen = webAudio.startGeneration();
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
-      if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+      if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
       if (isSilencedByHidden(rawEl)) continue;
       const compStart = resolveAbsoluteMediaStartSeconds(rawEl);
       if (!Number.isFinite(compStart)) continue;
@@ -3660,7 +3887,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.stopAll();
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
+        if (isMediaElement(el) && !el.paused) el.pause();
       }
     },
     onSeek: (timeSeconds, _seekMode) => {
@@ -3673,7 +3900,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         el.muted = effective || el.defaultMuted;
       }
     },
@@ -3682,7 +3909,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setVolume(volume);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         const parsed = parseFloat(el.dataset.volume ?? "");
         const clipVolume = Number.isFinite(parsed) ? parsed : 1;
         // `data-volume` carries authored gain, which goes above unity now that
@@ -3703,7 +3930,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
+        if (!isMediaElement(el)) continue;
         el.muted = effective || el.defaultMuted;
       }
     },
@@ -3776,6 +4003,10 @@ export function initSandboxRuntimeModular(): void {
     if (state.transportRafId != null) {
       window.cancelAnimationFrame(state.transportRafId);
       state.transportRafId = null;
+    }
+    if (transportParkTimerId != null) {
+      window.clearTimeout(transportParkTimerId);
+      transportParkTimerId = null;
     }
     state.transportClock = null;
     webAudio.destroy();
