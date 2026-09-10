@@ -58,20 +58,27 @@ for (const location of [
   });
 }
 
-test("rejects a non-CDN initial URL without a request", async (t) => {
-  const root = fixture("https://127.0.0.1/x");
-  const mock = t.mock.method(globalThis, "fetch", async () => assert.fail("unexpected request"));
-  try {
-    await assert.rejects(fetchHostedFiles(root), /HTTPS CDN/);
-    assert.equal(mock.mock.callCount(), 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+for (const url of [
+  "https://127.0.0.1/x",
+  "https://user:pw@static.heygen.ai/x",
+  "https://static.heygen.ai:8443/x",
+]) {
+  test(`rejects disallowed initial URL ${url} without a request`, async (t) => {
+    const root = fixture(url);
+    const mock = t.mock.method(globalThis, "fetch", async () => assert.fail("unexpected request"));
+    try {
+      await assert.rejects(fetchHostedFiles(root), /HTTPS CDN/);
+      assert.equal(mock.mock.callCount(), 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("enforces actual streaming bytes even when Content-Length understates them", async (t) => {
   const root = fixture();
   let cancelled = false;
+  let chunks = 0;
   const chunk = new Uint8Array(129 * 1024 * 1024);
   t.mock.method(
     globalThis,
@@ -80,7 +87,8 @@ test("enforces actual streaming bytes even when Content-Length understates them"
       new Response(
         new ReadableStream({
           pull(controller) {
-            controller.enqueue(chunk);
+            if (chunks++ < 3) controller.enqueue(chunk);
+            else controller.close();
           },
           cancel() {
             cancelled = true;

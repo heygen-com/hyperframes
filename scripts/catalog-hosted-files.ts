@@ -5,6 +5,7 @@ import { isContainedIn } from "./registry-target-paths.mjs";
 // All published registry assets use this CDN. Keep every redirect on the same
 // HTTPS origin; a contributor manifest must not select a runner-local service.
 const ASSET_ORIGIN = "https://static.heygen.ai";
+// Match the media-freeze ceiling to allow future video assets while bounding runner memory.
 const MAX_ASSET_BYTES = 256 * 1024 * 1024;
 
 function assertCdnUrl(url: URL): void {
