@@ -3,6 +3,7 @@ import {
   FONT_ALIASES,
   FONT_ALIAS_KEYS,
   injectDeterministicFontFaces,
+  normalizeSystemFontPrimaryFamilies,
 } from "./deterministicFonts.js";
 
 describe("existing font-face recognition", () => {
@@ -115,5 +116,17 @@ describe("FONT_ALIASES cross-platform coverage", () => {
     expect(FONT_ALIAS_KEYS.has("consolas")).toBe(true);
     expect(FONT_ALIAS_KEYS.has("inter")).toBe(true);
     expect(FONT_ALIAS_KEYS.size).toBe(Object.keys(FONT_ALIASES).length);
+  });
+});
+
+describe("quoted font family names", () => {
+  it("preserves literal generic names on CSS, inline, attribute, and variable surfaces", () => {
+    const html = `<html><head><style>
+      :root { --display: "serif"; }
+      h1 { font-family: "system-ui", sans-serif; }
+    </style></head><body>
+      <p style='font-family: "serif"' data-font-family='"system-ui"'>Hello</p>
+    </body></html>`;
+    expect(normalizeSystemFontPrimaryFamilies(html)).toBe(html);
   });
 });

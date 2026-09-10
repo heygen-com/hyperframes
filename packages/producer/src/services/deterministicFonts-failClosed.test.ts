@@ -63,7 +63,7 @@ function makeGoogleFontFetch(cssRequests: string[]): typeof fetch {
     if (requestUrl.startsWith("https://fonts.googleapis.com/")) {
       cssRequests.push(requestUrl);
       const family = new URL(requestUrl).searchParams.get("family")?.split(":", 1)[0] ?? "test";
-      const fontUrl = `https://fonts.gstatic.com/s/test/v1/${family.toLowerCase().replace(/\s+/g, "-")}.woff2`;
+      const fontUrl = `https://fonts.gstatic.com/s/test/v1/${encodeURIComponent(family.toLowerCase().replace(/\s+/g, "-")).replace(/[()]/g, "_")}.woff2`;
       return new Response(
         `@font-face {
           font-style: normal;
@@ -335,5 +335,26 @@ describe("FontFetchError", () => {
     expect(err.familyName).toBe("Foo");
     expect(err.url).toBe("https://example.com");
     expect(err).toBeInstanceOf(Error);
+  });
+});
+
+describe("quoted font fetch candidates", () => {
+  it("fetches literal generic and function-shaped names, including root aliases", async () => {
+    const cssRequests: string[] = [];
+    await injectDeterministicFontFaces(
+      `<html><head><style>
+      :root { --display: "system-ui"; }
+      h1 { font-family: var(--display), sans-serif; }
+      h2 { font-family: "serif", "var(--Display)", var(--runtime); }
+    </style></head><body>Hello</body></html>`,
+      {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl: makeGoogleFontFetch(cssRequests),
+      },
+    );
+    expect(
+      cssRequests.map((url) => new URL(url).searchParams.get("family")?.split(":", 1)[0]),
+    ).toEqual(["system-ui", "serif", "var(--Display)"]);
   });
 });

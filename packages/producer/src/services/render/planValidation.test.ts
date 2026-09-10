@@ -318,3 +318,18 @@ describe("validateNoSystemFonts", () => {
     expect(() => validateNoSystemFonts(ok)).not.toThrow();
   });
 });
+
+describe("quoted primary family validation", () => {
+  it.each(['"serif"', "'system-ui'", "var(--display)"])(
+    "allows literal %s while retaining the unquoted generic guard",
+    (family) => {
+      expect(() =>
+        validateNoSystemFonts(`<style>:root { --display: "serif"; }
+        h1 { font-family: ${family}, sans-serif; }</style>`),
+      ).not.toThrow();
+      expect(() => validateNoSystemFonts(`<style>h1 { font-family: serif; }</style>`)).toThrow(
+        PlanValidationError,
+      );
+    },
+  );
+});

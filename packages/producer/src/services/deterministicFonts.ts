@@ -59,6 +59,15 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
  * token, as does a comma inside a quoted family name.
  */
 export function parseFontFamilyValue(value: string): string[] {
+  return parseFontFamilyValueTokens(value).map((token) => token.value);
+}
+
+type FontFamilyToken = { value: string; quoted: boolean };
+
+// The existing delimiter scanner keeps quote/escape/depth states together;
+// this change retains its control flow and adds quote metadata to the output.
+// fallow-ignore-next-line complexity
+function parseFontFamilyValueTokens(value: string): FontFamilyToken[] {
   const pieces: string[] = [];
   let start = 0;
   let depth = 0;
@@ -91,15 +100,19 @@ export function parseFontFamilyValue(value: string): string[] {
   }
   pieces.push(value.slice(start));
 
-  return pieces
-    .map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim())
-    .filter((piece) => piece.length > 0);
+  return pieces.map(fontFamilyToken).filter((token) => token.value.length > 0);
+}
+
+function fontFamilyToken(piece: string): FontFamilyToken {
+  const raw = piece.trim();
+  const quoted = (raw[0] === '"' || raw[0] === "'") && raw.at(-1) === raw[0];
+  return { value: quoted ? raw.slice(1, -1).trim() : raw, quoted };
 }
 
 function systemPrimaryReplacement(value: string, deterministicPrimary: string): string | null {
-  const families = parseFontFamilyValue(value);
-  if (families.length === 0) return null;
-  if (!GENERIC_FAMILIES.has(normalizeFamilyName(families[0]!))) return null;
+  const primary = parseFontFamilyValueTokens(value)[0];
+  if (!primary || primary.quoted) return null;
+  if (!GENERIC_FAMILIES.has(normalizeFamilyName(primary.value))) return null;
   return `${deterministicPrimary}, ${value.trim()}`;
 }
 
@@ -294,17 +307,17 @@ function primaryCssVariableName(value: string): string | null {
   return null;
 }
 
-export function resolveFontFamilyDeclarationFamilies(
+export function resolveFontFamilyDeclarationCandidates(
   declaration: string,
   customProperties: ReadonlyMap<string, string>,
-): string[] {
-  const families = parseFontFamilyValue(declaration);
+): FontFamilyToken[] {
+  const families = parseFontFamilyValueTokens(declaration);
   const variableName = primaryCssVariableName(declaration);
   if (!variableName) return families;
 
   const resolved = customProperties.get(variableName);
   if (!resolved) return families;
-  return [...parseFontFamilyValue(resolved), ...families.slice(1)];
+  return [...parseFontFamilyValueTokens(resolved), ...families.slice(1)];
 }
 
 /**
@@ -466,13 +479,11 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   const requested = new Map<string, string>();
   const customProperties = collectFontFamilyCustomProperties(html);
   for (const { declaration } of iterateFontFamilyDeclarations(html)) {
-    for (const originalCase of resolveFontFamilyDeclarationFamilies(
-      declaration,
-      customProperties,
-    )) {
+    for (const candidate of resolveFontFamilyDeclarationCandidates(declaration, customProperties)) {
+      const originalCase = candidate.value;
       const normalized = originalCase.toLowerCase();
-      if (!normalized || GENERIC_FAMILIES.has(normalized)) continue;
-      if (normalized.startsWith("var(")) continue;
+      if (!normalized || (!candidate.quoted && GENERIC_FAMILIES.has(normalized))) continue;
+      if (!candidate.quoted && normalized.startsWith("var(")) continue;
       if (!requested.has(normalized)) requested.set(normalized, originalCase);
     }
   }
