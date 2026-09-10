@@ -11,7 +11,11 @@ import { writeProjectLink } from "./projectLink.js";
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
 const HYPERFRAMES_IGNORE_FILE = ".hyperframesignore";
-const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/"];
+// Unanchored (no leading/mid slash) so it matches a dot-prefixed name at any
+// depth, same as the segments it replaces below — but as a matcher pattern
+// instead of a hard skip, a project's own `.hyperframesignore` negation can
+// still override it.
+const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/", ".*"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
@@ -252,8 +256,12 @@ export function uploadTimeoutMs(byteLength: number): number {
   );
 }
 
+// Absolute, non-negotiable exclusions only — anything a `.hyperframesignore`
+// negation rule should be able to override (including dot-prefixed paths;
+// see DEFAULT_PROJECT_IGNORE) must go through the ignore matcher instead of
+// short-circuiting here.
 function shouldIgnoreSegment(segment: string): boolean {
-  return segment.startsWith(".") || IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
+  return IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
 }
 
 function createProjectIgnore(rootDir: string): Ignore {
