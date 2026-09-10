@@ -84,21 +84,44 @@ describe("stripJsStringLiterals", () => {
 });
 
 describe("stripJsStringLiterals scaling", () => {
+  /**
+   * Guards the quadratic backtracking this scanner was rewritten to avoid: deciding
+   * regex-versus-division by re-reading the accumulated output on every candidate
+   * slash, which a composition carrying one inlined vendor bundle turns into minutes.
+   *
+   * Measured in CPU time, not wall time. CI runners are shared, so wall time also
+   * counts the milliseconds this process spent descheduled while a neighbour had the
+   * core, and an absolute millisecond ceiling is then a claim about the runner rather
+   * than about the algorithm — which is how this test failed on unrelated pull
+   * requests. `process.cpuUsage` counts only work this process actually did. Measured
+   * on a machine at load average 16, the wall-clock ratio for this same input reached
+   * 45x while the CPU ratio stayed at 20x.
+   *
+   * Only the ratio is asserted; there is deliberately no absolute bound, because how
+   * many milliseconds the scan costs is a property of the hardware and how many it
+   * costs *relative to a smaller input* is the property of the code. The bound is
+   * loose because the linear scan is not perfectly linear in measured cost: the
+   * output string grows with the input, so V8's own string handling adds overhead,
+   * and 8x input measures ~16-22x cost. A quadratic scan measures 60x or more.
+   */
   it("stays linear in slash-dense input", () => {
-    const time = (n: number) => {
+    const cpuMs = (n: number) => {
       const src = "a=b/c;".repeat(n);
+      stripJsStringLiterals(src); // warm up before the first sample
       let best = Infinity;
-      for (let run = 0; run < 3; run += 1) {
-        const started = performance.now();
+      for (let run = 0; run < 5; run += 1) {
+        const started = process.cpuUsage();
         stripJsStringLiterals(src);
-        best = Math.min(best, performance.now() - started);
+        const spent = process.cpuUsage(started);
+        best = Math.min(best, (spent.user + spent.system) / 1000);
       }
       return best;
     };
-    const small = Math.max(time(20_000), 0.5);
-    const large = time(160_000);
-    expect(large / small).toBeLessThan(24);
-    expect(large).toBeLessThan(2_000);
+    // Sized so the smaller sample costs several milliseconds of CPU — well clear of
+    // the accounting granularity, so the ratio means something.
+    const small = cpuMs(40_000);
+    const large = cpuMs(320_000);
+    expect(large / small).toBeLessThan(32);
   });
 });
 
