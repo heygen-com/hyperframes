@@ -300,6 +300,34 @@ describe("recomputeOffCanvasIndicators layout changes with no mutation record", 
 });
 
 /**
+ * The other half of "the pass is scoped to one rebuild".
+ *
+ * The no-mutation-record test above varies an element's own BOX, which the pass
+ * never memoizes — so it would still pass if the pass leaked across rebuilds.
+ * This one varies an ANCESTOR-derived input, which is exactly what the pass
+ * does hold: fade a wrapper out and every descendant's visibility answer has to
+ * be recomputed, not served from the previous rebuild's memo.
+ */
+describe("recomputeOffCanvasIndicators ancestor-derived state across rebuilds", () => {
+  it("re-answers visibility when an ancestor fades between rebuilds", () => {
+    const preview = mountPreview(
+      `<div id="wrap"><div class="box"></div></div>`,
+      (el) => (el.classList.contains("box") ? new DOMRect(-500, 40, 100, 40) : null),
+      { observe: true },
+    );
+
+    const visible = preview.rebuild().length;
+    // Nothing about the box changes — only what it inherits from above it.
+    preview.doc.getElementById("wrap")!.style.opacity = "0";
+    const faded = preview.rebuild().length;
+    preview.dispose();
+
+    expect(visible).toBe(1);
+    expect(faded).toBe(0);
+  });
+});
+
+/**
  * The ancestor work, measured through the production entry point.
  *
  * Everything the rebuild asks about an ancestor — does it render, what does it
