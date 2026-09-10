@@ -41,6 +41,11 @@ async function mountEditorSave(writeProjectFile: WriteProjectFile) {
   return {
     handle: captured.handle,
     showToast,
+    rerender: async () => {
+      await act(async () => root.render(<Probe />));
+      if (!captured.handle) throw new Error("Editor save handle was not mounted");
+      return captured.handle;
+    },
     unmount: () => act(async () => root.unmount()),
   };
 }
@@ -58,6 +63,28 @@ describe("useEditorSave pending work", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the pending getter stable across redraws while reading current edits", async () => {
+    const mounted = await mountEditorSave(vi.fn(async () => undefined));
+    const getPendingCandidate = mounted.handle.getPendingCandidate;
+    try {
+      expect(getPendingCandidate()).toBeNull();
+      for (let redraw = 0; redraw < 30; redraw++) {
+        const current = await mounted.rerender();
+        expect(current.getPendingCandidate).toBe(getPendingCandidate);
+      }
+      act(() => mounted.handle.handleContentChange("latest pending source"));
+      expect(getPendingCandidate()).toEqual({
+        projectId: "project-a",
+        path: "index.html",
+        content: "latest pending source",
+      });
+      act(() => mounted.handle.discardPendingSave());
+      expect(getPendingCandidate()).toBeNull();
+    } finally {
+      await mounted.unmount();
+    }
   });
 
   it("exposes and flushes the latest rAF-buffered source candidate", async () => {

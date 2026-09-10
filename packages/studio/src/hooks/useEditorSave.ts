@@ -185,10 +185,12 @@ export function useEditorSave({
     pendingCandidateRef.current = null;
   }, []);
 
+  const getPendingCandidate = useCallback(() => pendingCandidateRef.current, []);
+
   return {
     saveRafRef,
     handleContentChange,
-    getPendingCandidate: () => pendingCandidateRef.current,
+    getPendingCandidate,
     flushPendingSave,
     discardPendingSave,
   };
