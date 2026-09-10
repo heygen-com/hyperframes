@@ -256,6 +256,65 @@ function lintInlinePatterns(file: string, stripped: string): Violation[] {
     .flatMap((line, i) => (line ? matchDangerousPatterns(file, line, i + 1) : []));
 }
 
+// ---------------------------------------------------------------------------
+// Registry-item references in hand-maintained snapshots
+// ---------------------------------------------------------------------------
+//
+// A skill doc that snapshots part of the component registry rots in silence:
+// nothing fails when an item is renamed or dropped, and the agent that follows
+// the doc runs `hyperframes add <gone>` and dies. A doc opts into this check
+// with a marker line, after which every registry-item-shaped identifier in a
+// backtick span must name a real item in registry/registry.json:
+//
+//   <!-- registry-items: allow=some-suffix,another-suffix -->
+//
+// Opt-in rather than repo-wide on purpose. Kebab-case backticks are also CSS
+// properties, `data-*` attributes, skill directory names, script names, and
+// motion-graphics category names, and a check that flags those is a check
+// people turn off. `allow=` carries the few non-item identifiers a snapshot
+// legitimately names (bare suffixes under a spelled-out prefix, ids the doc
+// itself marks as hand-authored).
+const REGISTRY_MARKER = /<!--\s*registry-items:\s*(?:allow=([^\s]*))?\s*-->/;
+const REGISTRY_ITEM_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
+
+function registryItemNames(): Set<string> {
+  const raw = readFileSync(join(REPO_ROOT, "registry", "registry.json"), "utf-8");
+  const parsed = JSON.parse(raw) as { items?: { name?: unknown }[] };
+  const names = (parsed.items ?? [])
+    .map((item) => item.name)
+    .filter((name): name is string => typeof name === "string");
+  if (names.length === 0) {
+    throw new Error("registry/registry.json parsed to zero item names — refusing to lint blind.");
+  }
+  return new Set(names);
+}
+
+export function lintRegistryItemRefs(content: string, known: Set<string>): LineViolation[] {
+  const marker = content.match(REGISTRY_MARKER);
+  if (!marker) return [];
+  const allowed = new Set((marker[1] ?? "").split(",").filter(Boolean));
+  return content.split("\n").flatMap((line, index) => {
+    const dead = [...new Set([...line.matchAll(/`([^`\n]+)`/g)].map((m) => (m[1] ?? "").trim()))]
+      .filter((token) => REGISTRY_ITEM_ID.test(token))
+      .filter((token) => !known.has(token) && !allowed.has(token));
+    return dead.map((token) =>
+      violation(
+        index + 1,
+        `"${token}" is not an item in registry/registry.json, but this file is marked as a registry snapshot. Correct the name, remove it, or add it to the marker's allow= list if it is legitimately not an item.`,
+        line.trim(),
+      ),
+    );
+  });
+}
+
+function collectMarkdownFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return collectMarkdownFiles(full);
+    return entry.isFile() && entry.name.endsWith(".md") ? [full] : [];
+  });
+}
+
 function lintFile(filePath: string): Violation[] {
   const raw = readFileSync(filePath, "utf-8");
   const file = relative(process.cwd(), filePath);
@@ -290,9 +349,27 @@ for (const file of files) {
   }
 }
 
+const knownItems = registryItemNames();
+let snapshotsChecked = 0;
+for (const dir of SKILLS_DIRS) {
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
+  for (const path of collectMarkdownFiles(dir)) {
+    const content = readFileSync(path, "utf-8");
+    if (!REGISTRY_MARKER.test(content)) continue;
+    snapshotsChecked++;
+    for (const v of lintRegistryItemRefs(content, knownItems)) {
+      console.error(`${relative(process.cwd(), path)}:${v.line}: ${v.message}`);
+      console.error(`  ${v.text}\n`);
+      totalViolations++;
+    }
+  }
+}
+
 if (totalViolations > 0) {
   console.error(`\n${totalViolations} skill lint error(s) found.`);
   process.exit(1);
 } else {
-  console.log(`Checked ${files.length} skill file(s) — no issues found.`);
+  console.log(
+    `Checked ${files.length} skill file(s) and ${snapshotsChecked} registry snapshot(s) against ${knownItems.size} registry items — no issues found.`,
+  );
 }

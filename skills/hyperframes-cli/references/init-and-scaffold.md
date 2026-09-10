@@ -16,7 +16,7 @@ npx hyperframes init my-video --non-interactive --example blank  # CI/agents —
 
 **Default depends on TTY**: in a terminal, the CLI prompts for example/options. Outside a TTY (CI, agents, piped output) it auto-switches to non-interactive and **requires `--example`** (the CLI errors with a usage example if missing). Pass `--non-interactive` to force flag-only mode even on a TTY.
 
-Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`.
+Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`, `vscode-theme-visualizer`. (The closed set of `hyperframes:example` items in `registry/registry.json`. `hyperframes catalog` does not list examples — its `--type` takes only `block` or `component` — so this list has no live equivalent and is checked by `bun run lint:skills`.)
 
 Other useful flags:
 

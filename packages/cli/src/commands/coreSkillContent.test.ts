@@ -148,7 +148,55 @@ describe("media treatment routing documentation", () => {
     }
     // And it must say the search stands alone, or the next reader re-derives the
     // creator's wrong diagnosis: that a catalog you have not installed cannot be searched.
-    expect(read("skills", "motion-graphics", "catalog-map.md")).toContain("needs nothing installed");
+    expect(read("skills", "motion-graphics", "catalog-map.md")).toContain(
+      "needs nothing installed",
+    );
+  });
+
+  it("routes every authoring workflow through the live catalog search, or documents why not", () => {
+    // The same failure one layer up. The search instruction lived only in
+    // hyperframes-cli and hyperframes-registry, both loaded on demand, and the
+    // registry skill's own trigger named the command ("use when running
+    // hyperframes catalog") — circular, because the agent that never thought to
+    // search could not reach the doc telling it to search. All ten workflow
+    // skills carried zero mentions of the command.
+    for (const file of [
+      ["skills", "motion-graphics", "agents", "director.md"],
+      ["skills", "product-launch-video", "SKILL.md"],
+      ["skills", "faceless-explainer", "SKILL.md"],
+      ["skills", "pr-to-video", "SKILL.md"],
+      ["skills", "music-to-video", "SKILL.md"],
+      ["skills", "general-video", "SKILL.md"],
+      ["skills", "slideshow", "SKILL.md"],
+      ["skills", "remotion-to-hyperframes", "SKILL.md"],
+    ]) {
+      const doc = read(...file);
+      expect(doc, file.join("/")).toContain("npx hyperframes catalog --query");
+      // "I forgot to install the components" was the wrong self-diagnosis that
+      // hid this bug. Every copy of the instruction has to kill it on the spot.
+      expect(doc, file.join("/")).toContain("nothing installed");
+    }
+
+    // The two workflows that deliberately do NOT search. Both compile their
+    // output through a closed authoring vocabulary (embedded-captions' locked
+    // caption engines, talking-head-recut's `data-anim` card kinds), and a
+    // registry item is a standalone composition with no place to mount. The
+    // exemption is written into each skill so the next reader does not close
+    // the gap with an instruction that would be false there.
+    for (const file of [
+      ["skills", "embedded-captions", "SKILL.md"],
+      ["skills", "talking-head-recut", "SKILL.md"],
+    ]) {
+      expect(read(...file), file.join("/")).toContain(
+        "does not search the HyperFrames component registry",
+      );
+    }
+
+    // The symptom-triggered description is the other half of the fix: the skill
+    // has to be reachable from the user naming an effect, not from the command.
+    const registrySkill = read("skills", "hyperframes-registry", "SKILL.md");
+    expect(registrySkill).toContain("Use BEFORE hand-building any named visual");
+    expect(registrySkill).toContain("CRT scanlines");
   });
 
   it("gives agents a process-owned preview lifecycle in new project instructions", () => {

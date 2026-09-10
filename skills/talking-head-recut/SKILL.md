@@ -755,6 +755,13 @@ table column that matches the storyboard's `layout` field.
 
 #### Available `data-anim` Kinds
 
+This list is closed, and deliberately so: a card is an HTML fragment whose motion this
+skill compiles into the shared overlay timeline in Step 9 (see the GSAP mapping table
+there). That is why this workflow does not search the HyperFrames component registry the
+way the composition workflows do — `npx hyperframes catalog` returns standalone
+compositions that carry their own timeline, and a card has no place to mount one. Reach a
+look the kinds below cannot express with plain CSS inside the card's scoped `<style>`.
+
 | kind            | use for             | key params                                                                                      |
 | --------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
 | `fade-in`       | enter               | `at`, `duration`, `ease?`                                                                       |

@@ -8,7 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lintFrontmatter } from "./lint-skills.ts";
+import { lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
 
@@ -124,4 +124,41 @@ test("invalid: top-level scalar (frontmatter is not a mapping)", () => {
   // errors — either is an acceptable rejection, but the violation list must
   // be non-empty.
   assert.ok(violations.length > 0);
+});
+
+// ---------------------------------------------------------------------------
+// Registry-snapshot drift guard
+// ---------------------------------------------------------------------------
+
+const KNOWN = new Set(["caption-glitch-rgb", "code-diff", "data-chart"]);
+const MARKER = "<!-- registry-items: -->";
+
+test("registry refs: unmarked file is never checked", () => {
+  // Opt-in is the whole design. Most kebab-case backticks in skill docs are CSS
+  // properties, data-* attributes or skill directory names, and a check that
+  // flags those gets switched off.
+  assert.deepEqual(lintRegistryItemRefs("Use `not-a-real-item` here.\n", KNOWN), []);
+});
+
+test("registry refs: marked file passes when every id is real", () => {
+  const doc = `${MARKER}\n\nUse \`caption-glitch-rgb\` or \`code-diff\`.\n`;
+  assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
+});
+
+test("registry refs: marked file flags an id the registry does not have", () => {
+  const doc = `${MARKER}\n\nInstall \`text-wave-distort\` for the wobble.\n`;
+  const violations = lintRegistryItemRefs(doc, KNOWN);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 3);
+  assert.ok(violations[0].message.includes("text-wave-distort"));
+});
+
+test("registry refs: allow= exempts a legitimately non-item identifier", () => {
+  const doc = `<!-- registry-items: allow=dark-plus,pin-rollout -->\n\n\`dark-plus\` and \`pin-rollout\`.\n`;
+  assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
+});
+
+test("registry refs: single-word and non-id backticks are ignored", () => {
+  const doc = `${MARKER}\n\n\`glitch\`, \`--json\`, \`Foo-Bar\`, \`a b-c\`.\n`;
+  assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
 });

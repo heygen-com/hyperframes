@@ -1,5 +1,9 @@
 # Code vocabulary — the `code-*` animation blocks
 
+<!-- registry-items: allow=data-duration,number-lockup,dark-plus,light-plus,dark-modern,light-modern,dark-2026,light-2026,solarized-light,visual-studio-dark,visual-studio-light,high-contrast,high-contrast-light,clear-dark,clear-light,man-page,red-sands,silver-aerogel,solid-colors -->
+
+**The live search is the source of truth for what the registry has.** The table(s) below are a hand-maintained sample and under-cover by design: run `npx hyperframes catalog --query "<what you want>" --json` — it needs nothing installed — before concluding the registry lacks something. Item names here are checked against `registry/registry.json` by `bun run lint:skills`.
+
 PR videos run on two kinds of moving picture: **code** (the lines that changed) and **behavior** (what the change _does_ at runtime). This file is the vocabulary for both — the `code-*` blocks for code beats, and the **mechanism beat** (an invented animated diagram, or a `flowchart` / `data-chart`) for behavior beats. A video that is _all_ code reads flat; **alternate the two** (story-design plans the rhythm; see "Showing behavior" below).
 
 For code beats the registry ships purpose-built **code animation blocks** that render a diff, a typed-on snippet, a morph, a highlight, a scroll, or a 3D/particle/dissolve reveal — far better than hand-built motion. **Reach for one of these first** for any code beat; fall back to hand-authored composition only when none fits.

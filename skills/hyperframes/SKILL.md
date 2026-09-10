@@ -85,17 +85,18 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 
 ## 5. Load domain skills on demand
 
-| Need                                                                                                                | Skill                    |
-| ------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Composition structure, timing attributes, tracks, variables, determinism                                            | `/hyperframes-core`      |
-| Motion rules, scene blueprints, transitions, runtime adapters                                                       | `/hyperframes-animation` |
-| Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
-| Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
-| Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
-| Voiceover carve, audio effect chains, automation envelopes, or one chain/fader across several tracks (submix bus)   | `/hyperframes-audio`     |
-| Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
-| Registry blocks and components                                                                                      | `/hyperframes-registry`  |
-| Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |
+| Need                                                                                                                                        | Skill                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Composition structure, timing attributes, tracks, variables, determinism                                                                    | `/hyperframes-core`      |
+| Motion rules, scene blueprints, transitions, runtime adapters                                                                               | `/hyperframes-animation` |
+| Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics                         | `/hyperframes-keyframes` |
+| Design specs, concept, palette, typography, narration, beat planning                                                                        | `/hyperframes-creative`  |
+| Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                                         | `/media-use`             |
+| Voiceover carve, audio effect chains, automation envelopes, or one chain/fader across several tracks (submix bus)                           | `/hyperframes-audio`     |
+| Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                                                | `/hyperframes-cli`       |
+| Registry blocks and components                                                                                                              | `/hyperframes-registry`  |
+| A named look, effect, treatment, or transition — CRT scanlines, glitch, film grain, shimmer sweep, confetti burst — BEFORE hand-building it | `/hyperframes-registry`  |
+| Figma assets, tokens, components, or storyboard frames as reconstructed motion                                                              | `/figma`                 |
 
 Creator edit phrases are cross-domain requests. Load every skill named in the matching row:
 
