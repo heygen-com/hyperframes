@@ -84,21 +84,34 @@ describe("stripJsStringLiterals", () => {
 });
 
 describe("stripJsStringLiterals scaling", () => {
-  it("stays linear in slash-dense input", () => {
-    const time = (n: number) => {
+  // Guards the quadratic backtracking this scanner was rewritten to avoid:
+  // deciding regex-versus-division by re-reading the accumulated output on
+  // every candidate slash.
+  //
+  // Measured in CPU time, not wall time: `process.cpuUsage` counts only work
+  // this process did, so time spent descheduled on a shared runner does not
+  // count. Only the ratio is asserted; an absolute millisecond bound is a
+  // claim about the hardware, and it is how this test failed on unrelated
+  // pull requests. Inputs stay well under 100k characters: above that the
+  // output string's growth adds its own cost and 8x input measures ~20x even
+  // for the linear scan. Inside that range 8x input measures ~8x; a quadratic
+  // scan measures 60x or more.
+  it("stays linear in slash-dense input", { timeout: 30_000 }, () => {
+    const cpuMs = (n: number) => {
       const src = "a=b/c;".repeat(n);
+      stripJsStringLiterals(src); // warm up before the first sample
       let best = Infinity;
-      for (let run = 0; run < 3; run += 1) {
-        const started = performance.now();
+      for (let run = 0; run < 5; run += 1) {
+        const started = process.cpuUsage();
         stripJsStringLiterals(src);
-        best = Math.min(best, performance.now() - started);
+        const spent = process.cpuUsage(started);
+        best = Math.min(best, (spent.user + spent.system) / 1000);
       }
       return best;
     };
-    const small = Math.max(time(20_000), 0.5);
-    const large = time(160_000);
+    const small = cpuMs(10_000);
+    const large = cpuMs(80_000);
     expect(large / small).toBeLessThan(24);
-    expect(large).toBeLessThan(2_000);
   });
 });
 

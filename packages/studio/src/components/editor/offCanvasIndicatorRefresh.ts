@@ -1,5 +1,11 @@
 import type React from "react";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
+import {
+  DOM_EDIT_LAYER_OBSERVER_INIT,
+  type DomEditLayerWalkCache,
+  createDomEditLayerWalkCache,
+  drainPendingLayerMutations,
+} from "./domEditLayerWalkCache";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
 
 interface OffCanvasIndicatorRefreshOptions {
@@ -26,20 +32,29 @@ function clearIndicators(options: OffCanvasIndicatorRefreshOptions): void {
   options.setRects([]);
 }
 
-function observeDoc(doc: Document, markDirty: () => void): MutationObserver | null {
+function observeDoc(
+  doc: Document,
+  cache: DomEditLayerWalkCache,
+  markDirty: () => void,
+): MutationObserver | null {
   const Observer = doc.defaultView?.MutationObserver ?? globalThis.MutationObserver;
   if (!Observer) return null;
-  const observer = new Observer(markDirty);
-  observer.observe(doc.documentElement, {
-    attributes: true,
-    // data-hidden is included explicitly: hiding an element writes data-hidden, and
-    // although the runtime honoring also writes display:"none" (a style mutation we'd
-    // catch anyway), keying on the attribute directly makes the coupling robust to any
-    // future throttling of that runtime sync.
-    attributeFilter: ["style", "class", "transform", "width", "height", "data-hidden"],
-    childList: true,
-    subtree: true,
+  // The same records do two jobs: they say a rebuild is owed, and they say which
+  // elements the rebuild may not reuse. Reading them here rather than only
+  // marking a boolean is what makes the rebuild cost the edit rather than the
+  // document.
+  const observer = new Observer((records) => {
+    cache.ingest(records);
+    markDirty();
   });
+  // Unfiltered, unlike the boolean-dirty version this replaces, which watched
+  // only ["style", "class", "transform", "width", "height", "data-hidden"]. An
+  // attribute the cache never hears about is one it would answer stale for, and
+  // the filter omitted `id` and the `data-composition-*` attributes that decide
+  // a layer's identity. Widening only makes indicators refresh sooner: a rebuild
+  // is a pure read of the DOM and is throttled by RECOMPUTE_INTERVAL_MS either
+  // way. See DOM_EDIT_LAYER_OBSERVER_INIT for what each option is load-bearing for.
+  observer.observe(doc.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
   return observer;
 }
 
@@ -66,12 +81,18 @@ export function startOffCanvasIndicatorRefresh(
   let frame = 0;
   let lastCompSig = "";
   let lastRecomputeAt = Number.NEGATIVE_INFINITY;
+  const walkCache = createDomEditLayerWalkCache();
   const markDirty = () => {
     options.dirtyRef.current = true;
   };
   const attachObserver = (doc: Document | null) => {
     options.observerRef.current?.disconnect();
-    options.observerRef.current = doc?.documentElement ? observeDoc(doc, markDirty) : null;
+    // A new preview document shares no elements with the old one, and nothing
+    // reported the old one's teardown.
+    walkCache.invalidateAll();
+    options.observerRef.current = doc?.documentElement
+      ? observeDoc(doc, walkCache, markDirty)
+      : null;
     options.observedDocRef.current = doc;
     options.sigRef.current = "";
   };
@@ -99,6 +120,7 @@ export function startOffCanvasIndicatorRefresh(
     if (!rebuildDue(options.dirtyRef.current, lastRecomputeAt, now)) return;
     lastRecomputeAt = now;
     options.dirtyRef.current = false;
+    drainPendingLayerMutations(options.observerRef.current, walkCache);
     recomputeOffCanvasIndicators(
       iframe,
       overlayEl,
@@ -108,6 +130,7 @@ export function startOffCanvasIndicatorRefresh(
       options.sigRef,
       options.elementsRef,
       options.setRects,
+      walkCache,
     );
   };
   frame = requestAnimationFrame(update);

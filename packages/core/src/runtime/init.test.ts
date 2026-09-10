@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular } from "./init";
+import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
 import type { RuntimeTimelineLike } from "./types";
@@ -2199,6 +2200,83 @@ describe("initSandboxRuntimeModular", () => {
     expect(pipVideo.style.visibility).toBe("hidden");
   });
 
+  // The clip manifest the studio timeline draws and the runtime that actually
+  // plays the media must resolve a media element's absolute start through the
+  // same function. When they disagree the editor is a lie: the clip is drawn at
+  // one time and plays at another, and nothing fails.
+  //
+  // Both cases below are read from the SAME DOM the runtime just initialised,
+  // so the expected value is whatever playback uses, never a hardcoded number.
+  it("reports the same media start in the clip manifest as the runtime plays at", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-pip");
+    host.setAttribute("data-composition-file", "compositions/pip.html");
+    host.setAttribute("data-start", "45.40");
+    host.setAttribute("data-duration", "7.06");
+    root.appendChild(host);
+
+    // Legacy root-global authoring: data-start is already absolute, so the host
+    // offset must NOT be added on top of it.
+    const pipVideo = document.createElement("video");
+    pipVideo.id = "pip";
+    pipVideo.setAttribute("data-start", "45.40");
+    pipVideo.setAttribute("data-hf-media-start-basis", "global");
+    pipVideo.setAttribute("data-duration", "7.06");
+    host.appendChild(pipVideo);
+
+    window.__timelines = {
+      main: createMockTimeline(60),
+      "scene-pip": createMockTimeline(7.06),
+    };
+    initSandboxRuntimeModular();
+
+    const runtimeStart = window.__hfResolveMediaStartSeconds?.(pipVideo);
+    const manifestClip = collectRuntimeTimelinePayload({ canonicalFps: 30 }).clips.find(
+      (clip) => clip.id === "pip",
+    );
+    expect(runtimeStart).toBeCloseTo(45.4);
+    expect(manifestClip?.start).toBeCloseTo(runtimeStart!);
+  });
+
+  it("keeps a composition-local media clip in the manifest at the time it plays", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    document.body.appendChild(root);
+
+    // No data-duration and no registered timeline anywhere, so the media window
+    // IS the composition's duration — which is what the second, attribute-only
+    // start derivation used to get wrong.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-a");
+    host.setAttribute("data-start", "10");
+    root.appendChild(host);
+
+    const nested = document.createElement("video");
+    nested.id = "nested";
+    nested.setAttribute("data-start", "2");
+    nested.setAttribute("data-duration", "3");
+    host.appendChild(nested);
+
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+
+    const runtimeStart = window.__hfResolveMediaStartSeconds?.(nested);
+    const manifestClip = collectRuntimeTimelinePayload({ canonicalFps: 30 }).clips.find(
+      (clip) => clip.id === "nested",
+    );
+    expect(runtimeStart).toBeCloseTo(12);
+    expect(manifestClip?.start).toBeCloseTo(runtimeStart!);
+    expect(manifestClip?.duration).toBeCloseTo(3);
+  });
+
   it("shows auto-injected video at host time, not at t=0", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -3672,5 +3750,272 @@ describe("initSandboxRuntimeModular", () => {
         expect(audio.muted).toBe(false);
       });
     });
+  });
+});
+
+/**
+ * The derived duration floor is a function of the composition, not of the
+ * playhead — yet transportTick asked for it on every animation frame, which
+ * made a paused, untouched editor scan every media element ~60 times a second.
+ *
+ * These tests pin the two halves of that change: the derivation must happen a
+ * FIXED number of times regardless of how many frames elapse, and every input
+ * that can change the answer must still force a fresh one.
+ *
+ * The probe is `[data-composition-id][data-start]`, which `init.ts` queries in
+ * exactly one place: `resolveAuthoredCompositionDurationFloorSeconds`, reached
+ * only from a real derivation. Counting it needs no production test hook, and
+ * it cannot be satisfied by a derivation that was skipped.
+ */
+describe("derived duration floor recomputation", () => {
+  const DERIVATION_PROBE_SELECTOR = "[data-composition-id][data-start]";
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+  let raf: ReturnType<typeof createManualRaf>;
+  let derivations: number;
+
+  /**
+   * Registers a short root timeline as well as the markup. transportTick only
+   * syncs the clock duration when a timeline is BOUND, so a fixture without
+   * one never reaches the per-frame call these tests are about — it would make
+   * the invariance assertion pass for the wrong reason. The timeline is
+   * deliberately shorter than every media window here so the derived floor,
+   * not the timeline, is what the assertions read.
+   */
+  const mountComposition = (bodyHtml: string) => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0">${bodyHtml}</div>`;
+    window.__timelines = { main: createMockTimeline(1) };
+  };
+
+  const setNativeDuration = (media: HTMLMediaElement, seconds: number) => {
+    Object.defineProperty(media, "duration", { value: seconds, configurable: true });
+  };
+
+  /** Drive the transport for `frames` animation frames and report the duration it settled on. */
+  const runFrames = (frames: number): number => {
+    for (let frame = 0; frame < frames; frame += 1) raf.step(16);
+    return window.__player!.getDuration();
+  };
+
+  beforeEach(() => {
+    resetRuntimeDataForTests();
+    document.body.innerHTML = "";
+    (globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS ??= {};
+    globalThis.CSS.escape ??= (value: string) => value;
+    raf = createManualRaf();
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+    derivations = 0;
+    const originalQuerySelectorAll = Element.prototype.querySelectorAll;
+    vi.spyOn(Element.prototype, "querySelectorAll").mockImplementation(function (
+      this: Element,
+      selector: string,
+    ) {
+      if (selector === DERIVATION_PROBE_SELECTOR) derivations += 1;
+      return originalQuerySelectorAll.call(this, selector);
+    } as typeof Element.prototype.querySelectorAll);
+    window.__timelines = {};
+  });
+
+  afterEach(() => {
+    window.__hfRuntimeTeardown?.();
+    resetRuntimeDataForTests();
+    document.body.innerHTML = "";
+    window.__timelines = {} as Record<string, RuntimeTimelineLike>;
+    delete window.__player;
+    delete window.__playerReady;
+    delete window.__renderReady;
+    vi.restoreAllMocks();
+    window.requestAnimationFrame = originalRequestAnimationFrame;
+    window.cancelAnimationFrame = originalCancelAnimationFrame;
+  });
+
+  describe("invariance across frames", () => {
+    /**
+     * The load-bearing assertion, and it is INVARIANCE, not a threshold: a
+     * threshold ("fewer than 10 derivations") passes on a small fixture and
+     * still degrades linearly in production. Quadrupling the frame count must
+     * not change the derivation count at all.
+     */
+    it("derives the duration floor a fixed number of times however many frames elapse", () => {
+      mountComposition(`<video data-start="0"></video>`);
+      setNativeDuration(document.querySelector("video")!, 10);
+      initSandboxRuntimeModular();
+
+      const afterStartup = derivations;
+      expect(runFrames(25)).toBe(10);
+      const afterShortRun = derivations - afterStartup;
+
+      expect(runFrames(100)).toBe(10);
+      const afterLongRun = derivations - afterStartup - afterShortRun;
+
+      // Four times the frames, the same amount of work. Before the cache both
+      // numbers tracked the frame count (25 and 100).
+      expect(afterShortRun).toBe(afterLongRun);
+      expect(afterShortRun).toBe(0);
+    });
+
+    it("does not re-derive for a DOM change that cannot affect the duration", () => {
+      mountComposition(`<video data-start="0"></video>`);
+      setNativeDuration(document.querySelector("video")!, 10);
+      initSandboxRuntimeModular();
+      runFrames(2);
+
+      const before = derivations;
+      // A class and an inline transform are what an animating composition
+      // writes on every frame. Treating those as duration inputs would make
+      // the cache useless during playback.
+      document.querySelector("video")!.classList.add("is-visible");
+      document.querySelector("video")!.setAttribute("style", "opacity: 0.5");
+
+      expect(runFrames(5)).toBe(10);
+      expect(derivations).toBe(before);
+    });
+  });
+
+  describe("invalidation, one test per input that can change the answer", () => {
+    /**
+     * Media metadata is the input with no DOM footprint at all: `duration`
+     * goes from NaN to a number on the element itself. Both halves are visible
+     * here — the silent property change is served STALE (proving the cache is
+     * real), and the event that always accompanies it in a browser makes it
+     * fresh (proving the invalidation is real).
+     */
+    it("serves a stale duration for a silent metadata change and a fresh one once the event fires", () => {
+      mountComposition(`<video data-start="0"></video>`);
+      const video = document.querySelector("video")!;
+      setNativeDuration(video, 10);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      // Half one: the input changed, nothing signalled it, the cache answers.
+      setNativeDuration(video, 30);
+      expect(runFrames(2)).toBe(10);
+
+      // Half two: the signal a real browser emits alongside that change.
+      video.dispatchEvent(new Event("durationchange"));
+      expect(runFrames(1)).toBe(30);
+    });
+
+    it("re-derives when el.load() resets duration to NaN", () => {
+      mountComposition(`<video data-start="0"></video>`);
+      const video = document.querySelector("video")!;
+      setNativeDuration(video, 10);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      // What load() does: duration back to NaN, announced by `emptied`.
+      setNativeDuration(video, Number.NaN);
+      expect(runFrames(2)).toBe(10);
+      video.dispatchEvent(new Event("emptied"));
+      const before = derivations;
+      runFrames(1);
+      expect(derivations).toBeGreaterThan(before);
+    });
+
+    it("re-derives when a timing attribute is edited", () => {
+      mountComposition(`<video data-start="0"></video>`);
+      setNativeDuration(document.querySelector("video")!, 10);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      document.querySelector("video")!.setAttribute("data-duration", "25");
+      expect(runFrames(1)).toBe(25);
+    });
+
+    it("re-derives when a clip is moved later on the timeline", () => {
+      mountComposition(`<video data-start="0" data-duration="10"></video>`);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      document.querySelector("video")!.setAttribute("data-start", "5");
+      expect(runFrames(1)).toBe(15);
+    });
+
+    it("re-derives when a timed element is added after init", () => {
+      mountComposition(`<video data-start="0" data-duration="10"></video>`);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      // Nested compositions mount asynchronously, well after init — this is
+      // the ordinary case, not an edge case.
+      const late = document.createElement("audio");
+      late.setAttribute("data-start", "20");
+      late.setAttribute("data-duration", "5");
+      document.querySelector("[data-composition-id]")!.append(late);
+
+      expect(runFrames(1)).toBe(25);
+    });
+
+    it("re-derives when a timed element is removed", () => {
+      mountComposition(
+        `<video data-start="0" data-duration="10"></video>` +
+          `<audio id="tail" data-start="20" data-duration="5"></audio>`,
+      );
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(25);
+
+      document.querySelector("#tail")!.remove();
+      expect(runFrames(1)).toBe(10);
+    });
+
+    /**
+     * `window.__timelines` is a plain object. No MutationObserver and no event
+     * can see a composition script registering into it or lengthening what it
+     * already registered, so the cache compares a signature of the registry on
+     * every read. Nothing else in the invalidation set could catch this.
+     */
+    it("re-derives when a nested composition's registered timeline grows", () => {
+      mountComposition(`<div data-composition-id="scene" data-start="0" data-duration="10"></div>`);
+      window.__timelines = { ...window.__timelines, scene: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      window.__timelines = { ...window.__timelines, scene: createMockTimeline(40) };
+      const before = derivations;
+      runFrames(1);
+      expect(derivations).toBeGreaterThan(before);
+    });
+
+    /**
+     * MutationObserver records are delivered in a microtask. A caller that
+     * edits a timing attribute and reads the duration back in the same
+     * synchronous block — which is exactly what the Studio's live editing does
+     * — would be handed the pre-edit value if the cache waited for the
+     * callback. It drains the queue on read instead.
+     */
+    it("reflects an edit read back in the same synchronous block", () => {
+      mountComposition(`<video data-start="0" data-duration="10"></video>`);
+      initSandboxRuntimeModular();
+      expect(runFrames(2)).toBe(10);
+
+      // No await, no microtask checkpoint between the write and the read.
+      document.querySelector("video")!.setAttribute("data-duration", "42");
+      expect(runFrames(1)).toBe(42);
+    });
+  });
+
+  /**
+   * The render path depends on the exact duration and a frame captured against
+   * a wrong one cannot be recovered, so it does not read the cache at all —
+   * the same silent metadata change that is deliberately served stale to the
+   * editor must be seen immediately here.
+   */
+  it("never serves a cached duration once render capture has started", () => {
+    mountComposition(`<video data-start="0"></video>`);
+    const video = document.querySelector("video")!;
+    setNativeDuration(video, 10);
+    initSandboxRuntimeModular();
+    expect(runFrames(2)).toBe(10);
+
+    window.__player!.renderSeek(0);
+    setNativeDuration(video, 30);
+    // No `durationchange` dispatched, and the editor would still answer 10.
+    expect(runFrames(1)).toBe(30);
+
+    const before = derivations;
+    runFrames(3);
+    expect(derivations).toBeGreaterThan(before);
   });
 });

@@ -91,7 +91,13 @@ const DOM_LAYER_IGNORED_TAGS = new Set([
   "wbr",
 ]);
 
-function isInspectableLayerElement(el: HTMLElement): boolean {
+/**
+ * Is the element rendered at all? The half of `getDomLayerPatchTarget` that a
+ * plain style write can flip, and the only half that reads computed style.
+ * Exported so a caller memoizing a layer walk can give it its own (short)
+ * cache lifetime — see `domEditLayerWalkCache`.
+ */
+export function isInspectableLayerElement(el: HTMLElement): boolean {
   const tagName = el.tagName.toLowerCase();
   if (DOM_LAYER_IGNORED_TAGS.has(tagName)) return false;
 
@@ -101,14 +107,29 @@ function isInspectableLayerElement(el: HTMLElement): boolean {
   return true;
 }
 
-export function getDomLayerPatchTarget(
+/**
+ * How the element is ADDRESSED — its selector, that selector's occurrence index
+ * within the source file, and the file itself. Independent of whether the
+ * element currently renders, so it survives every style write and moves only
+ * when an identity attribute changes or the document's population of elements
+ * sharing the selector does.
+ */
+/**
+ * The selector an element is addressed by, or undefined when it cannot be a
+ * layer at all. Sole owner of that rule: `isDomLayerElement` answers the same
+ * question without paying for the occurrence index, and a second copy of the
+ * conditions would go stale the first time one of them changed.
+ */
+function resolveLayerSelector(el: HTMLElement): string | undefined {
+  if (el.hasAttribute("data-composition-id")) return undefined;
+  return buildStableSelector(el);
+}
+
+export function resolveDomLayerIdentity(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
-  if (!isInspectableLayerElement(el)) return null;
-  if (el.hasAttribute("data-composition-id")) return null;
-
-  const selector = buildStableSelector(el);
+  const selector = resolveLayerSelector(el);
   if (!selector) return null;
 
   const { sourceFile } = getSourceFileForElement(el, activeCompositionPath);
@@ -125,6 +146,26 @@ export function getDomLayerPatchTarget(
     ),
     sourceFile,
   };
+}
+
+export function getDomLayerPatchTarget(
+  el: HTMLElement,
+  activeCompositionPath: string | null,
+): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
+  return isInspectableLayerElement(el) ? resolveDomLayerIdentity(el, activeCompositionPath) : null;
+}
+
+/**
+ * Is `el` a layer at all? Exactly the condition under which
+ * `getDomLayerPatchTarget` returns non-null, for callers that want the yes/no
+ * and throw the target away.
+ *
+ * Worth its own function because the target carries the selector's OCCURRENCE
+ * INDEX, and resolving that is a whole-document query — which the yes/no does
+ * not depend on. Counting an element's layer children asked for one per child.
+ */
+export function isDomLayerElement(el: HTMLElement): boolean {
+  return isInspectableLayerElement(el) && resolveLayerSelector(el) !== undefined;
 }
 
 // ─── Clip ancestor / selection candidate ─────────────────────────────────────
@@ -323,12 +364,10 @@ export function findElementForTimelineElement(
 
 // ─── Layer children ───────────────────────────────────────────────────────────
 
-export function getDirectLayerChildren(
-  el: HTMLElement,
-  options: DomEditContextOptions,
-): HTMLElement[] {
+/** `el`'s direct children that are layers. No longer takes the context options:
+ *  layer-ness does not depend on the active composition path. */
+export function getDirectLayerChildren(el: HTMLElement): HTMLElement[] {
   return Array.from(el.children).filter(
-    (child): child is HTMLElement =>
-      isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath) !== null,
+    (child): child is HTMLElement => isHtmlElement(child) && isDomLayerElement(child),
   );
 }

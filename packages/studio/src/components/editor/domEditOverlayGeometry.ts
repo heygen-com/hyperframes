@@ -1,4 +1,9 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
+import {
+  computeOverlayRootScale,
+  type OverlayRootScale,
+  readPositiveDimension,
+} from "./domEditOverlayBasis";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
@@ -47,12 +52,6 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
 // shapes (rectangular cards, text, full-bleed media) don't have interior holes, so this
 // doesn't bite. If ring/cutout shapes become editable targets, sample more densely or
 // hit-test against the element's actual painted geometry instead of its bounding box.
-function readPositiveDimension(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
 function findSourceBoundary(element: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = element;
   while (current) {
@@ -102,8 +101,9 @@ export function toVisibleOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = toOverlayRect(overlayEl, iframe, element);
+  const rect = toOverlayRect(overlayEl, iframe, element, precomputedScale);
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
@@ -205,59 +205,6 @@ function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
  *  the AABB directly (see its doc comment) — tight enough to only swallow
  *  matrix-decomposition floating-point noise, never an actual rotation. */
 const ROTATION_GATE_EPSILON_DEG = 1e-4;
-
-/** iframe→overlay mapping basis shared by every overlay-geometry function. */
-interface OverlayRootScale {
-  iframeRect: DOMRect;
-  overlayRect: DOMRect;
-  rootScaleX: number;
-  rootScaleY: number;
-}
-
-/** The composition root element inside the preview doc (or null when absent). */
-function findOverlayRootElement(doc: Document | null): HTMLElement | null {
-  return doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
-}
-
-/**
- * The root's effective width/height for scaling: prefer the composition's
- * declared dimensions (data-width/data-height), which stay fixed while GSAP
- * transforms mutate the measured rect; fall back to the measured rect. Null when
- * unmeasurable.
- */
-function resolveRootDimensions(root: HTMLElement | null): { width: number; height: number } | null {
-  if (!root) return null;
-  const rootRect = root.getBoundingClientRect();
-  const width = readPositiveDimension(root.getAttribute("data-width")) ?? rootRect.width;
-  const height = readPositiveDimension(root.getAttribute("data-height")) ?? rootRect.height;
-  if (!width || !height) return null;
-  return { width, height };
-}
-
-/**
- * The iframe/overlay client rects and the iframe→root scale factors. Uses the
- * composition's declared dimensions (data-width/data-height) for the scale
- * instead of rootRect.width/height: when GSAP applies transforms (scale,
- * translate) to the root, rootRect dimensions change but the composition's
- * canonical size stays fixed, and using rootRect misaligns the overlay during
- * animated playback. Returns null when the geometry is unmeasurable.
- */
-function computeOverlayRootScale(
-  overlayEl: HTMLDivElement,
-  iframe: HTMLIFrameElement,
-  doc: Document | null,
-): OverlayRootScale | null {
-  const iframeRect = iframe.getBoundingClientRect();
-  const overlayRect = overlayEl.getBoundingClientRect();
-  const dims = resolveRootDimensions(findOverlayRootElement(doc));
-  if (!dims) return null;
-  return {
-    iframeRect,
-    overlayRect,
-    rootScaleX: iframeRect.width / dims.width,
-    rootScaleY: iframeRect.height / dims.height,
-  };
-}
 
 function toOverlayRect(
   overlayEl: HTMLDivElement,
@@ -415,8 +362,10 @@ export function orientedOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  const scale =
+    precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   if (!scale) return null;
   const base = toOverlayRect(overlayEl, iframe, element, scale);
   if (!base) return null;
@@ -460,8 +409,9 @@ export function orientedVisibleOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = orientedOverlayRect(overlayEl, iframe, element);
+  const rect = orientedOverlayRect(overlayEl, iframe, element, precomputedScale);
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
@@ -531,8 +481,9 @@ export function groupAwareOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   el: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const rect = toOverlayRect(overlayEl, iframe, el);
+  const rect = toOverlayRect(overlayEl, iframe, el, precomputedScale);
   if (!rect || !el.hasAttribute("data-hf-group")) return rect;
   // Union the MEMBERS' rendered rects — where the content actually is — not the
   // wrapper's own box. The wrapper is invisible and its box can sit apart from the
@@ -540,7 +491,7 @@ export function groupAwareOverlayRect(
   // group's bounds (and its off-canvas marker) off to a stale position.
   const rects: OverlayRect[] = [];
   for (const child of Array.from(el.children)) {
-    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement);
+    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement, precomputedScale);
     if (childRect) rects.push(childRect);
   }
   const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;
@@ -551,15 +502,27 @@ export function groupAwareOverlayRect(
   return { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY };
 }
 
-/** Groups stay axis-aligned unions; ordinary elements keep their oriented box. */
+/**
+ * Groups stay axis-aligned unions; ordinary elements keep their oriented box.
+ *
+ * `precomputedScale` is the iframe→overlay basis from `computeOverlayRootScale`.
+ * Without it every call resolves the composition root itself — one
+ * `querySelector("[data-composition-id]")` plus three `getBoundingClientRect`
+ * reads PER ELEMENT — and a caller measuring a whole preview therefore pays that
+ * once per element rather than once per composition. The basis is a property of
+ * the composition and the canvas zoom, not of the element, so a caller that
+ * measures many elements in one synchronous pass resolves it once and threads it
+ * through. See `toVisibleOverlayRects` for the same batching in miniature.
+ */
 export function orientedGroupAwareOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   el: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
   return el.hasAttribute("data-hf-group")
-    ? groupAwareOverlayRect(overlayEl, iframe, el)
-    : orientedOverlayRect(overlayEl, iframe, el);
+    ? groupAwareOverlayRect(overlayEl, iframe, el, precomputedScale)
+    : orientedOverlayRect(overlayEl, iframe, el, precomputedScale);
 }
 
 export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {

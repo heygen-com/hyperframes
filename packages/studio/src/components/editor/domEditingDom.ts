@@ -109,9 +109,18 @@ export function findClosestByAttribute(
 // time, so module scope is the right lifetime; it's empty until set, in which case
 // resolution falls back to the historical attribute-only behavior.
 let compositionSourceMap: Map<string, string> = new Map();
+// Bumped on every replacement so a consumer that memoizes a resolved source file
+// can tell that the map it resolved against is gone. The map is module state
+// with no DOM footprint, so nothing else can observe the change.
+let compositionSourceMapRevision = 0;
 
 export function setCompositionSourceMap(map: Map<string, string>): void {
   compositionSourceMap = map;
+  compositionSourceMapRevision += 1;
+}
+
+export function getCompositionSourceMapRevision(): number {
+  return compositionSourceMapRevision;
 }
 
 function sourceFromCompositionId(ownerRoot: HTMLElement | null): string | undefined {

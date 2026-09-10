@@ -59,15 +59,28 @@ export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
+  /**
+   * Build clips for exactly these elements instead of scanning the document for
+   * them. For a caller that already knows which media it needs this pass — the
+   * per-seek sync only touches the clips whose active state can change — and so
+   * should not pay to re-derive the window of every clip in the composition.
+   *
+   * Every field is still read FRESH from the element. This narrows which
+   * elements are visited, never how current the answer is: `el.duration` can be
+   * reset under the caller by an `el.load()` it did not make.
+   */
+  elements?: Array<HTMLVideoElement | HTMLAudioElement>;
 }): {
   timedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
   mediaClips: RuntimeMediaClip[];
   videoClips: RuntimeMediaClip[];
   maxMediaEnd: number;
 } {
-  const mediaEls = Array.from(document.querySelectorAll("video, audio")) as Array<
-    HTMLVideoElement | HTMLAudioElement
-  >;
+  const mediaEls =
+    params?.elements ??
+    (Array.from(document.querySelectorAll("video, audio")) as Array<
+      HTMLVideoElement | HTMLAudioElement
+    >);
   const timedMediaEls = params?.shouldIncludeElement
     ? mediaEls.filter((el) => params.shouldIncludeElement?.(el))
     : mediaEls.filter((el) => el.hasAttribute("data-start"));

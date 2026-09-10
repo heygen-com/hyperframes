@@ -8,7 +8,11 @@ import { stableClipId } from "./clipTree";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
-import { parseStrictFiniteTimingNumber, resolveNaturalMediaTimelineDuration } from "./playbackRate";
+import {
+  parseStrictFiniteTimingNumber,
+  resolveMediaElementDurationSeconds,
+  resolveNaturalMediaTimelineDuration,
+} from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
@@ -182,18 +186,6 @@ export function collectRuntimeTimelinePayload(params: {
       return null;
     }
   };
-  const resolveMediaElementDurationSeconds = (
-    mediaEl: HTMLVideoElement | HTMLAudioElement,
-  ): number | null => {
-    const declaredDuration = parseNum(mediaEl.getAttribute("data-duration"));
-    if (declaredDuration != null && declaredDuration > 0) {
-      return declaredDuration;
-    }
-    if (Number.isFinite(mediaEl.duration)) {
-      return resolveNaturalMediaTimelineDuration(mediaEl, mediaEl.duration);
-    }
-    return null;
-  };
   const resolveMediaWindowEndSeconds = (): number | null => {
     const mediaNodes = Array.from(
       document.querySelectorAll("video[data-start], audio[data-start]"),
@@ -201,9 +193,7 @@ export function collectRuntimeTimelinePayload(params: {
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const mediaNode of mediaNodes) {
-      const start = !mediaNode.hasAttribute("data-hf-auto-start")
-        ? Math.max(0, Number(mediaNode.getAttribute("data-start") ?? 0) || 0)
-        : startResolver.resolveStartForElement(mediaNode, 0);
+      const start = startResolver.resolveMediaStartForElement(mediaNode);
       if (!Number.isFinite(start)) continue;
       const duration = resolveMediaElementDurationSeconds(mediaNode);
       if (duration == null || duration <= 0) continue;
@@ -356,10 +346,11 @@ export function collectRuntimeTimelinePayload(params: {
     if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
       continue;
     const compositionContext = resolveNearestCompositionContext(node, root);
-    const start = startResolver.resolveStartForElement(
-      node,
-      compositionContext.inheritedStart ?? 0,
-    );
+    const tag = node.tagName.toLowerCase();
+    const start =
+      tag === "video" || tag === "audio"
+        ? startResolver.resolveMediaStartForElement(node)
+        : startResolver.resolveStartForElement(node, compositionContext.inheritedStart ?? 0);
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseElementDurationAttr(node);
     if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
@@ -383,7 +374,6 @@ export function collectRuntimeTimelinePayload(params: {
     if (duration <= 0) continue;
     const end = start + duration;
     maxEnd = Math.max(maxEnd, end);
-    const tag = node.tagName.toLowerCase();
     const kind: RuntimeTimelineClip["kind"] =
       nodeCompositionId && nodeCompositionId !== rootCompositionId
         ? "composition"

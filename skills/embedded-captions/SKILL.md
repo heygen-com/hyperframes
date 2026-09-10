@@ -65,6 +65,8 @@ Procedure: probe the clip → shortlist 2–3 identities from the catalog → re
 
 (The full identity table lives in [CATALOG.md](CATALOG.md) — single source of truth for routing. The engine docs below describe each backend's authoring contract.)
 
+**CATALOG.md is the whole answer space here: this workflow does not search the HyperFrames component registry.** The composition workflows run `npx hyperframes catalog` before authoring a named look; this one must not. Its engines are locked compilers that consume `cinematic.json` / `theme.json` and emit the composition themselves, so a registry item — the `caption-*` blocks included — has nothing to mount into. A registry block styles text on a designed canvas; this skill burns captions into somebody's footage through a matte. When no identity fits the ask, say so and pick the nearest, rather than reaching outside the catalog.
+
 **Recommendation heuristic**: use the "Shortlisting heuristics" in [CATALOG.md](CATALOG.md) — they are identity-level (e.g. "炸" shortlists ordnance/stomp/terminal/loud and picks by WHAT should explode), never category-level. Unsure → `anchor`.
 
 - **Cinematic** → write `plan.json` for a locked template, compiled by `make-composition.cjs`.
