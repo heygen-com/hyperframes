@@ -544,6 +544,7 @@ function runFfmpeg(args: string[], label: string): { stdout: Buffer; stderr: str
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 256 * 1024 * 1024,
     encoding: "buffer",
+    windowsHide: true,
   });
   const stderr = result.stderr.toString("utf-8");
   if (result.status !== 0) {

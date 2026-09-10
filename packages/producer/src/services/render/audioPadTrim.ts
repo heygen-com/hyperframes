@@ -634,7 +634,10 @@ async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<
   if (!args.includes("--")) {
     throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
   }
-  const proc = spawn(getFfprobeBinary(), args, { stdio: ["ignore", "pipe", "pipe"] });
+  const proc = spawn(getFfprobeBinary(), args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
   trackChildProcess(proc);
   let stdout = "";
   proc.stdout.on("data", (data: Buffer) => {
