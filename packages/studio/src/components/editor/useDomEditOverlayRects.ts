@@ -20,6 +20,7 @@ import {
   orientedVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import { subscribeOverlayFrame } from "./overlayFrameLoop";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -107,8 +108,6 @@ export function useDomEditOverlayRects({
   };
 
   useMountEffect(() => {
-    let frame = 0;
-
     const clearAll = () => {
       setOverlayRect(null);
       setHoverRect(null);
@@ -116,7 +115,6 @@ export function useDomEditOverlayRects({
     };
 
     const update = () => {
-      frame = requestAnimationFrame(update);
       if (rafPausedRef.current) {
         if (childRectsRef.current.length > 0) {
           childRectsRef.current = [];
@@ -263,8 +261,7 @@ export function useDomEditOverlayRects({
       setHoverRect(orientedGroupAwareOverlayRect(overlayEl, iframe, hoverEl, scale));
     };
 
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    return subscribeOverlayFrame(update);
   });
 
   return {

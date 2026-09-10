@@ -7,6 +7,7 @@ import {
   drainPendingLayerMutations,
 } from "./domEditLayerWalkCache";
 import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { requestOverlayFrames, subscribeOverlayFrame } from "./overlayFrameLoop";
 
 interface OffCanvasIndicatorRefreshOptions {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -78,12 +79,16 @@ export function rebuildDue(dirty: boolean, lastAt: number, now: number): boolean
 export function startOffCanvasIndicatorRefresh(
   options: OffCanvasIndicatorRefreshOptions,
 ): () => void {
-  let frame = 0;
   let lastCompSig = "";
   let lastRecomputeAt = Number.NEGATIVE_INFINITY;
   const walkCache = createDomEditLayerWalkCache();
   const markDirty = () => {
     options.dirtyRef.current = true;
+    // A rebuild is owed, so the shared loop has to be running to pay it. The
+    // preview's own MutationObserver is the wake source the top frame's
+    // pointer and message listeners cannot be: an edit inside the iframe
+    // reaches this callback and nothing else.
+    requestOverlayFrames();
   };
   const attachObserver = (doc: Document | null) => {
     options.observerRef.current?.disconnect();
@@ -97,7 +102,6 @@ export function startOffCanvasIndicatorRefresh(
     options.sigRef.current = "";
   };
   const update = () => {
-    frame = requestAnimationFrame(update);
     const iframe = options.iframeRef.current;
     const overlayEl = options.overlayRef.current;
     const doc = iframe?.contentDocument ?? null;
@@ -133,9 +137,9 @@ export function startOffCanvasIndicatorRefresh(
       walkCache,
     );
   };
-  frame = requestAnimationFrame(update);
+  const unsubscribe = subscribeOverlayFrame(update);
   return () => {
-    cancelAnimationFrame(frame);
+    unsubscribe();
     options.observerRef.current?.disconnect();
     options.observerRef.current = null;
     options.observedDocRef.current = null;
