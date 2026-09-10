@@ -33,12 +33,15 @@
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  constants,
+  closeSync,
+  fstatSync,
+  openSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -87,6 +90,8 @@ interface Plan {
   source: string;
   /** Content-addressed object key, without the bucket prefix. */
   key: string;
+  /** Full digest of the bytes used to derive the key. */
+  digest: string;
   /** Public URL the manifest will carry. */
   url: string;
 }
@@ -124,17 +129,27 @@ function needsHosting(file: FileTarget): boolean {
 /** Point one file at the CDN, and say which bytes have to get there. */
 function hostFile(itemName: string, itemDir: string, file: FileTarget): Plan {
   const source = resolve(itemDir, file.path);
-  if (!existsSync(source) || !statSync(source).isFile()) {
-    throw new Error(`${itemName}: files[] declares "${file.path}", which is not on disk.`);
+  const fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
+  let digest: string;
+  try {
+    if (!fstatSync(fd).isFile()) {
+      throw new Error(`${itemName}: files[] declares "${file.path}", which is not a file.`);
+    }
+    digest = createHash("sha256").update(readFileSync(fd)).digest("hex");
+  } finally {
+    closeSync(fd);
   }
-  const digest = createHash("sha256").update(readFileSync(source)).digest("hex").slice(0, 16);
-  const key = `${digest}${extname(file.path).toLowerCase()}`;
+  const key = `${digest.slice(0, 16)}${extname(file.path).toLowerCase()}`;
   file.url = `${CDN_BASE}/${key}`;
-  return { source, key, url: file.url };
+  return { source, key, digest, url: file.url };
 }
 
-/** Rewrite one item's manifest, and report which bytes have to reach the CDN. */
-function planItem(itemDir: string): Plan[] {
+/** Prepare a manifest update and identify the bytes that must reach the CDN. */
+function planItem(itemDir: string): {
+  plans: Plan[];
+  manifestPath: string;
+  manifest: RegistryItem;
+} {
   const manifestPath = join(itemDir, "registry-item.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
 
@@ -142,10 +157,7 @@ function planItem(itemDir: string): Plan[] {
     .filter(needsHosting)
     .map((file) => hostFile(manifest.name, itemDir, file));
 
-  if (plans.length > 0) {
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
-  }
-  return plans;
+  return { plans, manifestPath, manifest };
 }
 
 /** Collect every planned object into one flat directory, deduplicated by key. */
@@ -156,7 +168,13 @@ function stage(plans: Plan[]): number {
   for (const plan of plans) {
     if (seen.has(plan.key)) continue;
     seen.add(plan.key);
-    copyFileSync(plan.source, join(STAGING_DIR, plan.key));
+    const stagedPath = join(STAGING_DIR, plan.key);
+    copyFileSync(plan.source, stagedPath);
+    const digest = createHash("sha256").update(readFileSync(stagedPath)).digest("hex");
+    if (digest !== plan.digest) {
+      unlinkSync(stagedPath);
+      throw new Error(`Asset changed while staging: ${plan.source}. No upload was attempted.`);
+    }
   }
   return seen.size;
 }
@@ -186,19 +204,10 @@ function upload(): void {
   );
 }
 
-/**
- * Report what would move, changing nothing.
- *
- * Planning writes the manifest, so a dry run restores each one after asking
- * it. Cheaper than a second code path that could disagree with the real one
- * about what counts as hostable.
- */
+/** Report what would move, changing nothing. */
 function reportDryRun(itemDirs: string[]): void {
   for (const dir of itemDirs) {
-    const manifestPath = join(dir, "registry-item.json");
-    const before = readFileSync(manifestPath, "utf-8");
-    const plans = planItem(dir);
-    writeFileSync(manifestPath, before, "utf-8");
+    const { plans } = planItem(dir);
     if (plans.length > 0) {
       console.log(`${dir.replace(`${repoRoot}/`, "")}: ${plans.length} file(s) would be hosted`);
     }
@@ -228,13 +237,19 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  const plans = itemDirs.flatMap(planItem);
+  const items = itemDirs.map(planItem);
+  const plans = items.flatMap((item) => item.plans);
   if (plans.length === 0) {
     console.log("No unhosted binary assets found — nothing to do.");
     return;
   }
 
   const objects = stage(plans);
+  for (const { plans: itemPlans, manifestPath, manifest } of items) {
+    if (itemPlans.length > 0) {
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+    }
+  }
   console.log(
     `Staged ${objects} object(s) from ${plans.length} manifest entr(ies) → ${STAGING_DIR}`,
   );
