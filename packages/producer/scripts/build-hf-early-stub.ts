@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(thisDir, "..");
@@ -67,7 +67,7 @@ writeFileSync(
 // Format the generated file so `oxfmt --check` passes in CI.
 // Errors are intentionally swallowed — oxfmt unavailable in some envs.
 try {
-  execSync(`bunx oxfmt ${outPath}`, { stdio: "ignore" });
+  execFileSync("bun", ["x", "oxfmt", outPath], { stdio: "ignore" });
 } catch {
   // not fatal
 }
