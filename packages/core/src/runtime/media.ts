@@ -1,7 +1,12 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
-import { readElementPlaybackRate, readMediaStart } from "./playbackRate.js";
+import { sourceTimeAt, type MappedMedia } from "./nestedHostWindow";
+import {
+  parseStrictFiniteTimingNumber,
+  readElementPlaybackRate,
+  readMediaStart,
+} from "./playbackRate.js";
 import { clampAudioGain } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
@@ -38,6 +43,8 @@ export function resolveRuntimeMediaClipDuration(params: {
 export type RuntimeMediaClip = {
   el: HTMLVideoElement | HTMLAudioElement;
   start: number;
+  /** Unclamped mapped start. Seek/loop use this; `start`/`end` stay the visible window. */
+  origin: number;
   mediaStart: number;
   duration: number;
   end: number;
@@ -55,9 +62,39 @@ export type RuntimeMediaClip = {
   volumeKeyframes?: VolumeKeyframe[];
 };
 
+/**
+ * Authored `data-duration` as a clip length. Absent or garbage is null — open-
+ * ended, the source length decides. An explicit `0` is an empty window, as the
+ * render treats it.
+ */
+export function authoredClipDuration(el: HTMLVideoElement | HTMLAudioElement): number | null {
+  const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
+  return duration != null && duration >= 0 ? duration : null;
+}
+
+/**
+ * A media element's own window on the timeline (`origin === start`): authored
+ * `data-start` / `data-duration` unless the caller resolved them. A null
+ * `duration` is open-ended.
+ */
+export function authoredMediaWindow(
+  el: HTMLVideoElement | HTMLAudioElement,
+  start = Number.parseFloat(el.dataset.start ?? ""),
+  duration: number | null = authoredClipDuration(el),
+): MappedMedia | null {
+  if (!Number.isFinite(start)) return null;
+  return {
+    start,
+    origin: start,
+    end: duration != null && duration >= 0 ? start + duration : Number.POSITIVE_INFINITY,
+    mediaStart: readMediaStart(el),
+    playbackRate: readElementPlaybackRate(el),
+  };
+}
+
 export function refreshRuntimeMediaCache(params?: {
-  resolveStartSeconds?: (element: Element) => number;
-  resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
+  /** Clip window on the master timeline; `null` skips the element. Defaults to `authoredMediaWindow`. */
+  resolveClipWindow?: (element: HTMLVideoElement | HTMLAudioElement) => MappedMedia | null;
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
 }): {
   timedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
@@ -75,33 +112,29 @@ export function refreshRuntimeMediaCache(params?: {
   const videoClips: RuntimeMediaClip[] = [];
   let maxMediaEnd = 0;
   for (const el of timedMediaEls) {
-    const start = params?.resolveStartSeconds
-      ? params.resolveStartSeconds(el)
-      : Number.parseFloat(el.dataset.start ?? "0");
-    if (!Number.isFinite(start)) continue;
-    const mediaStart = readElementPlaybackStart(el);
-    const playbackRate = readElementPlaybackRate(el);
-    const loop = el.loop;
+    const mapped = (params?.resolveClipWindow ?? authoredMediaWindow)(el);
+    if (!mapped) continue;
+    const { start, origin, mediaStart, playbackRate } = mapped;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
-    let duration =
-      params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
-    if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
-      // Effective duration accounts for playback rate:
-      // at 0.5x, a 10s source plays for 20s on the timeline
-      duration = Math.max(0, (sourceDuration - mediaStart) / playbackRate);
+    let duration = mapped.end - start;
+    if (!Number.isFinite(duration) && sourceDuration != null) {
+      // Source left after the first visible instant, on the timeline's clock:
+      // at 0.5x, a 10s source plays for 20s. Measured from the source time at
+      // `start`, so a head-trimmed nested clip does not outlive its file.
+      duration = Math.max(0, (sourceDuration - sourceTimeAt(mapped, start)) / playbackRate);
     }
-    const hasKnownDuration = Number.isFinite(duration) && duration >= 0;
-    const end = hasKnownDuration ? start + duration : Number.POSITIVE_INFINITY;
+    const end = Number.isFinite(duration) ? start + duration : Number.POSITIVE_INFINITY;
     const volumeRaw = Number.parseFloat(el.dataset.volume ?? "");
     const clip: RuntimeMediaClip = {
       el,
       start,
+      origin,
       mediaStart,
-      duration: hasKnownDuration ? duration : Number.POSITIVE_INFINITY,
+      duration: Number.isFinite(duration) ? duration : Number.POSITIVE_INFINITY,
       end,
       volume: Number.isFinite(volumeRaw) ? volumeRaw : null,
       playbackRate,
-      loop,
+      loop: el.loop,
       sourceDuration,
     };
     mediaClips.push(clip);
@@ -230,7 +263,7 @@ export function syncRuntimeMedia(params: {
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
-    let relTime = (params.timeSeconds - clip.start) * clip.playbackRate + clip.mediaStart;
+    let relTime = sourceTimeAt(clip, params.timeSeconds);
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
     const isHeldVideoTail =
       isNonLoopVideo &&

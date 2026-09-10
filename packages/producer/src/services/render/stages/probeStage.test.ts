@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, mock } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as realShared from "../shared.js";
 
 const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
 afterAll(() => rmSync(workDir, { recursive: true, force: true }));
@@ -192,15 +193,10 @@ mock.module("../../htmlCompiler.js", () => ({
   resolveCompositionDurations: async () => [],
 }));
 
+// Only the artifact writer is stubbed; the timing helpers are the real ones so
+// the reconciliation under test runs the production math.
 mock.module("../shared.js", () => ({
-  BROWSER_MEDIA_EPSILON: 0.0001,
-  projectBrowserEndToCompositionTimeline: (
-    existingStart: number,
-    browserStart: number,
-    browserEnd: number,
-  ) => browserEnd + (existingStart - browserStart),
-  resolveBrowserMediaEnd: (_start: number, end: number, duration: number) =>
-    Number.isFinite(duration) && duration > 0 ? _start + duration : end,
+  ...realShared,
   writeCompiledArtifacts: () => {},
 }));
 
@@ -388,7 +384,9 @@ describe("runProbeStage — forceScreenshot threading", () => {
         start: 0,
         end: 2,
         duration: 2,
+        durationInferred: false,
         mediaStart: 0,
+        playbackRate: 1,
         loop: false,
         hasAudio: false,
         volume: 1,
@@ -421,7 +419,9 @@ describe("runProbeStage — forceScreenshot threading", () => {
         start: 0,
         end: 5,
         duration: 5,
+        durationInferred: false,
         mediaStart: 0,
+        playbackRate: 1,
         loop: false,
         hasAudio: false,
         volume: 1,
@@ -435,6 +435,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
       id: "clip",
       src: "fallback.mp4",
       start: 0,
+      origin: 0,
       end: 5,
       mediaStart: 0,
       loop: false,
@@ -466,6 +467,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
       duration,
       durationInferred,
       mediaStart: 0,
+      playbackRate: 1,
       loop: false,
       hasAudio: true,
       volume: 1,
@@ -484,6 +486,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
         id: "longer-inferred",
         src: "short.wav",
         start: 0,
+        origin: 0,
         end: 3.836939,
         mediaStart: 0,
         layer: 0,
@@ -494,6 +497,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
         id: "longer-authored",
         src: "short.wav",
         start: 0,
+        origin: 0,
         end: 3.836939,
         mediaStart: 0,
         layer: 0,
@@ -504,6 +508,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
         id: "shorter-inferred",
         src: "long.wav",
         start: 0,
+        origin: 0,
         end: 6.530612,
         mediaStart: 0,
         layer: 0,
@@ -522,6 +527,93 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(input.composition.audios.map((audio) => audio.end)).toEqual([
       6.530612, 3.836939, 3.836939,
     ]);
+  });
+
+  it("projects a browser end onto a head-trimmed nested clip from its origin, not its clamped start", async () => {
+    resetRetryMocks();
+    // Child-local audio [1, 5] inside a slot at 5 with in-point 1.5: origin 4.5,
+    // visible from 5. The compiled track is open-ended (end 0), so the browser
+    // end decides — and it must land at 4.5 + 4 = 8.5, not 5 + 4.
+    browserMediaResults = [
+      {
+        id: "bed",
+        tagName: "audio",
+        src: "bed.wav",
+        start: 1,
+        end: 5,
+        duration: 4,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 1,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 10;
+    input.composition.audios.push({
+      id: "bed",
+      src: "bed.wav",
+      start: 5,
+      origin: 4.5,
+      end: 0,
+      mediaStart: 0,
+      layer: 0,
+      volume: 1,
+      type: "audio",
+    });
+    input.compiled.html = `<audio id="bed" src="bed.wav" data-var-src="bed_src" data-start="1" data-end="5"></audio>`;
+    input.job.config.variables = { bed_src: "bed.wav" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.audios[0]).toMatchObject({ start: 5, origin: 4.5, end: 8.5 });
+  });
+
+  it("scales a browser end by the host rate, not the element's own rate", async () => {
+    resetRetryMocks();
+    // Child-local [0, 4] at own rate 2 under a host at rate 2: the compiled rate
+    // is 4, so 4 local seconds are 2 root seconds → end 7, not 9.
+    browserMediaResults = [
+      {
+        id: "fast",
+        tagName: "video",
+        src: "fast.mp4",
+        start: 0,
+        end: 4,
+        duration: 4,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 2,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 10;
+    input.composition.videos.push({
+      id: "fast",
+      src: "fast.mp4",
+      start: 5,
+      origin: 5,
+      end: 0,
+      mediaStart: 0,
+      playbackRate: 4,
+      loop: false,
+      hasAudio: false,
+    });
+    input.compiled.html = `<video id="fast" src="fast.mp4" data-var-src="fast_src" data-start="0" data-playback-rate="2"></video>`;
+    input.job.config.variables = { fast_src: "fast.mp4" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.videos[0]).toMatchObject({ start: 5, origin: 5, end: 7 });
   });
 
   it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {

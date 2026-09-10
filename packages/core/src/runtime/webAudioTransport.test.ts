@@ -487,6 +487,23 @@ describe("WebAudioTransport", () => {
       await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen);
       expect(mock.startFn).toHaveBeenCalledWith(0, 3);
     });
+
+    it("only counts a window that ends before the buffer as bounded", async () => {
+      const buffer = { duration: 10 } as AudioBuffer;
+      // mediaStart=2, clipDuration=4 at 2x → source [2, 10]: runs to the buffer's end.
+      const toEnd = setupTransport(100);
+      await toEnd.transport.schedulePlayback(mockEl, buffer, 0, 2, 0, 1, toEnd.gen, 1, 4, 2);
+      expect(toEnd.transport.hasBoundedActiveSources()).toBe(false);
+      // A window sized from element metadata that lands 30 ms short of the
+      // decoded buffer (codec padding) still runs to the end.
+      const drift = setupTransport(100);
+      await drift.transport.schedulePlayback(mockEl, buffer, 0, 2, 0, 1, drift.gen, 1, 3.985, 2);
+      expect(drift.transport.hasBoundedActiveSources()).toBe(false);
+      // clipDuration=3 → source [2, 8]: trimmed short of the buffer.
+      const trimmed = setupTransport(100);
+      await trimmed.transport.schedulePlayback(mockEl, buffer, 0, 2, 0, 1, trimmed.gen, 1, 3, 2);
+      expect(trimmed.transport.hasBoundedActiveSources()).toBe(true);
+    });
   });
 
   describe("playback rate", () => {

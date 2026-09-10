@@ -8,6 +8,8 @@ export interface AudioElement {
   src: string;
   start: number;
   end: number;
+  /** Unclamped mapped start. Parsers stamp `start` (identity). Collector overwrites when remapped. */
+  origin: number;
   mediaStart: number;
   /** Constant normalized source-time multiplier (0.1..5). */
   playbackRate?: number;

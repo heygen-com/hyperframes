@@ -275,6 +275,7 @@ export function resolveHdrExtractionWindow(
     id: string;
     start: number;
     end: number;
+    origin: number;
     mediaStart: number;
     loop: boolean;
   },

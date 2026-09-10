@@ -226,10 +226,13 @@ export function parsePlanVideosJson(value: unknown): PlanVideosJson {
   const videos = record.videos.map((value, index) => {
     const field = `meta/videos.json.videos[${index}]`;
     const video = readRecord(value, field);
+    const start = readFiniteNumber(video.start, `${field}.start`);
     return {
       id: readNonEmptyString(video.id, `${field}.id`),
       src: readNonEmptyString(video.src, `${field}.src`),
-      start: readFiniteNumber(video.start, `${field}.start`),
+      start,
+      origin:
+        video.origin === undefined ? start : readFiniteNumber(video.origin, `${field}.origin`),
       end: readFiniteNumber(video.end, `${field}.end`),
       mediaStart: readFiniteNumber(video.mediaStart, `${field}.mediaStart`),
       loop: readBoolean(video.loop, `${field}.loop`),

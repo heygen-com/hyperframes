@@ -15,134 +15,55 @@
  */
 
 import { parseHTML } from "linkedom";
-import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
 import {
-  MEDIA_START_BASIS_ATTR,
-  readMediaStartBasis,
-  resolveAbsoluteMediaStartSeconds,
-  type MediaStartBasis,
-} from "@hyperframes/core/media-timing";
+  IDENTITY_HOST_WINDOW,
+  MEDIA_RENDER_ID_ATTR,
+  boundsOnly,
+  mapClipThroughHostWindow,
+  resolveNestedHostWindow,
+  type MappedClip,
+  type NestedHostWindow,
+} from "@hyperframes/core";
+import { MEDIA_START_BASIS_ATTR, readMediaStartBasis } from "@hyperframes/core/media-timing";
 import {
   parseVideoElements,
   parseImageElements,
   parseAudioElements,
   resolveReferencedStart,
   type RefResolverEl,
-  type RefResolverDoc,
   type VideoElement,
   type ImageElement,
   type AudioElement,
 } from "@hyperframes/engine";
 
 /**
- * Marks a host element that `inlineSubCompositions` hoisted a composition into.
- * Set unconditionally on every inlined host, which makes it the reliable signal
- * for "this ancestor shifts its children along the timeline".
- */
-const COMPOSITION_HOST_ATTR = "data-composition-file";
-
-interface HostWindow {
-  /** Seconds to add to a descendant's authored, scene-relative start. */
-  offset: number;
-  /** Absolute time past which a descendant is outside its host, or Infinity. */
-  limit: number;
-  /** Whether authored media time is composition-local or legacy root-global. */
-  basis: MediaStartBasis;
-}
-
-const ROOT_WINDOW: HostWindow = { offset: 0, limit: Infinity, basis: "local" };
-
-function parseNumeric(value: string | null): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/**
- * Fold a media element's chain of composition hosts into one window.
- *
- * Host `data-start` is resolved the same way media is (`resolveReferencedStart`):
- * numeric literals, or an id / `data-composition-id` ref to a sibling slot's
- * end (`data-start="hook"`). `parseFloat("hook")` is 0, which stacked every
- * chained scene at 0–2s. Only `data-end` bounds a host: a host carrying just
- * `data-duration` was unbounded in the file-tree walk too.
- */
-function resolveHostWindow(
-  element: Element,
-  document: RefResolverDoc,
-  startCache: Map<RefResolverEl, number>,
-  visiting: Set<RefResolverEl>,
-): HostWindow {
-  const hosts: Element[] = [];
-  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-    if (ancestor.hasAttribute(COMPOSITION_HOST_ATTR)) hosts.push(ancestor);
-  }
-  if (hosts.length === 0) return ROOT_WINDOW;
-
-  let offset = 0;
-  let limit = Infinity;
-  // parentElement walks leaf → root; the offsets accumulate root → leaf.
-  for (const host of hosts.reverse()) {
-    const hostStart = resolveReferencedStart(document, host, startCache, visiting);
-    const hostEnd = parseNumeric(host.getAttribute("data-end"));
-    if (hostEnd != null) limit = Math.min(limit, offset + hostEnd);
-    offset += hostStart;
-  }
-  const tag = element.tagName.toLowerCase();
-  const basis =
-    tag === "video" || tag === "audio"
-      ? readMediaStartBasis(element.getAttribute(MEDIA_START_BASIS_ATTR))
-      : "local";
-  return {
-    offset,
-    limit,
-    basis,
-  };
-}
-
-/**
  * Map each render id to the window of the composition hosts it is nested in.
  * Keyed on the render id rather than document position so the caller never has
  * to assume two separate parses walk the document in the same order.
+ *
+ * Host `data-start` goes through `resolveReferencedStart`, the same resolver
+ * media uses, so an id-ref to a sibling slot (`data-start="hook"`) lands where
+ * that slot ends instead of at `parseFloat("hook")`.
+ *
+ * Legacy media authored in root time (`data-hf-media-start-basis="global"`)
+ * keeps its own start: the hosts only bound it, they do not shift it.
  */
-function collectHostWindows(html: string): Map<string, HostWindow> {
+function collectHostWindows(html: string): Map<string, NestedHostWindow> {
   const { document } = parseHTML(html);
-  const windows = new Map<string, HostWindow>();
   const startCache = new Map<RefResolverEl, number>();
   const visiting = new Set<RefResolverEl>();
+  const hostStart = (host: RefResolverEl): number =>
+    resolveReferencedStart(document, host, startCache, visiting);
+
+  const windows = new Map<string, NestedHostWindow>();
   for (const element of document.querySelectorAll(`[${MEDIA_RENDER_ID_ATTR}]`)) {
     const renderId = element.getAttribute(MEDIA_RENDER_ID_ATTR);
     if (!renderId) continue;
-    windows.set(
-      renderId,
-      resolveHostWindow(element as unknown as Element, document, startCache, visiting),
-    );
+    const window = resolveNestedHostWindow(element, hostStart) ?? IDENTITY_HOST_WINDOW;
+    const global = readMediaStartBasis(element.getAttribute(MEDIA_START_BASIS_ATTR)) === "global";
+    windows.set(renderId, global ? boundsOnly(window) : window);
   }
   return windows;
-}
-
-/**
- * Shift a scene-relative window onto the root timeline.
- * Returns null when the clip starts after its host has already ended, matching
- * the `start < absoluteEnd` drop the file-tree walk applied.
- */
-function toAbsoluteWindow(
-  start: number,
-  end: number,
-  window: HostWindow,
-): { start: number; end: number } | null {
-  const absoluteStart = resolveAbsoluteMediaStartSeconds({
-    authoredStart: start,
-    hostStart: window.offset,
-    basis: window.basis,
-  });
-  if (absoluteStart >= window.limit) return null;
-  const absoluteEnd = resolveAbsoluteMediaStartSeconds({
-    authoredStart: end,
-    hostStart: window.offset,
-    basis: window.basis,
-  });
-  return { start: absoluteStart, end: Math.min(absoluteEnd, window.limit) };
 }
 
 export interface RenderMedia {
@@ -161,18 +82,26 @@ export interface RenderMedia {
  */
 export function collectRenderMedia(html: string): RenderMedia {
   const windows = collectHostWindows(html);
-  const windowFor = (id: string): HostWindow => windows.get(id) ?? ROOT_WINDOW;
+  const windowFor = (id: string): NestedHostWindow => windows.get(id) ?? IDENTITY_HOST_WINDOW;
+
+  // A clip mapped to a zero-width window falls outside its slot: nothing to render.
+  const isVisible = (clip: MappedClip): boolean => clip.end > clip.start;
 
   const videos: VideoElement[] = [];
   for (const video of parseVideoElements(html)) {
-    const absolute = toAbsoluteWindow(video.start, video.end, windowFor(video.id));
-    if (absolute) videos.push({ ...video, ...absolute });
+    const mapped = mapClipThroughHostWindow(
+      video.start,
+      video.end,
+      windowFor(video.id),
+      video.playbackRate,
+    );
+    if (isVisible(mapped)) videos.push({ ...video, ...mapped });
   }
 
   const images: ImageElement[] = [];
   for (const image of parseImageElements(html)) {
-    const absolute = toAbsoluteWindow(image.start, image.end, windowFor(image.id));
-    if (absolute) images.push({ ...image, ...absolute });
+    const mapped = mapClipThroughHostWindow(image.start, image.end, windowFor(image.id));
+    if (isVisible(mapped)) images.push({ ...image, start: mapped.start, end: mapped.end });
   }
 
   // A <video data-has-audio> track is reported as "<renderId>-audio"; strip the
@@ -183,13 +112,14 @@ export function collectRenderMedia(html: string): RenderMedia {
     // The mixer reads end === 0 as "run to the natural media length", so an
     // unbounded track must stay unbounded rather than collapse onto its start.
     const authoredEnd = audio.end > 0 ? audio.end : Infinity;
-    const absolute = toAbsoluteWindow(audio.start, authoredEnd, windowFor(elementId));
-    if (!absolute) continue;
-    audios.push({
-      ...audio,
-      start: absolute.start,
-      end: Number.isFinite(absolute.end) ? absolute.end : 0,
-    });
+    const mapped = mapClipThroughHostWindow(
+      audio.start,
+      authoredEnd,
+      windowFor(elementId),
+      audio.playbackRate,
+    );
+    if (!isVisible(mapped)) continue;
+    audios.push({ ...audio, ...mapped, end: Number.isFinite(mapped.end) ? mapped.end : 0 });
   }
 
   return { videos, audios, images };

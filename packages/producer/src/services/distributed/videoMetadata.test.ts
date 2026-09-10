@@ -12,7 +12,7 @@ import {
 } from "./shared.js";
 
 function video(overrides: Partial<VideoElement> = {}): VideoElement {
-  return {
+  const clip = {
     id: "hero",
     src: "hero.mp4",
     start: 2,
@@ -22,6 +22,7 @@ function video(overrides: Partial<VideoElement> = {}): VideoElement {
     hasAudio: false,
     ...overrides,
   };
+  return { ...clip, origin: overrides.origin ?? clip.start };
 }
 
 function extractedMetadata(
@@ -112,6 +113,13 @@ describe("distributed video metadata", () => {
     const legacy = structuredClone(withStart);
     delete legacy.extracted[0]?.metadata.videoStreamStartSeconds;
     expect(parsePlanVideosJson(legacy).extracted[0]?.metadata.videoStreamStartSeconds).toBe(0);
+
+    const legacyOrigin = structuredClone(withStart);
+    delete legacyOrigin.videos[0]?.origin;
+    expect(parsePlanVideosJson(legacyOrigin).videos[0]).toMatchObject({
+      start: 2,
+      origin: 2,
+    });
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, 2])(

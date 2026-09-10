@@ -17,6 +17,7 @@ export function createRuntimeStartTimeResolver(params: {
   documentRef?: Document;
 }): {
   resolveStartForElement: (element: Element, fallback?: number) => number;
+  resolveLocalStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
@@ -178,6 +179,15 @@ export function createRuntimeStartTimeResolver(params: {
   return {
     resolveStartForElement: (element: Element, fallback = 0) =>
       resolveStartForElementInternal(element, Math.max(0, fallback)),
+    /** The start in the enclosing composition's own seconds: absolute minus the host offset. */
+    resolveLocalStartForElement: (element: Element, fallback = 0) => {
+      const safeFallback = Math.max(0, fallback);
+      return Math.max(
+        0,
+        resolveStartForElementInternal(element, safeFallback) -
+          resolveHostOffsetForElement(element, safeFallback),
+      );
+    },
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
   };
 }

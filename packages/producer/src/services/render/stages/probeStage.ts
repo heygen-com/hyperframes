@@ -44,7 +44,7 @@ import {
 } from "@hyperframes/engine";
 import { fpsToNumber } from "@hyperframes/core";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
-import type { CompiledComposition } from "../../htmlCompiler.js";
+import type { BrowserMediaElement, CompiledComposition } from "../../htmlCompiler.js";
 import {
   discoverMediaFromBrowser,
   discoverAudioVolumeAutomationFromTimeline,
@@ -95,6 +95,26 @@ export interface ProbeStageInput {
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
+
+/**
+ * Project a browser-reported (child-local) media end onto the root timeline.
+ * `origin` is where the element's local t=0 landed — not the clamped `start`
+ * of a head-trimmed nested clip. The compiled `playbackRate` is the hosts'
+ * rate composed with the element's own; dividing out the browser-reported own
+ * rate leaves the host rate that scales child-local seconds. An unknown
+ * composed rate degrades to "no host rate", not to an inverted one.
+ */
+function projectBrowserEnd(
+  existing: { origin: number; playbackRate?: number },
+  el: BrowserMediaElement,
+): number {
+  return projectBrowserEndToCompositionTimeline(
+    existing.origin,
+    el.start,
+    resolveBrowserMediaEnd(el.start, el.end, el.duration),
+    (existing.playbackRate ?? el.playbackRate) / el.playbackRate,
+  );
+}
 
 function durationToFrameCount(duration: number, fps: number): number {
   const rawFrameCount = duration * fps;
@@ -541,14 +561,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               if (sourceChanged) {
                 existing.src = src;
               }
-              const projectedEnd = projectBrowserEndToCompositionTimeline(
-                existing.start,
-                el.start,
-                resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              );
               existing.end = reconcileBrowserMediaEnd(
                 existing.end,
-                projectedEnd,
+                projectBrowserEnd(existing, el),
                 sourceChanged,
                 el.durationInferred,
               );
@@ -572,8 +587,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               id: el.id,
               src,
               start: el.start,
+              origin: el.start,
               end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
               mediaStart: el.mediaStart,
+              playbackRate: el.playbackRate,
               loop: el.loop,
               hasAudio: el.hasAudio && !el.muted,
             });
@@ -588,14 +605,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               if (sourceChanged) {
                 existing.src = src;
               }
-              const projectedEnd = projectBrowserEndToCompositionTimeline(
-                existing.start,
-                el.start,
-                resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              );
               existing.end = reconcileBrowserMediaEnd(
                 existing.end,
-                projectedEnd,
+                projectBrowserEnd(existing, el),
                 sourceChanged,
                 el.durationInferred,
               );
@@ -618,8 +630,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               id: el.id,
               src,
               start: el.start,
+              origin: el.start,
               end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
               mediaStart: el.mediaStart,
+              playbackRate: el.playbackRate,
               layer: 0,
               volume: el.volume,
               type: "audio",

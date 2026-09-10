@@ -20,7 +20,7 @@ import {
 import { EncoderInterruptedError } from "../encoderInterruption.js";
 
 function makeVideo(overrides: Partial<VideoElement> = {}): VideoElement {
-  return {
+  const clip = {
     id: "v1",
     src: "clip.mp4",
     start: 0,
@@ -30,6 +30,7 @@ function makeVideo(overrides: Partial<VideoElement> = {}): VideoElement {
     hasAudio: true,
     ...overrides,
   };
+  return { ...clip, origin: overrides.origin ?? clip.start };
 }
 
 function makeExtracted(videoId: string, fileHasAudio: boolean): ExtractedFrames {
@@ -128,6 +129,7 @@ describe("appendAutoDetectedVideoAudio", () => {
           id: "existing",
           src: "clip.mp4",
           start: 0,
+          origin: 0,
           end: 5,
           mediaStart: 0,
           layer: 0,

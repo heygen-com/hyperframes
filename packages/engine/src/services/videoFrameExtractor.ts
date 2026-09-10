@@ -63,6 +63,8 @@ export interface VideoElement {
   src: string;
   start: number;
   end: number;
+  /** Unclamped mapped start. Parsers stamp `start` (identity). Collector overwrites when remapped. */
+  origin: number;
   mediaStart: number;
   playbackRate?: number;
   loop: boolean;
@@ -678,6 +680,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       src,
       start,
       end,
+      origin: start,
       mediaStart: readMediaStart(el),
       playbackRate: normalizePlaybackRate(
         playbackRateAttr ? parseFloat(playbackRateAttr) : Number.NaN,
@@ -1011,7 +1014,7 @@ export interface TimelineExtractionWindow {
   finalFrameOnly?: boolean;
 }
 
-type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
+type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "origin" | "mediaStart"> &
   Partial<Pick<VideoElement, "playbackRate">> &
   Partial<Pick<VideoElement, "loop">>;
 
@@ -1042,10 +1045,13 @@ export function resolveTimelineExtractionWindow(
     timelineDurationSeconds: number,
   ): TimelineExtractionWindow =>
     playbackRate === 1 ? window : { ...window, timelineDurationSeconds };
+  // `origin` is where source `mediaStart` sits on the timeline; `start` is the
+  // first visible instant (head-trimmed by a nested slot, or clamped to t=0).
+  const origin = video.origin;
   if (timelineEnd === undefined) {
     return withTimelineDuration(
       {
-        compositionStart: video.start,
+        compositionStart: origin,
         mediaStart: video.mediaStart,
         durationSeconds: resolvedDuration * playbackRate,
       },
@@ -1056,7 +1062,7 @@ export function resolveTimelineExtractionWindow(
     throw new Error(`Video extraction timelineEnd must be finite; got ${String(timelineEnd)}`);
   }
   const compositionStart = Math.max(0, video.start);
-  const trimmedPreroll = compositionStart - video.start;
+  const trimmedPreroll = compositionStart - origin;
   const trimmedSourcePreroll = trimmedPreroll * playbackRate;
   const timelineDuration = Math.max(0, timelineEnd - compositionStart);
   // Infinity means "natural source duration", not an authored infinite slot.
@@ -1077,7 +1083,7 @@ export function resolveTimelineExtractionWindow(
       if (visibleSourceDuration >= phaseRemaining) {
         return withTimelineDuration(
           {
-            compositionStart: video.start,
+            compositionStart: origin,
             mediaStart: video.mediaStart,
             durationSeconds: sourceRemaining,
             preserveTimelinePhase: true,
@@ -1110,7 +1116,7 @@ export function resolveTimelineExtractionWindow(
       const extractionOffset = sourceRemaining - extractionDuration;
       return withTimelineDuration(
         {
-          compositionStart: video.start + extractionOffset / playbackRate,
+          compositionStart: origin + extractionOffset / playbackRate,
           mediaStart: video.mediaStart + extractionOffset,
           durationSeconds: extractionDuration,
           preserveTimelineEnd: true,
@@ -1193,7 +1199,9 @@ export function resolveVideoExtractionWindow(
     );
   }
   const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
-  const requestedTimelineDuration = video.end - video.start;
+  // Measured from `origin`: resolveTimelineExtractionWindow subtracts the
+  // origin→start preroll itself.
+  const requestedTimelineDuration = video.end - video.origin;
   const resolvedDuration =
     Number.isFinite(requestedTimelineDuration) && requestedTimelineDuration > 0
       ? requestedTimelineDuration
@@ -2045,7 +2053,10 @@ export async function extractAllVideoFrames(
           return { skipped: true };
         }
         if (!window.preserveTimelinePhase) {
+          // Rebase onto the extracted range: `mediaStart` is now the source
+          // time at `compositionStart`, so `origin` collapses onto it.
           video.start = window.compositionStart;
+          video.origin = window.compositionStart;
           if (!window.preserveTimelineEnd) {
             video.end = window.compositionStart + (window.timelineDurationSeconds ?? videoDuration);
           }
@@ -2248,46 +2259,33 @@ export function analyzeClipMediaFit(params: {
   return { shortfallSeconds, toleranceSeconds };
 }
 
+type LookupVideo = Required<
+  Pick<VideoElement, "start" | "end" | "origin" | "mediaStart" | "loop" | "playbackRate">
+> & { extracted: ExtractedFrames };
+
 export class FrameLookupTable {
-  private videos: Map<
-    string,
-    {
-      extracted: ExtractedFrames;
-      start: number;
-      end: number;
-      mediaStart: number;
-      loop: boolean;
-      playbackRate: number;
-    }
-  > = new Map();
-  private orderedVideos: Array<{
-    videoId: string;
-    extracted: ExtractedFrames;
-    start: number;
-    end: number;
-    mediaStart: number;
-    loop: boolean;
-    playbackRate: number;
-  }> = [];
+  private videos: Map<string, LookupVideo> = new Map();
+  private orderedVideos: Array<LookupVideo & { videoId: string }> = [];
   private activeVideoIds: Set<string> = new Set();
   private startCursor = 0;
   private lastTime: number | null = null;
 
+  /**
+   * `start`/`end` gate when the clip is active; `origin` anchors source time
+   * (frame 0 of `extracted` is source `mediaStart`, which sits at `origin`).
+   */
   addVideo(
     extracted: ExtractedFrames,
-    start: number,
-    end: number,
-    mediaStart: number,
-    loop = false,
-    playbackRate = 1,
+    clip: Pick<VideoElement, "start" | "end" | "origin" | "mediaStart" | "loop" | "playbackRate">,
   ): void {
     this.videos.set(extracted.videoId, {
       extracted,
-      start,
-      end,
-      mediaStart,
-      loop,
-      playbackRate: normalizePlaybackRate(playbackRate),
+      start: clip.start,
+      end: clip.end,
+      origin: clip.origin,
+      mediaStart: clip.mediaStart,
+      loop: clip.loop,
+      playbackRate: normalizePlaybackRate(clip.playbackRate ?? 1),
     });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
@@ -2302,7 +2300,7 @@ export class FrameLookupTable {
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
-      video.start,
+      video.origin,
       video.loop,
       video.mediaStart,
       true,
@@ -2372,7 +2370,7 @@ export class FrameLookupTable {
       const frameIndex = getFrameIndexAtTime(
         video.extracted,
         globalTime,
-        video.start,
+        video.origin,
         video.loop,
         video.mediaStart,
         true,
@@ -2421,9 +2419,7 @@ export function createFrameLookupTable(
 
   for (const video of videos) {
     const ext = extractedMap.get(video.id);
-    if (ext) {
-      table.addVideo(ext, video.start, video.end, video.mediaStart, video.loop, video.playbackRate);
-    }
+    if (ext) table.addVideo(ext, video);
   }
 
   return table;

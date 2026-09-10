@@ -83,17 +83,20 @@ describe("resolveVideoExtractionDuration", () => {
     hasAlpha: false,
     colorSpace: null,
   });
-  const video = (overrides: Partial<VideoElement> = {}): VideoElement => ({
-    id: "root-video",
-    src: "video.mp4",
-    start: 0,
-    end: Number.POSITIVE_INFINITY,
-    mediaStart: 0,
-    playbackRate: 1,
-    loop: false,
-    hasAudio: false,
-    ...overrides,
-  });
+  const video = (overrides: Partial<VideoElement> = {}): VideoElement => {
+    const clip = {
+      id: "root-video",
+      src: "video.mp4",
+      start: 0,
+      end: Number.POSITIVE_INFINITY,
+      mediaStart: 0,
+      playbackRate: 1,
+      loop: false,
+      hasAudio: false,
+      ...overrides,
+    };
+    return { ...clip, origin: overrides.origin ?? clip.start };
+  };
 
   it("caps an open 60-second root source to a two-second composition", () => {
     expect(resolveVideoExtractionDuration(video(), metadata(60), 2)).toBe(2);
@@ -251,7 +254,7 @@ describe("resolveVideoExtractionDuration", () => {
         const parsed = parseVideoElements(
           `<video id="natural" src="video.mp4"${loop ? " loop" : ""}></video>`,
         )[0]!;
-        const planned = { ...parsed, start };
+        const planned = { ...parsed, start, origin: start };
         const runtimeDuration = resolveRuntimeMediaClipDuration({
           isVideo: true,
           sourceDuration: 3,
@@ -276,6 +279,50 @@ describe("resolveVideoExtractionDuration", () => {
       compositionStart: -480.000001,
       mediaStart: 119.999999,
       durationSeconds: 0.000001,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("keeps loop phase on unclamped origin when the visible start is clamped", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: 0, end: 3, origin: -0.5, mediaStart: 0, loop: true }),
+        metadata(3),
+        3,
+      ),
+    ).toEqual({
+      compositionStart: -0.5,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
+  // A nested slot head-trim: host@5 with in-point 1.5, child clip local [1,5].
+  // origin 4.5 is where source 0 sits; the slot shows [5,7].
+  it("extracts the whole visible window of a head-trimmed nested clip", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: 5, end: 7, origin: 4.5, mediaStart: 0 }),
+        metadata(10),
+        10,
+      ),
+    ).toEqual({ compositionStart: 5, mediaStart: 0.5, durationSeconds: 2 });
+  });
+
+  it("anchors a head-trimmed held tail on origin, not the visible start", () => {
+    // 3s source runs out at t=7.5 and holds to 9; the suffix begins at source 0.5 = t=5.
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: 5, end: 9, origin: 4.5, mediaStart: 0 }),
+        metadata(3),
+        10,
+      ),
+    ).toEqual({
+      compositionStart: 5,
+      mediaStart: 0.5,
+      durationSeconds: 2.5,
       preserveTimelineEnd: true,
       ensureFinalFrame: true,
     });
@@ -734,6 +781,13 @@ describe("parseVideoElements", () => {
     expect(video?.mediaStart).toBe(expected);
   });
 
+  it("stamps identity origin equal to start", () => {
+    const [video] = parseVideoElements(
+      `<video id="hero" src="clip.mp4" data-start="4" data-end="8"></video>`,
+    );
+    expect(video).toMatchObject({ start: 4, origin: 4 });
+  });
+
   it("parses and normalizes constant playback rate for final rendering", () => {
     const [fast, low, high, invalid] = parseVideoElements(
       '<video id="fast" src="clip.mp4" data-playback-rate="2"></video>' +
@@ -756,6 +810,7 @@ describe("parseVideoElements", () => {
       id: "hf-video-0",
       src: "clip.mp4",
       start: 0,
+      origin: 0,
       end: Infinity,
       mediaStart: 0,
       loop: false,
@@ -774,6 +829,7 @@ describe("parseVideoElements", () => {
       src: "clip.mp4",
       start: 2,
       end: 7,
+      origin: 2,
       mediaStart: 1.5,
       playbackRate: 1,
       loop: false,
@@ -789,6 +845,7 @@ describe("parseVideoElements", () => {
     expect(videos[0]).toMatchObject({
       id: "hero",
       start: 2,
+      origin: 2,
       end: 7,
       loop: true,
     });
@@ -923,6 +980,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 0,
+          origin: 0,
           end: 5,
           mediaStart: 0,
           loop: true,
@@ -935,6 +993,30 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(0.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
+  });
+
+  it("anchors a head-trimmed looping clip on origin while gating on the visible window", () => {
+    // Phase-preserving extraction: source 0 sits at origin 4.5, slot shows [5,7].
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 5,
+          origin: 4.5,
+          end: 7,
+          mediaStart: 0,
+          loop: true,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(30, 30)],
+    );
+
+    expect(table.getActiveFramePayloads(4.75).has("hero")).toBe(false);
+    expect(table.getActiveFramePayloads(5).get("hero")?.frameIndex).toBe(15);
+    expect(table.getActiveFramePayloads(6).get("hero")?.frameIndex).toBe(15);
+    expect(table.getFrame("hero", 5.25)).toBe("frame-22.jpg");
   });
 
   it("selects source frames at the authored constant playback rate", () => {
@@ -956,6 +1038,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 0,
+          origin: 0,
           end: 60,
           mediaStart: 0,
           loop: true,
@@ -975,6 +1058,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 0,
+          origin: 0,
           end: 5,
           mediaStart: 0,
           loop: false,
@@ -999,6 +1083,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 0,
+          origin: 0,
           end: 5,
           mediaStart: 0,
           loop: false,
@@ -1037,6 +1122,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 1,
+          origin: 1,
           end: 3,
           mediaStart: 0,
           loop: false,
@@ -1060,6 +1146,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.webm",
           start: 0,
+          origin: 0,
           end: 5,
           mediaStart: 0,
           loop: false,
@@ -1084,6 +1171,7 @@ describe("FrameLookupTable", () => {
           id: "hero",
           src: "clip.mp4",
           start: 2,
+          origin: 2,
           end: 3.45,
           mediaStart: 0,
           loop: false,
@@ -1104,8 +1192,26 @@ describe("FrameLookupTable", () => {
     // shared instant; the active set must too.
     const table = createFrameLookupTable(
       [
-        { id: "a", src: "a.webm", start: 0, end: 3, mediaStart: 0, loop: false, hasAudio: false },
-        { id: "b", src: "b.webm", start: 3, end: 6, mediaStart: 0, loop: false, hasAudio: false },
+        {
+          id: "a",
+          src: "a.webm",
+          start: 0,
+          origin: 0,
+          end: 3,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+        {
+          id: "b",
+          src: "b.webm",
+          start: 3,
+          origin: 3,
+          end: 6,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
       ],
       // createFrameLookupTable maps each clip to extracted frames by id.
       [
@@ -1290,6 +1396,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       id: "ui",
       src: UI_FIXTURE,
       start: 0,
+      origin: 0,
       end: 1,
       mediaStart: 0,
       loop: false,
@@ -1527,6 +1634,7 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
         id: `held-${String(expectedVfr)}`,
         src,
         start: -15,
+        origin: -15,
         end: 5,
         mediaStart: 0,
         loop: false,
@@ -1616,6 +1724,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "before-timeline",
       src: VFR_FIXTURE,
       start: -2,
+      origin: -2,
       end: -1,
       mediaStart: 0,
       loop: false,
@@ -1638,6 +1747,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "negative-loop",
       src: VFR_FIXTURE,
       start: -19,
+      origin: -19,
       end: 5,
       mediaStart: 0,
       loop: true,
@@ -1667,6 +1777,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "negative-held-tail",
       src: VFR_FIXTURE,
       start: -15,
+      origin: -15,
       end: 5,
       mediaStart: 0,
       loop: false,
@@ -1741,6 +1852,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "v1",
       src: VFR_FIXTURE,
       start: 0,
+      origin: 0,
       end: 4,
       mediaStart: 3,
       loop: false,
@@ -1881,6 +1993,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id,
       src,
       start: 0,
+      origin: 0,
       end: endSeconds,
       mediaStart,
       loop: false,
@@ -2134,11 +2247,21 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     mkdirSync(plainOutputDir, { recursive: true });
 
     const videos: VideoElement[] = [
-      { id: "sdr", src: SDR_LONG, start: 0, end: 2, mediaStart: 0, loop: false, hasAudio: false },
+      {
+        id: "sdr",
+        src: SDR_LONG,
+        start: 0,
+        origin: 0,
+        end: 2,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      },
       {
         id: "hdr",
         src: HDR_SHORT,
         start: 2,
+        origin: 2,
         end: 4,
         mediaStart: 0,
         loop: false,
@@ -2482,6 +2605,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "vfr-integral-a",
       src: VFR_FIXTURE,
       start: 0.03,
+      origin: 0.03,
       end: 0.33,
       mediaStart: 0.03,
       loop: false,
@@ -2592,6 +2716,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       id: "vfull",
       src: VFR_FIXTURE,
       start: 0,
+      origin: 0,
       end: 10,
       mediaStart: 0,
       loop: false,

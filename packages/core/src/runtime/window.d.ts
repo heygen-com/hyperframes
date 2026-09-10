@@ -3,6 +3,7 @@ import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
 import type { ClipTree } from "./clipTree";
+import type { MappedMedia } from "./nestedHostWindow";
 
 type ThreeClockLike = {
   elapsedTime: number;
@@ -92,6 +93,12 @@ declare global {
      * restoration, and arbitrary composition nesting cannot drift.
      */
     __hfResolveMediaStartSeconds?: (element: Element) => number;
+    /**
+     * The runtime's clip window for any media element — nested-slot mapping
+     * (`data-playback-start` / `data-playback-rate` on a host) or the resolved
+     * authored timing. Null only when the start cannot be resolved.
+     */
+    __hfResolveMappedMedia?: (element: HTMLMediaElement) => MappedMedia | null;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;

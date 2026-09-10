@@ -1409,6 +1409,143 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__hfResolveMediaStartSeconds?.(video)).toBeCloseTo(39.233);
   });
 
+  it("trims nested media to the composition slot in-point", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene");
+    host.setAttribute("data-composition-file", "scene.html");
+    // #3245 repro: the host is bounded by data-duration alone.
+    host.setAttribute("data-start", "1");
+    host.setAttribute("data-duration", "2");
+    host.setAttribute("data-playback-start", "1.5");
+    root.appendChild(host);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-duration", "4");
+    video.setAttribute("data-end", "4");
+    host.appendChild(video);
+
+    const early = document.createElement("audio");
+    early.setAttribute("data-start", "0");
+    early.setAttribute("data-duration", "1");
+    early.setAttribute("data-end", "1");
+    host.appendChild(early);
+
+    const rootVideo = document.createElement("video");
+    rootVideo.setAttribute("data-start", "6");
+    rootVideo.setAttribute("data-duration", "2");
+    root.appendChild(rootVideo);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+      scene: createMockTimeline(4),
+    };
+    initSandboxRuntimeModular();
+
+    expect(window.__hfResolveMediaStartSeconds?.(video)).toBe(1);
+    expect(window.__hfResolveMappedMedia?.(video)).toEqual({
+      start: 1,
+      end: 3,
+      origin: -0.5,
+      mediaStart: 0,
+      playbackRate: 1,
+    });
+    // The resolver is total: root media get their own window too.
+    expect(window.__hfResolveMappedMedia?.(rootVideo)).toMatchObject({
+      start: 6,
+      end: 8,
+      origin: 6,
+    });
+    window.__player?.renderSeek(0.5);
+    expect(video.style.visibility).toBe("hidden");
+    expect(early.style.visibility).toBe("hidden");
+    window.__player?.renderSeek(1);
+    expect(video.style.visibility).toBe("visible");
+    expect(early.style.visibility).toBe("hidden");
+    expect(video.currentTime).toBeCloseTo(1.5);
+    window.__player?.renderSeek(3.25);
+    expect(video.style.visibility).toBe("hidden");
+  });
+
+  it("composes a host inside a host with each start in its parent's seconds", () => {
+    // Pinned to the collector's "two-level" case in renderMediaCollector.test.ts:
+    // outer slot at 5 with in-point 1, inner slot at 2 inside it → the clip lands
+    // at 5 − 1 + 2 = 6, not at the inner host's absolute start twice-offset (11).
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "30");
+    document.body.appendChild(root);
+
+    const outer = document.createElement("div");
+    outer.setAttribute("data-composition-id", "outer");
+    outer.setAttribute("data-composition-file", "outer.html");
+    outer.setAttribute("data-start", "5");
+    outer.setAttribute("data-end", "20");
+    outer.setAttribute("data-playback-start", "1");
+    root.appendChild(outer);
+
+    const inner = document.createElement("div");
+    inner.setAttribute("data-composition-id", "inner");
+    inner.setAttribute("data-composition-file", "inner.html");
+    inner.setAttribute("data-start", "2");
+    inner.setAttribute("data-end", "10");
+    outer.appendChild(inner);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-end", "4");
+    inner.appendChild(video);
+
+    window.__timelines = {
+      main: createMockTimeline(30),
+      outer: createMockTimeline(15),
+      inner: createMockTimeline(8),
+    };
+    initSandboxRuntimeModular();
+
+    expect(window.__hfResolveMappedMedia?.(video)).toMatchObject({ start: 6, origin: 6, end: 10 });
+  });
+
+  it("seeks nested media with a composed host playback-rate", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene");
+    host.setAttribute("data-composition-file", "scene.html");
+    host.setAttribute("data-start", "1");
+    host.setAttribute("data-end", "3");
+    host.setAttribute("data-playback-rate", "2");
+    root.appendChild(host);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-duration", "4");
+    video.setAttribute("data-end", "4");
+    host.appendChild(video);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+      scene: createMockTimeline(4),
+    };
+    initSandboxRuntimeModular();
+
+    expect(window.__hfResolveMappedMedia?.(video)?.playbackRate).toBe(2);
+    window.__player?.renderSeek(2);
+    expect(video.style.visibility).toBe("visible");
+    expect(video.currentTime).toBeCloseTo(2);
+  });
+
   it("uses the canonical resolver for reference starts, auto-start media, and inline hosts", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

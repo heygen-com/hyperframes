@@ -27,6 +27,7 @@ import snapshotCommand, {
   formatSnapshotTimestamp,
   parseZoomScale,
   requireSnapshotFfmpeg,
+  resolveSnapshotVideoClip,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
   resolveSnapshotVideoPlaybackRate,
@@ -277,6 +278,36 @@ describe("resolveSnapshotVideoClipStart", () => {
 describe("resolveSnapshotVideoPlaybackRate", () => {
   it("prefers the authored data-playback-rate over the browser default", () => {
     expect(resolveSnapshotVideoPlaybackRate({ authoredRate: "1.8", defaultRate: 1 })).toBe(1.8);
+  });
+});
+
+describe("resolveSnapshotVideoClip", () => {
+  const authored = {
+    authoredStart: 1,
+    runtimeResolvedStart: 3,
+    authoredRate: "2",
+    defaultRate: 1,
+    authoredDuration: 4,
+    mediaStart: 0.5,
+  };
+
+  it("takes the runtime window verbatim, restoring an open end", () => {
+    const mapped = { start: 5, end: null, origin: 4.5, mediaStart: 0, playbackRate: 1 };
+    expect(resolveSnapshotVideoClip({ ...authored, mapped })).toEqual({ ...mapped, end: Infinity });
+    expect(resolveSnapshotVideoClip({ ...authored, mapped: { ...mapped, end: 7 } }).end).toBe(7);
+  });
+
+  it("falls back to the resolved start and authored attributes", () => {
+    expect(resolveSnapshotVideoClip({ ...authored, mapped: null })).toEqual({
+      start: 3,
+      origin: 3,
+      end: 7,
+      mediaStart: 0.5,
+      playbackRate: 2,
+    });
+    expect(
+      resolveSnapshotVideoClip({ ...authored, mapped: null, authoredDuration: null }).end,
+    ).toBe(Infinity);
   });
 });
 

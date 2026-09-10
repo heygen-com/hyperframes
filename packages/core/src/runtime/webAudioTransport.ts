@@ -50,6 +50,14 @@ function logFallbackHandoff(el: HTMLMediaElement, priorMuted: boolean): void {
 }
 
 /**
+ * How much shorter than the decoded buffer a clip window must be to count as a
+ * trim. `HTMLMediaElement.duration` and `AudioBuffer.duration` disagree by tens
+ * of milliseconds on lossy codecs (encoder delay, padding), and a window sized
+ * from the former must still read as "runs to the end".
+ */
+const BOUNDED_TOLERANCE_SECONDS = 0.05;
+
+/**
  * Start a buffer source, bounding it to the clip's authored window
  * (`data-duration`) so a trimmed clip stops at its edge instead of running the
  * buffer to the source file's natural end. `clipSourceLen` is the clip span in
@@ -321,6 +329,7 @@ export class WebAudioTransport {
     volume: number,
     generation: number,
     rate = 1,
+    mediaPlaybackRate = readElementPlaybackRate(el),
   ): Promise<ScheduledSource | null> {
     if (!this._ctx || !this._masterGain) return null;
     if (generation !== this._playGeneration) return null;
@@ -364,7 +373,7 @@ export class WebAudioTransport {
         scheduledAt,
         priorMuted: el.muted,
         priorVolume: el.volume,
-        mediaPlaybackRate: readElementPlaybackRate(el),
+        mediaPlaybackRate,
         bounded: false,
       };
       // Chrome applies HTMLMediaElement.volume before MediaElementAudioSource.
@@ -567,6 +576,7 @@ export class WebAudioTransport {
     generation: number,
     rate = 1,
     clipDuration = Number.POSITIVE_INFINITY,
+    mediaRate = readElementPlaybackRate(el),
   ): Promise<ScheduledSource | null> {
     if (!this._ctx || !this._masterGain) return null;
     if (generation !== this._playGeneration) return null;
@@ -578,7 +588,6 @@ export class WebAudioTransport {
       if (generation !== this._playGeneration) return null;
 
       const safeRate = normalizeRate(rate);
-      const mediaRate = readElementPlaybackRate(el);
       const sourceRate = safeRate * mediaRate;
 
       const sourceNode = this._ctx.createBufferSource();
@@ -640,7 +649,13 @@ export class WebAudioTransport {
         priorMuted,
         priorVolume: el.volume,
         mediaPlaybackRate: mediaRate,
-        bounded: Number.isFinite(clipDuration) && clipDuration > 0,
+        // Bounded means the clip window ends before the buffer does — only then
+        // does start()'s baked duration matter on a rate change. A window that
+        // merely runs to the source's own end is the buffer's natural stop; the
+        // tolerance absorbs metadata-vs-decoded length drift (codec padding).
+        bounded:
+          Number.isFinite(clipDuration) &&
+          mediaStart + clipDuration * mediaRate < buffer.duration - BOUNDED_TOLERANCE_SECONDS,
       };
       this._activeSources.push(scheduled);
       this._paused = false;

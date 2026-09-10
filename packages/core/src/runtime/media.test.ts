@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  authoredMediaWindow,
   readElementPlaybackRate,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
@@ -139,10 +140,33 @@ describe("refreshRuntimeMediaCache", () => {
     expect(result.maxMediaEnd).toBe(13);
   });
 
-  it("uses custom resolveStartSeconds", () => {
+  it("uses a resolved start", () => {
     createVideo({ "data-start": "0", "data-duration": "5" });
-    const result = refreshRuntimeMediaCache({ resolveStartSeconds: () => 10 });
-    expect(result.mediaClips[0].start).toBe(10);
+    const result = refreshRuntimeMediaCache({
+      resolveClipWindow: (el) => authoredMediaWindow(el, 10),
+    });
+    expect(result.mediaClips[0]).toMatchObject({ start: 10, origin: 10, end: 15 });
+  });
+
+  it("uses resolveClipWindow for origin, source offset, and rate", () => {
+    createVideo({ "data-start": "0", "data-duration": "4" });
+    const result = refreshRuntimeMediaCache({
+      resolveClipWindow: () => ({
+        start: 1,
+        end: 3,
+        origin: -0.5,
+        mediaStart: 0,
+        playbackRate: 2,
+      }),
+    });
+    expect(result.mediaClips[0]).toMatchObject({
+      start: 1,
+      origin: -0.5,
+      mediaStart: 0,
+      playbackRate: 2,
+      duration: 2,
+      end: 3,
+    });
   });
 
   it("falls back to element.duration when data-duration missing", () => {
@@ -186,19 +210,21 @@ describe("refreshRuntimeMediaCache", () => {
     expect(result.mediaClips[0].duration).toBe(20);
   });
 
-  it("resolveDurationSeconds must account for playbackRate (regression: clip clipped early)", () => {
+  it("resolved duration must account for playbackRate (regression: clip clipped early)", () => {
     const el = createVideo({ "data-start": "0", "data-duration": "10" });
     Object.defineProperty(el, "defaultPlaybackRate", { value: 0.5, writable: true });
     Object.defineProperty(el, "duration", { value: 5, writable: true });
     const result = refreshRuntimeMediaCache({
-      resolveDurationSeconds: (element) => {
+      resolveClipWindow: (element) => {
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
         const playbackRate = readElementPlaybackRate(element);
-        return Number.isFinite(element.duration) && element.duration > mediaStart
-          ? Math.max(0, (element.duration - mediaStart) / playbackRate)
-          : null;
+        const duration =
+          Number.isFinite(element.duration) && element.duration > mediaStart
+            ? Math.max(0, (element.duration - mediaStart) / playbackRate)
+            : null;
+        return authoredMediaWindow(element, undefined, duration);
       },
     });
     // 5s source at 0.5x = 10s effective; should NOT be capped to 5s
@@ -212,8 +238,12 @@ describe("refreshRuntimeMediaCache", () => {
       const el = createVideo({ "data-start": "3", "data-media-start": String(mediaStart) });
       Object.defineProperty(el, "duration", { value: 10, writable: true });
       const result = refreshRuntimeMediaCache({
-        resolveDurationSeconds: (element) =>
-          resolveNaturalMediaTimelineDuration(element, element.duration),
+        resolveClipWindow: (element) =>
+          authoredMediaWindow(
+            element,
+            undefined,
+            resolveNaturalMediaTimelineDuration(element, element.duration),
+          ),
       });
 
       expect(result.mediaClips[0].duration).toBe(0);
@@ -224,8 +254,12 @@ describe("refreshRuntimeMediaCache", () => {
 
   it("distinguishes an authoritative zero duration from an unknown duration", () => {
     createVideo({ "data-start": "3" });
-    const knownZero = refreshRuntimeMediaCache({ resolveDurationSeconds: () => 0 });
-    const unknown = refreshRuntimeMediaCache({ resolveDurationSeconds: () => null });
+    const knownZero = refreshRuntimeMediaCache({
+      resolveClipWindow: (el) => authoredMediaWindow(el, undefined, 0),
+    });
+    const unknown = refreshRuntimeMediaCache({
+      resolveClipWindow: (el) => authoredMediaWindow(el, undefined, null),
+    });
 
     expect(knownZero.mediaClips[0]).toMatchObject({ duration: 0, end: 3 });
     expect(unknown.mediaClips[0]).toMatchObject({ duration: Infinity, end: Infinity });
@@ -358,6 +392,7 @@ describe("syncRuntimeMedia", () => {
       loop: false,
       sourceDuration: null,
       ...overrides,
+      origin: overrides?.origin ?? overrides?.start ?? 0,
     };
   }
 
@@ -1212,6 +1247,7 @@ describe("syncRuntimeMedia", () => {
     // 3s source at 1x, looped over 10s clip
     const clip = createMockClip({
       start: 0,
+      origin: 0,
       end: 10,
       mediaStart: 0,
       loop: true,
@@ -1223,10 +1259,28 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBe(1);
   });
 
+  it("keeps loop period on raw mediaStart when the visible start is clamped", () => {
+    const clip = createMockClip({
+      start: 5,
+      origin: 4.5,
+      end: 7,
+      mediaStart: 0,
+      loop: true,
+      sourceDuration: 3,
+    });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    // t=6.5 → relTime = (6.5-4.5)+0 = 2; loop length stays 3, not 3-0.5
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 6.5, playing: false, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(2);
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 7.6, playing: false, playbackRate: 1 });
+    expect(clip.el.paused).toBe(true);
+  });
+
   it("wraps loop with mediaStart offset", () => {
     // Source is 10s, mediaStart=5, so loop length is 5s (5-10)
     const clip = createMockClip({
       start: 0,
+      origin: 0,
       end: 15,
       mediaStart: 5,
       loop: true,
@@ -1241,6 +1295,7 @@ describe("syncRuntimeMedia", () => {
   it("holds the final frame instead of looping a non-looping video", () => {
     const clip = createMockClip({
       start: 0,
+      origin: 0,
       end: 10,
       mediaStart: 0,
       loop: false,

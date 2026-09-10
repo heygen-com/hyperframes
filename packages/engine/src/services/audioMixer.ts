@@ -46,6 +46,7 @@ import {
   normalizePlaybackRate,
   parseStrictFiniteTimingNumber,
   readMediaStart,
+  sourceTimeAt,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
@@ -530,10 +531,12 @@ export function parseAudioElements(html: string): AudioElement[] {
     // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
     const groupId = type === "audio" ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
+    const start = resolveStart(el);
     return {
       id,
       src,
-      start: resolveStart(el),
+      start,
+      origin: start,
       end: parseEnd(el.getAttribute("data-end")),
       mediaStart: readMediaStart(el),
       playbackRate: normalizePlaybackRate(
@@ -1191,6 +1194,11 @@ export async function processCompositionAudio(
             element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
         }
 
+        // Head-trimmed nested clips keep the raw `mediaStart` (loop period) and
+        // carry the trim in `origin`; the mix starts from the source time at the
+        // audible start.
+        const sourceStart = sourceTimeAt(element, element.start);
+
         let audioSrcPath = srcPath;
         if (element.type === "video") {
           const extractedPath = join(workDir, `${element.id}-extracted.wav`);
@@ -1198,7 +1206,7 @@ export async function processCompositionAudio(
             srcPath,
             extractedPath,
             {
-              startTime: element.mediaStart,
+              startTime: sourceStart,
               duration: element.end - element.start,
               playbackRate: element.playbackRate,
             },
@@ -1226,7 +1234,7 @@ export async function processCompositionAudio(
           const prepResult = await prepareAudioTrack(
             srcPath,
             trimmedPath,
-            element.mediaStart,
+            sourceStart,
             element.end - element.start,
             element.playbackRate,
             effectiveSignal,

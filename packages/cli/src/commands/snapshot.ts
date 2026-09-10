@@ -28,6 +28,7 @@ import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
+import { sourceTimeAt, type MappedMedia } from "@hyperframes/core";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
@@ -107,6 +108,32 @@ export function resolveSnapshotVideoClipStart(input: {
   runtimeResolvedStart: number | null;
 }): number {
   return input.runtimeResolvedStart ?? input.authoredStart;
+}
+
+/** A clip window as it crosses `page.evaluate`: `Infinity` does not survive
+ * serialization, so an open end travels as `null`. */
+type SnapshotClip = Omit<MappedMedia, "end"> & { end: number | null };
+
+/** The runtime's own window for a `<video>` (nested slot mapping included), or
+ * the authored attributes when the page runs a runtime without the resolver. */
+export function resolveSnapshotVideoClip(candidate: {
+  mapped: SnapshotClip | null;
+  authoredStart: number;
+  runtimeResolvedStart: number | null;
+  authoredRate: string | undefined;
+  defaultRate: number;
+  authoredDuration: number | null;
+  mediaStart: number;
+}): MappedMedia {
+  if (candidate.mapped) return { ...candidate.mapped, end: candidate.mapped.end ?? Infinity };
+  const start = resolveSnapshotVideoClipStart(candidate);
+  return {
+    start,
+    origin: start,
+    end: candidate.authoredDuration != null ? start + candidate.authoredDuration : Infinity,
+    mediaStart: candidate.mediaStart,
+    playbackRate: resolveSnapshotVideoPlaybackRate(candidate),
+  };
 }
 
 /** Match runtime/render timing: authored data-playback-rate wins over the
@@ -439,11 +466,13 @@ async function captureSnapshots(
           const candidates = await page.evaluate(() => {
             const runtimeWindow = window as Window & {
               __hfResolveMediaStartSeconds?: (element: Element) => number;
+              __hfResolveMappedMedia?: (element: HTMLMediaElement) => MappedMedia | null;
             };
             return Array.from(document.querySelectorAll("video")).map((el) => {
               const v = el as HTMLVideoElement;
               const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
               const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
+              const mapped = runtimeWindow.__hfResolveMappedMedia?.(v);
               const mediaStart =
                 parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
               const rawDuration = parseFloat(v.dataset.duration ?? "");
@@ -458,6 +487,9 @@ async function captureSnapshots(
                   runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
                     ? runtimeResolvedStart
                     : null,
+                mapped: mapped
+                  ? { ...mapped, end: Number.isFinite(mapped.end) ? mapped.end : null }
+                  : null,
                 authoredDuration:
                   Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null,
                 srcDuration: srcDur,
@@ -467,34 +499,37 @@ async function captureSnapshots(
             });
           });
           const active = candidates.flatMap((candidate) => {
-            const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoPlaybackRate(candidate);
-            const duration =
-              candidate.authoredDuration ??
-              (candidate.srcDuration > 0
-                ? Math.max(0, (candidate.srcDuration - candidate.mediaStart) / playbackRate)
-                : Number.POSITIVE_INFINITY);
-            let relTime = (time - start) * playbackRate + candidate.mediaStart;
-            if (
-              candidate.loop &&
-              candidate.srcDuration > candidate.mediaStart &&
-              relTime >= candidate.srcDuration
-            ) {
-              relTime =
-                candidate.mediaStart +
-                ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
-            }
             if (!candidate.id || !candidate.src) return [];
+            const clip = resolveSnapshotVideoClip(candidate);
+            const { srcDuration } = candidate;
+            const duration = Number.isFinite(clip.end)
+              ? clip.end - clip.start
+              : srcDuration > 0
+                ? Math.max(0, (srcDuration - sourceTimeAt(clip, clip.start)) / clip.playbackRate)
+                : Number.POSITIVE_INFINITY;
+            let relTime = sourceTimeAt(clip, time);
+            if (candidate.loop && srcDuration > clip.mediaStart && relTime >= srcDuration) {
+              relTime =
+                clip.mediaStart + ((relTime - clip.mediaStart) % (srcDuration - clip.mediaStart));
+            }
             const frameTime = resolveSnapshotVideoFrameTime({
               globalTime: time,
-              clipStart: start,
+              clipStart: clip.start,
               clipDuration: duration,
               relativeTime: relTime,
-              sourceDuration: candidate.srcDuration,
+              sourceDuration: srcDuration,
             });
             return frameTime === null
               ? []
-              : [{ ...candidate, start, playbackRate, duration, relTime: frameTime }];
+              : [
+                  {
+                    ...candidate,
+                    start: clip.start,
+                    playbackRate: clip.playbackRate,
+                    duration,
+                    relTime: frameTime,
+                  },
+                ];
           });
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];

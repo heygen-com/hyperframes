@@ -53,7 +53,7 @@ function ffmpegResult(success: boolean): RunFfmpegResult {
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
 function hdrVideo(id: string, overrides: Partial<VideoElement> = {}): VideoElement {
-  return {
+  const clip = {
     id,
     src: `${id}.mov`,
     start: 0,
@@ -63,6 +63,7 @@ function hdrVideo(id: string, overrides: Partial<VideoElement> = {}): VideoEleme
     hasAudio: false,
     ...overrides,
   };
+  return { ...clip, origin: overrides.origin ?? clip.start };
 }
 
 function videoMetadata(
@@ -410,6 +411,7 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
       const video = hdrVideo(`real-${String(expectedVfr)}`, {
         src,
         start: -15,
+        origin: -15,
         end: 5,
       });
       const fixture = hdrExtractionFixture([video], framesDir);

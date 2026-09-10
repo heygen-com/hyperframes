@@ -83,14 +83,16 @@ export function writeFileExclusiveSync(path: string, data: NodeJS.ArrayBufferVie
  * compiled metadata is already offset into the parent host timeline
  * (e.g. start=4.417, end=89.937). Reproject browser end-time into the
  * compiled element's time origin before reconciling it back into the render
- * metadata.
+ * metadata. `hostRate` is the nesting hosts' composed `data-playback-rate`:
+ * a child-local second is `1 / hostRate` root seconds.
  */
 export function projectBrowserEndToCompositionTimeline(
-  existingStart: number,
+  existingOrigin: number,
   browserStart: number,
   browserEnd: number,
+  hostRate = 1,
 ): number {
-  return browserEnd + (existingStart - browserStart);
+  return existingOrigin + (browserEnd - browserStart) / hostRate;
 }
 
 /**

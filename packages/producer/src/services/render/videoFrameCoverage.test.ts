@@ -13,10 +13,12 @@ import {
 } from "./videoFrameCoverage.js";
 
 function makeVideo(overrides: Partial<VideoElement> & { id: string }): VideoElement {
+  const start = overrides.start ?? 0;
   return {
     id: overrides.id,
     src: overrides.src ?? `${overrides.id}.mp4`,
-    start: overrides.start ?? 0,
+    start,
+    origin: overrides.origin ?? start,
     end: overrides.end ?? 1,
     mediaStart: overrides.mediaStart ?? 0,
     playbackRate: overrides.playbackRate,

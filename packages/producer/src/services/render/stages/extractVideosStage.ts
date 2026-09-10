@@ -561,6 +561,7 @@ export function appendAutoDetectedVideoAudio(
       id: `${video.id}-audio`,
       src: video.src,
       start: video.start,
+      origin: video.origin,
       end: video.end,
       mediaStart: video.mediaStart,
       layer: 0,

@@ -114,6 +114,16 @@ Use a separate file when you want to reuse it.
     the root timeline. Legacy projects that authored a media start in root time
     can preserve it explicitly with `data-hf-media-start-basis="global"`; new
     compositions should use local timing.
+
+    The same in-point applies to `<video>` and `<audio>` inside the nested
+    composition, in preview and in the final render. A clip that ends before
+    the in-point never appears; a clip that straddles it starts at the slot
+    and skips the same amount of its file. A host `data-playback-rate` speeds
+    up nested media too. On a nested `<video>` or `<audio>`, `data-media-start`
+    still means the offset into that element's own file; the slot's in-point is
+    added on top rather than rewriting it. Media kept in root time with
+    `data-hf-media-start-basis="global"` is only bounded by the slot, not
+    shifted by it.
   </Tab>
   <Tab title="Inline">
     Write the nested composition straight into the parent. Simpler for

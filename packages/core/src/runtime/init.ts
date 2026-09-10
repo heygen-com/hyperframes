@@ -20,6 +20,8 @@ import {
 import { forceDispatchSeekEvent, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  authoredClipDuration,
+  authoredMediaWindow,
   readElementPlaybackRate,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
@@ -34,6 +36,7 @@ import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { mapNestedMediaElement, sourceTimeAt, type MappedMedia } from "./nestedHostWindow";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
@@ -645,34 +648,25 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  const runtimeStartResolver = (opts?: { includeAuthoredTimingAttrs?: boolean }) =>
+    createRuntimeStartTimeResolver({
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
+      includeAuthoredTimingAttrs: opts?.includeAuthoredTimingAttrs ?? true,
+    });
+
   const resolveStartForElement = (
     element: Element,
     fallback = 0,
     opts?: { includeAuthoredTimingAttrs?: boolean },
-  ): number => {
-    const resolver = createRuntimeStartTimeResolver({
-      timelineRegistry: (window.__timelines ?? {}) as Record<
-        string,
-        RuntimeTimelineLike | undefined
-      >,
-      includeAuthoredTimingAttrs: opts?.includeAuthoredTimingAttrs ?? true,
-    });
-    return resolver.resolveStartForElement(element, fallback);
-  };
+  ): number => runtimeStartResolver(opts).resolveStartForElement(element, fallback);
 
   const resolveDurationForElement = (
     element: Element,
     opts?: { includeAuthoredTimingAttrs?: boolean },
-  ): number | null => {
-    const resolver = createRuntimeStartTimeResolver({
-      timelineRegistry: (window.__timelines ?? {}) as Record<
-        string,
-        RuntimeTimelineLike | undefined
-      >,
-      includeAuthoredTimingAttrs: opts?.includeAuthoredTimingAttrs ?? true,
-    });
-    return resolver.resolveDurationForElement(element);
-  };
+  ): number | null => runtimeStartResolver(opts).resolveDurationForElement(element);
 
   const resolveMediaCompositionContext = (element: Element) => {
     const compositionRoot = element.closest("[data-composition-id]");
@@ -683,8 +677,9 @@ export function initSandboxRuntimeModular(): void {
     return { compositionRoot, inheritedStart, inheritedDuration };
   };
 
-  const resolveAbsoluteMediaStartSeconds = (element: Element): number => {
-    const context = resolveMediaCompositionContext(element);
+  type MediaCompositionContext = ReturnType<typeof resolveMediaCompositionContext>;
+
+  const resolveContextMediaStart = (element: Element, context: MediaCompositionContext): number => {
     const inheritedStart = context.inheritedStart ?? 0;
     const authoredStart = parseNumeric(element.getAttribute("data-start"));
     if (
@@ -702,10 +697,75 @@ export function initSandboxRuntimeModular(): void {
     });
   };
 
+  /**
+   * A nested slot's window for this element. Host starts come from the runtime
+   * resolver in their parent composition's seconds — the module composes the
+   * chain itself, so an absolute start would be offset twice.
+   */
+  const mapNestedMedia = (element: HTMLMediaElement): MappedMedia | null => {
+    const resolver = runtimeStartResolver();
+    return mapNestedMediaElement(element, (host) =>
+      host instanceof Element ? resolver.resolveLocalStartForElement(host) : 0,
+    );
+  };
+
+  const resolveAbsoluteMediaStartSeconds = (element: Element): number => {
+    if (element instanceof HTMLMediaElement) {
+      const nested = mapNestedMedia(element);
+      if (nested) return nested.start;
+    }
+    return resolveContextMediaStart(element, resolveMediaCompositionContext(element));
+  };
+
+  const resolveMediaClipDuration = (
+    element: HTMLVideoElement | HTMLAudioElement,
+    start: number,
+    context: MediaCompositionContext,
+  ): number | null => {
+    const hostRemaining =
+      context.inheritedStart != null &&
+      context.inheritedDuration != null &&
+      context.inheritedDuration > 0
+        ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
+        : null;
+    const sourceDuration = Number.isFinite(element.duration)
+      ? resolveNaturalMediaTimelineDuration(element, element.duration)
+      : null;
+    // The element's own data-duration is an explicit clip-length trim
+    // (the studio writes it when you drag the clip edge). It must bound
+    // playback so a trimmed track stops at its edge instead of running on
+    // to the source-file or host-composition end. Absent → no cap (an
+    // untrimmed clip plays its natural source length).
+    return resolveRuntimeMediaClipDuration({
+      isVideo: element.tagName === "VIDEO",
+      sourceDuration,
+      hostRemaining,
+      explicitDuration: authoredClipDuration(element),
+    });
+  };
+
+  /**
+   * One window per media element on the master timeline. A slot that re-times
+   * its children (`data-playback-start` / `data-playback-rate`) owns the
+   * mapping; otherwise it is the element's own start and duration, resolved
+   * through its composition context. Null when the start is unresolvable.
+   */
+  const resolveMediaWindow = (element: HTMLVideoElement | HTMLAudioElement): MappedMedia | null => {
+    const nested = mapNestedMedia(element);
+    if (nested) return nested;
+    const context = resolveMediaCompositionContext(element);
+    const start = resolveContextMediaStart(element, context);
+    return authoredMediaWindow(element, start, resolveMediaClipDuration(element, start, context));
+  };
+
   window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;
+  window.__hfResolveMappedMedia = resolveMediaWindow;
   runtimeCleanupCallbacks.push(() => {
     if (window.__hfResolveMediaStartSeconds === resolveAbsoluteMediaStartSeconds) {
       delete window.__hfResolveMediaStartSeconds;
+    }
+    if (window.__hfResolveMappedMedia === resolveMediaWindow) {
+      delete window.__hfResolveMappedMedia;
     }
   });
 
@@ -716,6 +776,10 @@ export function initSandboxRuntimeModular(): void {
     }
 
     const isMedia = tag === "video" || tag === "audio";
+    if (isMedia && rawNode instanceof HTMLMediaElement) {
+      const nested = mapNestedMedia(rawNode);
+      if (nested) return currentTime >= nested.start && currentTime < nested.end;
+    }
     const start = isMedia
       ? resolveAbsoluteMediaStartSeconds(rawNode)
       : resolveStartForElement(rawNode, 0);
@@ -2165,35 +2229,7 @@ export function initSandboxRuntimeModular(): void {
       shouldIncludeElement: (element) =>
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
-      resolveStartSeconds: (element) => {
-        return resolveAbsoluteMediaStartSeconds(element);
-      },
-      resolveDurationSeconds: (element) => {
-        const context = resolveMediaCompositionContext(element);
-        const start = resolveAbsoluteMediaStartSeconds(element);
-        const hostRemaining =
-          context.inheritedStart != null &&
-          context.inheritedDuration != null &&
-          context.inheritedDuration > 0
-            ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
-            : null;
-        const sourceDuration = Number.isFinite(element.duration)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
-          : null;
-        // The element's own data-duration is an explicit clip-length trim
-        // (the studio writes it when you drag the clip edge). It must bound
-        // playback so a trimmed track stops at its edge instead of running on
-        // to the source-file or host-composition end. Absent → no cap (an
-        // untrimmed clip plays its natural source length).
-        const ownDuration = parseStrictFiniteTimingNumber(element.dataset.duration);
-        const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
-        return resolveRuntimeMediaClipDuration({
-          isVideo: element.tagName === "VIDEO",
-          sourceDuration,
-          hostRemaining,
-          explicitDuration,
-        });
-      },
+      resolveClipWindow: resolveMediaWindow,
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
     // same envelope the renderer uses instead of tracking GSAP-change diffs.
@@ -3106,13 +3142,14 @@ export function initSandboxRuntimeModular(): void {
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
-            const start = Number.parseFloat(rawEl.dataset.start ?? "");
-            const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
-            const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-            const mediaStart = readElementPlaybackStart(rawEl);
-            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
+            const clip = resolveMediaWindow(rawEl);
+            if (clip && state.currentTime >= clip.start && state.currentTime < clip.end) {
               if (!rawEl.paused) {
-                clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
+                clock.attachAudioSource({
+                  el: rawEl,
+                  compositionStart: clip.origin,
+                  mediaStart: clip.mediaStart,
+                });
                 foundActive = true;
               } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
@@ -3197,13 +3234,9 @@ export function initSandboxRuntimeModular(): void {
     for (const el of mediaEls) {
       if (!(el instanceof HTMLMediaElement)) continue;
       if (!el.isConnected) continue;
-      const start = Number.parseFloat(el.dataset.start ?? "");
-      if (!Number.isFinite(start)) continue;
-      const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration);
-      const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
-      if (timeSeconds < start || timeSeconds >= end) continue;
-      const mediaStart = readElementPlaybackStart(el);
-      const relTime = timeSeconds - start + mediaStart;
+      const clip = resolveMediaWindow(el);
+      if (!clip || timeSeconds < clip.start || timeSeconds >= clip.end) continue;
+      const relTime = sourceTimeAt(clip, timeSeconds);
       if (relTime >= 0) {
         try {
           el.currentTime = relTime;
@@ -3227,27 +3260,14 @@ export function initSandboxRuntimeModular(): void {
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
       if (isSilencedByHidden(rawEl)) continue;
-      const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
-      if (!Number.isFinite(compStart)) continue;
-      const mediaStart = readElementPlaybackStart(rawEl);
+      const clip = resolveMediaWindow(rawEl);
+      if (!clip || !(clip.end > clip.start)) continue;
+      const compStart = clip.start;
+      const mediaStart = sourceTimeAt(clip, clip.start);
+      const mediaRate = clip.playbackRate;
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-      const durationAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
-      let clipDuration =
-        durationAttr != null && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
-      const compositionRoot = rawEl.closest("[data-composition-id]");
-      if (compositionRoot) {
-        const inheritedStart = resolveStartForElement(compositionRoot, 0);
-        const inheritedDuration = resolveDurationForElement(compositionRoot, {
-          includeAuthoredTimingAttrs: true,
-        });
-        if (inheritedDuration != null && inheritedDuration > 0) {
-          clipDuration = Math.min(
-            clipDuration,
-            Math.max(0, inheritedStart + inheritedDuration - compStart),
-          );
-        }
-      }
+      const clipDuration = clip.end - clip.start;
       // Decided BEFORE the transport is asked, because the two verdicts want
       // two different fallback chains — and only one of them is the chain
       // that existed before (#3458).
@@ -3266,11 +3286,12 @@ export function initSandboxRuntimeModular(): void {
               vol,
               gen,
               state.playbackRate,
+              mediaRate,
             )
           : Promise.resolve(null);
       void capture.then((scheduled) => {
         if (scheduled || !clock.isPlaying()) return;
-        const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
+        const effectiveRate = state.playbackRate * mediaRate;
         // Deliberately the FX/automation pair and NOT
         // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.
         // The two answer different questions: the diagnostic lists everything
@@ -3305,6 +3326,7 @@ export function initSandboxRuntimeModular(): void {
             gen,
             state.playbackRate,
             clipDuration,
+            mediaRate,
           );
         });
       });

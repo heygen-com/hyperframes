@@ -96,6 +96,7 @@ const track = (id: string, end: number, volume = 1) => ({
   id,
   src: `${id}.wav`,
   start: 0,
+  origin: 0,
   end,
   mediaStart: 0,
   layer: 0,

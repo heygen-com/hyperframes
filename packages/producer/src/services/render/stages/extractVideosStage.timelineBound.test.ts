@@ -79,6 +79,7 @@ async function runStage(
         id: "root-video",
         src: options.source ?? "long.mp4",
         start: 0,
+        origin: 0,
         end: Number.POSITIVE_INFINITY,
         mediaStart: 0,
         loop: false,

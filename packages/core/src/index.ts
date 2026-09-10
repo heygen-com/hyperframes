@@ -157,6 +157,17 @@ export {
   MEDIA_RENDER_ID_ATTR,
   assignMediaRenderIds,
 } from "./compiler/mediaRenderIds";
+export {
+  IDENTITY_HOST_WINDOW,
+  boundsOnly,
+  mapClipThroughHostWindow,
+  resolveNestedHostWindow,
+  sourceTimeAt,
+  type HostStartResolver,
+  type MappedClip,
+  type MappedMedia,
+  type NestedHostWindow,
+} from "./runtime/nestedHostWindow";
 
 export {
   RENDER_FRAME_ID_PREFIX,

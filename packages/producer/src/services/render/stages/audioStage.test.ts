@@ -24,7 +24,16 @@ import { EncoderInterruptedError } from "../encoderInterruption.js";
 describe("runAudioStage", () => {
   const tempDirs: string[] = [];
   const audios: AudioElement[] = [
-    { id: "a1", src: "narration.wav", start: 0, end: 5, mediaStart: 0, volume: 1, type: "audio" },
+    {
+      id: "a1",
+      src: "narration.wav",
+      start: 0,
+      origin: 0,
+      end: 5,
+      mediaStart: 0,
+      volume: 1,
+      type: "audio",
+    },
   ];
 
   afterEach(() => {
