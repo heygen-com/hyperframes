@@ -251,11 +251,10 @@ describe("probeMediaProfile", () => {
   });
 
   it("bounds the process-scoped probe cache", async () => {
-    const fixtureDir = mkdtempSync(resolve(tmpdir(), "hf-media-probe-lru-"));
-    const fixturePaths = Array.from({ length: 129 }, (_, index) =>
-      resolve(fixtureDir, `asset-${index}`),
-    );
-    for (const fixturePath of fixturePaths) writeFileSync(fixturePath, "probe identity");
+    // Cache identity is derived from stat, so synthesise it instead of writing
+    // 129 real files: the eviction rule is in-memory, and on a contended
+    // Windows runner the file churn alone pushed this past the test timeout.
+    const paths = Array.from({ length: 129 }, (_, index) => `/probe-lru/asset-${index}`);
     const outcome = {
       kind: "exit" as const,
       code: 0,
@@ -267,13 +266,31 @@ describe("probeMediaProfile", () => {
     const { spawn, calls } = createSpawnSpy([outcome]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
-    const { probeMediaProfile } = await import("./ffprobe.js");
+    vi.doMock("fs", async () => {
+      const actual = await vi.importActual<typeof import("fs")>("fs");
+      const statSync = (filePath: string) => ({
+        dev: 1n,
+        ino: BigInt(paths.indexOf(filePath)),
+        size: 1n,
+        mtimeNs: 0n,
+        ctimeNs: 0n,
+      });
+      return { ...actual, statSync };
+    });
     try {
-      for (const fixturePath of fixturePaths) await probeMediaProfile(fixturePath);
-      await probeMediaProfile(fixturePaths[0]!);
+      const { probeMediaProfile } = await import("./ffprobe.js");
+      const [first, second, ...rest] = paths;
+      for (const filePath of paths.slice(0, 128)) await probeMediaProfile(filePath);
+      // A hit refreshes the entry, so the 129th insert evicts `second`, not `first`.
+      await probeMediaProfile(first!);
+      await probeMediaProfile(rest.at(-1)!);
+      expect(calls).toHaveLength(129);
+      await probeMediaProfile(first!);
+      expect(calls).toHaveLength(129);
+      await probeMediaProfile(second!);
       expect(calls).toHaveLength(130);
     } finally {
-      rmSync(fixtureDir, { recursive: true, force: true });
+      vi.doUnmock("fs");
     }
   });
 
