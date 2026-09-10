@@ -160,6 +160,12 @@ function planItem(itemDir: string): {
   return { plans, manifestPath, manifest };
 }
 
+function writeManifests(items: ReturnType<typeof planItem>[]): void {
+  for (const { manifestPath, manifest } of items) {
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+  }
+}
+
 /** Collect every planned object into one flat directory, deduplicated by key. */
 function stage(plans: Plan[]): number {
   rmSync(STAGING_DIR, { recursive: true, force: true });
@@ -237,7 +243,7 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  const items = itemDirs.map(planItem);
+  const items = itemDirs.map(planItem).filter((item) => item.plans.length > 0);
   const plans = items.flatMap((item) => item.plans);
   if (plans.length === 0) {
     console.log("No unhosted binary assets found — nothing to do.");
@@ -245,11 +251,7 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   const objects = stage(plans);
-  for (const { plans: itemPlans, manifestPath, manifest } of items) {
-    if (itemPlans.length > 0) {
-      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
-    }
-  }
+  writeManifests(items);
   console.log(
     `Staged ${objects} object(s) from ${plans.length} manifest entr(ies) → ${STAGING_DIR}`,
   );
