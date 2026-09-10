@@ -44,6 +44,9 @@ export interface DownloadResult {
  * Stream `url` into `destPath`. Creates the parent directory if needed,
  * replaces an existing file only after the complete response is written,
  * and removes staged bytes on failure while preserving the old output.
+ * Atomic replacement requires a writable parent directory and creates a new
+ * inode: mode is retained, owner/group are not, and hard links keep old bytes.
+ * A read-only file can be replaced when its parent permits the rename.
  */
 // fallow-ignore-next-line complexity
 export async function downloadToFile(

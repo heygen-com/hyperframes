@@ -142,7 +142,10 @@ describe("cloud/download", () => {
     chmodSync(dest, 0o640);
     await downloadToFile("https://example/x", dest, {
       fetchImpl: makeBytesFetch(new Uint8Array([42])),
-      onProgress: () => expect(readFileSync(dest, "utf8")).toBe("previous render"),
+      onProgress: () => {
+        expect(readFileSync(dest, "utf8")).toBe("previous render");
+        expect(readdirSync(dir).filter((name) => name.startsWith(".hf-download-"))).toHaveLength(1);
+      },
     });
     expect(readFileSync(dest)).toEqual(Buffer.from([42]));
     if (process.platform !== "win32") expect(statSync(dest).mode & 0o777).toBe(0o640);
