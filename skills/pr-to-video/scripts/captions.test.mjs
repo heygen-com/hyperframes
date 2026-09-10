@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -217,3 +218,42 @@ test("every build-frame.mjs copy stages the style axis it promises", () => {
     );
   }
 });
+
+for (const workflow of ["pr-to-video", "faceless-explainer", "product-launch-video"]) {
+  for (const skin of [null, skins[0]]) {
+    test(`${workflow} ${skin ? "skin" : "default"} keeps transcript markup inside script data`, () => {
+      const project = mkdtempSync(join(tmpdir(), "caption-script-data-"));
+      const text = '</ScRiPt><img src=x onerror="alert(1)"><!-- <script> & end';
+      try {
+        writeFileSync(
+          join(project, "STORYBOARD.md"),
+          "---\nformat: 1920x1080\nmessage: T\n---\n\n## Frame 1 — A\n- duration: 3s\n- src: compositions/frames/01-a.html\n",
+        );
+        writeFileSync(
+          join(project, "audio_meta.json"),
+          JSON.stringify({
+            voices: [{ frame: 1, words: [{ text, start: 0, end: 1 }] }],
+          }),
+        );
+        if (skin) writeFileSync(join(project, "caption-skin.html"), skin.source);
+        const script = fileURLToPath(
+          new URL(`../../${workflow}/scripts/captions.mjs`, import.meta.url),
+        );
+        execFileSync(process.execPath, [script, "build", "--hyperframes", project]);
+        const html = readFileSync(join(project, "compositions/captions.html"), "utf8");
+        const inline = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)]
+          .map((match) => match[1])
+          .find((source) => source.includes("var GROUPS ="));
+        assert.ok(inline, "generated caption script exists");
+        assert.ok(!html.includes("<img"), "transcript cannot create an HTML element");
+        const data = inline.match(/var GROUPS = (.*);/);
+        assert.ok(data, "entire data assignment remains inside the script element");
+        const groups = JSON.parse(data[1]);
+        assert.equal(groups[0].text, text);
+        assert.equal(groups[0].words[0].text, text);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+  }
+}

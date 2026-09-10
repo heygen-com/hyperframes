@@ -263,7 +263,7 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   out = fillOnce(
     out,
     /var GROUPS = \[\];/,
-    `var GROUPS = ${JSON.stringify(groups)};`,
+    `var GROUPS = ${JSON.stringify(groups).replace(/</g, "\\u003c")};`,
     "`var GROUPS = [];` hole",
   );
   out = fillOnce(out, /var DURATION = 0;/, `var DURATION = ${total};`, "`var DURATION = 0;` hole");
@@ -480,7 +480,7 @@ function buildCaptionsHtml(groups, total, W, H) {
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
   <script>
     (function () {
-      var GROUPS = ${JSON.stringify(groups)};
+      var GROUPS = ${JSON.stringify(groups).replace(/</g, "\\u003c")};
       var cap = document.getElementById("cap");
       var tl = gsap.timeline({ paused: true });
       GROUPS.forEach(function (g) {
