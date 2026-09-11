@@ -3257,17 +3257,16 @@ async function executeRenderPipeline(input: {
     // drain guard), so the confinement rule is satisfied and the parallel
     // clamp does not apply. The disk path stays clamped.
     //
-    // Runs BEFORE the non-DE parallel-streaming router below on purpose (it
-    // used to run after): that router needs the POST-clamp `useDrawElement`
-    // to decide whether this render will actually use non-DE capture, and
-    // reading the stale pre-clamp `true` made it silently refuse to stream on
-    // every GPU-default host (macOS) with default-on drawElement — PRINFRA-689.
-    // The reorder doesn't change THIS clamp's own outcome: the non-DE
-    // router's force flag (`captureParallelStreamForced`) can only become
-    // true once `cfg.useDrawElement` is already false (the router requires
-    // `!useDrawElement`), so it never used to affect whether this clamp fired
-    // — only `deParallelStreamForced` (the DE-specific router above, mutually
-    // exclusive with the non-DE one) ever could.
+    // Runs BEFORE the non-DE parallel-streaming router below: that router
+    // needs the post-clamp `cfg.useDrawElement` to know whether this render
+    // will actually use non-DE capture. That dependency is also why this
+    // clamp is safe to compute here: the router's own force flag
+    // (`captureParallelStreamForced`) can only become true once
+    // `cfg.useDrawElement` is already false (the router requires
+    // `!useDrawElement`), so whenever this clamp's guard below
+    // (`cfg.useDrawElement === true`) holds, that flag is always false —
+    // only `deParallelStreamForced` (the DE-specific router above, mutually
+    // exclusive with the non-DE one) can affect this clamp's outcome.
     const deParallelStreamVerified =
       (deParallelStreamForced || process.env.HF_DE_PARALLEL_STREAM === "true") &&
       useStreamingEncode &&
@@ -3296,8 +3295,8 @@ async function executeRenderPipeline(input: {
     // Non-DE parallel-streaming router — see shouldStreamParallelCapture.
     // Mutually exclusive with the DE inversion/router above by construction
     // (both DE predicates require useDrawElement; this requires its negation).
-    // Reads `cfg.useDrawElement` AFTER the clamp above, so it sees the real
-    // capture mode this render will use instead of a stale pre-clamp value.
+    // Reads `cfg.useDrawElement` after the clamp above, so it sees the
+    // capture mode this render will actually use.
     const captureParallelStreamRouterEnabled = process.env.HF_CAPTURE_PARALLEL_STREAM === "true";
     const captureParallelStreamArgs = {
       workerCount,
