@@ -47,6 +47,7 @@ import {
   mergeWorkerInitObservability,
   resolveCompositionElementCount,
   resolveDeShortBand,
+  shouldClampDefaultDrawElement,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
   shouldStreamParallelCapture,
@@ -2838,6 +2839,97 @@ describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () =>
 
   it("skips HDR-layered and shader-transition routes", () => {
     expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
+  });
+});
+
+describe("shouldClampDefaultDrawElement (default-on drawElement clamp)", () => {
+  const unverifiedParallel = {
+    useDrawElement: true,
+    fastCaptureExplicitOptIn: false,
+    useStreamingEncode: false,
+    workerCount: 2,
+    deParallelStreamVerified: false,
+  };
+
+  it("clamps default-on drawElement for unverified multi-worker capture", () => {
+    expect(shouldClampDefaultDrawElement(unverifiedParallel)).toBe(true);
+  });
+
+  it("leaves useDrawElement alone once it is already false", () => {
+    expect(shouldClampDefaultDrawElement({ ...unverifiedParallel, useDrawElement: false })).toBe(
+      false,
+    );
+  });
+
+  it("an explicit opt-in overrides the clamp", () => {
+    expect(
+      shouldClampDefaultDrawElement({ ...unverifiedParallel, fastCaptureExplicitOptIn: true }),
+    ).toBe(false);
+  });
+
+  it("does not clamp a verified multi-worker streaming render", () => {
+    expect(
+      shouldClampDefaultDrawElement({ ...unverifiedParallel, deParallelStreamVerified: true }),
+    ).toBe(false);
+  });
+
+  it("clamps a single-worker render with streaming off (the disk-path case)", () => {
+    expect(shouldClampDefaultDrawElement({ ...unverifiedParallel, workerCount: 1 })).toBe(true);
+  });
+
+  it("leaves a single-worker streaming render unclamped (self-verified by the drain)", () => {
+    expect(
+      shouldClampDefaultDrawElement({
+        ...unverifiedParallel,
+        workerCount: 1,
+        useStreamingEncode: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("default-on drawElement clamp feeds the non-DE parallel-stream router (PRINFRA-689)", () => {
+  // Regression guard for the bug reported at
+  // heygen.slack.com/archives/D0BASH3KBGW/p1789154235634189: the router
+  // requires the drawElement clamp's OUTPUT, not its input. A caller that
+  // reads `cfg.useDrawElement` before running the clamp — exactly the
+  // ordering this fix corrected in renderOrchestrator.ts — reproduces the
+  // bug even though both predicates below are individually correct.
+  const macOsDefaultOnMultiWorker = {
+    useDrawElement: true,
+    fastCaptureExplicitOptIn: false,
+    useStreamingEncode: false,
+    workerCount: 2,
+    deParallelStreamVerified: false,
+  };
+
+  it("routes once the clamp's post-clamp value feeds the router", () => {
+    const clamped = shouldClampDefaultDrawElement(macOsDefaultOnMultiWorker);
+    const postClampUseDrawElement = clamped ? false : macOsDefaultOnMultiWorker.useDrawElement;
+
+    expect(
+      shouldStreamParallelCapture({
+        routerEnabled: true,
+        workerCount: macOsDefaultOnMultiWorker.workerCount,
+        useDrawElement: postClampUseDrawElement,
+        outputFormat: "mp4",
+        streamingOk: true,
+        layeredOrEffectRoute: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("never routes if the router instead reads the PRE-clamp value (the bug)", () => {
+    expect(
+      shouldStreamParallelCapture({
+        routerEnabled: true,
+        workerCount: macOsDefaultOnMultiWorker.workerCount,
+        useDrawElement: macOsDefaultOnMultiWorker.useDrawElement,
+        outputFormat: "mp4",
+        streamingOk: true,
+        layeredOrEffectRoute: false,
+      }),
+    ).toBe(false);
   });
 });
 

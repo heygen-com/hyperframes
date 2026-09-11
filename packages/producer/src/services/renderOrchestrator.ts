@@ -2008,6 +2008,33 @@ export function shouldStreamParallelCapture(args: {
   );
 }
 
+/**
+ * Default-on drawElement clamp: is this render's runtime self-verification
+ * net absent, so `useDrawElement` must fall back to the screenshot/beginframe
+ * baseline? The disk path and unverified parallel capture ship frames no
+ * drain verifies — see the call site's comment on why this clamp's own
+ * outcome is independent of running before or after
+ * {@link shouldStreamParallelCapture} in the caller. Pure; exported for tests.
+ */
+export function shouldClampDefaultDrawElement(args: {
+  useDrawElement: boolean;
+  /** PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true" — explicit opt-in always wins. */
+  fastCaptureExplicitOptIn: boolean;
+  useStreamingEncode: boolean;
+  workerCount: number;
+  /** (deParallelStreamForced || HF_DE_PARALLEL_STREAM === "true") &&
+   * useStreamingEncode && workerCount > 1 — the multi-worker streaming
+   * self-verification net is present. */
+  deParallelStreamVerified: boolean;
+}): boolean {
+  return (
+    args.useDrawElement &&
+    !args.fastCaptureExplicitOptIn &&
+    (!args.useStreamingEncode || args.workerCount > 1) &&
+    !args.deParallelStreamVerified
+  );
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -3272,10 +3299,13 @@ async function executeRenderPipeline(input: {
       useStreamingEncode &&
       workerCount > 1;
     if (
-      cfg.useDrawElement &&
-      process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE !== "true" &&
-      (!useStreamingEncode || workerCount > 1) &&
-      !deParallelStreamVerified
+      shouldClampDefaultDrawElement({
+        useDrawElement: cfg.useDrawElement,
+        fastCaptureExplicitOptIn: process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true",
+        useStreamingEncode,
+        workerCount,
+        deParallelStreamVerified,
+      })
     ) {
       cfg.useDrawElement = false;
       deClampReason = workerCount > 1 ? "parallel" : "disk_path";
@@ -3287,6 +3317,7 @@ async function executeRenderPipeline(input: {
       // The probe session already initialized in drawElement mode (canvas
       // injected); it must not be reused by the unverified path.
       if (probeSession && probeSession.captureMode === "drawelement") {
+        lastBrowserConsole = probeSession.browserConsoleBuffer;
         await closeCaptureSession(probeSession);
         probeSession = null;
       }
