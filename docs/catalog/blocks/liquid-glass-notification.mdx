@@ -5,18 +5,18 @@ description: "Frosted glass notification cards floating over an aurora shader ba
 
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+## Install
+
+<InstallCommand command="npx hyperframes add liquid-glass-notification" item="liquid-glass-notification" />
+
+That writes `compositions/liquid-glass-notification.html`, plus 2 supporting files under `compositions/assets/` and `compositions/lib/`.
+
 <iframe
   className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
   title="liquid-glass-notification preview"
   loading="lazy"
   srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/liquid-glass-notification.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png");document.body.appendChild(p)});<\/script></body></html>`}
 />
-
-## Install
-
-<InstallCommand command="npx hyperframes add liquid-glass-notification" item="liquid-glass-notification" />
-
-That writes `compositions/liquid-glass-notification.html`, plus 2 supporting files under `compositions/assets/` and `compositions/lib/`.
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -35,7 +35,11 @@ That writes `compositions/liquid-glass-notification.html`, plus 2 supporting fil
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+      integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu"
+      crossorigin="anonymous"
+    ></script>
     <script src="lib/liquid-glass.iife.js"></script>
     <style>
       * {

@@ -1844,7 +1844,7 @@ export const VariablesExplorer = ({
           </div>
         )}
         <div className="hf-ve-cell hf-ve-snippet" data-on={tab === "snippet"}>
-          {/* The Install block further down the page is generated before anyone
+          {/* The Install block above the preview is generated before anyone
               touches a knob, so it can only ever offer the plain command. This
               one is the panel's, and it carries what the reader actually chose:
               copying it installs the piece already tuned. */}

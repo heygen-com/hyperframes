@@ -1033,11 +1033,10 @@ function generateItemMdx(
     "",
   ];
 
-  // 1. What it looks like, before anything else. Credits, tags and the source
-  //    prompt used to sit above this and pushed the preview below the fold.
-  lines.push(...previewSection(kind, manifest, textureGroups));
-
-  // 2. How to get it. A CodeGroup around a single block just drew an empty tab bar.
+  // 1. How to get it, before anything else. It is the one line a reader is here
+  //    to copy, and below the preview it landed under the explorer's Customize
+  //    panel, a screen or more down. A CodeGroup around a single block just drew
+  //    an empty tab bar.
   lines.push(
     "## Install",
     "",
@@ -1046,6 +1045,10 @@ function generateItemMdx(
     installOutcome(manifest, primaryTarget),
     "",
   );
+
+  // 2. What it looks like. Credits, tags and the source prompt used to sit above
+  //    this and pushed the preview below the fold; they stay in the footer.
+  lines.push(...previewSection(kind, manifest, textureGroups));
 
   // Prerequisite where it bites: you need the flag to preview what you just installed.
   if (tags.includes("html-in-canvas")) {

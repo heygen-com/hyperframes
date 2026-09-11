@@ -6,6 +6,12 @@ description: "Words enter from the right and push the growing phrase left until 
 import { InstallCommand } from "/snippets/install-command.jsx";
 import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
+## Install
+
+<InstallCommand command="npx hyperframes add kinetic-center-build" item="kinetic-center-build" />
+
+That writes one file: `compositions/components/kinetic-center-build.html`.
+
 <VariablesExplorer
   previewSrc="/public/catalog/components/kinetic-center-build.json"
   compositionId="kinetic-center-build"
@@ -302,12 +308,6 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
 </VariablesExplorer>
 
-## Install
-
-<InstallCommand command="npx hyperframes add kinetic-center-build" item="kinetic-center-build" />
-
-That writes one file: `compositions/components/kinetic-center-build.html`.
-
 ## Paste it into your composition
 
 Open `compositions/components/kinetic-center-build.html` and copy what is inside into your own composition.
@@ -320,13 +320,13 @@ you paste it into.
 Every one of these has a default, so the piece works untouched. Set the ones you
 want to change on the element:
 
-| Variable       | Default            | Accepts                    | What it does                                                                 |
-| -------------- | ------------------ | -------------------------- | ---------------------------------------------------------------------------- |
-| `text`         | `Words push left.` | string                     | Short phrase that builds one word at a time.                                 |
-| `font_size`    | `72`               | 36px to 160px, step 2px    | Maximum text size in pixels. Longer phrases shrink to stay inside the frame. |
-| `entry_offset` | `88`               | 20px to 160px, step 4px    | Horizontal distance each new word travels before it lands.                   |
-| `color`        | `#171717`          | color                      | Text color for the full phrase.                                              |
-| `font_weight`  | `600`              | `500`, `600`, `700`, `800` | Weight used by every word in the phrase.                                     |
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `text` | `Words push left.` | string | Short phrase that builds one word at a time. |
+| `font_size` | `72` | 36px to 160px, step 2px | Maximum text size in pixels. Longer phrases shrink to stay inside the frame. |
+| `entry_offset` | `88` | 20px to 160px, step 4px | Horizontal distance each new word travels before it lands. |
+| `color` | `#171717` | color | Text color for the full phrase. |
+| `font_weight` | `600` | `500`, `600`, `700`, `800` | Weight used by every word in the phrase. |
 
 Set them with `data-variable-values` on the element that mounts it. These are the
 defaults, so this behaves exactly like the preview above until you change one:

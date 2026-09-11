@@ -6,6 +6,12 @@ description: "One message arrives on the measured entry - scale 0.75, 0.12s, gro
 import { InstallCommand } from "/snippets/install-command.jsx";
 import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 
+## Install
+
+<InstallCommand command="npx hyperframes add chat-message" item="chat-message" />
+
+That writes one file: `compositions/components/chat-message.html`.
+
 <VariablesExplorer
   previewSrc="/public/catalog/components/chat-message.json"
   compositionId="chat-message"
@@ -321,12 +327,6 @@ import { VariablesExplorer } from "/snippets/variables-explorer.jsx";
 ```
 
 </VariablesExplorer>
-
-## Install
-
-<InstallCommand command="npx hyperframes add chat-message" item="chat-message" />
-
-That writes one file: `compositions/components/chat-message.html`.
 
 ## Paste it into your composition
 

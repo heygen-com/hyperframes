@@ -5,18 +5,18 @@ description: "A portrait ChatGPT-style exchange types and sends a prompt, stream
 
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+## Install
+
+<InstallCommand command="npx hyperframes add chatgpt-exchange" item="chatgpt-exchange" />
+
+That writes `compositions/chatgpt-exchange.html`, plus 5 supporting files under `assets/fonts/`.
+
 <iframe
   className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
   title="chatgpt-exchange preview"
   loading="lazy"
   srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/chatgpt-exchange.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png");document.body.appendChild(p)});<\/script></body></html>`}
 />
-
-## Install
-
-<InstallCommand command="npx hyperframes add chatgpt-exchange" item="chatgpt-exchange" />
-
-That writes `compositions/chatgpt-exchange.html`, plus 5 supporting files under `assets/fonts/`.
 
 ## Add it to your video
 
@@ -1412,6 +1412,75 @@ Move it in time with `data-start`. Put it on a different timeline row with
         { autoAlpha: 1, y: 0, duration: 0.3, ease: "back.out(1.5)" },
         tRead + T.readbackDur - 0.35,
       );
+
+      /* ---- caret-following scroll in the composer.
+         `prompt` is an editable slot, but `.comp-text` is a fixed-width single line with
+         `white-space: pre` inside a composer that clips, and the packaged prompt already reaches
+         the mic. A longer one therefore slides under the mic and the send button and loses its
+         tail, with the caret hidden behind them -- the remix looks like it typed into nowhere.
+         A real single-line input scrolls its text left to keep the caret in view; this does the
+         same, on the very times the reveal already uses. Shrinking the type instead was the other
+         option and it is worse: it would shrink the packaged prompt too, since that prompt has no
+         headroom, and it still cannot absorb a prompt twice as long without becoming unreadable.
+         A prompt that fits emits no keyframes at all, so the packaged composition is untouched. */
+      const compTextEl = composer.querySelector("#cge-comp-text");
+      // The obstacle is the opaque round button, not the mic: the packaged prompt's caret already
+      // sits 2px past the mic's left edge, so measuring to the mic would scroll the packaged
+      // composition. The caret has 35px of clearance to the button, which is the real boundary.
+      const compStopEl = composer.querySelector("#cge-blue-btn");
+      const CARET_PAD = 8;
+      // The rebuild below has to discard exactly what the previous pass added, and `tl.to()`
+      // returns the TIMELINE, not the tween it just created -- so collecting those return values
+      // and killing them on the second pass kills the master timeline, and the composition stops
+      // dead. It only bites when there are keyframes to discard, i.e. an overflowing prompt: the
+      // exact remix this scroll exists for, and why a packaged-defaults render never saw it.
+      // One nested child timeline is a real object that can be killed and replaced, and killing
+      // it cannot reach `tl`.
+      let caretTl = null;
+      const layoutCaretScroll = () => {
+        if (caretTl) {
+          caretTl.kill();
+          caretTl = null;
+          // Only ever touch typedEl when there was scrolling to undo. A zero translate — or even
+          // a clearProps on an untouched element — stamps and removes a transform, which changes
+          // how the text rasterizes and makes the packaged render differ for no reason.
+          gsap.set(typedEl, { clearProps: "transform" });
+        }
+        if (!compTextEl || !compStopEl) return;
+        // Rects live in the scaled .screen space while offsets are layout px, so convert with the
+        // element's own ratio rather than reading --scale -- this then survives a change to it.
+        const box = compTextEl.getBoundingClientRect();
+        const ratio = compTextEl.offsetWidth ? box.width / compTextEl.offsetWidth : 1;
+        const limit =
+          (compStopEl.getBoundingClientRect().left - box.left) / (ratio || 1) - CARET_PAD;
+        if (!(limit > 0)) return;
+        // Collect the steps first, so a prompt that fits leaves typedEl alone entirely.
+        const steps = [];
+        let shift = 0;
+        chars.forEach((c, i) => {
+          const caret = curEls[i + 1];
+          if (!caret) return;
+          const want = Math.max(0, caret.offsetLeft - limit);
+          if (want > shift + 0.5) {
+            shift = want;
+            steps.push([charT[i], -shift]);
+          }
+        });
+        if (!steps.length) return;
+        // Children sit at the same absolute times as before, and the nest is added at 0, so the
+        // nested timeline's local clock is the master's -- the motion is unchanged.
+        caretTl = gsap.timeline();
+        steps.forEach(([at, x]) => {
+          caretTl.to(typedEl, { x, duration: 0.08, ease: "none" }, at);
+        });
+        // Back to the start when the composer empties, so the collapse animates from x=0.
+        caretTl.to(typedEl, { x: 0, duration: 0.01 }, tGo);
+        tl.add(caretTl, 0);
+      };
+      layoutCaretScroll();
+      // This composition builds its timeline once, so the first pass measures whatever font was
+      // live then. Re-measure when the embedded faces are ready.
+      document.fonts.ready.then(layoutCaretScroll);
 
       window.__timelines["chatgpt-exchange"] = tl;
     </script>
