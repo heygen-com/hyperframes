@@ -250,6 +250,20 @@ export default defineCommand({
       // miss -- sending an author off to report a move that may well exist.
       const unsearchable =
         Boolean(query) && searched?.localMode === "words" && hasNoSearchableTokens(query as string);
+      // Name the better tier before the gap-report line below: someone who
+      // could still find the move should not be sent to file a gap first.
+      //
+      // Withheld when the query never parsed, where the advice is to search in
+      // English and a second tier does not change that, and when a warning has
+      // already said why the tier cannot run here, which would leave the
+      // command arguing with itself. Pushed and printed together, from the one
+      // sentence, so --json and the terminal cannot drift.
+      const tierHint =
+        query && !unsearchable && warnings.length === 0 ? localModelHint(json) : null;
+      if (tierHint) {
+        warnings.push(tierHint);
+        console.error(tierHint);
+      }
       // An empty result is exactly when the tier matters most: nothing found on
       // the weakest tier means something different from nothing found on the
       // best one.
@@ -391,7 +405,8 @@ export default defineCommand({
         // to pass a flag one line after explaining that flag cannot work here
         // reads as the tool arguing with itself.
         if (warnings.length === 0) {
-          reportLocalModelOption(json);
+          const hint = localModelHint(json);
+          if (hint) console.error(hint);
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
       }
@@ -645,24 +660,29 @@ export function searchMissCommand(query: string, tier: "on-device" | "words"): s
 type LocalMode = "local-model" | "words";
 
 /**
+ * Nobody to ask, so say what to ask for.
+ *
+ * Without this a scripted run sits on word matching with no indication that a
+ * better offline tier exists and is one question away.
+ *
+ * Returned rather than printed. The caller that needs it most is the
+ * zero-result `--json` one, and a sentence written to stderr never reaches the
+ * envelope, which is the only thing an agent run reads. Null when there is a
+ * person to prompt instead, or when that person has already answered.
+ */
+function localModelHint(json: boolean): string | null {
+  if (!json && process.stdout.isTTY) return null;
+  if (localModelStatus().status !== "not-asked") return null;
+  return nonInteractiveConsentMessage();
+}
+
+/**
  * Offer the on-device model when word matching came up thin, and only then.
  *
  * Asking on first run would interrupt people the free tier already serves.
  * Asking here puts the evidence in front of them: they can see what word
  * matching returned before deciding whether 33 MB is worth it.
  */
-/**
- * Nobody to ask, so say what to ask for.
- *
- * Without this a scripted run sits on word matching with no indication that a
- * better offline tier exists and is one question away.
- */
-function reportLocalModelOption(json: boolean): void {
-  if (!json && process.stdout.isTTY) return;
-  if (localModelStatus().status !== "not-asked") return;
-  console.error(nonInteractiveConsentMessage());
-}
-
 async function offerLocalModel(
   matchCount: number,
   json: boolean,

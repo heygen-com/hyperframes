@@ -207,6 +207,41 @@ async function runEnvelope(args: Record<string, unknown>): Promise<Envelope> {
   return JSON.parse(await runCatalog({ json: true, ...args })) as Envelope;
 }
 
+/**
+ * Both streams in call order, plus the exit code the CLI would have used.
+ *
+ * `runCatalog` captures stdout only, and every warning in this command goes to
+ * stderr, so anything asserting on a warning -- or on where one sits relative
+ * to a printed line -- has to read both. finishCommand throws a signal rather
+ * than calling process.exit.
+ */
+async function runForExit(
+  args: Record<string, unknown>,
+): Promise<{ exitCode: number; err: string }> {
+  const command = (await import("./catalog.js")).default as unknown as {
+    run: (context: { args: Record<string, unknown> }) => Promise<void>;
+  };
+  const lines: string[] = [];
+  const capture = (...parts: unknown[]): void => {
+    lines.push(parts.map(String).join(" "));
+  };
+  const log = vi.spyOn(console, "log").mockImplementation(capture);
+  const error = vi.spyOn(console, "error").mockImplementation(capture);
+  let exitCode = 0;
+  try {
+    await command.run({ args });
+  } catch (thrown) {
+    const signal = thrown as { result?: { exitCode?: number }; exitCode?: number };
+    exitCode = signal.result?.exitCode ?? signal.exitCode ?? -1;
+  } finally {
+    log.mockRestore();
+    error.mockRestore();
+  }
+  // eslint-disable-next-line no-control-regex
+  const esc = String.fromCharCode(27);
+  return { exitCode, err: lines.join("\n").split(`${esc}[`).join("").replace(/\d+m/g, "") };
+}
+
 beforeEach(() => {
   state.modelStatus = "ready";
   state.artifactRevision = "revision-current";
@@ -377,35 +412,6 @@ describe("catalog --json meaning search", () => {
 });
 
 describe("a query with no searchable words", () => {
-  // Runs the command capturing stderr, and reports the exit code the CLI would
-  // have used. finishCommand throws a signal rather than calling process.exit.
-  async function runForExit(
-    args: Record<string, unknown>,
-  ): Promise<{ exitCode: number; err: string }> {
-    const command = (await import("./catalog.js")).default as unknown as {
-      run: (context: { args: Record<string, unknown> }) => Promise<void>;
-    };
-    const lines: string[] = [];
-    const capture = (...parts: unknown[]): void => {
-      lines.push(parts.map(String).join(" "));
-    };
-    const log = vi.spyOn(console, "log").mockImplementation(capture);
-    const error = vi.spyOn(console, "error").mockImplementation(capture);
-    let exitCode = 0;
-    try {
-      await command.run({ args });
-    } catch (thrown) {
-      const signal = thrown as { result?: { exitCode?: number }; exitCode?: number };
-      exitCode = signal.result?.exitCode ?? signal.exitCode ?? -1;
-    } finally {
-      log.mockRestore();
-      error.mockRestore();
-    }
-    // eslint-disable-next-line no-control-regex
-    const esc = String.fromCharCode(27);
-    return { exitCode, err: lines.join("\n").split(`${esc}[`).join("").replace(/\d+m/g, "") };
-  }
-
   it("exits non-zero, because it is bad input rather than an empty shelf", async () => {
     // The flag is word-tier only, so the stubbed on-device ranker has to be off
     // or it answers with hits and the branch never runs.
@@ -441,6 +447,72 @@ describe("a query with no searchable words", () => {
 
     expect(exitCode).toBe(0);
     expect(err).toContain("No items match");
+  });
+});
+
+describe("a zero-result search", () => {
+  // Nothing here passes --on-device on purpose: the question is what an
+  // untouched run is told, and an untouched run is on word matching, because
+  // the better tier is behind a download nobody has consented to yet.
+  const missing = "quantum entanglement reactor";
+
+  it("names the better tier, ahead of the gap report", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).toContain("consent");
+    // An agent that could still find the move must not be sent to file a gap
+    // first. A missing needle indexes at -1 and would satisfy a bare ordering
+    // check on its own, so both lines are pinned present above it.
+    expect(err.indexOf("consent")).toBeLessThan(err.indexOf("--search-miss"));
+  });
+
+  it("carries the same guidance in the --json envelope", async () => {
+    // The half a printed line cannot reach. --json is every agent run, and the
+    // envelope is the only thing that run reads.
+    state.modelStatus = "not-asked";
+
+    const envelope = await runEnvelope({ query: missing });
+
+    expect(envelope.shown).toBe(0);
+    expect(envelope.warnings).toContain("consent");
+  });
+
+  it("says nothing once the download has been declined", async () => {
+    // The caller already answered. Re-offering a download they refused is the
+    // nagging the consent gate exists to prevent.
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).not.toContain("consent");
+  });
+
+  it("says nothing when the better tier is already on", async () => {
+    // Ranked by meaning and still empty: there is no better tier left to name,
+    // and the gap report is the only honest next step.
+    state.modelStatus = "ready";
+    state.ranking = [];
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).not.toContain("consent");
+  });
+
+  it("leaves a search that found something alone", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: "count up" });
+
+    expect(err).not.toContain("No items match");
+    // The hit path already named the tier and has to keep doing it: the
+    // zero-result path was accidentally the inverse of this one.
+    expect(err).toContain("consent");
+    expect(err).toContain("None of these do it?");
   });
 });
 
