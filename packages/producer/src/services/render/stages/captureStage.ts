@@ -38,6 +38,12 @@
 
 import { statfsSync } from "node:fs";
 import {
+  executeOpenMaicDiskSchedule,
+  resolveOpenMaicStaticPlan,
+  verifyDenseFrameDirectory,
+  SOURCE_STATIC_PLAN_PRODUCER_VERSION,
+} from "../sourceStaticPlan.js";
+import {
   type BeforeCaptureHook,
   type CaptureOptions,
   type CapturePerfSummary,
@@ -67,6 +73,9 @@ import { updateJobStatus } from "../shared.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 
 export interface CaptureStageInput {
+  sourceProjectDir?: string;
+  initialDirectSdrDiskEligible?: boolean;
+  sourceStaticPlanEnabled?: boolean;
   fileServer: FileServerHandle;
   workDir: string;
   framesDir: string;
@@ -368,12 +377,58 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         }
         await drainPrev();
       } else {
-        for (let i = 0; i < rangeFrames; i++) {
-          assertNotAborted();
-          const absoluteIdx = rangeStart + i;
-          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-          await captureFrame(session, i, time);
-          reportFrame(i);
+        let openMaicSchedule = null;
+        if (input.sourceStaticPlanEnabled === true) {
+          openMaicSchedule = await resolveOpenMaicStaticPlan({
+            enabled: true,
+            projectDir: input.sourceProjectDir,
+            producerVersion: SOURCE_STATIC_PLAN_PRODUCER_VERSION,
+            fps: job.config.fps,
+            totalFrames: rangeFrames,
+            initialDirectSdrDiskEligible: input.initialDirectSdrDiskEligible,
+            capturePlanKind: plan.kind,
+            workerCount,
+            chunked: false,
+            frameRange,
+            captureMode: session.captureMode,
+            forceScreenshot,
+            workerEncodeEnabled: session.workerEncodeEnabled,
+            staticDedupEnabled: session.staticDedupEnabled === true,
+            staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
+          });
+          log.info("[Render] OpenMAIC source static plan", {
+            mode: openMaicSchedule.mode,
+            reason: openMaicSchedule.reason,
+            physicalItems: openMaicSchedule.items.length,
+            logicalFrames: rangeFrames,
+          });
+        }
+        if (openMaicSchedule?.mode === "optimized") {
+          const openMaicMaterialization = await executeOpenMaicDiskSchedule({
+            schedule: openMaicSchedule,
+            framesDir,
+            extension: needsAlpha ? "png" : "jpg",
+            assertNotAborted,
+            capture: async (fileIndex) => {
+              const absoluteIdx = rangeStart + fileIndex;
+              const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+              await captureFrame(session, fileIndex, time);
+              if (session.captureMode !== "beginframe") {
+                throw new Error("OpenMAIC static-plan capture mode drifted after optimized writes");
+              }
+            },
+            reportFrame,
+          });
+          log.info("[Render] OpenMAIC source static materialization", openMaicMaterialization);
+          await verifyDenseFrameDirectory(framesDir, rangeFrames, needsAlpha ? "png" : "jpg");
+        } else {
+          for (let i = 0; i < rangeFrames; i++) {
+            assertNotAborted();
+            const absoluteIdx = rangeStart + i;
+            const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+            await captureFrame(session, i, time);
+            reportFrame(i);
+          }
         }
       }
       // Sequential disk drawElement self-verification (PRINFRA-352 follow-up):
