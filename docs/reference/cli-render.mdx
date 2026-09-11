@@ -1,0 +1,117 @@
+---
+title: "hyperframes render — progress output"
+sidebarTitle: "CLI render progress"
+description: "The render command's progress modes: the interactive TTY bar, the machine-readable NDJSON event stream for agents and CI, and how they interact with --quiet, --batch, and --json."
+---
+
+`hyperframes render` reports progress in one of three formats, selected with
+`--progress-format`:
+
+```bash
+hyperframes render --progress-format <tty|ndjson|none> --output out.mp4
+```
+
+| Format | What you get | stdout contract |
+| --- | --- | --- |
+| `tty` (default) | The interactive progress bar (line-per-tick when stdout is not a TTY) | Human output |
+| `ndjson` | One JSON object per progress tick — machine-readable, for agents and CI | The event stream owns stdout (see below) |
+| `none` | No progress output at all; the rest of the human output is untouched | Human output |
+
+`--quiet` keeps its existing meaning: it silences *human* output. Under
+`--progress-format ndjson` the event stream keeps flowing even with `--quiet`,
+because the stream is the machine contract a consumer is parsing, not
+presentation.
+
+## The NDJSON event stream
+
+With `--progress-format ndjson`, every producer progress tick becomes one
+newline-terminated JSON object on stdout:
+
+```json
+{"type":"render.progress","ts":"2026-09-08T00:00:00.000Z","progress":0.42,"status":"rendering","stage":"Capturing frames","message":"Capturing frames","framesRendered":120,"totalFrames":300,"failedStage":null}
+```
+
+So the stream stays parseable, human logs move out of the way: plan summaries,
+lint findings, and completion prints are suppressed on stdout (exactly the rule
+`--batch --json` already applies), while warnings and error boxes continue to
+go to stderr. A pipe such as `hyperframes render --progress-format ndjson | jq`
+therefore sees only JSON.
+
+### Event types
+
+Every event carries `type`, `ts` (ISO-8601), `progress` (fraction, `0`–`1`),
+`status` (the producer job status: `queued`, `preprocessing`, `rendering`,
+`encoding`, `assembling`, `complete`, `failed`, `cancelled`), `stage` (the
+human stage label), `message`, `framesRendered`, `totalFrames`, and
+`failedStage` (`null` until a failure).
+
+- **`render.progress`** — a tick while the pipeline runs.
+- **`render.completed`** — terminal success. `progress` is `1`.
+- **`render.failed`** — terminal failure. Additionally carries `error` (the
+  failure message), `failedStage` (which pipeline stage failed), and
+  `errorDetails` — the producer's structured failure report (message, elapsed
+  time, free memory, browser console tail, per-stage timings, observability
+  summary) or `null` when the render failed before a job existed.
+
+Exactly one terminal event (`render.completed` or `render.failed`) closes each
+render's stream. A consumer can treat "terminal event or EOF" as the end of
+the render.
+
+### Batch renders
+
+With `--batch`, every row's events are stamped with the row index, so one
+stream can multiplex concurrent rows:
+
+```json
+{"type":"render.progress","ts":"...","progress":0.8,"status":"encoding","stage":"Encoding video","message":"Encoding video","framesRendered":300,"totalFrames":300,"failedStage":null,"row":2}
+```
+
+Each row emits its own terminal event.
+
+### `--progress-fd`: keep stdout for something else
+
+`--progress-fd N` writes the event stream to an inherited file descriptor
+instead of stdout:
+
+```bash
+# Human output on stdout, events into a file via fd 3
+hyperframes render --progress-format ndjson --progress-fd 3 -o out.mp4 3>events.ndjson
+
+# Combine with --batch --json: one final JSON document on stdout, live events on fd 3
+hyperframes render --batch rows.json --json --progress-format ndjson --progress-fd 3 3>events.ndjson
+```
+
+With `--progress-fd`, human stdout output is *not* suppressed — the stream no
+longer owns stdout.
+
+### Flag interactions
+
+- `--progress-format ndjson` + `--docker` is rejected: the containerized
+  render's output is opaque to the host CLI. Run the CLI inside the container
+  with the flag instead.
+- `--progress-format ndjson` + `--json` (batch) is rejected unless the stream
+  is redirected with `--progress-fd`, because `--json` promises exactly one
+  JSON document on stdout.
+- `--progress-fd` requires `--progress-format ndjson`.
+- If the consumer of the stream goes away mid-render (EPIPE), the render keeps
+  going; the stream just stops.
+
+## Consuming the stream
+
+Live stage/percentage feed:
+
+```bash
+hyperframes render --progress-format ndjson -o out.mp4 \
+  | jq -r '"\(.type) \(.progress * 100 | floor)% \(.stage) \(.framesRendered)/\(.totalFrames)"'
+```
+
+Wait for the terminal event and fail the script on `render.failed`:
+
+```bash
+hyperframes render --progress-format ndjson -o out.mp4 \
+  | jq -e 'select(.type == "render.failed" or .type == "render.completed")
+           | if .type == "render.failed" then ("\(.failedStage): \(.error)\n" | halt_error(1)) else . end'
+```
+
+For the agent-oriented walkthrough (polling from a wrapper process, extracting
+`errorDetails` for self-repair), see [Rendering for agents](/guides/agents).
