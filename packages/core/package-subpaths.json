@@ -32,6 +32,12 @@
       "types": "./dist/beats/index.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./asset-ledger": {
+      "source": "./src/assets/ledger.ts",
+      "runtime": "./dist/assets/ledger.js",
+      "types": "./dist/assets/ledger.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./html-attr-safety": {
       "source": "./src/utils/htmlAttrSafety.ts",
       "runtime": "./dist/utils/htmlAttrSafety.js",
