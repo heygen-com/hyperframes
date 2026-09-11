@@ -69,6 +69,7 @@ async function input(enabled?: boolean) {
   if (plan.kind !== "sdr_disk") throw new Error("fixture route");
   const value: CaptureStageInput = {
     sourceProjectDir: root,
+    sourceEntryFile: "index.html",
     initialDirectSdrDiskEligible: true,
     sourceStaticPlanEnabled: enabled,
     fileServer: { url: "http://unused.invalid" } as CaptureStageInput["fileServer"],
@@ -119,6 +120,29 @@ describe("native capture stage source-static-plan integration", () => {
     expect(progress).toEqual(Array.from({ length: 300 }, (_, i) => i + 1));
     expect(await readFile(join(framesDir, "frame_000059.jpg"), "utf8")).toBe("frame-30");
     expect(await readdir(framesDir)).toHaveLength(300);
+    expect(closeCaptureSession).toHaveBeenCalledTimes(1);
+  });
+  it("captures every frame of an alternate entry with the same fps and frame count", async () => {
+    const { value, session, framesDir, root } = await input(true);
+    await writeFile(
+      join(root, "alternate.html"),
+      '<div data-duration="10" style="animation: move 1s infinite"></div>',
+    );
+    value.job.config.entryFile = "alternate.html";
+    value.sourceEntryFile = "alternate.html";
+    const carrierBefore = await readFile(join(root, "openmaic-source-static-plan.json"));
+    // The browser IO fixture writes distinct bytes for each frame, including
+    // [30,60), where the unrelated index.html carrier would reuse frame 30.
+    await runCaptureStage(value);
+
+    expect(captureFrame).toHaveBeenCalledTimes(300);
+    expect(captureFrame).toHaveBeenCalledWith(session, 59, 59 / 30);
+    expect(await readFile(join(framesDir, "frame_000059.jpg"), "utf8")).toBe("frame-59");
+    expect(value.log.info).toHaveBeenCalledWith(
+      "[Render] OpenMAIC source static plan",
+      expect.objectContaining({ mode: "baseline", reason: "unsupported_entry_file" }),
+    );
+    expect(await readFile(join(root, "openmaic-source-static-plan.json"))).toEqual(carrierBefore);
     expect(closeCaptureSession).toHaveBeenCalledTimes(1);
   });
   it.each(["provenance", "dedup-enabled", "dedup-armed", "carrier", "screenshot", "frame-range"])(

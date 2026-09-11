@@ -76,6 +76,8 @@ interface Manifest {
 export interface StaticPlanInput {
   enabled?: boolean;
   projectDir?: string;
+  /** Resolved source entry selected by the pipeline, before compilation. */
+  entryFile?: string;
   producerVersion: string;
   fps: Fps;
   totalFrames: number;
@@ -313,6 +315,8 @@ export async function resolveOpenMaicStaticPlan(
 ): Promise<StaticPlanSchedule> {
   const fallback = (reason: string) => baseline(input.totalFrames, reason);
   if (input.enabled !== true) return fallback("disabled");
+  // This carrier binds the root index.html, not arbitrary alternate entries.
+  if (input.entryFile !== "index.html") return fallback("unsupported_entry_file");
   if (input.initialDirectSdrDiskEligible !== true) return fallback("not_initial_direct_sdr_disk");
   if (input.capturePlanKind !== "sdr_disk") return fallback("wrong_backend");
   if (input.workerCount !== 1 || input.chunked === true || input.frameRange !== undefined) {

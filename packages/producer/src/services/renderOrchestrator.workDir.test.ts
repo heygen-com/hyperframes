@@ -145,6 +145,23 @@ function deferred() {
   return { promise, resolve };
 }
 describe("executeRenderJob workDir ownership", () => {
+  it.each([undefined, "index.html", "alternate.html"])(
+    "passes the selected render entry %s to the static-plan boundary",
+    async (entryFile) => {
+      const { root, job, output } = setup(true);
+      job.config.entryFile = entryFile;
+      if (entryFile === "alternate.html")
+        writeFileSync(join(root, entryFile), '<div data-duration="1">alternate</div>');
+      await executeRenderJob(job, root, output);
+      expect(runCaptureStage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceEntryFile: entryFile ?? "index.html",
+          sourceStaticPlanEnabled: true,
+        }),
+      );
+      expect(job.status).toBe("complete");
+    },
+  );
   it("does not grant direct-disk provenance to a streaming-unavailable fallback", async () => {
     const { root, job, output } = setup(true);
     if (!job.config.producerConfig) throw new Error("fixture config");

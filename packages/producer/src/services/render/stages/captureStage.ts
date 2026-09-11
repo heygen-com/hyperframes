@@ -74,6 +74,7 @@ import type { SdrDiskCapturePlan } from "../capturePlan.js";
 
 export interface CaptureStageInput {
   sourceProjectDir?: string;
+  sourceEntryFile?: string;
   initialDirectSdrDiskEligible?: boolean;
   sourceStaticPlanEnabled?: boolean;
   fileServer: FileServerHandle;
@@ -382,6 +383,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
           openMaicSchedule = await resolveOpenMaicStaticPlan({
             enabled: true,
             projectDir: input.sourceProjectDir,
+            entryFile: input.sourceEntryFile,
             producerVersion: SOURCE_STATIC_PLAN_PRODUCER_VERSION,
             fps: job.config.fps,
             totalFrames: rangeFrames,

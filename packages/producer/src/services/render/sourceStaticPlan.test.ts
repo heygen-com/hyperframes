@@ -84,6 +84,18 @@ describe("producer sdr_disk static-plan owner", () => {
     });
   });
 
+  it.each([undefined, "alternate.html", "./index.html"])(
+    "rejects an unbound or unsupported render entry %s despite valid index identities",
+    async (entryFile) => {
+      const { root } = await fixture(scratch);
+      const result = await resolveOpenMaicStaticPlan(eligibility(root, { entryFile }));
+      expect(result).toMatchObject({ mode: "baseline", reason: "unsupported_entry_file" });
+      expect(result.items).toEqual(
+        Array.from({ length: 300 }, (_, startFrame) => ({ startFrame, durationFrames: 1 })),
+      );
+    },
+  );
+
   it("falls back for a validly shaped carrier with zero coverage", async () => {
     const { root, carrier } = await fixture(scratch);
     carrier.intervals = [];

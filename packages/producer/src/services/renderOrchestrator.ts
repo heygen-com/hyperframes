@@ -3860,6 +3860,7 @@ async function executeRenderPipeline(input: {
             () =>
               runCaptureStage({
                 sourceProjectDir: projectDir,
+                sourceEntryFile: entryFile,
                 initialDirectSdrDiskEligible,
                 sourceStaticPlanEnabled: job.config.sourceStaticPlan?.enabled === true,
                 fileServer: activeFileServer,

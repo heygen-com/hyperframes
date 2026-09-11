@@ -95,6 +95,7 @@ export function eligibility(
   return {
     enabled: true,
     projectDir: root,
+    entryFile: "index.html",
     producerVersion: SOURCE_STATIC_PLAN_PRODUCER_VERSION,
     fps: { num: 30, den: 1 },
     totalFrames: 300,
