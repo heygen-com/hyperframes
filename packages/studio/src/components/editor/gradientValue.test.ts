@@ -86,4 +86,30 @@ describe("insertGradientStop", () => {
       ],
     });
   });
+
+  it("interpolates between named stops", () => {
+    const parsed = parseGradient("linear-gradient(90deg, black 0%, white 100%)");
+    expect(parsed).not.toBeNull();
+
+    expect(insertGradientStop(parsed!, 50)).toMatchObject({
+      stops: [
+        { color: "black", position: 0 },
+        { color: "#808080", position: 50 },
+        { color: "white", position: 100 },
+      ],
+    });
+  });
+
+  it("interpolates the alpha of 8-digit hex stops", () => {
+    const parsed = parseGradient("linear-gradient(90deg, #00000000 0%, #000000ff 100%)");
+    expect(parsed).not.toBeNull();
+
+    expect(insertGradientStop(parsed!, 50)).toMatchObject({
+      stops: [
+        { color: "#00000000", position: 0 },
+        { color: "rgba(0, 0, 0, 0.5)", position: 50 },
+        { color: "#000000ff", position: 100 },
+      ],
+    });
+  });
 });

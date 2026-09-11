@@ -67,6 +67,7 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "6.40.0",
+    "@colordx/core": "^6.4.0",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/player": "workspace:*",

@@ -36,11 +36,45 @@ describe("parseCssColor", () => {
       alpha: 0,
     });
   });
+
+  it.each([
+    ["#fff", { red: 255, green: 255, blue: 255, alpha: 1 }],
+    ["#0f172acc", { red: 15, green: 23, blue: 42, alpha: 0.8 }],
+    ["white", { red: 255, green: 255, blue: 255, alpha: 1 }],
+    ["rgb(255 0 0 / 50%)", { red: 255, green: 0, blue: 0, alpha: 0.5 }],
+    ["hsl(210 40% 50%)", { red: 77, green: 127, blue: 179, alpha: 1 }],
+    ["color(srgb 0.4 0 0.6)", { red: 102, green: 0, blue: 153, alpha: 1 }],
+    ["oklch(0.7 0.15 200)", { red: 0, green: 185, blue: 195, alpha: 1 }],
+    ["oklab(0.6 0.1 0.1)", { red: 195, green: 96, blue: 46, alpha: 1 }],
+  ])("parses %s", (input, expected) => {
+    expect(parseCssColor(input)).toEqual(expected);
+  });
+
+  it("clips out-of-gamut colors to srgb", () => {
+    expect(parseCssColor("oklch(0.9 0.35 140)")).toEqual({
+      red: 0,
+      green: 255,
+      blue: 0,
+      alpha: 1,
+    });
+  });
+
+  it.each(["", "#12", "notacolor", "currentcolor", "none"])("rejects %s", (input) => {
+    expect(parseCssColor(input)).toBeNull();
+  });
 });
 
 describe("toColorPickerValue", () => {
   it("converts css color to hex", () => {
     expect(toColorPickerValue("rgba(15, 23, 42, 0.64)")).toBe("#0f172a");
+  });
+
+  it("converts modern css colors to hex", () => {
+    expect(toColorPickerValue("oklch(0.7 0.15 200)")).toBe("#00b9c3");
+  });
+
+  it("falls back to black for values that are not colors", () => {
+    expect(toColorPickerValue("currentcolor")).toBe("#000000");
   });
 });
 

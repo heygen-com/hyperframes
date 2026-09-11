@@ -1,4 +1,5 @@
 import { roundToCenti } from "../../utils/rounding";
+import { parseCssColor } from "./colorValue";
 
 export type GradientKind = "linear" | "radial" | "conic";
 
@@ -384,8 +385,8 @@ function interpolateGradientStopColor(model: GradientModel, position: number): s
 
   const leftColor = left.color;
   const rightColor = right.color;
-  const leftParsed = leftColor ? parseColorString(leftColor) : null;
-  const rightParsed = rightColor ? parseColorString(rightColor) : null;
+  const leftParsed = leftColor ? parseCssColor(leftColor) : null;
+  const rightParsed = rightColor ? parseCssColor(rightColor) : null;
   if (!leftParsed || !rightParsed) return left.color;
 
   const ratio = (clampedPosition - left.position) / Math.max(1, right.position - left.position);
@@ -410,36 +411,5 @@ export function insertGradientStop(model: GradientModel, position: number): Grad
   return {
     ...model,
     stops: nextStops,
-  };
-}
-
-function parseColorString(
-  value: string,
-): { red: number; green: number; blue: number; alpha: number } | null {
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed === "transparent") {
-    return { red: 0, green: 0, blue: 0, alpha: 0 };
-  }
-
-  const hex = trimmed.match(/^#([0-9a-f]{6})$/i);
-  if (hex) {
-    return {
-      red: Number.parseInt(hex[1].slice(0, 2), 16),
-      green: Number.parseInt(hex[1].slice(2, 4), 16),
-      blue: Number.parseInt(hex[1].slice(4, 6), 16),
-      alpha: 1,
-    };
-  }
-
-  const rgba = trimmed.match(
-    /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i,
-  );
-  if (!rgba) return null;
-
-  return {
-    red: Number.parseFloat(rgba[1]),
-    green: Number.parseFloat(rgba[2]),
-    blue: Number.parseFloat(rgba[3]),
-    alpha: rgba[4] != null ? Number.parseFloat(rgba[4]) : 1,
   };
 }

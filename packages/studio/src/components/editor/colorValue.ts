@@ -1,4 +1,8 @@
+import { colordx, extend } from "@colordx/core";
+import names from "@colordx/core/plugins/names";
 import { roundToCenti } from "../../utils/rounding";
+
+extend([names]);
 
 export interface ParsedColor {
   red: number;
@@ -30,46 +34,15 @@ function formatAlpha(value: number): string {
 }
 
 export function parseCssColor(value: string): ParsedColor | null {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) return null;
-  if (trimmed === "transparent") {
-    return { red: 0, green: 0, blue: 0, alpha: 0 };
-  }
-
-  const shortHex = trimmed.match(/^#([0-9a-f]{3})$/i);
-  if (shortHex) {
-    const [r, g, b] = shortHex[1].split("");
-    return {
-      red: Number.parseInt(r + r, 16),
-      green: Number.parseInt(g + g, 16),
-      blue: Number.parseInt(b + b, 16),
-      alpha: 1,
-    };
-  }
-
-  const hex = trimmed.match(/^#([0-9a-f]{6})$/i);
-  if (hex) {
-    return {
-      red: Number.parseInt(hex[1].slice(0, 2), 16),
-      green: Number.parseInt(hex[1].slice(2, 4), 16),
-      blue: Number.parseInt(hex[1].slice(4, 6), 16),
-      alpha: 1,
-    };
-  }
-
-  const rgba = trimmed.match(
-    /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i,
-  );
-  if (rgba) {
-    return {
-      red: clampChannel(Number.parseFloat(rgba[1])),
-      green: clampChannel(Number.parseFloat(rgba[2])),
-      blue: clampChannel(Number.parseFloat(rgba[3])),
-      alpha: clampAlpha(rgba[4] != null ? Number.parseFloat(rgba[4]) : 1),
-    };
-  }
-
-  return null;
+  const color = colordx(value.trim());
+  if (!color.isValid()) return null;
+  const { r, g, b, alpha } = color.toRgb();
+  return {
+    red: clampChannel(r),
+    green: clampChannel(g),
+    blue: clampChannel(b),
+    alpha: clampAlpha(alpha),
+  };
 }
 
 export function toColorPickerValue(value: string): string {
