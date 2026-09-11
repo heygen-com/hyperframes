@@ -63,6 +63,44 @@ describe("layout-audit.browser", () => {
     expect(after).not.toBe(before);
   });
 
+  // PRINFRA-666: an equal-size, equal-position opaque <img> src/visibility
+  // swap (the authoring pattern for a paused-GSAP-cursor-driven "reveal
+  // frame N of a still sequence" composition) moves no geometry and no
+  // opacity, so it was invisible to the fingerprint and false-positived
+  // sweep_static — mediaPixelHash already existed for exactly this pixel-only
+  // motion class, it just wasn't applied to img.
+  it("changes the sweep fingerprint when a same-size opaque img is swapped", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <img id="frame" />
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      frame: rect({ left: 0, top: 0, width: 640, height: 360 }),
+    });
+
+    let pixelValue = 20;
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    getContextSpy.mockReturnValue({
+      drawImage() {},
+      getImageData() {
+        return { data: new Uint8ClampedArray(8 * 8 * 4).fill(pixelValue) };
+      },
+    } as unknown as CanvasRenderingContext2D);
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    pixelValue = 220;
+    const after = collect();
+
+    expect(after).not.toBe(before);
+  });
+
   // Opacity-reveal fixture (CLI feedback digest 2026-07-14): code-typing style
   // scenes reveal pre-laid-out characters via opacity only — no geometry ever
   // moves. The sweep fingerprint must treat that as motion, both while a glyph

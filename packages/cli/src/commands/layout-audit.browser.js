@@ -1689,7 +1689,13 @@
         axes && axes !== "normal" ? axes : ""
       }`;
     });
-    for (const media of root.querySelectorAll("canvas, video")) {
+    // img shares the same pixel-only-motion blind spot as canvas/video: an
+    // equal-size, equal-position opaque src/visibility swap moves no
+    // geometry and no opacity. mediaPixelHash already handles it generically
+    // (drawImage accepts any CanvasImageSource; width/height fall back to
+    // rect.width/height same as canvas/video), so only the element selector
+    // needed widening.
+    for (const media of root.querySelectorAll("canvas, video, img")) {
       if (!isVisibleElement(media)) continue;
       parts.push(`p:${mediaPixelHash(media)}`);
     }
