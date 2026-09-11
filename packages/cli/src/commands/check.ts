@@ -19,10 +19,13 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import type { GoldenGateOptions, GoldenSummary } from "../golden/baseline.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
   ["Output one agent-readable envelope", "hyperframes check --json"],
+  ["Gate against committed golden baselines", "hyperframes check --golden"],
+  ["Refresh the golden baselines", "hyperframes check --update-golden"],
   ["Persist the five audited contrast frames", "hyperframes check --snapshots"],
   ["Also fail on warnings", "hyperframes check --strict"],
 ];
@@ -31,6 +34,8 @@ export interface CheckCommandDependencies {
   resolveProject(dir: string | undefined): ProjectDir;
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<CheckReport>;
   withMeta(value: object): object;
+  /** Golden baseline gate; defaults to a lazy import so sharp only loads when requested. */
+  runGolden?(project: ProjectDir, options: GoldenGateOptions): Promise<GoldenSummary>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
@@ -42,6 +47,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  // The sampling args below intentionally mirror the deprecated `layout`
+  // command's grammar (check superseded it) — an inherited clone, not new code.
+  // fallow-ignore-next-line code-duplication
   samples: {
     type: "string",
     description: "Number of midpoint samples across the duration (default: 9)",
@@ -110,6 +118,22 @@ const CHECK_COMMAND_ARGS = {
     description: "Save the five contrast-pass PNGs under snapshots/",
     default: false,
   },
+  golden: {
+    type: "boolean",
+    description:
+      "Also gate against committed golden baselines (golden/<compositionId>/<timeMs>.png): re-capture at the manifest times, pixel-diff, and fail on regressions",
+    default: false,
+  },
+  "update-golden": {
+    type: "boolean",
+    description: "Refresh the golden baselines from the current render instead of gating",
+    default: false,
+  },
+  "golden-threshold": {
+    type: "string",
+    description:
+      "Per-channel pixel tolerance for the golden gate, 0-1 (default: golden.json threshold, else 0.1)",
+  },
   "caption-zone": {
     type: "string",
     description:
@@ -141,18 +165,7 @@ export function createCheckCommand(
       const asJson = args.json === true;
 
       try {
-        const project = dependencies.resolveProject(args.dir);
-        const options = parseCheckOptions(args);
-        if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
-        }
-        const report = await dependencies.runPipeline(project, options);
-        if (asJson) {
-          console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
-        } else {
-          printHumanReport(report);
-        }
-        setCommandExitCode(checkExitCode(report));
+        setCommandExitCode(await executeCheck(dependencies, args, asJson));
       } catch (error) {
         const message = normalizeErrorMessage(error);
         if (asJson) {
@@ -166,6 +179,49 @@ export function createCheckCommand(
       }
     },
   });
+}
+
+async function resolveGoldenSummary(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  goldenOptions: GoldenGateOptions | undefined,
+): Promise<GoldenSummary | undefined> {
+  if (!goldenOptions) return undefined;
+  const runGolden = dependencies.runGolden ?? (await import("../golden/baseline.js")).runGoldenGate;
+  return runGolden(project, goldenOptions);
+}
+
+function emitCheckReport(
+  dependencies: CheckCommandDependencies,
+  report: CheckReport,
+  golden: GoldenSummary | undefined,
+  ok: boolean,
+  asJson: boolean,
+): void {
+  if (!asJson) {
+    printHumanReport(report, golden);
+    return;
+  }
+  const payload = golden ? { ...report, ok, golden } : report;
+  console.log(JSON.stringify(dependencies.withMeta(payload), null, 2));
+}
+
+async function executeCheck(
+  dependencies: CheckCommandDependencies,
+  args: Record<string, unknown>,
+  asJson: boolean,
+): Promise<0 | 1> {
+  const project = dependencies.resolveProject(typeof args.dir === "string" ? args.dir : undefined);
+  const options = parseCheckOptions(args);
+  const goldenOptions = parseGoldenGateArgs(args, options);
+  if (!asJson) {
+    console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+  }
+  const report = await dependencies.runPipeline(project, options);
+  const golden = await resolveGoldenSummary(dependencies, project, goldenOptions);
+  const ok = checkExitCode(report) === 0 && (golden?.ok ?? true);
+  emitCheckReport(dependencies, report, golden, ok, asJson);
+  return ok ? 0 : 1;
 }
 
 function normalizeFrameCheckRawArgs(rawArgs: string[]): string[] {
@@ -196,6 +252,36 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
   };
+}
+
+/**
+ * `--golden` / `--update-golden` / `--golden-threshold` → gate options, or
+ * undefined when the golden gate was not requested. The threshold flag alone
+ * does not enable the gate — it only tunes an explicitly requested run.
+ */
+export function parseGoldenGateArgs(
+  args: Record<string, unknown>,
+  options: Pick<CheckOptions, "timeout" | "autoProxy" | "browserGpuMode">,
+): GoldenGateOptions | undefined {
+  const update = args["update-golden"] === true;
+  if (args.golden !== true && !update) return undefined;
+  return {
+    update,
+    threshold: parseGoldenThreshold(args["golden-threshold"]),
+    timeoutMs: options.timeout,
+    autoProxy: options.autoProxy,
+    browserGpuMode: options.browserGpuMode,
+  };
+}
+
+export function parseGoldenThreshold(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const raw = typeof value === "string" ? value.trim() : "";
+  const parsed = parseNumberStrict(raw);
+  if (parsed === null || parsed < 0 || parsed > 1) {
+    throw new Error("Invalid --golden-threshold: expected a number from 0 to 1");
+  }
+  return parsed;
 }
 
 const CAPTION_ZONE_FIELDS = new Set(["x0", "y0", "x1", "y1", "severity", "seek"]);
@@ -403,16 +489,52 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function printHumanReport(report: CheckReport): void {
+function printHumanReport(report: CheckReport, golden?: GoldenSummary): void {
   printSection("Lint", report.lint);
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
   printContrastSection(report);
   printSnapshotSection(report);
+  if (golden) printGoldenSection(golden);
   console.log();
-  const label = report.ok ? c.success("Check passed") : c.error("Check failed");
-  console.log(`${report.ok ? c.success("◇") : c.error("◇")}  ${label}`);
+  const ok = report.ok && (golden?.ok ?? true);
+  const label = ok ? c.success("Check passed") : c.error("Check failed");
+  console.log(`${ok ? c.success("◇") : c.error("◇")}  ${label}`);
+}
+
+function printGoldenSection(golden: GoldenSummary): void {
+  console.log();
+  console.log(c.bold("Golden"));
+  if (golden.updated) {
+    console.log(
+      `  ${c.success("◇")} ${golden.baselines.length} baseline(s) written for ${golden.compositionId}`,
+    );
+    for (const baseline of golden.baselines) console.log(`    ${c.dim(baseline)}`);
+    return;
+  }
+  if (golden.ok) {
+    console.log(
+      `  ${c.success("◇")} ${golden.compared}/${golden.compared} frame(s) match the committed baselines`,
+    );
+    return;
+  }
+  for (const failure of golden.failed) {
+    const detail =
+      failure.reason === "pixel-diff"
+        ? `${(failure.diffRatio * 100).toFixed(3)}% pixels differ (max channel delta ${failure.maxDelta})`
+        : failure.reason;
+    console.log(`  ${c.error("✗")} t=${failure.time}s ${detail}`);
+  }
+  console.log(
+    `  ${c.dim(`${golden.failed.length} of ${golden.compared} frame(s) regressed vs golden/${golden.compositionId}/`)}`,
+  );
+  if (golden.diffSheet) {
+    console.log(`  ${c.dim(`Diff sheet: ${golden.diffSheet}`)}`);
+  }
+  console.log(
+    `  ${c.dim("Intended change? Refresh baselines with hyperframes check --update-golden")}`,
+  );
 }
 
 function printSection(title: string, section: CheckSection): void {
