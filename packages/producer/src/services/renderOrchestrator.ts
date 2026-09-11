@@ -110,7 +110,12 @@ import {
   outputSupportsPageSideShaderCompositing,
   type RenderOutputFormat,
 } from "./render/renderFormat.js";
-import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
+import {
+  createMemorySampler,
+  type MemorySampler,
+  recordJobFailureMetrics,
+  updateJobStatus,
+} from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
@@ -625,6 +630,22 @@ export interface RenderJob {
   totalFrames?: number;
   framesRendered?: number;
   perfSummary?: RenderPerfSummary;
+  /**
+   * Worker sizing + peak memory, recorded as soon as they are known rather
+   * than assembled at the end like {@link perfSummary}.
+   *
+   * `perfSummary` is only assigned on the success path, so a render that dies
+   * mid-capture carried no sizing or memory context into `render_error` — the
+   * gap that made PRINFRA-341's "do advisory-true renders OOM?" question
+   * unanswerable across 317k fleet failures. These are written by the
+   * unconditional memory-sampler disposer, so they survive a throw.
+   *
+   * NOT a fix for fatal V8 OOMs: `FATAL ERROR: Reached heap limit` aborts the
+   * process, so no telemetry is sent at all. This covers recoverable failures.
+   */
+  workerSizing?: WorkerSizing;
+  peakRssMb?: number;
+  peakHeapUsedMb?: number;
   failedStage?: string;
   errorDetails?: {
     message: string;
@@ -2250,6 +2271,9 @@ async function executeRenderPipeline(input: {
     await closeCaptureSession(session);
   });
   execution.defer("stop memory sampler", () => {
+    // Runs on every exit including a throw, unlike the perfSummary assembly
+    // at the end of the happy path — see recordJobFailureMetrics.
+    recordJobFailureMetrics(job, memSampler, workerSizing);
     memSampler?.stop();
     memSampler = null;
   });
