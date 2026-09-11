@@ -11,7 +11,7 @@ manifested by `.claude-plugin/`). Two separate namespaces, on purpose:
 - `skills/` — **marketplace-distributable**, installed into other projects
   via `npx hyperframes skills` or `npx skills add heygen-com/hyperframes`.
 
-> **Warning:** Do not run `npx skills add ... --all` inside a HyperFrames checkout. It includes the OpenClaw target (`skills/`) and replaces each existing `skills/<name>` destination before linking. A fresh clone can restore tracked source, but uncommitted work under `skills/` is lost. Run it from an empty directory or from your own project root only when its `skills/` path has no uncommitted source; this is independent of `metadata.internal`.
+> **Warning:** Never run `npx skills add ... --all` from inside a HyperFrames checkout: it selects the OpenClaw target, whose `skills/` directory is the repo's own `skills/`, and removes each existing `skills/<name>` destination before linking. A fresh clone restores tracked source, but uncommitted work under `skills/` does not recover. Run it from an empty directory or from your own project root. This happens regardless of `metadata.internal`.
 
 ## Weekly changelog video
 

@@ -14,7 +14,7 @@ npx skills add heygen-com/hyperframes --all           # excludes internal skills
 npx skills add heygen-com/hyperframes --skill <name>  # a named match installs regardless of metadata.internal (bare name, no leading slash)
 ```
 
-> **Warning:** Do not run `npx skills add ... --all` inside a HyperFrames checkout. It includes the OpenClaw target (`skills/`) and replaces each existing `skills/<name>` destination before linking. A fresh clone can restore tracked source, but uncommitted work under `skills/` is lost. Run it from an empty directory or from your own project root only when its `skills/` path has no uncommitted source; this is independent of `metadata.internal`.
+> **Warning:** Never run `npx skills add ... --all` from inside a HyperFrames checkout: it selects the OpenClaw target, whose `skills/` directory is the repo's own `skills/`, and removes each existing `skills/<name>` destination before linking. A fresh clone restores tracked source, but uncommitted work under `skills/` does not recover. Run it from an empty directory or from your own project root. This happens regardless of `metadata.internal`.
 
 `skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs from the current `main`; prefer it when freshness matters.
 
