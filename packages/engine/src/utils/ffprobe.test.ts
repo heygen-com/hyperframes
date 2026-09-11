@@ -861,6 +861,154 @@ describe("ffprobe missing-binary fallback", () => {
   });
 });
 
+// PRINFRA-692: a browser MediaRecorder-produced WebM (or any encode to a
+// non-seekable destination) never gets a Duration element patched back into
+// its header, so ffprobe reports no duration at format OR stream level — not
+// merely zero. Without a fallback, extractAudioMetadata returns
+// durationSeconds: 0, and the render pipeline silently drops the whole audio
+// track (htmlCompiler / audioMixer both treat a non-positive duration as "no
+// usable audio"). These tests cover the packet-timestamp EOF scan that
+// recovers the real duration in that case.
+describe("extractAudioMetadata packet-scan duration recovery (no format.duration at all)", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  const opusStreamNoDuration = (streamDuration?: string) =>
+    JSON.stringify({
+      streams: [
+        {
+          codec_type: "audio",
+          codec_name: "opus",
+          sample_rate: "48000",
+          channels: 1,
+          duration: streamDuration,
+        },
+      ],
+      format: {},
+    });
+
+  async function probe(outcomes: SpawnOutcome[], file: string) {
+    const { spawn, calls } = createSpawnSpy(outcomes);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    return { meta: await extractAudioMetadata(file), calls };
+  }
+
+  it("recovers duration from the last packet's pts_time + duration_time", async () => {
+    const { meta, calls } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: opusStreamNoDuration(undefined) },
+        {
+          kind: "exit",
+          code: 0,
+          stdout: "0.000000,0.020000\n0.020000,0.020000\n4.994000,0.020000\n",
+        },
+      ],
+      "/tmp/streamed-no-duration.webm",
+    );
+    expect(meta.durationSeconds).toBeCloseTo(5.014, 6);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("prefers the cheap stream-level duration over the packet scan when present", async () => {
+    const { meta, calls } = await probe(
+      [{ kind: "exit", code: 0, stdout: opusStreamNoDuration("5.008000") }],
+      "/tmp/has-stream-duration.webm",
+    );
+    expect(meta.durationSeconds).toBe(5.008);
+    // The packet-scan probe is never attempted — the stream field was enough.
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps duration at 0 when the packet scan finds no parseable packets", async () => {
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: opusStreamNoDuration(undefined) },
+        { kind: "exit", code: 0, stdout: "" },
+      ],
+      "/tmp/streamed-empty-scan.webm",
+    );
+    expect(meta.durationSeconds).toBe(0);
+  });
+
+  it("keeps duration at 0 (never throws) when the packet-scan probe itself fails", async () => {
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: opusStreamNoDuration(undefined) },
+        { kind: "exit", code: 1, stdout: "", stderr: "ffprobe exploded mid-scan" },
+      ],
+      "/tmp/streamed-scan-fails.webm",
+    );
+    expect(meta.durationSeconds).toBe(0);
+  });
+
+  it("falls back to a bare pts_time when ffprobe reports duration_time as N/A", async () => {
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: opusStreamNoDuration(undefined) },
+        { kind: "exit", code: 0, stdout: "0.000000,N/A\n4.994000,N/A\n" },
+      ],
+      "/tmp/streamed-no-packet-duration.webm",
+    );
+    expect(meta.durationSeconds).toBeCloseTo(4.994, 6);
+  });
+
+  // Regression: retainTail keeps only the trailing 64 KB of a long probe's
+  // stdout, which for a large file slices through the MIDDLE of an early
+  // line rather than on a line boundary — e.g. "58234.123456,0.02" truncated
+  // to "123456,0.02", a finite but wildly wrong pts. Taking the max across
+  // every parsed line (instead of trusting only the true last line, which is
+  // never truncated since it's flush against the real end of the output)
+  // would let that corrupted fragment silently win over the correct answer —
+  // a confidently-wrong non-zero duration, worse than the 0 this fallback
+  // exists to fix.
+  it("ignores a bogus huge pts from a truncated leading line and trusts only the true last line", async () => {
+    const { meta } = await probe(
+      [
+        { kind: "exit", code: 0, stdout: opusStreamNoDuration(undefined) },
+        {
+          kind: "exit",
+          code: 0,
+          // First line simulates a retainTail truncation artifact: a huge,
+          // finite-but-bogus pts (would win any max()-based reduction).
+          stdout: "123456.000000,0.020000\n4.994000,0.020000\n",
+        },
+      ],
+      "/tmp/streamed-truncated-leading-line.webm",
+    );
+    expect(meta.durationSeconds).toBeCloseTo(5.014, 6);
+  });
+
+  it("does not run the generic packet scan when the AAC-LC refinement already recovered a duration", async () => {
+    const { meta, calls } = await probe(
+      [
+        {
+          kind: "exit",
+          code: 0,
+          stdout: JSON.stringify({
+            streams: [
+              { codec_type: "audio", codec_name: "aac", sample_rate: "44100", profile: "LC" },
+            ],
+            format: {},
+          }),
+        },
+        {
+          kind: "exit",
+          code: 0,
+          stdout: JSON.stringify({ streams: [{ nb_read_packets: "861" }], format: {} }),
+        },
+      ],
+      "/tmp/aac-lc-no-format-duration.m4a",
+    );
+    expect(meta.durationSeconds).toBeCloseTo((861 * 1024) / 44100, 5);
+    // Only the AAC-LC packet-count probe ran — the generic scan was unnecessary.
+    expect(calls).toHaveLength(2);
+  });
+});
+
 describe("ffprobe option separator", () => {
   afterEach(() => {
     vi.resetModules();

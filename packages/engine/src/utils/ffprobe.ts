@@ -910,6 +910,67 @@ export async function extractFinalVideoFrameTimestamp(
  */
 export const extractVideoMetadata = extractMediaMetadata;
 
+/**
+ * Recover audio duration by reading every packet's timestamp to EOF, for
+ * containers that never got a header-level duration written at all — e.g. a
+ * browser `MediaRecorder`-produced WebM (or any encode to a non-seekable
+ * destination): the encoder can't seek back to patch the Segment `Duration`
+ * element in after the fact, so ffprobe reports no duration at format OR
+ * stream level, not merely zero. Unlike the AAC-LC packet-COUNT refinement
+ * above, this doesn't assume a fixed samples-per-packet framing, so it works
+ * for any codec: it takes the latest packet's `pts_time + duration_time` (or
+ * just `pts_time` if a codec/container doesn't report per-packet duration).
+ * Same constraints as the refinement above — never throws (a failed/timed-out
+ * scan just leaves durationSeconds at 0, exactly as before this fallback
+ * existed) and honours the caller's AbortSignal.
+ */
+async function recoverAudioDurationFromPacketScan(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const stdout = await runFfprobe(
+      filePath,
+      [
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "packet=pts_time,duration_time",
+        "-of",
+        "csv=p=0",
+      ],
+      signal,
+      { retainTail: true, maxChars: 64 * 1024 },
+    );
+    // Only the LAST parsed line is trusted, mirroring
+    // extractFinalVideoFrameTimestamp's parseFinalTimestamp above (same
+    // retainTail/maxChars config, same reason): retainTail keeps only the
+    // trailing bytes of a long probe, which can slice through the MIDDLE of
+    // an early line and leave a numerically-bogus fragment (e.g.
+    // "58234.123456" truncated to "123456" — a finite but wildly wrong
+    // number) — but never through the true last line, which is flush against
+    // the real end of ffprobe's output. Taking the max across every parsed
+    // line instead of the true last one would let a truncation artifact like
+    // that silently win over the correct answer.
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const [ptsText, durationText] = line.split(",");
+        return { pts: Number(ptsText), duration: Number(durationText) };
+      })
+      .filter(({ pts }) => Number.isFinite(pts))
+      .map(({ pts, duration }) => pts + (Number.isFinite(duration) ? duration : 0))
+      .at(-1);
+  } catch (error) {
+    // An abort is the caller's intent, not a recovery failure — let it
+    // through. Anything else leaves durationSeconds at 0, same as before.
+    if (signal?.aborted) throw error;
+    return undefined;
+  }
+}
+
 export async function extractAudioMetadata(
   filePath: string,
   options?: { signal?: AbortSignal },
@@ -927,6 +988,8 @@ export async function extractAudioMetadata(
 
     let durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = audioStream.duration ? parseFloat(audioStream.duration) : undefined;
+    const usableStreamDuration =
+      streamDuration !== undefined && streamDuration > 0 ? streamDuration : undefined;
     const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100;
     const audioCodec = audioStream.codec_name || "unknown";
     // AAC-LC container durations are often slightly wrong, so the packet
@@ -985,9 +1048,23 @@ export async function extractAudioMetadata(
       }
     }
 
+    // Neither format.duration nor the AAC-LC refinement above produced a
+    // usable duration — a non-seekable-origin container (PRINFRA-692) most
+    // likely. Prefer the cheap, already-parsed stream-level duration if the
+    // container happened to carry one; otherwise recover it with a full
+    // packet-timestamp scan.
+    if (durationSeconds <= 0) {
+      if (usableStreamDuration !== undefined) {
+        durationSeconds = usableStreamDuration;
+      } else {
+        const recovered = await recoverAudioDurationFromPacketScan(filePath, options?.signal);
+        if (recovered !== undefined && recovered > 0) durationSeconds = recovered;
+      }
+    }
+
     return {
       durationSeconds,
-      streamDurationSeconds: streamDuration && streamDuration > 0 ? streamDuration : undefined,
+      streamDurationSeconds: usableStreamDuration,
       sampleRate,
       channels: audioStream.channels || 2,
       audioCodec,
