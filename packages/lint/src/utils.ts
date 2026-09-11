@@ -166,6 +166,34 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
   return null;
 }
 
+/**
+ * Whether a tag's attribute text contains a `<` outside any quoted value.
+ *
+ * A legitimate attribute value may itself contain a raw `<` (e.g.
+ * `data-expr="x < y"`) — that's fine, htmlparser2 (and browsers) parse it as
+ * ordinary attribute text. But a `<` OUTSIDE any quotes means a following
+ * start tag never got its own `<`: the HTML tokenizer swallowed it as bogus
+ * attribute-name text on the tag currently open, and the intended element
+ * never becomes a real node. `<img src="a.png" <div class="hl">` is exactly
+ * this: `attrs` comes back as ` src="a.png" <div class="hl"` and the `.hl`
+ * div silently never renders.
+ */
+export function hasUnquotedLessThan(attrs: string): boolean {
+  let quote: '"' | "'" | null = null;
+  for (const ch of attrs) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "<") {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function readAttr(tagSource: string, attr: string): string | null {
   if (!tagSource) return null;
   const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

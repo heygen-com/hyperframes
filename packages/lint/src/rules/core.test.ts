@@ -942,6 +942,35 @@ describe("core rules", () => {
     });
   });
 
+  describe("unclosed_tag_swallowed_element", () => {
+    it("flags an <img> tag whose unclosed start tag swallows a nested <div> as bogus attribute text", async () => {
+      const html = compositionWithBodyPrefix(
+        `<img class="browser-img" src="a.png" <div class="hl"></div></figure>`,
+      );
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "unclosed_tag_swallowed_element");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.snippet).toContain("<img");
+    });
+
+    it("does not flag a normal <img> tag", async () => {
+      const html = compositionWithBodyPrefix(`<img class="browser-img" src="a.png" />`);
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "unclosed_tag_swallowed_element"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag a legitimate attribute value containing a raw <", async () => {
+      const html = compositionWithBodyPrefix(`<div data-expr="x < y">hi</div>`);
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "unclosed_tag_swallowed_element"),
+      ).toBeUndefined();
+    });
+  });
+
   describe("css_parse_error — malformed CSS is reported instead of silently swallowed", () => {
     it("reports a css_parse_error finding for unparseable CSS", async () => {
       const html = `<html><body>

@@ -10,6 +10,7 @@ import {
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
+  hasUnquotedLessThan,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
@@ -430,6 +431,22 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             snippet: truncateSnippet(rule.toString()),
           });
         }
+      });
+    }
+    return findings;
+  },
+
+  // unclosed_tag_swallowed_element
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      if (!hasUnquotedLessThan(tag.attrs)) continue;
+      findings.push({
+        code: "unclosed_tag_swallowed_element",
+        severity: "error",
+        message: `<${tag.name}> is missing its closing \`>\` before the next \`<\` — the following element is swallowed as bogus attribute text and never becomes a real node.`,
+        fixHint: "Close the previous tag's `>` before opening the next element.",
+        snippet: truncateSnippet(tag.raw),
       });
     }
     return findings;
