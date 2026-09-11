@@ -3263,10 +3263,6 @@ async function executeRenderPipeline(input: {
     // let auto-parallel renders use disk frames: the current ordered streaming
     // writer would otherwise stall later workers behind earlier frame ranges.
     // png-sequence has no encoded video output, so streaming is always bypassed.
-    // Computed here using only `deParallelStreamForced` (the DE-specific
-    // router's own force flag) because the non-DE router below hasn't run yet
-    // and its force flag is exactly what this clamp must NOT depend on — see
-    // the clamp's own comment for why that's safe.
     let useStreamingEncode = shouldUseStreamingEncode(
       cfg,
       outputFormat,
@@ -3275,25 +3271,19 @@ async function executeRenderPipeline(input: {
       deParallelStreamForced,
     );
     // Default-on drawElement is only safe where the runtime self-verification
-    // net actually runs: the single-worker streaming worker-encode drain. The
-    // disk path (png-sequence / over the streaming duration cap) and parallel
-    // capture ship frames no drain verifies — route those renders to the
-    // screenshot baseline unless drawElement was explicitly opted into.
-    // HF_DE_PARALLEL_STREAM: multi-worker STREAMING renders now carry the
-    // full drain-time self-verification (per-worker ground truth + the shared
-    // drain guard), so the confinement rule is satisfied and the parallel
-    // clamp does not apply. The disk path stays clamped.
+    // net actually runs: the single-worker streaming worker-encode drain, or
+    // (HF_DE_PARALLEL_STREAM) a verified multi-worker streaming render. The
+    // disk path and unverified parallel capture ship frames no drain
+    // verifies, so they clamp to the screenshot baseline unless drawElement
+    // was explicitly opted into.
     //
-    // Runs BEFORE the non-DE parallel-streaming router below: that router
-    // needs the post-clamp `cfg.useDrawElement` to know whether this render
-    // will actually use non-DE capture. That dependency is also why this
-    // clamp is safe to compute here: the router's own force flag
-    // (`captureParallelStreamForced`) can only become true once
-    // `cfg.useDrawElement` is already false (the router requires
-    // `!useDrawElement`), so whenever this clamp's guard below
-    // (`cfg.useDrawElement === true`) holds, that flag is always false —
-    // only `deParallelStreamForced` (the DE-specific router above, mutually
-    // exclusive with the non-DE one) can affect this clamp's outcome.
+    // This must run before the non-DE parallel-streaming router below, which
+    // needs `cfg.useDrawElement` post-clamp to know whether this render will
+    // actually use non-DE capture. The router's own force flag
+    // (`captureParallelStreamForced`) requires `!useDrawElement`, so it can
+    // only be true once this clamp has already fired — meaning the router's
+    // flag is always false while this clamp's guard is still evaluating,
+    // and `deParallelStreamForced` above is the only flag that can affect it.
     const deParallelStreamVerified =
       (deParallelStreamForced || process.env.HF_DE_PARALLEL_STREAM === "true") &&
       useStreamingEncode &&
