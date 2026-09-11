@@ -1,0 +1,71 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pendulum-swing",
+  "type": "hyperframes:component",
+  "title": "Pendulum Swing",
+  "description": "Content hangs from a fixed pivot and swings into rest with gravity-damped oscillation, like a hanging sign settling on its hook.",
+  "tags": ["motion-primitive", "physics", "swing", "settle", "reveal"],
+  "files": [
+    {
+      "path": "pendulum-swing.html",
+      "target": "compositions/components/pendulum-swing.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "pivot",
+      "type": "enum",
+      "role": "layout",
+      "label": "Pivot",
+      "description": "Where the content hangs from. The swing rotates about this point, so the top edge stays pinned.",
+      "default": "top-center",
+      "options": [
+        { "value": "top-center", "label": "Top center" },
+        { "value": "top-left", "label": "Top left" },
+        { "value": "top-right", "label": "Top right" }
+      ]
+    },
+    {
+      "id": "amplitude",
+      "type": "enum",
+      "role": "motion",
+      "label": "Amplitude",
+      "description": "How far the first swing reaches before it settles. Every later swing scales with it, so the pendulum still comes to rest upright.",
+      "default": "standard",
+      "options": [
+        { "value": "gentle", "label": "Gentle" },
+        { "value": "standard", "label": "Standard" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Which side the pendulum swings in from: right lifts the first swing clockwise, left mirrors it.",
+      "default": "right",
+      "options": [
+        { "value": "right", "label": "Right" },
+        { "value": "left", "label": "Left" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Tone",
+      "description": "Content colour: ink for light frames, paper for dark ones, accent rides --brand.",
+      "default": "ink",
+      "options": [
+        { "value": "ink", "label": "Ink" },
+        { "value": "paper", "label": "Paper" },
+        { "value": "accent", "label": "Accent" }
+      ]
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/pendulum-swing.png"
+  }
+}
