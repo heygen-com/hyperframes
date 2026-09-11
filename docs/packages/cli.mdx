@@ -775,7 +775,7 @@ npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
 | `--json`             | Machine-readable results                                                                                                        |
 | `--shot`             | Write an onion-skin PNG of the real element sampled over the timeline. Pair with `--selector` to focus one element.             |
 | `--samples`          | Onion samples at equal time steps (default 9)                                                                                   |
-| `--layout`           | `path` — ghosts at real positions plus a path (default) — or `strip`, a filmstrip by time, for in-place or overlapping motion   |
+| `--layout`           | `path` — ghosts at real positions plus a path (default) — or `strip`, for in-place or overlapping motion. `strip` is a real per-time pixel filmstrip only when `--selector` targets an SVG element; any other selector (e.g. a DOM/sub-composition host) gets one live frame plus vector position markers instead |
 | `--from`, `--to`     | Sample only this time range, in seconds                                                                                         |
 | `--angle`            | Orbit camera: `front`, `iso`, `top`, `side`, `rear-iso`, or `yaw,pitch` in degrees                                             |
 | `--fit` / `--no-fit` | Zoom the motion to fill the diagnostic frame (default: on)                                                                      |

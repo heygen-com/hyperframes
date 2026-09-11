@@ -73,7 +73,11 @@ export interface ShotOptions {
   entryFile?: string;
   /** Equal-time samples across the (windowed) timeline. Default 9. */
   samples?: number;
-  /** "path" = ghosts at real positions + path; "strip" = filmstrip by time. */
+  /** "path" = ghosts at real positions + path. "strip" = real per-time pixel
+   * filmstrip, but only when the selector targets an SVG element (see
+   * `stripTargetsSvg` below); for any other selector — including every
+   * nested sub-composition host, which is always a `<div data-composition-src>`
+   * — it falls back to one live frame plus vector position markers. */
   layout?: "path" | "strip";
   /** Zoom the motion to fill the frame. Default true. */
   fit?: boolean;

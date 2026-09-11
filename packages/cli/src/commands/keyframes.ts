@@ -923,7 +923,7 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
       layout: {
         type: "string",
         description:
-          "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (filmstrip by time — for in-place/overlapping motion).",
+          "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (for in-place/overlapping motion). 'strip' captures a real per-time pixel filmstrip only when --selector targets an SVG element; any other selector (e.g. a DOM/sub-composition host) instead gets one live frame plus vector position markers.",
       },
       from: { type: "string", description: "--shot: sample only from this time (seconds)." },
       to: { type: "string", description: "--shot: sample only up to this time (seconds)." },
