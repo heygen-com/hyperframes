@@ -867,6 +867,7 @@
             "group": "Rendering paths",
             "pages": [
               "guides/rendering",
+              "reference/render-provenance",
               "deploy/overview",
               "deploy/cloud",
               "guides/deploy"

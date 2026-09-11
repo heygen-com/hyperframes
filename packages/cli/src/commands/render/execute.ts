@@ -56,6 +56,43 @@ function renderLintShouldAbort(
   );
 }
 
+/**
+ * The plan-derived render options shared by the single-render and batch
+ * paths. Call-site-specific lifecycle fields (quiet override, variables,
+ * exitAfterComplete, throwOnError, skipFeedback, breaker management) are
+ * spread over this base by each caller.
+ */
+function planRenderOptions(plan: RenderPlan, browserPath: string | undefined): RenderOptions {
+  return {
+    fps: plan.fps,
+    quality: plan.quality,
+    authoringSkill: plan.authoringSkill,
+    catalogUsage: plan.catalogUsage,
+    format: plan.format,
+    gifLoop: plan.gifLoop,
+    workers: plan.workers,
+    gpu: plan.useGpu,
+    browserGpuMode: plan.browserGpuMode,
+    hdrMode: plan.hdrMode,
+    crf: plan.crf,
+    vp9CpuUsed: plan.vp9CpuUsed,
+    videoBitrate: plan.videoBitrate,
+    videoFrameFormat: plan.videoFrameFormat,
+    quiet: plan.quiet,
+    browserPath,
+    debug: plan.debug,
+    bestEffort: plan.bestEffort,
+    entryFile: plan.entryFile,
+    outputResolution: plan.outputResolution,
+    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
+    outputResolutionRaw: plan.outputResolutionRaw,
+    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
+    protocolTimeout: plan.protocolTimeout,
+    playerReadyTimeout: plan.playerReadyTimeout,
+    provenance: plan.provenance,
+  };
+}
+
 /** Execute a validated plan. Output and process lifecycle stay outside parsing. */
 export async function executeRenderPlan(
   plan: RenderPlan,
@@ -98,32 +135,8 @@ export async function executeRenderPlan(
   }
 
   const options: RenderOptions = {
-    fps: plan.fps,
-    quality: plan.quality,
-    authoringSkill: plan.authoringSkill,
-    catalogUsage: plan.catalogUsage,
-    format: plan.format,
-    gifLoop: plan.gifLoop,
-    workers: plan.workers,
-    gpu: plan.useGpu,
-    browserGpuMode: plan.browserGpuMode,
-    hdrMode: plan.hdrMode,
-    crf: plan.crf,
-    vp9CpuUsed: plan.vp9CpuUsed,
-    videoBitrate: plan.videoBitrate,
-    videoFrameFormat: plan.videoFrameFormat,
-    quiet: plan.quiet,
-    browserPath,
-    debug: plan.debug,
-    bestEffort: plan.bestEffort,
+    ...planRenderOptions(plan, browserPath),
     variables,
-    entryFile: plan.entryFile,
-    outputResolution: plan.outputResolution,
-    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
-    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
-    protocolTimeout: plan.protocolTimeout,
-    playerReadyTimeout: plan.playerReadyTimeout,
     exitAfterComplete: true,
     manageDeParallelRouterBreaker: true,
   };
@@ -252,31 +265,8 @@ async function executeBatchRender(
 ): Promise<void> {
   const batchQuiet = plan.quiet || plan.batchJson;
   const renderOptionsBase: RenderOptions = {
-    fps: plan.fps,
-    quality: plan.quality,
-    authoringSkill: plan.authoringSkill,
-    catalogUsage: plan.catalogUsage,
-    format: plan.format,
-    gifLoop: plan.gifLoop,
-    workers: plan.workers,
-    gpu: plan.useGpu,
-    browserGpuMode: plan.browserGpuMode,
-    hdrMode: plan.hdrMode,
-    crf: plan.crf,
-    vp9CpuUsed: plan.vp9CpuUsed,
-    videoBitrate: plan.videoBitrate,
-    videoFrameFormat: plan.videoFrameFormat,
+    ...planRenderOptions(plan, browserPath),
     quiet: batchQuiet,
-    browserPath,
-    entryFile: plan.entryFile,
-    outputResolution: plan.outputResolution,
-    outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
-    outputResolutionRaw: plan.outputResolutionRaw,
-    pageNavigationTimeoutMs: plan.pageNavigationTimeoutMs,
-    protocolTimeout: plan.protocolTimeout,
-    playerReadyTimeout: plan.playerReadyTimeout,
-    debug: plan.debug,
-    bestEffort: plan.bestEffort,
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,

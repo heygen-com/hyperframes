@@ -70,6 +70,13 @@ export interface DockerRenderOptions {
   protocolTimeoutMs?: number;
   /** Player readiness timeout in milliseconds. */
   playerReadyTimeoutMs?: number;
+  /**
+   * Provenance sidecar setting. Only `false` is forwarded (as
+   * `--no-provenance`): the default sidecar already lands next to the output
+   * inside the mounted output directory, and custom host paths are rejected
+   * by the render plan before Docker is invoked.
+   */
+  provenance?: string | false;
 }
 
 /**
@@ -164,5 +171,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.playerReadyTimeoutMs != null
       ? ["--player-ready-timeout", String(options.playerReadyTimeoutMs)]
       : []),
+    ...(options.provenance === false ? ["--no-provenance"] : []),
   ];
 }

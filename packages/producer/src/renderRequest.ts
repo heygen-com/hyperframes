@@ -49,6 +49,11 @@ export interface RenderRequestOptions {
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
+  /**
+   * Provenance sidecar setting: omitted = default sidecar path, `false` =
+   * disabled, string = custom sidecar path. See `RenderConfig.provenance`.
+   */
+  provenance?: string | false;
   engineConfig: EngineConfig;
   distributed?: DistributedRenderOptions;
 }
@@ -174,6 +179,14 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   if (options.outputResolution !== undefined && !isCanvasResolution(options.outputResolution)) {
     throw new Error("Render request outputResolution is invalid");
   }
+  assertProvenanceOption(options.provenance);
+}
+
+/** Tri-state provenance setting: absent (default on), false, or a sidecar path. */
+function assertProvenanceOption(provenance: unknown): void {
+  if (provenance === undefined || provenance === false) return;
+  if (typeof provenance === "string" && provenance.trim() !== "") return;
+  throw new Error("Render request provenance must be false or a non-empty sidecar path string");
 }
 
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
