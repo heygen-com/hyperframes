@@ -259,7 +259,9 @@ export default defineCommand({
       // command arguing with itself. Pushed and printed together, from the one
       // sentence, so --json and the terminal cannot drift.
       const tierHint =
-        query && !unsearchable && warnings.length === 0 ? localModelHint(json) : null;
+        query && !unsearchable && warnings.length === 0
+          ? localModelHint(json, effectiveStatus)
+          : null;
       if (tierHint) {
         warnings.push(tierHint);
         console.error(tierHint);
@@ -405,7 +407,7 @@ export default defineCommand({
         // to pass a flag one line after explaining that flag cannot work here
         // reads as the tool arguing with itself.
         if (warnings.length === 0) {
-          const hint = localModelHint(json);
+          const hint = localModelHint(json, effectiveStatus);
           if (hint) console.error(hint);
           await offerLocalModel(matching.length, json, config.registry, artifactRevision);
         }
@@ -670,9 +672,9 @@ type LocalMode = "local-model" | "words";
  * envelope, which is the only thing an agent run reads. Null when there is a
  * person to prompt instead, or when that person has already answered.
  */
-function localModelHint(json: boolean): string | null {
+function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
   if (!json && process.stdout.isTTY) return null;
-  if (localModelStatus().status !== "not-asked") return null;
+  if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
 

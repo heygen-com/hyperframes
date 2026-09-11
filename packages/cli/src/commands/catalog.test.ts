@@ -503,6 +503,30 @@ describe("a zero-result search", () => {
     expect(err).not.toContain("consent");
   });
 
+  // The two guards below the status check are load-bearing but were invisible
+  // to the suite: every other "no hint" case pins a status that already makes
+  // the helper return null, so deleting either guard passed all of them.
+
+  it("says nothing when the query never parsed, even with consent unanswered", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: "\u91cf\u5b50" });
+
+    // Told to search in English; a second tier does not change that advice.
+    expect(err).not.toContain("consent");
+  });
+
+  it("names the tier once when the tier already explained why it cannot run", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: missing, "on-device": true });
+
+    // prepareOnDeviceTier already warned with this exact sentence. Without the
+    // guard it lands twice, in the one array this change exists to make
+    // trustworthy.
+    expect(err.split("consent").length - 1).toBe(1);
+  });
+
   it("leaves a search that found something alone", async () => {
     state.modelStatus = "not-asked";
 
