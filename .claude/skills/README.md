@@ -11,6 +11,8 @@ manifested by `.claude-plugin/`). Two separate namespaces, on purpose:
 - `skills/` — **marketplace-distributable**, installed into other projects
   via `npx hyperframes skills` or `npx skills add heygen-com/hyperframes`.
 
+> **Warning:** Do not run `npx skills add ... --all` inside a HyperFrames checkout. It includes the OpenClaw target (`skills/`) and replaces each existing `skills/<name>` destination before linking. A fresh clone can restore tracked source, but uncommitted work under `skills/` is lost. Run it from an empty directory or from your own project root only when its `skills/` path has no uncommitted source; this is independent of `metadata.internal`.
+
 ## Weekly changelog video
 
 The `changelog-video` skill turns a weekly changelog markdown into a
@@ -47,7 +49,9 @@ CLI users get the same auto-discover behaviour — keep the two in sync
 when editing. A `scripts/check-skill-mirror.mjs` check enforces this at
 CI time.
 
-Each repo-native skill declares `metadata.internal: true`, so `npx skills add`
-skips it during normal installs (including `--all`). This does not change local
-agent discovery. To explicitly install these skills elsewhere, set
-`INSTALL_INTERNAL_SKILLS=1` when running the installer.
+Each repo-native skill declares `metadata.internal: true`. That excludes it from
+normal `npx skills add` discovery and from `npx skills add ... --all`. A named
+`npx skills add ... --skill <name>` still installs a matching skill regardless of
+`metadata.internal`; no environment variable is needed. `INSTALL_INTERNAL_SKILLS=1`
+opts internal skills into normal discovery and bulk installation. This does not
+change local agent discovery.
