@@ -135,7 +135,9 @@ function installPuppeteerBrowsersMock(
     browserPlatform?: string;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string };
-    installImpl?: () => Promise<{ executablePath: string }>;
+    installImpl?: (installArgs: {
+      downloadProgressCallback?: (downloaded: number, total: number) => void;
+    }) => Promise<{ executablePath: string }>;
   } = {},
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
@@ -909,6 +911,121 @@ describe("installWithCorruptArchiveRecovery", () => {
   });
 });
 
+// PRINFRA-682: a chrome-headless-shell download that never gets a response
+// (e.g. a network that only egresses through a proxy `@puppeteer/browsers`
+// silently fails to use — see `proxyDownloadStallHint`) hangs at "Downloading
+// Chrome... 0%" forever, with no timeout anywhere in the install() call
+// chain. This guards the watchdog that makes that fail loud instead.
+describe("withDownloadStallGuard", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("resolves normally when the run completes before any stall", async () => {
+    const { withDownloadStallGuard } = await import("./manager.js");
+    const result = await withDownloadStallGuard(
+      async (onProgress) => {
+        onProgress(50, 100);
+        onProgress(100, 100);
+        return "done";
+      },
+      { timeoutMs: 1_000 },
+    );
+    expect(result).toBe("done");
+  });
+
+  it("rejects if no progress arrives before the timeout (connection never responds)", async () => {
+    vi.useFakeTimers();
+    const { withDownloadStallGuard } = await import("./manager.js");
+
+    // A run that never resolves and never reports progress — the "0% forever"
+    // symptom: no response ever comes back at all.
+    const guarded = withDownloadStallGuard(() => new Promise<void>(() => {}), {
+      timeoutMs: 1_000,
+    });
+    const outcome = guarded.then(
+      () => "resolved",
+      (err: unknown) => (err instanceof Error ? err.message : String(err)),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(outcome).resolves.toContain("stalled");
+  });
+
+  it("resets the watchdog on every progress tick, so a slow-but-live download never trips it", async () => {
+    vi.useFakeTimers();
+    const { withDownloadStallGuard } = await import("./manager.js");
+
+    const result = withDownloadStallGuard(
+      async (onProgress) => {
+        for (let i = 1; i <= 5; i += 1) {
+          // Each tick arrives just under the timeout — only safe if the
+          // watchdog resets rather than measuring total elapsed duration.
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          onProgress(i * 20, 100);
+        }
+        return "done";
+      },
+      { timeoutMs: 1_000 },
+    );
+
+    await vi.advanceTimersByTimeAsync(900 * 5 + 10);
+
+    await expect(result).resolves.toBe("done");
+  });
+
+  it("still trips if progress stops arriving partway through (mid-download stall)", async () => {
+    vi.useFakeTimers();
+    const { withDownloadStallGuard } = await import("./manager.js");
+
+    const guarded = withDownloadStallGuard(
+      (onProgress) =>
+        new Promise<void>((resolve) => {
+          onProgress(10, 100);
+          // ...then nothing further ever arrives — resolve() is never called.
+          void resolve;
+        }),
+      { timeoutMs: 1_000 },
+    );
+    const outcome = guarded.then(
+      () => "resolved",
+      (err: unknown) => (err instanceof Error ? err.message : String(err)),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(outcome).resolves.toContain("stalled");
+  });
+
+  it("propagates a genuine rejection unchanged, not a stall error", async () => {
+    const { withDownloadStallGuard } = await import("./manager.js");
+    await expect(
+      withDownloadStallGuard(
+        async () => {
+          throw new Error("ENOTFOUND");
+        },
+        { timeoutMs: 1_000 },
+      ),
+    ).rejects.toThrow("ENOTFOUND");
+  });
+
+  it("forwards progress ticks to the caller's onProgress callback", async () => {
+    const { withDownloadStallGuard } = await import("./manager.js");
+    const onProgress = vi.fn();
+    await withDownloadStallGuard(
+      async (tick) => {
+        tick(10, 100);
+        tick(100, 100);
+        return "done";
+      },
+      { timeoutMs: 1_000, onProgress },
+    );
+    expect(onProgress).toHaveBeenNthCalledWith(1, 10, 100);
+    expect(onProgress).toHaveBeenNthCalledWith(2, 100, 100);
+  });
+});
+
 // Sibling failure mode to #2078 (SIGTRAP at launch): the field feedback in
 // #hyperframes-cli-feedback ts 1784055194.202169 (darwin/arm64, HF CLI 0.7.57)
 // hit `All providers failed for chrome-headless-shell 152.0.7928.2` at download
@@ -1007,6 +1124,67 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
       expect((caught as Error).cause).toBe(originalError);
     },
   );
+
+  it("appends a proxy hint when HTTP(S)_PROXY is set", async () => {
+    process.env["HTTPS_PROXY"] = "http://127.0.0.1:18080";
+    installFsMocks({ existing: new Set([CACHE_ROOT]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [],
+      installImpl: async () => {
+        throw new Error("connect ETIMEDOUT");
+      },
+    });
+
+    const { ensureBrowser } = await import("./manager.js");
+    await expect(ensureBrowser()).rejects.toThrow(/HTTPS_PROXY.*is set/s);
+
+    delete process.env["HTTPS_PROXY"];
+  });
+
+  it("omits the proxy hint when no proxy env var is set", async () => {
+    installFsMocks({ existing: new Set([CACHE_ROOT]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [],
+      installImpl: async () => {
+        throw new Error("connect ETIMEDOUT");
+      },
+    });
+
+    const { ensureBrowser } = await import("./manager.js");
+    let caught: unknown;
+    try {
+      await ensureBrowser();
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as Error).message).not.toContain("HTTPS_PROXY");
+  });
+
+  it("PRINFRA-682: a download that never responds surfaces a stall error with the HYPERFRAMES_BROWSER_PATH hint instead of hanging forever", async () => {
+    vi.useFakeTimers();
+    installFsMocks({ existing: new Set([CACHE_ROOT]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [],
+      // Mirrors the real bug: install() never resolves, rejects, or reports
+      // progress — exactly what a proxy-only network's silently-bypassed
+      // direct connection attempt looks like from the caller's side.
+      installImpl: () => new Promise(() => {}),
+    });
+
+    const { ensureBrowser } = await import("./manager.js");
+    const attempt = ensureBrowser();
+    const outcome = attempt.then(
+      () => "resolved",
+      (err: unknown) => (err instanceof Error ? err.message : String(err)),
+    );
+
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    const message = await outcome;
+    expect(message).toContain("Download stalled");
+    expect(message).toContain("HYPERFRAMES_BROWSER_PATH");
+    vi.useRealTimers();
+  });
 });
 
 // Regression guard for HF#2103: `hyperframes render` hung forever on macOS
