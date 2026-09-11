@@ -942,6 +942,52 @@ describe("core rules", () => {
     });
   });
 
+  describe("id_override_reduced_specificity", () => {
+    const comp = (css: string) => `
+<html><head><style>${css}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="parent"><div id="line1" class="row">text</div></div>
+  </div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`;
+
+    it("warns when an attribute selector on id sets a position property", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } [id="line1"] { left: 40px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.selector).toBe(`[id="line1"]`);
+      expect(finding?.fixHint).toContain("#id");
+    });
+
+    it("warns when a :where()-wrapped id selector sets a position property", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; top: 0; } :where(#line1) { top: 20px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding).toBeDefined();
+      expect(finding?.selector).toBe(`:where(#line1)`);
+    });
+
+    it("does not flag a bare #id selector, which always wins regardless of specificity", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } #line1 { left: 40px; }`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag an attribute selector on id for a non-position property", async () => {
+      const result = await lintHyperframeHtml(comp(`[id="line1"] { color: red; }`));
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+  });
+
   describe("unclosed_tag_swallowed_element", () => {
     it("flags an <img> tag whose unclosed start tag swallows a nested <div> as bogus attribute text", async () => {
       const html = compositionWithBodyPrefix(
