@@ -2888,13 +2888,10 @@ describe("shouldClampDefaultDrawElement (default-on drawElement clamp)", () => {
   });
 });
 
-describe("default-on drawElement clamp feeds the non-DE parallel-stream router (PRINFRA-689)", () => {
-  // Regression guard for the bug reported at
-  // heygen.slack.com/archives/D0BASH3KBGW/p1789154235634189: the router
-  // requires the drawElement clamp's OUTPUT, not its input. A caller that
-  // reads `cfg.useDrawElement` before running the clamp — exactly the
-  // ordering this fix corrected in renderOrchestrator.ts — reproduces the
-  // bug even though both predicates below are individually correct.
+describe("default-on drawElement clamp feeds the non-DE parallel-stream router", () => {
+  // The router requires the drawElement clamp's OUTPUT, not its input. Both
+  // predicates below are individually correct; a caller wiring them together
+  // in the wrong order still reproduces the bug these two tests bound.
   const macOsDefaultOnMultiWorker = {
     useDrawElement: true,
     fastCaptureExplicitOptIn: false,
