@@ -1051,11 +1051,16 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     .filter((t) => Number.isFinite(t));
 
   if (timestamps.length < 2) {
+    // 0 or 1 detected keyframes is the sparsest possible GOP — worse than any
+    // finite gap, since a single I-frame (or none) covers the entire video
+    // with no keyframe to seek back to at all. Report it as maximally
+    // problematic rather than "no interval data" so this doesn't read as
+    // healthier than a video with a merely-long-but-finite gap.
     return {
-      avgIntervalSeconds: 0,
-      maxIntervalSeconds: 0,
+      avgIntervalSeconds: Number.POSITIVE_INFINITY,
+      maxIntervalSeconds: Number.POSITIVE_INFINITY,
       keyframeCount: timestamps.length,
-      isProblematic: false,
+      isProblematic: true,
     };
   }
 
