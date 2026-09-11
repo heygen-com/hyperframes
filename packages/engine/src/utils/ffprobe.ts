@@ -910,6 +910,42 @@ export async function extractFinalVideoFrameTimestamp(
  */
 export const extractVideoMetadata = extractMediaMetadata;
 
+interface AacFirstPacketProbe {
+  packets?: Array<{ pts?: number | string }>;
+}
+
+/**
+ * AAC-LC's encoder priming delay isn't a fixed constant across encoders —
+ * ffmpeg's own native AAC encoder signals it as a negative presentation
+ * timestamp on the very first packet (e.g. -1024 for a one-frame delay,
+ * since packet pts here is in sample units). A single bounded packet read
+ * (not the full `-count_packets` demux) is enough to learn it; a file with
+ * no priming delay simply reports a non-negative first pts and this
+ * contributes 0.
+ */
+async function probeAacEncoderDelaySamples(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const stdout = await runFfprobe(
+    filePath,
+    [
+      "-select_streams",
+      "a:0",
+      "-read_intervals",
+      "%+#1",
+      "-show_entries",
+      "packet=pts",
+      "-print_format",
+      "json",
+    ],
+    signal,
+  );
+  const parsed = JSON.parse(stdout) as AacFirstPacketProbe;
+  const firstPts = Number(parsed.packets?.[0]?.pts);
+  return Number.isFinite(firstPts) && firstPts < 0 ? -firstPts : 0;
+}
+
 export async function extractAudioMetadata(
   filePath: string,
   options?: { signal?: AbortSignal },
@@ -957,6 +993,16 @@ export async function extractAudioMetadata(
     //    unknown or missing profile through too — so an unrecognised HE
     //    spelling preserved the exact truncation this is meant to close.
     //    A skipped refinement is harmless: format.duration is already correct.
+    //
+    // 4. The packet count alone measures samples from the START of the raw
+    //    bitstream, but AAC-LC encoders prepend a priming/encoder-delay
+    //    interval that isn't real content — omitting it overshoots duration
+    //    by a full extra frame (~21ms at typical rates) beyond even what a
+    //    naive full decode of the file yields, and that overshoot fed
+    //    straight into audioPadTrim's own trim/pad math as sourceDurationSeconds,
+    //    compounding across any chained re-processing of the same audio.
+    //    probeAacEncoderDelaySamples reads the true per-file delay rather
+    //    than assuming a fixed one-frame constant.
     const isAacLc = /^\s*LC\s*$/i.test(audioStream.profile ?? "");
     if (audioCodec === "aac" && isAacLc && sampleRate > 0) {
       try {
@@ -976,7 +1022,9 @@ export async function extractAudioMetadata(
         const packetOutput = parseProbeJson(packetStdout);
         const packetCount = Number(packetOutput.streams[0]?.nb_read_packets);
         if (Number.isFinite(packetCount) && packetCount > 0) {
-          durationSeconds = (packetCount * AAC_LC_SAMPLES_PER_PACKET) / sampleRate;
+          const encoderDelaySamples = await probeAacEncoderDelaySamples(filePath, options?.signal);
+          durationSeconds =
+            (packetCount * AAC_LC_SAMPLES_PER_PACKET - encoderDelaySamples) / sampleRate;
         }
       } catch (error) {
         // An abort is the caller's intent, not a refinement failure — let it
