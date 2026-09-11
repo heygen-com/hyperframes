@@ -158,6 +158,15 @@ describe("NLEPreview", () => {
     globalThis.ResizeObserver = originalResizeObserver;
   });
 
+  it("draws the canvas boundary on the preview stage", () => {
+    const view = renderPreview();
+
+    expect(view.stage.style.boxShadow).toBe(
+      "0 0 0 1px rgba(255,255,255,0.08), 0 4px 32px rgba(0,0,0,0.7)",
+    );
+    view.cleanup();
+  });
+
   it("pans the preview with middle mouse drag", () => {
     const view = renderPreview();
     const target = document.createElement("div");
