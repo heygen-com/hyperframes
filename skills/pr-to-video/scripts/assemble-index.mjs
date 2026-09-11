@@ -93,7 +93,10 @@ function ensureBgmCovers(relPath, hyperframesDir, total) {
   if (!Number.isFinite(dur) || dur <= 0)
     return { looped: false, short: false, reason: "unreadable duration" };
   if (dur >= total - 0.1) return { looped: false, short: false, dur }; // already covers
-  const relOut = relPath.replace(/\.([^./]+)$/, ".loop.$1");
+  // Always emit .mp3: the encode below is libmp3lame regardless of the source
+  // extension, so preserving relPath's own extension (e.g. "bgm.wav") would
+  // smuggle an MP3 stream into a .wav-named file (PRINFRA-309).
+  const relOut = relPath.replace(/\.([^./]+)$/, ".loop.mp3");
   const absOut = join(hyperframesDir, relOut);
   const fadeOut = Math.max(0, total - 1.5);
   const ff = spawnSync(
