@@ -9,9 +9,12 @@ This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/v
 ```bash
 npx hyperframes skills update                         # default: installs/refreshes the core set — workflows install on demand
 npx hyperframes skills                                # all 20 published skills at once — only on explicit request
-npx skills add heygen-com/hyperframes                 # interactive picker (terminal only; --all also pulls the 6 repo-internal skills under .claude/skills)
-npx skills add heygen-com/hyperframes --skill <name>  # just one (bare name, no leading slash)
+npx skills add heygen-com/hyperframes                 # interactive picker; internal skills require INSTALL_INTERNAL_SKILLS=1 for discovery
+npx skills add heygen-com/hyperframes --all           # excludes internal skills unless INSTALL_INTERNAL_SKILLS=1
+npx skills add heygen-com/hyperframes --skill <name>  # a named match installs regardless of metadata.internal (bare name, no leading slash)
 ```
+
+> **Warning:** Do not run `npx skills add ... --all` inside a HyperFrames checkout. It includes the OpenClaw target (`skills/`) and replaces each existing `skills/<name>` destination before linking. A fresh clone can restore tracked source, but uncommitted work under `skills/` is lost. Run it from an empty directory or from your own project root only when its `skills/` path has no uncommitted source; this is independent of `metadata.internal`.
 
 `skills add` resolves the skills.sh registry blob, which can lag `main` by hours, so a freshly added skill may be a little behind. `npx hyperframes skills update` installs from the current `main`; prefer it when freshness matters.
 
