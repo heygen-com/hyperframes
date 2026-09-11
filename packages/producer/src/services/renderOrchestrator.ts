@@ -3231,9 +3231,73 @@ async function executeRenderPipeline(input: {
       deParallelRouter: deParallelRouter ?? "none",
     });
 
+    // Streaming encode pipes captured frames through ffmpeg's stdin to produce
+    // a single video file. Keep the default enabled for sequential capture, but
+    // let auto-parallel renders use disk frames: the current ordered streaming
+    // writer would otherwise stall later workers behind earlier frame ranges.
+    // png-sequence has no encoded video output, so streaming is always bypassed.
+    // Computed here using only `deParallelStreamForced` (the DE-specific
+    // router's own force flag) because the non-DE router below hasn't run yet
+    // and its force flag is exactly what this clamp must NOT depend on — see
+    // the clamp's own comment for why that's safe.
+    let useStreamingEncode = shouldUseStreamingEncode(
+      cfg,
+      outputFormat,
+      workerCount,
+      job.duration,
+      deParallelStreamForced,
+    );
+    // Default-on drawElement is only safe where the runtime self-verification
+    // net actually runs: the single-worker streaming worker-encode drain. The
+    // disk path (png-sequence / over the streaming duration cap) and parallel
+    // capture ship frames no drain verifies — route those renders to the
+    // screenshot baseline unless drawElement was explicitly opted into.
+    // HF_DE_PARALLEL_STREAM: multi-worker STREAMING renders now carry the
+    // full drain-time self-verification (per-worker ground truth + the shared
+    // drain guard), so the confinement rule is satisfied and the parallel
+    // clamp does not apply. The disk path stays clamped.
+    //
+    // Runs BEFORE the non-DE parallel-streaming router below on purpose (it
+    // used to run after): that router needs the POST-clamp `useDrawElement`
+    // to decide whether this render will actually use non-DE capture, and
+    // reading the stale pre-clamp `true` made it silently refuse to stream on
+    // every GPU-default host (macOS) with default-on drawElement — PRINFRA-689.
+    // The reorder doesn't change THIS clamp's own outcome: the non-DE
+    // router's force flag (`captureParallelStreamForced`) can only become
+    // true once `cfg.useDrawElement` is already false (the router requires
+    // `!useDrawElement`), so it never used to affect whether this clamp fired
+    // — only `deParallelStreamForced` (the DE-specific router above, mutually
+    // exclusive with the non-DE one) ever could.
+    const deParallelStreamVerified =
+      (deParallelStreamForced || process.env.HF_DE_PARALLEL_STREAM === "true") &&
+      useStreamingEncode &&
+      workerCount > 1;
+    if (
+      cfg.useDrawElement &&
+      process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE !== "true" &&
+      (!useStreamingEncode || workerCount > 1) &&
+      !deParallelStreamVerified
+    ) {
+      cfg.useDrawElement = false;
+      deClampReason = workerCount > 1 ? "parallel" : "disk_path";
+      log.info(
+        "[Render] Fast capture: default-on drawElement disabled for this render — " +
+          (workerCount > 1 ? "parallel capture" : "the disk capture path") +
+          " has no runtime self-verification. Set PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true to override.",
+      );
+      // The probe session already initialized in drawElement mode (canvas
+      // injected); it must not be reused by the unverified path.
+      if (probeSession && probeSession.captureMode === "drawelement") {
+        await closeCaptureSession(probeSession);
+        probeSession = null;
+      }
+    }
+
     // Non-DE parallel-streaming router — see shouldStreamParallelCapture.
     // Mutually exclusive with the DE inversion/router above by construction
     // (both DE predicates require useDrawElement; this requires its negation).
+    // Reads `cfg.useDrawElement` AFTER the clamp above, so it sees the real
+    // capture mode this render will use instead of a stale pre-clamp value.
     const captureParallelStreamRouterEnabled = process.env.HF_CAPTURE_PARALLEL_STREAM === "true";
     const captureParallelStreamArgs = {
       workerCount,
@@ -3282,12 +3346,11 @@ async function executeRenderPipeline(input: {
       probeSession = null;
     }
 
-    // Streaming encode pipes captured frames through ffmpeg's stdin to produce
-    // a single video file. Keep the default enabled for sequential capture, but
-    // let auto-parallel renders use disk frames: the current ordered streaming
-    // writer would otherwise stall later workers behind earlier frame ranges.
-    // png-sequence has no encoded video output, so streaming is always bypassed.
-    let useStreamingEncode = shouldUseStreamingEncode(
+    // Re-resolve now that the non-DE router above may have forced streaming
+    // on for this multi-worker render (same formula as the early value above,
+    // now including `captureParallelStreamForced`). This is the value the
+    // rest of the pipeline (encode/writer selection, logging) uses.
+    useStreamingEncode = shouldUseStreamingEncode(
       cfg,
       outputFormat,
       workerCount,
@@ -3302,39 +3365,6 @@ async function executeRenderPipeline(input: {
       durationSeconds: job.duration,
       maxDurationSeconds: cfg.streamingEncodeMaxDurationSeconds,
     });
-    // Default-on drawElement is only safe where the runtime self-verification
-    // net actually runs: the single-worker streaming worker-encode drain. The
-    // disk path (png-sequence / over the streaming duration cap) and parallel
-    // capture ship frames no drain verifies — route those renders to the
-    // screenshot baseline unless drawElement was explicitly opted into.
-    // HF_DE_PARALLEL_STREAM: multi-worker STREAMING renders now carry the
-    // full drain-time self-verification (per-worker ground truth + the shared
-    // drain guard), so the confinement rule is satisfied and the parallel
-    // clamp does not apply. The disk path stays clamped.
-    const deParallelStreamVerified =
-      (deParallelStreamForced || process.env.HF_DE_PARALLEL_STREAM === "true") &&
-      useStreamingEncode &&
-      workerCount > 1;
-    if (
-      cfg.useDrawElement &&
-      process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE !== "true" &&
-      (!useStreamingEncode || workerCount > 1) &&
-      !deParallelStreamVerified
-    ) {
-      cfg.useDrawElement = false;
-      deClampReason = workerCount > 1 ? "parallel" : "disk_path";
-      log.info(
-        "[Render] Fast capture: default-on drawElement disabled for this render — " +
-          (workerCount > 1 ? "parallel capture" : "the disk capture path") +
-          " has no runtime self-verification. Set PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true to override.",
-      );
-      // The probe session already initialized in drawElement mode (canvas
-      // injected); it must not be reused by the unverified path.
-      if (probeSession && probeSession.captureMode === "drawelement") {
-        await closeCaptureSession(probeSession);
-        probeSession = null;
-      }
-    }
 
     // png-sequence is "no container" — outputPath is treated as a directory and
     // the encode/mux/faststart stages are skipped entirely. The empty extension
