@@ -9,7 +9,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
 import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../audio/providers.js";
-import { hasPythonModules } from "../tts/python.js";
+import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
@@ -258,11 +258,16 @@ async function checkWhisper(): Promise<CheckResult> {
   };
 }
 
+function notInstalledDetail(base: string): string {
+  const overrideRejection = describeRejectedPythonOverride();
+  return overrideRejection ? `${base}. ${overrideRejection}` : base;
+}
+
 function checkLocalVoice(): CheckResult {
   if (hasPythonModules(KOKORO_MODULES)) return { ok: true, detail: "Kokoro deps installed" };
   return {
     ok: false,
-    detail: "Not installed (optional \u2014 local voice fallback)",
+    detail: notInstalledDetail("Not installed (optional \u2014 local voice fallback)"),
     hint: KOKORO_PIP,
   };
 }
@@ -271,7 +276,7 @@ function checkLocalMusic(): CheckResult {
   if (hasPythonModules(MUSICGEN_MODULES)) return { ok: true, detail: "MusicGen deps installed" };
   return {
     ok: false,
-    detail: "Not installed (optional \u2014 local music fallback)",
+    detail: notInstalledDetail("Not installed (optional \u2014 local music fallback)"),
     hint: MUSICGEN_PIP,
   };
 }
