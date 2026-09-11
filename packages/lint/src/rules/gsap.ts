@@ -1472,7 +1472,7 @@ export const gsapRules: LintRule<LintContext>[] = [
           scaleProps.length > 0 ? matchCssTransform(sel, cssScaleSelectors) : undefined;
         if (!cssFromTranslate && !cssFromScale) continue;
         const existing = conflicts.get(sel) ?? {
-          cssTransform: [cssFromTranslate, cssFromScale].filter(Boolean).join(" "),
+          cssTransform: [...new Set([cssFromTranslate, cssFromScale].filter(Boolean))].join(" "),
           props: new Set<string>(),
           raw: call.raw,
         };
