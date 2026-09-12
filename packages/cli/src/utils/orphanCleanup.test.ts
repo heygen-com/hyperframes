@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { spawn } from "node:child_process";
 import {
   isProcessDescendant,
+  killOwnedOrphanedFfmpegProcesses,
   killProcessTree,
   killOrphanedProcesses,
   processIdentity,
@@ -69,6 +70,39 @@ describe("process-tree ownership", () => {
   it("fails closed on missing or cyclic process metadata", () => {
     expect(isProcessDescendant(400, 200, () => null)).toBe(false);
     expect(isProcessDescendant(400, 200, (pid) => (pid === 400 ? 300 : 400))).toBe(false);
+  });
+});
+
+describe("owned FFmpeg orphan cleanup", () => {
+  it("kills only the ownership-verified PID list", () => {
+    const kill = vi.fn();
+    const records = [
+      { pid: 41, identity: "linux:one" },
+      { pid: 42, identity: "linux:two" },
+    ];
+
+    expect(
+      killOwnedOrphanedFfmpegProcesses(
+        records,
+        kill,
+        (pid) => records.find((record) => record.pid === pid)?.identity ?? null,
+      ),
+    ).toBe(2);
+    expect(kill.mock.calls.map(([pid]) => pid)).toEqual([41, 42]);
+    expect(kill.mock.calls.every(([, , stillOwned]) => stillOwned())).toBe(true);
+  });
+
+  it("does not kill when the PID birth identity changed after discovery", () => {
+    const kill = vi.fn();
+
+    expect(
+      killOwnedOrphanedFfmpegProcesses(
+        [{ pid: 41, identity: "linux:original" }],
+        kill,
+        () => "linux:reused",
+      ),
+    ).toBe(0);
+    expect(kill).not.toHaveBeenCalled();
   });
 });
 

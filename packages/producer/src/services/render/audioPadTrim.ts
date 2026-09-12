@@ -635,7 +635,7 @@ async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<
     throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
   }
   const proc = spawn(getFfprobeBinary(), args, { stdio: ["ignore", "pipe", "pipe"] });
-  trackChildProcess(proc);
+  trackChildProcess(proc, { kind: "ffmpeg" });
   let stdout = "";
   proc.stdout.on("data", (data: Buffer) => {
     stdout += data.toString();

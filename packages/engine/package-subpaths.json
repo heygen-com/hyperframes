@@ -19,6 +19,12 @@
       "types": "./dist/utils/shaderTransitions.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./process-tracker": {
+      "source": "./src/utils/processTracker.ts",
+      "runtime": "./dist/utils/processTracker.js",
+      "types": "./dist/utils/processTracker.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./package.json": {
       "source": "./package.json",
       "runtime": "./package.json",
