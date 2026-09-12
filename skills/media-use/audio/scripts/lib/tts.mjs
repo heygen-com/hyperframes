@@ -6,13 +6,21 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 //        Direct v3 REST (NOT `hyperframes tts`, which in the published build is
 //        Kokoro-only and silently ignores a HeyGen key). Returns word_timestamps
 //        in the same call, so no separate transcribe pass.
-//   2. ElevenLabs         — $ELEVENLABS_API_KEY + `pip install elevenlabs`. No
+//   2. Chatterbox (local, self-hosted) — $CHATTERBOX_BASE_URL (default
+//        http://127.0.0.1:4123/v1), health-checked at pick time. Zero-shot
+//        voice clone server (see moneyturbo's chatterbox_tts / config.toml
+//        [chatterbox]) — takes priority over ElevenLabs/Kokoro once reachable,
+//        since a cloned owner voice beats a generic one whenever it's up. No
 //        word timings → caller chains transcribeWav().
-//   3. Kokoro-82M (local) — always available, via the published `hyperframes tts`
+//   3. ElevenLabs         — $ELEVENLABS_API_KEY + `pip install elevenlabs`. No
+//        word timings → caller chains transcribeWav().
+//   4. Kokoro-82M (local) — always available, via the published `hyperframes tts`
 //        CLI. No word timings → caller chains transcribeWav().
 //
 // "HeyGen available" is decided by CREDENTIAL presence (heygenCredential), never
-// by the CLI — see the note above.
+// by the CLI — see the note above. "Chatterbox available" is decided by a live
+// health check (best-effort, short timeout) since it's a local server that may
+// or may not be running.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -34,20 +42,50 @@ export function elevenlabsAvailable() {
   return r.status === 0;
 }
 
+export function chatterboxBaseUrl() {
+  return (process.env.CHATTERBOX_BASE_URL || "http://127.0.0.1:4123/v1").replace(/\/$/, "");
+}
+
+// Live health check, short timeout — this is a local server that may or may
+// not be running, unlike HeyGen (credential presence) or ElevenLabs (env +
+// python package). Best-effort: any failure (timeout, connection refused,
+// non-200) means "not available", never throws.
+export async function chatterboxAvailable() {
+  try {
+    const base = chatterboxBaseUrl().replace(/\/v1$/, "");
+    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return body?.status === "healthy" && body?.model_loaded === true;
+  } catch {
+    return false;
+  }
+}
+
 // First available provider wins; an explicit choice is honored (and validated).
-export function pickProvider(userProvider) {
+// Chatterbox ranks above ElevenLabs/Kokoro (once reachable) since a cloned
+// owner voice is preferred over a generic one whenever the local server is up.
+export async function pickProvider(userProvider) {
   if (userProvider) {
-    if (!["heygen", "elevenlabs", "kokoro"].includes(userProvider))
-      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro)`);
+    if (!["heygen", "chatterbox", "elevenlabs", "kokoro"].includes(userProvider))
+      throw new Error(
+        `invalid provider "${userProvider}" (heygen | chatterbox | elevenlabs | kokoro)`,
+      );
     if (userProvider === "heygen" && !heygenAvailable())
       throw new Error(
         "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
+      );
+    if (userProvider === "chatterbox" && !(await chatterboxAvailable()))
+      throw new Error(
+        `provider=chatterbox but no healthy server at ${chatterboxBaseUrl()} (start it, or set $CHATTERBOX_BASE_URL)`,
       );
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
     return userProvider;
   }
-  return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
+  if (heygenAvailable()) return "heygen";
+  if (await chatterboxAvailable()) return "chatterbox";
+  return elevenlabsAvailable() ? "elevenlabs" : "kokoro";
 }
 
 // ── voice resolution ──────────────────────────────────────────────────────────
@@ -56,6 +94,7 @@ export function pickProvider(userProvider) {
 // their own defaults.
 export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (userVoice) return userVoice;
+  if (provider === "chatterbox") return "default"; // server's configured VOICE_SAMPLE_PATH clone
   if (provider === "elevenlabs") return "21m00Tcm4TlvDq8ikWAM"; // Rachel
   if (provider === "kokoro") {
     if (lang === "en") return "am_michael";
@@ -252,6 +291,7 @@ export async function synthesizeOne({
   hyperframesDir,
 }) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
+  if (provider === "chatterbox") return synthesizeChatterbox({ text, speed, wavAbs });
   if (provider === "elevenlabs") {
     // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
     // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
@@ -339,6 +379,44 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
           .map((w) => ({ text: w.word, start: w.start, end: w.end }))
       : [];
     return { ok: true, words };
+  } catch (e) {
+    return { ok: false, words: null, error: e?.message ? String(e.message) : String(e) };
+  }
+}
+
+// Chatterbox's OpenAI-compatible /audio/speech endpoint returns real WAV bytes
+// regardless of the requested response_format (confirmed against
+// travisvn/chatterbox-tts-api) — no ffmpeg transcode needed, unlike HeyGen's
+// mp3-over-a-CDN-URL path. No word timings → caller chains transcribeWav().
+// `deps` is injectable for tests; production uses the real fetch/fs impls.
+export async function synthesizeChatterbox({ text, speed, wavAbs }, deps = {}) {
+  const fetchImpl = deps.fetch ?? fetch;
+  const mkdir = deps.mkdirSync ?? mkdirSync;
+  const write = deps.writeFileSync ?? writeFileSync;
+  try {
+    mkdir(dirname(wavAbs), { recursive: true });
+    const res = await fetchImpl(`${chatterboxBaseUrl()}/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "chatterbox",
+        input: text,
+        voice: "default-Female", // label only — server clones its configured reference clip
+        response_format: "wav",
+        speed: Math.max(0.25, Math.min(4.0, Number(speed) || 1.0)),
+      }),
+      signal: AbortSignal.timeout(600_000),
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        words: null,
+        error: `chatterbox /audio/speech HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`,
+      };
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    write(wavAbs, bytes);
+    return { ok: true, words: null };
   } catch (e) {
     return { ok: false, words: null, error: e?.message ? String(e.message) : String(e) };
   }
