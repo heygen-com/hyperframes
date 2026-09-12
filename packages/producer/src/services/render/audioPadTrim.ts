@@ -42,6 +42,7 @@ const AUDIO_DURATION_TOLERANCE_SECONDS = 0.001;
 
 /** Delivery headroom applied after every AAC encode in this stage. */
 export const AAC_DELIVERY_TRUE_PEAK_DBFS = -1;
+const AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB = 0.5;
 const MAX_TRUE_PEAK_CORRECTION_PASSES = 3;
 
 export interface ProbeVideoFrameInfo {
@@ -431,10 +432,15 @@ async function enforceAacTruePeak(
   try {
     scratchDir = mkdtempSync(join(dirname(input.audioPath), ".true-peak-"));
     const correctedPath = join(scratchDir, "audio.m4a");
+    const correctionTargetDbfs = AAC_DELIVERY_TRUE_PEAK_DBFS - AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB;
+    const measurements: string[] = [];
     let attenuationDb = 0;
     let measuredPath = input.audioPath;
     for (let pass = 0; pass <= MAX_TRUE_PEAK_CORRECTION_PASSES; pass += 1) {
       const truePeakDbfs = await input.probeTruePeak(measuredPath, input.signal);
+      measurements.push(
+        `pass ${pass}: ${truePeakDbfs.toFixed(3)} dBFS at ${attenuationDb.toFixed(3)} dB attenuation`,
+      );
       if (Number.isNaN(truePeakDbfs) || truePeakDbfs === Number.POSITIVE_INFINITY) {
         return { success: false, error: "audioPadTrim: FFmpeg reported an invalid true peak" };
       }
@@ -444,7 +450,9 @@ async function enforceAacTruePeak(
       }
       if (pass === MAX_TRUE_PEAK_CORRECTION_PASSES) break;
 
-      attenuationDb += AAC_DELIVERY_TRUE_PEAK_DBFS - truePeakDbfs;
+      // Aim below the acceptance ceiling because this correction itself is
+      // another lossy AAC encode and can regenerate content-dependent peaks.
+      attenuationDb += correctionTargetDbfs - truePeakDbfs;
       const result = await input.runner(
         buildAacTruePeakCorrectionArgs(
           input.audioPath,
@@ -467,7 +475,7 @@ async function enforceAacTruePeak(
     }
     return {
       success: false,
-      error: `audioPadTrim: AAC true peak remained above ${AAC_DELIVERY_TRUE_PEAK_DBFS} dBFS after ${MAX_TRUE_PEAK_CORRECTION_PASSES} correction passes`,
+      error: `audioPadTrim: AAC true peak remained above ${AAC_DELIVERY_TRUE_PEAK_DBFS} dBFS after ${MAX_TRUE_PEAK_CORRECTION_PASSES} correction passes; ${measurements.join("; ")}`,
     };
   } catch (err) {
     return {
