@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
-import { createStudioServer, isContentHashedAsset, type StudioServer } from "./studioServer.js";
+import { createStudioServer, type StudioServer } from "./studioServer.js";
 
 /**
- * Cache and transfer policy for the studio bundle. A content-hashed URL can
- * never serve different bytes, so it is safe to keep forever; everything else
- * the same routes serve (public/ files, the HTML shell) changes under a
- * stable URL and must keep revalidating.
+ * Cache policy for the studio bundle, decided by ROUTE. Vite emits only
+ * content-hashed files under dist/assets, so that path can be immutable;
+ * public/ files (icons, favicon) keep their names across builds and the HTML
+ * shell names the current bundle, so both must revalidate.
  */
 
 const hooks = vi.hoisted(() => ({ studioDir: "" }));
@@ -26,9 +26,13 @@ vi.mock("node:path", async (importOriginal) => {
   };
 });
 
+// A real filename from `bun run --filter @hyperframes/studio build`.
 const HASHED_BUNDLE = "index-BRr1JoHX.js";
-// Large enough to clear hono's 1KB compression threshold.
-const BUNDLE_BYTES = `export const studio = ${JSON.stringify("x".repeat(4096))};\n`;
+const BUNDLE_BYTES = "export const studio = 1;";
+// Hand-authored, hyphenated, carrying capitals and digits — the shape no
+// filename heuristic can separate from a rollup hash. It lives under /icons/,
+// so the route answers correctly without having to.
+const PUBLIC_ICON = "brand-Logo2026x.svg";
 
 let root: string;
 let server: StudioServer;
@@ -39,8 +43,10 @@ beforeEach(() => {
   const projectDir = path.join(root, "project");
   fs.mkdirSync(projectDir);
   fs.mkdirSync(path.join(hooks.studioDir, "assets"), { recursive: true });
+  fs.mkdirSync(path.join(hooks.studioDir, "icons"), { recursive: true });
   fs.writeFileSync(path.join(hooks.studioDir, "assets", HASHED_BUNDLE), BUNDLE_BYTES);
-  fs.writeFileSync(path.join(hooks.studioDir, "assets", "unhashed.js"), BUNDLE_BYTES);
+  fs.writeFileSync(path.join(hooks.studioDir, "icons", PUBLIC_ICON), "<svg/>");
+  fs.writeFileSync(path.join(hooks.studioDir, "favicon.svg"), "<svg/>");
   fs.writeFileSync(
     path.join(hooks.studioDir, "index.html"),
     "<html><head></head><body>Studio</body></html>",
@@ -55,63 +61,40 @@ afterEach(() => {
 });
 
 describe("studio bundle cache policy", () => {
-  it("serves a content-hashed asset as immutable", async () => {
+  it("serves everything under /assets/ as immutable", async () => {
     const response = await server.app.request(`/assets/${HASHED_BUNDLE}`);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
   });
 
-  it("keeps an unhashed asset revalidating", async () => {
-    const response = await server.app.request("/assets/unhashed.js");
+  it("does not make a public/ icon immutable, however hash-like its name", async () => {
+    const response = await server.app.request(`/icons/${PUBLIC_ICON}`);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("keeps the HTML shell revalidating, since it names the hashed bundle", async () => {
+  it("keeps the favicon revalidating", async () => {
+    const response = await server.app.request("/favicon.svg");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("revalidates the HTML shell without evicting it from bfcache", async () => {
     const response = await server.app.request("/");
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    // `no-cache`, not `no-store`: same refetch, but `no-store` would blocklist
+    // the document from Chrome's bfcache and cold-boot Studio on Back.
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
   });
 
-  // The first four are real filenames from `bun run --filter @hyperframes/studio build`.
-  it.each([
-    ["index-BRr1JoHX.js", true],
-    ["index-DnRfAiK2.css", true],
-    ["hyperframes-player-lPOqAC3l.js", true],
-    ["index-RPEcu_bT.js", true],
-    ["unhashed.js", false],
-    ["vite-manifest.json", false],
-    ["favicon.svg", false],
-    // A hyphenated name is not a hash, however many capitals it carries: only
-    // the segment after the last hyphen is a hash candidate.
-    ["user-Guide-v2.js", false],
-    ["brand-Logo-Dark.svg", false],
-  ])("classifies %s", (name, hashed) => {
-    expect(isContentHashedAsset(name)).toBe(hashed);
-  });
-});
-
-describe("studio bundle transfer encoding", () => {
-  it("compresses a bundle for a client that accepts gzip", async () => {
+  it("sends the bundle uncompressed, which loopback measures faster", async () => {
     const response = await server.app.request(`/assets/${HASHED_BUNDLE}`, {
       headers: { "Accept-Encoding": "gzip, deflate, br" },
     });
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Encoding")).toBe("gzip");
-    // The middleware must not corrupt the payload it shrinks. `Response.text()`
-    // does not decode Content-Encoding, so unwrap it explicitly.
-    const body = response.body;
-    if (!body) throw new Error("compressed response had no body");
-    const decoded = await new Response(body.pipeThrough(new DecompressionStream("gzip"))).text();
-    expect(decoded).toBe(BUNDLE_BYTES);
-  });
-
-  it("sends the raw bytes to a client that accepts no encoding", async () => {
-    const response = await server.app.request(`/assets/${HASHED_BUNDLE}`);
 
     expect(response.headers.get("Content-Encoding")).toBeNull();
     expect(await response.text()).toBe(BUNDLE_BYTES);
