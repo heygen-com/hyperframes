@@ -167,12 +167,23 @@ function previewSource(item: CatalogItem): { mode: "snippet" | "demo"; file: str
  * snippet, so variables and animation arrive together. Everything else keeps
  * its authored entry.
  */
-function renderEntry(
+export function renderEntry(
   item: CatalogItem,
   interactive: boolean,
 ): { entry: CatalogItem; fromSnippet: boolean } {
   const source = interactive ? previewSource(item) : null;
   if (source?.mode !== "snippet") return { entry: item, fromSnippet: false };
+
+  // A demo that mounts the snippet already carries its live variables and
+  // motion. Keep its authored background, dimensions and duration.
+  const demo = readFileSync(join(item.sourceDir, item.entryFile), "utf-8").replace(
+    /<!--[\s\S]*?-->/g,
+    "",
+  );
+  const mountsSnippet = Array.from(
+    demo.matchAll(/data-composition-src\s*=\s*["']([^"']+)["']/g),
+  ).some(([, src]) => src && resolve(item.sourceDir, src) === source.file);
+  if (mountsSnippet) return { entry: item, fromSnippet: false };
 
   const entry = { ...item, entryFile: relative(item.sourceDir, source.file) };
   return { entry, fromSnippet: true };
