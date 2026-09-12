@@ -405,6 +405,12 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 
 function printHumanReport(report: CheckReport): void {
   printSection("Lint", report.lint);
+  if (report.browserSkipped) {
+    console.log();
+    console.log(
+      `  ${c.warn("⚠")} Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.`,
+    );
+  }
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);

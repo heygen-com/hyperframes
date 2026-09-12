@@ -244,6 +244,13 @@ export interface CheckBrowserResult {
   contrastPassed: number;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
+  /** True when no browser session produced these results — lint blocked the
+   * run, the lint step itself crashed, or the browser check threw — as opposed
+   * to a session that ran and simply found nothing. Without this, `layout`/
+   * `motion`/`contrast` report the exact same `ok:true`/zero-findings shape
+   * either way (`runtime` may instead carry a diagnostic finding for the
+   * crash/throw triggers — it isn't always empty). */
+  skipped: boolean;
 }
 
 /** The seek-grid audit loop, injected into checkBrowser so it never imports checkPipeline back. */
@@ -264,6 +271,10 @@ export interface CheckSection<T extends CheckFinding = CheckFinding> {
 export interface CheckReport {
   ok: boolean;
   strict: boolean;
+  /** Mirrors `CheckBrowserResult.skipped` — true when `runtime`/`layout`/
+   * `motion`/`contrast` below reflect no browser session having run, not a
+   * session that ran and found nothing. */
+  browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
   runtime: CheckSection;
   layout: CheckSection<AnchoredLayoutIssue> & {

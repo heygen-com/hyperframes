@@ -908,6 +908,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
   return {
     ok: true,
     strict: false,
+    browserSkipped: false,
     lint: { ...emptySection(), filesScanned: 0 },
     runtime: emptySection(),
     layout: {
@@ -1005,6 +1006,7 @@ describe("check pipeline", () => {
     const envelope = JSON.parse(output);
     expect(envelope).toMatchObject({
       ok: true,
+      browserSkipped: false,
       lint: { ok: true },
       runtime: { ok: true },
       layout: { ok: true },
@@ -1015,7 +1017,7 @@ describe("check pipeline", () => {
     });
   });
 
-  it("short-circuits on lint errors without launching a browser", async () => {
+  it("short-circuits on lint errors without launching a browser, and flags the skipped sections", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1027,6 +1029,32 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
     expect(report.lint.findings).toHaveLength(1);
     expect(browser).not.toHaveBeenCalled();
+    // PRINFRA-700: runtime/layout/motion/contrast report the same ok:true/
+    // zero-findings shape whether the browser ran clean or never launched at
+    // all — browserSkipped is the only thing that tells the two apart.
+    expect(report.browserSkipped).toBe(true);
+    expect(report.runtime).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+    expect(report.layout).toMatchObject({ ok: true, errorCount: 0, findings: [], duration: 0 });
+    expect(report.motion).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+    expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
+  });
+
+  it("marks browserSkipped false once a browser session actually runs", async () => {
+    const { report } = await runScenario(fakeDriver());
+    expect(report.browserSkipped).toBe(false);
+  });
+
+  it("marks browserSkipped true when the browser session throws before producing results", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = vi.fn(async () => {
+      throw new Error("Chrome launch failed");
+    });
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.ok).toBe(false);
+    expect(report.browserSkipped).toBe(true);
+    expect(report.runtime.findings).toHaveLength(1);
+    expect(report.layout).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
   it("gates AA contrast failures and --no-contrast skips the pass", async () => {
