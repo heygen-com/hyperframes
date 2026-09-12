@@ -141,10 +141,18 @@ const MEMORY_PER_WORKER_MB = 1536;
 const HEAP_RESERVED_MB = 1024;
 // Parent-process V8 heap consumed per worker (protocol buffers + in-flight
 // frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. ponytail: advisory-only until the
-// workers_heap_* telemetry added alongside this constant validates the figure
-// — enforcing a guessed budget could silently cut worker counts fleet-wide.
-// TODO(PRINFRA-341): decide enforcement after ~2 weeks of fleet soak.
+// default heap ⇒ >~500MB/worker + base. ENFORCED as a cap on auto-sizing
+// below; an explicit `--workers N` bypasses it and stays authoritative.
+//
+// This and HEAP_RESERVED_MB come from a single field report, so know what
+// they cost fleet-wide before trusting or changing them:
+//   - a default ~4GB Node heap selects 4 workers for EVERY auto-sized render
+//     regardless of core count — a 32-core host the contention path would
+//     size to 10 also lands at 4;
+//   - any host whose heap_size_limit is under ~1664MB selects 1 worker, which
+//     overrides the two-worker parallel floor and serializes long renders.
+// PRINFRA-341 validates both figures against workers_heap_* fleet telemetry
+// before this leaves draft; replace this note with what validated them.
 const HEAP_PER_WORKER_MB = 640;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
@@ -272,6 +280,7 @@ export type WorkerSizingBound =
   | "too_few_frames"
   | "cpu"
   | "memory"
+  | "heap"
   | "frames"
   | "max_workers"
   | "min_parallel_floor"
@@ -290,9 +299,8 @@ export interface WorkerSizing {
   frameBasedWorkers: number;
   effectiveMaxWorkers: number;
   /**
-   * ADVISORY, not enforced (see HEAP_PER_WORKER_MB): how many workers the
-   * parent process's V8 heap could feed. Compare against `workers` in
-   * telemetry to validate the budget before enforcement.
+   * Auto-sizing cap: how many workers the parent process's V8 heap could
+   * feed. Explicit worker requests may exceed this budget.
    */
   heapBasedWorkers: number;
   /** V8 `heap_size_limit` for the parent process, MB. */
@@ -300,7 +308,7 @@ export interface WorkerSizing {
   totalMemoryMb: number;
   cpuCount: number;
   captureCostMultiplier: number;
-  /** true when the chosen count exceeds the advisory heap budget. */
+  /** true when an explicit worker count exceeds the heap budget. */
   exceedsHeapAdvisory: boolean;
 }
 
@@ -403,6 +411,14 @@ export function computeWorkerSizing(
       finalWorkers = cpuScaledMax;
       boundBy = "contention";
     }
+  }
+
+  // Apply after the two-worker parallel floor and CPU contention cap so a
+  // small parent heap can select one worker even for a long render. Chrome's
+  // RSS budget above does not account for buffers retained by the parent.
+  if (finalWorkers > heapBasedWorkers) {
+    finalWorkers = heapBasedWorkers;
+    boundBy = "heap";
   }
 
   return finish(finalWorkers, boundBy, effectiveMaxWorkers);
