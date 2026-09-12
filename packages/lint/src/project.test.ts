@@ -404,6 +404,7 @@ describe("hevc_preview_codec", () => {
   interface ProbeStream {
     codec_name: string;
     codec_tag_string: string;
+    codec_type?: string;
   }
 
   const mockExecFile = vi.mocked(execFile);
@@ -506,6 +507,33 @@ describe("hevc_preview_codec", () => {
     const findings = await hevcFindings(project);
 
     expect(findings).toHaveLength(0);
+  });
+
+  it("flags an authored audio element whose local media has no audio stream", async () => {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1">
+    <audio id="music" src="silent.mp4" data-start="0" data-duration="1"></audio>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`);
+    const mediaPath = join(project, "silent.mp4");
+    writeFileSync(mediaPath, "fake video bytes");
+    mockFfprobeStreams({
+      [mediaPath]: [{ codec_type: "video", codec_name: "h264", codec_tag_string: "avc1" }],
+    });
+
+    const result = await lintProject(project);
+    const findings = result.results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "authored_media_type_mismatch");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe("error");
+    expect(findings[0]?.message).toContain("silent.mp4");
+    expect(findings[0]?.message).toContain("no audio stream");
+    expect(result.totalErrors).toBe(1);
+    expect(result.results[0]?.result.ok).toBe(false);
   });
 
   it("does not flag anything, and lint completes normally, when ffprobe cannot be resolved", async () => {
