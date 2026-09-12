@@ -2334,6 +2334,53 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.style.visibility).toBe("hidden");
   });
 
+  it("un-hides a later root-level video once active, even though it starts inactive and unstyled", () => {
+    // Root-level `[data-start]` children with no authored `position` start out
+    // `position: static` until `applyClipLayout` force-absolutizes them, so a
+    // visibility pass over the still-inactive second clip can observe `static`
+    // and cache it as in-flow before that forcing runs. The un-hide path used to
+    // re-derive that in-flow status rather than track whether it had actually
+    // applied `display:none`, so the corrected, no-longer-in-flow reading made
+    // it skip the removal and the clip stayed `display:none` for the rest of the
+    // render even once active.
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const clipA = document.createElement("video");
+    clipA.id = "clip-a";
+    clipA.setAttribute("data-start", "0");
+    clipA.setAttribute("data-duration", "10");
+    root.appendChild(clipA);
+
+    const clipB = document.createElement("video");
+    clipB.id = "clip-b";
+    clipB.setAttribute("data-start", "10");
+    clipB.setAttribute("data-duration", "10");
+    root.appendChild(clipB);
+
+    window.__timelines = { main: createMockTimeline(20) };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    // Evaluate the still-inactive second clip at least once before it becomes
+    // active — the shape that used to poison the cache.
+    player?.seek(0);
+    expect(clipB.style.visibility).toBe("hidden");
+
+    player?.seek(15);
+    expect(clipB.style.visibility).toBe("visible");
+    expect(clipB.style.display).not.toBe("none");
+  });
+
   it("allocates color grading only for the active timed media", () => {
     const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     const root = document.createElement("div");
