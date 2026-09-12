@@ -2511,6 +2511,20 @@ describe("layout-audit.browser occlusion", () => {
     expect(occluded?.coveredFraction).toBe(1);
   });
 
+  // PRINFRA-702: `rgb(r, g, 0)` ends in the same `", 0)"` as a transparent
+  // `rgba(..., 0)`, so a string-suffix transparency check silently exempted
+  // opaque red/green/yellow occluders from occlusion entirely.
+  it.each(["rgb(0, 255, 0)", "rgb(255, 0, 0)", "rgb(255, 255, 0)"])(
+    "flags an opaque %s occluder whose blue channel is zero",
+    (backgroundColor) => {
+      const issues = auditOcclusionScene({
+        overlayStyle: { backgroundColor },
+        topmostId: "overlay",
+      });
+      expect(issues.some((issue) => issue.code === "text_occluded")).toBe(true);
+    },
+  );
+
   // #U10: a 2-point hit on the 27-point probe grid (3 rows x 9 columns) is a
   // sliver of edge cover — reports ~0.07 coverage either way, but only GATES
   // (produces a finding) for short atomic labels; ordinary prose survives it.
