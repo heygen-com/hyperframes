@@ -2417,12 +2417,17 @@ export function initSandboxRuntimeModular(): void {
   let lastSyncedMediaTimeSeconds: number | null = null;
   let mediaClipsInWindow: RuntimeMediaClip[] = [];
 
+  // The one definition of "media the transport drives": timed itself, or hosted
+  // by a composition whose timing it inherits. Both the media cache and the
+  // paused-side enforcement read it, so neither can be narrower than the other.
+  const isTransportManagedMedia = (element: HTMLMediaElement): boolean =>
+    element.hasAttribute("data-start") ||
+    Boolean(resolveMediaCompositionContext(element).compositionRoot);
+
   const buildRuntimeMediaCache = (elements?: Array<HTMLVideoElement | HTMLAudioElement>) =>
     refreshRuntimeMediaCache({
       elements,
-      shouldIncludeElement: (element) =>
-        element.hasAttribute("data-start") ||
-        Boolean(resolveMediaCompositionContext(element).compositionRoot),
+      shouldIncludeElement: isTransportManagedMedia,
       resolveStartSeconds: (element) => {
         return resolveAbsoluteMediaStartSeconds(element);
       },
@@ -2542,13 +2547,18 @@ export function initSandboxRuntimeModular(): void {
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
 
-  /**
-   * Cheap tag+attribute scan, not `buildRuntimeMediaCache`. Narrower than that
-   * cache's filter, which also admits media with no `data-start` of its own.
-   */
+  // Same predicate the media cache uses, so the paused side sees exactly the
+  // media the transport drives. Reads attributes only; no cache rebuild.
   const hasRunningTimedMedia = (): boolean => {
-    for (const el of document.querySelectorAll("video[data-start], audio[data-start]")) {
-      if (isMediaElement(el) && !el.paused && !pausedMediaLeases.has(el)) return true;
+    for (const el of document.querySelectorAll("video, audio")) {
+      if (
+        isMediaElement(el) &&
+        !el.paused &&
+        isTransportManagedMedia(el) &&
+        !pausedMediaLeases.has(el)
+      ) {
+        return true;
+      }
     }
     return false;
   };

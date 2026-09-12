@@ -461,6 +461,24 @@ describe("parked transport loop", () => {
     expect(media.isPaused()).toBe(true);
   });
 
+  it("stops hosted media with no data-start of its own, which the transport also drives", () => {
+    // A clip inside a composition inherits its timing from the host. It is the
+    // transport's to play, so it is the transport's to stop; a probe keyed on
+    // data-start alone could not see it.
+    mount(`
+      <div data-composition-id="host" data-start="0" data-duration="10">
+        <video id="hosted" data-duration="5"></video>
+      </div>`);
+    const media = stubMediaPlayback(document.getElementById("hosted") as HTMLVideoElement, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    media.start();
+    settle();
+
+    expect(media.isPaused()).toBe(true);
+  });
+
   it("leaves a LEASED element alone while paused, and stops it once released", () => {
     // The colour-grading preview and the Studio's scrub audition both play media
     // on purpose with the clock stopped. They borrow the element first; the
