@@ -2011,6 +2011,16 @@ describe("initSandboxRuntimeModular", () => {
       tweet: tweetTimeline,
     };
 
+    // Record what the children looked like AT the root seek — that is the moment
+    // the activation exists for, and the only moment it is observable now that
+    // the seek restores them.
+    const pausedDuringRootSeek: Array<[boolean, boolean]> = [];
+    const rootTotalTime = rootTimeline.totalTime!;
+    rootTimeline.totalTime = (time?: number, suppressEvents?: boolean) => {
+      pausedDuringRootSeek.push([hookTimeline.paused!(), tweetTimeline.paused!()]);
+      return rootTotalTime.call(rootTimeline, time, suppressEvents);
+    };
+
     initSandboxRuntimeModular();
 
     const player = window.__player;
@@ -2020,16 +2030,16 @@ describe("initSandboxRuntimeModular", () => {
     // children are added to a paused root timeline in GSAP)
     hookTimeline.paused!(true);
     tweetTimeline.paused!(true);
+    pausedDuringRootSeek.length = 0;
 
     // Seek to 0.5s — well within the hook's window [0.001, 2.001]
     player?.renderSeek(0.5);
 
-    // renderSeek should activate (unpause) all child timelines before
-    // seeking the root. Without the fix, children stay paused and GSAP's
-    // totalTime() propagation skips them, leaving elements at initial CSS
-    // state (opacity: 0).
-    expect(hookTimeline.paused!()).toBe(false);
-    expect(tweetTimeline.paused!()).toBe(false);
+    // renderSeek must activate (unpause) all child timelines before seeking the
+    // root. Without that, children stay paused and GSAP's totalTime()
+    // propagation skips them, leaving elements at initial CSS state (opacity: 0).
+    expect(pausedDuringRootSeek.length).toBeGreaterThan(0);
+    for (const pausedPair of pausedDuringRootSeek) expect(pausedPair).toEqual([false, false]);
 
     // The hook host should be visible at t=0.5
     expect(hookHost.style.visibility).toBe("visible");

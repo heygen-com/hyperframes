@@ -420,4 +420,31 @@ describe("parked transport loop", () => {
     expect(before).toBeLessThan(20);
     expect(window.__player!.getDuration()).toBeCloseTo(20, 3);
   });
+
+  it("stops a media element that starts playing while parked and the clock is paused", () => {
+    // Nothing may run while the clock is paused. `play` does not bubble, so the
+    // wake comes from a capture-phase listener; without it the enforcement is
+    // unreachable exactly when it is needed, because a parked loop runs no ticks.
+    mount(`<video id="rogue" data-start="0" data-duration="5"></video>`);
+    const video = document.getElementById("rogue") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 5, configurable: true });
+    // jsdom implements neither play() nor pause(); `paused` is the only state the
+    // runtime reads, so drive it directly.
+    let paused = true;
+    Object.defineProperty(video, "paused", { configurable: true, get: () => paused });
+    video.pause = () => {
+      paused = true;
+    };
+    initSandboxRuntimeModular();
+    quiesce();
+    expect(window.__player!.isPlaying()).toBe(false);
+    expect(raf.pending()).toBe(0);
+
+    // Autoplay, a composition script, a restored bfcache state.
+    paused = false;
+    video.dispatchEvent(new Event("play"));
+    settle();
+
+    expect(video.paused).toBe(true);
+  });
 });

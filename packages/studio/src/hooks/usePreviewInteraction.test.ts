@@ -224,12 +224,17 @@ describe("usePreviewInteraction", () => {
     cleanup();
   });
 
-  it("resumes playback when a click resolves to nothing (dead-zone / deselect)", async () => {
-    usePlayerStore.setState({ isPlaying: true });
+  // The deselect resume asks the PLAYER to play; it must never move the store's
+  // flag on its own. The runtime really was paused (playerPause below), so a bare
+  // setIsPlaying(true) leaves the button reading "playing" over a stopped runtime
+  // with nothing able to reconcile the two.
+  it("requests a real resume when a click resolves to nothing (dead-zone / deselect)", async () => {
+    usePlayerStore.setState({ isPlaying: true, playbackRequest: null });
+    const playerPause = vi.fn();
     const applyDomSelection = vi.fn();
     const resolveDomSelectionFromPreviewPoint = vi.fn(async () => null);
     const { canvas, cleanup } = renderHarness({
-      previewIframe: createPreviewIframe(vi.fn()),
+      previewIframe: createPreviewIframe(playerPause),
       resolveDomSelectionFromPreviewPoint,
       applyDomSelection,
     });
@@ -237,12 +242,15 @@ describe("usePreviewInteraction", () => {
     await dispatchMouseDown(canvas, {});
 
     expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
-    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(playerPause).toHaveBeenCalled();
+    expect(usePlayerStore.getState().playbackRequest).toMatchObject({ playing: true });
+    // Only the player's own play() may raise this, once the runtime is running.
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
     cleanup();
   });
 
   it("does not resume playback on deselect when it was already paused", async () => {
-    usePlayerStore.setState({ isPlaying: false });
+    usePlayerStore.setState({ isPlaying: false, playbackRequest: null });
     const applyDomSelection = vi.fn();
     const resolveDomSelectionFromPreviewPoint = vi.fn(async () => null);
     const { canvas, cleanup } = renderHarness({
@@ -255,6 +263,7 @@ describe("usePreviewInteraction", () => {
 
     expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
     expect(usePlayerStore.getState().isPlaying).toBe(false);
+    expect(usePlayerStore.getState().playbackRequest).toBeNull();
     cleanup();
   });
 });
