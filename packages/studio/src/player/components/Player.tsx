@@ -5,8 +5,10 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
-// at module load, which throws under SSR. Defer the import to the mount effect
-// so it only runs in the browser.
+// at module load, which throws under SSR — hence the dynamic import behind a
+// `typeof window` guard. Kicking it at module scope rather than in the mount
+// effect puts the chunk request in flight before the shell's first layout.
+const playerModule = typeof window === "undefined" ? null : import("@hyperframes/player");
 
 interface PlayerProps {
   projectId?: string;
@@ -166,8 +168,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      // Dynamic import registers the custom element in the browser only.
-      import("@hyperframes/player").then(() => {
+      playerModule?.then(() => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
