@@ -33,6 +33,7 @@ type SpawnPreview = (
     detached: boolean;
     stdio: ["ignore", number, number];
     env: NodeJS.ProcessEnv;
+    windowsHide: boolean;
   },
 ) => SpawnResult;
 
@@ -219,6 +220,7 @@ function spawnDetachedPreview(
         detached: true,
         stdio: ["ignore", logFd, logFd],
         env: process.env,
+        windowsHide: true,
       },
     );
   } finally {
