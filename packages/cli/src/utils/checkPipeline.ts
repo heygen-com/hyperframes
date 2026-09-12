@@ -1120,6 +1120,7 @@ export async function runAuditGrid(
     contrastPassed: contrast.passed,
     screenshots: collected.screenshots,
     timings: { launchSettleMs: 0, seekLoopMs, contrastMs: collected.contrastMs },
+    skipped: false,
   };
 }
 
@@ -1375,6 +1376,7 @@ function buildReport(
   const report: CheckReport = {
     ok: errorCount === 0 && (!options.strict || warningCount === 0),
     strict: options.strict,
+    browserSkipped: browser.skipped,
     lint,
     runtime,
     layout,
@@ -1499,6 +1501,7 @@ function emptyBrowserResult(): CheckBrowserResult {
     contrastPassed: 0,
     screenshots: [],
     timings: { launchSettleMs: 0, seekLoopMs: 0, contrastMs: 0 },
+    skipped: true,
   };
 }
 
