@@ -245,7 +245,7 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
-function hiddenSetTargetSelectors(target: string, aliases: Map<string, string>): string[] {
+function setTargetSelectors(target: string, aliases: Map<string, string>): string[] {
   const parts =
     target.startsWith("[") && target.endsWith("]") ? target.slice(1, -1).split(",") : [target];
   return parts
@@ -258,7 +258,17 @@ function hiddenSetTargetSelectors(target: string, aliases: Map<string, string>):
     .filter((selector) => selector.length > 0);
 }
 
-function extractStandaloneHiddenSelectors(script: string): Set<string> {
+/**
+ * Selectors targeted by a load-time `gsap.set(...)`: one that runs as the
+ * script executes, not deferred behind a callback or event handler (IIFEs
+ * still count — they run at parse time). Callers that care about *what* the
+ * set applies pass `matchesValues` to filter on the object-literal source;
+ * callers that only need "is there a load-time set at all" omit it.
+ */
+function extractStandaloneSetSelectors(
+  script: string,
+  matchesValues?: (values: string) => boolean,
+): Set<string> {
   const selectors = new Set<string>();
   const source = stripJsComments(script);
   const functionRanges = collectFunctionBodyRanges(source);
@@ -274,14 +284,18 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   while ((match = pattern.exec(source)) !== null) {
     // Skip callback/handler bodies; keep IIFEs (they run at parse time).
     if (indexInsideNonIifeRange(match.index, source, functionRanges)) continue;
-    const targets = hiddenSetTargetSelectors((match[1] ?? "").trim(), aliases);
+    const targets = setTargetSelectors((match[1] ?? "").trim(), aliases);
     if (targets.length === 0) continue;
-    const body = match[2] ?? "";
-    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
-      for (const selector of targets) selectors.add(selector);
-    }
+    if (matchesValues && !matchesValues(match[2] ?? "")) continue;
+    for (const selector of targets) selectors.add(selector);
   }
   return selectors;
+}
+
+function extractStandaloneHiddenSelectors(script: string): Set<string> {
+  return extractStandaloneSetSelectors(script, (values) =>
+    /(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(values),
+  );
 }
 
 function oneValue(
@@ -1133,6 +1147,12 @@ export const gsapRules: LintRule<LintContext>[] = [
     const authoredHiddenSelectors = new Set(
       scripts.flatMap((script) => [...extractStandaloneHiddenSelectors(script.content)]),
     );
+    // Every selector with a load-time `gsap.set(...)`, whatever values it sets.
+    // gsap_repeated_fromto_without_baseline uses this below to tell a real
+    // load-time set apart from one buried in a callback.
+    const loadTimeSetSelectors = new Set(
+      scripts.flatMap((script) => [...extractStandaloneSetSelectors(script.content)]),
+    );
 
     // Build clip element selector map
     type ClipInfo = { tag: string; id: string; classes: string };
@@ -1216,16 +1236,26 @@ export const gsapRules: LintRule<LintContext>[] = [
         const selector = firstFromTo.targetSelector;
         const firstFromToIndex = gsapWindows.indexOf(firstFromTo);
         const firstFromToPosition = Math.min(...fromToWindows.map((win) => win.position));
-        const hasTimelineBaseline = gsapWindows
-          .slice(0, firstFromToIndex)
-          .some(
-            (candidate) =>
-              candidate.method === "set" &&
-              !candidate.global &&
-              candidate.targetSelector === selector &&
-              candidate.position <= firstFromToPosition,
-          );
-        if (hasTimelineBaseline) continue;
+        // A load-time `gsap.set(...)` runs before the paused timeline's playhead
+        // ever moves, so it establishes the resting state just as reliably as an
+        // in-timeline `tl.set(..., 0)` — and gsap_timeline_set_initial_hide
+        // already treats it that way (it exempts `win.global` outright).
+        // Accepting it here too stops the two rules from each demanding the
+        // shape the other flags.
+        const hasBaseline = gsapWindows.slice(0, firstFromToIndex).some((candidate) => {
+          if (candidate.method !== "set" || candidate.targetSelector !== selector) return false;
+          // The acorn parser flags `global` on any bare `gsap.set(...)` whatever
+          // its AST nesting, so one deferred behind a callback/handler is
+          // indistinguishable here; only the load-time scan separates them.
+          // Known gap: the scan reports selectors, not occurrences, so a second,
+          // genuinely load-time `gsap.set` for the same selector ANYWHERE in the
+          // composition (even after this candidate, even in another script) would
+          // also satisfy this check — accepted as narrow (requires duplicate
+          // `gsap.set` calls to one selector) rather than tracked per-occurrence.
+          if (candidate.global) return loadTimeSetSelectors.has(selector);
+          return candidate.position <= firstFromToPosition;
+        });
+        if (hasBaseline) continue;
 
         findings.push({
           code: "gsap_repeated_fromto_without_baseline",
@@ -1237,9 +1267,11 @@ export const gsapRules: LintRule<LintContext>[] = [
             `(immediateRender), not at tween position.`,
           selector,
           fixHint:
-            `Add \`immediateRender: false\` to the destination vars of each future fromTo, or set a safe ` +
-            `resting state with an earlier \`tl.set("${selector}", { ... }, 0)\`. Pre-first-tween seeks must not ` +
-            `inherit whichever fromTo call happened to author last.`,
+            `Add \`immediateRender: false\` to the destination vars of each future fromTo, or establish the ` +
+            `resting state with a load-time \`gsap.set("${selector}", { ... })\` before the first fromTo. ` +
+            `Prefer that over an in-timeline \`tl.set("${selector}", { ... }, 0)\`, which ` +
+            `gsap_timeline_set_initial_hide flags when those values hide the element. Pre-first-tween seeks ` +
+            `must not inherit whichever fromTo call happened to author last.`,
           snippet: truncateSnippet(fromToWindows.map((win) => win.raw).join("\n")),
         });
       }
