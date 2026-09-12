@@ -2255,6 +2255,15 @@ export function initSandboxRuntimeModular(): void {
     timedClipInFlow = new WeakMap<Element, boolean>();
     timedClipIsLeaf = new WeakMap<Element, boolean>();
   };
+
+  // Which elements carry a `display:none` the visibility pass itself applied, so
+  // the un-hide branch can undo exactly that instead of re-deriving
+  // `isTimedClipInFlow`. That derived answer can flip between the hide and the
+  // show pass for the SAME element — `applyClipLayout` force-absolutizes a
+  // root-level clip after an earlier pass already cached it as in-flow and hid
+  // it — and the corrected, no-longer-in-flow reading then skips the removal,
+  // stranding the clip hidden for the rest of the render.
+  const timedClipDisplayNoneApplied = new WeakSet<HTMLElement>();
   const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
@@ -2349,9 +2358,13 @@ export function initSandboxRuntimeModular(): void {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
       }
       if (isVisibleNow) {
-        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
+        if (timedClipDisplayNoneApplied.has(rawNode)) {
+          rawNode.style.removeProperty("display");
+          timedClipDisplayNoneApplied.delete(rawNode);
+        }
       } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
         rawNode.style.display = "none";
+        timedClipDisplayNoneApplied.add(rawNode);
       }
     }
     // Only when a `data-hidden` mutation actually moved something: the skips

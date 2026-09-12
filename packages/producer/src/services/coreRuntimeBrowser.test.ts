@@ -148,6 +148,65 @@ describe("core runtime browser contract", () => {
     30_000,
   );
 
+  it("un-hides a later root-level video once active, even though it starts inactive and unstyled", async () => {
+    // Root-level `[data-start]` children with no authored `position` start out
+    // `position: static` until the runtime force-absolutizes them, so a
+    // visibility pass over the still-inactive second clip can observe `static`
+    // and cache it as in-flow before that forcing runs. That cached reading used
+    // to poison the later un-hide check and leave the clip stuck `display:none`
+    // for the rest of the render once it became active.
+    const videoPage = await browser.newPage();
+    try {
+      await videoPage.setContent(`<!doctype html>
+        <div
+          data-composition-id="root"
+          data-start="0"
+          data-duration="20"
+          data-width="320"
+          data-height="240"
+        >
+          <video id="clip-a" data-start="0" data-duration="10" width="320" height="240" muted></video>
+          <video id="clip-b" data-start="10" data-duration="10" width="320" height="240" muted></video>
+        </div>`);
+      await videoPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await videoPage.waitForFunction(
+        () =>
+          (window as unknown as { __playerReady?: boolean }).__playerReady === true &&
+          (window as unknown as { __renderReady?: boolean }).__renderReady === true,
+      );
+
+      const seekAndReadClipB = (seekTo: number) =>
+        videoPage.evaluate((timeSeconds) => {
+          const player = (
+            window as unknown as { __player?: { renderSeek: (timeSeconds: number) => void } }
+          ).__player;
+          if (!player) throw new Error("runtime player was not installed");
+          player.renderSeek(timeSeconds);
+
+          const clip = document.getElementById("clip-b");
+          if (!clip) throw new Error("clip-b was not found");
+          const computed = window.getComputedStyle(clip);
+          return {
+            display: computed.display,
+            visibility: computed.visibility,
+            offsetWidth: clip.offsetWidth,
+          };
+        }, seekTo);
+
+      // Evaluate the still-inactive second clip at least once before it
+      // becomes active — the shape that used to poison the cache.
+      const beforeActive = await seekAndReadClipB(0);
+      expect(beforeActive.visibility).toBe("hidden");
+
+      const afterActive = await seekAndReadClipB(15);
+      expect(afterActive.visibility).toBe("visible");
+      expect(afterActive.display).not.toBe("none");
+      expect(afterActive.offsetWidth).toBeGreaterThan(0);
+    } finally {
+      await videoPage.close();
+    }
+  }, 30_000);
+
   it("removes the control bridge during teardown", async () => {
     const result = await page.evaluate(async () => {
       const runtimeWindow = window as unknown as {
