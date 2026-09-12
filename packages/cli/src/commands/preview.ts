@@ -1258,20 +1258,12 @@ function previewLifecycleSession(options: {
   };
 }
 
-export function openStudioBrowser(
+function openStudioBrowser(
   url: string,
   projectName: string,
   projectDir: string,
   options?: BrowserLaunchOptions,
 ): void {
-  // Pay the route's cold compiler import here so the browser's first request
-  // doesn't. The shader query params the player appends aren't in the route's
-  // ETag; the timeout stops an unsettled fetch holding the CLI's event loop.
-  void fetch(`${url}/api/projects/${encodeURIComponent(projectName)}/preview`, {
-    signal: AbortSignal.timeout(10_000),
-  })
-    .then((res) => res.body?.cancel())
-    .catch(() => {});
   if (options?.noOpen) return;
   openBrowser(studioDeepLink(url, projectName, projectDir), {
     browserPath: options?.browserPath,

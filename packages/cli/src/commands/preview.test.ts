@@ -9,7 +9,6 @@ import {
   foregroundPreviewReadyPayload,
   handlePreviewKillAll,
   handlePreviewList,
-  openStudioBrowser,
   previewLaunchMode,
   previewLaunchModeError,
   previewPortError,
@@ -22,19 +21,12 @@ import {
   studioSummaryUrls,
   waitForStudioChildClose,
 } from "./preview.js";
-import { openBrowser } from "../utils/openBrowser.js";
-
-vi.mock("../utils/openBrowser.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../utils/openBrowser.js")>()),
-  openBrowser: vi.fn(),
-}));
 
 const tempDirs: string[] = [];
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
   process.exitCode = undefined;
 });
 
@@ -499,32 +491,5 @@ describe("waitForStudioChildClose", () => {
     await waiting;
     expect(resolved).toBe(true);
     expect(signalTarget.off).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("openStudioBrowser", () => {
-  it("warms the preview route before the browser launch, and also under --no-open", () => {
-    const order: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        order.push(`fetch ${url}`);
-        return Promise.resolve({ body: null } as Response);
-      }),
-    );
-    vi.mocked(openBrowser)
-      .mockReset()
-      .mockImplementation(() => {
-        order.push("openBrowser");
-      });
-
-    openStudioBrowser("http://127.0.0.1:4567", "Launch #1", "/tmp/launch");
-    openStudioBrowser("http://127.0.0.1:4567", "demo", "/tmp/demo", { noOpen: true });
-
-    expect(order).toEqual([
-      "fetch http://127.0.0.1:4567/api/projects/Launch%20%231/preview",
-      "openBrowser",
-      "fetch http://127.0.0.1:4567/api/projects/demo/preview",
-    ]);
   });
 });
