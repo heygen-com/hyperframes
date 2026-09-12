@@ -748,7 +748,14 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
-    vi.doMock("../helpers/mediaCodecMap.js", () => ({
+    // Spread the real module first so the pre-warm gate (`shouldPrewarmProxy`
+    // and its codec table) is the production one — a hand-written copy of that
+    // rule would let the table and this suite drift apart. The explicit keys
+    // below still replace everything that would touch ffprobe or ffmpeg.
+    vi.doMock("../helpers/mediaCodecMap.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaCodecMap.js")>(
+        "../helpers/mediaCodecMap.js",
+      )),
       scanProjectMediaCodecMap: opts.scanMapImpl ?? (async () => ({})),
       createMediaCodecProbeCache: () => new Map(),
       probeAssetCodec:
@@ -861,6 +868,36 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(second.status).toBe(304);
       // The 304 shortcut never needs the proxy — no second transcode call.
       expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("counts one proxy request per resolved proxy, not per HTTP request", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "0123456789proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const { mediaProxyDemand } = await import("../helpers/mediaCodecMap.js");
+      const before = mediaProxyDemand().proxyRequests;
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const first = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      const etag = first.headers.get("ETag");
+      // A 304 revalidation is the same asset already served; counting it would
+      // put this on a different scale from `prewarmsRequested`.
+      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
+        headers: { "If-None-Match": etag! },
+      });
+
+      expect(mediaProxyDemand().proxyRequests - before).toBe(1);
     });
 
     it("returns 404 without transcoding when the asset is missing", async () => {

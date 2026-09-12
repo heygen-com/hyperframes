@@ -30,6 +30,7 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
+  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariant,
@@ -569,6 +570,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedPath = file;
     let servedContentType = contentType;
     if (proxyVariant !== undefined) {
+      // Here, not at the eligibility gate above: one count per resolved proxy
+      // shares a unit with `prewarmsRequested`, and a revalidated repeat that
+      // 304s no longer counts as fresh demand.
+      recordProxyRequest();
       try {
         servedPath = await resolveProxy(project.dir, file, proxyVariant);
       } catch (err) {

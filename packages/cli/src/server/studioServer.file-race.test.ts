@@ -148,16 +148,19 @@ describe("Studio bundle file reads", () => {
     },
   );
 
+  // /assets/ holds only Vite's content-hashed emits, so it is served immutable
+  // while the hand-authored public/ files keep revalidating. Cache policy
+  // itself is owned by studioServer.staticAssets.test.ts.
   it.each([
-    ["assets/main.js", "text/javascript"],
-    ["icons/logo.svg", "image/svg+xml"],
-    ["favicon.svg", "image/svg+xml"],
-  ])("preserves %s MIME and cache headers", async (name, mime) => {
+    ["assets/main.js", "text/javascript", "public, max-age=31536000, immutable"],
+    ["icons/logo.svg", "image/svg+xml", "no-store"],
+    ["favicon.svg", "image/svg+xml", "no-store"],
+  ])("preserves %s MIME and cache headers", async (name, mime, cacheControl) => {
     fs.writeFileSync(path.join(hooks.studioDir, name), "");
     const response = await server.app.request(`/${name}`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain(mime);
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("cache-control")).toBe(cacheControl);
     expect(await response.text()).toBe("");
     expectClosed();
   });
