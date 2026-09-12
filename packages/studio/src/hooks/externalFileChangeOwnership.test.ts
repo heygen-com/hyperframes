@@ -29,8 +29,11 @@ describe("external file-change subscription ownership", () => {
   it("delivers the raw file-change event from EventSource to the handler and closes on cleanup", () => {
     const listeners = new Map<string, (event: unknown) => void>();
     const close = vi.fn();
+    const opened: string[] = [];
     class FakeEventSource {
-      constructor(public readonly url: string) {}
+      constructor(url: string) {
+        opened.push(url);
+      }
       addEventListener(type: string, listener: (event: unknown) => void) {
         listeners.set(type, listener);
       }
@@ -42,6 +45,7 @@ describe("external file-change subscription ownership", () => {
       const stop = sseFileChangeChannel(onDelivery);
       const event = new MessageEvent("file-change", { data: JSON.stringify({ path: "a.html" }) });
       listeners.get("file-change")?.(event);
+      expect(opened).toEqual(["/api/events"]);
       expect(onDelivery).toHaveBeenCalledWith(event);
       stop();
       expect(close).toHaveBeenCalledTimes(1);
