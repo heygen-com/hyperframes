@@ -62,9 +62,9 @@ describe("studio manual edits", () => {
     expect(readStudioFileChangePath({ path: ".hyperframes/studio-manual-edits.json" })).toBe(
       ".hyperframes/studio-manual-edits.json",
     );
-    expect(readStudioFileChangePath({ data: '{"path":"nested/file.html"}' })).toBe(
-      "nested/file.html",
-    );
+    expect(readStudioFileChangePath({ filePath: "/nested/file.html" })).toBe("nested/file.html");
+    // A still-wrapped delivery is a decoding bug upstream, never a path.
+    expect(readStudioFileChangePath({ data: { path: "nested/file.html" } })).toBeNull();
   });
 
   it("applies offsets through CSS translate longhand", () => {

@@ -15,6 +15,7 @@ export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export {
   consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";

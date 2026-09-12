@@ -322,4 +322,58 @@ describe("external file change coordinator", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(2);
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledTimes(2);
   });
+
+  // `hyperframes preview` serves file-change over SSE, where the delivery is a
+  // MessageEvent whose `data` is a JSON STRING. Driven through the test adapter
+  // because vitest defines `import.meta.hot`, so the EventSource rung is
+  // unreachable here, which is exactly why decoding is shared by all rungs.
+  describe("SSE-shaped deliveries", () => {
+    const sseDelivery = (payload: unknown) =>
+      new MessageEvent("file-change", { data: JSON.stringify(payload) });
+
+    it("suppresses every reload for Studio's own write", async () => {
+      const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+      const reloadPreview = vi.fn();
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ drainPendingChanges, reloadPreview, onAcceptedPersistedFileChange });
+      markStudioWriteToken("studio-write-1");
+
+      await act(async () =>
+        handler?.(sseDelivery({ path: "index.html", version: "v2", writeToken: "studio-write-1" })),
+      );
+
+      expect(drainPendingChanges).not.toHaveBeenCalled();
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    });
+
+    it("reloads once when one watcher event reaches two subscribers", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      const external = { path: "index.html", version: "v2" };
+      await act(async () => handler?.(sseDelivery(external)));
+      await act(async () => handler?.(sseDelivery(external)));
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("still reloads for a genuinely external write", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () => handler?.(sseDelivery({ path: "index.html", version: "v9" })));
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("drops an unparseable delivery instead of throwing", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () => handler?.(new MessageEvent("file-change", { data: "not json" })));
+
+      expect(reloadPreview).not.toHaveBeenCalled();
+    });
+  });
 });

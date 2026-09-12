@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { commitElementPatchBatches, registerFileRoutes } from "./files";
 import type { StudioApiAdapter } from "../types";
 import {
-  consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
   resetFileWriteReceipts,
 } from "../helpers/fileVersion";
@@ -150,7 +150,7 @@ describe("registerFileRoutes", () => {
     expect(result.after).toContain('data-duration="7"');
     expect(result.after).toContain(`id="${result.hostId}"`);
     expect(result.version).toBe(fileContentVersion(result.after));
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), result.version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), result.version)).toEqual({
       path: "index.html",
       version: result.version,
       writeToken: "studio-insert-1",
@@ -362,7 +362,7 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, payload.backupPath))).toEqual(before);
     expect(payload.version).toBe(fileContentVersion(after));
     expect(response.headers.get("etag")).toBe(payload.version);
-    expect(consumeFileWriteReceipt(path, payload.version)).toEqual({
+    expect(identifyFileWrite(path, payload.version)).toEqual({
       path: "image.png",
       version: payload.version,
       writeToken: "binary-write",
@@ -475,7 +475,7 @@ describe("registerFileRoutes", () => {
     expect(payload.version).toBe(fileContentVersion("after"));
     expect(payload.writeToken).toBe("studio-write-1");
     expect(response.headers.get("etag")).toBe(payload.version);
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), payload.version!)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), payload.version!)).toEqual({
       path: "index.html",
       version: payload.version,
       writeToken: "studio-write-1",
@@ -601,7 +601,7 @@ describe("registerFileRoutes", () => {
 
     expect(response.status).toBe(200);
     const version = fileContentVersion(readFileSync(join(projectDir, "index.html"), "utf-8"));
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), version)).toEqual({
       path: "index.html",
       version,
       writeToken: "studio-patch-1",
@@ -647,7 +647,7 @@ describe("registerFileRoutes", () => {
     expect(payload.content).toContain('id="front" style="z-index: 1"');
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(original);
     const version = fileContentVersion(payload.content!);
-    expect(consumeFileWriteReceipt(join(projectDir, "index.html"), version)).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), version)).toEqual({
       path: "index.html",
       version,
       writeToken: "studio-layer-order-1",
@@ -751,7 +751,7 @@ describe("registerFileRoutes", () => {
     expect(response.status).toBe(200);
     for (const file of payload.files) {
       const version = fileContentVersion(file.after);
-      expect(consumeFileWriteReceipt(join(projectDir, file.sourceFile), version)).toEqual({
+      expect(identifyFileWrite(join(projectDir, file.sourceFile), version)).toEqual({
         path: file.sourceFile,
         version,
         writeToken: "studio-group-drag-1",
@@ -972,9 +972,7 @@ describe("registerFileRoutes", () => {
     expect(payload.files[0].after).toContain('id="a-split"');
     expect(payload.files[0].after).toContain('id="b-split"');
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(payload.files[0].after);
-    expect(
-      consumeFileWriteReceipt(join(projectDir, "index.html"), payload.files[0].version),
-    ).toEqual({
+    expect(identifyFileWrite(join(projectDir, "index.html"), payload.files[0].version)).toEqual({
       path: "index.html",
       version: payload.files[0].version,
       writeToken: "cut-test",

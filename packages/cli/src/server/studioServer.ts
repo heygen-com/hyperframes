@@ -34,7 +34,7 @@ import {
   createStudioApi,
   createProjectSignature,
   createBackgroundRemovalJob,
-  consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
   getMimeType,
   affectsProjectSignature,
@@ -782,9 +782,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         } catch {
           // A deletion has no current bytes to match against an API write receipt.
         }
-        const receipt = version ? consumeFileWriteReceipt(absPath, version) : null;
+        // `version` ships even when no receipt matches: it is the client's only
+        // identity for an unlabelled change, and without it every duplicate
+        // delivery of one watcher event drains and reloads again.
+        const receipt = version ? identifyFileWrite(absPath, version) : null;
         stream
-          .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
+          .writeSSE({ event: "file-change", data: JSON.stringify({ path, version, ...receipt }) })
           .catch(() => {});
       };
       // Re-applied here because the watcher now also emits the signature
