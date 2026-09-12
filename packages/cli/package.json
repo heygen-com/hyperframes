@@ -40,14 +40,14 @@
     "esbuild": "^0.25.12",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
-    "hono": "^4.0.0",
+    "hono": "^4.13.5",
     "ignore": "^5.3.2",
     "onnxruntime-node": "1.21.1",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "puppeteer-core": "^25.8.0",
-    "sharp": "^0.35.0"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",

@@ -93,7 +93,7 @@
     "@hyperframes/lint": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
     "@hyperframes/studio-server": "workspace:^",
-    "hono": "^4.6.0",
+    "hono": "^4.13.5",
     "linkedom": "^0.18.12",
     "postcss": "^8.4.0",
     "puppeteer": "^25.2.1",
