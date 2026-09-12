@@ -4,11 +4,22 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
-// NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
-// at module load, which throws under SSR — hence the dynamic import behind a
-// `typeof window` guard. Kicking it at module scope rather than in the mount
-// effect puts the chunk request in flight before the shell's first layout.
-const playerModule = typeof window === "undefined" ? null : import("@hyperframes/player");
+// Importing "@hyperframes/player" registers a class extending HTMLElement at
+// module load, which throws under SSR — hence the dynamic import behind a
+// `typeof window` guard. Kicking it here rather than in the mount effect puts
+// the chunk request in flight before the shell's first layout; clearing the
+// memo on rejection keeps a remount able to retry, as it could before.
+let playerModule: Promise<unknown> | null = null;
+
+export function loadPlayerModule(): Promise<unknown> {
+  playerModule ??= import("@hyperframes/player").catch((err: unknown) => {
+    playerModule = null;
+    throw err;
+  });
+  return playerModule;
+}
+
+if (typeof window !== "undefined") void loadPlayerModule().catch(() => {});
 
 interface PlayerProps {
   projectId?: string;
@@ -168,7 +179,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      playerModule?.then(() => {
+      void loadPlayerModule().then(() => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
