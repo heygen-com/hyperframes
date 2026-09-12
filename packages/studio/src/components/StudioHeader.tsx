@@ -393,6 +393,7 @@ export function StudioHeader({
         >
           <button
             type="button"
+            data-testid="header-export"
             disabled={isRendering}
             onClick={() => {
               if (isRendering) return;
