@@ -5,6 +5,24 @@ import { readStore, writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
 import { CliRuntimeError } from "../../utils/commandResult.js";
 
+// Controls whether the mocked `heygen` binary presence check finds it, so
+// tests can assert the auth-login-success discoverability note independent
+// of whatever `heygen` happens to be on the machine actually running tests.
+const heygenCliState = vi.hoisted(() => ({ present: true }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    execFileSync: (cmd: string, args: string[], options: unknown) => {
+      if (args[0] === "heygen") {
+        if (!heygenCliState.present) throw new Error("not found");
+        return "/usr/local/bin/heygen\n";
+      }
+      return actual.execFileSync(cmd, args, options as never);
+    },
+  };
+});
+
 // Mock only AuthClient — keep the real store/resolver so the test
 // exercises the actual on-disk rollback / persistence behavior.
 // `verifyState` controls what `getCurrentUser` returns per test:
@@ -110,6 +128,7 @@ describe("auth login", () => {
     dir = envFixture.dir;
     verifyState.reject = false;
     verifyState.user = { email: "alice@example.com" };
+    heygenCliState.present = true;
     deviceChallenge.verificationUriComplete = undefined;
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
@@ -229,6 +248,27 @@ describe("auth login", () => {
     const onDisk = JSON.parse(await fs.readFile(join(dir, "credentials"), "utf8"));
     expect(onDisk.api_key).toBeUndefined();
     expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
+  });
+
+  it("notes the separate heygen CLI dependency when it's missing on a successful login", async () => {
+    heygenCliState.present = false;
+    await runLogin("hg_goodkey456");
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("developers.heygen.com/cli"));
+  });
+
+  it("does not note the heygen CLI dependency when it's already installed", async () => {
+    heygenCliState.present = true;
+    await runLogin("hg_goodkey456");
+    expect(console.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("developers.heygen.com/cli"),
+    );
+  });
+
+  it("notes the separate heygen CLI dependency on a successful device login too", async () => {
+    heygenCliState.present = false;
+    verifyState.user = { email: "device@example.com" };
+    await runCommand({ device: true });
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("developers.heygen.com/cli"));
   });
 
   it("attributes a successful login to the account email", async () => {
