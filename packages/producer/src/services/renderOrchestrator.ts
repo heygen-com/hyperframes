@@ -87,6 +87,7 @@ import {
   classifyCaptureFailure,
   cloneCaptureWarning,
   isMemoryExhaustionError,
+  isTransientBrowserError,
   isDrawElementVerificationError,
   isDrawElementCaptureError,
   getDrawElementVerificationDetails,
@@ -1902,10 +1903,20 @@ export function shouldRetryViaPinnedFallback(args: {
   isDeRendererStall?: boolean;
   /** The producer's no-progress watchdog tripped around a sequential capture call. */
   isSequentialCaptureStall?: boolean;
+  /**
+   * A transient browser failure around the capture call itself
+   * (`classifyCaptureFailure` → `transient_browser`, e.g. a CDP
+   * `Page.captureScreenshot` refusal). Routing-independent like the stalls
+   * above: `--low-memory-mode` pins single-worker screenshot capture with no
+   * drawElement, so neither inversion nor the router ever pins a count, and
+   * that mode otherwise had no whole-render fallback for a one-off refusal.
+   */
+  isTransientCaptureError?: boolean;
 }): boolean {
   if (args.isCancellation || args.isEncoderInterrupted) return false;
   if (args.isVerifyError || args.isDeCaptureError) return true;
   if (args.isDeRendererStall === true || args.isSequentialCaptureStall === true) return true;
+  if (args.isTransientCaptureError === true) return true;
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
 
@@ -3741,6 +3752,7 @@ async function executeRenderPipeline(input: {
               deParallelRouter,
               isDeRendererStall: isDeStall,
               isSequentialCaptureStall: isSequentialStall,
+              isTransientCaptureError: isTransientBrowserError(err),
             })
           )
             throw err;

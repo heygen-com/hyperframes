@@ -17,6 +17,13 @@ describe("classifyCaptureFailure", () => {
     ["JavaScript heap out of memory", "memory_exhaustion"],
     ["drawElement self-verify failed", "verification"],
     ["Composition has zero duration. Runtime ready: true", "authoring"],
+    ["Protocol error (Page.captureScreenshot): Unable to capture screenshot", "transient_browser"],
+    [
+      "[Parallel] Capture failed: Worker 0: Protocol error (Page.captureScreenshot): Unable to capture screenshot",
+      "transient_browser",
+    ],
+    // The timed-out variant of the same call stays protocol_timeout (checked first).
+    ["Protocol error (Page.captureScreenshot): waiting for debugger timed out", "protocol_timeout"],
   ] as const)("classifies %s as %s", (message, kind) => {
     expect(classifyCaptureFailure(new Error(message)).kind).toBe(kind);
   });
