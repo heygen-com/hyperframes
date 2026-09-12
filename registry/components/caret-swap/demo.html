@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- Caret Swap demo. Defaults and 100-frame timing follow the pinned Hyfrme reference. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <title>Caret Swap Demo</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body,
+      #root {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+      }
+      .cs-demo-background,
+      .cs-demo-mount {
+        position: absolute;
+        inset: 0;
+        width: 1280px;
+        height: 720px;
+      }
+      .cs-demo-background {
+        background: #fdf6f0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="caret-swap-demo"
+      data-start="0"
+      data-width="1280"
+      data-height="720"
+      data-duration="3.3333333333333335"
+      data-fps="30"
+    >
+      <div
+        id="cs-demo-background"
+        class="cs-demo-background clip"
+        data-start="0"
+        data-duration="3.3333333333333335"
+        data-track-index="0"
+      ></div>
+      <div
+        id="cs-demo-mount"
+        class="cs-demo-mount clip"
+        data-composition-id="caret-swap"
+        data-composition-src="./caret-swap.html"
+        data-start="0"
+        data-duration="3.3333333333333335"
+        data-track-index="1"
+        data-width="1280"
+        data-height="720"
+      ></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["caret-swap-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

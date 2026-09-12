@@ -1,0 +1,355 @@
+<!doctype html>
+<!--
+  Caret Swap
+
+  Mount compositions/components/caret-swap/caret-swap.html with
+  data-composition-id="caret-swap". The transparent component fills its host.
+  The bundled font must remain beside this file.
+
+  The reference's expand, collapse, pause and accelerating typing use a 30fps
+  clock. Longer hosts extend the final hold; shorter hosts compress the phases
+  together so the replacement is complete before the end. Text is measured
+  after fonts load, and both phrases shrink together to stay inside the host.
+  This is a single-line effect; line breaks in either phrase become spaces.
+
+  Native HyperFrames port prepared through Hyfrme from:
+  https://github.com/Remocn/remocn/blob/3e03565f5c0001e143c2ed941eea7c3181f13260/registry/remocn/caret-swap/index.tsx
+
+  MIT License
+
+  Copyright (c) 2026 Remocn
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+<html
+  lang="en"
+  data-composition-id="caret-swap"
+  data-composition-duration="3.3333333333333335"
+  data-composition-variables='[
+    {"id":"from_text","type":"string","role":"content","label":"From text","description":"The phrase covered by the expanding caret.","default":"Executing it?"},
+    {"id":"to_text","type":"string","role":"content","label":"To text","description":"The replacement phrase, typed one character at a time.","default":"That&#39;s where everyone quits"},
+    {"id":"font_size","type":"number","role":"style","label":"Font size","description":"Maximum size in pixels. Both phrases shrink together to fit the host.","default":72,"min":36,"max":160,"step":2,"unit":"px"},
+    {"id":"font_weight","type":"enum","role":"style","label":"Font weight","description":"Weight used by both phrases. Every option is included in the bundled Geist font.","default":"400","options":[{"value":"400","label":"Regular"},{"value":"500","label":"Medium"},{"value":"600","label":"Semibold"},{"value":"700","label":"Bold"}]},
+    {"id":"color","type":"color","role":"style","label":"Text color","description":"Color of both phrases.","default":"#171717"},
+    {"id":"caret_color","type":"color","role":"style","label":"Caret top","description":"Top color of the caret gradient.","default":"#FF4DAA"},
+    {"id":"caret_color_end","type":"color","role":"style","label":"Caret bottom","description":"Bottom color of the caret gradient.","default":"#8A5CF6"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Caret Swap</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        @font-face {
+          font-family: "Caret Swap Geist";
+          src: url("./Geist-Latin.woff2") format("woff2");
+          font-style: normal;
+          font-weight: 100 900;
+          font-display: block;
+        }
+
+        #root,
+        #root * {
+          box-sizing: border-box;
+        }
+
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          pointer-events: none;
+          color: var(--color, #171717);
+          font-family: var(--font-display, "Caret Swap Geist", system-ui, sans-serif);
+        }
+
+        .cs-clip {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+
+        .cs-stage {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          white-space: pre;
+          font-size: 72px;
+          font-weight: 400;
+          line-height: 1.15;
+          letter-spacing: -0.02em;
+          opacity: 0;
+        }
+
+        .cs-source,
+        .cs-target-text {
+          display: inline-block;
+          white-space: pre;
+        }
+
+        .cs-spacer {
+          flex-shrink: 0;
+          width: 0.08em;
+          height: 1.1em;
+          margin-left: 0.06em;
+        }
+
+        .cs-cover,
+        .cs-caret {
+          position: absolute;
+          top: 50%;
+          height: 1.1em;
+          border-radius: 0.03em;
+          background: linear-gradient(
+            180deg,
+            var(--caret_color, #ff4daa),
+            var(--caret_color_end, #8a5cf6)
+          );
+        }
+
+        .cs-cover {
+          left: 0;
+          width: 100%;
+          --cs-mask-stop: 100%;
+          mask-image: linear-gradient(90deg, black var(--cs-mask-stop), transparent 100%);
+        }
+
+        .cs-target {
+          position: absolute;
+          left: 0;
+          top: 50%;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .cs-caret {
+          left: 0;
+          width: 0.08em;
+          margin-left: 0.06em;
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="caret-swap"
+        data-duration="3.3333333333333335"
+        data-fps="30"
+      >
+        <div
+          id="cs-clip"
+          class="cs-clip clip"
+          data-start="0"
+          data-duration="3.3333333333333335"
+          data-track-index="0"
+        >
+          <div id="cs-stage" class="cs-stage" role="img">
+            <span
+              id="cs-source"
+              class="cs-source"
+              aria-hidden="true"
+              data-layout-allow-occlusion
+            ></span>
+            <span class="cs-spacer" aria-hidden="true"></span>
+            <span id="cs-cover" class="cs-cover" aria-hidden="true"></span>
+            <span id="cs-target" class="cs-target" aria-hidden="true">
+              <span id="cs-target-text" class="cs-target-text"></span>
+              <span id="cs-caret" class="cs-caret"></span>
+            </span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/CustomEase.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = document.getElementById("cs-stage");
+            var source = document.getElementById("cs-source");
+            var target = document.getElementById("cs-target");
+            var targetText = document.getElementById("cs-target-text");
+            var caret = document.getElementById("cs-caret");
+            var cover = document.getElementById("cs-cover");
+            // Read host timing before the runtime flattens its attributes.
+            var mount = root.closest("[data-composition-id]") || root;
+            var duration = Math.max(
+              0.001,
+              Number(mount.dataset.duration || mount.dataset.hfAuthoredDuration) || 100 / 30,
+            );
+            document.getElementById("cs-clip").dataset.duration = String(duration);
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+            var fromText = typeof vars.from_text === "string" ? vars.from_text : "Executing it?";
+            var toText =
+              typeof vars.to_text === "string" ? vars.to_text : "That's where everyone quits";
+            fromText = fromText.replace(/[\r\n\u2028\u2029]+/g, " ");
+            toText = toText.replace(/[\r\n\u2028\u2029]+/g, " ");
+            var fontSize = Number(vars.font_size);
+            fontSize = Number.isFinite(fontSize) ? Math.min(160, Math.max(36, fontSize)) : 72;
+            var fontWeight = ["400", "500", "600", "700"].includes(vars.font_weight)
+              ? vars.font_weight
+              : "400";
+
+            stage.style.fontSize = fontSize + "px";
+            stage.style.fontWeight = fontWeight;
+            stage.setAttribute("aria-label", fromText + " → " + toText);
+            source.textContent = fromText;
+
+            var segments = Array.from(
+              new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(toText),
+            );
+            var phrases = segments.map(function (part) {
+              return toText.slice(0, part.index + part.segment.length);
+            });
+
+            function geometry() {
+              var anchorWidth = stage.getBoundingClientRect().width;
+              targetText.textContent = toText;
+              var targetWidth = targetText.getBoundingClientRect().width;
+              var caretWidth = fontSize * 0.08;
+              var gap = fontSize * 0.06;
+              var shift = (anchorWidth - targetWidth - caretWidth - gap) / 2;
+              var prefixes = phrases.map(function (phrase) {
+                targetText.textContent = phrase;
+                return targetText.getBoundingClientRect().width;
+              });
+              targetText.textContent = toText;
+              var halfWidth = anchorWidth / 2;
+              prefixes.forEach(function (prefix, index) {
+                var start = -anchorWidth / 2 + (shift * (index + 1)) / phrases.length;
+                halfWidth = Math.max(
+                  halfWidth,
+                  Math.abs(start),
+                  Math.abs(start + prefix + gap + caretWidth),
+                );
+              });
+              return {
+                anchorWidth: anchorWidth,
+                caretWidth: caretWidth,
+                shift: shift,
+                prefixes: prefixes,
+                width: halfWidth * 2,
+              };
+            }
+
+            function typeElapsed(count) {
+              return (1 - Math.pow(0.96, count)) / 0.04;
+            }
+
+            document.fonts.ready.then(function () {
+              var layout = geometry();
+              var fit = Math.min(
+                1,
+                (root.clientWidth * 0.9) / Math.max(1, layout.width),
+                (root.clientHeight * 0.8) / (fontSize * 1.15),
+              );
+              fontSize *= fit;
+              stage.style.fontSize = fontSize + "px";
+              layout = geometry();
+
+              var typeEnd = 40 + typeElapsed(phrases.length);
+              var timingScale = Math.min(1, (duration * 30) / (typeEnd + 8));
+              function at(frame) {
+                return (frame / 30) * timingScale;
+              }
+
+              gsap.registerPlugin(CustomEase);
+              var expandEase = CustomEase.create("cs-expand", "M0,0 C0.6,0 0.8,0.4 1,1");
+              var collapseEase = CustomEase.create("cs-collapse", "M0,0 C0.2,0.7 0.3,1 1,1");
+              gsap.set(source, { opacity: 1 });
+              gsap.set(cover, {
+                yPercent: -50,
+                width: layout.caretWidth,
+                x: layout.anchorWidth - layout.caretWidth,
+                opacity: 0,
+                "--cs-mask-stop": "100%",
+              });
+              gsap.set(target, { yPercent: -50, x: 0, opacity: 0 });
+              gsap.set(caret, { yPercent: -50, x: 0, opacity: 1 });
+              gsap.set(targetText, { textContent: "" });
+              gsap.set(stage, { opacity: 1 });
+
+              var tl = gsap.timeline({ paused: true });
+              tl.set(cover, { opacity: 1 }, at(13));
+              tl.fromTo(
+                cover,
+                {
+                  width: layout.caretWidth,
+                  x: layout.anchorWidth - layout.caretWidth,
+                  "--cs-mask-stop": "100%",
+                },
+                {
+                  width: layout.anchorWidth,
+                  x: 0,
+                  "--cs-mask-stop": "10%",
+                  duration: at(6),
+                  ease: expandEase,
+                  immediateRender: false,
+                },
+                at(20),
+              );
+              tl.set(source, { opacity: 0 }, at(26));
+              tl.fromTo(
+                cover,
+                { width: layout.anchorWidth, "--cs-mask-stop": "10%" },
+                {
+                  width: layout.caretWidth,
+                  "--cs-mask-stop": "100%",
+                  duration: at(7),
+                  ease: collapseEase,
+                  immediateRender: false,
+                },
+                at(26),
+              );
+              tl.set(cover, { opacity: 0 }, at(40));
+              tl.set(target, { opacity: 1 }, at(40));
+
+              phrases.forEach(function (phrase, index) {
+                var time = at(40 + typeElapsed(index));
+                tl.set(targetText, { textContent: phrase }, time);
+                tl.set(caret, { x: layout.prefixes[index] }, time);
+                tl.set(target, { x: (layout.shift * (index + 1)) / phrases.length }, time);
+              });
+              if (!phrases.length) tl.set(target, { x: layout.shift }, at(40));
+
+              for (
+                var frame = typeEnd + 8, blink = 0;
+                at(frame) < duration;
+                frame += 8, blink += 1
+              ) {
+                tl.set(caret, { opacity: blink % 2 }, at(frame));
+              }
+
+              window.__timelines = window.__timelines || {};
+              window.__timelines["caret-swap"] = tl;
+            });
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
