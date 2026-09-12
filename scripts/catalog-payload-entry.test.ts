@@ -33,6 +33,9 @@ test("interactive previews preserve a demo that mounts its snippet", () => {
     for (const demo of [
       "<div>Hello</div>",
       '<div data-composition-src="./other/effect.html"></div>',
+      '<!-- <div data-composition-src="./effect.html"></div> -->',
+      `<script>const example = '<div data-composition-src="./effect.html"></div>';</script>`,
+      '<div data-composition-<!-- recipe -->src="./effect.html"></div>',
     ]) {
       writeFileSync(join(sourceDir, "demo.html"), demo);
       assert.deepEqual(renderEntry(item, true), {

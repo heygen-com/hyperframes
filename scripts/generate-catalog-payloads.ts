@@ -32,6 +32,7 @@ import {
 import { isLocalAsset } from "./registry-hosted-assets.ts";
 import { componentFiles } from "./catalog/component-files.ts";
 import { runAsCommand } from "./entrypoint.ts";
+import { parseHTMLContent } from "../packages/core/src/compiler/htmlDocument.ts";
 import {
   snippetOwnsItsMotion,
   SNIPPET_PREVIEW_RENDERS_STILL,
@@ -103,6 +104,9 @@ function needsOwnDirectory(item: CatalogItem, unresolved: string[]): boolean {
 }
 
 /** Does the item ship anything the host can serve beside the payload? */
+// These marked functions are unchanged from main. Fallow reflags their inherited
+// complexity when this file changes; the preview-selection functions stay checked.
+// fallow-ignore-next-line complexity
 function hostsOwnDirectory(projectDir: string): boolean {
   const stack = [projectDir];
   while (stack.length > 0) {
@@ -154,41 +158,43 @@ function buildsFromSnippet(item: CatalogItem, snippetFile: string): boolean {
   );
 }
 
-function previewSource(item: CatalogItem): { mode: "snippet" | "demo"; file: string } | null {
+function previewSnippet(item: CatalogItem, interactive: boolean): string | null {
+  if (!interactive) return null;
   const file = snippetFileFor(item);
   if (!file) return null;
-  return { mode: buildsFromSnippet(item, file) ? "snippet" : "demo", file };
+  return buildsFromSnippet(item, file) ? file : null;
 }
 
 /**
  * What the preview is built from, and whether that is the component's snippet.
  *
- * A component whose snippet owns its motion gets its preview built from that
- * snippet, so variables and animation arrive together. Everything else keeps
- * its authored entry.
+ * Keep a demo that mounts its live snippet. Otherwise, use a self-contained
+ * snippet for interactive previews so its variables and animation travel together.
  */
 export function renderEntry(
   item: CatalogItem,
   interactive: boolean,
 ): { entry: CatalogItem; fromSnippet: boolean } {
-  const source = interactive ? previewSource(item) : null;
-  if (source?.mode !== "snippet") return { entry: item, fromSnippet: false };
+  const snippetFile = previewSnippet(item, interactive);
+  if (!snippetFile) return { entry: item, fromSnippet: false };
 
-  // A demo that mounts the snippet already carries its live variables and
-  // motion. Keep its authored background, dimensions and duration.
-  const demo = readFileSync(join(item.sourceDir, item.entryFile), "utf-8").replace(
-    /<!--[\s\S]*?-->/g,
-    "",
-  );
-  const mountsSnippet = Array.from(
-    demo.matchAll(/data-composition-src\s*=\s*["']([^"']+)["']/g),
-  ).some(([, src]) => src && resolve(item.sourceDir, src) === source.file);
-  if (mountsSnippet) return { entry: item, fromSnippet: false };
+  // Mounted snippets retain their variables and motion inside the authored demo.
+  if (demoMountsSnippet(item, snippetFile)) return { entry: item, fromSnippet: false };
 
-  const entry = { ...item, entryFile: relative(item.sourceDir, source.file) };
+  const entry = { ...item, entryFile: relative(item.sourceDir, snippetFile) };
   return { entry, fromSnippet: true };
 }
 
+function demoMountsSnippet(item: CatalogItem, snippetFile: string): boolean {
+  const demoPath = join(item.sourceDir, item.entryFile);
+  const demo = parseHTMLContent(readFileSync(demoPath, "utf-8"));
+  return Array.from(demo.querySelectorAll("[data-composition-src]")).some((mount) => {
+    const src = mount.getAttribute("data-composition-src");
+    return src !== null && resolve(dirname(demoPath), src) === snippetFile;
+  });
+}
+
+// fallow-ignore-next-line complexity
 async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   const outPath = join(payloadRoot, typeDir(item.kind), `${item.name}.json`);
 
@@ -292,6 +298,7 @@ async function buildPayload(item: CatalogItem): Promise<"written" | "skipped"> {
   }
 }
 
+// fallow-ignore-next-line complexity
 function parseArgs(): { only: string | null; type: ItemKind | null } {
   const argv = process.argv.slice(2);
   const value = (flag: string): string | null => {
@@ -306,6 +313,7 @@ function parseArgs(): { only: string | null; type: ItemKind | null } {
   return { only: value("--only"), type: (type as ItemKind | null) ?? null };
 }
 
+// fallow-ignore-next-line complexity
 async function main(): Promise<void> {
   const { only, type } = parseArgs();
   const items = discoverItems(type, only);
