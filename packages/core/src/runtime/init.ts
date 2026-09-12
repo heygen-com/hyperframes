@@ -1248,6 +1248,25 @@ export function initSandboxRuntimeModular(): void {
       }
       return fallbackTimeline;
     };
+    // Read back from the parent rather than trusting add(): a child the parent
+    // does not hold stays on GSAP's global ticker, where unpaused means free-running.
+    const nestedCandidates = <C extends { timeline: RuntimeTimelineLike }>(
+      parent: RuntimeTimelineLike | null,
+      candidates: C[],
+    ): C[] => {
+      const withChildren = parent as
+        | (RuntimeTimelineLike & {
+            getChildren?: (...args: unknown[]) => unknown[];
+          })
+        | null;
+      if (!withChildren || typeof withChildren.getChildren !== "function") return [];
+      try {
+        const held = withChildren.getChildren(true, true, true);
+        return Array.isArray(held) ? candidates.filter((c) => held.includes(c.timeline)) : [];
+      } catch {
+        return [];
+      }
+    };
     const addMissingChildCandidatesToRootTimeline = (
       rootTimeline: RuntimeTimelineLike,
       candidates: Array<{
@@ -1255,14 +1274,15 @@ export function initSandboxRuntimeModular(): void {
         timeline: RuntimeTimelineLike;
         durationSeconds: number;
       }>,
-    ): string[] => {
+    ): { addedIds: string[]; nested: typeof candidates } => {
       const rootWithChildren = rootTimeline as RuntimeTimelineLike & {
         getChildren?: (...args: unknown[]) => unknown[];
       };
-      if (typeof rootWithChildren.getChildren !== "function") return [];
+      const none = { addedIds: [], nested: [] };
+      if (typeof rootWithChildren.getChildren !== "function") return none;
       try {
         const existingChildren = rootWithChildren.getChildren(true, true, true) ?? [];
-        if (!Array.isArray(existingChildren)) return [];
+        if (!Array.isArray(existingChildren)) return none;
         const addedIds: string[] = [];
         for (const candidate of candidates) {
           const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
@@ -1276,9 +1296,9 @@ export function initSandboxRuntimeModular(): void {
             swallow("runtime.init.site4", err);
           }
         }
-        return addedIds;
+        return { addedIds, nested: nestedCandidates(rootTimeline, candidates) };
       } catch {
-        return [];
+        return none;
       }
     };
     const rootCompositionNode = resolveRootCompositionElement();
@@ -1343,14 +1363,16 @@ export function initSandboxRuntimeModular(): void {
         }
       }
     };
-    if (rootChildCandidates.length > 0) {
-      ensureChildCandidatesActive(rootChildCandidates);
-    }
     if (rootTimeline) {
-      const autoNestedChildren =
+      // Only a child the root actually holds may run unpaused: the paused root
+      // drives it. A standalone registry child is re-seeked by the transport and
+      // must stay paused, or it free-runs on the global ticker while paused.
+      const nesting =
         rootChildCandidates.length > 0
           ? addMissingChildCandidatesToRootTimeline(rootTimeline, rootChildCandidates)
-          : [];
+          : { addedIds: [], nested: [] };
+      const autoNestedChildren = nesting.addedIds;
+      ensureChildCandidatesActive(nesting.nested);
       // Mark children as bound so the polling loop stops re-resolving
       if (
         rootChildCandidates.length > 0 ||
@@ -1377,6 +1399,7 @@ export function initSandboxRuntimeModular(): void {
         const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
         const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
         if (compositeTimeline && isUsableTimelineDuration(compositeDurationSeconds)) {
+          ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
           return {
             timeline: compositeTimeline,
             selectedTimelineIds,
@@ -1529,6 +1552,7 @@ export function initSandboxRuntimeModular(): void {
       const compositeTimeline = createCompositeTimelineFromCandidates(rootChildCandidates);
       const compositeDurationSeconds = getTimelineDurationSeconds(compositeTimeline);
       if (compositeTimeline) {
+        ensureChildCandidatesActive(nestedCandidates(compositeTimeline, rootChildCandidates));
         return {
           timeline: compositeTimeline,
           selectedTimelineIds,

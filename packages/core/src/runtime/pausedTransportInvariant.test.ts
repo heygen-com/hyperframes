@@ -45,6 +45,22 @@ describe("paused transport owns what is running", () => {
     document.body.innerHTML = "";
   });
 
+  it("keeps a registered child the root does not hold paused across a rebind", () => {
+    // The resolver used to unpause every registry child before nesting it. A
+    // rebind after an edit re-resolves with no seek behind it, so a child the
+    // root never actually holds (add() is a no-op here, as when GSAP refuses)
+    // was left free-running on the global ticker while the clock was paused.
+    const registry = mountNestedComposition();
+    initSandboxRuntimeModular();
+    expect(registry.captions.paused!()).toBe(true);
+
+    window.__hfForceTimelineRebind!();
+
+    expect(window.__player!.isPlaying()).toBe(false);
+    expect(registry.captions.paused!()).toBe(true);
+    expect(registry.overlay.paused!()).toBe(true);
+  });
+
   it("leaves every registered sibling timeline paused after a renderSeek", () => {
     const registry = mountNestedComposition();
     initSandboxRuntimeModular();
