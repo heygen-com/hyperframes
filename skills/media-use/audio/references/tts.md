@@ -39,8 +39,16 @@ Use another voice only for a documented reason, and write the reason down.
 | Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
 | ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
 | 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
-| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | UUIDs from elevenlabs.io dashboard          | No                                        | mp3 → wav via ffmpeg |
-| 3     | Kokoro-82M        | always (local fallback)                     | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
+| 2     | Chatterbox (local, self-hosted) | live health check at `$CHATTERBOX_BASE_URL` (default `http://127.0.0.1:4123/v1`) | `default` (server's configured zero-shot reference clip — no catalog) | No | wav direct |
+| 3     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | UUIDs from elevenlabs.io dashboard          | No                                        | mp3 → wav via ffmpeg |
+| 4     | Kokoro-82M        | always (local fallback)                     | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
+
+Chatterbox ranks above ElevenLabs/Kokoro once its local server is reachable — a
+cloned owner voice beats a generic one whenever it's up. It's a zero-shot voice
+clone server (no fixed voice catalog — swap the server's `VOICE_SAMPLE_PATH` or
+its voice-library endpoint to change whose voice comes out); pass `--voice` to
+override the default "default" id if the server exposes named voices. No word
+timings, same as ElevenLabs/Kokoro — the caller chains a Whisper/Parakeet pass.
 
 ```bash
 # Local Kokoro CLI
@@ -86,6 +94,7 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 | Goal                                                      | Use                                                 |
 | --------------------------------------------------------- | --------------------------------------------------- |
 | Best voice quality + word timestamps in one call          | **HeyGen**                                          |
+| A specific cloned voice (e.g. the channel owner's own)    | **Chatterbox** (local server must be running)       |
 | Drop-in cloud TTS, big voice catalog                      | **ElevenLabs**                                      |
 | Offline, no API key, fast iteration                       | **Kokoro**                                          |
 | Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …) |
