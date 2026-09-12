@@ -42,7 +42,6 @@ interface SetElementAttributeInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -56,7 +55,6 @@ async function setElementAttribute({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: SetElementAttributeInput): Promise<string[]> {
   const targetPath = element.sourceFile || activeCompPath || "index.html";
@@ -72,7 +70,6 @@ async function setElementAttribute({
     label,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
     patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
   });
@@ -84,7 +81,6 @@ export function useSetElementAttribute({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -122,7 +118,6 @@ export function useSetElementAttribute({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
       } catch (error) {
@@ -136,7 +131,6 @@ export function useSetElementAttribute({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,

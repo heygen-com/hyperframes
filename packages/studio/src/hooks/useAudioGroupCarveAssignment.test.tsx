@@ -72,7 +72,6 @@ function renderAssign(writeProjectFile: (path: string, content: string) => Promi
       showToast,
       writeProjectFile,
       recordEdit: async () => {},
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
       previewIframeRef: { current: null },
     });

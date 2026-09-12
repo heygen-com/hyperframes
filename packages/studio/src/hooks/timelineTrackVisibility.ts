@@ -39,7 +39,6 @@ interface ToggleTimelineTrackHiddenInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -57,7 +56,6 @@ interface SetElementsHiddenInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -140,7 +138,6 @@ async function setElementsHidden({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: SetElementsHiddenInput): Promise<string[]> {
   if (elements.length === 0) return [];
@@ -176,7 +173,6 @@ async function setElementsHidden({
       pendingTimelineEditPathRef.current.add(targetPath);
     }
 
-    domEditSaveTimestampRef.current = Date.now();
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label,
@@ -190,7 +186,6 @@ async function setElementsHidden({
       writeFile: writeProjectFile,
       recordEdit,
     });
-    domEditSaveTimestampRef.current = Date.now();
     for (const element of elements) {
       usePlayerStore.getState().updateElement(element.key ?? element.id, { hidden });
     }
@@ -215,7 +210,6 @@ export async function toggleTimelineTrackHidden({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: ToggleTimelineTrackHiddenInput): Promise<string[]> {
   // `track` is the fractional sort key the callback needs; the history entry is
@@ -245,7 +239,6 @@ export async function toggleTimelineTrackHidden({
     previewIframe,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
   });
 }
@@ -259,7 +252,6 @@ export async function toggleTimelineElementHidden({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
   const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
@@ -280,7 +272,6 @@ export async function toggleTimelineElementHidden({
     previewIframe,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
   });
 }
@@ -291,7 +282,6 @@ export function useTimelineTrackVisibilityEditing({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -325,7 +315,6 @@ export function useTimelineTrackVisibilityEditing({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
         forceReloadSdkSession?.();
@@ -342,7 +331,6 @@ export function useTimelineTrackVisibilityEditing({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,
@@ -358,7 +346,6 @@ export function useTimelineElementVisibilityEditing({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -394,7 +381,6 @@ export function useTimelineElementVisibilityEditing({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
         forceReloadSdkSession?.();
@@ -411,7 +397,6 @@ export function useTimelineElementVisibilityEditing({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,

@@ -15,7 +15,6 @@ interface UseRazorSplitOptions {
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
   forceReloadSdkSession?: () => void;
   isRecordingRef?: React.RefObject<boolean>;
@@ -28,7 +27,6 @@ export function useRazorSplit({
   writeProjectFile,
   observeProjectFileVersion,
   recordEdit,
-  domEditSaveTimestampRef,
   reloadPreview,
   forceReloadSdkSession,
   isRecordingRef,
@@ -62,9 +60,6 @@ export function useRazorSplit({
           ? "Split timeline clip"
           : `Split ${requestedCount} clips at ${splitTime.toFixed(2)}s`;
 
-      // Server writes arrive through the watcher before React can refresh. Keep
-      // the existing short self-write window active for this owned transaction.
-      domEditSaveTimestampRef.current = Date.now();
       const result = await runAtomicCutTransaction({
         projectId: pid,
         intents,
@@ -91,7 +86,6 @@ export function useRazorSplit({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       observeProjectFileVersion,
       recordEdit,
       showToast,

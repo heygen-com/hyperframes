@@ -3,7 +3,7 @@
  * external write (notably undo/redo) in the file-change reload-suppression path.
  *
  * The old suppression was purely time-based: any file-change within 2 s of the
- * shared `domEditSaveTimestampRef` was swallowed. But BOTH an SDK cutover
+ * shared save timestamp was swallowed. But BOTH an SDK cutover
  * self-write AND an undo write set that same timestamp, so the window could not
  * tell "the echo of the bytes I just wrote" (suppress) from "the reverted bytes
  * an undo just wrote" (must reload). An undo that landed inside the window was

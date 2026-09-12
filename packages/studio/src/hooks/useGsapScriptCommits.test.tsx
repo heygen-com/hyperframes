@@ -379,7 +379,6 @@ function renderCommitHook(
       activeCompPath: "index.html",
       previewIframeRef: { current: FAKE_IFRAME },
       editHistory: { recordEdit },
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview,
       onCacheInvalidate,
       onFileContentChanged,
@@ -669,7 +668,6 @@ describe("runCommit — instantPatch wiring", () => {
       writeProjectFile,
       readProjectFile: vi.fn(async () => "BEFORE"),
       reloadPreview: deps.reloadPreview,
-      domEditSaveTimestampRef: { current: 0 },
     });
     await sdkWriteStarted;
 

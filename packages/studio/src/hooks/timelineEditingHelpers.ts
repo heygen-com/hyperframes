@@ -285,7 +285,6 @@ export interface PersistTimelineEditInput {
   buildPatches: (original: string, target: PatchTarget) => string;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
   coalesceKey?: string;
 }
@@ -305,7 +304,6 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   }
 
   input.pendingTimelineEditPathRef.current.add(targetPath);
-  input.domEditSaveTimestampRef.current = Date.now();
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
@@ -316,7 +314,6 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
     writeFile: input.writeProjectFile,
     recordEdit: input.recordEdit,
   });
-  input.domEditSaveTimestampRef.current = Date.now();
 }
 
 export interface PersistTimelineBatchChange {
@@ -331,7 +328,6 @@ export interface PersistTimelineBatchEditInput {
   changes: PersistTimelineBatchChange[];
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
@@ -378,7 +374,6 @@ export async function persistTimelineBatchEdit(
   for (const targetPath of Object.keys(files)) {
     input.pendingTimelineEditPathRef.current.add(targetPath);
   }
-  input.domEditSaveTimestampRef.current = Date.now();
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
@@ -390,7 +385,6 @@ export async function persistTimelineBatchEdit(
     writeFile: input.writeProjectFile,
     recordEdit: input.recordEdit,
   });
-  input.domEditSaveTimestampRef.current = Date.now();
 }
 
 export { applyPatchByTarget, formatTimelineAttributeNumber };
@@ -406,7 +400,6 @@ export interface PersistElementAttributeInput {
   label: string;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: { current: number };
   pendingTimelineEditPathRef: { current: Set<string> };
   /** Write the attribute directly on the live preview DOM node. */
   patchLive: (value: string | null) => void;
@@ -429,7 +422,6 @@ export async function persistElementAttribute({
   label,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
   patchLive,
 }: PersistElementAttributeInput): Promise<string[]> {
@@ -459,7 +451,6 @@ export async function persistElementAttribute({
   const patched = applyPatchByTarget(before, patchTarget, operation);
 
   pendingTimelineEditPathRef.current.add(targetPath);
-  domEditSaveTimestampRef.current = Date.now();
   try {
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
@@ -470,7 +461,6 @@ export async function persistElementAttribute({
       writeFile: writeProjectFile,
       recordEdit,
     });
-    domEditSaveTimestampRef.current = Date.now();
     return changedPaths;
   } catch (error) {
     // The optimistic live write already ran; unwind it on a save failure so

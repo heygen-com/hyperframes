@@ -117,7 +117,6 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
         disk[path] = content;
       },
       recordEdit: store.recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {
         if (!opts.previewStamp) return;
         const stamped = ensureHfIds(disk["index.html"]);
@@ -258,7 +257,6 @@ function mountRazorSplitAll(failOnSplit?: number): SplitAllHarness {
         disk[path] = content;
       },
       recordEdit: store.recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
     });
     splitAllRef.current = handleRazorSplitAll;

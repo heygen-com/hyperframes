@@ -84,7 +84,6 @@ function createSessionParams(
     readProjectFile: async () => "",
     writeProjectFile: async () => {},
     updateEditingFileContent: vi.fn(),
-    domEditSaveTimestampRef: { current: 0 },
     editHistory: { recordEdit: async () => {} },
     fileTree: [],
     importedFontAssetsRef: { current: [] },

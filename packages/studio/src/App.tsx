@@ -104,7 +104,6 @@ export function StudioApp() {
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
   });
   const editHistory = usePersistentEditHistory({ projectId });
-  const domEditSaveTimestampRef = useRef(0);
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
@@ -113,7 +112,6 @@ export function StudioApp() {
     projectId,
     showToast,
     recordEdit: editHistory.recordEdit,
-    domEditSaveTimestampRef,
     setRefreshKey,
   });
   const masterCompPath = useMemo(
@@ -161,7 +159,6 @@ export function StudioApp() {
     writeProjectFile: fileManager.writeProjectFile,
     observeProjectFileVersion: fileManager.observeProjectFileVersion,
     recordEdit: editHistory.recordEdit,
-    domEditSaveTimestampRef,
     reloadPreview,
     previewIframeRef,
     pendingTimelineEditPathRef,
@@ -224,7 +221,6 @@ export function StudioApp() {
     showToast,
     writeProjectFile: fileManager.writeProjectFile,
     recordEdit: editHistory.recordEdit,
-    domEditSaveTimestampRef,
     reloadPreview,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
     handleDomEditElementDelete: domEditDeleteBridge,
@@ -240,7 +236,6 @@ export function StudioApp() {
     readOptionalProjectFile: fileManager.readOptionalProjectFile,
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
-    domEditSaveTimestampRef,
     showToast,
     syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
@@ -281,7 +276,6 @@ export function StudioApp() {
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
     updateEditingFileContent: fileManager.updateEditingFileContent,
-    domEditSaveTimestampRef,
     editHistory: { recordEdit: editHistory.recordEdit },
     fileTree: fileManager.fileTree,
     importedFontAssetsRef: fileManager.importedFontAssetsRef,
@@ -526,7 +520,6 @@ export function StudioApp() {
                           publishSdkSession={sdkHandle.publish}
                           forceReloadSdkSession={sdkHandle.forceReload}
                           reloadPreview={reloadPreview}
-                          domEditSaveTimestampRef={domEditSaveTimestampRef}
                           recordEdit={editHistory.recordEdit}
                           onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                           onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}

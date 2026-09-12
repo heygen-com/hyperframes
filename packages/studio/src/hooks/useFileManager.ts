@@ -27,7 +27,6 @@ interface UseFileManagerOptions {
   projectId: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
 }
 
@@ -37,7 +36,6 @@ export function useFileManager({
   projectId,
   showToast,
   recordEdit,
-  domEditSaveTimestampRef,
   setRefreshKey,
 }: UseFileManagerOptions) {
   // ── Shared refs ──
@@ -198,7 +196,6 @@ export function useFileManager({
     readProjectFile,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     setRefreshKey,
     showToast,
   });

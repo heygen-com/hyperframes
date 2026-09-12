@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { openComposition, type Composition, type CompositionVariable } from "@hyperframes/sdk";
 import { persistSdkSerialize } from "../utils/sdkCutover";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -87,7 +87,6 @@ interface EditVariablesDeps {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: RecordEditFn;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
 }
 
 /**
@@ -98,8 +97,7 @@ interface EditVariablesDeps {
  * but keyed on `path` rather than a live session.
  */
 export function useEditVariablesInFile(deps: EditVariablesDeps) {
-  const { readProjectFile, writeProjectFile, recordEdit, reloadPreview, domEditSaveTimestampRef } =
-    deps;
+  const { readProjectFile, writeProjectFile, recordEdit, reloadPreview } = deps;
   return useCallback(
     async (path: string, label: string, mutate: (session: Composition) => void): Promise<void> => {
       const originalContent = await readProjectFile(path);
@@ -119,13 +117,12 @@ export function useEditVariablesInFile(deps: EditVariablesDeps) {
           editHistory: { recordEdit },
           writeProjectFile,
           reloadPreview,
-          domEditSaveTimestampRef,
           compositionPath: path,
           readProjectFile,
         },
         { label },
       );
     },
-    [readProjectFile, writeProjectFile, recordEdit, reloadPreview, domEditSaveTimestampRef],
+    [readProjectFile, writeProjectFile, recordEdit, reloadPreview],
   );
 }

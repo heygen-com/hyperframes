@@ -18,7 +18,6 @@ const deps = {
   editHistory: { recordEdit: vi.fn() },
   writeProjectFile: vi.fn(),
   reloadPreview: vi.fn(),
-  domEditSaveTimestampRef: { current: 0 },
 } as never;
 
 describe("SDK family gate mapping", () => {

@@ -47,7 +47,6 @@ export interface UseDomEditSessionParams {
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   updateEditingFileContent: (path: string, content: string) => void;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   fileTree: string[];
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
@@ -91,7 +90,6 @@ export function useDomEditSession({
   readProjectFile,
   writeProjectFile,
   updateEditingFileContent,
-  domEditSaveTimestampRef,
   editHistory,
   fileTree,
   importedFontAssetsRef,
@@ -211,7 +209,6 @@ export function useDomEditSession({
     activeCompPath,
     previewIframeRef,
     editHistory,
-    domEditSaveTimestampRef,
     reloadPreview,
     onCacheInvalidate: bumpGsapCache,
     onFileContentChanged: updateEditingFileContent,
@@ -249,7 +246,6 @@ export function useDomEditSession({
     showToast,
     queueDomEditSave,
     writeProjectFile,
-    domEditSaveTimestampRef,
     editHistory,
     fileTree,
     importedFontAssetsRef,
@@ -283,7 +279,6 @@ export function useDomEditSession({
               editHistory,
               writeProjectFile,
               reloadPreview,
-              domEditSaveTimestampRef,
               compositionPath: activeCompPath,
               readProjectFile,
               publishSession: publishSdkSession,
@@ -298,7 +293,6 @@ export function useDomEditSession({
             editHistory,
             writeProjectFile,
             reloadPreview,
-            domEditSaveTimestampRef,
             compositionPath: activeCompPath,
             readProjectFile,
             publishSession: publishSdkSession,
@@ -327,7 +321,6 @@ export function useDomEditSession({
     activeCompPath,
     showToast,
     writeProjectFile,
-    domEditSaveTimestampRef,
     editHistory,
     projectIdRef,
     reloadPreview,

@@ -6,7 +6,6 @@
  * component's own diffs small and readable.
  */
 
-import type { MutableRefObject } from "react";
 import type { StudioEditPersistenceProps } from "./panels/VariablesPanel";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { Composition } from "@hyperframes/sdk";
@@ -44,7 +43,6 @@ export interface StudioRightPanelProps extends StudioEditPersistenceProps {
    */
   forceReloadSdkSession?: () => void;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
     label: string;
     kind: EditHistoryKind;
