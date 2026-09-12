@@ -11,6 +11,8 @@ import {
   proxyVariantFor,
   resolveProxyVariantRequest,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
+  type AssetCodecFacts,
 } from "./mediaCodecMap.js";
 
 // Any real, existing file works as a stand-in ffprobe path — the runner
@@ -92,7 +94,7 @@ describe("probeAssetCodec", () => {
     expect(facts).toEqual({
       codecName: "hevc",
       browserHostile: true,
-      representativeMime: BROWSER_HOSTILE_CODECS.hevc,
+      representativeMime: BROWSER_HOSTILE_CODECS.hevc?.representativeMime,
       hasAlpha: false,
     });
   });
@@ -122,7 +124,7 @@ describe("probeAssetCodec", () => {
     expect(facts).toEqual({
       codecName: "vp9",
       browserHostile: true,
-      representativeMime: BROWSER_HOSTILE_CODECS.vp9,
+      representativeMime: BROWSER_HOSTILE_CODECS.vp9?.representativeMime,
       hasAlpha: false,
     });
   });
@@ -169,6 +171,38 @@ describe("probeAssetCodec", () => {
     process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
 
     await expect(probeAssetCodec(videoPath)).resolves.toBeNull();
+  });
+});
+
+describe("shouldPrewarmProxy", () => {
+  function facts(codecName: string): AssetCodecFacts {
+    return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
+  }
+
+  it.each(["hevc", "prores"])("pre-warms %s, which browsers never decode", (codecName) => {
+    expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
+  });
+
+  it.each(["vp9", "av1"])(
+    "does not pre-warm %s, which the requesting browser usually decodes itself",
+    (codecName) => {
+      expect(shouldPrewarmProxy(facts(codecName))).toBe(false);
+    },
+  );
+
+  it("does not pre-warm a browser-safe codec", () => {
+    expect(
+      shouldPrewarmProxy({
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not treat an Object.prototype key as a hostile codec", () => {
+    expect(shouldPrewarmProxy(facts("constructor"))).toBe(false);
   });
 });
 

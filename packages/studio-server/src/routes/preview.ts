@@ -30,6 +30,7 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
+  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariant,
@@ -546,6 +547,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
       }
+      // Counted before the 304 shortcut: the question a pre-warm's worth
+      // depends on is whether a browser ever asked, not whether it transcoded.
+      recordProxyRequest();
     }
 
     const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyVariant)}"`;

@@ -31,6 +31,23 @@ export interface AssetCodecFacts {
 /** Server-root-relative URL pathname -> that asset's codec facts. */
 export type MediaCodecMap = Record<string, AssetCodecFacts>;
 
+export interface BrowserHostileCodec {
+  /** Coarse `canPlayType()` input; `null` when no representative mime exists
+   * (ProRes: browsers never decode it, so the runtime always proxies rather
+   * than probing `canPlayType`). */
+  representativeMime: string | null;
+  /**
+   * Whether the server may transcode a proxy BEFORE any browser asks for one.
+   * `browserHostile` answers "could some browser fail on this asset"; this
+   * answers "is a proxy request certain enough to pay for on project open".
+   * Only unconditionally undecodable codecs earn a pre-warm. A conditional
+   * codec is still hostile for the browsers that lack it, but the mainstream
+   * ones decode the source, so its pre-warm is CPU spent for nobody: the
+   * first real `?hf-proxy=` request transcodes it lazily instead.
+   */
+  prewarm: boolean;
+}
+
 /**
  * Browser-hostile codec table v1. One exported constant so extending it is a
  * one-line change. `ffprobe` cannot emit exact RFC 6381 codec strings, so
@@ -38,15 +55,68 @@ export type MediaCodecMap = Record<string, AssetCodecFacts>;
  * positive costs one proxy transcode, never correctness; a false negative is
  * rescued by the runtime's reactive zero-videoWidth swap).
  */
-export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
-  hevc: 'video/mp4; codecs="hvc1.1.6.L120.B0"',
-  prores: null,
-  av1: 'video/mp4; codecs="av01.0.08M.08"',
-  // VP9 is browser-dependent: Chrome generally decodes it while Safari
-  // support varies. Treat it as conditional so canPlayType keeps the
-  // original where supported and transparently proxies it where unsupported.
-  vp9: 'video/webm; codecs="vp09.00.10.08"',
+export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
+  hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
+  prores: { representativeMime: null, prewarm: true },
+  // AV1 and VP9 are browser-dependent: Chrome and Firefox generally decode
+  // them while Safari support varies by version and hardware. Conditional, so
+  // canPlayType keeps the original where supported and transparently proxies
+  // it where unsupported — without pre-warming a transcode nobody redeems.
+  av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },
+  vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
+
+/** `Object.hasOwn` rather than a bare index: a codec named `constructor` or
+ * `toString` would otherwise resolve against `Object.prototype`. */
+function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
+  return Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)
+    ? BROWSER_HOSTILE_CODECS[codecName]
+    : undefined;
+}
+
+/** The pre-warm gate: true only for codecs no mainstream browser decodes, so
+ * the substitute is certain to be requested. See `BrowserHostileCodec.prewarm`. */
+export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
+  return hostileCodecEntry(facts.codecName)?.prewarm === true;
+}
+
+// --- pre-warm demand counters ----------------------------------------------
+// A pre-warm nobody redeems is a re-encode burned during the browser's first
+// layout, and it is invisible without a count — which is how a 0%-hit-rate
+// pre-warm shipped. Per process, reported on the same structured stderr
+// channel as the engine's download telemetry (`writeUrlDownloadTelemetry`).
+const proxyDemand = { prewarmsRequested: 0, proxyRequests: 0 };
+
+/** Snapshot of this process's pre-warm demand counters. */
+export function mediaProxyDemand(): { prewarmsRequested: number; proxyRequests: number } {
+  return { ...proxyDemand };
+}
+
+/**
+ * One proxy asked for before any browser wanted it. "Requested", not
+ * "started": a warm cache makes `resolveProxy` a no-op and this counter cannot
+ * see that, so it is an upper bound on transcodes, not a measure of CPU. The
+ * number it does answer exactly is the one that decides policy — a growing
+ * count beside `proxyRequests: 0` means nothing ever redeemed the pre-warm.
+ */
+export function recordProxyPrewarm(): void {
+  proxyDemand.prewarmsRequested++;
+  try {
+    process.stderr.write(
+      `[hyperframes:media-proxy] ${JSON.stringify({ event: "prewarm_requested", ...proxyDemand })}\n`,
+    );
+  } catch {
+    // Observability must never change proxy correctness.
+  }
+}
+
+/** One `?hf-proxy=` request a browser actually made. Counts every eligible
+ * request including range refills and 304s, so read it as zero vs non-zero,
+ * not as an exact ratio. Deliberately not logged: a playing <video> issues a
+ * range request every few hundred milliseconds. */
+export function recordProxyRequest(): void {
+  proxyDemand.proxyRequests++;
+}
 
 export type ProxyVariant = "h264" | "vp8";
 export type ProxyVariantRequest = ProxyVariant | "auto";
@@ -93,11 +163,11 @@ export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): Medi
 }
 
 function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
-  const isHostile = Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName);
+  const hostile = hostileCodecEntry(codecName);
   return {
     codecName,
-    browserHostile: isHostile,
-    representativeMime: isHostile ? (BROWSER_HOSTILE_CODECS[codecName] ?? null) : null,
+    browserHostile: hostile !== undefined,
+    representativeMime: hostile?.representativeMime ?? null,
     hasAlpha,
   };
 }

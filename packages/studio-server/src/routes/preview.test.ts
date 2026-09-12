@@ -748,7 +748,14 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
-    vi.doMock("../helpers/mediaCodecMap.js", () => ({
+    // Spread the real module first so the pre-warm gate (`shouldPrewarmProxy`
+    // and its codec table) is the production one — a hand-written copy of that
+    // rule would let the table and this suite drift apart. The explicit keys
+    // below still replace everything that would touch ffprobe or ffmpeg.
+    vi.doMock("../helpers/mediaCodecMap.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaCodecMap.js")>(
+        "../helpers/mediaCodecMap.js",
+      )),
       scanProjectMediaCodecMap: opts.scanMapImpl ?? (async () => ({})),
       createMediaCodecProbeCache: () => new Map(),
       probeAssetCodec:
