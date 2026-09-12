@@ -516,5 +516,31 @@ describe("parked transport loop", () => {
 
     stop!();
     expect(media.isPaused()).toBe(true);
+    // The stop closure must RELEASE, not just pause: a restart after it is an
+    // unleased play while paused, and the transport has to stop it.
+    media.start();
+    settle();
+    expect(media.isPaused()).toBe(true);
+  });
+
+  it("reclaims a leased element the moment the transport plays", () => {
+    // A lease is an exemption from the PAUSED-side enforcement only. Once the
+    // clock runs the transport owns every element again, so a leased clip that is
+    // outside the playhead's window is stopped like any other.
+    mount(`<video id="late" data-start="10" data-duration="5"></video>`);
+    const video = document.getElementById("late") as HTMLVideoElement;
+    const media = stubMediaPlayback(video, 5);
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__hf!.leasePausedMedia!(video);
+    media.start();
+    settle();
+    expect(media.isPaused()).toBe(false);
+
+    window.__player!.play();
+    settle();
+    expect(window.__player!.isPlaying()).toBe(true);
+    expect(media.isPaused()).toBe(true);
   });
 });
