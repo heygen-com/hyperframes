@@ -164,5 +164,4 @@ export type StudioMotionWindow = Window & {
   __timeline?: { time?: () => number };
   __timelines?: Record<string, StudioGsapTimeline | undefined>;
   __hfStudioMotionApply?: () => number;
-  __hfStudioMotionWrapped?: boolean;
 };

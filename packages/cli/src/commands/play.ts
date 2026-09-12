@@ -1,3 +1,4 @@
+import { getMimeType } from "@hyperframes/studio-server";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
@@ -36,7 +37,6 @@ import {
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
-  assetContentType,
 } from "../utils/compositionServer.js";
 import {
   resolveProxy,
@@ -231,7 +231,7 @@ export async function registerCompositionRoute(
       return ctx.html(html);
     }
 
-    const contentType = assetContentType(filePath);
+    const contentType = getMimeType(filePath);
     const proxyParam = ctx.req.query("hf-proxy");
     if (proxyParam !== undefined && isProxyVariantRequest(proxyParam)) {
       // Opt-out (or a non-video asset) 404s the param without attempting a

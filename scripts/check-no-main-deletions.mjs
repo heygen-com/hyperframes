@@ -38,6 +38,26 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/cli/src/templates/remote.test.ts",
+    "tests only unused constants removed with the unreachable template listing; registry and init behavior remains covered",
+  ],
+  [
+    "packages/engine/src/utils/uint16-alignment-audit.test.ts",
+    "scratch tests never invoke production code; replaced with an odd-offset regression through the actual pixel compositor",
+  ],
+  [
+    "packages/studio/src/components/storyboard/StoryboardStatusLegend.tsx",
+    "unreferenced component with no public or dynamic entrypoint; live frame status rendering remains",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineDropInsertionLine.tsx",
+    "unreferenced component with no public or dynamic entrypoint; active timeline drop behavior remains",
+  ],
+  [
+    "packages/studio/src/player/components/TimelineLayerGroupHeader.tsx",
+    "used only by the unreachable marquee implementation removed in this change; active marquee selection remains covered",
+  ],
+  [
     "docs/catalog/components/ai-generation-canvas.mdx",
     "owner-directed removal of the AI Generation Canvas catalog item and its generated documentation",
   ],

@@ -22,24 +22,6 @@ interface QueuedEvent {
 let queue: QueuedEvent[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 
-// Delegates to the single source of truth (telemetry/distinctId.ts) so `studio:*`
-// events share one id with `studio_*` / render events, and adopt the CLI's
-// distinct_id when the CLI launched Studio.
-function getDistinctId(): string {
-  return resolveStudioDistinctId();
-}
-
-/**
- * This path predates telemetry/config.ts and enforced only its own
- * localStorage key, so `navigator.doNotTrack`, VITE_HYPERFRAMES_NO_TELEMETRY,
- * Vite dev mode and the documented `hyperframes-studio:telemetryDisabled` all
- * failed to silence `studio:*` events. Now one shared policy governs every
- * transport — including the legacy key, which it still honours.
- */
-function isEnabled(): boolean {
-  return browserTelemetryAllowed();
-}
-
 function getSessionProperties(): EventProperties {
   return {
     studio_version: typeof __STUDIO_VERSION__ !== "undefined" ? __STUDIO_VERSION__ : "dev",
@@ -63,7 +45,7 @@ function getSessionProperties(): EventProperties {
 declare const __STUDIO_VERSION__: string;
 
 export function trackStudioEvent(event: string, properties: EventProperties = {}): void {
-  if (!isEnabled()) return;
+  if (!browserTelemetryAllowed()) return;
 
   queue.push({
     event: `studio:${event}`,
@@ -84,7 +66,7 @@ function drainBatch() {
   const batch = queue.map((e) => ({
     event: e.event,
     properties: { ...e.properties, $ip: null },
-    distinct_id: getDistinctId(),
+    distinct_id: resolveStudioDistinctId(),
     timestamp: e.timestamp,
   }));
   queue = [];
