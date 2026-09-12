@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { isAbsolute, posix, relative, resolve } from "node:path";
+import { isAbsolute, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
 
 /**
@@ -118,7 +118,7 @@ export function cleanAssetUrl(url: string): string {
 export function isWithinProjectRoot(projectDir: string, candidate: string): boolean {
   const projectRoot = resolve(projectDir);
   const relativePath = relative(projectRoot, candidate);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+  return relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
 
 function addCandidate(candidates: string[], candidate: string): void {
@@ -140,7 +140,7 @@ export function resolveLocalAssetCandidates(projectDir: string, url: string): st
 
     const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
     const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
+    if (clamped && clamped !== ".." && !clamped.startsWith("../")) {
       addCandidate(candidates, resolve(projectRoot, clamped));
     }
   }
