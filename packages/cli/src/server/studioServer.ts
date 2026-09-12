@@ -6,6 +6,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { compress } from "hono/compress";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
@@ -58,6 +59,26 @@ import {
 } from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
+// Vite emits built chunks and assets as `<name>-<hash>.<ext>` with rollup's
+// 8-character base64url content hash (`index-BRr1JoHX.js`), so a hashed URL's
+// bytes can never change and the browser may keep them forever. The HTML shell
+// and public/ files keep their names across builds and must keep revalidating.
+const HASH_SUFFIX_RE = /-([A-Za-z0-9_]{8,})\.[A-Za-z0-9]+$/;
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/**
+ * Only the segment after the LAST hyphen counts, and it must carry a digit,
+ * underscore or capital. That is what separates a real hash from an ordinary
+ * hyphenated word of the same length (`vite-manifest.json`, `user-Guide-v2.js`),
+ * and it errs the safe way: an all-lower-case hash would simply keep
+ * revalidating, which is the behaviour before this change.
+ */
+export function isContentHashedAsset(filePath: string): boolean {
+  const suffix = HASH_SUFFIX_RE.exec(basename(filePath))?.[1];
+  return suffix !== undefined && /[A-Z0-9_]/.test(suffix);
+}
+
 const REMOTE_GIF_IMG_SRC_RE =
   /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
@@ -879,9 +900,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     const content = readBundleFile(filePath);
     if (content === null) return c.text("not found", 404);
     return new Response(content, {
-      headers: { "Content-Type": getMimeType(filePath), "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": getMimeType(filePath),
+        "Cache-Control": isContentHashedAsset(filePath) ? IMMUTABLE_CACHE_CONTROL : "no-store",
+      },
     });
   };
+  // Runtime gzip: the studio bundle is several megabytes of JavaScript and was
+  // being shipped raw on every cold open. Hono's middleware already skips
+  // already-compressed content types and anything under its size threshold, so
+  // only /assets/* needs it — public/ holds icons and the favicon.
+  app.use("/assets/*", compress());
   app.get("/assets/*", serveStudioStaticFile);
   app.get("/icons/*", serveStudioStaticFile);
   app.get("/favicon.svg", serveStudioStaticFile);
@@ -980,7 +1009,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     if (headScript) {
       html = html.replace("<head>", `<head>${headScript}`);
     }
-    return c.html(html);
+    // The shell must never be cached: it is the only thing that names the
+    // current hashed bundle, and those are now served as immutable.
+    return c.html(html, 200, { "Cache-Control": "no-store" });
   });
 
   return { app, watcher, adapter };
