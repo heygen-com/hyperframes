@@ -52,6 +52,11 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /ECONNREFUSED/i,
   /net::ERR_NETWORK_CHANGED/i,
   /Composition has zero duration[\s\S]*Runtime ready: false/,
+  // CDP can refuse a capture call outright with this exact wording; timed-out
+  // variants of the same call hit PROTOCOL_TIMEOUT_PATTERNS, checked first.
+  // Anchored to this literal reason (not just the CDP method) so an unrelated,
+  // genuinely deterministic Page.captureScreenshot error isn't swept in too.
+  /Protocol error \(Page\.captureScreenshot\): Unable to capture screenshot/i,
 ];
 
 const PROTOCOL_TIMEOUT_PATTERNS = [

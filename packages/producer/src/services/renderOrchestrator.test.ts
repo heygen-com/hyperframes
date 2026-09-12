@@ -302,18 +302,27 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     vi.mocked(mergeWorkerFrames).mockReset();
   });
 
-  it("retries ONCE at the same worker count on a transient Target closed with zero progress", async () => {
+  // Both shapes classify as transient_browser: the tab dying mid-capture, and a
+  // CDP refusal of the capture call itself (no timeout wording, so it used to
+  // fall through to the fatal "authoring" bucket and was never retried).
+  it.each([
+    ["a transient Target closed", "Protocol error (Page.captureScreenshot): Target closed"],
+    [
+      "a non-timeout captureScreenshot protocol refusal",
+      "[Parallel] Capture failed: Worker 0: Protocol error (Page.captureScreenshot): Unable to capture screenshot",
+    ],
+  ])("retries ONCE at the same worker count on %s with zero progress", async (_label, message) => {
     const workDir = mkdtempSync(join(tmpdir(), "hf-transient-work-"));
     const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-frames-"));
     const log = makeLog();
     let call = 0;
-    // First attempt: the tab dies before any frame is captured (frame 0) — zero
-    // forward progress, which the worker-halving retry deliberately bails on.
-    // The transient retry recovers it without changing the worker count.
+    // First attempt fails before any frame is captured (frame 0) — zero forward
+    // progress, which the worker-halving retry deliberately bails on. The
+    // transient retry recovers it without changing the worker count.
     vi.mocked(executeParallelCapture).mockImplementation(async () => {
       call++;
       if (call === 1) {
-        throw new Error("Protocol error (Page.captureScreenshot): Target closed");
+        throw new Error(message);
       }
       writeAllFrames(framesDir, 4);
       return [];
@@ -1629,6 +1638,13 @@ describe("adaptive missing-frame retry helpers", () => {
         ),
       ),
     ).toBe(true);
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error(
+          "[Parallel] Capture failed: Worker 0: Protocol error (Page.captureScreenshot): Unable to capture screenshot",
+        ),
+      ),
+    ).toBe(true);
     expect(isRecoverableParallelCaptureError(new Error("Encoding failed: ffmpeg exited"))).toBe(
       false,
     );
@@ -2745,6 +2761,32 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
         isEncoderInterrupted: true,
         deWorkerInversion: "inverted",
         deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  // --low-memory-mode is single-worker with no drawElement, so nothing ever
+  // pins a count and that mode had no whole-render fallback at all.
+  it("retries a transient capture-call refusal even with no pinned routing", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isTransientCaptureError: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("never retries a transient capture-call refusal after cancellation", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+        isTransientCaptureError: true,
       }),
     ).toBe(false);
   });
