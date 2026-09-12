@@ -2524,11 +2524,8 @@ export function initSandboxRuntimeModular(): void {
   window.__hf.releasePausedMedia = releasePausedMedia;
 
   /**
-   * The cheap half of the paused-side check: a tag+attribute query, deliberately
-   * not `buildRuntimeMediaCache`, which reads and resolves the timing of every
-   * media element in the document. The predicate matches the cache's own filter
-   * (`video`/`audio` carrying `data-start`) so anything this reports is something
-   * `syncRuntimeMedia` can actually stop.
+   * Cheap tag+attribute scan, not `buildRuntimeMediaCache`. Narrower than that
+   * cache's filter, which also admits media with no `data-start` of its own.
    */
   const hasRunningTimedMedia = (): boolean => {
     for (const el of document.querySelectorAll("video[data-start], audio[data-start]")) {
@@ -3276,7 +3273,7 @@ export function initSandboxRuntimeModular(): void {
   // in the registry, not GSAP child tweens). Matches the naming convention in
   // player.ts:32 (forEachSiblingTimeline) and player.ts:89 (activateSiblingTimelines).
   //
-  // The rearm is a MEANS, not a resting state: GSAP will not propagate the root's
+  // The rearm is a means, not a resting state: GSAP will not propagate the root's
   // totalTime() into a paused child. Returns what it touched so the caller can
   // re-pause it; a sibling parented to gsap.globalTimeline free-runs on the global
   // ticker the moment it is left unpaused. Mirrors player.ts's seek helper.
@@ -3361,11 +3358,8 @@ export function initSandboxRuntimeModular(): void {
   };
 
   /**
-   * Borrow, seek, return. The rearm below is unpaused only ACROSS the seek:
-   * sub-composition timelines are transport-driven, re-seeked every tick by
-   * `seekStandaloneRegisteredTimelines`, so paused is their only correct resting
-   * state whether or not the clock runs. Restored in `finally` because a throw
-   * mid-seek is exactly when a leaked unpaused sibling starts free-running.
+   * Borrow, seek, return. Siblings are unpaused only across the seek; restored in
+   * `finally`, because a throw mid-seek is when a leaked one starts free-running.
    */
   function seekTimelineAndAdapters(
     t: number,

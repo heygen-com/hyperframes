@@ -9,12 +9,6 @@ import {
 /**
  * One invariant: while the transport clock is paused, nothing in the preview may
  * be running — not a sibling composition timeline, not a media element.
- *
- * Both halves were unowned. A seek rearmed sibling timelines so GSAP would
- * propagate into them and never put them back, and a sibling parented to
- * gsap.globalTimeline then advanced at 1x on the global ticker with the clock
- * stopped. The tick, meanwhile, only synced media while playing, so an element
- * that started on its own was stopped by nothing.
  */
 
 const originalRequestAnimationFrame = window.requestAnimationFrame;
