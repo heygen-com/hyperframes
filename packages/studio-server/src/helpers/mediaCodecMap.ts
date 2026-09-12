@@ -77,13 +77,9 @@ export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
   return hostileCodecEntry(facts.codecName)?.prewarm === true;
 }
 
-// --- pre-warm demand counters ----------------------------------------------
-// A pre-warm nobody redeems is a re-encode burned during the browser's first
-// layout, and it is invisible without a count — which is how a 0%-hit-rate
-// pre-warm shipped. Both counters are per process and share one unit: a call
-// to `resolveProxy`. One summary line is written at exit, on the same
-// structured stderr channel as the engine's download telemetry
-// (`writeUrlDownloadTelemetry`, packages/engine/src/utils/urlDownloader.ts).
+// Per process, and deliberately in one unit — a call to `resolveProxy` — so
+// the pair reads as a ratio. Summarised at exit on stderr, in the same
+// `[hyperframes:<area>] {json}` shape as `writeUrlDownloadTelemetry`.
 const proxyDemand = { prewarmsRequested: 0, proxyRequests: 0 };
 
 /** Snapshot of this process's pre-warm demand counters. */
