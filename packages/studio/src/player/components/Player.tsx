@@ -5,10 +5,11 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
-// module load, which throws under SSR — hence the dynamic import behind a
+// module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
-// the chunk request in flight before the shell's first layout; clearing the
-// memo on rejection keeps a remount able to retry, as it could before.
+// the chunk request in flight before the shell's first layout. Clearing the memo
+// on rejection stops one failure poisoning every later mount; the browser's
+// module map still caches a failed fetch, so recovery is a page reload.
 let playerModule: Promise<unknown> | null = null;
 
 export function loadPlayerModule(): Promise<unknown> {

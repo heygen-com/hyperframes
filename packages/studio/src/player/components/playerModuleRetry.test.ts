@@ -2,8 +2,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-// The module-scope kick in Player.tsx consumes the first attempt, so this
-// starts failing and the test turns it off to observe the retry.
+// The module-scope kick in Player.tsx consumes the first attempt at import time,
+// so this starts failing; the first test asserts that kick happened.
 const state = vi.hoisted(() => ({ attempts: 0, failing: true }));
 
 vi.mock("@hyperframes/player", () => {
@@ -15,7 +15,11 @@ vi.mock("@hyperframes/player", () => {
 import { loadPlayerModule } from "./Player";
 
 describe("loadPlayerModule", () => {
-  it("re-imports after a failed load so a remount can recover", async () => {
+  it("kicks the import at module scope, before any mount", () => {
+    expect(state.attempts).toBe(1);
+  });
+
+  it("does not hand a later mount the promise a failed load already rejected", async () => {
     // vitest rewraps a throwing mock factory, so assert the rejection, not its text.
     await expect(loadPlayerModule()).rejects.toThrow();
     const failedAttempts = state.attempts;
@@ -26,14 +30,12 @@ describe("loadPlayerModule", () => {
     expect(state.attempts).toBeGreaterThan(failedAttempts);
   });
 
-  it("reuses the resolved module instead of re-importing on every mount", async () => {
+  it("hands every mount the same resolved promise", async () => {
     state.failing = false;
-    await loadPlayerModule();
-    const settled = state.attempts;
+    const first = loadPlayerModule();
+    await first;
 
-    await loadPlayerModule();
-    await loadPlayerModule();
-
-    expect(state.attempts).toBe(settled);
+    expect(loadPlayerModule()).toBe(first);
+    expect(loadPlayerModule()).toBe(first);
   });
 });
