@@ -364,6 +364,38 @@ export interface MemorySampler {
   stop: () => void;
 }
 
+/**
+ * Copy sizing + sampled peak memory onto the job so they survive a failed
+ * render.
+ *
+ * `job.perfSummary` is assembled only after a render succeeds, so a throw
+ * mid-capture previously reached `render_error` with no sizing or memory
+ * context — 0 of 317k fleet failures carried `workers_heap_*`, which is why
+ * PRINFRA-341's "do advisory-true renders OOM?" question was unanswerable.
+ * Called from the unconditional memory-sampler disposer, so it runs on both
+ * the success and failure paths.
+ *
+ * ponytail: structurally typed rather than importing RenderJob/WorkerSizing —
+ * renderOrchestrator already imports this module, so a nominal import here
+ * would be a cycle.
+ *
+ * Does NOT make fatal V8 OOMs observable: `FATAL ERROR: Reached heap limit`
+ * aborts the process before any event is sent. This covers failures that
+ * reach an error handler at all.
+ */
+export function recordJobFailureMetrics<TSizing>(
+  job: { peakRssMb?: number; peakHeapUsedMb?: number; workerSizing?: TSizing },
+  sampler: Pick<MemorySampler, "peakRssBytes" | "peakHeapUsedBytes"> | null,
+  sizing: TSizing | undefined,
+): void {
+  if (sampler) {
+    job.peakRssMb = Math.round(sampler.peakRssBytes() / (1024 * 1024));
+    job.peakHeapUsedMb = Math.round(sampler.peakHeapUsedBytes() / (1024 * 1024));
+  }
+  // Leave a previously-recorded sizing in place rather than blanking it.
+  if (sizing !== undefined) job.workerSizing = sizing;
+}
+
 export function createMemorySampler(intervalMs: number = 250): MemorySampler {
   let peakRss = 0;
   let peakHeap = 0;
