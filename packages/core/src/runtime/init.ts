@@ -1254,14 +1254,9 @@ export function initSandboxRuntimeModular(): void {
       parent: RuntimeTimelineLike | null,
       candidates: C[],
     ): C[] => {
-      const withChildren = parent as
-        | (RuntimeTimelineLike & {
-            getChildren?: (...args: unknown[]) => unknown[];
-          })
-        | null;
-      if (!withChildren || typeof withChildren.getChildren !== "function") return [];
+      if (!parent || typeof parent.getChildren !== "function") return [];
       try {
-        const held = withChildren.getChildren(true, true, true);
+        const held = parent.getChildren(true, true, true);
         return Array.isArray(held) ? candidates.filter((c) => held.includes(c.timeline)) : [];
       } catch {
         return [];

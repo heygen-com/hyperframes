@@ -45,6 +45,32 @@ describe("paused transport owns what is running", () => {
     document.body.innerHTML = "";
   });
 
+  it("unpauses a child only once the root really holds it", () => {
+    // The paused root gates a nested child (GSAP skips a child with _ts=0), so the
+    // resolver must unpause it; the transport's first seek pauses it again, so the
+    // unpause is observable only as it happens. Held-ness is read AFTER the add
+    // loop: this root reports children only once added, which distinguishes the
+    // two orders.
+    const registry = mountNestedComposition();
+    const held: unknown[] = [];
+    const unpausedWhileHeld: boolean[] = [];
+    registry.main.add = ((child: unknown) => {
+      held.push(child);
+    }) as typeof registry.main.add;
+    registry.main.getChildren = (() => [...held]) as typeof registry.main.getChildren;
+    const captionsPaused = registry.captions.paused!;
+    registry.captions.paused = ((value?: boolean) => {
+      if (value === false) unpausedWhileHeld.push(held.includes(registry.captions));
+      return captionsPaused(value);
+    }) as typeof registry.captions.paused;
+    initSandboxRuntimeModular();
+
+    expect(held).toContain(registry.captions);
+    expect(unpausedWhileHeld).toEqual([true]);
+    // Registry-only, no host element: never a candidate, never unpaused.
+    expect(registry.overlay.paused!()).toBe(true);
+  });
+
   it("keeps a registered child the root does not hold paused across a rebind", () => {
     // The resolver used to unpause every registry child before nesting it. A
     // rebind after an edit re-resolves with no seek behind it, so a child the
