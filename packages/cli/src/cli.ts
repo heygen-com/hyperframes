@@ -217,6 +217,11 @@ let _printUpdateNotice: (() => void) | undefined;
 let _printStalePinNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
 let telemetryReady: Promise<void> = Promise.resolve();
+// Bounded by skillsUpdateCheck's own internal fetch/git timeouts (a few
+// seconds worst case on a cold cache) — finalizeCli awaits this so the
+// notice reflects a freshly-written cache instead of racing process.exit()
+// against the still-in-flight refresh.
+let skillsCheckReady: Promise<void> = Promise.resolve();
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
@@ -267,8 +272,11 @@ if (
   });
 
   // Skills freshness nudge — same gating as the CLI self-update notice. The
-  // check is cached (24h) and best-effort: it never blocks or fails the command.
-  import("./utils/skillsUpdateCheck.js").then(async (mod) => {
+  // check is cached (24h) and best-effort: it never blocks or fails the command
+  // for long (skillsUpdateCheck's own fetch/git calls carry their own short
+  // timeouts). finalizeCli awaits skillsCheckReady before printing the notice
+  // so exit can't race the cache write.
+  skillsCheckReady = import("./utils/skillsUpdateCheck.js").then(async (mod) => {
     _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
     await mod.checkSkillsForUpdate().catch(() => null);
   });
@@ -305,6 +313,7 @@ async function finalizeCli(result: CommandResult): Promise<void> {
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printStalePinNotice?.();
+    await skillsCheckReady.catch(() => {});
     _printSkillsUpdateNotice?.();
   }
   process.exitCode = exitCode;

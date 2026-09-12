@@ -9,6 +9,9 @@ afterEach(() => {
   vi.doUnmock("./commands/init.js");
   vi.doUnmock("./telemetry/events.js");
   vi.doUnmock("./telemetry/index.js");
+  vi.doUnmock("./utils/updateCheck.js");
+  vi.doUnmock("./utils/autoUpdate.js");
+  vi.doUnmock("./utils/skillsUpdateCheck.js");
   vi.resetModules();
 });
 
@@ -231,6 +234,61 @@ describe("CLI lifecycle", () => {
     } finally {
       exitSpy.mockRestore();
     }
+  });
+
+  it("awaits a still-refreshing skills-freshness check before printing its notice", async () => {
+    // Regression for the skills-freshness/process.exit race: the check is a
+    // detached dynamic import + async cache refresh, so on a cold cache it
+    // can still be in flight when finalizeCli runs. Simulate that by holding
+    // checkSkillsForUpdate open and asserting the notice can't have printed
+    // (nor, by extension, could the process have exited) until it resolves.
+    let resolveCheckGate!: () => void;
+    const checkGate = new Promise<void>((resolve) => {
+      resolveCheckGate = resolve;
+    });
+    let markCheckStarted!: () => void;
+    const checkStarted = new Promise<void>((resolve) => {
+      markCheckStarted = resolve;
+    });
+    const order: string[] = [];
+
+    mockInitCommand(vi.fn());
+    mockTelemetry({});
+    vi.doMock("./utils/updateCheck.js", () => ({
+      checkForUpdate: vi.fn(async () => ({ updateAvailable: false })),
+      printUpdateNotice: vi.fn(),
+      printStalePinNotice: vi.fn(),
+    }));
+    vi.doMock("./utils/autoUpdate.js", () => ({
+      reportCompletedUpdate: vi.fn(),
+      scheduleBackgroundInstall: vi.fn(),
+    }));
+    vi.doMock("./utils/skillsUpdateCheck.js", () => ({
+      checkSkillsForUpdate: vi.fn(async () => {
+        order.push("check-started");
+        markCheckStarted();
+        await checkGate;
+        order.push("check-resolved");
+        return { updateAvailable: true, outdated: 1, missing: 0, removed: 0 };
+      }),
+      printSkillsUpdateNotice: vi.fn(() => {
+        order.push("notice-printed");
+      }),
+    }));
+
+    process.argv = ["node", "cli.ts", "init"];
+    const execution = import("./cli.js");
+
+    await checkStarted;
+    // Give the command's own synchronous completion path a turn to run
+    // ahead of the still-open check — this is what used to race exit.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual(["check-started"]);
+
+    resolveCheckGate();
+    await execution;
+
+    expect(order).toEqual(["check-started", "check-resolved", "notice-printed"]);
   });
 });
 
