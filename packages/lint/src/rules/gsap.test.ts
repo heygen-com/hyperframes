@@ -3259,7 +3259,11 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("gsap_repeated_fromto_without_baseline: rejects an earlier standalone set", async () => {
+  it("gsap_repeated_fromto_without_baseline: accepts an earlier load-time standalone set", async () => {
+    // A load-time `gsap.set(...)` runs before the paused timeline's playhead
+    // ever moves, so it establishes the resting state just as reliably as an
+    // in-timeline `tl.set(..., 0)` — and unlike that shape, it can never trip
+    // gsap_timeline_set_initial_hide (which already exempts `global` sets).
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
@@ -3268,6 +3272,65 @@ describe("SVG draw-on rules", () => {
     window.__timelines = window.__timelines || {};
     const tl = gsap.timeline({ paused: true });
     gsap.set("#ring", { opacity: 0, scale: 1 });
+    tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_repeated_fromto_without_baseline: a load-time set baseline also clears gsap_timeline_set_initial_hide", async () => {
+    // Regression: this rule's fixHint used to recommend an in-timeline
+    // `tl.set(sel, { ... }, 0)` baseline, which gsap_timeline_set_initial_hide
+    // then flags whenever those values hide the element — the hide-until-reveal
+    // shape both rules exist for. A load-time `gsap.set(...)` is the one
+    // baseline that satisfies both, so neither rule may fire on it.
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    gsap.set("#ring", { opacity: 0, scale: 0 });
+    tl.fromTo("#ring", { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 0.5 }, 5);
+    tl.fromTo("#ring", { opacity: 1, scale: 1 }, { opacity: 0, scale: 0, duration: 0.5 }, 10);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((finding) => finding.code);
+
+    expect(codes).not.toContain("gsap_repeated_fromto_without_baseline");
+    expect(codes).not.toContain("gsap_timeline_set_initial_hide");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: still rejects a standalone set deferred behind a callback", async () => {
+    // A `gsap.set(...)` inside an event handler only runs on user interaction,
+    // not at load, so it cannot stand in for a resting state before the first
+    // tween. This rejects on the old, blunter grounds too (any `global` set
+    // was previously excluded outright) — it's a regression guard against a
+    // future change that accepts `global` unconditionally and drops the
+    // extractStandaloneSetSelectors reliability check, not a red/green proof
+    // of that check by itself (see the load-time-baseline test above for that).
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="ring"></div><button id="reset"></button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    document.getElementById("reset").addEventListener("click", () => {
+      gsap.set("#ring", { opacity: 0, scale: 1 });
+    });
     tl.fromTo("#ring", { opacity: 0, scale: 1 }, { opacity: 1, duration: 0.5 }, 5);
     tl.fromTo("#ring", { opacity: 1, scale: 0.4 }, { opacity: 0, duration: 0.5 }, 10);
     window.__timelines.main = tl;
