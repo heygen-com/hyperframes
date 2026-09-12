@@ -15,7 +15,6 @@ export function makeLifecycleOpsParams(
     activeCompPath: "index.html",
     showToast: vi.fn(),
     writeProjectFile: vi.fn(async () => {}),
-    domEditSaveTimestampRef: { current: 0 },
     editHistory: { recordEdit: vi.fn(async () => {}) },
     projectIdRef: { current: null },
     reloadPreview: vi.fn(),

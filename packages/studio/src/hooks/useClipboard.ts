@@ -25,7 +25,6 @@ interface UseClipboardOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
@@ -55,7 +54,6 @@ export function useClipboard({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   reloadPreview,
   handleTimelineElementDelete,
   handleDomEditElementDelete,
@@ -171,7 +169,6 @@ export function useClipboard({
         );
       }
 
-      domEditSaveTimestampRef.current = Date.now();
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: payload.kind === "timeline-clip" ? "Paste clip" : "Paste element",
@@ -188,14 +185,7 @@ export function useClipboard({
       const message = error instanceof Error ? error.message : "Failed to paste";
       showToast(message);
     }
-  }, [
-    activeCompPath,
-    domEditSaveTimestampRef,
-    recordEdit,
-    reloadPreview,
-    showToast,
-    writeProjectFile,
-  ]);
+  }, [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile]);
 
   const handleCut = useCallback(async (): Promise<boolean> => {
     const copied = handleCopy();

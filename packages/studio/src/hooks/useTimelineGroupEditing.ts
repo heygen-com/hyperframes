@@ -51,7 +51,6 @@ export interface TimelineGroupCommitOptions {
 
 interface UseTimelineGroupEditingOptions {
   activeCompPath: string | null;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   editQueueRef: MutableRefObject<Promise<unknown>>;
   forceReloadSdkSession?: () => void;
   invalidateGsapCache?: () => void;
@@ -108,7 +107,6 @@ function resizeHasPlaybackStartAdjustment(change: TimelineGroupResizeChange): bo
 
 export function useTimelineGroupEditing({
   activeCompPath,
-  domEditSaveTimestampRef,
   editQueueRef,
   forceReloadSdkSession,
   invalidateGsapCache,
@@ -160,7 +158,6 @@ export function useTimelineGroupEditing({
         changes: batchChanges,
         writeProjectFile,
         recordEdit,
-        domEditSaveTimestampRef,
         pendingTimelineEditPathRef,
         coalesceKey,
         coalesceMs,
@@ -169,7 +166,6 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       forceReloadSdkSession,
       pendingTimelineEditPathRef,
       recordEdit,
@@ -209,7 +205,6 @@ export function useTimelineGroupEditing({
           editHistory: { recordEdit },
           writeProjectFile,
           reloadPreview,
-          domEditSaveTimestampRef,
           compositionPath: activeCompPath,
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
           publishSession: publishSdkSession,
@@ -225,7 +220,6 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       projectIdRef,
       publishSdkSession,
       recordEdit,

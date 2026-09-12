@@ -143,7 +143,6 @@ interface SetAudioGroupAttributeInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -163,7 +162,6 @@ async function setAudioGroupAttribute({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: SetAudioGroupAttributeInput): Promise<string[]> {
   // The file that actually CONTAINS the group element, not just the active
@@ -188,7 +186,6 @@ async function setAudioGroupAttribute({
     label,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     pendingTimelineEditPathRef,
     patchLive: (v) => patchLiveGroupAttribute(previewIframe, groupId, attr, v),
   });
@@ -207,7 +204,6 @@ export function useSetAudioGroupAttribute({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -244,7 +240,6 @@ export function useSetAudioGroupAttribute({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
         syncStoredGroupAttribute(groupId, attr, value);
@@ -269,7 +264,6 @@ export function useSetAudioGroupAttribute({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,

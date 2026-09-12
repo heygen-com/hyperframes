@@ -42,7 +42,6 @@ export function StudioRightPanel({
   publishSdkSession,
   forceReloadSdkSession,
   reloadPreview,
-  domEditSaveTimestampRef,
   recordEdit,
   onToggleElementHidden,
   onAutoGroupCarveSources,
@@ -139,7 +138,6 @@ export function StudioRightPanel({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
     publishSdkSession,
   });
 
@@ -152,7 +150,6 @@ export function StudioRightPanel({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
     publishSdkSession,
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
@@ -201,7 +198,6 @@ export function StudioRightPanel({
         selectedSourceFile: domEditSelection?.sourceFile || activeCompPath || "index.html",
         fileTree,
         projectId,
-        domEditSaveTimestampRef,
         waitForPendingDomEditSaves,
         readProjectFile,
         writeProjectFile,
@@ -217,7 +213,6 @@ export function StudioRightPanel({
       }),
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       domEditSelection?.sourceFile,
       fileTree,
       projectId,
@@ -272,7 +267,6 @@ export function StudioRightPanel({
       writeProjectFile={writeProjectFile}
       recordEdit={recordEdit}
       reloadPreview={reloadPreview}
-      domEditSaveTimestampRef={domEditSaveTimestampRef}
       forceReloadSharedSdkSession={forceReloadSdkSession}
     >
       <PropertyPanel
@@ -436,7 +430,6 @@ export function StudioRightPanel({
                   sdkSession={sdkSession}
                   publishSdkSession={publishSdkSession}
                   reloadPreview={reloadPreview}
-                  domEditSaveTimestampRef={domEditSaveTimestampRef}
                   recordEdit={recordEdit}
                 />
               ) : layersPaneOpen && designPaneOpen && !STUDIO_FLAT_INSPECTOR_ENABLED ? (

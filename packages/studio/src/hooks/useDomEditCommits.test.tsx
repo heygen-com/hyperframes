@@ -209,7 +209,6 @@ function renderDomEditCommits(
   const recordEdit = vi.fn(async () => {});
   const previewIframeRef: MutableRefObject<HTMLIFrameElement | null> = { current: iframe };
   const projectIdRef: MutableRefObject<string | null> = options.projectIdRef ?? { current: "p1" };
-  const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
   const reloadPreview = vi.fn();
 
   function Probe() {
@@ -219,7 +218,6 @@ function renderDomEditCommits(
       showToast,
       queueDomEditSave: options.queueDomEditSave ?? (async (save) => save()),
       writeProjectFile: options.writeProjectFile ?? (async () => {}),
-      domEditSaveTimestampRef,
       editHistory: { recordEdit },
       fileTree: [],
       importedFontAssetsRef: { current: options.importedFontAssets ?? [] },

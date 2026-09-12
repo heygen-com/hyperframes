@@ -29,7 +29,6 @@ interface UseTimelineAssetDropOpsOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;
@@ -44,7 +43,6 @@ export function useTimelineAssetDropOps({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   reloadPreview,
   uploadProjectFiles,
   isRecordingRef,
@@ -109,7 +107,6 @@ export function useTimelineAssetDropOps({
           }),
         );
 
-        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
@@ -135,7 +132,6 @@ export function useTimelineAssetDropOps({
       showToast,
       timelineElements,
       writeProjectFile,
-      domEditSaveTimestampRef,
       reloadPreview,
       isRecordingRef,
       forceReloadSdkSession,
@@ -198,7 +194,6 @@ export function useTimelineAssetDropOps({
           resync: forceReloadSdkSession,
           refresh: reloadPreview,
         });
-        domEditSaveTimestampRef.current = Date.now();
         showToast("Composition added to the timeline.", "info");
       } catch (error) {
         showToast(
@@ -209,7 +204,6 @@ export function useTimelineAssetDropOps({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       forceReloadSdkSession,
       isRecordingRef,
       observeProjectFileVersion,

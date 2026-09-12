@@ -14,7 +14,6 @@ import {
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
-import type { MutableRefObject } from "react";
 
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
@@ -153,13 +152,10 @@ describe("shouldUseSdkCutover", () => {
 });
 
 describe("sdkCutoverPersist", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
-
   const makeDeps = (overrides: Partial<Parameters<typeof sdkCutoverPersist>[5]> = {}) => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
     ...overrides,
   });
@@ -453,7 +449,6 @@ window.__timelines = { main: tl };</script></div>
             disk = content;
           }),
           reloadPreview: vi.fn(),
-          domEditSaveTimestampRef: { current: 0 },
           publishSession,
         },
         mutate,
@@ -485,7 +480,6 @@ window.__timelines = { main: tl };</script></div>
         editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
         writeProjectFile,
         reloadPreview: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         createCandidateSession: async (source) => {
           candidate = await openComposition(source, { history: false });
           disposeCandidate = vi.spyOn(candidate, "dispose");
@@ -525,7 +519,6 @@ window.__timelines = { main: tl };</script></div>
           order.push("write");
         }),
         reloadPreview: vi.fn(() => order.push("refresh")),
-        domEditSaveTimestampRef: { current: 0 },
         publishSession: ({ candidate }) => {
           order.push("publish");
           published = candidate;
@@ -559,7 +552,6 @@ window.__timelines = { main: tl };</script></div>
         editHistory: { recordEdit },
         writeProjectFile,
         reloadPreview: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         publishSession: ({ candidate }) => {
           published = candidate;
           throw new Error("cleanup after publish failed");
@@ -591,7 +583,6 @@ window.__timelines = { main: tl };</script></div>
       writeProjectFile,
       readProjectFile: vi.fn(async () => disk),
       reloadPreview: vi.fn(),
-      domEditSaveTimestampRef: { current: 0 },
       publishSession: ({ candidate }) => {
         published.push(candidate);
         return "published";
@@ -632,7 +623,6 @@ window.__timelines = { main: tl };</script></div>
         throw new Error("transient read failure");
       }),
       reloadPreview: vi.fn(),
-      domEditSaveTimestampRef: { current: 0 },
       publishSession: vi.fn().mockReturnValue("published"),
     };
 
@@ -683,7 +673,6 @@ window.__timelines = { main: tl };</script></div>
         readProjectFile: vi.fn().mockResolvedValue(html),
         reloadPreview: vi.fn(),
         refresh,
-        domEditSaveTimestampRef: { current: 0 },
         createCandidateSession: vi.fn().mockResolvedValue(candidateA),
         publishSession: ({ candidate, expectedSession, targetPath }) => {
           if (activePath !== targetPath || currentSession !== expectedSession) {
@@ -724,7 +713,6 @@ describe("persistSdkSerialize — shared per-file transaction boundary", () => {
     }),
     readProjectFile: vi.fn(async () => disk.current),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: { current: 0 },
   });
 
   it("rebases overlapping whole-file transforms on the latest committed bytes", async () => {
@@ -814,12 +802,10 @@ describe("persistSdkSerialize — shared per-file transaction boundary", () => {
 });
 
 describe("sdkDeletePersist", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeDeps = () => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
   });
 
@@ -893,12 +879,10 @@ describe("sdkDeletePersist", () => {
 });
 
 describe("sdkTimingPersist", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeDeps = () => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
   });
 
@@ -1006,7 +990,6 @@ describe("sdkTimingPersist", () => {
 });
 
 describe("sdkGsapTweenPersist — undo baseline (finding #12)", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeSession = () =>
     ({
       getElement: vi.fn().mockReturnValue({ id: "hf-box" }),
@@ -1023,7 +1006,6 @@ describe("sdkGsapTweenPersist — undo baseline (finding #12)", () => {
       editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
       writeProjectFile: vi.fn().mockResolvedValue(undefined),
       reloadPreview: vi.fn(),
-      domEditSaveTimestampRef: makeRef(0),
       readProjectFile: vi.fn().mockResolvedValue("<html>on-disk gsap bytes</html>"),
       ...candidateTestDeps(),
     };
@@ -1046,8 +1028,6 @@ describe("sdkGsapTweenPersist — undo baseline (finding #12)", () => {
 });
 
 describe("sdkGsapTweenPersist — per-file serialization (finding #8)", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
-
   it("routes the read-modify-write through the shared file coordinator", async () => {
     const order: string[] = [];
     let writeResolve: (() => void) | null = null;
@@ -1071,7 +1051,6 @@ describe("sdkGsapTweenPersist — per-file serialization (finding #8)", () => {
         return Promise.resolve();
       }),
       reloadPreview: vi.fn(),
-      domEditSaveTimestampRef: makeRef(0),
       ...candidateTestDeps(),
     };
 
@@ -1116,12 +1095,10 @@ describe("sdkGsapTweenPersist — per-file serialization (finding #8)", () => {
 });
 
 describe("sdkGsapTweenPersist", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeDeps = () => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
   });
 
@@ -1232,12 +1209,10 @@ describe("sdkGsapTweenPersist", () => {
 });
 
 describe("sdkGsapKeyframePersist", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeDeps = () => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
   });
 
@@ -1303,12 +1278,10 @@ describe("sdkGsapKeyframePersist", () => {
 });
 
 describe("sdkCutoverPersist — GSAP script preservation (integration)", () => {
-  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
   const makeDeps = () => ({
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: makeRef(0),
     ...candidateTestDeps(),
   });
 

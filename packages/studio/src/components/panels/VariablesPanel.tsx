@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Composition,
   CompositionVariable,
@@ -35,7 +35,6 @@ export interface StudioEditPersistenceProps {
   sdkSession: Composition | null;
   publishSdkSession: PublishSdkSession;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
     label: string;
     kind: EditHistoryKind;
@@ -253,7 +252,6 @@ export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
   publishSdkSession,
   reloadPreview,
-  domEditSaveTimestampRef,
   recordEdit,
 }: VariablesPanelProps) {
   const { activeCompPath, showToast } = useStudioShellContext();
@@ -289,7 +287,6 @@ export const VariablesPanel = memo(function VariablesPanel({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
     publishSdkSession,
   });
 
@@ -552,7 +549,6 @@ export const VariablesPanel = memo(function VariablesPanel({
           writeProjectFile={writeProjectFile}
           recordEdit={recordEdit}
           reloadPreview={reloadPreview}
-          domEditSaveTimestampRef={domEditSaveTimestampRef}
         />
       </div>
     </div>

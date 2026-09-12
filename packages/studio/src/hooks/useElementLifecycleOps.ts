@@ -75,7 +75,6 @@ export function useElementLifecycleOps({
   activeCompPath,
   showToast,
   writeProjectFile,
-  domEditSaveTimestampRef,
   editHistory,
   projectIdRef,
   reloadPreview,
@@ -147,7 +146,6 @@ export function useElementLifecycleOps({
           }
         }
 
-        domEditSaveTimestampRef.current = Date.now();
         // One request for the whole selection. Removing members one at a time
         // cost a round trip and a rewrite of the file EACH, and a canvas
         // selection runs to hundreds of members — the file ended up correct, but
@@ -220,7 +218,6 @@ export function useElementLifecycleOps({
     [
       activeCompPath,
       clearDomSelection,
-      domEditSaveTimestampRef,
       editHistory.recordEdit,
       onTrySdkDelete,
       onElementDeleted,

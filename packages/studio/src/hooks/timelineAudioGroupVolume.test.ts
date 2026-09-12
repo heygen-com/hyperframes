@@ -45,7 +45,6 @@ function makeSetter() {
     showToast: () => {},
     writeProjectFile: async () => {},
     recordEdit: async () => {},
-    domEditSaveTimestampRef: { current: 0 },
     pendingTimelineEditPathRef: { current: new Set<string>() },
     previewIframeRef: { current: null },
   };

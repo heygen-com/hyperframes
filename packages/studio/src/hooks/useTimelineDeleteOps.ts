@@ -20,7 +20,6 @@ interface UseTimelineDeleteOpsOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   isRecordingRef?: MutableRefObject<boolean>;
   forceReloadSdkSession?: () => void;
@@ -34,7 +33,6 @@ export function useTimelineDeleteOps({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   reloadPreview,
   isRecordingRef,
   forceReloadSdkSession,
@@ -111,7 +109,6 @@ export function useTimelineDeleteOps({
           usePlayerStore.getState().setDuration(deleteContentEnd);
         }
 
-        domEditSaveTimestampRef.current = Date.now();
         try {
           await saveProjectFilesWithHistory({
             projectId: pid,
@@ -154,7 +151,6 @@ export function useTimelineDeleteOps({
       showToast,
       timelineElements,
       writeProjectFile,
-      domEditSaveTimestampRef,
       reloadPreview,
       isRecordingRef,
       forceReloadSdkSession,

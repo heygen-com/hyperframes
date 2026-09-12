@@ -43,7 +43,6 @@ function Harness() {
     readOptionalProjectFile: vi.fn(async () => ""),
     readProjectFile: vi.fn(async () => ""),
     writeProjectFile: vi.fn(async () => undefined),
-    domEditSaveTimestampRef: useRef(0),
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),

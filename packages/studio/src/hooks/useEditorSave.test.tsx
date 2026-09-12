@@ -27,7 +27,6 @@ async function mountEditorSave(writeProjectFile: WriteProjectFile) {
       readProjectFile: vi.fn(async () => "before"),
       writeProjectFile,
       recordEdit: vi.fn(async () => undefined),
-      domEditSaveTimestampRef: { current: 0 },
       setRefreshKey: vi.fn(),
       showToast,
     });

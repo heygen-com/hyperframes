@@ -88,7 +88,6 @@ function mountRazorSplit(): Harness {
         disk[path] = content;
       },
       recordEdit: async () => {},
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
     });
     singleRef.current = handleRazorSplit;
@@ -211,7 +210,6 @@ function mountRazorSplitWithHistory(): UndoHarness {
         disk[path] = content;
       },
       recordEdit: (input) => store.recordEdit(input),
-      domEditSaveTimestampRef: { current: 0 },
       reloadPreview: () => {},
       forceReloadSdkSession,
     });

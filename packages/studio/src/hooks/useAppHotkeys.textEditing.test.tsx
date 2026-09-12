@@ -70,7 +70,6 @@ function Harness() {
   const [selectionRefreshed, setSelectionRefreshed] = useState(false);
   const selectionRef = useRef<DomEditSelection | null>(parentWithTextChild());
   const clearSelectionRef = useRef<() => void>(() => undefined);
-  const saveTimestampRef = useRef(0);
   const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
 
   useAppHotkeys({
@@ -87,7 +86,6 @@ function Harness() {
     readOptionalProjectFile: vi.fn(async () => ""),
     readProjectFile: vi.fn(async () => ""),
     writeProjectFile: vi.fn(async () => undefined),
-    domEditSaveTimestampRef: saveTimestampRef,
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),

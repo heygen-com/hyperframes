@@ -37,7 +37,6 @@ function useTestFileManager(projectId: string) {
     projectId,
     showToast: vi.fn(),
     recordEdit: vi.fn(async () => {}),
-    domEditSaveTimestampRef: { current: 0 },
     setRefreshKey: vi.fn(),
   });
 }

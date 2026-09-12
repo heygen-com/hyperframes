@@ -30,7 +30,6 @@ function renderToolbar(onSnapChange = vi.fn()) {
 function AppHotkeyHarness() {
   const domEditSelectionRef = useRef<DomEditSelection | null>(null);
   const clearDomSelectionRef = useRef<() => void>(() => undefined);
-  const domEditSaveTimestampRef = useRef(0);
   const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
 
   useAppHotkeys({
@@ -47,7 +46,6 @@ function AppHotkeyHarness() {
     readOptionalProjectFile: vi.fn(async () => ""),
     readProjectFile: vi.fn(async () => ""),
     writeProjectFile: vi.fn(async () => undefined),
-    domEditSaveTimestampRef,
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),

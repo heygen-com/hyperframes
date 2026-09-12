@@ -1,4 +1,3 @@
-import type { MutableRefObject } from "react";
 import { openComposition, type Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "./editHistory";
 import { hashContent, markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
@@ -39,7 +38,6 @@ export interface CutoverDeps {
    */
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   refresh?: (after: string) => void;
   compositionPath?: string | null;
   readProjectFile?: (path: string) => Promise<string>;
@@ -153,7 +151,6 @@ async function rollbackWrite(
   cause: Error,
 ): Promise<Error> {
   try {
-    deps.domEditSaveTimestampRef.current = Date.now();
     markSelfWrite(targetPath, originalContent);
     await deps.writeProjectFile(targetPath, originalContent, expectedCurrentContent);
     return cause;
@@ -172,7 +169,6 @@ async function writeAndRecord(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<Error | null> {
-  deps.domEditSaveTimestampRef.current = Date.now();
   markSelfWrite(targetPath, after);
   try {
     await deps.writeProjectFile(targetPath, after, originalContent);

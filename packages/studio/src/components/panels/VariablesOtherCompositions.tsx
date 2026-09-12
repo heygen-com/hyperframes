@@ -6,7 +6,7 @@
  * follow-up (values are per-composition-scope), so no preview control is shown.
  */
 
-import { useCallback, useState, type MutableRefObject } from "react";
+import { useCallback, useState } from "react";
 import type { Composition, CompositionVariable } from "@hyperframes/sdk";
 import {
   useEditVariablesInFile,
@@ -92,7 +92,6 @@ export function VariablesOtherCompositions({
   writeProjectFile,
   recordEdit,
   reloadPreview,
-  domEditSaveTimestampRef,
 }: {
   fileTree: string[];
   excludePath: string;
@@ -101,7 +100,6 @@ export function VariablesOtherCompositions({
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: RecordEditFn;
   reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
 }) {
   const [selfRefresh, setSelfRefresh] = useState(0);
   const groups = useProjectCompositionVariables(
@@ -115,7 +113,6 @@ export function VariablesOtherCompositions({
     writeProjectFile,
     recordEdit,
     reloadPreview,
-    domEditSaveTimestampRef,
   });
   const [editingKey, setEditingKey] = useState<string | null>(null);
 

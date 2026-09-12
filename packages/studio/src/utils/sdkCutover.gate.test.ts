@@ -28,7 +28,6 @@ const makeDeps = () =>
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: { current: 0 },
   }) as never;
 
 describe("dark-launch gate — STUDIO_SDK_CUTOVER_ENABLED=false ⇒ persist declines", () => {

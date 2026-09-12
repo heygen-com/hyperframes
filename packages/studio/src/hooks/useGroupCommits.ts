@@ -64,7 +64,6 @@ async function commitStructuralMutation(
     UseGroupCommitsParams,
     | "writeProjectFile"
     | "editHistory"
-    | "domEditSaveTimestampRef"
     | "clearDomSelection"
     | "forceReloadSdkSession"
     | "reloadPreview"
@@ -72,7 +71,6 @@ async function commitStructuralMutation(
 ): Promise<{ content?: string; groupId?: string }> {
   const originalContent = await readProjectFileContent(pid, targetPath);
 
-  deps.domEditSaveTimestampRef.current = Date.now();
   const mutateResponse = await fetch(
     buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
     {

@@ -35,7 +35,6 @@ export interface UseTimelineEditingOptions {
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;

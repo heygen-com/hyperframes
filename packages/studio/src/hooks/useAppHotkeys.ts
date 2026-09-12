@@ -118,7 +118,6 @@ interface UseAppHotkeysParams {
   readOptionalProjectFile: (path: string) => Promise<string>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   showToast: (message: string, tone?: "error" | "info") => void;
   syncHistoryPreviewAfterApply: (restore: {
     paths?: string[];
@@ -377,7 +376,6 @@ export function useAppHotkeys({
   readOptionalProjectFile,
   readProjectFile,
   writeProjectFile,
-  domEditSaveTimestampRef,
   showToast,
   syncHistoryPreviewAfterApply,
   waitForPendingDomEditSaves,
@@ -405,10 +403,9 @@ export function useAppHotkeys({
   );
   const writeHistoryFile = useCallback(
     async (path: string, content: string): Promise<void> => {
-      domEditSaveTimestampRef.current = Date.now();
       await writeProjectFile(path, content);
     },
-    [domEditSaveTimestampRef, writeProjectFile],
+    [writeProjectFile],
   );
   const serializeHistoryFiles = useCallback(
     <T>(paths: readonly string[], task: () => Promise<T>) =>
@@ -455,9 +452,6 @@ export function useAppHotkeys({
         onAfterUndoRedo?.();
         // If the active composition was among the written files, force-reload
         // the SDK session so its in-memory doc matches the reverted content.
-        // writeHistoryFile sets domEditSaveTimestampRef which activates the
-        // 2 s suppress window — without this call the file-change event would
-        // be swallowed and the SDK session would stay on stale pre-undo content.
         if (activeCompPath && result.paths?.includes(activeCompPath)) {
           forceReloadSdkSession?.();
         }

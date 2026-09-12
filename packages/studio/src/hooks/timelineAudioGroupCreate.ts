@@ -143,7 +143,6 @@ interface CreateAudioGroupAndAssignMembersInput {
   previewIframe: HTMLIFrameElement | null;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: MutableRef<number>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
 }
 
@@ -164,7 +163,6 @@ export async function createAudioGroupAndAssignMembers({
   previewIframe,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: CreateAudioGroupAndAssignMembersInput): Promise<string[]> {
   // Throws rather than returning empty: the carve's auto-group awaits this and
@@ -222,7 +220,6 @@ export async function createAudioGroupAndAssignMembers({
       pendingTimelineEditPathRef.current.add(groupPath);
     }
 
-    domEditSaveTimestampRef.current = Date.now();
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label: groupLabel
@@ -238,7 +235,6 @@ export async function createAudioGroupAndAssignMembers({
       writeFile: writeProjectFile,
       recordEdit,
     });
-    domEditSaveTimestampRef.current = Date.now();
     for (const element of elements) {
       usePlayerStore.getState().updateElement(element.key ?? element.id, { audioGroup: groupId });
     }
@@ -268,7 +264,6 @@ export function useAudioGroupCarveAssignment({
   showToast,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   previewIframeRef,
   pendingTimelineEditPathRef,
   isRecordingRef,
@@ -314,7 +309,6 @@ export function useAudioGroupCarveAssignment({
           previewIframe: previewIframeRef.current,
           writeProjectFile,
           recordEdit,
-          domEditSaveTimestampRef,
           pendingTimelineEditPathRef,
         });
       } catch (error) {
@@ -335,7 +329,6 @@ export function useAudioGroupCarveAssignment({
       previewIframeRef,
       writeProjectFile,
       recordEdit,
-      domEditSaveTimestampRef,
       pendingTimelineEditPathRef,
       isRecordingRef,
       showToast,
