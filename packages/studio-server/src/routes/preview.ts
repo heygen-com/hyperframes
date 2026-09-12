@@ -547,9 +547,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
       }
-      // Counted before the 304 shortcut: the question a pre-warm's worth
-      // depends on is whether a browser ever asked, not whether it transcoded.
-      recordProxyRequest();
     }
 
     const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyVariant)}"`;
@@ -573,6 +570,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedPath = file;
     let servedContentType = contentType;
     if (proxyVariant !== undefined) {
+      // Here, not at the eligibility gate above: one count per resolved proxy
+      // shares a unit with `prewarmsRequested`, and a revalidated repeat that
+      // 304s no longer counts as fresh demand.
+      recordProxyRequest();
       try {
         servedPath = await resolveProxy(project.dir, file, proxyVariant);
       } catch (err) {

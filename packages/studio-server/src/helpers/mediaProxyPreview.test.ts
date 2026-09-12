@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe("injectMediaCodecMapIntoHtml pre-warm", () => {
-  it("pre-warms the unconditionally undecodable codec and leaves the conditional one lazy", async () => {
+  it("pre-warms the codec with no cross-platform decode and leaves the widely-decoded one lazy", async () => {
     const projectDir = tmpProject();
     const { injectMediaCodecMapIntoHtml, resolveProxy } = await loadHelper({
       "/videos/avatar.webm": hostile("vp9", 'video/webm; codecs="vp09.00.10.08"'),
@@ -82,7 +82,7 @@ describe("injectMediaCodecMapIntoHtml pre-warm", () => {
     expect(html).toContain("/videos/broll.mov");
   });
 
-  it("counts the pre-warms it starts, and none for a conditional codec", async () => {
+  it("counts the pre-warms it requests, and none for a widely-decoded codec", async () => {
     const projectDir = tmpProject();
     const { injectMediaCodecMapIntoHtml, mediaProxyDemand } = await loadHelper({
       "/videos/avatar.webm": hostile("vp9", 'video/webm; codecs="vp09.00.10.08"'),

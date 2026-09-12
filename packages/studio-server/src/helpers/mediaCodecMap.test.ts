@@ -174,17 +174,34 @@ describe("probeAssetCodec", () => {
   });
 });
 
+describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
+  // Pinned because nulling one is silent and expensive: the runtime skips
+  // `canPlayType` when the mime is null (packages/core/src/runtime/mediaProxy.ts,
+  // `maybeProxyProactively`) and proxies on EVERY browser, reinstating exactly
+  // the transcodes the pre-warm split removed.
+  it.each(["hevc", "av1", "vp9"])("keeps a canPlayType probe for %s", (codecName) => {
+    expect(typeof BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBe("string");
+  });
+
+  it("has no representative mime for prores, which is never decodable", () => {
+    expect(BROWSER_HOSTILE_CODECS.prores?.representativeMime).toBeNull();
+  });
+});
+
 describe("shouldPrewarmProxy", () => {
   function facts(codecName: string): AssetCodecFacts {
     return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
   }
 
-  it.each(["hevc", "prores"])("pre-warms %s, which browsers never decode", (codecName) => {
-    expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
-  });
+  it.each(["hevc", "prores"])(
+    "pre-warms %s, which has no cross-platform browser decode",
+    (codecName) => {
+      expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
+    },
+  );
 
   it.each(["vp9", "av1"])(
-    "does not pre-warm %s, which the requesting browser usually decodes itself",
+    "does not pre-warm %s, which every mainstream engine decodes itself",
     (codecName) => {
       expect(shouldPrewarmProxy(facts(codecName))).toBe(false);
     },
@@ -201,8 +218,24 @@ describe("shouldPrewarmProxy", () => {
     ).toBe(false);
   });
 
-  it("does not treat an Object.prototype key as a hostile codec", () => {
-    expect(shouldPrewarmProxy(facts("constructor"))).toBe(false);
+  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
+  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
+  // The input that misbehaves goes through `codecFactsFor`, which would report
+  // an ordinary asset as browser-hostile.
+  it("does not treat a codec named after an Object.prototype key as hostile", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "constructor" }));
+
+    expect(facts).toEqual({
+      codecName: "constructor",
+      browserHostile: false,
+      representativeMime: null,
+      hasAlpha: false,
+    });
+    expect(shouldPrewarmProxy(facts!)).toBe(false);
   });
 });
 

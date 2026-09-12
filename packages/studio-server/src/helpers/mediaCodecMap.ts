@@ -37,13 +37,9 @@ export interface BrowserHostileCodec {
    * than probing `canPlayType`). */
   representativeMime: string | null;
   /**
-   * Whether the server may transcode a proxy BEFORE any browser asks for one.
-   * `browserHostile` answers "could some browser fail on this asset"; this
-   * answers "is a proxy request certain enough to pay for on project open".
-   * Only unconditionally undecodable codecs earn a pre-warm. A conditional
-   * codec is still hostile for the browsers that lack it, but the mainstream
-   * ones decode the source, so its pre-warm is CPU spent for nobody: the
-   * first real `?hf-proxy=` request transcodes it lazily instead.
+   * Whether the server may transcode before any browser asks. True only where
+   * no cross-platform decode exists, so some client is sure to need the
+   * substitute; false where the first `?hf-proxy=` request can do it lazily.
    */
   prewarm: boolean;
 }
@@ -56,12 +52,13 @@ export interface BrowserHostileCodec {
  * rescued by the runtime's reactive zero-videoWidth swap).
  */
 export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
+  // HEVC decode is platform-bound, not absent: macOS Chrome answers
+  // canPlayType with "probably" and keeps the source, while Chrome on
+  // Windows/Linux and Firefox everywhere need the substitute.
   hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
   prores: { representativeMime: null, prewarm: true },
-  // AV1 and VP9 are browser-dependent: Chrome and Firefox generally decode
-  // them while Safari support varies by version and hardware. Conditional, so
-  // canPlayType keeps the original where supported and transparently proxies
-  // it where unsupported — without pre-warming a transcode nobody redeems.
+  // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
+  // original and only the rare browser that cannot pays for a transcode.
   av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },
   vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
@@ -74,8 +71,8 @@ function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
     : undefined;
 }
 
-/** The pre-warm gate: true only for codecs no mainstream browser decodes, so
- * the substitute is certain to be requested. See `BrowserHostileCodec.prewarm`. */
+/** The pre-warm gate: true only for codecs with no cross-platform browser
+ * decode, so some client will ask. See `BrowserHostileCodec.prewarm`. */
 export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
   return hostileCodecEntry(facts.codecName)?.prewarm === true;
 }
@@ -83,8 +80,10 @@ export function shouldPrewarmProxy(facts: AssetCodecFacts): boolean {
 // --- pre-warm demand counters ----------------------------------------------
 // A pre-warm nobody redeems is a re-encode burned during the browser's first
 // layout, and it is invisible without a count — which is how a 0%-hit-rate
-// pre-warm shipped. Per process, reported on the same structured stderr
-// channel as the engine's download telemetry (`writeUrlDownloadTelemetry`).
+// pre-warm shipped. Both counters are per process and share one unit: a call
+// to `resolveProxy`. One summary line is written at exit, on the same
+// structured stderr channel as the engine's download telemetry
+// (`writeUrlDownloadTelemetry`, packages/engine/src/utils/urlDownloader.ts).
 const proxyDemand = { prewarmsRequested: 0, proxyRequests: 0 };
 
 /** Snapshot of this process's pre-warm demand counters. */
@@ -92,28 +91,52 @@ export function mediaProxyDemand(): { prewarmsRequested: number; proxyRequests: 
   return { ...proxyDemand };
 }
 
-/**
- * One proxy asked for before any browser wanted it. "Requested", not
- * "started": a warm cache makes `resolveProxy` a no-op and this counter cannot
- * see that, so it is an upper bound on transcodes, not a measure of CPU. The
- * number it does answer exactly is the one that decides policy — a growing
- * count beside `proxyRequests: 0` means nothing ever redeemed the pre-warm.
- */
-export function recordProxyPrewarm(): void {
-  proxyDemand.prewarmsRequested++;
+function writeDemandLine(event: "prewarm_requested" | "summary"): void {
   try {
     process.stderr.write(
-      `[hyperframes:media-proxy] ${JSON.stringify({ event: "prewarm_requested", ...proxyDemand })}\n`,
+      `[hyperframes:media-proxy] ${JSON.stringify({ event, ...proxyDemand })}\n`,
     );
   } catch {
     // Observability must never change proxy correctness.
   }
 }
 
-/** One `?hf-proxy=` request a browser actually made. Counts every eligible
- * request including range refills and 304s, so read it as zero vs non-zero,
- * not as an exact ratio. Deliberately not logged: a playing <video> issues a
- * range request every few hundred milliseconds. */
+/** Mirrors `isGpuProbeDebugEnabled` in packages/engine/src/utils/gpuEncoder.ts. */
+function isMediaProxyDebugEnabled(): boolean {
+  const value = process.env.HYPERFRAMES_DEBUG_MEDIA_PROXY;
+  return value === "1" || value === "true";
+}
+
+// Registered on the first pre-warm rather than at import, so a process that
+// never pre-warms adds no handler and prints nothing. Sync-only, mirroring the
+// `process.on("exit")` shutdown hooks in packages/cli/src/cli.ts:331 and
+// packages/cli/src/commands/preview.ts:1329.
+let summaryHookInstalled = false;
+
+/**
+ * One proxy asked for before any browser wanted it. "Requested", not
+ * "started": a warm cache makes `resolveProxy` a no-op and this counter cannot
+ * see that, so it is an upper bound on transcodes, not a measure of CPU. The
+ * number it does answer exactly is the one that decides policy — a nonzero
+ * count beside `proxyRequests: 0` means nothing ever redeemed the pre-warm.
+ *
+ * The per-asset line is debug-only: a composition with fifty hostile clips
+ * would otherwise print fifty JSON lines into a clack-formatted terminal on
+ * every re-render. The exit summary carries the same numbers unconditionally.
+ */
+export function recordProxyPrewarm(): void {
+  proxyDemand.prewarmsRequested++;
+  if (!summaryHookInstalled) {
+    summaryHookInstalled = true;
+    process.once("exit", () => writeDemandLine("summary"));
+  }
+  if (isMediaProxyDebugEnabled()) writeDemandLine("prewarm_requested");
+}
+
+/** One proxy resolved for a browser that asked, counted on the path that calls
+ * `resolveProxy` so it shares a unit with `prewarmsRequested`. A 304 does not
+ * count; an unconditional Range refill still does, so read it as zero versus
+ * nonzero. Never logged per event, only in the exit summary. */
 export function recordProxyRequest(): void {
   proxyDemand.proxyRequests++;
 }
