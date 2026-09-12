@@ -98,16 +98,26 @@ function resolvedRuleSelectors(rule: postcss.Rule): string[] {
   );
 }
 
+/**
+ * The rightmost compound of a selector — the part that actually matches the
+ * styled element (everything before the last combinator is ancestor
+ * context, not the subject).
+ */
+function rightmostCompoundNodes(selectorNode: selectorParser.Selector): selectorParser.Node[] {
+  const subject: selectorParser.Node[] = [];
+  selectorNode.each((node) => {
+    if (node.type === "combinator") subject.length = 0;
+    else subject.push(node);
+  });
+  return subject;
+}
+
 function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
   let unsafe = false;
   try {
     selectorParser((root) => {
       root.each((selectorNode) => {
-        const subject: selectorParser.Node[] = [];
-        selectorNode.each((node) => {
-          if (node.type === "combinator") subject.length = 0;
-          else subject.push(node);
-        });
+        const subject = rightmostCompoundNodes(selectorNode);
 
         const hostScoped = subject.some(
           (node) =>
@@ -135,6 +145,43 @@ function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
     return false;
   }
   return unsafe;
+}
+
+const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom"]);
+
+/**
+ * Whether a selector's rightmost compound sets its element's id via a
+ * zero/class-level-specificity form: an attribute selector on `id`
+ * (`[id="x"]`, class-level specificity) or an id nested inside a `:where()`
+ * pseudo (spec-defined zero specificity). Both genuinely lose to a compound
+ * class selector like `.parent .row` under standard cascade rules — unlike a
+ * bare `#id`, which always wins regardless of how the competing class rule
+ * is written. Confirmed empirically in real Chrome (see PRINFRA-670).
+ */
+function idSelectorHasReducedSpecificity(selector: string): boolean {
+  let matched = false;
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const subject = rightmostCompoundNodes(selectorNode);
+        for (const node of subject) {
+          if (node.type === "attribute" && node.attribute.toLowerCase() === "id") {
+            matched = true;
+          }
+          if (
+            node.type === "pseudo" &&
+            node.value.toLowerCase() === ":where" &&
+            node.nodes.some((option) => option.nodes.some((inner) => inner.type === "id"))
+          ) {
+            matched = true;
+          }
+        }
+      });
+    }).processSync(selector);
+  } catch {
+    return false;
+  }
+  return matched;
 }
 
 function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
@@ -428,6 +475,41 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             selector,
             fixHint:
               'Restrict the guard to sub-composition hosts, for example `[data-composition-src][style*="visibility: hidden"]` and `[data-composition-file][style*="visibility: hidden"]`. Do not derive arbitrary element or media opacity from runtime-owned inline visibility.',
+            snippet: truncateSnippet(rule.toString()),
+          });
+        }
+      });
+    }
+    return findings;
+  },
+
+  // id_override_reduced_specificity
+  ({ styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const reported = new Set<string>();
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue; // css_parse_error above already reports this
+      }
+      root.walkRules((rule) => {
+        const positionProps = new Set<string>();
+        rule.walkDecls((decl) => {
+          if (POSITION_PROPERTIES.has(decl.prop.toLowerCase())) positionProps.add(decl.prop);
+        });
+        if (positionProps.size === 0) return;
+        for (const selector of resolvedRuleSelectors(rule)) {
+          if (reported.has(selector) || !idSelectorHasReducedSpecificity(selector)) continue;
+          reported.add(selector);
+          findings.push({
+            code: "id_override_reduced_specificity",
+            severity: "warning",
+            message: `Selector "${selector}" sets ${[...positionProps].join("/")} via an attribute selector on id or a :where()-wrapped id — both carry class-level or zero specificity, so a shared compound class rule (e.g. ".parent .row") targeting the same element and property can silently win instead of this authored override.`,
+            selector,
+            fixHint:
+              "Use a bare #id selector instead — real id specificity always wins over any compound class selector, however it's written.",
             snippet: truncateSnippet(rule.toString()),
           });
         }
