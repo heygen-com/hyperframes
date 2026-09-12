@@ -245,11 +245,24 @@ function resolveScrubAudioEl(doc: Document, musicId?: string | null): HTMLAudioE
   );
 }
 
+/** The runtime stops any media running under a paused clock, and a scrub audition
+ *  IS media running under a paused clock, so it has to borrow the element. Every
+ *  hop is optional: a runtime predating the hook must no-op, not throw. Wrapped in
+ *  named calls so `applyScrub` does not carry the optional chains' branches. */
+function leaseScrubElement(el: HTMLAudioElement): void {
+  (el.ownerDocument.defaultView as IframeWindow | null)?.__hf?.leasePausedMedia?.(el);
+}
+
+function releaseScrubElement(el: HTMLAudioElement): void {
+  (el.ownerDocument.defaultView as IframeWindow | null)?.__hf?.releasePausedMedia?.(el);
+}
+
 function applyScrub(el: HTMLAudioElement, audioFileTime: number, previewVolume: number): void {
   if (scrubAudioEl && scrubAudioEl !== el) stopScrubPreviewAudio();
   if (scrubPrevMuted === null) scrubPrevMuted = el.muted;
   if (scrubPrevVolume === null) scrubPrevVolume = el.volume;
   scrubAudioEl = el;
+  leaseScrubElement(el);
   try {
     el.muted = false;
     el.volume = SCRUB_VOLUME * normalizePreviewVolume(previewVolume);
@@ -296,6 +309,9 @@ export function stopScrubPreviewAudio(): void {
   const el = scrubAudioEl;
   scrubAudioEl = null;
   if (!el) return;
+  // `scrubStopTimer` guarantees this runs within ~140 ms of the last scrub, so
+  // the borrow cannot outlive the audition.
+  releaseScrubElement(el);
   try {
     el.pause();
     if (scrubPrevMuted !== null) el.muted = scrubPrevMuted;

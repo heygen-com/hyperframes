@@ -2509,6 +2509,20 @@ export function initSandboxRuntimeModular(): void {
     return [...visiting];
   };
 
+  /** Elements whose paused-time playback is borrowed by a feature that legitimately
+   *  runs media with the clock stopped: the grading preview, the Studio's scrub.
+   *  Anything playing while paused without a lease is the defect the enforcement
+   *  exists for. On `window.__hf` because the Studio is across the iframe boundary. */
+  const pausedMediaLeases = new WeakSet<HTMLMediaElement>();
+  const leasePausedMedia = (el: HTMLMediaElement): void => {
+    pausedMediaLeases.add(el);
+  };
+  const releasePausedMedia = (el: HTMLMediaElement): void => {
+    pausedMediaLeases.delete(el);
+  };
+  window.__hf.leasePausedMedia = leasePausedMedia;
+  window.__hf.releasePausedMedia = releasePausedMedia;
+
   /**
    * The cheap half of the paused-side check: a tag+attribute query, deliberately
    * not `buildRuntimeMediaCache`, which reads and resolves the timing of every
@@ -2518,7 +2532,7 @@ export function initSandboxRuntimeModular(): void {
    */
   const hasRunningTimedMedia = (): boolean => {
     for (const el of document.querySelectorAll("video[data-start], audio[data-start]")) {
-      if (isMediaElement(el) && !el.paused) return true;
+      if (isMediaElement(el) && !el.paused && !pausedMediaLeases.has(el)) return true;
     }
     return false;
   };
@@ -2559,11 +2573,19 @@ export function initSandboxRuntimeModular(): void {
       if (kf) clip.volumeKeyframes = kf;
     }
 
+    // A leased element is not the transport's to touch while the clock is paused;
+    // during playback the transport owns everything again. Filtered here rather
+    // than out of `mediaClips` so the in-window bookkeeping below still records it
+    // and the pass after its release visits it normally.
+    const syncedClips = state.isPlaying
+      ? mediaClips
+      : mediaClips.filter((clip) => !pausedMediaLeases.has(clip.el));
+
     const forceSync = state.mediaForceSyncNextTick;
     if (forceSync) state.mediaForceSyncNextTick = false;
     if (!state.nativeMediaSyncDisabled) {
       syncRuntimeMedia({
-        clips: mediaClips,
+        clips: syncedClips,
         timeSeconds: state.currentTime,
         playing: state.isPlaying,
         playbackRate: state.playbackRate,
@@ -2841,7 +2863,10 @@ export function initSandboxRuntimeModular(): void {
     state.currentTime,
     Array.from(document.querySelectorAll("video[data-start], img[data-start]")),
   );
-  const colorGrading = createColorGradingRuntime();
+  const colorGrading = createColorGradingRuntime({
+    lease: leasePausedMedia,
+    release: releasePausedMedia,
+  });
   colorGradingRuntime = colorGrading;
   registerRuntimeCleanup(() => {
     colorGrading.destroy();
@@ -3404,9 +3429,10 @@ export function initSandboxRuntimeModular(): void {
       // playback rate. Re-seek registered children below with their host's
       // explicit source-time contract.
     }
-    // Pauses and re-seeks each registered child, so the rearm is already spent by
-    // the time this returns. Re-arming after it, as this used to, only ever
-    // changed the state the seek left behind.
+    // A second `activateSiblingTimelines` used to follow this call. Dropping it is
+    // safe because nothing between frames READS a sibling's paused() — grepped over
+    // the deterministic adapters, syncTimedElementVisibility, the hf-timelines-built
+    // handler and __hfReseekGpu. It only ever moved the state the seek left behind.
     seekStandaloneRegisteredTimelines(t, opts);
     for (const adapter of state.deterministicAdapters) {
       if (adapter.name === "gsap" && tl) continue;

@@ -123,6 +123,36 @@ describe("scrubPreviewAudio", () => {
     expect(voiceover.play).not.toHaveBeenCalled();
     stopScrubPreviewAudio();
   });
+
+  /** A scrub audition is media running under a paused clock, which the runtime now
+   *  stops on sight. So it borrows the element. That a leased element survives the
+   *  tick is asserted runtime-side in core's `transportPark.test.ts`; here the
+   *  contract is that the hook is called with the right element and given back. */
+  it("borrows the element from the runtime for the audition and returns it on stop", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+
+    const music = previewDoc.createElement("audio");
+    music.id = "music";
+    music.play = vi.fn(async () => {});
+    music.pause = vi.fn();
+    previewDoc.body.append(music);
+
+    const leasePausedMedia = vi.fn();
+    const releasePausedMedia = vi.fn();
+    (previewDoc.defaultView as IframeWindow).__hf = { leasePausedMedia, releasePausedMedia };
+
+    scrubPreviewAudio(iframe, 0.5, "music", 1);
+
+    expect(leasePausedMedia).toHaveBeenCalledWith(music);
+    expect(releasePausedMedia).not.toHaveBeenCalled();
+
+    stopScrubPreviewAudio();
+
+    expect(releasePausedMedia).toHaveBeenCalledWith(music);
+  });
 });
 
 describe("applyPreviewAudioFlags", () => {

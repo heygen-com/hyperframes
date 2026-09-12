@@ -46,6 +46,10 @@ declare global {
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
+      /** Borrow an element's playback while the transport clock is paused, so the
+       *  runtime's paused-side enforcement leaves it alone. Always release. */
+      leasePausedMedia?: (el: HTMLMediaElement) => void;
+      releasePausedMedia?: (el: HTMLMediaElement) => void;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
