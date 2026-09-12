@@ -1,11 +1,29 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { fileContentVersion } from "@hyperframes/studio-server";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+
+// Only `fs.watch` is replaced, so the SSE describe below can fire a file-change
+// on demand; every other server test keeps reading and writing real files.
+const mockWatcher = new EventEmitter() as EventEmitter & { close: () => void };
+mockWatcher.close = vi.fn();
+
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>();
+  const watch = vi.fn(
+    (_path: string, _options: unknown, onChange: (event: string, filename: string) => void) => {
+      mockWatcher.on("change", onChange);
+      return mockWatcher;
+    },
+  );
+  return { ...original, default: { ...original, watch }, watch };
+});
 
 // Every server-backed describe below wants the same two things: a throwaway
 // project directory, and a server whose watcher is closed afterwards. Three
@@ -19,7 +37,11 @@ function tmpProject(): string {
   return dir;
 }
 
-afterEach(() => {
+const openReaders: ReadableStreamDefaultReader<Uint8Array>[] = [];
+
+afterEach(async () => {
+  await Promise.all(openReaders.splice(0).map((reader) => reader.cancel().catch(() => {})));
+  mockWatcher.removeAllListeners();
   server?.watcher.close();
   server = undefined;
   delete process.env.HYPERFRAMES_FFMPEG_PATH;
@@ -180,4 +202,71 @@ describe("FFmpeg environment endpoint", () => {
       expect(await res.json()).toEqual({ ok: true });
     },
   );
+});
+
+describe("Studio file-change SSE", () => {
+  /** Opens `count` `/api/events` connections and waits for each to register its listener. */
+  async function subscribe(count: number): Promise<ReadableStreamDefaultReader<Uint8Array>[]> {
+    const responses = await Promise.all(
+      Array.from({ length: count }, () => server!.app.request("/api/events")),
+    );
+    const streams = responses.map((response) => {
+      const reader = response.body!.getReader();
+      openReaders.push(reader);
+      return reader;
+    });
+    // streamSSE runs its callback after the Response resolves, so the listener
+    // each connection adds has to exist before the watcher fires.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return streams;
+  }
+
+  const nextEvent = async (reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> =>
+    new TextDecoder().decode((await reader.read()).value);
+
+  /** The version as it appears inside the JSON-encoded SSE data line. */
+  const encodedVersion = (content: string): string =>
+    fileContentVersion(content).replaceAll('"', '\\"');
+
+  it("labels a Studio write for every open subscriber, not just the first", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir });
+    const streams = await subscribe(2);
+
+    const written = "<html>after</html>";
+    const write = await server.app.request(
+      `/api/projects/${encodeURIComponent(basename(projectDir))}/files/index.html`,
+      {
+        method: "PUT",
+        headers: {
+          "If-Match": fileContentVersion("<html>before</html>"),
+          "X-Hyperframes-Write-Token": "studio-write-1",
+        },
+        body: written,
+      },
+    );
+    expect(write.status).toBe(200);
+    mockWatcher.emit("change", "change", "index.html");
+
+    for (const payload of await Promise.all(streams.map(nextEvent))) {
+      expect(payload).toContain("studio-write-1");
+      expect(payload).toContain(encodedVersion(written));
+    }
+  });
+
+  it("still reports an external write with a version so subscribers can dedupe it", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    server = createStudioServer({ projectDir });
+    const streams = await subscribe(2);
+
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
+    mockWatcher.emit("change", "change", "index.html");
+
+    for (const payload of await Promise.all(streams.map(nextEvent))) {
+      expect(payload).not.toContain("writeToken");
+      expect(payload).toContain(encodedVersion("<html>agent</html>"));
+    }
+  });
 });

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
-import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { PublishSdkSession } from "../utils/sdkCutover";
@@ -27,15 +26,6 @@ async function readProjectFileOptional(
   if (!res.ok) return undefined;
   const data = (await res.json()) as { content?: string };
   return typeof data.content === "string" ? data.content : undefined;
-}
-
-/**
- * True when an external file-change payload targets the active composition and
- * the SDK session must be re-opened to pick up the new content.
- */
-export function shouldReloadSdkSession(payload: unknown, activeCompPath: string | null): boolean {
-  if (!activeCompPath) return false;
-  return readStudioFileChangePath(payload) === activeCompPath;
 }
 
 /**
@@ -73,7 +63,9 @@ export interface SdkSessionHandle {
   /**
    * Force a session reload immediately, bypassing the self-write suppress
    * window. Call after undo/redo writes the active composition file so the
-   * SDK in-memory document reflects the reverted content.
+   * SDK in-memory document reflects the reverted content. Without it the
+   * window swallows the file-change and the session stays stale; the write
+   * side of that path is covered by usePersistentEditHistory.test.ts.
    */
   forceReload: () => void;
 }

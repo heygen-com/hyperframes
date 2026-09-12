@@ -32,8 +32,15 @@ export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceip
   receipts.set(absPath, current);
 }
 
-/** Attach one API write's identity to the watcher echo for its exact bytes. */
-export function consumeFileWriteReceipt(
+/**
+ * Attach one API write's identity to the watcher echo for its exact bytes.
+ *
+ * Reading is non-destructive: one watcher event fans out to every open SSE
+ * subscriber, and a receipt removed by the first reader leaves the rest seeing
+ * an unlabelled change and reloading the preview on Studio's own edit. Only the
+ * TTL removes a receipt.
+ */
+export function identifyFileWrite(
   absPath: string,
   expectedVersion: string,
 ): FileWriteReceipt | null {
@@ -41,14 +48,28 @@ export function consumeFileWriteReceipt(
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
   );
-  const receiptIndex = current.findIndex((entry) => entry.version === expectedVersion);
-  const receipt = receiptIndex === -1 ? null : (current.splice(receiptIndex, 1)[0] ?? null);
   if (current.length > 0) receipts.set(absPath, current);
   else receipts.delete(absPath);
+  // Newest match, not oldest: identical bytes written twice inside the TTL
+  // (undo, retyping a value) share a version, and the older token was already
+  // spent by the client on its own echo. The destructive read used to advance
+  // past it; scanning from the end keeps that cursor without the eviction.
+  let receipt: StoredReceipt | undefined;
+  for (let i = current.length - 1; i >= 0 && !receipt; i -= 1) {
+    if (current[i]?.version === expectedVersion) receipt = current[i];
+  }
   if (!receipt) return null;
   const { path, version, writeToken } = receipt;
   return { path, version, writeToken };
 }
+
+/**
+ * @deprecated Renamed to {@link identifyFileWrite}, which despite this alias's
+ * name does NOT consume the receipt: one watcher event fans out to every SSE
+ * subscriber, so a destructive read left all but the first reloading on Studio's
+ * own write. Kept for one release; call `identifyFileWrite` instead.
+ */
+export const consumeFileWriteReceipt = identifyFileWrite;
 
 export function resetFileWriteReceipts(): void {
   receipts.clear();

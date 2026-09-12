@@ -108,11 +108,11 @@ function devProjectApi(): Plugin {
         createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
           fetch: (req: Request) => Promise<Response>;
         };
-        consumeFileWriteReceipt?: (
+        identifyFileWrite: (
           path: string,
           expectedVersion: string,
         ) => { path: string; version: string; writeToken: string } | null;
-        fileContentVersion?: (content: string) => string;
+        fileContentVersion: (content: string) => string;
       } | null = null;
       const getApi = async () => {
         if (!_api) {
@@ -122,6 +122,13 @@ function devProjectApi(): Plugin {
           const mod = (await loadStudioServerDevModule(server, __dirname)) as NonNullable<
             typeof _studioServerModule
           >;
+          // The cast above is the only thing standing between a renamed export and
+          // a dev server that silently reports every Studio write as external.
+          for (const name of ["identifyFileWrite", "fileContentVersion"] as const) {
+            if (typeof mod[name] !== "function") {
+              throw new Error(`@hyperframes/studio-server dev module is missing ${name}()`);
+            }
+          }
           _studioServerModule = mod;
           const adapter = createViteAdapter(dataDir, server, signatureCache);
           _api = mod.createStudioApi(adapter);
@@ -210,20 +217,19 @@ function devProjectApi(): Plugin {
         // so a write is only recognised as ours when the version agrees. Calling
         // this without the version could never match, which left every Studio
         // write looking external and reloaded the preview on each edit.
+        const studioServer = _studioServerModule;
         let version: string | null = null;
         try {
-          version =
-            _studioServerModule?.fileContentVersion?.(readFileSync(filePath, "utf-8")) ?? null;
+          version = studioServer?.fileContentVersion(readFileSync(filePath, "utf-8")) ?? null;
         } catch {
           // A deletion has no current bytes to match a write receipt against.
         }
-        const receipt = version
-          ? (_studioServerModule?.consumeFileWriteReceipt?.(filePath, version) ?? null)
-          : null;
+        const receipt =
+          version && studioServer ? studioServer.identifyFileWrite(filePath, version) : null;
         server.ws.send({
           type: "custom",
           event: "hf:file-change",
-          data: receipt ?? { path: filePath },
+          data: { path: filePath, version, ...receipt },
         });
       });
       server.httpServer?.on("close", () => void projectWatcher.close());

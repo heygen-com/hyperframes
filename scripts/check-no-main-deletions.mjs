@@ -38,6 +38,10 @@ const BASE_FLAG = "--base";
  */
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/hooks/useSdkSession.test.ts",
+    "tests only shouldReloadSdkSession, a function with no production callers removed with the preview reload fix",
+  ],
+  [
     "docs/catalog/components/ai-generation-canvas.mdx",
     "owner-directed removal of the AI Generation Canvas catalog item and its generated documentation",
   ],
