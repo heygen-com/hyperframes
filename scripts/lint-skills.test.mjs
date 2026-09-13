@@ -1,14 +1,17 @@
-// Positive / negative fixture tests for the SKILL.md frontmatter drift guard
-// in scripts/lint-skills.ts. Runs the exported `lintFrontmatter` against known
-// inputs and asserts the violation set matches expectation.
+// Positive / negative fixture tests for the checkers exported by
+// scripts/lint-skills.ts: SKILL.md frontmatter shape, registry-snapshot item
+// refs, and doc cross-references. Each runs against known inputs and asserts
+// the violation set matches expectation.
 //
 // Kept in .mjs (not .ts) so `node --test` can execute it via the same runner
-// the rest of scripts/*.test.mjs use, without needing tsx. `bun scripts/…`
-// runs .ts directly at lint-time; tests import the compiled export via tsx.
+// the rest of scripts/*.test.mjs use; the .ts import is loaded through tsx.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { headingSlugs, lintDocRefs, lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
 
@@ -179,4 +182,166 @@ test("registry refs: single-word ids are a KNOWN blind spot, not an accident", (
   // across the marked files to monitor 3 more items. See lint-skills.ts header.
   const doc = `${MARKER}\n\n\`glitch\` was renamed and this doc was not updated.\n`;
   assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
+});
+
+// ---------------------------------------------------------------------------
+// Cross-references between skill docs
+// ---------------------------------------------------------------------------
+//
+// Fixtures are real files in a temp directory because the rule's whole job is
+// to ask the filesystem whether a target exists. Layout:
+//
+//   <root>/skill/SKILL.md            "# Setup", "## Providers", "## Providers"
+//   <root>/skill/references/a.md     <- the file under test (returned path)
+//   <root>/skill/examples/demo.html
+
+function refFixture() {
+  const root = mkdtempSync(join(tmpdir(), "lint-skills-refs-"));
+  mkdirSync(join(root, "skill", "references"), { recursive: true });
+  mkdirSync(join(root, "skill", "examples"), { recursive: true });
+  writeFileSync(
+    join(root, "skill", "SKILL.md"),
+    "---\nname: s\ndescription: d\n---\n\n# Setup\n\n## Providers\n\n## Providers\n",
+  );
+  writeFileSync(join(root, "skill", "examples", "demo.html"), "<html></html>\n");
+  return join(root, "skill", "references", "a.md");
+}
+
+test("doc refs: relative link to an existing file passes", () => {
+  const file = refFixture();
+  assert.deepEqual(
+    lintDocRefs(file, "See [setup](../SKILL.md) and `../examples/demo.html`.\n"),
+    [],
+  );
+});
+
+test("doc refs: link to a missing file is a violation naming the target", () => {
+  const file = refFixture();
+  const violations = lintDocRefs(file, "# Doc\n\nRead [this](../references/missing.md).\n");
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 3);
+  assert.ok(violations[0].message.includes("../references/missing.md"));
+  assert.ok(violations[0].message.includes("does not exist"));
+});
+
+test("doc refs: path climbing above the skill root is a violation", () => {
+  const file = refFixture();
+  // Target exists one level up; the doc climbs two. This is the shape most of
+  // the dead references on the tree had.
+  const violations = lintDocRefs(file, "Open `../../examples/demo.html` for the full build.\n");
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("../../examples/demo.html"));
+});
+
+test("doc refs: anchor must match a heading slug in the target", () => {
+  const file = refFixture();
+  assert.deepEqual(
+    lintDocRefs(file, "[ok](../SKILL.md#setup) [dup](../SKILL.md#providers-1)\n"),
+    [],
+  );
+  const violations = lintDocRefs(file, "See [preflight](../SKILL.md#preflight).\n");
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("#preflight"));
+  assert.ok(violations[0].message.includes("SKILL.md"));
+});
+
+test("doc refs: same-file anchor is checked against the file's own headings", () => {
+  const file = refFixture();
+  const doc = "# Intro\n\n## Deep Dive: Part 2!\n\n[a](#deep-dive-part-2) [b](#nope)\n";
+  const violations = lintDocRefs(file, doc);
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("#nope"));
+});
+
+test("doc refs: links inside fenced code blocks are ignored", () => {
+  const file = refFixture();
+  const doc = ["```md", "[x](./gone.md)", "`../gone.md`", "```", ""].join("\n");
+  assert.deepEqual(lintDocRefs(file, doc), []);
+});
+
+test("doc refs: URLs, mailto, absolute paths and placeholders are ignored", () => {
+  const file = refFixture();
+  const doc = [
+    "[a](https://example.com/x.md) [b](http://example.com) [c](mailto:x@y.z)",
+    "[d](/etc/hosts) `../rules/<id>.md` [e](../{slug}.md)",
+    "",
+  ].join("\n");
+  assert.deepEqual(lintDocRefs(file, doc), []);
+});
+
+test("doc refs: backticked relative .md path to a missing file is a violation", () => {
+  const file = refFixture();
+  const violations = lintDocRefs(file, "Follow `../references/cut-catalog.md` first.\n");
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("../references/cut-catalog.md"));
+});
+
+test("doc refs: bare backticked paths are a KNOWN blind spot, not an accident", () => {
+  // `references/foo.md` without a leading ./ or ../ is skill-root shorthand,
+  // another skill's file, or a runtime artifact more often than a file-relative
+  // path. Pinned so the tradeoff is visible in code. See lint-skills.ts header.
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "Read `references/does-not-exist.md`.\n"), []);
+});
+
+test("doc refs: reference-style definitions are checked, footnotes are not", () => {
+  const file = refFixture();
+  assert.deepEqual(
+    lintDocRefs(file, "[setup]: ../SKILL.md#setup\n[^1]: a footnote, not a path\n"),
+    [],
+  );
+  const violations = lintDocRefs(file, '[gone]: <../gone.md> "Title"\n');
+  assert.equal(violations.length, 1);
+  assert.ok(violations[0].message.includes("../gone.md"));
+});
+
+test("doc refs: prose that merely starts with [Label]: is not a definition", () => {
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "[Label]: describes the thing, not a path\n"), []);
+});
+
+test("doc refs: a bare # links to the top of the target, not a heading", () => {
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "[top](#) [skill](../SKILL.md#)\n"), []);
+});
+
+test("doc refs: a target named twice on one line is reported once", () => {
+  const file = refFixture();
+  assert.equal(lintDocRefs(file, "[`../gone.md`](../gone.md)\n").length, 1);
+});
+
+test("doc refs: a stray ](target) without link text is not a link", () => {
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "see the table ](../gone.md) above\n"), []);
+});
+
+test("doc refs: an existing directory target passes, with or without a fragment", () => {
+  const file = refFixture();
+  assert.deepEqual(
+    lintDocRefs(file, "[ex](../examples) [ex2](../examples/) [ex3](../examples#x)\n"),
+    [],
+  );
+});
+
+test("doc refs: a directory whose name ends in .md is not anchor-checked", () => {
+  const file = refFixture();
+  mkdirSync(join(file, "..", "..", "notes.md"));
+  assert.deepEqual(lintDocRefs(file, "[n](../notes.md#anything)\n"), []);
+});
+
+test("doc refs: fragments on non-Markdown targets are not anchor-checked", () => {
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "[demo](../examples/demo.html#any-id)\n"), []);
+});
+
+test("doc refs: link syntax inside inline code is not a reference", () => {
+  const file = refFixture();
+  assert.deepEqual(lintDocRefs(file, "Write links as `[text](../gone.md)` in prose.\n"), []);
+});
+
+test("heading slugs: GitHub-style lowercasing, punctuation strip, dedupe", () => {
+  const slugs = headingSlugs(
+    "# Hello, World!\n## `code` & Stuff\n## Hello, World!\n```\n# not a heading\n```\n",
+  );
+  assert.deepEqual([...slugs], ["hello-world", "code--stuff", "hello-world-1"]);
 });
