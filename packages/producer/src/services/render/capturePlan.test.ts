@@ -3,6 +3,7 @@ import {
   createCapturePlan,
   drawElementVerificationFailure,
   replanAfterFailure,
+  streamingCaptureFailure,
   type CaptureRouting,
 } from "./capturePlan.js";
 
@@ -218,6 +219,70 @@ describe("CapturePlan", () => {
           inspect,
         ),
       ).toEqual(unchanged);
+    });
+  });
+
+  describe("streamingCaptureFailure", () => {
+    // The routing shape for which a verification failure DOES consult disk
+    // headroom — so any inspector call below would be on that path alone.
+    const routedPlan = streaming({
+      kind: "worker_inversion",
+      state: "active",
+      fallback: { kind: "sdr_disk", workerCount: 5, forceParallelStream: false },
+      memoryExhaustionFallback: {
+        kind: "sdr_streaming",
+        workerCount: 1,
+        forceParallelStream: false,
+      },
+    });
+    const inspect = () => {
+      throw new Error("disk must not be inspected");
+    };
+
+    // A canvas / paint-record capture error, a renderer stall and an OOM are
+    // not verification failures: each retries as a plain capture failure and
+    // must not touch the disk.
+    it.each([false, true])(
+      "never inspects disk headroom for a non-verification failure (memoryExhaustion: %s)",
+      (isMemoryExhaustion) => {
+        expect(
+          streamingCaptureFailure(
+            routedPlan,
+            { isVerifyError: false, isMemoryExhaustion },
+            inspect,
+          ),
+        ).toEqual({ kind: "capture_failure", memoryExhaustion: isMemoryExhaustion });
+      },
+    );
+
+    it("reverts to the preferred disk fallback on a drawElement capture failure", () => {
+      // The streaming-side capture failure carries no headroom flag, so the
+      // retry takes the routing's preferred fallback without steering.
+      const failure = streamingCaptureFailure(
+        routedPlan,
+        { isVerifyError: false, isMemoryExhaustion: false },
+        inspect,
+      );
+      expect(replanAfterFailure(routedPlan, failure)).toMatchObject({
+        kind: "sdr_disk",
+        workerCount: 5,
+        forceScreenshot: true,
+        routing: { kind: "worker_inversion", state: "reverted" },
+      });
+    });
+
+    it("routes a verification failure through the headroom-aware builder", () => {
+      let inspections = 0;
+      const failure = streamingCaptureFailure(
+        routedPlan,
+        { isVerifyError: true, isMemoryExhaustion: false },
+        () => {
+          inspections += 1;
+          return false;
+        },
+      );
+      expect(failure).toEqual({ kind: "draw_element_verification", diskFallbackAvailable: false });
+      expect(inspections).toBe(1);
     });
   });
 

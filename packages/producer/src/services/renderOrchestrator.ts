@@ -118,10 +118,9 @@ import { RenderExecutionContext } from "./render/renderExecutionContext.js";
 import { ArtifactTransaction } from "./render/artifactTransaction.js";
 import {
   createCapturePlan,
-  drawElementVerificationFailure,
   replanAfterFailure,
+  streamingCaptureFailure,
   type CapturePlan,
-  type CapturePlanFailure,
   type SdrDiskCapturePlan,
   type CaptureRouting,
 } from "./render/capturePlan.js";
@@ -3782,14 +3781,12 @@ async function executeRenderPipeline(input: {
                   : "capture failed; retrying with a fresh screenshot session",
           );
           const failedRouting = capturePlan.routing.kind;
-          const failure: CapturePlanFailure = isVerifyError
-            ? drawElementVerificationFailure(
-                capturePlan,
-                () =>
-                  inspectDiskCaptureHeadroom(framesDir, totalFrames, buildCaptureOptions())
-                    .available,
-              )
-            : { kind: "capture_failure", memoryExhaustion: isMemoryExhaustion };
+          const failure = streamingCaptureFailure(
+            capturePlan,
+            { isVerifyError, isMemoryExhaustion },
+            () =>
+              inspectDiskCaptureHeadroom(framesDir, totalFrames, buildCaptureOptions()).available,
+          );
           capturePlan = replanAfterFailure(capturePlan, failure);
           syncCapturePlan();
           updateCaptureObservability({

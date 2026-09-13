@@ -100,6 +100,23 @@ export function drawElementVerificationFailure(
   };
 }
 
+/**
+ * Build the failure the streaming drain retries with, from the caller's
+ * classification of the capture error. Only a drawElement self-verification
+ * failure goes through `drawElementVerificationFailure` (and so may consult
+ * disk headroom); every other failure is a plain capture failure and never
+ * calls `hasDiskFallbackHeadroom`.
+ */
+export function streamingCaptureFailure(
+  plan: CapturePlan,
+  classification: Readonly<{ isVerifyError: boolean; isMemoryExhaustion: boolean }>,
+  hasDiskFallbackHeadroom: () => boolean,
+): CapturePlanFailure {
+  return classification.isVerifyError
+    ? drawElementVerificationFailure(plan, hasDiskFallbackHeadroom)
+    : { kind: "capture_failure", memoryExhaustion: classification.isMemoryExhaustion };
+}
+
 function assertWorkerCount(workerCount: number): void {
   if (!Number.isInteger(workerCount) || workerCount < 1) {
     throw new Error(`CapturePlan workerCount must be a positive integer; got ${workerCount}`);
