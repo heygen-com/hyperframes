@@ -503,7 +503,11 @@ export async function runExtractVideosStage(
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
       },
       abortSignal,
-      { extractCacheDir: cfg.extractCacheDir, extractCacheMaxBytes: cfg.extractCacheMaxBytes },
+      {
+        ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+        extractCacheDir: cfg.extractCacheDir,
+        extractCacheMaxBytes: cfg.extractCacheMaxBytes,
+      },
       compiledDir,
     );
     extractionResult.phaseBreakdown.transientRetries =
