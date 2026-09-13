@@ -62,6 +62,7 @@ import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.j
 import { resolveProject, resolveProjectOrThrow } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
   listBackgroundPreviewStatuses,
   readBackgroundPreviewStatus,
@@ -297,7 +298,7 @@ export default defineCommand({
     if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
     if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
     const startPort = parseInt(args.port ?? "3002", 10);
-    const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
+    const explicitPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
     if (args.status || args.stop) {
       try {
@@ -386,18 +387,13 @@ export default defineCommand({
         json: Boolean(args.json),
         fields: args["context-fields"] as string | undefined,
         detail: args["context-detail"] as string | undefined,
-        ...(preferredContextPort === undefined ? {} : { preferredPort: preferredContextPort }),
+        preferredPort: explicitPort,
       });
     }
 
     if (args.selection) {
       const project = resolveProject(args.dir);
-      return printCurrentSelection(
-        project.dir,
-        startPort,
-        Boolean(args.json),
-        preferredContextPort,
-      );
+      return printCurrentSelection(project.dir, startPort, Boolean(args.json), explicitPort);
     }
 
     const rawArg = args.dir;
@@ -500,11 +496,16 @@ export default defineCommand({
           // the existing managed server resolved earlier. Only an explicit
           // --browser-gpu/--no-browser-gpu request authorizes replacement.
           browserGpuMode: args["browser-gpu"] === undefined ? undefined : browserGpuMode,
+          preferredPort: explicitPort,
         });
       } catch (error) {
         const message = errorMessage(error);
         if (args.json) {
-          writeLifecycleJson(lifecycleFailurePayload("start", "preview-start-failed", message));
+          const code =
+            error instanceof PreviewServerPortMismatchError
+              ? "preview-port-mismatch"
+              : "preview-start-failed";
+          writeLifecycleJson(lifecycleFailurePayload("start", code, message));
         } else {
           clack.log.error(message);
         }

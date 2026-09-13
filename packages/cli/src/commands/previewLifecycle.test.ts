@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
   buildBackgroundPreviewArgs,
   listBackgroundPreviewStatuses,
@@ -102,6 +103,36 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "reused", port: 41402, pid: 4321 });
     expect(scan).toHaveBeenCalledWith(41402);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("throws a port-mismatch error when the caller explicitly requests a port the reused server isn't on", async () => {
+    const spawn = vi.fn();
+    const scan = vi.fn(async () => [server]);
+
+    await expect(
+      startBackgroundPreview(projectDir, 3002, {
+        scan,
+        spawn,
+        stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+        preferredPort: server.port + 1,
+      }),
+    ).rejects.toThrow(PreviewServerPortMismatchError);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses normally when the caller's explicit port matches the reused server", async () => {
+    const spawn = vi.fn();
+    const scan = vi.fn(async () => [server]);
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      scan,
+      spawn,
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      preferredPort: server.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: server.port });
     expect(spawn).not.toHaveBeenCalled();
   });
 

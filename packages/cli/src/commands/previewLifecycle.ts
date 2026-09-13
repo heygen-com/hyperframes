@@ -17,6 +17,7 @@ import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
 import { terminateProcessTree } from "../utils/processTree.js";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 
 export interface PreviewSession {
   pid: number;
@@ -50,6 +51,8 @@ interface LifecycleDependencies {
   stateHome?: string;
   forceNew?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  /** Set only when the caller explicitly passed --port, not the CLI default. */
+  preferredPort?: number;
 }
 
 function defaultStateHome(): string {
@@ -433,6 +436,34 @@ async function readPreviewLifecycleState(
   return { scan, stateHome, saved, scanStart, scanned };
 }
 
+/**
+ * Returns a reuse result when `reusableExisting` is a valid reuse candidate,
+ * or `null` when the caller must fall through to a fresh launch. Throws when
+ * the candidate's port conflicts with an explicit --port request rather than
+ * silently substituting the wrong port.
+ */
+function reuseExistingPreview(
+  reusableExisting: ActiveServer | null,
+  dependencies: LifecycleDependencies,
+): { type: "reused"; port: number; pid: number | null; logPath: string | null } | null {
+  if (!reusableExisting || dependencies.forceNew) return null;
+  // An explicit --port that doesn't match the reuse candidate is a conflict
+  // the caller must resolve, not a silent substitution. A bare launch has no
+  // preferred port, so reusing any project-matching server stays correct.
+  if (
+    dependencies.preferredPort !== undefined &&
+    reusableExisting.port !== dependencies.preferredPort
+  ) {
+    throw new PreviewServerPortMismatchError(dependencies.preferredPort, [reusableExisting]);
+  }
+  return {
+    type: "reused",
+    port: reusableExisting.port,
+    pid: reusableExisting.pid ? Number(reusableExisting.pid) : null,
+    logPath: null,
+  };
+}
+
 export async function startBackgroundPreview(
   projectDir: string,
   startPort: number,
@@ -458,14 +489,8 @@ export async function startBackgroundPreview(
     ? matchingServer([ownedExisting], projectDir, dependencies.browserGpuMode)
     : null;
   const reusableExisting = reusableOwned ?? (ownedExisting ? null : requestedExisting);
-  if (reusableExisting && !dependencies.forceNew) {
-    return {
-      type: "reused",
-      port: reusableExisting.port,
-      pid: reusableExisting.pid ? Number(reusableExisting.pid) : null,
-      logPath: null,
-    };
-  }
+  const reused = reuseExistingPreview(reusableExisting, dependencies);
+  if (reused) return reused;
   await stopOwnedPreviewBeforeReplacement(ownedExisting, projectDir, dependencies);
   // Snapshot every same-project listener in the prospective launch range only
   // after the owned listener is gone. Readiness must identify a newly appeared
