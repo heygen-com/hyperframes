@@ -61,6 +61,15 @@ const PIPELINE_STAGES: ReadonlyArray<readonly [PipelineStageKey, string]> = [
   ["assembleMs", "assemble"],
 ];
 
+/** Session mode wins unless it is the aggregator's empty `"unknown"` sentinel. */
+export function resolvePrintedCaptureMode(
+  sessionMode?: string,
+  observabilityCaptureMode?: string,
+): string | undefined {
+  if (sessionMode && sessionMode !== "unknown") return sessionMode;
+  return observabilityCaptureMode;
+}
+
 /**
  * Capture path, gpu mode and stage timings for the render summary.
  * `captureMode` is what the sessions used: drawelement | screenshot | beginframe,

@@ -4,6 +4,7 @@ import {
   formatRenderPipelineDetail,
   formatRenderSummaryDetail,
   formatScreenshotFallbackHint,
+  resolvePrintedCaptureMode,
 } from "./format.js";
 
 describe("formatRenderPipelineDetail", () => {
@@ -37,6 +38,21 @@ describe("formatRenderPipelineDetail", () => {
         stages: { captureFrameMs: 10_000, encodeMs: 4_000 },
       }),
     ).toBe("capture 10.0s · encode (during capture) 4.0s");
+  });
+});
+
+describe("resolvePrintedCaptureMode", () => {
+  it("prefers the session mode, including a joined fallback, over observability", () => {
+    expect(resolvePrintedCaptureMode("drawelement", "screenshot")).toBe("drawelement");
+    expect(resolvePrintedCaptureMode("beginframe|screenshot", "screenshot")).toBe(
+      "beginframe|screenshot",
+    );
+  });
+
+  it("treats the aggregator's unknown sentinel as absent and uses observability", () => {
+    expect(resolvePrintedCaptureMode("unknown", "screenshot")).toBe("screenshot");
+    expect(resolvePrintedCaptureMode(undefined, "beginframe")).toBe("beginframe");
+    expect(resolvePrintedCaptureMode("unknown", undefined)).toBeUndefined();
   });
 });
 

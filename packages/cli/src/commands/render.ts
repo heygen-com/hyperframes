@@ -59,6 +59,7 @@ import {
   formatRenderSummaryDetail,
   formatRenderPipelineDetail,
   formatScreenshotFallbackHint,
+  resolvePrintedCaptureMode,
   errorBox,
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
@@ -1655,12 +1656,11 @@ function printRenderPipeline(
   requestedGpuMode?: "auto" | "hardware" | "software",
 ): void {
   // aggregateDrawElement reports "unknown" when no session recorded a mode.
-  const sessionMode = perf.drawElement?.mode;
   const capture = {
-    captureMode:
-      sessionMode && sessionMode !== "unknown"
-        ? sessionMode
-        : perf.observability?.capture.captureMode,
+    captureMode: resolvePrintedCaptureMode(
+      perf.drawElement?.mode,
+      perf.observability?.capture.captureMode,
+    ),
     browserGpuMode: perf.observability?.capture.browserGpuMode,
   };
   const pipeline = formatRenderPipelineDetail({

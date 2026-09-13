@@ -399,6 +399,15 @@ describe("detectAgentHints — new-agent discovery signals", () => {
     expect(detectAgentHints().agent_env_hints).toContain("FOO_AGENT_SESSION_ID");
   });
 
+  it("clears a full 16-key ambient cap so a fixture key still fits", async () => {
+    for (let i = 0; i < 16; i++) process.env[`AAA_AGENT_${String(i).padStart(2, "0")}`] = "1";
+    process.env["FOO_AGENT_SESSION_ID"] = "x";
+    stripVendorEnv();
+    process.env["FOO_AGENT_SESSION_ID"] = "x";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints).toContain("FOO_AGENT_SESSION_ID");
+  });
+
   it("excludes SSH/GPG agent false-friends from agent_env_hints", async () => {
     process.env["SSH_AGENT_PID"] = "12345";
     const { detectAgentHints } = await import("./agent_runtime.js");
