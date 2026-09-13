@@ -23,7 +23,7 @@ The skills enforce these automatically, but if you hand-edit compositions or deb
 
 ## Lint rules to know
 
-The linter added eight more rules that catch subtler seek-order and SVG-drawing mistakes — cases where a render can look right in the live preview and still render wrong on a cold, non-linear render worker. Two further hazards below carry no rule code: they surface in the render, not the linter. Phrase prompts to avoid these up front rather than debugging them after a render.
+The linter added more rules that catch subtler seek-order and SVG-drawing mistakes — cases where a render can look right in the live preview and still render wrong on a cold, non-linear render worker — plus one centering footgun that shows in the preview too. Two further hazards below carry no rule code: they surface in the render, not the linter. Phrase prompts to avoid these up front rather than debugging them after a render.
 
 ### Cold-seek visibility
 

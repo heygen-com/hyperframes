@@ -24,21 +24,40 @@ describe("formatRenderPipelineDetail", () => {
     );
     expect(formatRenderPipelineDetail({ stages: {} })).toBeUndefined();
   });
+
+  it("keeps a measured 0 ms stage instead of dropping it", () => {
+    // a silent composition still records audioProcessMs = 0
+    expect(formatRenderPipelineDetail({ stages: { audioProcessMs: 0 } })).toBe("audio 0.0s");
+  });
+
+  it("labels encode as overlapped when the streaming encoder ran", () => {
+    expect(
+      formatRenderPipelineDetail({
+        streamingEncode: true,
+        stages: { captureFrameMs: 10_000, encodeMs: 4_000 },
+      }),
+    ).toBe("capture 10.0s · encode (during capture) 4.0s");
+  });
 });
 
 describe("formatScreenshotFallbackHint", () => {
-  it("explains the slow path only for linux + screenshot + software gpu", () => {
-    const slow = { captureMode: "screenshot", browserGpuMode: "software" };
-    expect(formatScreenshotFallbackHint({ ...slow, platform: "linux" })).toContain(
-      "PRODUCER_FORCE_SCREENSHOT=false",
-    );
+  const slow = {
+    captureMode: "screenshot",
+    browserGpuMode: "software",
+    requestedGpuMode: "auto",
+    platform: "linux" as const,
+  };
+
+  it("explains the slow path only for linux + auto-probed software gpu + screenshot", () => {
+    expect(formatScreenshotFallbackHint(slow)).toContain("PRODUCER_FORCE_SCREENSHOT=false");
     expect(formatScreenshotFallbackHint({ ...slow, platform: "darwin" })).toBeUndefined();
-    expect(
-      formatScreenshotFallbackHint({ ...slow, browserGpuMode: "hardware", platform: "linux" }),
-    ).toBeUndefined();
-    expect(
-      formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe", platform: "linux" }),
-    ).toBeUndefined();
+    expect(formatScreenshotFallbackHint({ ...slow, browserGpuMode: "hardware" })).toBeUndefined();
+    expect(formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe" })).toBeUndefined();
+  });
+
+  it("stays silent when software gpu was requested, as --docker and --no-browser-gpu do", () => {
+    expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: "software" })).toBeUndefined();
+    expect(formatScreenshotFallbackHint({ ...slow, requestedGpuMode: undefined })).toBeUndefined();
   });
 });
 

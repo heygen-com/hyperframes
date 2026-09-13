@@ -43,6 +43,8 @@ const PIPELINE_STAGES: ReadonlyArray<readonly [key: string, label: string]> = [
   ["compileMs", "compile"],
   ["videoExtractMs", "extract"],
   ["audioProcessMs", "audio"],
+  ["browserProbeMs", "probe"],
+  ["captureSetupMs", "setup"],
   ["captureFrameMs", "capture"],
   ["encodeMs", "encode"],
   ["assembleMs", "assemble"],
@@ -50,11 +52,13 @@ const PIPELINE_STAGES: ReadonlyArray<readonly [key: string, label: string]> = [
 
 /**
  * Capture path, gpu mode and stage timings for the render summary.
- * `captureMode` is what the sessions used: drawelement | screenshot | beginframe.
+ * `captureMode` is what the sessions used: drawelement | screenshot | beginframe,
+ * "|"-joined when workers diverged. Streaming encode overlaps capture, so it is labelled.
  */
 export function formatRenderPipelineDetail(input: {
   captureMode?: string;
   browserGpuMode?: string;
+  streamingEncode?: boolean;
   stages: Record<string, number | undefined>;
 }): string | undefined {
   const parts: string[] = [];
@@ -62,25 +66,31 @@ export function formatRenderPipelineDetail(input: {
   if (input.browserGpuMode) parts.push(`${input.browserGpuMode} gpu`);
   for (const [key, stageLabel] of PIPELINE_STAGES) {
     const ms = input.stages[key];
-    if (ms != null) parts.push(`${stageLabel} ${formatDuration(ms)}`);
+    if (ms == null) continue;
+    const label =
+      key === "encodeMs" && input.streamingEncode ? "encode (during capture)" : stageLabel;
+    parts.push(`${label} ${formatDuration(ms)}`);
   }
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 /**
- * Why a Linux render took the slow screenshot path, when the user can act on it
- * (software gpu clamp kept BeginFrame off). Only Linux uses BeginFrame.
+ * Why a Linux render took the slow screenshot path, when the user can act on it:
+ * the GPU probe (only run for `auto`) found software GL, which clamps BeginFrame off.
+ * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
  */
 export function formatScreenshotFallbackHint(input: {
   captureMode?: string;
   browserGpuMode?: string;
+  requestedGpuMode?: string;
   platform: NodeJS.Platform;
 }): string | undefined {
-  if (input.platform !== "linux") return undefined;
+  if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;
   if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
   return (
-    "Screenshot capture (slower): no hardware GPU found, so BeginFrame stayed off. " +
-    "Force it with PRODUCER_FORCE_SCREENSHOT=false; heavy compositions can stall on software GL."
+    "Screenshot capture (slower): the GPU probe found no hardware GPU, so BeginFrame stayed off. " +
+    "PRODUCER_FORCE_SCREENSHOT=false forces it (needs chrome-headless-shell, no --resolution upscale); " +
+    "heavy compositions can stall on software GL."
   );
 }
 

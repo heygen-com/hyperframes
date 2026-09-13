@@ -1150,6 +1150,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         });
       }
 
+      // gsap_fullscreen_overlay_starts_visible
       for (const tag of tags) {
         const selectors = tagSimpleSelectors(tag);
         if (selectors.length === 0) continue;

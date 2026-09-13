@@ -970,6 +970,7 @@ export async function renderLocal(
       job.perfSummary?.compositionDurationSeconds,
       job.perfSummary?.totalFrames,
       job.perfSummary,
+      options.browserGpuMode ?? "software",
     ),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
@@ -1616,6 +1617,7 @@ function printRenderComplete(
   outputDurationSeconds?: number,
   frameCount?: number,
   perf?: RenderPerfSummary,
+  requestedGpuMode = "software",
 ): void {
   if (quiet) return;
 
@@ -1654,17 +1656,30 @@ function printRenderComplete(
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
-  if (perf) printRenderPipeline(perf);
+  if (perf) printRenderPipeline(perf, requestedGpuMode);
 }
 
 /** Capture path, gpu mode and stage timings under the summary, plus why the slow path ran. */
-function printRenderPipeline(perf: RenderPerfSummary): void {
+function printRenderPipeline(perf: RenderPerfSummary, requestedGpuMode: string): void {
+  // aggregateDrawElement reports "unknown" when no session recorded a mode.
+  const sessionMode = perf.drawElement?.mode;
   const capture = {
-    captureMode: perf.drawElement?.mode ?? perf.observability?.capture.captureMode,
+    captureMode:
+      sessionMode && sessionMode !== "unknown"
+        ? sessionMode
+        : perf.observability?.capture.captureMode,
     browserGpuMode: perf.observability?.capture.browserGpuMode,
   };
-  const pipeline = formatRenderPipelineDetail({ ...capture, stages: perf.stages });
+  const pipeline = formatRenderPipelineDetail({
+    ...capture,
+    streamingEncode: perf.observability?.capture.useStreamingEncode,
+    stages: perf.stages,
+  });
   if (pipeline) console.log("   " + c.dim(pipeline));
-  const hint = formatScreenshotFallbackHint({ ...capture, platform: process.platform });
+  const hint = formatScreenshotFallbackHint({
+    ...capture,
+    requestedGpuMode,
+    platform: process.platform,
+  });
   if (hint) console.log("   " + c.dim(hint));
 }
