@@ -65,9 +65,40 @@ export interface CreateCapturePlanInput {
 
 export type CapturePlanFailure =
   | Readonly<{ kind: "streaming_unavailable" }>
-  | Readonly<{ kind: "draw_element_verification"; diskFallbackAvailable?: boolean }>
+  | Readonly<{
+      kind: "draw_element_verification";
+      /**
+       * Set by `drawElementVerificationFailure` only when the routing's
+       * preferred fallback writes frames to disk and its precomputed
+       * low-resource target does not. `false` means that disk route lacks
+       * headroom, so `replanAfterFailure` takes the off-disk target instead.
+       */
+      diskFallbackAvailable?: boolean;
+    }>
   | Readonly<{ kind: "draw_element_capture" }>
   | Readonly<{ kind: "capture_failure"; memoryExhaustion: boolean }>;
+
+/**
+ * Build the verification failure for `plan`, consulting disk headroom only
+ * when the answer can change the fallback: a non-default routing (worker
+ * inversion or parallel router) whose preferred fallback is `sdr_disk` while
+ * its memory-exhaustion fallback is off-disk. Every other plan leaves the flag
+ * `undefined` without calling `hasDiskFallbackHeadroom`.
+ */
+export function drawElementVerificationFailure(
+  plan: CapturePlan,
+  hasDiskFallbackHeadroom: () => boolean,
+): CapturePlanFailure {
+  const { routing } = plan;
+  const needsHeadroom =
+    routing.kind !== "default" &&
+    routing.fallback.kind === "sdr_disk" &&
+    routing.memoryExhaustionFallback.kind === "sdr_streaming";
+  return {
+    kind: "draw_element_verification",
+    diskFallbackAvailable: needsHeadroom ? hasDiskFallbackHeadroom() : undefined,
+  };
+}
 
 function assertWorkerCount(workerCount: number): void {
   if (!Number.isInteger(workerCount) || workerCount < 1) {
@@ -155,13 +186,11 @@ export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailur
 
   const isMemoryExhaustion = failure.kind === "capture_failure" && failure.memoryExhaustion;
   const diskFallbackUnavailable =
-    failure.kind === "draw_element_verification" &&
-    failure.diskFallbackAvailable === false &&
-    plan.routing.kind === "worker_inversion" &&
-    plan.routing.fallback.kind === "sdr_disk";
+    failure.kind === "draw_element_verification" && failure.diskFallbackAvailable === false;
   // memoryExhaustionFallback is the routing decision's precomputed
   // low-resource target. It is also the viable choice when disk, rather than
-  // RAM, makes the preferred fallback impossible.
+  // RAM, makes the preferred fallback impossible — for any routing kind
+  // (see drawElementVerificationFailure for when that flag is populated).
   const fallback =
     plan.routing.kind === "default"
       ? {

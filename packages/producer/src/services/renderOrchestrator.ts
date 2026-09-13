@@ -118,8 +118,10 @@ import { RenderExecutionContext } from "./render/renderExecutionContext.js";
 import { ArtifactTransaction } from "./render/artifactTransaction.js";
 import {
   createCapturePlan,
+  drawElementVerificationFailure,
   replanAfterFailure,
   type CapturePlan,
+  type CapturePlanFailure,
   type SdrDiskCapturePlan,
   type CaptureRouting,
 } from "./render/capturePlan.js";
@@ -3780,21 +3782,15 @@ async function executeRenderPipeline(input: {
                   : "capture failed; retrying with a fresh screenshot session",
           );
           const failedRouting = capturePlan.routing.kind;
-          const verificationDiskFallbackAvailable =
-            isVerifyError &&
-            capturePlan.routing.kind !== "default" &&
-            capturePlan.routing.fallback.kind === "sdr_disk"
-              ? inspectDiskCaptureHeadroom(framesDir, totalFrames, buildCaptureOptions()).available
-              : undefined;
-          capturePlan = replanAfterFailure(
-            capturePlan,
-            isVerifyError
-              ? {
-                  kind: "draw_element_verification",
-                  diskFallbackAvailable: verificationDiskFallbackAvailable,
-                }
-              : { kind: "capture_failure", memoryExhaustion: isMemoryExhaustion },
-          );
+          const failure: CapturePlanFailure = isVerifyError
+            ? drawElementVerificationFailure(
+                capturePlan,
+                () =>
+                  inspectDiskCaptureHeadroom(framesDir, totalFrames, buildCaptureOptions())
+                    .available,
+              )
+            : { kind: "capture_failure", memoryExhaustion: isMemoryExhaustion };
+          capturePlan = replanAfterFailure(capturePlan, failure);
           syncCapturePlan();
           updateCaptureObservability({
             forceScreenshot: capturePlan.forceScreenshot,
@@ -3818,27 +3814,26 @@ async function executeRenderPipeline(input: {
             probeSession = null;
             await closeOrphanedProbeForRetry(orphaned, closeCaptureSession, log, "streaming");
           }
-          if (failedRouting === "worker_inversion") {
-            // The inversion bet on drawElement and lost. Prefer its
-            // pre-inversion parallel screenshot route, but retain the already
-            // supported one-worker screenshot stream when that disk route is
-            // not feasible.
-            // "reverted" (not cleared) so telemetry keeps the lost-inversion
-            // cohort distinguishable from renders that never inverted.
+          if (failedRouting !== "default") {
+            // The inversion's / router's bet on the pinned path lost. Prefer
+            // the pre-routing parallel screenshot route; a verification
+            // failure alone also retains the already supported low-worker
+            // screenshot stream when that disk route lacks storage headroom
+            // (OOM takes the same target for RAM; other capture failures
+            // revert unconditionally). Routing stays "reverted" (not
+            // cleared) so telemetry keeps the lost-bet cohort distinguishable
+            // from renders that never routed.
+            const route =
+              failedRouting === "worker_inversion" ? "worker inversion" : "parallel router";
+            const diskFallbackLacksHeadroom =
+              failure.kind === "draw_element_verification" &&
+              failure.diskFallbackAvailable === false;
             log.info(
-              capturePlan.kind === "sdr_streaming"
-                ? "[Render] Worker-inversion disk fallback lacks headroom; retrying with one-worker screenshot streaming."
-                : `[Render] Reverting worker inversion for the retry: ${capturePlan.workerCount} workers, ` +
+              diskFallbackLacksHeadroom
+                ? `[Render] ${route} disk fallback lacks headroom; retrying with ` +
+                    `${capturePlan.workerCount}-worker screenshot streaming.`
+                : `[Render] Reverting ${route} for the retry: ${capturePlan.workerCount} workers, ` +
                     `plan=${capturePlan.kind}.`,
-            );
-          } else if (failedRouting === "parallel_router") {
-            // The router's bet on verified parallel streaming lost — re-render
-            // on the ordinary (non-DE) parallel path at the pre-router worker
-            // count, same "reverted, not cleared" telemetry contract as the
-            // inversion above.
-            log.info(
-              `[Render] Reverting parallel router for the retry: ${capturePlan.workerCount} workers, ` +
-                `plan=${capturePlan.kind}.`,
             );
           }
           if (capturePlan.kind === "sdr_streaming") {

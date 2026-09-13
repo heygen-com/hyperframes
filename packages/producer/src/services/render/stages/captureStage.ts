@@ -147,6 +147,14 @@ export function estimateDiskCaptureBytes(
   return Math.ceil(totalFrames) * outputWidth * outputHeight * 4;
 }
 
+/**
+ * Unknown free space (`freeBytes: null`) counts as available: the gate can
+ * only reject when it has a measurement.
+ */
+export type DiskCaptureHeadroom =
+  | { available: true; estimatedBytes: number; freeBytes: number | null }
+  | { available: false; estimatedBytes: number; freeBytes: number };
+
 /** Shared 90% disk gate used by both fallback planning and disk execution. */
 export function inspectDiskCaptureHeadroom(
   framesDir: string,
@@ -160,14 +168,13 @@ export function inspectDiskCaptureHeadroom(
       return null;
     }
   },
-): { available: boolean; estimatedBytes: number; freeBytes: number | null } {
+): DiskCaptureHeadroom {
   const freeBytes = freeDiskBytes(framesDir);
   const estimatedBytes = estimateDiskCaptureBytes(totalFrames, captureOptions);
-  return {
-    available: freeBytes === null || estimatedBytes <= freeBytes * 0.9,
-    estimatedBytes,
-    freeBytes,
-  };
+  if (freeBytes === null || estimatedBytes <= freeBytes * 0.9) {
+    return { available: true, estimatedBytes, freeBytes };
+  }
+  return { available: false, estimatedBytes, freeBytes };
 }
 
 export function assertDiskCaptureHeadroom(
@@ -182,7 +189,7 @@ export function assertDiskCaptureHeadroom(
     captureOptions,
     freeDiskBytes,
   );
-  if (headroom.available || headroom.freeBytes === null) return;
+  if (headroom.available) return;
   throw new Error(
     `Disk capture may need ~${(headroom.estimatedBytes / 1e6).toFixed(1)} MB of temporary frame storage, ` +
       `but only ${(headroom.freeBytes / 1e6).toFixed(1)} MB is free at ${framesDir}. ` +
