@@ -97,6 +97,7 @@ describe("hyperframes init flag rename", () => {
       expect(html).toContain("font-family: Inter");
       expect(html).toContain("tl.seek(0)");
       expect(html).not.toMatch(/transform:\s*translate\(-50%/);
+      expect(html).toMatch(/#root\s*\{[^}]*width:\s*100%/);
       expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });

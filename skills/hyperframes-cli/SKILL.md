@@ -23,7 +23,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
 7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
 8. **Render only after approval:** use `--quality draft` while iterating, `--quality looks` for the first real encode (the CLI default), and `--quality delivery` for final delivery.
-9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
+9. **Verify the output:** confirm the file exists and is non-empty. Read the render summary's second line (`beginframe` vs `screenshot`, GPU, stage timings). `screenshot` + `software gpu` on Linux is the slow path. `ffprobe -v error -show_format -show_streams` and compare duration (and fps if the brief set it) to the root `data-duration`.
 
 ## Mandatory creator-edit cross-references
 
@@ -48,7 +48,7 @@ npx hyperframes check
 npx hyperframes preview --background
 npx hyperframes render --quality looks --output out.mp4
 test -s out.mp4
-ffprobe -v error -show_format out.mp4
+ffprobe -v error -show_format -show_streams out.mp4
 ```
 
 `check` runs lint first, then uses one browser session and one seek pass to audit runtime errors, failed requests, layout, `*.motion.json` assertions, and WCAG contrast. Persistent findings gate the exit code; transient entrance or exit findings are informational. Use `--strict` to gate warnings. `validate`, `inspect`, and `layout` remain aliases for compatibility but must not appear in new instructions or scripts.

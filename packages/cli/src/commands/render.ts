@@ -894,7 +894,9 @@ export async function renderLocal(
     browserGpuMode: options.browserGpuMode ?? "software",
     // Local auto opts out of the software-GPU screenshot clamp. Docker and
     // --no-browser-gpu request software; --resolution supersamples via screenshot.
-    ...(options.browserGpuMode === "auto" && options.outputResolution == null
+    ...(options.browserGpuMode === "auto" &&
+    options.outputResolution == null &&
+    process.env.PRODUCER_FORCE_SCREENSHOT !== "true"
       ? { forceScreenshot: false }
       : {}),
     ...(options.pageNavigationTimeoutMs != null

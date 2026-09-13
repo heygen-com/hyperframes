@@ -92,6 +92,9 @@ Scaffold a new composition project from an example.
 # Agents and CI — every input from a flag
 npx hyperframes init my-video --example blank --video video.mp4 --non-interactive
 
+# Agents: no prompts, centered Inter blank
+npx hyperframes init my-video --agent
+
 # With the Tailwind browser runtime
 npx hyperframes init my-video --example blank --tailwind
 
@@ -101,7 +104,8 @@ npx hyperframes init my-video
 
 | Flag                | Description                                                                                                                                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--example, -e`     | Example to scaffold. Required with `--non-interactive`. See [Examples](/examples) for the full list.                                                                                                                                                                                  |
+| `--example, -e`     | Example to scaffold. Required with `--non-interactive` unless `--agent`, `--video`, or `--audio` is set. See [Examples](/examples) for the full list.                                                                                                                                 |
+| `--agent`           | Non-interactive agent scaffold: centered Inter blank, paused timeline, no CSS `transform` centering.                                                                                                                                                                                 |
 | `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
@@ -857,7 +861,7 @@ The flags that come up most:
 | `--composition, -c` | `index.html`                  | Render a different composition file. Sub-compositions using `<template>` wrappers must be referenced from `index.html` via `data-composition-src`. |
 | `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, or `png-sequence`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory.                 |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
-| `--quality, -q`     | `standard`                    | `draft`, `standard`, or `high`. Drives MP4/WebM encoder settings; MOV always uses the fixed alpha-preserving ProRes 4444 profile.                  |
+| `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
 | `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
 | `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |

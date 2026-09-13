@@ -203,7 +203,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     );
     failUsage();
   }
-  const quality = QUALITY_ALIASES[qualityRaw as keyof typeof QUALITY_ALIASES].quality;
+  const qualityAlias = QUALITY_ALIASES[qualityRaw as keyof typeof QUALITY_ALIASES];
+  const quality = qualityAlias.quality;
 
   // Attribution resolves the explicit --skill flag first, then falls back to
   // the owning skill persisted in hyperframes.json — so re-renders, batch
@@ -397,9 +398,9 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
           `Got "${args.crf}". Must be a non-negative integer.`,
           0,
         )
-      : qualityRaw === "looks" && format !== "mov" && !args["video-bitrate"]
-        ? 16
-        : undefined;
+      : format === "mov" || args["video-bitrate"]
+        ? undefined
+        : qualityAlias.crf;
   let vp9CpuUsed: number | undefined;
   if (args["vp9-cpu-used"] != null) {
     const parsed = Number(args["vp9-cpu-used"]);
