@@ -65,7 +65,7 @@ describe("formatScreenshotFallbackHint", () => {
   };
 
   it("explains the slow path only for linux + auto-probed software gpu + screenshot", () => {
-    expect(formatScreenshotFallbackHint(slow)).toContain("PRODUCER_FORCE_SCREENSHOT=false");
+    expect(formatScreenshotFallbackHint(slow)).toContain("BeginFrame did not run");
     expect(formatScreenshotFallbackHint({ ...slow, platform: "darwin" })).toBeUndefined();
     expect(formatScreenshotFallbackHint({ ...slow, browserGpuMode: "hardware" })).toBeUndefined();
     expect(formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe" })).toBeUndefined();

@@ -2,6 +2,10 @@
 
 Built-in templates available via `npx hyperframes init --example <name>`.
 
+## agent
+
+Centered Inter stage, paused GSAP timeline, no CSS transform centering. `hyperframes init --agent`.
+
 ## blank
 
 Empty 1920x1080 composition with GSAP timeline wired up. Start from scratch.

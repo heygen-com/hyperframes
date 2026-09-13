@@ -62,7 +62,9 @@ describe("hyperframes init flag rename", () => {
     try {
       const res = runInit([target, "--non-interactive"]);
       expect(res.status).toBe(1);
-      expect(res.stderr).toContain("Non-interactive init requires --example, --video, or --audio");
+      expect(res.stderr).toContain(
+        "Non-interactive init requires --agent, --example, --video, or --audio",
+      );
       expect(existsSync(target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -77,6 +79,25 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("--example requires a value");
       expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("--agent scaffolds the centered blank without prompts or --example", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--agent"]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain('data-composition-id="main"');
+      expect(html).toContain("display: flex");
+      expect(html).toContain("align-items: center");
+      expect(html).toContain("font-family: Inter");
+      expect(html).toContain("tl.seek(0)");
+      expect(html).not.toMatch(/transform:\s*translate\(-50%/);
+      expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -20,6 +20,7 @@ export const examples: Example[] = [
     "Non-interactive mode (for CI or AI agents)",
     "hyperframes init my-video --example blank --non-interactive",
   ],
+  ["Agent scaffold, no prompts", "hyperframes init my-video --agent"],
   [
     "Opt out of the GitHub skills check (CI/tests only)",
     "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --example blank --non-interactive",
@@ -722,6 +723,11 @@ export default defineCommand({
       type: "boolean",
       description: "Disable interactive prompts (for CI/agents)",
     },
+    agent: {
+      type: "boolean",
+      description:
+        "Non-interactive agent scaffold: centered Inter blank, paused timeline, no prompts",
+    },
     "skip-skills": {
       type: "boolean",
       description:
@@ -783,7 +789,8 @@ export default defineCommand({
     const skipSkills = process.env.HYPERFRAMES_SKIP_SKILLS === "1";
     const skipSkillsFlagIgnored = args["skip-skills"] === true && !skipSkills;
     const tailwind = args.tailwind === true;
-    const nonInteractive = args["non-interactive"] === true;
+    const agent = args.agent === true;
+    const nonInteractive = args["non-interactive"] === true || agent;
     const modelFlag = args.model;
     const languageFlag = args.language;
     const initialTranscriptionModel = initialModelForLanguage(
@@ -820,17 +827,17 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
-      if (!exampleFlag && !videoFlag && !audioFlag) {
+      if (!exampleFlag && !videoFlag && !audioFlag && !agent) {
         console.error(
           c.error(
-            "Non-interactive init requires --example, --video, or --audio. " +
-              "For an empty starter project, pass --example blank explicitly.",
+            "Non-interactive init requires --agent, --example, --video, or --audio. " +
+              "For an empty starter project, pass --example blank or --agent.",
           ),
         );
         failCommand();
       }
 
-      const templateId = exampleFlag ?? "blank";
+      const templateId = exampleFlag ?? (agent ? "agent" : "blank");
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 

@@ -23,6 +23,12 @@ export const BUNDLED_TEMPLATES: TemplateOption[] = [
     hint: "Empty composition — just the scaffolding",
     source: "bundled",
   },
+  {
+    id: "agent",
+    label: "Agent",
+    hint: "Centered Inter stage, paused timeline, no CSS transform centering",
+    source: "bundled",
+  },
 ];
 
 /**

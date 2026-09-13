@@ -150,8 +150,8 @@ export default defineCommand({
       type: "string",
       alias: "q",
       description:
-        "Quality: draft, standard, high. MOV always uses the fixed alpha-preserving ProRes 4444 profile.",
-      default: "standard",
+        "Quality: draft, looks, delivery, or standard/high. looks is the default (CRF 16). delivery is high. MOV always uses the fixed alpha-preserving ProRes 4444 profile.",
+      default: "looks",
     },
     skill: {
       type: "string",
@@ -892,6 +892,11 @@ export async function renderLocal(
 
   const engineConfig = producer.resolveConfig({
     browserGpuMode: options.browserGpuMode ?? "software",
+    // Local auto opts out of the software-GPU screenshot clamp. Docker and
+    // --no-browser-gpu request software; --resolution supersamples via screenshot.
+    ...(options.browserGpuMode === "auto" && options.outputResolution == null
+      ? { forceScreenshot: false }
+      : {}),
     ...(options.pageNavigationTimeoutMs != null
       ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
       : {}),

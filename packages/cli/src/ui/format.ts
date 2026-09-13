@@ -95,8 +95,7 @@ export function formatRenderPipelineDetail(input: {
 }
 
 /**
- * Why a Linux render took the slow screenshot path, when the user can act on it:
- * the GPU probe (only run for `auto`) found software GL, which clamps BeginFrame off.
+ * Why a Linux auto render stayed on screenshot after BeginFrame was requested.
  * Silent when software was requested (--docker, --no-browser-gpu) or off Linux.
  */
 export function formatScreenshotFallbackHint(input: {
@@ -108,9 +107,8 @@ export function formatScreenshotFallbackHint(input: {
   if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;
   if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
   return (
-    "Screenshot capture (slower): the GPU probe found no hardware GPU, so BeginFrame stayed off. " +
-    "PRODUCER_FORCE_SCREENSHOT=false forces it (needs chrome-headless-shell, no --resolution upscale); " +
-    "heavy compositions can stall on software GL."
+    "Screenshot capture (slower): BeginFrame did not run. Needs chrome-headless-shell and no " +
+    "--resolution upscale. Heavy compositions can stall on software GL."
   );
 }
 

@@ -15,14 +15,14 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 
 ## Development loop
 
-1. **Scaffold:** `npx hyperframes init <project>` or capture a site. In non-TTY mode, pass `--non-interactive --example=<name>`.
+1. **Scaffold:** `npx hyperframes init <project> --agent` (non-interactive centered blank). Or capture a site. In non-TTY mode without `--agent`, pass `--non-interactive --example=<name>`.
 2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
 3. **Author:** write the composition using `/hyperframes-core`.
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
 5. **Run the final gate:** run `npx hyperframes check`; it reruns lint before opening the browser. Do not prepend a redundant standalone lint invocation. Add `--snapshots` for annotated overview frames and finding crops.
 6. **Inspect sub-compositions:** when `index.html` mounts `data-composition-src`, capture midpoint snapshots and inspect each mounted scene.
 7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
-8. **Render only after approval:** use draft quality for iteration and high quality for delivery.
+8. **Render only after approval:** use `--quality draft` while iterating, `--quality looks` for the first real encode (the CLI default), and `--quality delivery` for final delivery.
 9. **Verify the output:** confirm the file exists, is non-empty, and has a plausible duration.
 
 ## Mandatory creator-edit cross-references
@@ -46,7 +46,7 @@ npx hyperframes lint
 # Required final gate; includes lint.
 npx hyperframes check
 npx hyperframes preview --background
-npx hyperframes render --quality high --output out.mp4
+npx hyperframes render --quality looks --output out.mp4
 test -s out.mp4
 ffprobe -v error -show_format out.mp4
 ```
@@ -90,7 +90,7 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
   npx hyperframes doctor --json | jq -e '.ok' >/dev/null
   ```
 
-- Non-TTY mode is automatic. `init` requires `--example` there; use `--non-interactive` to force deterministic behavior on a TTY.
+- Non-TTY mode is automatic. `init --agent` is the no-prompt blank. Without `--agent`, non-TTY `init` requires `--example`. Use `--non-interactive` to force flag-only mode on a TTY.
 - Use one `HYPERFRAMES_RUN_ID` for all commands in the same verification loop.
 - Use `--strict`, `--strict-all`, and `--strict-variables` when the corresponding warnings, variables, or CI conditions must gate the render.
 - JSON paths redact the home directory as `$HOME`; do not try to reverse the redaction.
@@ -112,7 +112,8 @@ Use `selection.target.hfId` when available, otherwise its selector and source fi
 | Need                                     | Command                                                                       |
 | ---------------------------------------- | ----------------------------------------------------------------------------- |
 | Fast local iteration                     | `npx hyperframes render --quality draft`                                      |
-| Final local delivery                     | `npx hyperframes render --quality high --output out.mp4`                      |
+| First real encode                        | `npx hyperframes render --quality looks --output out.mp4`                     |
+| Final local delivery                     | `npx hyperframes render --quality delivery --output out.mp4`                  |
 | Reproducible container render            | `npx hyperframes render --docker --strict --output out.mp4`                   |
 | Local variable-driven batch render       | `npx hyperframes render --batch rows.json --output "renders/{name}.mp4"`      |
 | HeyGen-hosted zero-infrastructure render | `npx hyperframes cloud render`                                                |

@@ -31,7 +31,13 @@ import { normalizeSkillSlug } from "../../telemetry/skill.js";
 import { loadProjectConfig } from "../../utils/projectConfig.js";
 import { type CatalogUsage, summarizeCatalogUsage } from "../../utils/catalogUsage.js";
 
-const VALID_QUALITY = new Set(["draft", "standard", "high"]);
+const QUALITY_ALIASES = {
+  draft: { quality: "draft" as const },
+  standard: { quality: "standard" as const },
+  high: { quality: "high" as const },
+  looks: { quality: "standard" as const, crf: 16 },
+  delivery: { quality: "high" as const },
+} as const;
 const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
 const VALID_FORMAT = new Set<string>(RENDER_FORMATS);
 const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, or gif";
@@ -189,12 +195,15 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   let fps = fpsParse.value;
 
-  const qualityRaw = args.quality ?? "standard";
-  if (!VALID_QUALITY.has(qualityRaw)) {
-    errorBox("Invalid quality", `Got "${qualityRaw}". Must be draft, standard, or high.`);
+  const qualityRaw = args.quality ?? "looks";
+  if (!(qualityRaw in QUALITY_ALIASES)) {
+    errorBox(
+      "Invalid quality",
+      `Got "${qualityRaw}". Must be draft, looks, delivery, standard, or high.`,
+    );
     failUsage();
   }
-  const quality = qualityRaw as RenderQuality;
+  const quality = QUALITY_ALIASES[qualityRaw as keyof typeof QUALITY_ALIASES].quality;
 
   // Attribution resolves the explicit --skill flag first, then falls back to
   // the owning skill persisted in hyperframes.json — so re-renders, batch
@@ -388,7 +397,9 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
           `Got "${args.crf}". Must be a non-negative integer.`,
           0,
         )
-      : undefined;
+      : qualityRaw === "looks" && format !== "mov" && !args["video-bitrate"]
+        ? 16
+        : undefined;
   let vp9CpuUsed: number | undefined;
   if (args["vp9-cpu-used"] != null) {
     const parsed = Number(args["vp9-cpu-used"]);

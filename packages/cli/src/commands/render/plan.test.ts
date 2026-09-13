@@ -89,6 +89,25 @@ describe("createRenderPlan", () => {
     expect(() => createRenderPlan({ dir: projectDir, quality: "maximum" })).toThrow(CliUsageError);
   });
 
+  it("maps looks to standard encode with CRF 16, and delivery to high", () => {
+    expect(createRenderPlan({ dir: projectDir, quality: "looks" })).toMatchObject({
+      quality: "standard",
+      crf: 16,
+    });
+    expect(createRenderPlan({ dir: projectDir, quality: "delivery" })).toMatchObject({
+      quality: "high",
+      crf: undefined,
+    });
+    expect(createRenderPlan({ dir: projectDir })).toMatchObject({ quality: "standard", crf: 16 });
+  });
+
+  it("does not inject looks CRF when --crf or MOV is already set", () => {
+    expect(createRenderPlan({ dir: projectDir, quality: "looks", crf: "20" }).crf).toBe(20);
+    expect(
+      createRenderPlan({ dir: projectDir, format: "mov", quality: "looks" }).crf,
+    ).toBeUndefined();
+  });
+
   it.each([
     ["--crf", { crf: "18" }],
     ["--video-bitrate", { "video-bitrate": "78M" }],

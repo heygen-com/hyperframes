@@ -1,6 +1,6 @@
 # init, capture, skills
 
-<!-- registry-items: allow=blank,landscape-4k,portrait-4k,square-4k,product-launch-video,hyperframes-core,media-use -->
+<!-- registry-items: allow=blank,agent,landscape-4k,portrait-4k,square-4k,product-launch-video,hyperframes-core,media-use -->
 
 Scaffolding commands. Use these instead of creating files by hand — they set up the right file structure, copy media, run transcription, and install AI coding skills.
 
@@ -13,12 +13,13 @@ npx hyperframes init my-video --example blank --resolution portrait
 npx hyperframes init my-video --video clip.mp4                   # with video file
 npx hyperframes init my-video --audio track.mp3                  # with audio file
 npx hyperframes init my-video --example blank --tailwind         # Tailwind v4 browser runtime
-npx hyperframes init my-video --non-interactive --example blank  # CI/agents — flag-only
+npx hyperframes init my-video --agent                            # agents — no prompts, centered blank
+npx hyperframes init my-video --non-interactive --example blank  # CI — flag-only
 ```
 
-**Default depends on TTY**: in a terminal, the CLI prompts for example/options. Outside a TTY (CI, agents, piped output) it auto-switches to non-interactive and **requires `--example`** (the CLI errors with a usage example if missing). Pass `--non-interactive` to force flag-only mode even on a TTY.
+**Default depends on TTY**: in a terminal, the CLI prompts for example/options. Outside a TTY (CI, agents, piped output) it auto-switches to non-interactive. Prefer `--agent` there (centered Inter blank, paused timeline, no CSS `transform` centering). Without `--agent`, non-interactive **requires `--example`**. Pass `--non-interactive` to force flag-only mode even on a TTY.
 
-Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`, `vscode-theme-visualizer`. (The closed set of `hyperframes:example` items in `registry/registry.json`. `hyperframes catalog` does not list examples — its `--type` takes only `block` or `component` — so this list has no live equivalent and is checked by `bun run lint:skills`.)
+Templates: `agent`, `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`, `vscode-theme-visualizer`. (The closed set of `hyperframes:example` items in `registry/registry.json` plus the bundled `agent`/`blank` templates. `hyperframes catalog` does not list examples — its `--type` takes only `block` or `component` — so this list has no live equivalent and is checked by `bun run lint:skills`.)
 
 Other useful flags:
 
