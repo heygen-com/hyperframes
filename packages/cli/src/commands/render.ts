@@ -54,7 +54,13 @@ import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
-import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
+import {
+  formatBytes,
+  formatRenderSummaryDetail,
+  formatRenderPipelineDetail,
+  formatScreenshotFallbackHint,
+  errorBox,
+} from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderProgress } from "../ui/progress.js";
 import {
@@ -91,7 +97,7 @@ import {
   runPostRenderStep,
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
-import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
+import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { EXTRACT_CACHE_DIR_DISABLED_ALIASES, type VideoFrameFormat } from "@hyperframes/engine";
 import {
   checkOutputResolutionCompatibility,
@@ -963,6 +969,7 @@ export async function renderLocal(
       options.quiet,
       job.perfSummary?.compositionDurationSeconds,
       job.perfSummary?.totalFrames,
+      job.perfSummary,
     ),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
@@ -1608,6 +1615,7 @@ function printRenderComplete(
   quiet: boolean,
   outputDurationSeconds?: number,
   frameCount?: number,
+  perf?: RenderPerfSummary,
 ): void {
   if (quiet) return;
 
@@ -1646,4 +1654,17 @@ function printRenderComplete(
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
+  if (perf) printRenderPipeline(perf);
+}
+
+/** Capture path, gpu mode and stage timings under the summary, plus why the slow path ran. */
+function printRenderPipeline(perf: RenderPerfSummary): void {
+  const capture = {
+    captureMode: perf.drawElement?.mode ?? perf.observability?.capture.captureMode,
+    browserGpuMode: perf.observability?.capture.browserGpuMode,
+  };
+  const pipeline = formatRenderPipelineDetail({ ...capture, stages: perf.stages });
+  if (pipeline) console.log("   " + c.dim(pipeline));
+  const hint = formatScreenshotFallbackHint({ ...capture, platform: process.platform });
+  if (hint) console.log("   " + c.dim(hint));
 }

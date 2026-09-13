@@ -39,6 +39,51 @@ export function formatRenderSummaryDetail(input: {
   return [middle, renderTime].filter(Boolean).join(" · ");
 }
 
+const PIPELINE_STAGES: ReadonlyArray<readonly [key: string, label: string]> = [
+  ["compileMs", "compile"],
+  ["videoExtractMs", "extract"],
+  ["audioProcessMs", "audio"],
+  ["captureFrameMs", "capture"],
+  ["encodeMs", "encode"],
+  ["assembleMs", "assemble"],
+];
+
+/**
+ * Capture path, gpu mode and stage timings for the render summary.
+ * `captureMode` is what the sessions used: drawelement | screenshot | beginframe.
+ */
+export function formatRenderPipelineDetail(input: {
+  captureMode?: string;
+  browserGpuMode?: string;
+  stages: Record<string, number | undefined>;
+}): string | undefined {
+  const parts: string[] = [];
+  if (input.captureMode) parts.push(`${input.captureMode} capture`);
+  if (input.browserGpuMode) parts.push(`${input.browserGpuMode} gpu`);
+  for (const [key, stageLabel] of PIPELINE_STAGES) {
+    const ms = input.stages[key];
+    if (ms != null) parts.push(`${stageLabel} ${formatDuration(ms)}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * Why a Linux render took the slow screenshot path, when the user can act on it
+ * (software gpu clamp kept BeginFrame off). Only Linux uses BeginFrame.
+ */
+export function formatScreenshotFallbackHint(input: {
+  captureMode?: string;
+  browserGpuMode?: string;
+  platform: NodeJS.Platform;
+}): string | undefined {
+  if (input.platform !== "linux") return undefined;
+  if (input.captureMode !== "screenshot" || input.browserGpuMode !== "software") return undefined;
+  return (
+    "Screenshot capture (slower): no hardware GPU found, so BeginFrame stayed off. " +
+    "Force it with PRODUCER_FORCE_SCREENSHOT=false; heavy compositions can stall on software GL."
+  );
+}
+
 export function label(name: string, value: string): string {
   const pad = 14 - name.length;
   return `   ${c.dim(name)}${" ".repeat(Math.max(1, pad))}${c.bold(value)}`;

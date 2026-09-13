@@ -144,6 +144,8 @@ npx hyperframes render --docker                       # byte-identical
 
 **Quality guidance:** `draft` while iterating, `standard` for review, `high` for final delivery.
 
+**Read the summary's second line.** After the output path and size, `render` prints the capture path, GPU mode, and per-stage timings, e.g. `screenshot capture · software gpu · compile 0.7s · capture 22.9s · encode 5.8s`. `capture` is the frame loop; if it dominates and the line says `screenshot capture` on Linux with `software gpu`, the host has no hardware GPU and the faster BeginFrame path stayed off. The hint under it names the override (`PRODUCER_FORCE_SCREENSHOT=false`); use it only if the render is too slow to iterate on, since heavy compositions can stall on software GL. Do not reach for `--debug` just to learn which path ran.
+
 **Parametrized renders:** the composition declares its variables on the `<html>` root with **`data-composition-variables`** — a JSON **array of declarations** (`{id, type, label, default}` per entry) that defines the schema. Scripts inside read the resolved values via `window.__hyperframes.getVariables()`. The CLI `--variables '{"title":"Q4 Report"}'` is a JSON **object keyed by id** that overrides those declared defaults for one render; missing keys fall through, so the same composition runs unchanged in dev preview and in production. Sub-comp hosts can also override per-instance with `data-variable-values`. See the `hyperframes-core` skill for the full pattern.
 
 ### feedback (report after rendering)

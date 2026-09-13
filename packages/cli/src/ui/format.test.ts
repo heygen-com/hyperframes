@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRenderSummaryDetail } from "./format.js";
+import {
+  formatRenderPipelineDetail,
+  formatRenderSummaryDetail,
+  formatScreenshotFallbackHint,
+} from "./format.js";
+
+describe("formatRenderPipelineDetail", () => {
+  it("names the capture path, gpu mode and each stage in pipeline order", () => {
+    const line = formatRenderPipelineDetail({
+      captureMode: "screenshot",
+      browserGpuMode: "software",
+      stages: { encodeMs: 5767, captureFrameMs: 22856, compileMs: 685, assembleMs: 509 },
+    });
+    expect(line).toBe(
+      "screenshot capture · software gpu · compile 0.7s · capture 22.9s · encode 5.8s · assemble 0.5s",
+    );
+  });
+
+  it("skips fields that were never measured and returns nothing for an empty summary", () => {
+    expect(formatRenderPipelineDetail({ captureMode: "beginframe", stages: {} })).toBe(
+      "beginframe capture",
+    );
+    expect(formatRenderPipelineDetail({ stages: {} })).toBeUndefined();
+  });
+});
+
+describe("formatScreenshotFallbackHint", () => {
+  it("explains the slow path only for linux + screenshot + software gpu", () => {
+    const slow = { captureMode: "screenshot", browserGpuMode: "software" };
+    expect(formatScreenshotFallbackHint({ ...slow, platform: "linux" })).toContain(
+      "PRODUCER_FORCE_SCREENSHOT=false",
+    );
+    expect(formatScreenshotFallbackHint({ ...slow, platform: "darwin" })).toBeUndefined();
+    expect(
+      formatScreenshotFallbackHint({ ...slow, browserGpuMode: "hardware", platform: "linux" }),
+    ).toBeUndefined();
+    expect(
+      formatScreenshotFallbackHint({ ...slow, captureMode: "beginframe", platform: "linux" }),
+    ).toBeUndefined();
+  });
+});
 
 describe("formatRenderSummaryDetail", () => {
   it("shows the output video length as the primary figure and labels render time", () => {

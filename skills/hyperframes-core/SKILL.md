@@ -51,6 +51,7 @@ Each composition registers **exactly one** `gsap.timeline({ paused: true })` at 
 Rules that `lint` **does** catch, but only after the fact. Write them right the first time:
 
 - Never pair a CSS initial `transform` with a GSAP tween on the **same** property — the CSS value and the tween's start fight and `lint` rejects it with `gsap_css_transform_conflict`. Set the initial state inside the tween with `gsap.fromTo(el, { x: -40 }, { x: 0 })` instead of a CSS `transform: translateX(-40px)`.
+- An exit fade that ends exactly on the next clip's `data-start` needs a zero-duration hard kill at that same time, or `lint` rejects it with `gsap_exit_missing_hard_kill` (a worker seeking past the fade can restore a stale visible state). Pair them: `tl.to("#scene-1", { opacity: 0, duration: 0.5 }, 3.5); tl.set("#scene-1", { opacity: 0 }, 4.0);`. If the fading element is itself a `class="clip"`, fade an inner wrapper `<div>` instead and let the clip's timing do the cut.
 - Never put `crossorigin` on `<video>`/`<audio>`. `lint` rejects it unconditionally with `media_crossorigin_breaks_preview` (error), including for canvas/WebGL/WebAudio readback. There is no suppression.
 - Never give a `<video data-start>` an ancestor that also carries `data-start`. `lint` rejects it with `video_nested_in_timed_element` (error). Time the wrapper **or** the video, not both.
 - Every `<audio>` needs an `id`. `lint` rejects it with `media_missing_id`, and an id-less `<audio>` is never picked up by the mixer, so the render is **silent**.
