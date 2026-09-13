@@ -25,8 +25,15 @@ const VENDOR_ENV_KEYS = [
   "CRUSH",
 ] as const;
 
+// Same pattern as detectAgentHints: the suite itself runs inside agent sessions
+// whose ambient keys would otherwise fill the 16-key hint cap.
+const AMBIENT_HINT_KEY = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREAD_ID$|_SESSION_ID$/i;
+
 function stripVendorEnv(): void {
   for (const key of VENDOR_ENV_KEYS) delete process.env[key];
+  for (const key of Object.keys(process.env)) {
+    if (AMBIENT_HINT_KEY.test(key)) delete process.env[key];
+  }
 }
 
 describe("detectAgentRuntime — base behavior", () => {
