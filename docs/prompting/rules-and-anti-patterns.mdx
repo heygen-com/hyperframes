@@ -47,18 +47,8 @@ These four all come from the same root cause: a cold render worker seeks non-lin
 - **Function-valued tween vars receive `(index, target, targets)` — the first argument is a number, not the element.** Don't ask for a function value that calls an element method on its first parameter, or that reads transform-sensitive layout (its result would depend on the worker's own seek order). Use the second parameter for the element, index arithmetic like `(i) => i * 20`, or a value computed once at build time. (`gsap_function_value_hazard`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
 - **Don't measure DOM geometry inside a timeline callback.** `getBoundingClientRect()`, `getTotalLength()`, and `getComputedStyle()` all depend on whatever DOM state the render happens to be in — and timeline callbacks re-fire on every seek, so a cold worker's own non-linear seek order can hand the callback a different measurement than the live preview did. Ask for geometry to be computed once at build time instead. (`gsap_callback_dom_measurement`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
 
-### Scene boundaries and centering
+### Centering
 
-Two rules agents hit on nearly every multi-scene film. Both are errors on purpose: the preview looks right, and only a cold worker seeking past the boundary shows the bug.
-
-- **An exit fade that ends exactly on the next clip's `data-start` needs a hard kill.** A worker that seeks to a frame after the fade restores whatever state the tween left, and "left" is not always "hidden". Pair every boundary exit with a zero-duration `tl.set` at the same time. Copy-paste shape, for a scene ending at `4.00`:
-
-  ```js
-  tl.to("#scene-1", { opacity: 0, duration: 0.5 }, 3.5);
-  tl.set("#scene-1", { opacity: 0 }, 4.0);
-  ```
-
-  If the fading element is itself a `class="clip"`, the framework already owns its visibility: fade an inner wrapper `<div>` instead, and let the clip's `data-start` / `data-duration` do the cut. (`gsap_exit_missing_hard_kill`)
 - **Don't center with CSS `transform: translate(-50%, -50%)` on an element GSAP moves with `x` or `y`.** GSAP writes the whole transform, so the first tween throws the centering away and the element jumps. Center with layout (flex or grid on the parent) or let GSAP own the offset: `tl.fromTo("#title", { xPercent: -50, yPercent: -50, y: 40 }, { xPercent: -50, yPercent: -50, y: 0 })`. (`gsap_css_transform_conflict`)
 
 ### SVG draw-on

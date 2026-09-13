@@ -36,7 +36,7 @@ export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
 // making gsap_timeline_not_registered false-fire on correctly registered
 // timelines. The computed-key alternative is deliberately non-capturing:
 // its text isn't a literal composition id, so callers reading group 1/2
-// (readRegisteredTimelineCompositionId) must keep falling back to null for it.
+// must keep falling back to null for it.
 export const WINDOW_TIMELINE_ASSIGN_PATTERN =
   /window\.__timelines(?:\[\s*(?:["']([^"']+)["']|[A-Za-z_$][\w$.]*)\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=\s*([A-Za-z_$][\w$]*)/i;
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;

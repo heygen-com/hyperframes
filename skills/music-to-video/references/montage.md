@@ -16,9 +16,7 @@ The asset-driven analogue of a per-onset typographic group: cut to a new clip on
 (the frame's beats/onsets from the audiomap). Each clip is a `class="clip"` element
 (`<img>` for a photo, **muted** `<video>` for a motion clip) placed at its anchor with
 `data-start`/`data-duration`/`data-track-index` per the core clip contract. Between clips,
-crossfade the outgoing content to `opacity:0` ending **at** the next anchor, then immediately
-**hard-kill** with a `tl.set(..., {opacity:0}, anchor)` — this pair is required (the
-`gsap_exit_missing_hard_kill` lint rule; non-linear seeking otherwise bleeds stale frames).
+crossfade the outgoing content to `opacity:0` ending **at** the next anchor.
 Cut on the **strong** anchors; land a hero clip on a `key_moment`/downbeat.
 
 ### `ken_burns` — slow push on one clip (fits a `phrase_flow` frame)
