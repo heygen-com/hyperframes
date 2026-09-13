@@ -967,10 +967,8 @@ export async function renderLocal(
       outputPath,
       elapsed,
       options.quiet,
-      job.perfSummary?.compositionDurationSeconds,
-      job.perfSummary?.totalFrames,
       job.perfSummary,
-      options.browserGpuMode ?? "software",
+      options.browserGpuMode,
     ),
   );
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
@@ -1610,48 +1608,41 @@ function trackRenderMetrics(
   });
 }
 
+function readOutputFootprint(outputPath: string): { fileSize: string; isDirectory: boolean } {
+  try {
+    const stat = statSync(outputPath);
+    if (!stat.isDirectory()) return { fileSize: formatBytes(stat.size), isDirectory: false };
+    // png-sequence output is a directory; sum contained file sizes so the
+    // user sees the deliverable footprint, not the directory inode size.
+    let total = 0;
+    for (const entry of readdirSync(outputPath, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      try {
+        total += statSync(join(outputPath, entry.name)).size;
+      } catch {
+        // skip unreadable entries
+      }
+    }
+    return { fileSize: formatBytes(total), isDirectory: true };
+  } catch {
+    return { fileSize: "unknown", isDirectory: false };
+  }
+}
+
 function printRenderComplete(
   outputPath: string,
   elapsedMs: number,
   quiet: boolean,
-  outputDurationSeconds?: number,
-  frameCount?: number,
   perf?: RenderPerfSummary,
-  requestedGpuMode = "software",
+  requestedGpuMode?: "auto" | "hardware" | "software",
 ): void {
   if (quiet) return;
-
-  let fileSize = "unknown";
-  let isDirectory = false;
-  try {
-    const stat = statSync(outputPath);
-    isDirectory = stat.isDirectory();
-    if (stat.isDirectory()) {
-      // png-sequence output is a directory; sum the contained file sizes so
-      // the user sees the on-disk footprint of the deliverable rather than
-      // the platform-specific size of the directory inode itself.
-      let total = 0;
-      for (const entry of readdirSync(outputPath, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        try {
-          total += statSync(join(outputPath, entry.name)).size;
-        } catch {
-          // skip unreadable entries
-        }
-      }
-      fileSize = formatBytes(total);
-    } else {
-      fileSize = formatBytes(stat.size);
-    }
-  } catch {
-    // file doesn't exist or is inaccessible
-  }
-
+  const { fileSize, isDirectory } = readOutputFootprint(outputPath);
   const detail = formatRenderSummaryDetail({
     elapsedMs,
-    outputDurationSeconds,
+    outputDurationSeconds: perf?.compositionDurationSeconds,
     isDirectory,
-    frameCount,
+    frameCount: perf?.totalFrames,
   });
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
@@ -1659,8 +1650,10 @@ function printRenderComplete(
   if (perf) printRenderPipeline(perf, requestedGpuMode);
 }
 
-/** Capture path, gpu mode and stage timings under the summary, plus why the slow path ran. */
-function printRenderPipeline(perf: RenderPerfSummary, requestedGpuMode: string): void {
+function printRenderPipeline(
+  perf: RenderPerfSummary,
+  requestedGpuMode?: "auto" | "hardware" | "software",
+): void {
   // aggregateDrawElement reports "unknown" when no session recorded a mode.
   const sessionMode = perf.drawElement?.mode;
   const capture = {

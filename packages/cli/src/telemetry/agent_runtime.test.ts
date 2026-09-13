@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { HINT_KEY_PATTERN } from "./agent_runtime.js";
 
 // agent_runtime.ts reads node:os via release/platform and node:fs for the
 // /proc files. detectAgentRuntime is exercised by mutating process.env;
@@ -25,14 +26,11 @@ const VENDOR_ENV_KEYS = [
   "CRUSH",
 ] as const;
 
-// Same pattern as detectAgentHints: the suite itself runs inside agent sessions
-// whose ambient keys would otherwise fill the 16-key hint cap.
-const AMBIENT_HINT_KEY = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREAD_ID$|_SESSION_ID$/i;
-
 function stripVendorEnv(): void {
   for (const key of VENDOR_ENV_KEYS) delete process.env[key];
+  // Ambient session keys would otherwise fill the 16-key hint cap.
   for (const key of Object.keys(process.env)) {
-    if (AMBIENT_HINT_KEY.test(key)) delete process.env[key];
+    if (HINT_KEY_PATTERN.test(key.toUpperCase())) delete process.env[key];
   }
 }
 

@@ -1,3 +1,4 @@
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { c } from "./colors.js";
 
 export function formatBytes(bytes: number): string {
@@ -39,7 +40,17 @@ export function formatRenderSummaryDetail(input: {
   return [middle, renderTime].filter(Boolean).join(" · ");
 }
 
-const PIPELINE_STAGES: ReadonlyArray<readonly [key: string, label: string]> = [
+type PipelineStageKey =
+  | "compileMs"
+  | "videoExtractMs"
+  | "audioProcessMs"
+  | "browserProbeMs"
+  | "captureSetupMs"
+  | "captureFrameMs"
+  | "encodeMs"
+  | "assembleMs";
+
+const PIPELINE_STAGES: ReadonlyArray<readonly [PipelineStageKey, string]> = [
   ["compileMs", "compile"],
   ["videoExtractMs", "extract"],
   ["audioProcessMs", "audio"],
@@ -57,7 +68,7 @@ const PIPELINE_STAGES: ReadonlyArray<readonly [key: string, label: string]> = [
  */
 export function formatRenderPipelineDetail(input: {
   captureMode?: string;
-  browserGpuMode?: string;
+  browserGpuMode?: BrowserGpuMode | string;
   streamingEncode?: boolean;
   stages: Record<string, number | undefined>;
 }): string | undefined {
@@ -81,8 +92,8 @@ export function formatRenderPipelineDetail(input: {
  */
 export function formatScreenshotFallbackHint(input: {
   captureMode?: string;
-  browserGpuMode?: string;
-  requestedGpuMode?: string;
+  browserGpuMode?: BrowserGpuMode | string;
+  requestedGpuMode?: BrowserGpuMode;
   platform: NodeJS.Platform;
 }): string | undefined {
   if (input.platform !== "linux" || input.requestedGpuMode !== "auto") return undefined;

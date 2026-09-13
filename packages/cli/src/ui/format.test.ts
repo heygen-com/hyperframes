@@ -43,8 +43,8 @@ describe("formatRenderPipelineDetail", () => {
 describe("formatScreenshotFallbackHint", () => {
   const slow = {
     captureMode: "screenshot",
-    browserGpuMode: "software",
-    requestedGpuMode: "auto",
+    browserGpuMode: "software" as const,
+    requestedGpuMode: "auto" as const,
     platform: "linux" as const,
   };
 

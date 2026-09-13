@@ -340,7 +340,7 @@ function sanitizeHint(value: string | undefined): string | null {
 // friends, which are credential agents, not coding agents. No bare `CODING`
 // token — it substring-matches `ENCODING` (e.g. PYTHONIOENCODING) and real
 // coding-agent keys already match via `AGENT` (e.g. PI_CODING_AGENT).
-const HINT_KEY_PATTERN = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREAD_ID$|_SESSION_ID$/;
+export const HINT_KEY_PATTERN = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREAD_ID$|_SESSION_ID$/;
 
 function isDiscoveryHintKey(upperKey: string): boolean {
   if (upperKey === "AGENT" || upperKey === "AI_AGENT") return false;
