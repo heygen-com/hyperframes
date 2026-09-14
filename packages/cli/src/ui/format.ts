@@ -70,11 +70,7 @@ export function resolvePrintedCaptureMode(
   return observabilityCaptureMode;
 }
 
-/**
- * Capture path, gpu mode and stage timings for the render summary.
- * `captureMode` is what the sessions used: drawelement | screenshot | beginframe,
- * "|"-joined when workers diverged. Streaming encode overlaps capture, so it is labelled.
- */
+/** Capture path, gpu mode, and stage timings for the render summary. */
 export function formatRenderPipelineDetail(input: {
   captureMode?: string;
   browserGpuMode?: BrowserGpuMode | string;
