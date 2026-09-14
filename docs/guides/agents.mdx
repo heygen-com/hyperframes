@@ -1,0 +1,94 @@
+---
+title: "Rendering for agents"
+sidebarTitle: "Rendering for agents"
+description: "Drive hyperframes render from an AI agent or CI pipeline: stream machine-readable NDJSON progress, detect the failed stage without scraping logs, and keep stdout clean for pipes."
+---
+
+An agent (or a CI job) driving `hyperframes render` needs to know three things
+while the render runs: *is it making progress*, *what stage is it in*, and —
+when it dies — *which stage failed and why*, in a form a program can branch on.
+The TTY progress bar answers none of those, and `--quiet` removes even the bar.
+
+`--progress-format ndjson` turns the render into an event stream: one JSON
+object per line on stdout, human logs suppressed on stdout so the pipe stays
+clean, diagnostics on stderr. The full event schema lives in the
+[CLI render progress reference](/reference/cli-render).
+
+## The recipe
+
+```bash
+hyperframes render --progress-format ndjson --output out.mp4 | while read -r line; do
+  type=$(jq -r '.type' <<<"$line")
+  case "$type" in
+    render.progress)
+      jq -r '"[\(.progress * 100 | floor)%] \(.stage) (\(.framesRendered)/\(.totalFrames) frames)"' <<<"$line" ;;
+    render.completed)
+      echo "done" ;;
+    render.failed)
+      jq -r '"failed in stage \(.failedStage): \(.error)"' <<<"$line" >&2
+      exit 1 ;;
+  esac
+done
+```
+
+What the stream guarantees:
+
+- **Ordering** — events arrive in pipeline order; `progress` is monotonic
+  within a render.
+- **Exactly one terminal event** — every render ends in `render.completed` or
+  `render.failed` (or EOF if the process was killed). No polling, no timeout
+  heuristics.
+- **Structured failure** — `render.failed` carries `failedStage` plus the
+  producer's `errorDetails` (message, elapsed time, free memory, browser
+  console tail, per-stage timings), so an agent can branch on the failing
+  stage rather than regex-matching stderr.
+
+## Branching on the failed stage
+
+The producer names the stage that failed (`Compiling composition`,
+`Capturing frames`, `Encoding video`, …), and `errorDetails.browserConsoleTail`
+contains the composition's own console output — usually the fastest route to a
+self-repair loop:
+
+```bash
+hyperframes render --progress-format ndjson -o out.mp4 > events.ndjson || true
+jq -r 'select(.type == "render.failed")
+       | {failedStage, error, consoleTail: .errorDetails.browserConsoleTail}' events.ndjson
+```
+
+A composition error (broken script, missing timeline) shows up in the console
+tail; an environment error (Chrome could not launch, disk full) shows up in
+`error` with `failedStage` at an early stage. Different failure, different fix
+— and neither requires parsing human log text.
+
+## Keeping stdout for something else
+
+When stdout is already spoken for — a `--batch --json` result document, or a
+wrapper that wants the human logs — route the stream to a file descriptor:
+
+```bash
+# Events on fd 3, human logs stay on stdout
+hyperframes render --progress-format ndjson --progress-fd 3 -o out.mp4 3>events.ndjson
+
+# Live tail of the same stream from another process
+tail -f events.ndjson | jq -r '.stage'
+```
+
+## Batch renders
+
+Batch rows multiplex into one stream, each event stamped with its `row` index
+and each row closing with its own terminal event:
+
+```bash
+hyperframes render --batch rows.json --progress-format ndjson -o "renders/{name}.mp4" \
+  | jq -r 'select(.type != "render.progress") | "row \(.row): \(.type)"'
+```
+
+## Notes
+
+- `--quiet` does **not** silence the NDJSON stream — quiet governs human
+  output. Use `--progress-format none` if you want no progress at all.
+- `--progress-format ndjson` is for local renders; with `--docker` run the CLI
+  inside the container with the flag instead.
+- The render never fails because a consumer disappeared: on EPIPE the stream
+  stops and the render finishes normally.
