@@ -236,6 +236,42 @@ export async function createSnapshotContactSheet(
   );
 }
 
+export interface GoldenDiffSheetRow {
+  /** Row label, e.g. "t=1.5s". */
+  label: string;
+  baselinePath: string;
+  currentPath: string;
+  diffPath: string;
+}
+
+/**
+ * Contact sheet for golden baseline failures: one row per failed sample time,
+ * cells ordered baseline | current | diff. Paginated at 3 rows per page so
+ * cells stay readable. Returns the written file paths.
+ */
+export async function createGoldenDiffContactSheet(
+  rows: GoldenDiffSheetRow[],
+  outputPath: string,
+  budget: Pick<ContactSheetOptions, "remainingMs"> = {},
+): Promise<string[]> {
+  if (rows.length === 0) return [];
+
+  const paths = rows.flatMap((row) => [row.baselinePath, row.currentPath, row.diffPath]);
+  const labels = rows.flatMap((row) => [
+    `${row.label} baseline`,
+    `${row.label} current`,
+    `${row.label} diff`,
+  ]);
+
+  return createContactSheetPages(
+    paths,
+    outputPath,
+    { cols: 3, cellWidth: 600, pageSize: 9, ...budget },
+    0,
+    labels,
+  );
+}
+
 /**
  * Contact sheet for captured assets. Paginated — all assets covered.
  * Labels: "1. filename"
