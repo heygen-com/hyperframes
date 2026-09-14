@@ -19,6 +19,24 @@ import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js"
 import { terminateProcessTree } from "../utils/processTree.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 
+/**
+ * The detached child could not bind the explicitly requested --port and came
+ * up elsewhere. The launcher reaps it rather than reporting the substitute.
+ */
+export class PreviewPortUnavailableError extends Error {
+  readonly requestedPort: number;
+  readonly boundPort: number;
+
+  constructor(requestedPort: number, boundPort: number) {
+    super(
+      `Port ${requestedPort} is already in use; the background preview would have started on port ${boundPort} instead. Free port ${requestedPort}, pick another --port, or omit --port to accept the next free port.`,
+    );
+    this.name = "PreviewPortUnavailableError";
+    this.requestedPort = requestedPort;
+    this.boundPort = boundPort;
+  }
+}
+
 export interface PreviewSession {
   pid: number;
   wrapperIdentity?: string;
@@ -181,6 +199,12 @@ function matchingServerAtPort(
     servers.filter((server) => server.port === port),
     projectDir,
   );
+}
+
+/** Lists servers on `port` first so an explicit --port wins candidate selection. */
+function preferPort(servers: ActiveServer[], port: number | undefined): ActiveServer[] {
+  if (port === undefined) return servers;
+  return [...servers].sort((a, b) => Number(b.port === port) - Number(a.port === port));
 }
 
 function sameProjectPorts(servers: ActiveServer[], projectDir: string): Set<number> {
@@ -437,6 +461,14 @@ async function readPreviewLifecycleState(
 }
 
 /**
+ * The explicit --port that `port` fails to satisfy, or undefined when `port`
+ * is acceptable. A bare launch has no preferred port, so any port satisfies it.
+ */
+function unmetPreferredPort(port: number, preferredPort: number | undefined): number | undefined {
+  return preferredPort !== undefined && port !== preferredPort ? preferredPort : undefined;
+}
+
+/**
  * Returns a reuse result when `reusableExisting` is a valid reuse candidate,
  * or `null` when the caller must fall through to a fresh launch. Throws when
  * the candidate's port conflicts with an explicit --port request rather than
@@ -450,12 +482,8 @@ function reuseExistingPreview(
   // An explicit --port that doesn't match the reuse candidate is a conflict
   // the caller must resolve, not a silent substitution. A bare launch has no
   // preferred port, so reusing any project-matching server stays correct.
-  if (
-    dependencies.preferredPort !== undefined &&
-    reusableExisting.port !== dependencies.preferredPort
-  ) {
-    throw new PreviewServerPortMismatchError(dependencies.preferredPort, [reusableExisting]);
-  }
+  const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
+  if (unmet !== undefined) throw new PreviewServerPortMismatchError(unmet, [reusableExisting]);
   return {
     type: "reused",
     port: reusableExisting.port,
@@ -480,7 +508,11 @@ export async function startBackgroundPreview(
   // Always inspect a saved custom port first. `--force-new --port <new>` must
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.
-  const requestedExisting = matchingServer(scanned, projectDir, dependencies.browserGpuMode);
+  const requestedExisting = matchingServer(
+    preferPort(scanned, dependencies.preferredPort),
+    projectDir,
+    dependencies.browserGpuMode,
+  );
   const ownedExisting = savedOwnedPreview(scanned, saved, projectDir);
   // A saved managed preview is the authoritative same-project instance. An
   // explicit GPU-policy change replaces it; it must not silently adopt an
@@ -503,6 +535,52 @@ export async function startBackgroundPreview(
     dependencies,
   );
 
+  const kill = dependencies.kill ?? stopProcess;
+  const server = await awaitStartedServer(projectDir, startPort, preLaunchPorts, dependencies);
+  if (!server) {
+    await kill(pid);
+    throw new Error(`background preview did not become ready; see ${logPath}`);
+  }
+  // The child scans upward from --port and binds the first free port. An
+  // explicit --port is a promise to the caller, so a child that landed
+  // elsewhere is reaped rather than reported (or recorded) as a success.
+  const unmet = unmetPreferredPort(server.port, dependencies.preferredPort);
+  if (unmet !== undefined) {
+    // Wait for the substitute to stop answering before reporting failure, so
+    // a concurrent bare launch or --status cannot adopt a server that is
+    // already shutting down.
+    await kill(pid);
+    if (!(await awaitServerGone(projectDir, startPort, server.port, dependencies))) {
+      throw new Error(
+        `background preview on port ${server.port} did not stop after failing to bind port ${unmet}; see ${logPath}`,
+      );
+    }
+    throw new PreviewPortUnavailableError(unmet, server.port);
+  }
+  const ready = readyPreviewSession(
+    server,
+    pid,
+    wrapperIdentity,
+    projectDir,
+    logPath,
+    dependencies,
+  );
+  writePreviewSession(ready.session, stateHome);
+  return {
+    type: "started",
+    ...ready.session,
+    pid: ready.publicPid,
+  };
+}
+
+/** Polls for a same-project server that appeared after launch; null on timeout. */
+async function awaitStartedServer(
+  projectDir: string,
+  startPort: number,
+  preLaunchPorts: Set<number>,
+  dependencies: LifecycleDependencies,
+): Promise<ActiveServer | null> {
+  const scan = dependencies.scan ?? scanActiveServers;
   const sleep = dependencies.sleep ?? delay;
   for (let attempt = 0; attempt < 50; attempt++) {
     const server = startedServer(
@@ -511,27 +589,10 @@ export async function startBackgroundPreview(
       preLaunchPorts,
       dependencies.browserGpuMode,
     );
-    if (server) {
-      const ready = readyPreviewSession(
-        server,
-        pid,
-        wrapperIdentity,
-        projectDir,
-        logPath,
-        dependencies,
-      );
-      writePreviewSession(ready.session, stateHome);
-      return {
-        type: "started",
-        ...ready.session,
-        pid: ready.publicPid,
-      };
-    }
+    if (server) return server;
     await sleep(200);
   }
-
-  await (dependencies.kill ?? stopProcess)(pid);
-  throw new Error(`background preview did not become ready; see ${logPath}`);
+  return null;
 }
 
 export async function stopBackgroundPreview(
@@ -562,13 +623,25 @@ export async function stopBackgroundPreview(
   const kill = dependencies.kill ?? stopProcess;
   await kill(ownedStopTargetPid(saved, pid, dependencies));
 
+  if (!(await awaitServerGone(projectDir, scanStart, server.port, dependencies))) {
+    throw new Error(`background preview did not stop for ${resolve(projectDir)}`);
+  }
+  removePreviewSession(projectDir, stateHome);
+  return true;
+}
+
+/** Polls until no same-project server answers on `port`; false if it never leaves. */
+async function awaitServerGone(
+  projectDir: string,
+  scanStart: number,
+  port: number,
+  dependencies: LifecycleDependencies,
+): Promise<boolean> {
+  const scan = dependencies.scan ?? scanActiveServers;
   const sleep = dependencies.sleep ?? delay;
   for (let attempt = 0; attempt < 25; attempt++) {
-    if (!matchingServerAtPort(await scan(scanStart), projectDir, server.port)) {
-      removePreviewSession(projectDir, stateHome);
-      return true;
-    }
+    if (!matchingServerAtPort(await scan(scanStart), projectDir, port)) return true;
     await sleep(100);
   }
-  throw new Error(`background preview did not stop for ${resolve(projectDir)}`);
+  return false;
 }

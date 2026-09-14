@@ -5,6 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
+  PreviewPortUnavailableError,
   buildBackgroundPreviewArgs,
   listBackgroundPreviewStatuses,
   previewSessionPath,
@@ -34,6 +35,28 @@ function savePreviewSession(stateHome: string): void {
     { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
     stateHome,
   );
+}
+
+/**
+ * Launch dependencies whose detached wrapper (PID 4321) brings up `server`
+ * (its own PID 9876) once spawned, and takes it down again when killed.
+ */
+function reachableChildDependencies(stateHome: string, { immortal = false } = {}) {
+  let spawned = false;
+  let killed = false;
+  const liveServer = { ...server, pid: "9876" };
+  return {
+    scan: async () => (spawned && (immortal || !killed) ? [liveServer] : []),
+    spawn: () => {
+      spawned = true;
+      return { pid: 4321, unref: vi.fn() };
+    },
+    sleep: async () => {},
+    kill: vi.fn(() => {
+      killed = true;
+    }),
+    stateHome,
+  };
 }
 
 async function expectStaleSessionRemoved(stateHome: string): Promise<void> {
@@ -414,6 +437,78 @@ describe("background preview lifecycle", () => {
     expect(
       JSON.parse(readFileSync(previewSessionPath(projectDir, stateHome), "utf8")),
     ).toMatchObject({ pid: 4321 });
+  });
+
+  it("reports the explicitly requested port when the detached child binds it", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const result = await startBackgroundPreview(projectDir, server.port, {
+      ...dependencies,
+      preferredPort: server.port,
+    });
+
+    expect(result).toMatchObject({ type: "started", port: server.port, pid: 9876 });
+    expect(dependencies.kill).not.toHaveBeenCalled();
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
+  });
+
+  it("reaps a detached child that could not bind the explicitly requested port", async () => {
+    // The child scans upward from --port and lands on the next free port.
+    const requestedPort = server.port - 1;
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const launch = startBackgroundPreview(projectDir, requestedPort, {
+      ...dependencies,
+      preferredPort: requestedPort,
+    });
+
+    await expect(launch).rejects.toThrow(PreviewPortUnavailableError);
+    await expect(launch).rejects.toMatchObject({ requestedPort, boundPort: server.port });
+    // The wrapper PID is reaped, not the server's self-reported PID.
+    expect(dependencies.kill).toHaveBeenCalledExactlyOnceWith(4321);
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("fails loudly when the reaped child keeps serving the substitute port", async () => {
+    const requestedPort = server.port - 1;
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome, { immortal: true });
+
+    await expect(
+      startBackgroundPreview(projectDir, requestedPort, {
+        ...dependencies,
+        preferredPort: requestedPort,
+      }),
+    ).rejects.toThrow(/did not stop after failing to bind port/);
+    expect(dependencies.kill).toHaveBeenCalledExactlyOnceWith(4321);
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("keeps the next free port when no explicit port was requested", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const dependencies = reachableChildDependencies(stateHome);
+
+    const result = await startBackgroundPreview(projectDir, server.port - 1, dependencies);
+
+    expect(result).toMatchObject({ type: "started", port: server.port });
+    expect(dependencies.kill).not.toHaveBeenCalled();
+  });
+
+  it("reuses the same-project server on the explicit port when several are running", async () => {
+    const sibling = { ...server, port: server.port + 1, pid: "5555" };
+    const spawn = vi.fn();
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      scan: async () => [server, sibling],
+      spawn,
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      preferredPort: sibling.port,
+    });
+
+    expect(result).toMatchObject({ type: "reused", port: sibling.port, pid: 5555 });
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("reaps a detached child that never becomes reachable without recording ownership", async () => {

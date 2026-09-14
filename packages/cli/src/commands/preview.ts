@@ -64,6 +64,7 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
+  PreviewPortUnavailableError,
   listBackgroundPreviewStatuses,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
@@ -122,6 +123,13 @@ type CompactSelectionPayload = Pick<
 >;
 
 const DEFAULT_CONTEXT_FIELDS: ContextField[] = ["server", "selection", "lint", "capabilities"];
+
+/** Distinguishes an unhonoured explicit --port from a generic launch failure. */
+function backgroundStartFailureCode(error: unknown): string {
+  if (error instanceof PreviewServerPortMismatchError) return "preview-port-mismatch";
+  if (error instanceof PreviewPortUnavailableError) return "preview-port-unavailable";
+  return "preview-start-failed";
+}
 
 export default defineCommand({
   meta: {
@@ -501,11 +509,9 @@ export default defineCommand({
       } catch (error) {
         const message = errorMessage(error);
         if (args.json) {
-          const code =
-            error instanceof PreviewServerPortMismatchError
-              ? "preview-port-mismatch"
-              : "preview-start-failed";
-          writeLifecycleJson(lifecycleFailurePayload("start", code, message));
+          writeLifecycleJson(
+            lifecycleFailurePayload("start", backgroundStartFailureCode(error), message),
+          );
         } else {
           clack.log.error(message);
         }
