@@ -283,14 +283,67 @@ function clamp(v: number, min: number, max: number): number {
  * accurate. For speculative times this is NOT seeked — WS-A1 does not mutate
  * the timeline; accurate out-of-band opacity queries are WS-G follow-on.
  */
-function isOpacityVisible(el: Element, win: Window & typeof globalThis): boolean {
+interface PaintQueryReads {
+  readonly styles: Map<Element, CSSStyleDeclaration>;
+  readonly rects: Map<Element, DOMRect>;
+  readonly depths: Map<Element, number>;
+  readonly opacityVisible: Map<Element, boolean>;
+}
+
+function computedStyle(
+  el: Element,
+  win: Window & typeof globalThis,
+  reads?: PaintQueryReads,
+): CSSStyleDeclaration {
+  if (!reads) return win.getComputedStyle(el);
+  const cached = reads.styles.get(el);
+  if (cached) return cached;
+  const style = win.getComputedStyle(el);
+  reads.styles.set(el, style);
+  return style;
+}
+
+function elementRect(el: Element, reads?: PaintQueryReads): DOMRect {
+  if (!reads) return el.getBoundingClientRect();
+  const cached = reads.rects.get(el);
+  if (cached) return cached;
+  const rect = el.getBoundingClientRect();
+  reads.rects.set(el, rect);
+  return rect;
+}
+
+function isOpacityVisible(
+  el: Element,
+  win: Window & typeof globalThis,
+  reads?: PaintQueryReads,
+): boolean {
+  if (!reads) {
+    let node: Element | null = el;
+    while (node !== null) {
+      if (parseFloat(computedStyle(node, win).opacity) === 0) return false;
+      node = node.parentElement;
+    }
+    return true;
+  }
+
+  const path: Element[] = [];
   let node: Element | null = el;
+  let visible = true;
   while (node !== null) {
-    const style = win.getComputedStyle(node);
-    if (parseFloat(style.opacity) === 0) return false;
+    const cached = reads.opacityVisible.get(node);
+    if (cached !== undefined) {
+      visible = cached;
+      break;
+    }
+    path.push(node);
+    if (parseFloat(computedStyle(node, win, reads).opacity) === 0) {
+      visible = false;
+      break;
+    }
     node = node.parentElement;
   }
-  return true;
+  for (const traversed of path) reads.opacityVisible.set(traversed, visible);
+  return visible;
 }
 
 // ─── Image-alpha canvas cache (WS-G phase 1) ─────────────────────────────────
@@ -356,10 +409,14 @@ function warnTaintOnce(src: string): void {
  * (returns false) when DOMMatrix is unavailable (e.g. the test env), preserving
  * existing behavior there.
  */
-function hasRotationOrSkew(el: Element | null, win: Window & typeof globalThis): boolean {
+function hasRotationOrSkew(
+  el: Element | null,
+  win: Window & typeof globalThis,
+  reads?: PaintQueryReads,
+): boolean {
   if (typeof win.DOMMatrix !== "function") return false;
   for (let node: Element | null = el; node; node = node.parentElement) {
-    const t = win.getComputedStyle(node).transform;
+    const t = computedStyle(node, win, reads).transform;
     if (!t || t === "none") continue;
     try {
       const m = new win.DOMMatrix(t);
@@ -388,7 +445,6 @@ function hasRotationOrSkew(el: Element | null, win: Window & typeof globalThis):
  * `win` is the iframe's contentWindow, used to call getComputedStyle on the
  * element which lives in the iframe's document.
  */
-// fallow-ignore-next-line complexity
 export function imageAlphaOpaqueAt(
   img: HTMLImageElement,
   clientX: number,
@@ -397,6 +453,19 @@ export function imageAlphaOpaqueAt(
   /** Set to true only when pixels were actually read (or the point provably missed the
    *  rendered image). Lets callers tell a measured answer from a fail-safe assumption. */
   probe?: { sampled: boolean },
+): boolean {
+  return imageAlphaOpaqueAtWithReads(img, clientX, clientY, win, probe);
+}
+
+// This is the existing pixel-mapping body; the new reads argument only reuses DOM reads.
+// fallow-ignore-next-line complexity
+function imageAlphaOpaqueAtWithReads(
+  img: HTMLImageElement,
+  clientX: number,
+  clientY: number,
+  win: Window & typeof globalThis,
+  probe?: { sampled: boolean },
+  reads?: PaintQueryReads,
 ): boolean {
   // Not loaded yet — treat as opaque (safe fallback)
   if (img.naturalWidth === 0 || img.naturalHeight === 0) return true;
@@ -408,7 +477,7 @@ export function imageAlphaOpaqueAt(
   // rect→natural-pixel mapping below (getBoundingClientRect returns the AABB),
   // so we'd sample the wrong pixel. Fail safe to opaque rather than guess.
   // Full transform-inverse mapping is phase 2.
-  if (hasRotationOrSkew(img, win)) return true;
+  if (hasRotationOrSkew(img, win, reads)) return true;
 
   // Pathological-size guard: don't allocate a huge canvas for one hit-test.
   if (img.naturalWidth * img.naturalHeight > _MAX_ALPHA_TEST_PIXELS) return true;
@@ -416,8 +485,8 @@ export function imageAlphaOpaqueAt(
   // object-fit/object-position lay the image out within the CONTENT box, not
   // the border box that getBoundingClientRect() returns. Inset by border +
   // padding so the mapping is correct for an <img> that has a border or padding.
-  const rect = img.getBoundingClientRect();
-  const style = win.getComputedStyle(img);
+  const rect = elementRect(img, reads);
+  const style = computedStyle(img, win, reads);
   const borderL = parseFloat(style.borderLeftWidth) || 0;
   const borderT = parseFloat(style.borderTopWidth) || 0;
   const borderR = parseFloat(style.borderRightWidth) || 0;
@@ -590,8 +659,8 @@ function hasVisibleBorder(cs: CSSStyleDeclaration): boolean {
 }
 
 /** Computed-style ink: background, border, or the element's own text. */
-function styleInk(el: Element, win: Window & typeof globalThis): InkKind {
-  const cs = win.getComputedStyle(el);
+function styleInk(el: Element, win: Window & typeof globalThis, reads?: PaintQueryReads): InkKind {
+  const cs = computedStyle(el, win, reads);
 
   if (!isTransparentColor(cs.backgroundColor)) return "inferred";
   if (cs.backgroundImage && cs.backgroundImage !== "none") return "inferred";
@@ -604,28 +673,29 @@ function inkAt(
   el: Element,
   win: Window & typeof globalThis,
   point?: { x: number; y: number },
+  reads?: PaintQueryReads,
 ): InkKind {
   const tag = el.tagName.toLowerCase();
 
   if (tag === "picture") {
     const img = el.querySelector("img");
-    return img ? inkAt(img, win, point) : "inferred";
+    return img ? inkAt(img, win, point, reads) : "inferred";
   }
 
   if (point && win.HTMLImageElement && el instanceof win.HTMLImageElement) {
     const probe = { sampled: false };
-    if (imageAlphaOpaqueAt(el, point.x, point.y, win, probe)) {
+    if (imageAlphaOpaqueAtWithReads(el, point.x, point.y, win, probe, reads)) {
       // An unsampled "opaque" is the fail-safe, not a measurement, so it stays inferred.
       return probe.sampled ? "verified" : "inferred";
     }
     // A clear pixel does not settle the element: its own background plate, padding and
     // border still paint, and the point may have landed on them rather than the bitmap.
-    return styleInk(el, win);
+    return styleInk(el, win, reads);
   }
 
   if (INTRINSIC_PAINT_TAGS.has(tag)) return "inferred";
 
-  return styleInk(el, win);
+  return styleInk(el, win, reads);
 }
 
 export function elementPaintsInk(
@@ -656,10 +726,10 @@ interface PaintCandidate {
  * Infinity when no root contains the point, which disables the full-bleed rule rather
  * than guessing at a frame.
  */
-function compositionFrameArea(doc: Document, x: number, y: number): number {
+function compositionFrameArea(doc: Document, x: number, y: number, reads: PaintQueryReads): number {
   let smallest = Infinity;
   doc.querySelectorAll("[data-composition-id]").forEach((root) => {
-    const rect = root.getBoundingClientRect();
+    const rect = elementRect(root, reads);
     if (rect.width <= 0 || rect.height <= 0) return;
     if (!boxContains(rect, x, y)) return;
     smallest = Math.min(smallest, rect.width * rect.height);
@@ -680,16 +750,42 @@ function boxContains(rect: DOMRect, x: number, y: number): boolean {
  * the ancestor chain — a fully opaque child inside a fade-in wrapper that has not started
  * yet is invisible, and getComputedStyle does not multiply the cascade for us.
  */
-function isRenderedVisible(el: Element, win: Window & typeof globalThis): boolean {
-  const cs = win.getComputedStyle(el);
+function isRenderedVisible(
+  el: Element,
+  win: Window & typeof globalThis,
+  reads?: PaintQueryReads,
+): boolean {
+  const cs = computedStyle(el, win, reads);
   if (cs.display === "none" || cs.visibility === "hidden") return false;
-  return isOpacityVisible(el, win);
+  return isOpacityVisible(el, win, reads);
 }
 
-function depthOf(el: Element): number {
-  let depth = 0;
-  for (let p = el.parentElement; p; p = p.parentElement) depth++;
-  return depth;
+function depthOf(el: Element, reads?: PaintQueryReads): number {
+  if (!reads) {
+    let depth = 0;
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) depth++;
+    return depth;
+  }
+
+  const path: Element[] = [];
+  let node: Element | null = el;
+  let depth = -1;
+  while (node !== null) {
+    const cached = reads.depths.get(node);
+    if (cached !== undefined) {
+      depth = cached;
+      break;
+    }
+    path.push(node);
+    node = node.parentElement;
+  }
+  for (let index = path.length - 1; index >= 0; index--) {
+    const traversed = path[index];
+    if (!traversed) continue;
+    depth++;
+    reads.depths.set(traversed, depth);
+  }
+  return reads.depths.get(el) ?? 0;
 }
 
 /**
@@ -699,20 +795,19 @@ function depthOf(el: Element): number {
  */
 function paintCandidateAt(
   el: Element,
-  win: Window & typeof globalThis,
   x: number,
   y: number,
+  reads: PaintQueryReads,
 ): PaintCandidate | null {
   // Composition roots are candidates like anything else: a root carrying a background is
   // painting, and at fullBleedFraction 0 the literal ink question has to say so. They are
   // not excluded here because the veto already handles them — a root's box IS the frame,
   // so any non-zero fraction discounts it as background without a special case.
-  const rect = el.getBoundingClientRect();
+  const rect = elementRect(el, reads);
   if (rect.width <= 0 || rect.height <= 0) return null;
   if (!boxContains(rect, x, y)) return null;
-  if (!isRenderedVisible(el, win)) return null;
 
-  return { el, area: rect.width * rect.height, depth: depthOf(el) };
+  return { el, area: rect.width * rect.height, depth: depthOf(el, reads) };
 }
 
 /**
@@ -749,22 +844,36 @@ export function compositionPaintsAt(
   opts?: PaintQueryOptions,
 ): boolean {
   const selector = (opts?.addressableOnly ?? true) ? "[data-hf-id]" : "*";
+  // A paint query observes one layout snapshot. Cache DOM reads only for this invocation:
+  // compositions animate, so retaining rects/styles across frames would return stale answers.
+  const reads: PaintQueryReads = {
+    styles: new Map(),
+    rects: new Map(),
+    depths: new Map(),
+    opacityVisible: new Map(),
+  };
   const candidates: PaintCandidate[] = [];
   doc.querySelectorAll(selector).forEach((el) => {
-    const candidate = paintCandidateAt(el, win, x, y);
+    const candidate = paintCandidateAt(el, x, y, reads);
     if (candidate) candidates.push(candidate);
   });
 
   // Smallest area first, deeper element first on an exact tie. Compared exactly rather
   // than within an epsilon: a "close enough" tie relation is intransitive, which makes
   // Array.sort's output implementation-defined and the smallest-first guarantee (and the
-  // lazy single-sample property that rides on it) engine-dependent.
+  // lazy single-sample property that rides on it) engine-dependent. A single tracked
+  // minimum cannot replace the sort: when that element is transparent or hidden, finding
+  // the next candidate without sorting either rescans (quadratic worst case) or samples ink
+  // eagerly (breaking the lazy-alpha contract).
   candidates.sort((a, b) => a.area - b.area || b.depth - a.depth);
 
   let winner: PaintCandidate | undefined;
   let winnerInk: InkKind = "none";
   for (const candidate of candidates) {
-    const ink = inkAt(candidate.el, win, { x, y });
+    // Visibility is deliberately beside the lazy ink test: resolving every contained
+    // element's style before sorting dominates this query on large compositions.
+    if (!isRenderedVisible(candidate.el, win, reads)) continue;
+    const ink = inkAt(candidate.el, win, { x, y }, reads);
     if (ink === "none") continue;
     winner = candidate;
     winnerInk = ink;
@@ -781,7 +890,7 @@ export function compositionPaintsAt(
   // area, and answering "background" there makes visible artwork unclickable.
   if (winnerInk === "verified") return true;
 
-  const frameArea = compositionFrameArea(doc, x, y);
+  const frameArea = compositionFrameArea(doc, x, y, reads);
   return frameArea === Infinity || winner.area < fullBleed * frameArea;
 }
 
