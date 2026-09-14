@@ -54,6 +54,13 @@ import {
   type CanvasResolution,
 } from "@hyperframes/core";
 
+function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
+  const example = exampleFlag === "agent" ? "blank" : exampleFlag;
+  if (example && example !== "blank") return example;
+  if (hasMediaFile) return "from-file";
+  return "blank";
+}
+
 interface VideoMeta {
   durationSeconds: number;
   width: number;
@@ -822,10 +829,7 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
-      const templateId =
-        exampleFlag === "agent"
-          ? "blank"
-          : (exampleFlag ?? (videoFlag || audioFlag ? "from-file" : "blank"));
+      const templateId = resolveScaffoldTemplateId(exampleFlag, Boolean(videoFlag || audioFlag));
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
@@ -1086,10 +1090,8 @@ export default defineCommand({
     // 3. Pick example — skip prompt if --example was provided
     let templateId: string;
 
-    if (exampleFlag) {
-      templateId = exampleFlag === "agent" ? "blank" : exampleFlag;
-    } else if (videoFlag || audioFlag) {
-      templateId = "from-file";
+    if (exampleFlag || videoFlag || audioFlag) {
+      templateId = resolveScaffoldTemplateId(exampleFlag, Boolean(videoFlag || audioFlag));
     } else {
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -192,20 +200,32 @@ describe("hyperframes init flag rename", () => {
     expect(injected).not.toContain("setTimeout");
   });
 
-  it("packs from-file and selects it when --video is set without --example", () => {
+  it("packs from-file and wires --video into the composition", () => {
     const copySource = readFileSync(
       new URL("../../scripts/build-copy.mjs", import.meta.url),
       "utf-8",
     );
-    expect(copySource).toContain('"from-file"');
-    expect(copySource).not.toMatch(/for \(const tmpl of \[[^\]]*"[^"]*agent[^"]*"/);
-    expect(initSource).toMatch(/videoFlag \|\| audioFlag \? "from-file"/);
-    expect(initSource).toMatch(
-      /else if \(videoFlag \|\| audioFlag\) \{\s*templateId = "from-file"/,
+    expect(copySource).toContain('for (const tmpl of ["blank", "from-file", "_shared"])');
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    const clip = join(dir, "clip.mp4");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../studio/tests/e2e/fixtures/design-panel-qa/assets/test.mp4",
+      ),
+      clip,
     );
-    expect(
-      existsSync(resolve(fileURLToPath(import.meta.url), "../../templates/from-file/index.html")),
-    ).toBe(true);
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain('id="a-roll"');
+      expect(html).toContain('src="clip.mp4"');
+      expect(existsSync(join(target, "clip.mp4"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("-v works as the short alias for --video", () => {
