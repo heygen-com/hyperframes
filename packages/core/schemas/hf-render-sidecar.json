@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/hf-render-sidecar.json",
+  "title": "HyperFrames Render Provenance Sidecar",
+  "description": "Portable render receipt written next to a committed render artifact as <output>.hf-render.json. An unauthenticated hint for agents, CI, and support tooling — never an authenticity or attribution boundary.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "createdAt",
+    "versions",
+    "render",
+    "input",
+    "output",
+    "host"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "description": "Sidecar schema version. Bumped when the framing changes incompatibly."
+    },
+    "kind": {
+      "const": "hf-render-sidecar"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of sidecar creation (artifact commit time)."
+    },
+    "versions": {
+      "type": "object",
+      "required": ["producer", "node"],
+      "additionalProperties": false,
+      "properties": {
+        "producer": {
+          "type": "string",
+          "description": "@hyperframes/producer package version."
+        },
+        "node": {
+          "type": "string",
+          "description": "Node.js version the render ran on (process.version)."
+        },
+        "ffmpeg": {
+          "type": "string",
+          "description": "First line of `ffmpeg -version`. Absent when the probe failed."
+        }
+      }
+    },
+    "render": {
+      "type": "object",
+      "required": ["jobId", "outcome", "warningCodes", "totalElapsedMs", "stages", "quality"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "description": "Producer render job id."
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["completed", "completed_with_warnings"],
+          "description": "Sidecars are only written after a successful artifact commit."
+        },
+        "warningCodes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sorted, de-duplicated capture-readiness warning codes."
+        },
+        "totalElapsedMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wall-clock render pipeline duration."
+        },
+        "stages": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Per-stage wall-clock timings in milliseconds (compileMs, videoExtractMs, captureMs, encodeMs, assembleMs, …)."
+        },
+        "workers": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Parallel capture worker count actually used."
+        },
+        "quality": {
+          "type": "string",
+          "enum": ["draft", "standard", "high"]
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": ["entryFile", "fonts", "variables"],
+      "additionalProperties": false,
+      "properties": {
+        "entryFile": {
+          "type": "string",
+          "description": "Project-relative entry HTML path."
+        },
+        "entrySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 of the entry HTML source bytes. Absent when unreadable."
+        },
+        "compositionHash": {
+          "type": "string",
+          "description": "Content hash of the compiled composition (matches render telemetry)."
+        },
+        "fonts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sorted @font-face family names baked into the compiled composition."
+        },
+        "variables": {
+          "description": "Render-time variable overrides, hashed (sha256 of canonical JSON) — never the raw values. Null when no variables were passed.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["count", "sha256"],
+              "additionalProperties": false,
+              "properties": {
+                "count": { "type": "integer", "minimum": 1 },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["file", "format", "fps", "hdr", "encoder"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Output file (or png-sequence directory) basename. No host paths."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["mp4", "webm", "mov", "gif", "png-sequence"]
+        },
+        "fps": {
+          "type": "object",
+          "required": ["num", "den"],
+          "additionalProperties": false,
+          "properties": {
+            "num": { "type": "integer", "minimum": 1 },
+            "den": { "type": "integer", "minimum": 1 }
+          },
+          "description": "Frame rate as an exact rational (NTSC 29.97 is 30000/1001)."
+        },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "durationSeconds": { "type": "number", "minimum": 0 },
+        "totalFrames": { "type": "integer", "minimum": 0 },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "On-disk size of the committed artifact. File outputs only."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 of the committed artifact bytes. File outputs only."
+        },
+        "hdr": {
+          "type": "boolean",
+          "description": "True when the artifact was encoded as HDR."
+        },
+        "encoder": {
+          "description": "Video encoder facts. Null for png-sequence and gif outputs.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["codec", "preset", "pixelFormat"],
+              "additionalProperties": false,
+              "properties": {
+                "codec": { "type": "string" },
+                "preset": { "type": "string" },
+                "pixelFormat": { "type": "string" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "required": ["platform", "arch"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string" },
+        "arch": { "type": "string" }
+      }
+    }
+  }
+}
