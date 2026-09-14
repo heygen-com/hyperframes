@@ -249,6 +249,30 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  it("wires --audio into the composition without creating a video clip", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-audio-test-"));
+    const target = join(dir, "proj");
+    const audio = join(dir, "track.wav");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../producer/tests/audio-mux-parity/src/assets/tone.wav",
+      ),
+      audio,
+    );
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
+      expect(html).not.toMatch(/<video\b/);
+      expect(html).not.toContain("__VIDEO_SRC__");
+      expect(readFileSync(join(target, "track.wav"))).toEqual(readFileSync(audio));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("uses the video stream duration when audio outlasts the final video frame", () => {
     expect(
       resolveVideoDurationSeconds({
