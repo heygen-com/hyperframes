@@ -871,6 +871,17 @@ export function buildChromeArgs(
     ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
+    // Pin the compositor surface to 1 device pixel per CSS pixel. Capture
+    // reads the browser surface (`fromSurface: true`, and BeginFrame likewise),
+    // and that surface is rasterized at the *host display's* backing scale —
+    // `Emulation.setDeviceMetricsOverride` only moves `window.devicePixelRatio`
+    // on the page side, it does not resize the surface. On a HiDPI host (Retina
+    // macOS, a scaled Windows display) every capture therefore came out at 2x,
+    // so a 1920x1080 composition encoded to a 3840x2160 file and no flag could
+    // bring it back down. Supersampling is applied deliberately downstream via
+    // the capture clip's `scale` (see `resolveDeviceScaleFactor`), so the
+    // surface must contribute a factor of exactly 1 on every host.
+    "--force-device-scale-factor=1",
     `--window-size=${options.width},${options.height}`,
     // Prevent Chrome from throttling background tabs/timers — critical when the
     // page is offscreen during headless capture
