@@ -124,7 +124,7 @@ function probeMedia(mediaPath: string, ffprobePath: string): GradeMediaProbe {
         "--",
         mediaPath,
       ],
-      { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] },
+      { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
     );
     const parsed = asRecord(JSON.parse(raw));
     const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
@@ -341,6 +341,7 @@ export function analyzeMediaGrade(
         encoding: "utf8",
         timeout: Number(process.env.HYPERFRAMES_ANALYZE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
       },
     );
     return summarizeMediaTreatmentAnalysis(probe, parseMediaTreatmentSignalStats(raw));
