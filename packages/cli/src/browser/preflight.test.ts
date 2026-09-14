@@ -88,8 +88,40 @@ describe("runEnvironmentChecks", () => {
     });
     expect(ffmpeg?.detail).toContain(process.execPath);
     expect(ffmpeg?.detail).toContain("3221225781");
-    expect(ffmpeg?.hint).toContain("working 64-bit FFmpeg build");
     expect(result.ffmpegPath).toBeUndefined();
+  });
+
+  // Regression: the "cannot start" branch used to hardcode a Windows/DLL hint
+  // on every platform instead of routing through the already platform-aware
+  // getFFmpegInstallHint(). Pin it per-platform so a future regression can't
+  // just swap back to a different unconditional string.
+  describe("FFmpeg cannot-start hint is platform-specific", () => {
+    const realPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+    });
+
+    it.each([
+      { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
+      { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
+    ])(
+      "uses getFFmpegInstallHint()'s $platform text, not a hardcoded DLL hint",
+      async ({ platform, expectedHint }) => {
+        Object.defineProperty(process, "platform", { value: platform, configurable: true });
+        execFileSync.mockImplementation((binaryPath: string) => {
+          if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH) return "ffprobe version 7.1.1\n";
+          throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
+        });
+
+        const result = await runEnvironmentChecks();
+        const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+        expect(ffmpeg?.title).toBe("FFmpeg cannot start");
+        expect(ffmpeg?.hint).toBe(expectedHint);
+        expect(ffmpeg?.hint).not.toContain("DLL");
+      },
+    );
   });
 
   it("validates an explicit browser path without needing browser discovery", async () => {
