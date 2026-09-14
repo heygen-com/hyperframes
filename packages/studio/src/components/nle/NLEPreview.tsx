@@ -451,6 +451,9 @@ export const NLEPreview = memo(function NLEPreview({
               transform: `translate3d(${toDomPrecision(initial.panX)}px, ${toDomPrecision(initial.panY)}px, 0) scale(${toDomPrecision(initial.zoomPercent / 100)})`,
               // resolvePreviewWheelZoom cursor math assumes center-center pivot
               transformOrigin: "center center",
+              // Keep Studio chrome outside the scaled composition iframe. Painting
+              // this on the iframe creates a subpixel seam at fractional fit sizes.
+              boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 4px 32px rgba(0,0,0,0.7)",
             }}
             data-testid="preview-zoom-stage"
           >
