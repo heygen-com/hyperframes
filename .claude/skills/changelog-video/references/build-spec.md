@@ -81,11 +81,18 @@ otherwise) and must stay flat 2D (no 3D ancestors).
 ## Seams + internal life (doctrine mechanics)
 
 - `ledger.json`: every ordinary seam `cut-the-curve LEFT` (x, dir −1), exit
-  and entry selectors = the slide wrappers. Outro entry `travel: 8`.
+  and entry selectors = the inner `.swrap` wrappers (`#w-*`), NEVER the `#s-*`
+  clip element — `gsap_animates_clip_element` is an error-severity lint rule and
+  every stamped seam writes `autoAlpha`. Outro entry `travel: 8`.
 - `seam-stamp.mjs --ledger ledger.json --write index.html` owns ALL wrapper
   entries/exits — author none yourself. Title (film open) authors its own
-  entry only.
-- Slides: CSS `opacity: 0` base; `data-start` = exactly the cut time.
+  entry only, and that entry MUST pass `immediateRender: false`: the stamped
+  zero-duration `tl.set(autoAlpha: 0)` at the title's cut renders at BUILD time,
+  so an entry without the flag captures 0 as its start and tweens 0 → 0. The
+  symptom is `exit-visible … op 0.00` with `exit-vector` PASSING — moving but
+  invisible. Neither a CSS opacity base nor a longer clip window fixes it.
+- Slides: the `.swrap` carries the CSS `opacity: 0` base, not the `.slide` clip
+  element; `data-start` = exactly the cut time.
 - Each scene's shell (chip, headline, mock chrome, initial state) is
   COMPOSED at local t=0 — the wrapper flies it in. Internal reveals start
   ≥0.4s after the cut and end ≥0.45s before the next cut (stamped exits

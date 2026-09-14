@@ -23,7 +23,11 @@
       border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 18px; }
     #progress { top: 58px; right: 76px; display: flex; gap: 10px; }
     #progress .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(245,246,244,.18); }
-    .slide { position: absolute; inset: 0; opacity: 0; }
+    /* The clip element itself carries NO opacity base and is never targeted by GSAP:
+       the framework owns a clip's visibility window, and `gsap_animates_clip_element`
+       is an ERROR-severity lint rule. Seams animate the inner .swrap instead. */
+    .slide { position: absolute; inset: 0; }
+    .swrap { position: absolute; inset: 0; opacity: 0; }
     .sec-chip { position: absolute; top: 128px; left: 76px; font-family: 'TT Norms Mono', monospace;
       font-size: 22px; letter-spacing: .05em; color: rgba(245,246,244,.72);
       background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14);
@@ -52,17 +56,23 @@
 
     <!-- Title (film open — authors its OWN entry; exit is stamped) -->
     <div id="s-title" class="slide clip" data-start="0" data-duration="<CUT1>" data-track-index="1">
-      <!-- mono kicker date · ABC Solar h1 · green rule -->
+      <div id="w-title" class="swrap">
+        <!-- mono kicker date · ABC Solar h1 · green rule -->
+      </div>
     </div>
 
     <!-- One slide per theme. data-start = EXACTLY the ledger cut time.
+         Every slide holds ONE inner .swrap (#w-*) and the ledger's exit/entry
+         selectors name THAT wrapper, never the #s-* clip element.
          Shell composed at local t=0; internal beats ≥0.4s after the cut,
          done ≥0.45s before the next. Put data-layout-allow-overlap only on
          the specific text blocks that deliberately layer. -->
     <div id="s-t1" class="slide clip" data-start="<CUT1>" data-duration="<DUR1>" data-track-index="1">
-      <div class="sec-chip">01 · <THEME></div>
-      <div class="sec-head"><HEADLINE></div>
-      <!-- the mock, from references/visualization-registry.md, y ∈ [288, 944] -->
+      <div id="w-t1" class="swrap">
+        <div class="sec-chip">01 · <THEME></div>
+        <div class="sec-head"><HEADLINE></div>
+        <!-- the mock, from references/visualization-registry.md, y ∈ [288, 944] -->
+      </div>
     </div>
 
     <!-- s-t2..tN, then outro (kicker · "See what shipped." · green rule · URL chip) -->
@@ -80,6 +90,15 @@
     gsap.set('#kicker-chip', { autoAlpha: 0, y: -10 });
     tl.to('#kicker-chip', { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power3.out' }, 0.1);
     // tl.set('#dot1', { backgroundColor: '#f5f6f4' }, <CUT1>); …
+
+    // Title entry — authored HERE, never stamped (seam-stamp owns every other
+    // wrapper entry). immediateRender:false is load-bearing: seam-stamp emits a
+    // zero-duration tl.set(#w-title, autoAlpha:0) at the title's cut, and a
+    // zero-duration GSAP tween immediate-renders at BUILD time. Without the flag
+    // this fromTo captures that 0 as its start value and tweens 0 → 0, which the
+    // seam gate reports as `exit-visible … op 0.00` while exit-vector PASSES.
+    tl.fromTo('#w-title', { autoAlpha: 0 },
+      { autoAlpha: 1, duration: 0.30, ease: 'power2.out', immediateRender: false }, 0);
 
     // ══ per-scene internal beats ══
     // init states: gsap.set(...) at build time; motion: sequential tl.to(...) only.
