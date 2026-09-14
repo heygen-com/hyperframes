@@ -7,4 +7,4 @@
  * type back, which would close an import cycle.
  */
 export const STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED =
-  import.meta.env.VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED !== "0";
+  import.meta.env?.VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED !== "0";
