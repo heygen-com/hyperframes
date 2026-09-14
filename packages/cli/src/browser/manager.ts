@@ -44,6 +44,21 @@ const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // too or it silently picks system Chrome over a perfectly good headless-shell.
 const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
 
+// `@puppeteer/browsers`' downloadFile() (lib/httpUtil.js) opens a bare
+// node:http(s) request with no AbortController/timeout anywhere in the chain
+// (confirmed by source read of the resolved 3.x package) — a connection that
+// never gets a response (e.g. a network that only egresses through an
+// HTTP(S)_PROXY, which downloadFile's own proxy-agent support silently no-ops
+// on: `proxy-agent` is only an *optional peer* dependency, so the package's
+// dynamic import of it throws, is caught, and the request falls back to a
+// bare agent that never reads proxy env vars) just hangs at "Downloading
+// Chrome... 0%" forever. See PRINFRA-682. This is a stall watchdog, not a
+// total-download-duration cap: it resets on every progress tick, so a
+// slow-but-actually-progressing download (large binary over a slow line)
+// never trips it — only a connection that stops producing any bytes for this
+// long does.
+const DOWNLOAD_STALL_TIMEOUT_MS = 45_000;
+
 // `@puppeteer/browsers`' install() has no concurrency guard of its own — two
 // CLI invocations that both miss the cache at the same time both extract into
 // the same target directory simultaneously. A killed/interrupted extraction
@@ -708,6 +723,62 @@ export async function installWithCorruptArchiveRecovery<T>(
 }
 
 /**
+ * Race an install-style call against a "no progress" watchdog instead of a
+ * total-duration cap. The timer (re)arms on every progress tick — and once
+ * before the first one, since a connection that never gets a response never
+ * ticks at all — so a download that is merely slow keeps resetting it
+ * indefinitely, while one that has truly stalled (no bytes, ever, or bytes
+ * that stop arriving mid-stream) trips it after `timeoutMs` of silence.
+ *
+ * This cannot abort the underlying socket (`@puppeteer/browsers` exposes no
+ * `AbortSignal`), so a stalled connection lingers until the OS reclaims it —
+ * but the CLI's root exit handler calls `process.exit()` unconditionally once
+ * a command settles (see `cli.ts`'s `registerRootExitRequester`), so
+ * rejecting here still unblocks the process instead of leaving it hung.
+ */
+export function withDownloadStallGuard<T>(
+  run: (onProgress: (downloadedBytes: number, totalBytes: number) => void) => Promise<T>,
+  options: {
+    timeoutMs: number;
+    onProgress?: (downloadedBytes: number, totalBytes: number) => void;
+  },
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const armTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(
+          new Error(`Download stalled: no progress for ${Math.round(options.timeoutMs / 1000)}s.`),
+        );
+      }, options.timeoutMs);
+    };
+    armTimer();
+    run((downloadedBytes, totalBytes) => {
+      if (settled) return;
+      armTimer();
+      options.onProgress?.(downloadedBytes, totalBytes);
+    }).then(
+      (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (err: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
  * When `@puppeteer/browsers`' install() rejects for any reason the corrupt-
  * archive recovery path can't handle (all CDN providers rejected — the
  * `All providers failed for chrome-headless-shell <ver>` case reported from the
@@ -731,6 +802,33 @@ function browserPathHintForPlatform(): string {
   return "/usr/bin/google-chrome";
 }
 
+/**
+ * `@puppeteer/browsers`' download request does attempt real proxy support
+ * (a dynamic import of the `proxy-agent` package), but that package is only
+ * an *optional peer* dependency that a normal hyperframes install never
+ * pulls in — so the import throws, is caught silently, and the request falls back
+ * to a bare node:http(s) agent that never reads HTTP_PROXY/HTTPS_PROXY on
+ * its own. On a network that only egresses through that proxy, the direct
+ * connection attempt doesn't fail fast; it stalls, which is what
+ * `withDownloadStallGuard` above catches. Naming the proxy as the likely
+ * cause (when one is actually configured) turns "download stalled, no idea
+ * why" into an actionable diagnosis instead of just repeating the same
+ * escape hatch with no context.
+ */
+function proxyDownloadStallHint(): string {
+  const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((key) =>
+    Boolean(process.env[key]?.trim()),
+  );
+  if (!proxyConfigured) return "";
+  return (
+    `\n\nHTTP_PROXY/HTTPS_PROXY is set in this environment, but chrome-headless-shell's ` +
+    `download does not honor it (the proxy support it depends on is an optional ` +
+    `dependency hyperframes does not install) — on a network that requires the proxy for ` +
+    `internet access, the download attempts a direct connection and stalls instead of ` +
+    `failing fast. Use HYPERFRAMES_BROWSER_PATH above to skip the download entirely.`
+  );
+}
+
 function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
   const original = normalizeErrorMessage(cause);
   const example = browserPathHintForPlatform();
@@ -741,7 +839,8 @@ function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
     `Then re-run your command. Any Chrome build works for the screenshot ` +
     `capture path; install a real chrome-headless-shell later if you need the ` +
     `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
-    `Docker image which ships a compatible headless-shell.`;
+    `Docker image which ships a compatible headless-shell.` +
+    proxyDownloadStallHint();
   return new Error(message, { cause: cause instanceof Error ? cause : undefined });
 }
 
@@ -758,13 +857,17 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   }
 
   const runInstall = () =>
-    install({
-      cacheDir: CACHE_DIR,
-      browser: Browser.CHROMEHEADLESSSHELL,
-      buildId: CHROME_VERSION,
-      platform,
-      downloadProgressCallback: options?.onProgress,
-    });
+    withDownloadStallGuard(
+      (onProgress) =>
+        install({
+          cacheDir: CACHE_DIR,
+          browser: Browser.CHROMEHEADLESSSHELL,
+          buildId: CHROME_VERSION,
+          platform,
+          downloadProgressCallback: onProgress,
+        }),
+      { timeoutMs: DOWNLOAD_STALL_TIMEOUT_MS, onProgress: options?.onProgress },
+    );
 
   let installed;
   try {
