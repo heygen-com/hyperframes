@@ -35,7 +35,7 @@ import type { RuntimeJson } from "./types";
  * `createMediaElementSource` from a `srcObject` element today, so this is
  * recorded as a boundary rather than fixed.
  *
- * Second known gap, same shape: `isCorsSilenced` judges the RAW url string —
+ * Second known gap, same shape: `corsSilenceReason` judges the RAW url string —
  * the same-origin URL the author wrote, or whatever the browser resolved into
  * `currentSrc` — not wherever a server-side redirect chain actually lands.
  * A same-origin URL that 302s to a cross-origin CDN reads as `web-audio` here
@@ -60,7 +60,18 @@ export type WebAudioMediaRoute =
    * attribute is the common shape of this bug — and that route keeps the whole
    * FX graph. So: withhold the node, still let the decode path try.
    */
-  | { kind: "decode-only"; reason: "cross_origin_no_cors"; asset: string };
+  | { kind: "decode-only"; reason: WebAudioSilenceReason; asset: string };
+
+/**
+ * Why capture was withheld. The two cases need DIFFERENT remediation, which is
+ * the whole reason they are separate values: a foreign asset can be proxied to
+ * a same-origin URL, but an opaque document has no same-origin URL to proxy to.
+ */
+export type WebAudioSilenceReason =
+  /** The asset's origin differs from ours, and no `crossorigin` opt-in is set. */
+  | "cross_origin_no_cors"
+  /** OUR document's security origin is opaque, so nothing is same-origin with it. */
+  | "opaque_document_origin";
 
 /** Fired when the runtime withholds Web Audio capture from a media element. */
 const DIAGNOSTIC_BYPASS_CODE = "runtime_web_audio_bypass";
@@ -135,22 +146,45 @@ function routeCandidates(el: HTMLMediaElement): string[] {
  * pre-existing behaviour rather than losing Web Audio on a guess. The guard
  * changes behaviour ONLY in the case that is already known-broken.
  */
-function isCorsSilenced(rawUrl: string, el: HTMLMediaElement): boolean {
-  if (typeof window === "undefined") return false;
+/**
+ * The candidate as an absolute URL, or null when it is not a fetch this check
+ * governs: unparseable, or a scheme (`data:`, `blob:`, `file:`) where origin
+ * comparison means nothing.
+ */
+function httpMediaUrl(rawUrl: string, el: HTMLMediaElement): URL | null {
   let url: URL;
   try {
     url = new URL(rawUrl, baseUri(el));
   } catch {
-    return false;
+    return null;
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-  // `location.origin` is the URL's origin, not the document's actual
-  // security origin: a sandboxed iframe without `allow-same-origin` still
-  // reports the parent-looking URL there while `window.origin` reads
-  // `"null"`. An opaque document can't prove same-origin with anything.
-  const selfOrigin = typeof window.origin === "string" ? window.origin : window.location.origin;
-  if (selfOrigin !== "null" && url.origin === selfOrigin) return false;
-  return !hasCorsOptIn(el);
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return url;
+}
+
+/**
+ * Our OWN security origin, which is `"null"` for an opaque document.
+ *
+ * Not `location.origin`: that is the URL's origin, so a sandboxed iframe
+ * without `allow-same-origin` still reports the parent-looking URL there
+ * while `window.origin` reads `"null"`. An opaque document cannot prove
+ * same-origin with anything, including an asset served from its own host.
+ */
+function documentSecurityOrigin(): string {
+  return typeof window.origin === "string" ? window.origin : window.location.origin;
+}
+
+function corsSilenceReason(rawUrl: string, el: HTMLMediaElement): WebAudioSilenceReason | null {
+  if (typeof window === "undefined") return null;
+  const url = httpMediaUrl(rawUrl, el);
+  if (!url) return null;
+  const selfOrigin = documentSecurityOrigin();
+  const opaqueDocument = selfOrigin === "null";
+  if (!opaqueDocument && url.origin === selfOrigin) return null;
+  if (hasCorsOptIn(el)) return null;
+  // Opacity wins when both hold. It is the blocking condition, and it is the
+  // one the author cannot fix by moving the asset.
+  return opaqueDocument ? "opaque_document_origin" : "cross_origin_no_cors";
 }
 
 /**
@@ -182,8 +216,9 @@ export function isRouteSelectionSettled(el: HTMLMediaElement): boolean {
  */
 export function classifyWebAudioMediaRoute(el: HTMLMediaElement): WebAudioMediaRoute {
   for (const candidate of routeCandidates(el)) {
-    if (isCorsSilenced(candidate, el)) {
-      return { kind: "decode-only", reason: "cross_origin_no_cors", asset: candidate };
+    const reason = corsSilenceReason(candidate, el);
+    if (reason) {
+      return { kind: "decode-only", reason, asset: candidate };
     }
   }
   return { kind: "web-audio" };
@@ -252,6 +287,29 @@ const diagnosedElements = new WeakSet<HTMLMediaElement>();
  * The bypass always reports: it is an accident by definition, and the whole
  * complaint in #3458 is that nothing was said.
  */
+/**
+ * What was actually wrong, per reason. The opaque case is NOT "cross-origin
+ * media": the asset can be same-origin by URL and still unreadable, because it
+ * is OUR document that cannot prove an origin.
+ */
+const NOTE_BY_REASON: Record<WebAudioSilenceReason, string> = {
+  cross_origin_no_cors:
+    "cross-origin media without a `crossorigin` opt-in is silent through createMediaElementSource (Web Audio spec); using native playback instead",
+  opaque_document_origin:
+    "this document's security origin is opaque (a sandbox without `allow-same-origin`), so no media is same-origin with it and createMediaElementSource would be silent (Web Audio spec); using native playback instead",
+};
+
+/**
+ * How to get the processing back, per reason. Keeping these apart is the point:
+ * telling an opaque document to "proxy the asset to a same-origin URL" names a
+ * fix that cannot exist, since nothing is same-origin with an opaque origin.
+ */
+const REMEDY_BY_REASON: Record<WebAudioSilenceReason, string> = {
+  cross_origin_no_cors: "proxy or download the asset to a same-origin URL to keep it.",
+  opaque_document_origin:
+    "add `allow-same-origin` to the sandbox, or serve the asset with a `crossorigin` attribute and an `Access-Control-Allow-Origin` of `null` or `*`, to keep it.",
+};
+
 export function reportWebAudioMediaRoute(el: HTMLMediaElement, route: WebAudioMediaRoute): void {
   if (route.kind === "web-audio") return;
   if (isRenderMode()) return;
@@ -263,7 +321,7 @@ export function reportWebAudioMediaRoute(el: HTMLMediaElement, route: WebAudioMe
     asset: route.asset,
     reason: route.reason,
     lostProcessing: lost,
-    note: "cross-origin media without a `crossorigin` opt-in is silent through createMediaElementSource (Web Audio spec); using native playback instead",
+    note: NOTE_BY_REASON[route.reason],
   };
   postRuntimeMessage({
     source: "hf-preview",
@@ -276,7 +334,7 @@ export function reportWebAudioMediaRoute(el: HTMLMediaElement, route: WebAudioMe
   // same contract mediaProxy.ts's diagnostics use.
   const lostNote =
     lost.length > 0
-      ? ` Native playback cannot reproduce: ${lost.join(", ")} — proxy or download the asset to a same-origin URL to keep it.`
+      ? ` Native playback cannot reproduce: ${lost.join(", ")} — ${REMEDY_BY_REASON[route.reason]}`
       : "";
   console.info(
     `[hyperframes] ${DIAGNOSTIC_BYPASS_CODE}: "${route.asset}" (${route.reason}): ` +
