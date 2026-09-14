@@ -1,6 +1,7 @@
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import {
   findHtmlTag,
+  extractTimelineRegistryKeys,
   readAttr,
   readDecodedAttr,
   readJsonAttr,
@@ -60,6 +61,8 @@ const HEAVY_OVERLAY_EXEMPT_TAGS = new Set([
 const HEAVY_OVERLAY_CSS_PATTERN =
   /(?:filter\s*:[^;}]*\bblur\s*\()|(?:clip-path\s*:(?!\s*(?:none|inherit|initial|unset)\b)\s*[^;}]+)|(?:radial-gradient\s*\()/i;
 const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
+const COMPUTED_TIMELINE_REGISTRATION_PATTERN =
+  /window\.__timelines\s*\[(?!\s*["'])\s*[^\r\n\]]+\]\s*=/;
 
 function readTagTiming(rawTag: string) {
   return readClipTiming({ getAttribute: (name) => readAttr(rawTag, name) });
@@ -255,6 +258,12 @@ function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean 
       candidate.closeIndex != null &&
       tag.index > candidate.index &&
       tag.index < candidate.closeIndex,
+  );
+}
+
+function hasComputedTimelineRegistration(scripts: readonly ExtractedBlock[]): boolean {
+  return scripts.some((script) =>
+    COMPUTED_TIMELINE_REGISTRATION_PATTERN.test(stripJsCode(script.content)),
   );
 }
 
@@ -613,39 +622,51 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // missing_data_no_timeline
-  // The producer polls window.__timelines[id] with a 45-second timeout waiting
-  // for GSAP timeline registration. Compositions that never call
-  // window.__timelines[id] = tl stall for 45 s every render. Adding
-  // data-no-timeline to the root element tells the producer to skip the poll.
-  ({ rootTag, rootCompositionId, scripts, rawSource, options }) => {
-    if (options.isSubComposition) return [];
+  // The producer polls window.__timelines[id] for every composition id in the
+  // rendered document. A timeline-free root or bare nested composition host
+  // therefore spends the full 45-second readiness budget unless it explicitly
+  // opts out with data-no-timeline.
+  ({ rootTag, rootCompositionId, tags, scripts, rawSource, options }) => {
     if (!rootCompositionId || !rootTag) return [];
-    // readAttr only matches valued attrs (attr="..."); data-no-timeline is
-    // typically boolean (no value). Strip quoted attribute values first to
-    // avoid matching attr names that appear inside other values
-    // (e.g. title="add data-no-timeline here"), then check with a boundary
-    // that rejects hyphenated variants (data-no-timeline-start has '-' next,
-    // not a word-break char).
-    const tagNoValues = rootTag.raw.replace(/"[^"]*"|'[^']*'/g, '""');
-    if (/(?:^|\s)data-no-timeline(?=[\s>=/]|$)/i.test(tagNoValues)) return [];
     // Can't scan external script files for timeline registration; skip to avoid
     // false positives on compositions that register via a bundled JS file.
     if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
-    const registersTimeline = scripts.some((s) => s.content.includes("window.__timelines["));
-    if (registersTimeline) return [];
-    return [
-      {
+    // A computed key may map to any authored id. When static analysis cannot
+    // resolve that key, stay silent rather than claim a registration is absent.
+    if (hasComputedTimelineRegistration(scripts)) return [];
+
+    const registeredIds = new Set(
+      scripts.flatMap((script) => extractTimelineRegistryKeys(stripJsComments(script.content))),
+    );
+    const findings: HyperframeLintFinding[] = [];
+
+    for (const tag of tags) {
+      const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
+      if (!compositionId || registeredIds.has(compositionId)) continue;
+      if (readDecodedAttr(tag.raw, "data-no-timeline") !== null) continue;
+
+      const isRoot = tag.index === rootTag.index;
+      if (isRoot && options.isSubComposition) continue;
+      if (!isRoot && isInsideInertTemplate(tag, tags)) continue;
+      if (readAttr(tag.raw, "data-composition-src") || readAttr(tag.raw, "data-composition-file")) {
+        continue;
+      }
+
+      findings.push({
         code: "missing_data_no_timeline",
         severity: "warning",
-        message:
-          "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. " +
-          "The producer polls for timeline registration for up to 45 seconds before timing out, " +
-          "adding 45 s to every render.",
-        fixHint:
-          'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.',
-        snippet: truncateSnippet(rootTag.raw),
-      },
-    ];
+        message: isRoot
+          ? "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. The producer polls for timeline registration for up to 45 seconds before timing out, adding 45 s to every render."
+          : `Composition host "${compositionId}" has neither a matching \`window.__timelines\` registration nor \`data-no-timeline\`. The producer waits up to 45 seconds for every \`data-composition-id\` before rendering.`,
+        elementId: readAttr(tag.raw, "id") || undefined,
+        fixHint: isRoot
+          ? 'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.'
+          : "If this is a static section, use a plain `id` instead of `data-composition-id`, or add `data-no-timeline`. Otherwise, register its timeline or mount it with `data-composition-src`.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+
+    return findings;
   },
 
   // requestanimationframe_in_composition
