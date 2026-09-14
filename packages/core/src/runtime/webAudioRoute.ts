@@ -144,7 +144,12 @@ function isCorsSilenced(rawUrl: string, el: HTMLMediaElement): boolean {
     return false;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-  if (url.origin === window.location.origin) return false;
+  // `location.origin` is the URL's origin, not the document's actual
+  // security origin: a sandboxed iframe without `allow-same-origin` still
+  // reports the parent-looking URL there while `window.origin` reads
+  // `"null"`. An opaque document can't prove same-origin with anything.
+  const selfOrigin = typeof window.origin === "string" ? window.origin : window.location.origin;
+  if (selfOrigin !== "null" && url.origin === selfOrigin) return false;
   return !hasCorsOptIn(el);
 }
 

@@ -34,6 +34,20 @@ function withUnreflectedCrossOrigin(el: HTMLAudioElement, value: string): HTMLAu
   return el;
 }
 
+/** Stubs the document's actual security origin (`window.origin`) for the
+ *  duration of `run`, then restores it — distinct from `location.origin`,
+ *  which stays URL-shaped even inside an opaque sandboxed document. */
+function withSelfOrigin<T>(origin: string, run: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(window, "origin");
+  Object.defineProperty(window, "origin", { value: origin, configurable: true });
+  try {
+    return run();
+  } finally {
+    if (original) Object.defineProperty(window, "origin", original);
+    else delete (window as { origin?: string }).origin;
+  }
+}
+
 describe("classifyWebAudioMediaRoute", () => {
   it("routes same-origin media through Web Audio", () => {
     expect(classifyWebAudioMediaRoute(audio({ src: "/assets/vo.mp3" }))).toEqual({
@@ -135,6 +149,23 @@ describe("classifyWebAudioMediaRoute", () => {
       reason: "cross_origin_no_cors",
       asset: `${CROSS_ORIGIN}/track.mp3`,
     });
+  });
+
+  it("withholds capture when the document's security origin is opaque, even though the URL origins match", () => {
+    // See withSelfOrigin above for why this differs from location.origin.
+    const asset = `${SAME_ORIGIN}/assets/vo.mp3`;
+    const route = withSelfOrigin("null", () => classifyWebAudioMediaRoute(audio({ src: asset })));
+
+    expect(route).toEqual({ kind: "decode-only", reason: "cross_origin_no_cors", asset });
+  });
+
+  it("keeps today's same-origin result when window.origin genuinely matches", () => {
+    const asset = `${SAME_ORIGIN}/assets/vo.mp3`;
+    const route = withSelfOrigin(SAME_ORIGIN, () =>
+      classifyWebAudioMediaRoute(audio({ src: asset })),
+    );
+
+    expect(route).toEqual({ kind: "web-audio" });
   });
 });
 
