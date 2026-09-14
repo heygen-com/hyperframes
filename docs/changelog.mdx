@@ -9,6 +9,20 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.40"
+  description="Released - 2026-09-14"
+  tags={["Release", "Core"]}
+>
+Sandboxed compositions no longer lose audio while the timeline and visuals keep playing.
+
+## Fixes
+
+- **Core:** Web Audio routing now checks the document’s security origin with `window.origin`. Media without `crossorigin` stays out of Web Audio when that origin is opaque, even if the URL origins match ([293829a2c](https://github.com/heygen-com/hyperframes/commit/293829a2c1bde0707548b230b74b5cdf8e8985f2), [#3937](https://github.com/heygen-com/hyperframes/pull/3937)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.39...v0.8.40).
+</Update>
+
+<Update
   label="HyperFrames v0.8.39"
   description="Released - 2026-09-14"
   tags={["Release", "CLI", "Lint"]}
