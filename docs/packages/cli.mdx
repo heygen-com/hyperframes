@@ -89,23 +89,19 @@ off the check, the install, and the notice.
 Scaffold a new composition project from an example.
 
 ```bash
-# Agents and CI — every input from a flag
-npx hyperframes init my-video --example blank --video video.mp4 --non-interactive
+# Default: centered Inter blank. Non-TTY skips the wizard.
+npx hyperframes init my-video
 
-# Agents: no prompts, centered Inter blank
-npx hyperframes init my-video --agent
+# Start from a video file
+npx hyperframes init my-video --video video.mp4 --non-interactive
 
 # With the Tailwind browser runtime
-npx hyperframes init my-video --example blank --tailwind
-
-# Interactive on a TTY
-npx hyperframes init my-video
+npx hyperframes init my-video --tailwind
 ```
 
 | Flag                | Description                                                                                                                                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--example, -e`     | Example to scaffold. Required with `--non-interactive` unless `--agent`, `--video`, or `--audio` is set. See [Examples](/examples) for the full list.                                                                                                                                 |
-| `--agent`           | Non-interactive agent scaffold: centered Inter blank, paused timeline, no CSS `transform` centering.                                                                                                                                                                                 |
+| `--example, -e`     | Example to scaffold. Default is the centered blank. See [Examples](/examples) for the full list.                                                                                                                                                                                     |
 | `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |

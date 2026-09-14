@@ -15,7 +15,7 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 
 ## Development loop
 
-1. **Scaffold:** `npx hyperframes init <project> --agent` (non-interactive centered blank). Or capture a site. In non-TTY mode without `--agent`, pass `--non-interactive --example=<name>`.
+1. **Scaffold:** `npx hyperframes init <project>` (centered blank). Or capture a site. Pass `--example=<name>` only to start from a named example.
 2. **Find the move:** before authoring motion by hand, search for a primitive that already does it: `npx hyperframes catalog --query "reveal a headline one line at a time"`. Ask for the effect you want rather than the mechanism you have in mind. Install with `npx hyperframes add <name>` (see `/hyperframes-registry`). Author by hand only once nothing fits.
 3. **Author:** write the composition using `/hyperframes-core`.
 4. **Get fast feedback while editing:** run `npx hyperframes lint` after the first HTML pass and after structural changes.
@@ -90,7 +90,7 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
   npx hyperframes doctor --json | jq -e '.ok' >/dev/null
   ```
 
-- Non-TTY mode is automatic. `init --agent` is the no-prompt blank. Without `--agent`, non-TTY `init` requires `--example`. Use `--non-interactive` to force flag-only mode on a TTY.
+- Non-TTY mode is automatic and scaffolds the centered blank. Pass `--example` only to start from a named example. Use `--non-interactive` to force flag-only mode on a TTY.
 - Use one `HYPERFRAMES_RUN_ID` for all commands in the same verification loop.
 - Use `--strict`, `--strict-all`, and `--strict-variables` when the corresponding warnings, variables, or CI conditions must gate the render.
 - JSON paths redact the home directory as `$HOME`; do not try to reverse the redaction.

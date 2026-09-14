@@ -15,15 +15,11 @@ export const examples: Example[] = [
   ["Scaffold a portrait video", "hyperframes init my-video --resolution portrait"],
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
-  ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
-  [
-    "Non-interactive mode (for CI or AI agents)",
-    "hyperframes init my-video --example blank --non-interactive",
-  ],
-  ["Agent scaffold, no prompts", "hyperframes init my-video --agent"],
+  ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
+  ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   [
     "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --example blank --non-interactive",
+    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
   ],
 ];
 import {
@@ -725,8 +721,8 @@ export default defineCommand({
     },
     agent: {
       type: "boolean",
-      description:
-        "Non-interactive agent scaffold: centered Inter blank, paused timeline, no prompts",
+      hidden: true,
+      description: "Deprecated alias; default init is the centered blank",
     },
     "skip-skills": {
       type: "boolean",
@@ -789,8 +785,7 @@ export default defineCommand({
     const skipSkills = process.env.HYPERFRAMES_SKIP_SKILLS === "1";
     const skipSkillsFlagIgnored = args["skip-skills"] === true && !skipSkills;
     const tailwind = args.tailwind === true;
-    const agent = args.agent === true;
-    const nonInteractive = args["non-interactive"] === true || agent;
+    const nonInteractive = args["non-interactive"] === true || args.agent === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
     const initialTranscriptionModel = initialModelForLanguage(
@@ -827,17 +822,10 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
-      if (!exampleFlag && !videoFlag && !audioFlag && !agent) {
-        console.error(
-          c.error(
-            "Non-interactive init requires --agent, --example, --video, or --audio. " +
-              "For an empty starter project, pass --example blank or --agent.",
-          ),
-        );
-        failCommand();
-      }
-
-      const templateId = exampleFlag ?? (agent ? "agent" : "blank");
+      const templateId =
+        exampleFlag === "agent"
+          ? "blank"
+          : (exampleFlag ?? (videoFlag || audioFlag ? "from-file" : "blank"));
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
@@ -1099,7 +1087,7 @@ export default defineCommand({
     let templateId: string;
 
     if (exampleFlag) {
-      templateId = exampleFlag;
+      templateId = exampleFlag === "agent" ? "blank" : exampleFlag;
     } else {
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();
