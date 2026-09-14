@@ -43,6 +43,11 @@
       "bun": "./src/editing/affordances.ts",
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
+    },
+    "./visual-paint": {
+      "bun": "./src/visualPaint.ts",
+      "import": "./src/visualPaint.ts",
+      "types": "./src/visualPaint.ts"
     }
   },
   "publishConfig": {
@@ -71,6 +76,10 @@
       "./editing": {
         "import": "./dist/editing/affordances.js",
         "types": "./dist/editing/affordances.d.ts"
+      },
+      "./visual-paint": {
+        "import": "./dist/visualPaint.js",
+        "types": "./dist/visualPaint.d.ts"
       }
     },
     "main": "./dist/index.js",

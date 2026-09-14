@@ -2,16 +2,15 @@
 // Parses a caption composition's JavaScript source to extract the transcript word array,
 // and builds a CaptionModel from a TranscriptWord array.
 
-import {
+import type {
   CaptionModel,
   CaptionSegment,
   CaptionGroup,
   CaptionStyle,
   CaptionContainerStyle,
-  DEFAULT_STYLE,
-  DEFAULT_CONTAINER,
-  DEFAULT_ANIMATION_SET,
 } from "./types";
+import { DEFAULT_ANIMATION_SET, DEFAULT_CONTAINER, DEFAULT_STYLE } from "./types";
+import { isTransparentColor } from "@hyperframes/sdk/visual-paint";
 
 export interface TranscriptWord {
   id?: string;
@@ -228,7 +227,7 @@ export function parseCaptionComposition(
       const groupComputed = iframeWin.getComputedStyle(firstGroupEl);
       const bgColor = groupComputed.backgroundColor;
       // Only apply if it's not transparent/none
-      if (bgColor && bgColor !== "rgba(0, 0, 0, 0)" && bgColor !== "transparent") {
+      if (!isTransparentColor(bgColor)) {
         containerOverrides.backgroundColor = bgColor;
         containerOverrides.backgroundOpacity = 1;
       }

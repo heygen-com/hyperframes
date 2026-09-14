@@ -1,7 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { extractTranscript, buildCaptionModel, TranscriptWord } from "./parser";
+import {
+  extractTranscript,
+  buildCaptionModel,
+  parseCaptionComposition,
+  TranscriptWord,
+} from "./parser";
 import { DEFAULT_STYLE, DEFAULT_CONTAINER, DEFAULT_ANIMATION_SET } from "./types";
+import { Window as HappyWindow } from "happy-dom";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -75,6 +81,31 @@ const NON_CAPTION_SOURCE = `
 `;
 
 const EMPTY_SOURCE = ``;
+
+describe("parseCaptionComposition", () => {
+  it("does not import a zero-alpha non-black group background", () => {
+    const iframeWindow = new HappyWindow();
+    iframeWindow.document.body.innerHTML = `
+      <div class="caption-group" style="background-color: rgba(255, 255, 255, 0)">
+        <span class="word">We</span>
+      </div>
+    `;
+
+    const model = parseCaptionComposition(
+      iframeWindow.document,
+      iframeWindow as unknown as Window,
+      STANDARD_CAPTION_SOURCE,
+      1920,
+      1080,
+      2,
+    );
+    const firstGroupId = model?.groupOrder[0];
+    const group = firstGroupId ? model?.groups.get(firstGroupId) : undefined;
+
+    expect(group?.containerStyle.backgroundColor).toBe("transparent");
+    expect(group?.containerStyle.backgroundOpacity).toBe(0);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Tests

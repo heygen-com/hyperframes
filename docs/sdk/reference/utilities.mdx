@@ -7,6 +7,23 @@ This page covers everything exported from `@hyperframes/sdk` that is not covered
 
 ---
 
+## Visual paint utilities
+
+```typescript
+import { cssColorAlpha, isTransparentColor } from "@hyperframes/sdk/visual-paint";
+```
+
+Use these helpers when a browser host needs the same colour semantics as the iframe preview adapter. `cssColorAlpha()` reads legacy comma syntax and modern slash syntax for RGB and HSL colours, including percentage alpha. Unknown colour syntaxes fail safe as opaque.
+
+```typescript
+cssColorAlpha("rgb(255 255 255 / 25%)"); // 0.25
+isTransparentColor("hsl(0 0% 100% / 0)"); // true
+```
+
+`isTransparentColor()` also treats an empty computed value as transparent, matching the SDK's visual-paint checks.
+
+---
+
 ## History Module
 
 ```typescript

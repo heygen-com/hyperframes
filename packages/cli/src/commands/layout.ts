@@ -8,6 +8,7 @@ import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { prepareBrowserScript } from "../utils/browserScript.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
 import {
@@ -288,7 +289,7 @@ async function runLayoutAudit(
 export function loadBrowserScript(name: string): string {
   const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
   for (const candidate of candidates) {
-    if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
+    if (existsSync(candidate)) return prepareBrowserScript(name, readFileSync(candidate, "utf-8"));
   }
   throw new Error(`Missing browser script ${name}`);
 }
