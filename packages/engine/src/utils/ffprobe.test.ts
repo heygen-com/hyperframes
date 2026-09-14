@@ -1493,3 +1493,53 @@ describe("runFfprobe process and stream handling", () => {
     );
   });
 });
+
+describe("analyzeKeyframeIntervals sparse-keyframe blind spot", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  // Regression: 0 or 1 detected keyframes used to short-circuit to
+  // isProblematic:false — the sparsest possible GOP (a single I-frame, or
+  // none, covering the whole video) read as *healthier* than a video with a
+  // merely-long-but-finite gap. PRINFRA-307.
+  it("treats zero keyframes as maximally problematic, not healthy", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    const result = await analyzeKeyframeIntervals("/tmp/no-keyframes.mp4");
+
+    expect(result.keyframeCount).toBe(0);
+    expect(result.isProblematic).toBe(true);
+    expect(result.maxIntervalSeconds).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("treats a single keyframe as maximally problematic, not healthy", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.000000\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    const result = await analyzeKeyframeIntervals("/tmp/one-keyframe.mp4");
+
+    expect(result.keyframeCount).toBe(1);
+    expect(result.isProblematic).toBe(true);
+    expect(result.maxIntervalSeconds).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("still evaluates 2+ keyframes on their actual max gap, unaffected by the fix", async () => {
+    const { spawn } = createSpawnSpy([{ kind: "exit", code: 0, stdout: "0.0\n1.0\n2.0\n" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { analyzeKeyframeIntervals } = await import("./ffprobe.js");
+
+    const result = await analyzeKeyframeIntervals("/tmp/dense-keyframes.mp4");
+
+    expect(result.keyframeCount).toBe(3);
+    expect(result.isProblematic).toBe(false);
+    expect(result.maxIntervalSeconds).toBe(1);
+  });
+});
