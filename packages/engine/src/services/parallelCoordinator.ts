@@ -25,7 +25,12 @@ import {
   type CapturePerfSummary,
   type BeforeCaptureHook,
 } from "./frameCapture.js";
-import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
+import {
+  psnrDb,
+  regionShift,
+  resolveDeVerifyMaxShift,
+  resolveDeVerifyMinDb,
+} from "../utils/psnr.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
@@ -709,27 +714,51 @@ function logParDebug(message: () => string): void {
 }
 
 /**
- * Throw the verification error for a sample below the PSNR floor; log the
- * pass otherwise. Split from the sampling loop for the complexity gate.
+ * Throw the verification error for a sample that breaches either gate — below
+ * the PSNR floor (magnitude damage) or above the region-shift ceiling
+ * (low-contrast content missing, issue #3345); log the pass otherwise. Split
+ * from the sampling loop for the complexity gate.
+ *
+ * Exported for testing; the gate decision is a pure metrics read.
  */
-function assertDiskSampleAboveFloor(
-  db: number,
+export function assertDiskSampleVerified(
+  metrics: { db: number; shift: number },
   verifyMinDb: number,
+  verifyMaxShift: number,
   idx: number,
   workerId: number,
 ): void {
-  if (db < verifyMinDb) {
+  if (metrics.db < verifyMinDb) {
     // Message keeps the contiguous "drawElement self-verify" phrase —
     // captureFailure's VERIFICATION_ERROR_PATTERNS classifies on it.
     throw new DrawElementVerificationError(
       `drawElement self-verify failed at frame ${idx} (disk path, worker ${workerId}): ` +
-        `${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot`,
-      { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
+        `${metrics.db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot`,
+      {
+        kind: "psnr",
+        frameIndex: idx,
+        failedDb: metrics.db,
+        verifyThresholdDb: verifyMinDb,
+      },
+    );
+  }
+  if (metrics.shift > verifyMaxShift) {
+    throw new DrawElementVerificationError(
+      `drawElement self-verify failed at frame ${idx} (disk path, worker ${workerId}): ` +
+        `region shift ${metrics.shift}/255 > ${verifyMaxShift}/255 vs pre-injection screenshot — ` +
+        "a low-contrast region is absent from the drawElement frame",
+      {
+        kind: "shift",
+        frameIndex: idx,
+        failedShift: metrics.shift,
+        verifyMaxShift,
+      },
     );
   }
   console.log(
     `[Parallel] drawElement disk self-verify passed (worker ${workerId}, frame ${idx}, ` +
-      `${db === Infinity ? "inf" : db.toFixed(1)}dB)`,
+      `${metrics.db === Infinity ? "inf" : metrics.db.toFixed(1)}dB, ` +
+      `shift ${metrics.shift}/255)`,
   );
 }
 
@@ -757,22 +786,24 @@ export function isFfmpegInfrastructureFailure(err: unknown): boolean {
 
 /**
  * Compare one captured frame file against its ground truth. Returns the
- * PSNR, or null on per-sample noise (readFile races, transient EPERM,
- * unparseable ffmpeg output on a single sample) — a skipped sample is not
- * damage evidence and must not fail the capture. Re-throws when the error
- * shape indicates the ffmpeg install itself is broken (missing binary or
- * missing `psnr` filter): the drawElement self-verify safety net cannot
+ * PSNR + worst-region shift, or null on per-sample noise (readFile races,
+ * transient EPERM, unparseable ffmpeg output on a single sample) — a skipped
+ * sample is not damage evidence and must not fail the capture. Re-throws when
+ * the error shape indicates the ffmpeg install itself is broken (missing
+ * binary or a missing filter): the drawElement self-verify safety net cannot
  * possibly run in that state, and continuing would silently ship every
  * remaining frame unverified.
  */
-async function psnrForDiskSample(
+async function metricsForDiskSample(
   framePath: string,
   truth: Buffer,
   workerId: number,
   idx: number,
-): Promise<number | null> {
+): Promise<{ db: number; shift: number } | null> {
   try {
-    return await psnrDb(await readFile(framePath), truth);
+    const buf = await readFile(framePath);
+    const [db, shift] = await Promise.all([psnrDb(buf, truth), regionShift(buf, truth)]);
+    return { db, shift };
   } catch (err) {
     if (isFfmpegInfrastructureFailure(err)) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -794,8 +825,8 @@ async function psnrForDiskSample(
 }
 
 // Branches are the gate conditions themselves (mode/armed/streaming guards +
-// per-sample skip/breach) — already decomposed into psnrForDiskSample +
-// assertDiskSampleAboveFloor; further splitting obscures the check.
+// per-sample skip/breach) — already decomposed into metricsForDiskSample +
+// assertDiskSampleVerified; further splitting obscures the check.
 // fallow-ignore-next-line complexity
 export async function verifyDiskDrawElementSamples(
   session: CaptureSession,
@@ -807,15 +838,16 @@ export async function verifyDiskDrawElementSamples(
   const truths = session.deVerifyFrames;
   if (!truths || truths.size === 0) return;
   const verifyMinDb = resolveDeVerifyMinDb();
+  const verifyMaxShift = resolveDeVerifyMaxShift();
   const ext = session.options.format === "png" ? "png" : "jpg";
   const offset = task.outputFrameOffset ?? 0;
   for (const idx of selectVerifySampleIndicesForTask(truths.keys(), task)) {
     const truth = truths.get(idx);
     if (!truth) continue;
     const framePath = join(task.outputDir, `frame_${String(idx - offset).padStart(6, "0")}.${ext}`);
-    const db = await psnrForDiskSample(framePath, truth, task.workerId, idx);
-    if (db === null) continue;
-    assertDiskSampleAboveFloor(db, verifyMinDb, idx, task.workerId);
+    const metrics = await metricsForDiskSample(framePath, truth, task.workerId, idx);
+    if (metrics === null) continue;
+    assertDiskSampleVerified(metrics, verifyMinDb, verifyMaxShift, idx, task.workerId);
   }
 }
 
