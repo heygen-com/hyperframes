@@ -15,7 +15,7 @@
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {
-//     "provider": "auto",          // auto|heygen|elevenlabs|kokoro (override: --provider)
+//     "provider": "auto",          // auto|heygen|chatterbox|elevenlabs|kokoro (override: --provider)
 //     "lang": "en", "speed": 1.0,
 //     "lines": [                   // one TTS unit each; id joins back to the caller's model
 //       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] }
@@ -126,7 +126,7 @@ let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
   try {
-    ttsProvider = pickProvider(
+    ttsProvider = await pickProvider(
       providerOverride || (request.provider === "auto" ? null : request.provider),
     );
   } catch (e) {

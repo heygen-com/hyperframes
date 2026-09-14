@@ -8,6 +8,10 @@ import {
   ffprobeDuration,
   synthesizeOne,
   synthesizeHeygen,
+  synthesizeChatterbox,
+  chatterboxAvailable,
+  chatterboxBaseUrl,
+  pickProvider,
   synthResult,
 } from "./tts.mjs";
 
@@ -154,4 +158,96 @@ test("synthResult names a non-zero subprocess exit", () => {
   const res = synthResult({ status: 2 }, "/tmp/none.wav", "kokoro (npx hyperframes tts)");
   assert.equal(res.ok, false);
   assert.match(res.error, /kokoro .* exited with status 2/);
+});
+
+test("chatterboxBaseUrl defaults to the local server, trims a trailing slash from the override", () => {
+  const saved = process.env.CHATTERBOX_BASE_URL;
+  try {
+    delete process.env.CHATTERBOX_BASE_URL;
+    assert.equal(chatterboxBaseUrl(), "http://127.0.0.1:4123/v1");
+    process.env.CHATTERBOX_BASE_URL = "http://example.internal:9000/v1/";
+    assert.equal(chatterboxBaseUrl(), "http://example.internal:9000/v1");
+  } finally {
+    if (saved === undefined) delete process.env.CHATTERBOX_BASE_URL;
+    else process.env.CHATTERBOX_BASE_URL = saved;
+  }
+});
+
+test("chatterboxAvailable is false on a connection failure (no server running)", async () => {
+  const saved = process.env.CHATTERBOX_BASE_URL;
+  try {
+    // Port 1 is reserved and nothing will ever answer on it — a fast, reliable "down" server.
+    process.env.CHATTERBOX_BASE_URL = "http://127.0.0.1:1/v1";
+    assert.equal(await chatterboxAvailable(), false);
+  } finally {
+    if (saved === undefined) delete process.env.CHATTERBOX_BASE_URL;
+    else process.env.CHATTERBOX_BASE_URL = saved;
+  }
+});
+
+test("pickProvider(chatterbox) rejects when no server is reachable", async () => {
+  const saved = process.env.CHATTERBOX_BASE_URL;
+  try {
+    process.env.CHATTERBOX_BASE_URL = "http://127.0.0.1:1/v1";
+    await assert.rejects(() => pickProvider("chatterbox"), /no healthy server/);
+  } finally {
+    if (saved === undefined) delete process.env.CHATTERBOX_BASE_URL;
+    else process.env.CHATTERBOX_BASE_URL = saved;
+  }
+});
+
+test("pickProvider rejects an unknown provider name, listing chatterbox in the valid set", async () => {
+  await assert.rejects(() => pickProvider("bogus"), /heygen \| chatterbox \| elevenlabs \| kokoro/);
+});
+
+test("synthesizeChatterbox creates the output dir and writes the response bytes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-chatterbox-mkdir-"));
+  try {
+    const wavAbs = join(dir, "assets", "voice", "line-0.wav"); // nested, not yet created
+    const fakeBytes = new Uint8Array([1, 2, 3, 4]);
+    const res = await synthesizeChatterbox(
+      { text: "hi", speed: 1, wavAbs },
+      {
+        fetch: async () => ({
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => fakeBytes.buffer,
+        }),
+      },
+    );
+    assert.equal(res.ok, true);
+    assert.equal(res.words, null);
+    assert.ok(existsSync(wavAbs), "wav file should be written");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeChatterbox surfaces a non-200 response with its status and body", async () => {
+  const res = await synthesizeChatterbox(
+    { text: "hi", speed: 1, wavAbs: "/tmp/does-not-matter.wav" },
+    {
+      fetch: async () => ({
+        ok: false,
+        status: 503,
+        text: async () => "model not loaded",
+      }),
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.match(res.error, /HTTP 503/);
+  assert.match(res.error, /model not loaded/);
+});
+
+test("synthesizeChatterbox surfaces a thrown network error", async () => {
+  const res = await synthesizeChatterbox(
+    { text: "hi", speed: 1, wavAbs: "/tmp/does-not-matter.wav" },
+    {
+      fetch: async () => {
+        throw new Error("fetch failed: ECONNREFUSED");
+      },
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.match(res.error, /ECONNREFUSED/);
 });
