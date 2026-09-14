@@ -400,7 +400,9 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
         )
       : format === "mov" || args["video-bitrate"]
         ? undefined
-        : qualityAlias.crf;
+        : "crf" in qualityAlias
+          ? qualityAlias.crf
+          : undefined;
   let vp9CpuUsed: number | undefined;
   if (args["vp9-cpu-used"] != null) {
     const parsed = Number(args["vp9-cpu-used"]);
