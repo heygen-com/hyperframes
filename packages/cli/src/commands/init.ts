@@ -1088,6 +1088,8 @@ export default defineCommand({
 
     if (exampleFlag) {
       templateId = exampleFlag === "agent" ? "blank" : exampleFlag;
+    } else if (videoFlag || audioFlag) {
+      templateId = "from-file";
     } else {
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();

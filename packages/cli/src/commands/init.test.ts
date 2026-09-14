@@ -192,6 +192,22 @@ describe("hyperframes init flag rename", () => {
     expect(injected).not.toContain("setTimeout");
   });
 
+  it("packs from-file and selects it when --video is set without --example", () => {
+    const copySource = readFileSync(
+      new URL("../../scripts/build-copy.mjs", import.meta.url),
+      "utf-8",
+    );
+    expect(copySource).toContain('"from-file"');
+    expect(copySource).not.toMatch(/for \(const tmpl of \[[^\]]*"[^"]*agent[^"]*"/);
+    expect(initSource).toMatch(/videoFlag \|\| audioFlag \? "from-file"/);
+    expect(initSource).toMatch(
+      /else if \(videoFlag \|\| audioFlag\) \{\s*templateId = "from-file"/,
+    );
+    expect(
+      existsSync(resolve(fileURLToPath(import.meta.url), "../../templates/from-file/index.html")),
+    ).toBe(true);
+  });
+
   it("-v works as the short alias for --video", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
