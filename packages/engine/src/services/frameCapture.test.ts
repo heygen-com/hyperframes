@@ -356,4 +356,18 @@ describe("DrawElementVerificationError details", () => {
     );
     expect(getDrawElementVerificationDetails(adversarial)?.kind).toBe("psnr");
   });
+
+  it("carries kind='shift' with its own shift fields, not the dB pair", () => {
+    const err = new DrawElementVerificationError(
+      "drawElement self-verify failed at frame 9: region shift 13/255 > 3/255",
+      { kind: "shift", frameIndex: 9, failedShift: 13, verifyMaxShift: 3 },
+    );
+    expect(isDrawElementVerificationError(err)).toBe(true);
+    expect(getDrawElementVerificationDetails(err)).toEqual({
+      kind: "shift",
+      frameIndex: 9,
+      failedShift: 13,
+      verifyMaxShift: 3,
+    });
+  });
 });
