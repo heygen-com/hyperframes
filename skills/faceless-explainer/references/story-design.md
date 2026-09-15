@@ -2,7 +2,7 @@
 
 Use this reference in Step 3 to write `STORYBOARD.md` and `SCRIPT.md` for a faceless explainer — a topic, concept, how-to, listicle, or narrative explainer built from text, with **no product, no website, and no captured assets**.
 
-This file defines the story: what the video teaches, in what order, and why each frame exists. It does not define layout, visual effects, animation, or final markdown schemas. For exact file syntax, follow `../hyperframes/references/storyboard-format.md` and `../hyperframes/references/script-format.md`.
+This file defines the story: what the video teaches, in what order, and why each frame exists. It does not define layout, visual effects, animation, or final markdown schemas. For exact file syntax, follow `../../hyperframes/references/storyboard-format.md` and `../../hyperframes/references/script-format.md`.
 
 ## Read first
 
@@ -85,7 +85,7 @@ For every frame, define (use the storyboard format's fields, with these narrativ
 - `scene` — a one-line visual idea, not detailed composition.
 - `voiceover` — spoken guide text, or empty for silent frames.
 - `transition_in` — a registry transition name (see Transitions).
-- `blueprint` _(optional candidate)_ — consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`; when a proven shape fits this beat, tag its id (a tag, not a commitment — Step 4 confirms or overrides). Then **write the `voiceover` in the shape that blueprint implies**, so the line is reveal-ready before Step 4 ever runs. Teaching truth still decides which beats exist — never invent, drop, or bend a beat just to fit a shape; omit `blueprint` and write the line plainly when none fits.
+- `blueprint` _(optional candidate)_ — consult the role→blueprint menu in `../../hyperframes-animation/blueprints-index.md`; when a proven shape fits this beat, tag its id (a tag, not a commitment — Step 4 confirms or overrides). Then **write the `voiceover` in the shape that blueprint implies**, so the line is reveal-ready before Step 4 ever runs. Teaching truth still decides which beats exist — never invent, drop, or bend a beat just to fit a shape; omit `blueprint` and write the line plainly when none fits.
 
 In the prose under each frame, state:
 
@@ -125,7 +125,7 @@ Pick one opening strategy for the first 3-5 seconds. For explainers the hook ope
 | Imagine / scenario     | A thought experiment frames the whole piece.       | "Imagine money that loses value if you don't spend it."          |
 | Stakes / consequence   | The "why care now" is a real cost or risk.         | "Get this one step wrong and the whole batch is ruined."         |
 
-The hook must create curiosity, tension, or stakes. Do not open with a generic definition. Per `../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's language (the payoff of understanding, never the source text's section headings), and the thesis (`message`) lands by beat 2 — the explanation after that is its evidence.
+The hook must create curiosity, tension, or stakes. Do not open with a generic definition. Per `../../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's language (the payoff of understanding, never the source text's section headings), and the thesis (`message`) lands by beat 2 — the explanation after that is its evidence.
 
 ## Clarity / rhetoric technique catalog
 
