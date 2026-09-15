@@ -1,0 +1,494 @@
+---
+title: "Loop Stories 3"
+description: "The current image fills the frame with a slow drift; the next slides in like a story. 8 image slots, 13s seamless loop, 1:1."
+---
+
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-3.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/loop-stories-3.png" autoPlay muted loop playsInline />
+
+## Install
+
+<InstallCommand command="npx hyperframes add loop-stories-3" item="loop-stories-3" />
+
+That writes one file: `compositions/loop-stories-3.html`.
+
+## Add it to your video
+
+It runs for 13 seconds at 1080×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="loop-stories-3"
+  data-composition-src="compositions/loop-stories-3.html"
+  data-start="0"
+  data-duration="13"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `mediaFit` | `natural` | `natural`, `crop` | Natural keeps each image's own ratio; Crop fills the card box at the media aspect below. |
+| `cropAspectRatio` | `1:1` | `16:9`, `9:16`, `1:1`, `4:5`, `3:2`, `3:4`, `2:3` | Card aspect used when Fit is Crop. |
+| `backgroundType` | `gradient` | `gradient`, `color`, `image` | Gradient (start → end colours), flat Colour, or your own Image. |
+| `backgroundGradientStart` | `#111111` | color | Top colour of the gradient. |
+| `backgroundGradientEnd` | `#444444` | color | Bottom colour of the gradient. |
+| `backgroundColor` | `#0b0b0f` | color | Flat colour when Type is Color; also the ground under an Image. |
+| `backgroundImage` | `` | image | Cover-fitted background when Type is Image. |
+| `blurAmount` | `0` | 0px to 60px, step 1px | Blur on the background image, px. |
+| `backgroundGradientNoise` | `0` | 0% to 100%, step 1% | Film-grain overlay strength. |
+| `backgroundOpacity` | `1` | 0 to 1, step 0.05 | Opacity of the whole background layer (0 = transparent ground). |
+| `borderRadius` | `0` | 0px to 200px, step 1px | Card corner radius in px at 1080. |
+| `cycles` | `1` | 0 to 10, step 0.1 | Number of motion cycles per loop. |
+| `delay` | `0` | 0s to 2s, step 0.01s | Hold time between steps, seconds. |
+| `direction` | `down` | `right`, `left`, `down`, `up` | Direction of travel. |
+| `thumbAspect` | `1:1` | `1:1`, `3:4`, `4:3` | Thumb Aspect (engine parameter; see the block header comment). |
+| `bigScale` | `115` | 0 to 230, step 10 | Big Scale (engine parameter; see the block header comment). |
+| `bigDrift` | `40` | 0 to 80, step 1 | Big Drift (engine parameter; see the block header comment). |
+| `thumbSize` | `85` | 0 to 200, step 1 | Thumb Size (engine parameter; see the block header comment). |
+| `containerOpacity` | `0` | 0 to 80, step 1 | Container Opacity (engine parameter; see the block header comment). |
+| `containerBlur` | `0` | 0 to 120, step 1 | Container Blur (engine parameter; see the block header comment). |
+| `selectorPad` | `5.5` | 0 to 11, step 0.1 | Selector Pad (engine parameter; see the block header comment). |
+| `selectorStroke` | `1.5` | 0 to 4, step 0.1 | Selector Stroke (engine parameter; see the block header comment). |
+| `dimAmount` | `40` | 0 to 100, step 1 | Dim Amount (engine parameter; see the block header comment). |
+| `offsetX` | `-35` | -100% to 100%, step 1% | Horizontal offset of the formation, % of width. |
+| `offsetY` | `0` | -100% to 100%, step 1% | Vertical offset of the formation, % of height. |
+| `image1` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 1 of 8. Any aspect; fitted per mediaFit. |
+| `image2` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 2 of 8. Any aspect; fitted per mediaFit. |
+| `image3` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 3 of 8. Any aspect; fitted per mediaFit. |
+| `image4` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 4 of 8. Any aspect; fitted per mediaFit. |
+| `image5` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 5 of 8. Any aspect; fitted per mediaFit. |
+| `image6` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 6 of 8. Any aspect; fitted per mediaFit. |
+| `image7` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 7 of 8. Any aspect; fitted per mediaFit. |
+| `image8` | `data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E` | image | Image on card 8 of 8. Any aspect; fitted per mediaFit. |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="loop-stories-3"
+  data-composition-src="compositions/loop-stories-3.html"
+  data-variable-values='{"mediaFit":"natural","cropAspectRatio":"1:1","backgroundType":"gradient","backgroundGradientStart":"#111111","backgroundGradientEnd":"#444444","backgroundColor":"#0b0b0f","backgroundImage":"","blurAmount":0,"backgroundGradientNoise":0,"backgroundOpacity":1,"borderRadius":0,"cycles":1,"delay":0,"direction":"down","thumbAspect":"1:1","bigScale":115,"bigDrift":40,"thumbSize":85,"containerOpacity":0,"containerBlur":0,"selectorPad":5.5,"selectorStroke":1.5,"dimAmount":40,"offsetX":-35,"offsetY":0,"image1":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image2":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image3":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image4":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image5":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image6":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image7":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E","image8":"data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E"}'
+></div>
+```
+
+## Source
+
+<Accordion title={`loop-stories-3.html`}>
+
+```html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"mediaFit","type":"enum","role":"style","label":"Media · Fit","description":"Natural keeps each image&#39;s own ratio; Crop fills the card box at the media aspect below.","default":"natural","options":[{"value":"natural","label":"Natural (original ratio)"},{"value":"crop","label":"Crop"}]},{"id":"cropAspectRatio","type":"enum","role":"style","label":"Media · Aspect","description":"Card aspect used when Fit is Crop.","default":"1:1","options":[{"value":"16:9","label":"16:9"},{"value":"9:16","label":"9:16"},{"value":"1:1","label":"1:1"},{"value":"4:5","label":"4:5"},{"value":"3:2","label":"3:2"},{"value":"3:4","label":"3:4"},{"value":"2:3","label":"2:3"}]},{"id":"backgroundType","type":"enum","role":"style","label":"Background · Type","description":"Gradient (start → end colours), flat Colour, or your own Image.","default":"gradient","options":[{"value":"gradient","label":"Gradient"},{"value":"color","label":"Color"},{"value":"image","label":"Image"}]},{"id":"backgroundGradientStart","type":"color","role":"style","label":"Background · Gradient start","description":"Top colour of the gradient.","default":"#111111"},{"id":"backgroundGradientEnd","type":"color","role":"style","label":"Background · Gradient end","description":"Bottom colour of the gradient.","default":"#444444"},{"id":"backgroundColor","type":"color","role":"style","label":"Background · Color","description":"Flat colour when Type is Color; also the ground under an Image.","default":"#0b0b0f"},{"id":"backgroundImage","type":"image","role":"style","label":"Background · Image","description":"Cover-fitted background when Type is Image.","portrays":["background_image"],"default":""},{"id":"blurAmount","type":"number","role":"style","label":"Background · Blur","description":"Blur on the background image, px.","default":0,"min":0,"max":60,"step":1,"unit":"px"},{"id":"backgroundGradientNoise","type":"number","role":"style","label":"Background · Grain","description":"Film-grain overlay strength.","default":0,"min":0,"max":100,"step":1,"unit":"%"},{"id":"backgroundOpacity","type":"number","role":"style","label":"Background · Opacity","description":"Opacity of the whole background layer (0 = transparent ground).","default":1,"min":0,"max":1,"step":0.05},{"id":"borderRadius","type":"number","role":"style","label":"Appearance · Border radius","description":"Card corner radius in px at 1080.","default":0,"min":0,"max":200,"step":1,"unit":"px"},{"id":"cycles","type":"number","role":"style","label":"Animation · Cycles","description":"Number of motion cycles per loop.","default":1,"min":0,"max":10,"step":0.1},{"id":"delay","type":"number","role":"style","label":"Animation · Delay","description":"Hold time between steps, seconds.","default":0,"min":0,"max":2,"step":0.01,"unit":"s"},{"id":"direction","type":"enum","role":"style","label":"Animation · Direction","description":"Direction of travel.","default":"down","options":[{"value":"right","label":"Right"},{"value":"left","label":"Left"},{"value":"down","label":"Down"},{"value":"up","label":"Up"}]},{"id":"thumbAspect","type":"enum","role":"style","label":"Template options · Thumb Aspect","description":"Thumb Aspect (engine parameter; see the block header comment).","default":"1:1","options":[{"value":"1:1","label":"1:1"},{"value":"3:4","label":"3:4"},{"value":"4:3","label":"4:3"}]},{"id":"bigScale","type":"number","role":"style","label":"Template options · Big Scale","description":"Big Scale (engine parameter; see the block header comment).","default":115,"min":0,"max":230,"step":10},{"id":"bigDrift","type":"number","role":"style","label":"Template options · Big Drift","description":"Big Drift (engine parameter; see the block header comment).","default":40,"min":0,"max":80,"step":1},{"id":"thumbSize","type":"number","role":"style","label":"Template options · Thumb Size","description":"Thumb Size (engine parameter; see the block header comment).","default":85,"min":0,"max":200,"step":1},{"id":"containerOpacity","type":"number","role":"style","label":"Template options · Container Opacity","description":"Container Opacity (engine parameter; see the block header comment).","default":0,"min":0,"max":80,"step":1},{"id":"containerBlur","type":"number","role":"style","label":"Template options · Container Blur","description":"Container Blur (engine parameter; see the block header comment).","default":0,"min":0,"max":120,"step":1},{"id":"selectorPad","type":"number","role":"style","label":"Template options · Selector Pad","description":"Selector Pad (engine parameter; see the block header comment).","default":5.5,"min":0,"max":11,"step":0.1},{"id":"selectorStroke","type":"number","role":"style","label":"Template options · Selector Stroke","description":"Selector Stroke (engine parameter; see the block header comment).","default":1.5,"min":0,"max":4,"step":0.1},{"id":"dimAmount","type":"number","role":"style","label":"Template options · Dim Amount","description":"Dim Amount (engine parameter; see the block header comment).","default":40,"min":0,"max":100,"step":1},{"id":"offsetX","type":"number","role":"style","label":"Template options · Offset X","description":"Horizontal offset of the formation, % of width.","default":-35,"min":-100,"max":100,"step":1,"unit":"%"},{"id":"offsetY","type":"number","role":"style","label":"Template options · Offset Y","description":"Vertical offset of the formation, % of height.","default":0,"min":-100,"max":100,"step":1,"unit":"%"},{"id":"image1","type":"image","role":"content","label":"Media · Image 1","description":"Image on card 1 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image2","type":"image","role":"content","label":"Media · Image 2","description":"Image on card 2 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image3","type":"image","role":"content","label":"Media · Image 3","description":"Image on card 3 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image4","type":"image","role":"content","label":"Media · Image 4","description":"Image on card 4 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image5","type":"image","role":"content","label":"Media · Image 5","description":"Image on card 5 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1050&#39; viewBox%3D&#39;0 0 1400 1050&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1050&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1046&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 778.05H621.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M286.65 778.05L379.05 662.55L471.45 778.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;552.3&#39; cy%3D&#39;674.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image6","type":"image","role":"content","label":"Media · Image 6","description":"Image on card 6 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;788&#39; viewBox%3D&#39;0 0 1400 788&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;788&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;784&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 583.908H529.376&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;12.382857142857144&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M278.004 583.908L347.348 497.228L416.692 583.908Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;477.36800000000005&#39; cy%3D&#39;505.896&#39; r%3D&#39;26.004&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image7","type":"image","role":"content","label":"Media · Image 7","description":"Image on card 7 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1050&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1050 1400&#39;%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1050&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1046&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M189 995.05H558.6&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;16.5&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M223.65 995.05L316.05 879.55L408.45 995.05Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;489.3&#39; cy%3D&#39;891.1&#39; r%3D&#39;34.65&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"},{"id":"image8","type":"image","role":"content","label":"Media · Image 8","description":"Image on card 8 of 8. Any aspect; fitted per mediaFit.","portrays":["subject_image"],"default":"data:image/svg+xml,%3Csvg xmlns%3D&#39;http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg&#39; width%3D&#39;1400&#39; height%3D&#39;1400&#39; viewBox%3D&#39;0 0 1400 1400&#39;%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;%230b0b0f&#39;%2F%3E%3Crect width%3D&#39;1400&#39; height%3D&#39;1400&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.18)&#39;%2F%3E%3Crect x%3D&#39;2&#39; y%3D&#39;2&#39; width%3D&#39;1396&#39; height%3D&#39;1396&#39; fill%3D&#39;none&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.14)&#39; stroke-width%3D&#39;4&#39;%2F%3E%3Cpath d%3D&#39;M252 1037.4H744.8&#39; stroke%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39; stroke-width%3D&#39;22&#39; stroke-linecap%3D&#39;round&#39;%2F%3E%3Cpath d%3D&#39;M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3Ccircle cx%3D&#39;652.4000000000001&#39; cy%3D&#39;898.8&#39; r%3D&#39;46.199999999999996&#39; fill%3D&#39;rgba(255%2C255%2C255%2C0.45)&#39;%2F%3E%3C%2Fsvg%3E"}]'
+>
+  <head>
+    <title>loop-stories-3</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0b0f;
+      }
+      #loop-stories-3-bg {
+        position: absolute;
+        inset: 0;
+      }
+      #loop-stories-3-big {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      #loop-stories-3-big img {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+      #loop-stories-3-strip {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        overflow: hidden;
+      } /* clip box = panel bounds; the ring wraps through it */
+      #loop-stories-3-panel {
+        position: absolute;
+        inset: 0;
+      }
+      .thumb {
+        position: absolute;
+        overflow: hidden;
+      }
+      .thumb img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .thumb .dim {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+      .ring {
+        position: absolute;
+        border: 0 solid #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="loop-stories-3-root"
+      data-composition-id="loop-stories-3"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="13"
+    >
+      <div
+        id="loop-stories-3-loop"
+        class="clip"
+        data-start="0"
+        data-duration="13"
+        data-track-index="1"
+        data-layout-allow-overflow
+      >
+        <div id="loop-stories-3-bg"></div>
+        <div id="loop-stories-3-big"></div>
+        <div id="loop-stories-3-strip"><div id="loop-stories-3-panel"></div></div>
+      </div>
+    </div>
+    <script>
+      // Shared runtime for the the reference tool loop ports. Loaded by every family engine.
+      // Everything here is a pure function of the HyperFrames variables + t.
+      //
+      // Reference constants (measured on the 512x512 preview library, 2026-09-08):
+      //   Marquee planeSize -> 0.3% of frame height per unit (7 variants, all 1.54px/unit @512)
+      //   Marquee gap       -> 0.2% of frame height per unit
+      //   3D perspective    -> CSS focal length f = 1000px * (100/perspective) at H=1080
+      //                        (3D01/02/08/11: card widths & far-card spacing match to <3%)
+      // Both are calibrated on a SQUARE canvas; for 16:9 we scale by H. ponytail: if the
+      // dashboard 16:9 reference shows width-relative scaling, flip REF below to W.
+      window.RF = (() => {
+        // Variables are injected by the inline script via RF.use(): HyperFrames wraps INLINE scripts in a
+        // per-composition scope where getVariables() resolves; this external file only sees the host window.
+        const V = {},
+          MEDIA = [];
+        const use = (vars, media) => {
+          Object.assign(V, vars || {});
+          MEDIA.splice(0, MEDIA.length, ...(media || []));
+        };
+        const root = document.querySelector("[data-composition-id]");
+        const W = +root.dataset.width,
+          H = +root.dataset.height;
+        const REF = H;
+        const num = (k, d) => (V[k] !== undefined && V[k] !== "" && !isNaN(+V[k]) ? +V[k] : d);
+        const str = (k, d) => (V[k] !== undefined && V[k] !== "" ? String(V[k]) : d);
+        const on = (k, d) => /^(true|on|1)$/i.test(str(k, d ? "on" : "off")); // spec booleans arrive as "true"/"false", enums as on/off
+
+        function pick(n) {
+          n = Math.max(1, Math.min(MEDIA.length, n | 0));
+          return MEDIA.slice(0, n);
+        }
+        // aspect (w/h) a card takes for a media item under mediaFit + cropAspectRatio
+        function aspect(m, fit, cropAR) {
+          if (fit === "natural") return m.w / m.h;
+          const [a, b] = String(cropAR || "1:1")
+            .split(":")
+            .map(Number);
+          return a && b ? a / b : 1;
+        }
+        function card(m, w, h, radius) {
+          const el = document.createElement("div");
+          el.className = "card";
+          el.style.cssText = `position:absolute;width:${w}px;height:${h}px;overflow:hidden;border-radius:${radius}px;`;
+          const img = document.createElement("img");
+          img.src = m.src;
+          img.width = Math.round(w);
+          img.height = Math.round(h);
+          img.style.cssText = `display:block;width:${w}px;height:${h}px;object-fit:cover;`;
+          el.appendChild(img);
+          return el;
+        }
+        function background(el) {
+          // the editor's Background panel: type gradient | color | image, gradient start/end, grain (noise %), opacity, image blur
+          const type = str("backgroundType", "gradient");
+          const c = str("backgroundColor", "#0b0b0f");
+          el.style.background = c;
+          if (type === "gradient") {
+            const g1 = str("backgroundGradientStart", "#111111"),
+              g2 = str("backgroundGradientEnd", "#444444");
+            el.style.background = `linear-gradient(180deg, ${g1}, ${g2})`;
+          } else if (type === "image") {
+            const im = V.backgroundImage,
+              src = im && typeof im === "object" ? im.url || im.src || "" : im || "";
+            if (src) {
+              el.style.background = `${c} url("${src}") center / cover no-repeat`;
+              const b = num("blurAmount", 0);
+              if (b > 0) el.style.filter = `blur(${b}px)`;
+            }
+          }
+          el.style.opacity = String(Math.max(0, Math.min(1, num("backgroundOpacity", 1))));
+          const noise = num("backgroundGradientNoise", 0);
+          if (noise > 0) {
+            const g = document.createElement("div");
+            g.style.cssText = `position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:${((noise / 100) * 0.7).toFixed(3)};background:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'256'%20height%3D'256'%3E%3Cfilter%20id%3D'n'%3E%3CfeTurbulence%20type%3D'fractalNoise'%20baseFrequency%3D'0.9'%20numOctaves%3D'3'%20stitchTiles%3D'stitch'%20seed%3D'7'%2F%3E%3CfeColorMatrix%20values%3D'0%200%200%200%200.5%200%200%200%200%200.5%200%200%200%200%200.5%200%200%200%201%200'%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D'256'%20height%3D'256'%20filter%3D'url(%23n)'%2F%3E%3C%2Fsvg%3E") 0 0 / 256px 256px repeat`;
+            el.appendChild(g);
+          }
+        }
+        const expoInOut = (x) =>
+          x <= 0
+            ? 0
+            : x >= 1
+              ? 1
+              : x < 0.5
+                ? Math.pow(2, 20 * x - 10) / 2
+                : (2 - Math.pow(2, -20 * x + 10)) / 2;
+        const frac = (x) => x - Math.floor(x);
+        return {
+          V,
+          use,
+          W,
+          H,
+          REF,
+          num,
+          str,
+          on,
+          MEDIA,
+          pick,
+          aspect,
+          card,
+          background,
+          expoInOut,
+          frac,
+        };
+      })();
+    </script>
+    <script>
+      (async () => {
+        // Stories loop family — the current image fills the frame (bigScale %, slow drift);
+        // a strip of thumbs with a selector ring that steps along; thumbs not under the ring are dimmed.
+        // Measured @512 (2026-09-08): thumb width = thumbSize·H/1080 (85 -> 40px, 100 -> 47px), height from thumbAspect
+        // (3:4 -> 53/63px measured); thumb gap 7-8px (~15.5px @1080, fixed; not selectorPad); strip centre at
+        // (offsetX% of W, offsetY% of H) from the frame centre (01: y = +153 = 30%; 02/03: x = -179 = -35%);
+        // ring = thumb + 2·(selectorPad+selectorStroke) px@1080 (46.7 vs 46 measured), white, stroke px@1080;
+        // panel (01/02) = strip bbox padded by the gap, black at 0.3·containerOpacity% (74 -> 65 luma = 12%),
+        // backdrop blur containerBlur px@1080 (unit guess); no panel when containerOpacity = 0 (03/04 confirmed).
+        // Timing: step = DUR/(N·cycles); the ring rests, then moves one thumb over [delay s, step] with easeInOutCubic
+        // (01: motion frames 10-48 of 48.75, 03 (delay 0): continuous); the big image HARD-CUTS at the midpoint of
+        // the ring's move (01: frame 29-30, 03: frame 24); dim crossfades with the ring (mid luma = midpoint).
+        // Knobs: drift = bigDrift% of the bigScale overscan travelled along the strip axis while an image is up (guess);
+        // panel/thumb corner radius = borderRadius px@1080.
+        // media list [{src,w,h}] is inlined by build.mjs; HyperFrames scopes inline scripts, so hand both to the shared lib explicitly
+        const __V = Object.assign(
+          {},
+          (window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : null) || {},
+          { loopDuration: 13, loopRepeat: 2, imageCount: 8 },
+        );
+        const __PH = [
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1050' viewBox%3D'0 0 1400 1050'%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1050' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1046' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 778.05H621.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M286.65 778.05L379.05 662.55L471.45 778.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'552.3' cy%3D'674.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'788' viewBox%3D'0 0 1400 788'%3E%3Crect width%3D'1400' height%3D'788' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'788' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'784' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 583.908H529.376' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'12.382857142857144' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M278.004 583.908L347.348 497.228L416.692 583.908Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'477.36800000000005' cy%3D'505.896' r%3D'26.004' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1050' height%3D'1400' viewBox%3D'0 0 1050 1400'%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1050' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1046' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M189 995.05H558.6' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'16.5' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M223.65 995.05L316.05 879.55L408.45 995.05Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'489.3' cy%3D'891.1' r%3D'34.65' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+          "data:image/svg+xml,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'1400' height%3D'1400' viewBox%3D'0 0 1400 1400'%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'%230b0b0f'%2F%3E%3Crect width%3D'1400' height%3D'1400' fill%3D'rgba(255%2C255%2C255%2C0.18)'%2F%3E%3Crect x%3D'2' y%3D'2' width%3D'1396' height%3D'1396' fill%3D'none' stroke%3D'rgba(255%2C255%2C255%2C0.14)' stroke-width%3D'4'%2F%3E%3Cpath d%3D'M252 1037.4H744.8' stroke%3D'rgba(255%2C255%2C255%2C0.45)' stroke-width%3D'22' stroke-linecap%3D'round'%2F%3E%3Cpath d%3D'M298.2 1037.4L421.4 883.4L544.5999999999999 1037.4Z' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3Ccircle cx%3D'652.4000000000001' cy%3D'898.8' r%3D'46.199999999999996' fill%3D'rgba(255%2C255%2C255%2C0.45)'%2F%3E%3C%2Fsvg%3E",
+        ];
+        const __MEDIA = await Promise.all(
+          ["image1", "image2", "image3", "image4", "image5", "image6", "image7", "image8"].map(
+            async (id, i) => {
+              const v = __V[id];
+              const src = (v && typeof v === "object" ? v.url || v.src : v) || __PH[i];
+              const img = new Image();
+              img.src = src;
+              try {
+                await img.decode();
+              } catch (e) {}
+              return { src, w: img.naturalWidth || 1400, h: img.naturalHeight || 1050 };
+            },
+          ),
+        );
+        RF.use(__V, __MEDIA);
+        const { W, H, REF, num, str, pick, background, frac } = RF;
+        const DUR = num("loopDuration", 13);
+        const TASP = str("thumbAspect", "1:1").split(":").map(Number);
+        const TA = TASP[0] && TASP[1] ? TASP[0] / TASP[1] : 1;
+        const BIGSC = num("bigScale", 115) / 100;
+        const DRIFT = num("bigDrift", 40) / 100;
+        const TW = (num("thumbSize", 85) * REF) / 1080,
+          TH = TW / TA;
+        const COP = num("containerOpacity", 40) / 100;
+        const CBLUR = (num("containerBlur", 60) * REF) / 1080;
+        const SPAD = (num("selectorPad", 5) * REF) / 1080;
+        const SSTK = (num("selectorStroke", 2) * REF) / 1080;
+        const DIM = num("dimAmount", 20) / 100;
+        const OX = (num("offsetX", 0) / 100) * W,
+          OY = (num("offsetY", 30) / 100) * H;
+        const CYCLES = Math.max(1, num("cycles", 1) | 0);
+        const DELAY = Math.max(0, num("delay", 0.33));
+        const DIRN = str("direction", "right");
+        const RADIUS = (num("borderRadius", 6) * REF) / 1080;
+        const IMAGES = pick(Math.min(12, num("imageCount", 16)));
+        const N = IMAGES.length;
+        const VERT = DIRN === "down" || DIRN === "up";
+        const REV = DIRN === "left" || DIRN === "up"; // ring travels toward negative axis
+        const GAP = (15.5 * REF) / 1080;
+        const STEPS = N * CYCLES,
+          STEP = DUR / STEPS;
+
+        const cubic = (x) =>
+          x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+        document.getElementById("loop-stories-3-loop").dataset.duration = DUR;
+        background(document.getElementById("loop-stories-3-bg"));
+        // big image layer: one <img> per image, cover-fitted, scaled by bigScale
+        const big = document.getElementById("loop-stories-3-big");
+        const bigs = IMAGES.map((m) => {
+          const i = document.createElement("img");
+          i.src = m.src;
+          big.appendChild(i);
+          return i;
+        });
+        // strip geometry (axis coordinate of thumb j's centre; strip centred on OX/OY)
+        const PITCH = (VERT ? TH : TW) + GAP,
+          LEN = N * (VERT ? TH : TW) + (N - 1) * GAP;
+        const axisPos = (j) => (REV ? -1 : 1) * ((j + 0.5) * PITCH - GAP / 2 - LEN / 2);
+        const strip = document.getElementById("loop-stories-3-strip");
+        const PW = (VERT ? TW : LEN) + 2 * GAP,
+          PH = (VERT ? LEN : TH) + 2 * GAP; // clip box (= panel) size
+        strip.style.cssText = `width:${PW}px;height:${PH}px;transform:translate(${OX - PW / 2}px,${OY - PH / 2}px);`;
+        const CX = PW / 2,
+          CY = PH / 2;
+        const panel = document.getElementById("loop-stories-3-panel");
+        if (COP > 0)
+          panel.style.cssText =
+            `border-radius:${RADIUS + GAP}px;background:rgba(0,0,0,${0.3 * COP});` +
+            (CBLUR > 0
+              ? `backdrop-filter:blur(${CBLUR}px);-webkit-backdrop-filter:blur(${CBLUR}px);`
+              : "");
+        else panel.style.display = "none";
+        const thumbs = [],
+          dims = [];
+        for (let j = 0; j < N; j++) {
+          const t = document.createElement("div");
+          t.className = "thumb";
+          const p = axisPos(j),
+            x = CX + (VERT ? -TW / 2 : p - TW / 2),
+            y = CY + (VERT ? p - TH / 2 : -TH / 2);
+          t.style.cssText = `left:${x}px;top:${y}px;width:${TW}px;height:${TH}px;border-radius:${RADIUS}px;`;
+          const im = document.createElement("img");
+          im.src = IMAGES[j].src;
+          t.appendChild(im);
+          const d = document.createElement("div");
+          d.className = "dim";
+          t.appendChild(d);
+          strip.appendChild(t);
+          thumbs.push(t);
+          dims.push(d);
+        }
+        // two ring copies: the second trails one strip-length behind so the wrap slides off one end and in at the other
+        const RW = TW + 2 * (SPAD + SSTK),
+          RH = TH + 2 * (SPAD + SSTK);
+        const rings = [0, 1].map(() => {
+          const r = document.createElement("div");
+          r.className = "ring";
+          r.style.cssText =
+            `width:${RW}px;height:${RH}px;border-width:${SSTK}px;border-radius:${RADIUS + SPAD + SSTK}px;` +
+            (SSTK > 0 ? "" : "display:none;");
+          strip.appendChild(r);
+          return r;
+        });
+        const SGN = REV ? -1 : 1;
+
+        function renderAt(t) {
+          const u = frac(t) * STEPS,
+            k = Math.floor(u),
+            local = (u - k) * STEP; // seconds into the step
+          const e =
+            STEP > DELAY
+              ? cubic(Math.max(0, local - DELAY) / (STEP - DELAY))
+              : local >= STEP
+                ? 1
+                : 0;
+          const pos = (k % N) + e; // ring position in thumb units
+          const shown = (e < 0.5 ? k : k + 1) % N; // big image hard-cuts at mid-move
+          // drift: image travels DRIFT of its overscan along the strip axis while it is up (mid k-1 -> mid k)
+          const phase = e < 0.5 ? 0.5 + e : e - 0.5;
+          const over = ((BIGSC - 1) * (VERT ? H : W)) / 2,
+            dx = (2 * phase - 1) * DRIFT * over * (REV ? 1 : -1);
+          for (let j = 0; j < N; j++) {
+            const b = bigs[j];
+            if (j !== shown) {
+              b.style.display = "none";
+              continue;
+            }
+            b.style.display = "block";
+            b.style.transform = `scale(${BIGSC}) translate(${VERT ? 0 : dx}px,${VERT ? dx : 0}px)`;
+            b.style.transformOrigin = "50% 50%";
+          }
+          const rp = axisPos(k % N) + SGN * PITCH * e; // linear along the strip, may run off the end
+          rings.forEach((r, c) => {
+            const q = rp - c * SGN * N * PITCH;
+            r.style.left = CX + (VERT ? -RW / 2 : q - RW / 2) + "px";
+            r.style.top = CY + (VERT ? q - RH / 2 : -RH / 2) + "px";
+          });
+          for (let j = 0; j < N; j++) {
+            let sel = Math.max(0, 1 - Math.abs(j - pos));
+            if (j === 0 && k % N === N - 1) sel = Math.max(sel, e); // wrap: thumb 0 lights up as the ring returns
+            dims[j].style.opacity = String(DIM * (1 - sel));
+          }
+        }
+        // one paused linear tween drives t; every frame is recomputed from t alone (seek-safe)
+        const state = { t: 0 };
+        const tl = gsap.timeline({ paused: true });
+        tl.to(state, { t: 1, duration: DUR, ease: "none", onUpdate: () => renderAt(state.t) }, 0);
+        renderAt(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["loop-stories-3"] = tl;
+      })();
+    </script>
+  </body>
+</html>
+```
+
+</Accordion>
+
+{/* hf:generated-footer */}
+
+Tagged `loop` `images` `showcase` `gallery` `stories`.
+
+Created by Miao Yang.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
