@@ -695,6 +695,92 @@ export interface FileServerHandle {
   addPreHeadScript: (script: string) => void;
 }
 
+export interface FileServerHealth {
+  healthy: boolean;
+  status?: number;
+  durationMs: number;
+  error?: string;
+}
+
+export const FILE_SERVER_HEALTH_PATH = "/__hyperframes_health";
+const FILE_SERVER_HEALTH_HEADER = "x-hyperframes-file-server";
+
+export async function probeFileServerHealth(
+  fileServer: Pick<FileServerHandle, "url">,
+  timeoutMs = 1_000,
+): Promise<FileServerHealth> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (typeof timer.unref === "function") timer.unref();
+  try {
+    const response = await fetch(`${fileServer.url}${FILE_SERVER_HEALTH_PATH}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    // A coincidental foreign listener on the same port can answer 200; only
+    // the identity header proves the responder is this render's file server.
+    const healthy = response.ok && response.headers.get(FILE_SERVER_HEALTH_HEADER) === "healthy";
+    // Release the connection, but never let a rejected cancel() turn a
+    // healthy server into a restart.
+    await response.body?.cancel().catch(() => undefined);
+    return {
+      healthy,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      durationMs: Date.now() - startedAt,
+      error: describeHealthProbeError(error),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The probe's failure text with the code that names it. Node's `fetch` reports
+ * every connect failure as "fetch failed" and buries `ECONNREFUSED` /
+ * `ETIMEDOUT` in `.cause`; Bun's carries `ConnectionRefused` on the error
+ * itself. Either way the code is what a restart decision gets read against.
+ */
+function describeHealthProbeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    const code = (current as NodeJS.ErrnoException).code;
+    if (typeof code === "string" && code.length > 0) {
+      return message.includes(code) ? message : `${message} (${code})`;
+    }
+    current = current.cause;
+  }
+  return message;
+}
+
+/**
+ * The one shape every render-path file server takes: the compiled tree under
+ * `workDir`, an ephemeral port, the virtual-time shim first in `<head>`, and
+ * the job's fps. Probe discovery, frame capture, and the pre-frame capture
+ * retry all construct through here so the three sites cannot drift.
+ */
+export function createRenderFileServer(input: {
+  projectDir: string;
+  workDir: string;
+  fps: Fps;
+  /** Injected after the virtual-time shim (e.g. the page-side compositing stub). */
+  preHeadScripts?: readonly string[];
+}): Promise<FileServerHandle> {
+  return createFileServer({
+    projectDir: input.projectDir,
+    compiledDir: join(input.workDir, "compiled"),
+    port: 0,
+    preHeadScripts: [VIRTUAL_TIME_SHIM, ...(input.preHeadScripts ?? [])],
+    fps: input.fps,
+  });
+}
+
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
  * preview-only initialization work that mutates the live visual timeline.
@@ -774,6 +860,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
+
+  app.get(FILE_SERVER_HEALTH_PATH, (c) => {
+    c.header(FILE_SERVER_HEALTH_HEADER, "healthy");
+    return c.text("ok");
+  });
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;

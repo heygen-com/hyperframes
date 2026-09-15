@@ -12,6 +12,7 @@ export class CaptureStageError extends CaptureFailure {
       message: normalizeErrorMessage(input.cause),
       cause: input.cause,
       workerDiagnostics: classified.workerDiagnostics,
+      endpoint: classified.endpoint,
     });
     this.name = "CaptureStageError";
     this.browserConsole = input.browserConsole.slice();

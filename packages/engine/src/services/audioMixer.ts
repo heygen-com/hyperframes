@@ -373,6 +373,32 @@ function downloadFailure(error: unknown, elementId: string): AudioProcessingFail
   };
 }
 
+/**
+ * Whether a failed mix may try a local fallback (drop volume automation, drop
+ * `normalize=0`). A retryable failure — external interruption, managed
+ * deadline/inactivity, missing FFmpeg — is the caller's to retry; rerunning it
+ * here would burn a second full timeout and report the fallback's failure in
+ * place of the first one. Cancellation is never retried locally.
+ */
+function canRetryMixLocally(result: RunFfmpegResult, signal: AbortSignal | undefined): boolean {
+  return !result.success && !signal?.aborted && !ffmpegFailure("mix", result).retryable;
+}
+
+/**
+ * Which of a failed mix and its automation-dropping rerun the caller reports.
+ * A successful rerun degrades the automation away; a rerun that was itself
+ * interrupted or hit its deadline is the failure the caller must see (and
+ * retry), not the automation error it was trying to work around.
+ */
+function resolveAutomationRerun(
+  original: RunFfmpegResult,
+  rerun: RunFfmpegResult,
+): { result: RunFfmpegResult; degradedAutomation: boolean } {
+  if (rerun.success) return { result: rerun, degradedAutomation: true };
+  const keepRerun = ffmpegFailure("mix", rerun).retryable;
+  return { result: keepRerun ? rerun : original, degradedAutomation: false };
+}
+
 function ffmpegFailure(
   stage: Extract<AudioFailureStage, "extract" | "prepare" | "mix" | "silence">,
   result: RunFfmpegResult,
@@ -865,17 +891,10 @@ async function mixAudioTracks(
   // dropped from the output entirely — a missing fade beats missing audio.
   let degradedAutomation = false;
   const hasAutomation = tracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
-  if (
-    !result.success &&
-    result.failureReason !== "external_interruption" &&
-    !signal?.aborted &&
-    hasAutomation
-  ) {
-    const retry = await runMix(true);
-    if (retry.success) {
-      result = retry;
-      degradedAutomation = true;
-    }
+  if (canRetryMixLocally(result, signal) && hasAutomation) {
+    const rerun = resolveAutomationRerun(result, await runMix(true));
+    result = rerun.result;
+    degradedAutomation = rerun.degradedAutomation;
   }
 
   if (signal?.aborted) {
@@ -955,7 +974,10 @@ async function mixGroupMembers(
   totalDuration: number,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<{ success: boolean; error?: string; degradedAutomation?: boolean }> {
+): Promise<
+  | { success: true; degradedAutomation: boolean }
+  | { success: false; error: string; failure: AudioProcessingFailure }
+> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
@@ -1034,7 +1056,7 @@ async function mixGroupMembers(
 
   let useNormalize = true;
   let result = await runOnce(useNormalize);
-  if (!result.success && groupNormalizeOptionUnsupported(result.stderr)) {
+  if (canRetryMixLocally(result, signal) && groupNormalizeOptionUnsupported(result.stderr)) {
     useNormalize = false;
     result = await runOnce(useNormalize);
   }
@@ -1046,17 +1068,34 @@ async function mixGroupMembers(
   // grouped, it took the entire composition's audio down with it.
   let degradedAutomation = false;
   const hasAutomation = memberTracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
-  if (!result.success && !signal?.aborted && hasAutomation) {
-    const retry = await runOnce(useNormalize, true);
-    if (retry.success) {
-      result = retry;
-      degradedAutomation = true;
-    }
+  if (canRetryMixLocally(result, signal) && hasAutomation) {
+    const rerun = resolveAutomationRerun(result, await runOnce(useNormalize, true));
+    result = rerun.result;
+    degradedAutomation = rerun.degradedAutomation;
   }
 
-  if (signal?.aborted) return { success: false, error: "Group sub-mix cancelled" };
+  if (signal?.aborted) {
+    // Same canonical shape as every other cancelled audio stage: a user
+    // cancel is not a system FFmpeg fault.
+    const cancelledDetail = "Group sub-mix cancelled";
+    return {
+      success: false,
+      error: cancelledDetail,
+      failure: {
+        stage: "cancelled",
+        reason: "cancelled",
+        owner: "user",
+        retryable: false,
+        detail: cancelledDetail,
+      },
+    };
+  }
   if (!result.success)
-    return { success: false, error: formatFfmpegError(result.exitCode, result.stderr) };
+    return {
+      success: false,
+      error: formatFfmpegError(result.exitCode, result.stderr),
+      failure: ffmpegFailure("mix", result),
+    };
   return { success: true, degradedAutomation };
 }
 
@@ -1436,14 +1475,9 @@ export async function processCompositionAudio(
       );
       if (!subMix.success) {
         failures.push({
-          stage: "mix",
-          reason: "ffmpeg_failed",
-          owner: "system",
-          retryable: false,
+          ...subMix.failure,
           elementId: groupId,
-          detail: boundedDetail(
-            `Group sub-mix failed for group ${groupId}: ${subMix.error ?? "unknown"}`,
-          ),
+          detail: boundedDetail(`Group sub-mix failed for group ${groupId}: ${subMix.error}`),
         });
         continue;
       }
