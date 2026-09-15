@@ -123,15 +123,74 @@ describe("stripJsStringLiterals", () => {
     "foo(/abc\nrequestAnimationFrame(step);",
     "var of = 2;\nvar r = of /2;\nrequestAnimationFrame(step);",
     "var q = 1;\nx = /a\\\nrequestAnimationFrame(step);",
-  ])("falls back to the source when a slash never closes on its line: %j", (src) => {
+  ])("recovers a slash that never closes on its line without losing %j", (src) => {
+    // None of these misread spans contain a real string/regex literal of their
+    // own, so re-walking them as ordinary (division) code reconstructs the input
+    // exactly — the scan recovers here, it does not give up and return `source`
+    // the way the mid-literal case below does.
     expect(scan(src)).toBe(src);
     expect(findsRaf(src)).toBe(true);
   });
 
-  it("falls back to the source when a backslash ends a mis-read regex line", () => {
+  it("recovers a mis-read regex line and still masks a real string literal around it", () => {
+    // "b in /x...\<newline>" misreads as a regex start (`in` is regex-allowed);
+    // the genuine string literal 'requestAnimationFrame(' sits right after the
+    // recovered span and must still come back masked — proving real recovery,
+    // rather than an identity result that only looks like it.
     const src = "var a = b in /x\\\n y = 'requestAnimationFrame(' / z /;";
-    expect(scan(src)).toBe(src);
+    const out = scan(src);
+    expect(out).not.toBe(src);
+    expect(out).toContain("var a = b in /x\\\n y = '");
+    expect(out).toContain("' / z /;");
+    expect(findsRaf(src)).toBe(false);
+  });
+
+  // A misread costs only its own span: the ambiguous `{}/2` division is ordinary,
+  // valid JS, and must not un-mask an unrelated string carrying bracket-like content
+  // ANYWHERE else in the same script — on either side of it.
+  it.each([
+    {
+      label: "before a LATER misread",
+      src: 'const label = "clo}se"; const ratio = {}/2;\nrequestAnimationFrame(step);',
+    },
+    {
+      label: "after an EARLIER misread",
+      src: 'const ratio = {}/2;\nconst label = "clo}se";\nrequestAnimationFrame(step);',
+    },
+  ])("keeps an unrelated string masked $label", ({ src }) => {
+    const out = scan(src);
+    expect(out).toContain('const label = "      ";');
     expect(findsRaf(src)).toBe(true);
+  });
+
+  it("recovers a misread regex that runs all the way to end-of-input with no trailing newline", () => {
+    // A real regex literal can't extend past EOF either, so a "/" whose guessed
+    // regex reaches the very end of `source` without a newline in between is
+    // just as much a misread as one that hits a mid-file line boundary — it
+    // must get the same local recovery, not the whole-input bail (there is no
+    // newline left for the OLD newline-only recovery trigger to ever fire on).
+    const src = 'const label = "clo}se";\nconst ratio = {}/2;';
+    expect(scan(src)).toBe('const label = "      ";\nconst ratio = {}/2;');
+  });
+
+  it("keeps output length equal to input length across a misread immediately followed by a real regex", () => {
+    // Guards `recoverFromMisread` actually clearing its buffered guess content:
+    // if a misread's `regexBuffer` were ever left un-cleared, its stale
+    // characters would leak into the very next CONFIRMED regex literal's own
+    // buffered content, inflating the output past the input's length.
+    const src = "a = {}/2;\nr = /x/;\nrequestAnimationFrame(step);";
+    const out = scan(src);
+    expect(out.length).toBe(src.length);
+    expect(findsRaf(src)).toBe(true);
+  });
+
+  it("keeps a backslash-escaped quote immediately followed by a real bracket masked as string content", () => {
+    // If escape-tracking on this branch were ever dropped, the escaped quote
+    // in `"x\"}"` would misread as the string's REAL closing quote, exposing
+    // the following `}` as ordinary code instead of masked string content —
+    // corrupting any bracket-depth count a caller derives from the mask.
+    const src = 'const s = "x\\"}"; requestAnimationFrame(step);';
+    expect(scan(src)).toBe('const s = "    "; requestAnimationFrame(step);');
   });
 
   it("falls back to the source when the scan ends mid-literal", () => {
