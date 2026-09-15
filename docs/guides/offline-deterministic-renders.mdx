@@ -1,0 +1,100 @@
+---
+title: "Offline & deterministic renders"
+sidebarTitle: "Offline renders"
+description: "Make a composition render byte-identically with the network unplugged: inventory assets, vendor remotes, and gate CI on zero network references."
+---
+
+A HyperFrames render is a function of the composition and its assets — nothing
+else. Two things quietly break that:
+
+- **Remote assets.** A CDN `<script>`, a hotlinked image, or a Google Fonts
+  stylesheet means render output depends on a third-party server being up,
+  fast, and serving the same bytes as yesterday.
+- **Runtime nondeterminism.** `Date.now()`, unseeded `Math.random()`, and
+  render-time `fetch()` calls produce different frames on different runs.
+
+The composition contract already bans the second category. This guide is about
+the first: getting to — and staying at — **zero network references**.
+
+## The workflow
+
+<Steps>
+  <Step title="Inventory: hyperframes ledger">
+    ```bash
+    npx hyperframes ledger --json
+    ```
+
+    The ledger scans every HTML file and classifies each declared asset as
+    `remote`, `local`, `data`, or `missing` — scripts, stylesheets, fonts,
+    images, audio, video, iframes, and text tracks, including URLs inside
+    `<style>` blocks and inline styles. It is purely static (no browser, no
+    network), so it is safe anywhere, CI included.
+  </Step>
+  <Step title="Localize: hyperframes vendor">
+    ```bash
+    npx hyperframes vendor
+    ```
+
+    Every remote `http(s)` asset is downloaded into `assets/vendor/`, every
+    reference is rewritten to a relative path, and `vendor-manifest.json`
+    records the source URL, size, and SHA-256 of each download. Your
+    composition now carries its own dependencies.
+  </Step>
+  <Step title="Enforce: --strict-offline">
+    ```bash
+    npx hyperframes ledger --strict-offline
+    ```
+
+    Exits non-zero while any remote reference remains. Put it in CI right
+    before `hyperframes render` so a stray CDN reference fails the pipeline
+    instead of the render.
+  </Step>
+</Steps>
+
+## Example
+
+A fresh composition that pulls GSAP from jsDelivr:
+
+```bash
+$ npx hyperframes ledger
+◆  Asset ledger for my-video
+   1 HTML file scanned, 6 asset references
+
+   4 local   1 remote   1 data   0 missing
+
+   remote  script     https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js
+           index.html (src)
+
+   Run hyperframes vendor to download remote assets and rewrite references…
+
+$ npx hyperframes vendor
+↓  https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js → assets/vendor/gsap.min-8c6a2d81f0.js
+
+◆  Vendored 1 asset(s) into assets/vendor, rewrote 1 reference(s).
+   0 remote references remain — project renders offline.
+
+$ npx hyperframes ledger --strict-offline && npx hyperframes render
+```
+
+The `<script>` tag now reads
+`src="assets/vendor/gsap.min-8c6a2d81f0.js"` — same GSAP, no network.
+
+## What vendoring will not fix
+
+- **Remote iframes.** A live embedded page can never be deterministic.
+  `vendor` leaves iframes alone and `--strict-offline` keeps failing until you
+  replace the embed with captured media (`hyperframes capture`).
+- **Fonts hidden behind remote CSS.** A Google Fonts stylesheet is vendored as
+  the CSS file it is, but the font binaries it references are not crawled.
+  Self-host fonts with `@font-face` for text-critical typography.
+- **Runtime-constructed URLs.** The ledger reads declared markup, not script
+  behavior. `hyperframes check` (headless Chrome) remains the runtime gate.
+
+## Lint nudge
+
+`hyperframes lint` flags remote `<script src>` tags with an info-level
+`remote_script_not_vendored` finding. CDN scripts are fine while iterating;
+vendor before you care about reproducibility.
+
+See the [ledger & vendor CLI reference](/reference/cli-ledger) for flags,
+JSON schemas, and exit codes.

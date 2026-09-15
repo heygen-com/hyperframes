@@ -46,6 +46,12 @@
       "import": "./src/beats/index.ts",
       "types": "./src/beats/index.ts"
     },
+    "./asset-ledger": {
+      "bun": "./src/assets/ledger.ts",
+      "node": "./dist/assets/ledger.js",
+      "import": "./src/assets/ledger.ts",
+      "types": "./src/assets/ledger.ts"
+    },
     "./html-attr-safety": {
       "bun": "./src/utils/htmlAttrSafety.ts",
       "node": "./dist/utils/htmlAttrSafety.js",
@@ -417,6 +423,10 @@
       "./beats": {
         "import": "./dist/beats/index.js",
         "types": "./dist/beats/index.d.ts"
+      },
+      "./asset-ledger": {
+        "import": "./dist/assets/ledger.js",
+        "types": "./dist/assets/ledger.d.ts"
       },
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",

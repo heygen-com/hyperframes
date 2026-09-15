@@ -33,6 +33,8 @@ const GROUPS: Group[] = [
     title: "Project",
     commands: [
       ["lint", "Validate a composition for common mistakes"],
+      ["ledger", "Inventory declared assets and classify them remote | local | data | missing"],
+      ["vendor", "Download remote assets locally and rewrite references for offline renders"],
       ["check", "Run lint, runtime validation, and layout inspection as one gate"],
       [
         "validate",
