@@ -15,6 +15,16 @@ interface RectInput {
   height: number;
 }
 
+// `installGeometry` paints `#bubble` white with 28px corners. This strips both back to geometry
+// only (padding stays) so a test can add one paint or non-paint source at a time.
+const UNPAINTED_BUBBLE: Partial<CSSStyleDeclaration> = {
+  backgroundColor: "rgba(0, 0, 0, 0)",
+  borderTopLeftRadius: "0px",
+  borderTopRightRadius: "0px",
+  borderBottomRightRadius: "0px",
+  borderBottomLeftRadius: "0px",
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
   document.body.innerHTML = "";
@@ -419,6 +429,76 @@ describe("layout-audit.browser", () => {
     expect(found).toHaveLength(1);
     expect(found[0]?.selector).toBe("#bubble");
   });
+
+  // The paint half of the constraint decision (`hasPaint` → `isConstraintCandidate`): each source
+  // `hasPaint` reads makes the padded box its own constraint on its own. The zero-blue colours
+  // end in the same `", 0)"` as a transparent `rgba(..., 0)`, so a string-suffix check would
+  // read them as unpainted.
+  it.each<[string, Partial<CSSStyleDeclaration>]>([
+    ["rgb(0, 255, 0)", { backgroundColor: "rgb(0, 255, 0)" }],
+    ["rgb(255, 0, 0)", { backgroundColor: "rgb(255, 0, 0)" }],
+    ["rgb(255, 255, 0)", { backgroundColor: "rgb(255, 255, 0)" }],
+    ["a url() background image", { backgroundImage: 'url("bubble.png")' }],
+    ["a single border side", { borderLeftWidth: "1px" }],
+  ])("still flags overflow inside a non-clipping box whose only paint is %s", (_label, paint) => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="bubble">Enterprise plan includes unlimited renders</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        bubble: rect({ left: 40, top: 60, width: 200, height: 40 }),
+        text: rect({ left: 40, top: 65, width: 520, height: 30 }),
+      },
+      { bubble: { ...UNPAINTED_BUBBLE, ...paint } },
+    );
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#bubble");
+  });
+
+  // The same padded box with no paint source, or with only a property `hasPaint` does not read,
+  // is not its own constraint: the text measures against the root, where it fits. A border-radius
+  // shapes the box without painting it; box-shadow and outline are a declared non-read (a card
+  // whose only silhouette is a shadow is measured against its ancestor).
+  it.each<[string, Partial<CSSStyleDeclaration>]>([
+    ["no paint source", {}],
+    ["a border-radius", { borderTopLeftRadius: "28px" }],
+    ["a box-shadow", { boxShadow: "rgba(0, 0, 0, 0.4) 0px 4px 12px 0px" }],
+    ["an outline", { outlineWidth: "2px", outlineStyle: "solid", outlineColor: "rgb(0, 0, 0)" }],
+  ])(
+    "does not treat a padded, non-clipping box as its own constraint with %s",
+    (_label, nonPaint) => {
+      document.body.innerHTML = `
+        <div id="root" data-composition-id="main" data-width="640" data-height="360">
+          <div id="bubble">Enterprise plan includes unlimited renders</div>
+        </div>
+      `;
+      installGeometry(
+        {
+          root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+          bubble: rect({ left: 40, top: 60, width: 200, height: 40 }),
+          text: rect({ left: 40, top: 65, width: 520, height: 30 }),
+        },
+        { bubble: { ...UNPAINTED_BUBBLE, ...nonPaint } },
+      );
+      installAuditScript();
+
+      expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+    },
+  );
+
+  // Declared blind spot, kept declared: `colorAlpha` matches only `rgb()`/`rgba()`, so a
+  // background computed to a non-sRGB serialisation with a zero alpha — `oklch(0.5 0.1 200 / 0)`,
+  // `color(display-p3 1 0 0 / 0)`, `lab(50 0 0 / 0)` — reads as opaque and the padded box
+  // becomes its own constraint although it renders nothing. Widening the parse is a separate change.
+  it.todo(
+    "does not treat a padded, non-clipping box whose only paint is a transparent non-sRGB background as its own constraint",
+  );
 
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
     // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
@@ -955,6 +1035,61 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ severity: "warning", selector: "#gradient-hero" });
+  });
+
+  // `isPaintedPanel` with the geometry half held fixed (one <div> breaching the right canvas
+  // edge by 280px; media tags are excluded upstream and owned by frame_out_of_frame). Only
+  // background-image, background-color and border widths decide paint, each on its own, with
+  // the thresholds pinned at their boundaries. The box-shadow / outline / radius rows set
+  // properties the predicate never reads — they guard that those stay unread.
+  it.each<[string, boolean, Partial<CSSStyleDeclaration>]>([
+    ["a legacy rgba() transparent background", false, { backgroundColor: "rgba(0, 0, 0, 0)" }],
+    [
+      "a modern rgb(r g b / 0) transparent background",
+      false,
+      { backgroundColor: "rgb(0 0 0 / 0)" },
+    ],
+    ["a background at the 0.05 alpha floor", false, { backgroundColor: "rgba(20, 20, 30, 0.05)" }],
+    ["a box-shadow only", false, { boxShadow: "rgba(0, 0, 0, 0.5) 0px 0px 40px 0px" }],
+    ["an outline only", false, { outlineWidth: "2px", outlineStyle: "solid" }],
+    ["a border-radius only", false, { borderTopLeftRadius: "28px" }],
+    ["an opaque background", true, { backgroundColor: "rgb(20, 20, 30)" }],
+    ["an opaque background ending in `, 0)`", true, { backgroundColor: "rgb(0, 255, 0)" }],
+    ["a modern-syntax opaque background", true, { backgroundColor: "rgb(255 0 0 / 1)" }],
+    [
+      "a background above the 0.05 alpha floor",
+      true,
+      { backgroundColor: "rgba(20, 20, 30, 0.06)" },
+    ],
+    ["a url() background image", true, { backgroundImage: 'url("panel.png")' }],
+    [
+      "a gradient whose strongest stop is below the 0.6 alpha floor",
+      false,
+      { backgroundImage: "linear-gradient(90deg, rgba(16, 24, 40, 0.59), rgba(0, 0, 0, 0))" },
+    ],
+    [
+      "a gradient with a stop at the 0.6 alpha floor",
+      true,
+      { backgroundImage: "linear-gradient(90deg, rgba(16, 24, 40, 0.6), rgba(0, 0, 0, 0))" },
+    ],
+    ["a single border side", true, { borderLeftWidth: "1px" }],
+  ])("isPaintedPanel: %s → painted=%s", (_label, painted, style) => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="panel"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        panel: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+      },
+      { panel: style },
+    );
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
+    expect(issues.map((issue) => issue.selector)).toEqual(painted ? ["#panel"] : []);
   });
 
   it("cedes ownership to canvas_overflow even for a shallow text breach", () => {
@@ -2510,6 +2645,20 @@ describe("layout-audit.browser occlusion", () => {
     }).find((issue) => issue.code === "text_occluded");
     expect(occluded?.coveredFraction).toBe(1);
   });
+
+  // `rgb(r, g, 0)` ends in the same `", 0)"` as a transparent
+  // `rgba(..., 0)`, so a string-suffix transparency check silently exempted
+  // opaque red/green/yellow occluders from occlusion entirely.
+  it.each(["rgb(0, 255, 0)", "rgb(255, 0, 0)", "rgb(255, 255, 0)"])(
+    "flags an opaque %s occluder whose blue channel is zero",
+    (backgroundColor) => {
+      const issues = auditOcclusionScene({
+        overlayStyle: { backgroundColor },
+        topmostId: "overlay",
+      });
+      expect(issues.some((issue) => issue.code === "text_occluded")).toBe(true);
+    },
+  );
 
   // #U10: a 2-point hit on the 27-point probe grid (3 rows x 9 columns) is a
   // sliver of edge cover — reports ~0.07 coverage either way, but only GATES
