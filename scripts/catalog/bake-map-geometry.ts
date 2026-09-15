@@ -15,12 +15,16 @@
  * blocks that still project points at runtime (city bubbles, flow arcs, graticule)
  * reconstruct the SAME projection with `d3.geoX().scale(s).translate(t)`.
  *
+ * The spliced block is run through oxfmt before it is written or compared, so the
+ * repo's `format:check` and this script's `--check` agree on the same bytes.
+ *
  * Usage:
  *   bun scripts/catalog/bake-map-geometry.ts            # all map blocks
  *   bun scripts/catalog/bake-map-geometry.ts us-map     # one block
  *   bun scripts/catalog/bake-map-geometry.ts --check    # exit 1 if any block is stale
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -28,6 +32,7 @@ import {
   geoConicConformal,
   geoNaturalEarth1,
   geoPath,
+  type GeoPath,
   type GeoProjection,
 } from "d3-geo";
 import { geoProject } from "d3-geo-projection";
@@ -37,13 +42,15 @@ import { topology } from "topojson-server";
 import { presimplify, simplify } from "topojson-simplify";
 import type { Objects, Topology } from "topojson-specification";
 
+import { isEntrypoint } from "../entrypoint.ts";
+
 /** An atlas document as topojson-simplify wants it (properties untyped). */
 type Atlas = Topology<Objects<{}>>;
 
 const REGISTRY_BLOCKS = resolve(dirname(fileURLToPath(import.meta.url)), "../../registry/blocks");
 
-const BEGIN = "BEGIN MAP_GEOMETRY";
-const END = "END MAP_GEOMETRY";
+export const BEGIN = "BEGIN MAP_GEOMETRY";
+export const END = "END MAP_GEOMETRY";
 
 /**
  * Visvalingam threshold in PROJECTED pixels²: a vertex whose removal shifts the outline
@@ -51,9 +58,9 @@ const END = "END MAP_GEOMETRY";
  * projection (rather than in degrees) keeps every feature, however small, and shared
  * borders stay shared because the projected shapes are re-encoded as one topology first.
  */
-const MIN_TRIANGLE_AREA_PX2 = 2;
+export const MIN_TRIANGLE_AREA_PX2 = 2;
 
-interface BakedProjection {
+export interface BakedProjection {
   type: "geoAlbersUsa" | "geoNaturalEarth1" | "geoConicConformal";
   scale: number;
   translate: [number, number];
@@ -61,14 +68,19 @@ interface BakedProjection {
   rotate?: [number, number];
 }
 
-interface BakedFeature {
+export interface BakedFeature {
   id: string;
   name?: string;
   d: string;
   c?: [number, number];
 }
 
-interface BlockSpec {
+export interface BakedGeometry {
+  projection: BakedProjection;
+  features: BakedFeature[];
+}
+
+export interface BlockSpec {
   /** Pinned atlas URL — the same file the block used to fetch at render time. */
   atlas: string;
   object: string;
@@ -87,7 +99,7 @@ interface BlockSpec {
 const US_STATES = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
 const fips = (f: Feature) => String(f.id).padStart(2, "0");
 
-const BLOCKS: Record<string, BlockSpec> = {
+export const BLOCKS: Record<string, BlockSpec> = {
   "us-map": {
     atlas: US_STATES,
     object: "states",
@@ -150,7 +162,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  * Simplification collapses the smallest islands to a ring of one or two distinct
  * points. Those rings paint nothing, so drop them instead of shipping "M x,y L x,y Z".
  */
-function dropDegenerateRings(d: string): string {
+export function dropDegenerateRings(d: string): string {
   return d
     .split("M")
     .filter((ring) => ring.length > 0)
@@ -159,12 +171,12 @@ function dropDegenerateRings(d: string): string {
     .join("");
 }
 
-function readProjection(spec: BlockSpec, projection: GeoProjection): BakedProjection {
+export function readProjection(spec: BlockSpec, projection: GeoProjection): BakedProjection {
   const [tx, ty] = projection.translate();
   const baked: BakedProjection = {
     type: spec.projectionType,
-    scale: round1(projection.scale()),
-    translate: [round1(tx), round1(ty)],
+    scale: projection.scale(),
+    translate: [tx, ty],
   };
   if (spec.projectionType === "geoConicConformal") {
     const [cx, cy] = projection.center();
@@ -175,10 +187,46 @@ function readProjection(spec: BlockSpec, projection: GeoProjection): BakedProjec
   return baked;
 }
 
-async function bake(
+/**
+ * A feature's path data, falling back to its unsimplified outline: a feature smaller than
+ * the threshold (Ceuta, a Caribbean island state) collapses to nothing under
+ * simplification, and it must still paint.
+ */
+export function featurePath(path: GeoPath, simplified: Feature, fallback: Feature): string {
+  const d = dropDegenerateRings(path(simplified as Feature<Geometry>) ?? "");
+  return d || dropDegenerateRings(path(fallback as Feature<Geometry>) ?? "");
+}
+
+function featureName(spec: BlockSpec, f: Feature): { name?: string } {
+  const name = f.properties?.name;
+  return spec.names && typeof name === "string" ? { name } : {};
+}
+
+function featureCentroid(spec: BlockSpec, path: GeoPath, f: Feature): { c?: [number, number] } {
+  if (!spec.centroids) return {};
+  const [cx, cy] = path.centroid(f as Feature<Geometry>);
+  return Number.isFinite(cx) && Number.isFinite(cy) ? { c: [round1(cx), round1(cy)] } : {};
+}
+
+/** One feature's path plus the name / centroid the block's spec asks for; null if it paints nothing. */
+export function bakeFeature(
   spec: BlockSpec,
-): Promise<{ projection: BakedProjection; features: BakedFeature[] }> {
-  const atlas = await loadAtlas(spec.atlas);
+  path: GeoPath,
+  simplified: Feature,
+  fallback: Feature,
+): BakedFeature | null {
+  const d = featurePath(path, simplified, fallback);
+  if (!d) return null;
+  return {
+    id: spec.id(simplified),
+    d,
+    ...featureName(spec, simplified),
+    ...featureCentroid(spec, path, simplified),
+  };
+}
+
+/** Project → shared topology → simplify → planar paths. Pure given the atlas. */
+export function bakeAtlas(spec: BlockSpec, atlas: Atlas): BakedGeometry {
   const object = atlas.objects[spec.object];
   if (!object) throw new Error(`${spec.atlas}: no object "${spec.object}"`);
   // topojson-client types feature() by the object's geometry kind; every atlas object here
@@ -187,10 +235,11 @@ async function bake(
   const projection = spec.projection(full);
   // 1. Project to the block's pixel space with d3's stream pipeline (antimeridian cuts and
   //    the projection's own clipping included), exactly as geoPath(projection) would.
-  const planar = geoProject(full, projection) as FeatureCollection;
+  const planar = geoProject(full, projection);
   // 2. Re-encode as a topology so adjacent features share arcs, then simplify those arcs
   //    once — neighbours can't drift apart or open slivers along a common border.
-  // topojson-server keeps GeoJSON's loosely typed properties; topojson-simplify wants them erased.
+  //    topojson-server keeps GeoJSON's loosely typed properties; topojson-simplify wants
+  //    them erased.
   const shared = topology({ shapes: planar }) as unknown as Atlas;
   const simplified = simplify(
     presimplify(shared),
@@ -199,55 +248,34 @@ async function bake(
   const shapes = feature(simplified, simplified.objects.shapes!) as unknown as FeatureCollection;
   // 3. Emit planar path data (no projection: the coordinates already are pixels).
   const path = geoPath().digits(1);
-  const features: BakedFeature[] = [];
-  shapes.features.forEach((f, i) => {
-    let d = dropDegenerateRings(path(f as Feature<Geometry>) ?? "");
-    if (!d) {
-      // A feature smaller than the threshold (Ceuta, a Caribbean island state) collapses
-      // to nothing; it must still paint, so it keeps its unsimplified outline instead.
-      d = dropDegenerateRings(path(planar.features[i] as Feature<Geometry>) ?? "");
-    }
-    if (!d) return;
-    const baked: BakedFeature = { id: spec.id(f), d };
-    if (spec.names) {
-      const name = f.properties?.name;
-      if (typeof name === "string") baked.name = name;
-    }
-    if (spec.centroids) {
-      const [cx, cy] = path.centroid(f as Feature<Geometry>);
-      if (Number.isFinite(cx) && Number.isFinite(cy)) baked.c = [round1(cx), round1(cy)];
-    }
-    features.push(baked);
-  });
-  features.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const features = shapes.features
+    .map((f, i) => bakeFeature(spec, path, f, planar.features[i]!))
+    .filter((f): f is BakedFeature => f !== null)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { projection: readProjection(spec, projection), features };
 }
 
-function renderBlob(
-  name: string,
-  spec: BlockSpec,
-  baked: { projection: BakedProjection; features: BakedFeature[] },
-  indent: string,
-): string {
+/** The text between the markers. oxfmt reshapes it afterwards, so only content matters. */
+export function renderBlob(name: string, spec: BlockSpec, baked: BakedGeometry): string {
   const minArea = spec.minTriangleAreaPx2 ?? MIN_TRIANGLE_AREA_PX2;
-  const lines = [
-    `${indent}/* ${BEGIN} — generated by scripts/catalog/bake-map-geometry.ts, do not edit by hand.`,
-    `${indent}   Source: ${spec.atlas} (object "${spec.object}"),`,
-    `${indent}   projected with d3.${spec.projectionType} exactly as this block did at runtime,`,
-    `${indent}   simplified in pixel space (Visvalingam, min triangle area ${minArea}px²), coordinates rounded to 0.1px.`,
-    `${indent}   Regenerate: bun scripts/catalog/bake-map-geometry.ts ${name} */`,
-    `${indent}var MAP_GEOMETRY = {`,
-    `${indent}  projection: ${JSON.stringify(baked.projection)},`,
-    `${indent}  features: [`,
-    ...baked.features.map((f) => `${indent}    ${JSON.stringify(f)},`),
-    `${indent}  ],`,
-    `${indent}};`,
-    `${indent}/* ${END} */`,
-  ];
-  return lines.join("\n");
+  return [
+    `/* ${BEGIN} — generated by scripts/catalog/bake-map-geometry.ts, do not edit by hand.`,
+    `   Source: ${spec.atlas} (object "${spec.object}"),`,
+    `   projected with d3.${spec.projectionType} exactly as this block did at runtime,`,
+    `   simplified in pixel space (Visvalingam, min triangle area ${minArea}px²), coordinates rounded to 0.1px.`,
+    `   Regenerate: bun scripts/catalog/bake-map-geometry.ts ${name} */`,
+    `var MAP_GEOMETRY = {`,
+    `  projection: ${JSON.stringify(baked.projection)},`,
+    `  features: [`,
+    ...baked.features.map((f) => `    ${JSON.stringify(f)},`),
+    `  ],`,
+    `};`,
+    `/* ${END} */`,
+  ].join("\n");
 }
 
-function splice(html: string, name: string, blob: string): string {
+/** Replace the marked region of a block with `blob`, re-indented to the region's depth. */
+export function splice(html: string, name: string, blob: string): string {
   const begin = html.indexOf(`/* ${BEGIN}`);
   const endMarker = `/* ${END} */`;
   const end = html.indexOf(endMarker);
@@ -255,46 +283,70 @@ function splice(html: string, name: string, blob: string): string {
     throw new Error(`${name}: missing ${BEGIN} / ${END} markers in the block script`);
   }
   const lineStart = html.lastIndexOf("\n", begin) + 1;
-  return html.slice(0, lineStart) + blob + html.slice(end + endMarker.length);
+  const indent = html.slice(lineStart, begin);
+  const indented = blob
+    .split("\n")
+    .map((line) => (line ? indent + line : line))
+    .join("\n");
+  return html.slice(0, lineStart) + indented + html.slice(end + endMarker.length);
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const check = args.includes("--check");
-  const names = args.filter((a) => !a.startsWith("--"));
-  const targets = names.length ? names : Object.keys(BLOCKS);
-  let stale = 0;
-  for (const name of targets) {
-    const spec = BLOCKS[name];
-    if (!spec)
-      throw new Error(`unknown map block "${name}" (known: ${Object.keys(BLOCKS).join(", ")})`);
-    const file = resolve(REGISTRY_BLOCKS, name, `${name}.html`);
-    const html = readFileSync(file, "utf8");
-    const begin = html.indexOf(`/* ${BEGIN}`);
-    const indent = begin < 0 ? "" : html.slice(html.lastIndexOf("\n", begin) + 1, begin);
-    const baked = await bake(spec);
-    const next = splice(html, name, renderBlob(name, spec, baked, indent));
-    const bytes =
-      Buffer.byteLength(next) -
-      Buffer.byteLength(html.replace(/\/\* BEGIN MAP_GEOMETRY[\s\S]*?END MAP_GEOMETRY \*\//, ""));
-    if (next === html) {
-      console.log(`  = ${name}: up to date (${baked.features.length} features, ${bytes} bytes)`);
-      continue;
-    }
-    if (check) {
-      console.error(
-        `  ! ${name}: baked geometry is stale — run bun scripts/catalog/bake-map-geometry.ts ${name}`,
-      );
-      stale++;
-      continue;
-    }
-    writeFileSync(file, next);
-    console.log(`  ~ ${name}: baked ${baked.features.length} features (${bytes} bytes)`);
+/**
+ * Format `html` the way the repo's `format:check` will, by writing it next to the block
+ * and running oxfmt on that file. The formatter only takes paths, hence the round trip.
+ */
+function formatLikeRepo(blockFile: string, html: string): string {
+  const scratch = blockFile.replace(/\.html$/, ".bake-scratch.html");
+  writeFileSync(scratch, html);
+  try {
+    execFileSync("bunx", ["oxfmt", scratch], { stdio: "ignore" });
+    return readFileSync(scratch, "utf8");
+  } finally {
+    rmSync(scratch, { force: true });
   }
-  if (stale) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+async function bakeBlock(name: string, check: boolean): Promise<boolean> {
+  const spec = BLOCKS[name];
+  if (!spec) {
+    throw new Error(`unknown map block "${name}" (known: ${Object.keys(BLOCKS).join(", ")})`);
+  }
+  const file = resolve(REGISTRY_BLOCKS, name, `${name}.html`);
+  const html = readFileSync(file, "utf8");
+  const baked = bakeAtlas(spec, await loadAtlas(spec.atlas));
+  const blob = renderBlob(name, spec, baked);
+  const next = formatLikeRepo(file, splice(html, name, blob));
+  const summary = `${baked.features.length} features, ${blob.length} bytes`;
+  if (next === html) {
+    console.log(`  = ${name}: up to date (${summary})`);
+    return true;
+  }
+  if (check) {
+    console.error(
+      `  ! ${name}: baked geometry is stale — run bun scripts/catalog/bake-map-geometry.ts ${name}`,
+    );
+    return false;
+  }
+  writeFileSync(file, next);
+  console.log(`  ~ ${name}: baked (${summary})`);
+  return true;
+}
+
+export async function main(argv: string[]): Promise<number> {
+  const check = argv.includes("--check");
+  const names = argv.filter((a) => !a.startsWith("--"));
+  const targets = names.length ? names : Object.keys(BLOCKS);
+  const results = [];
+  for (const name of targets) results.push(await bakeBlock(name, check));
+  return results.every(Boolean) ? 0 : 1;
+}
+
+if (isEntrypoint(import.meta.url)) {
+  main(process.argv.slice(2)).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    },
+  );
+}
