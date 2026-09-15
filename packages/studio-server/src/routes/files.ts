@@ -456,9 +456,9 @@ function writeMutationResult(
   filePath: string,
   absPath: string,
   html: string,
-): { backupPath: string | null; version: string } {
+): { backupPath: string | null; version: string } | Response {
   const backup = snapshotBeforeWrite(projectDir, absPath);
-  if (backup.error) console.warn(`Failed to create backup for ${filePath}: ${backup.error}`);
+  if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
   const { version } = writeFileWithReceipt(c, filePath, absPath, html);
   return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
 }
@@ -475,7 +475,9 @@ function writeIfChanged(
   if (next === original) {
     return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
-  const { backupPath } = writeMutationResult(c, projectDir, filePath, absPath, next);
+  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next);
+  if (mutationResult instanceof Response) return mutationResult;
+  const { backupPath } = mutationResult;
   return c.json({
     ok: true,
     changed: true,
@@ -1311,13 +1313,15 @@ async function applyGsapMutations(
     return c.json({ error: "file changed during GSAP mutation", conflict: true }, 409);
   }
   if (changed) {
-    backupPath = writeMutationResult(
+    const mutationResult = writeMutationResult(
       c,
       res.project.dir,
       res.filePath,
       res.absPath,
       newHtml,
-    ).backupPath;
+    );
+    if (mutationResult instanceof Response) return mutationResult;
+    backupPath = mutationResult.backupPath;
   }
 
   const responsePayload: Record<string, unknown> = {
@@ -2379,8 +2383,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           );
         }
         backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-        if (backup.error)
-          console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+        if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
         ftruncateSync(fd, 0);
         writeSync(fd, body, 0, body.length, 0);
       } finally {
@@ -2429,7 +2432,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const stat = statSync(res.absPath);
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+    if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     if (stat.isDirectory()) {
       rmSync(res.absPath, { recursive: true });
     } else {
@@ -2766,13 +2769,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         version,
       });
     }
-    const { version, backupPath } = writeMutationResult(
+    const mutationResult = writeMutationResult(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       result.html,
     );
+    if (mutationResult instanceof Response) return mutationResult;
+    const { version, backupPath } = mutationResult;
     c.header("ETag", version);
     return c.json({
       ok: true,
@@ -2825,13 +2830,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         version,
       });
     }
-    const { backupPath, version } = writeMutationResult(
+    const mutationResult = writeMutationResult(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       patched,
     );
+    if (mutationResult instanceof Response) return mutationResult;
+    const { backupPath, version } = mutationResult;
     c.header("ETag", version);
     return c.json({
       ok: true,
@@ -2962,13 +2969,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         result.error === "grouped elements must share a single parent" ? 422 : 400,
       );
     }
-    const { backupPath } = writeMutationResult(
+    const mutationResult = writeMutationResult(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       result.html,
     );
+    if (mutationResult instanceof Response) return mutationResult;
+    const { backupPath } = mutationResult;
     return c.json({
       ok: true,
       changed: true,

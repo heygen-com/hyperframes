@@ -485,6 +485,27 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("after");
   });
 
+  it("fails PUT closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = "before";
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(original) },
+      body: "after",
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
+  });
+
   it("backs up the previous file content before delete", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "index.html"), "before delete");
@@ -499,6 +520,25 @@ describe("registerFileRoutes", () => {
     expect(response.status).toBe(200);
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
     expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before delete");
+  });
+
+  it("fails DELETE closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = "before delete";
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("backs up the previous file content before structured DOM mutations", async () => {
@@ -536,6 +576,33 @@ describe("registerFileRoutes", () => {
       '<div id="title">Before</div>',
     );
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
+  });
+
+  it("fails structured DOM mutations closed when the backup cannot be created", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="title">Before</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    writeFileSync(join(projectDir, ".hyperframes"), "not a directory");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "text-content", property: "textContent", value: "After" }],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: expect.stringMatching(/^backup failed: ENOTDIR:/),
+    });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
   });
 
   it("returns the current durable version for a matched no-op element patch", async () => {
