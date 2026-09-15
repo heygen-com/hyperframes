@@ -8,8 +8,8 @@ import {
   formatNumericValue,
   formatTimingValue,
   parseNumericValue,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
+import { resolveProjectAssetPath } from "../../utils/projectAssetPath";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { AutomationToggle } from "./propertyPanelFxControls";
@@ -88,10 +88,7 @@ export function FlatMediaSection({
 
   const absoluteSrc =
     projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
-  const projectSrc =
-    srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
-      : "";
+  const projectSrc = resolveProjectAssetPath(srcAttr, element.sourceFile || "index.html") ?? "";
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
 
   useEffect(() => {

@@ -9,8 +9,8 @@ import {
   LABEL,
   parseNumericValue,
   RESPONSIVE_GRID,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
+import { resolveProjectAssetPath } from "../../utils/projectAssetPath";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import {
@@ -86,10 +86,7 @@ export function MediaSection({
 
   const absoluteSrc =
     projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
-  const projectSrc =
-    srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
-      : "";
+  const projectSrc = resolveProjectAssetPath(srcAttr, element.sourceFile || "index.html") ?? "";
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
   const panelTitle = isImage ? "Image" : isVideo ? "Video" : "Audio";
 
@@ -177,6 +174,7 @@ export function MediaSection({
               </div>
               <button
                 type="button"
+                data-media-remove-bg="true"
                 disabled={!canRemoveBackground || removeBusy}
                 onClick={(event) => {
                   event.stopPropagation();
