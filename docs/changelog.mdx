@@ -9,6 +9,30 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.41"
+  description="Released - 2026-09-15"
+  tags={["Release", "Engine", "Studio", "Changelog"]}
+>
+Studio no longer crashes when the player loads outside a Vite host, like MCP session preview pages. Engine renders also hold finite video slots past EOF and keep long-capture caches alive.
+
+## Fixes
+
+- **Engine:** Hold finite video slots past EOF ([f3bd4234f](https://github.com/heygen-com/hyperframes/commit/f3bd4234f50c378f60fd63404d12f1f6cc759e4d), [#3962](https://github.com/heygen-com/hyperframes/pull/3962)).
+- **Studio:** Fail closed on backup failures ([cccc78c65](https://github.com/heygen-com/hyperframes/commit/cccc78c65eb6d7804b6725b7c526786b3251e14d), [#3961](https://github.com/heygen-com/hyperframes/pull/3961)).
+- **Engine:** Keep a render's dependent extraction-cache entry alive during long captures ([e2d60cf27](https://github.com/heygen-com/hyperframes/commit/e2d60cf27c80849cb6c0fa5c22be34c85b8f6e05), [#3913](https://github.com/heygen-com/hyperframes/pull/3913)).
+- **Studio:** Guard import.meta.env reads so the player survives non-Vite ESM hosts ([f98b8ead3](https://github.com/heygen-com/hyperframes/commit/f98b8ead374c20e850995ba071c1da37cdbefe54), [#3948](https://github.com/heygen-com/hyperframes/pull/3948)).
+- **Core:** Tell an opaque document how to actually get its Web Audio back ([8886743f4](https://github.com/heygen-com/hyperframes/commit/8886743f447176094aaee7d9ac0570fe735e10ff), [#3940](https://github.com/heygen-com/hyperframes/pull/3940)).
+- **Skills:** Keep changelog-video's stamped seams off the clip elements ([e8cbf0ca8](https://github.com/heygen-com/hyperframes/commit/e8cbf0ca85530b9085f7ce3b9e26dd46f136aa3f), [#3946](https://github.com/heygen-com/hyperframes/pull/3946)).
+- **Producer:** Retry capture on a CDP Page.captureScreenshot refusal ([a0a6244be](https://github.com/heygen-com/hyperframes/commit/a0a6244be7a40956c5343f5846609e584ee5c6b5), [#3892](https://github.com/heygen-com/hyperframes/pull/3892)).
+
+## Docs & Examples
+
+- **Changelog:** Weekly digest 2026-09-07–2026-09-14 ([14ad0c08a](https://github.com/heygen-com/hyperframes/commit/14ad0c08a3ea18c6b2a0ae758e9ed7ca1e3e4010), [#3939](https://github.com/heygen-com/hyperframes/pull/3939)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.40...v0.8.41).
+</Update>
+
+<Update
   label="HyperFrames v0.8.40"
   description="Released - 2026-09-14"
   tags={["Release", "Core"]}
