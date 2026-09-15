@@ -223,15 +223,16 @@ export function collectRuntimeTimelinePayload(params: {
         if (!parentCompositionId && cursor !== root) {
           parentCompositionId = compositionId;
         }
-        if (inheritedStart == null) {
-          inheritedStart = startResolver.resolveStartForElement(cursor, 0);
-        }
-        if (inheritedDuration == null) {
-          inheritedDuration =
-            parseNum(cursor.getAttribute("data-duration")) ??
-            resolveTimelineDurationSeconds(compositionId) ??
-            null;
-        }
+      }
+      // A plain authored clip bounds its untimed descendants like a
+      // sub-composition does. Start and duration lock together at the SAME
+      // ancestor — independent locks let a `data-end`-only clip's start pair
+      // with a farther ancestor's duration, a window neither one actually has.
+      if (inheritedStart == null && (compositionId || cursor.hasAttribute("data-start"))) {
+        inheritedStart = startResolver.resolveStartForElement(cursor, 0);
+        inheritedDuration =
+          startResolver.resolveDurationForElement(cursor) ??
+          resolveTimelineDurationSeconds(compositionId);
       }
       cursor = cursor.parentElement;
     }

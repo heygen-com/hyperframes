@@ -472,10 +472,13 @@ export function createTimelineDomNodeResolver(doc: Document) {
 // Implicit layer detection
 // ---------------------------------------------------------------------------
 
-export function isImplicitTimelineLayerCandidate(root: Element, el: Element): el is HTMLElement {
+export function isImplicitTimelineLayerCandidate(
+  container: Element,
+  el: Element,
+): el is HTMLElement {
   if (!isHtmlElement(el)) return false;
   if (isTimelineIgnoredElement(el)) return false;
-  if (el.parentElement !== root) return false;
+  if (el.parentElement !== container) return false;
   const tagName = el.tagName.toLowerCase();
   if (IMPLICIT_TIMELINE_LAYER_SKIP_TAGS.has(tagName)) return false;
   if (el.hasAttribute("data-start") || el.hasAttribute("data-track-index")) return false;

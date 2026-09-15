@@ -13,6 +13,8 @@ import type { ClipManifestClip } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { groupInfoFor } from "./timelineGroupInfo";
+import { clampNumber } from "../../utils/studioHelpers";
+import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -203,10 +205,137 @@ export function createTimelineElementFromManifestClip(params: {
   return entry;
 }
 
+interface ImplicitLayerScope {
+  readonly container: Element;
+  readonly start: number;
+  readonly duration: number;
+}
+
+/** Default an unset/zero duration to "rest of the root window," capped at rootDuration. */
+function clampClipDurationToRoot(
+  start: number,
+  duration: number | null,
+  rootDuration: number,
+): number {
+  let dur = duration ?? 0;
+  if (dur <= 0) dur = Math.max(0, rootDuration - start);
+  if (Number.isFinite(rootDuration) && rootDuration > 0) {
+    dur = clampNumber(dur, 0, Math.max(0, rootDuration - start));
+  }
+  return dur;
+}
+
+/**
+ * Every container an implicit layer can be scoped to: the composition root,
+ * plus every authored `[data-start]` clip, each with its own start/duration.
+ */
+function collectImplicitLayerScopes(
+  doc: Document,
+  rootComp: Element,
+  rootDuration: number,
+  timedNodes: readonly Element[],
+): ImplicitLayerScope[] {
+  const scopes: ImplicitLayerScope[] = [{ container: rootComp, start: 0, duration: rootDuration }];
+  for (const el of timedNodes) {
+    if (el === rootComp || isTimelineIgnoredElement(el)) continue;
+    const timing = readClipTiming(el);
+    if (timing.start == null) continue;
+    const duration = clampClipDurationToRoot(timing.start, timing.duration, rootDuration);
+    if (duration <= 0) continue;
+    scopes.push({ container: el, start: timing.start, duration });
+  }
+  return scopes;
+}
+
+/** Null when `child` resolves no selector — the candidate can't be identified as a layer. */
+function buildImplicitLayerEntry(
+  child: HTMLElement,
+  scope: ImplicitLayerScope,
+  doc: Document,
+  fallbackIndex: number,
+  track: number,
+): { layer: TimelineElement; key: string; id: string } | null {
+  const selector = getTimelineElementSelector(child);
+  if (!selector) return null;
+
+  const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+  const sourceFile = getTimelineElementSourceFile(child);
+  const label = getImplicitTimelineLayerLabel(child);
+  const identity = buildTimelineElementIdentity({
+    preferredId: child.id || null,
+    label,
+    fallbackIndex,
+    domId: child.id || undefined,
+    selector,
+    selectorIndex,
+    sourceFile,
+  });
+
+  return {
+    key: identity.key,
+    id: identity.id,
+    layer: {
+      domId: child.id || undefined,
+      hfId: child.getAttribute("data-hf-id") || undefined,
+      zIndex: readTimelineElementZIndex(child),
+      duration: scope.duration,
+      id: identity.id,
+      key: identity.key,
+      label,
+      selector,
+      selectorIndex,
+      sourceFile,
+      stackingContextId: resolveCssStackingContextId(child),
+      start: scope.start,
+      tag: child.tagName.toLowerCase(),
+      timingSource: "implicit",
+      track,
+    },
+  };
+}
+
+// Drops (not renames) a candidate whose key already exists — a duplicate `id`
+// across sibling clips, or a match already in existingKeys.
+// fallow-ignore-next-line complexity
+function buildImplicitLayers(
+  scopes: readonly ImplicitLayerScope[],
+  doc: Document,
+  existingKeys: ReadonlySet<string>,
+  existingElementsLength: number,
+  maxTrack: number,
+): TimelineElement[] {
+  const seenKeys = new Set<string>();
+  const layers: TimelineElement[] = [];
+
+  for (const scope of scopes) {
+    for (const child of Array.from(scope.container.children)) {
+      if (!isImplicitTimelineLayerCandidate(scope.container, child)) continue;
+
+      const entry = buildImplicitLayerEntry(
+        child,
+        scope,
+        doc,
+        existingElementsLength + layers.length,
+        maxTrack + 1 + layers.length,
+      );
+      if (!entry) continue;
+      if (existingKeys.has(entry.key) || existingKeys.has(entry.id)) continue;
+      if (seenKeys.has(entry.key)) continue;
+      seenKeys.add(entry.key);
+
+      layers.push(entry.layer);
+    }
+  }
+
+  return layers;
+}
+
+/** `timedNodes` lets a caller that already queried `[data-start]` reuse it; others omit it. */
 export function createImplicitTimelineLayersFromDOM(
   doc: Document,
   rootDuration: number,
   existingElements: readonly TimelineElement[] = [],
+  timedNodes?: readonly Element[],
 ): TimelineElement[] {
   if (!Number.isFinite(rootDuration) || rootDuration <= 0) return [];
   const rootComp = doc.querySelector("[data-composition-id]");
@@ -217,47 +346,12 @@ export function createImplicitTimelineLayersFromDOM(
     (max, element) => Math.max(max, Number.isFinite(element.track) ? element.track : 0),
     -1,
   );
-  const layers: TimelineElement[] = [];
+  const nodes = timedNodes ?? Array.from(doc.querySelectorAll("[data-start]"));
+  const scopes = collectImplicitLayerScopes(doc, rootComp, rootDuration, nodes);
 
-  for (const child of Array.from(rootComp.children)) {
-    if (!isImplicitTimelineLayerCandidate(rootComp, child)) continue;
-
-    const selector = getTimelineElementSelector(child);
-    if (!selector) continue;
-    const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
-    const sourceFile = getTimelineElementSourceFile(child);
-    const label = getImplicitTimelineLayerLabel(child);
-    const identity = buildTimelineElementIdentity({
-      preferredId: child.id || null,
-      label,
-      fallbackIndex: existingElements.length + layers.length,
-      domId: child.id || undefined,
-      selector,
-      selectorIndex,
-      sourceFile,
-    });
-    if (existingKeys.has(identity.key) || existingKeys.has(identity.id)) continue;
-
-    layers.push({
-      domId: child.id || undefined,
-      hfId: child.getAttribute("data-hf-id") || undefined,
-      zIndex: readTimelineElementZIndex(child),
-      duration: rootDuration,
-      id: identity.id,
-      key: identity.key,
-      label,
-      selector,
-      selectorIndex,
-      sourceFile,
-      stackingContextId: resolveCssStackingContextId(child),
-      start: 0,
-      tag: child.tagName.toLowerCase(),
-      timingSource: "implicit",
-      track: maxTrack + 1 + layers.length,
-    });
-  }
-
-  return layers;
+  return withSelectorIndexPass(doc, () =>
+    buildImplicitLayers(scopes, doc, existingKeys, existingElements.length, maxTrack),
+  );
 }
 
 /**
@@ -281,11 +375,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     if (Number.isFinite(rootDuration) && rootDuration > 0 && start >= rootDuration) return;
 
     const tagLower = el.tagName.toLowerCase();
-    let dur = timing.duration ?? 0;
-    if (dur <= 0) dur = Math.max(0, rootDuration - start);
-    if (Number.isFinite(rootDuration) && rootDuration > 0) {
-      dur = Math.min(dur, Math.max(0, rootDuration - start));
-    }
+    const dur = clampClipDurationToRoot(start, timing.duration, rootDuration);
     if (!Number.isFinite(dur) || dur <= 0) return;
 
     const track = timing.trackSource === "default" ? trackCounter++ : timing.trackIndex;
@@ -399,7 +489,10 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     els.push(entry);
   });
 
-  return [...els, ...createImplicitTimelineLayersFromDOM(doc, rootDuration, els)];
+  return [
+    ...els,
+    ...createImplicitTimelineLayersFromDOM(doc, rootDuration, els, Array.from(nodes)),
+  ];
 }
 
 // ---------------------------------------------------------------------------
