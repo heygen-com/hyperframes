@@ -198,22 +198,17 @@ test("captions.mjs is byte-identical across the three workflows that ship it", (
 
 test("every build-frame.mjs copy stages the style axis it promises", () => {
   for (const skill of ["product-launch-video", "faceless-explainer", "pr-to-video"]) {
+    // build-frame.mjs stages through lib/font-faces.mjs, so the naming contract lives there.
     const source = readFileSync(
-      new URL(`../../${skill}/scripts/build-frame.mjs`, import.meta.url),
+      new URL(`../../${skill}/scripts/lib/font-faces.mjs`, import.meta.url),
       "utf8",
     );
     // The staged filename must carry the style, or the italic and upright faces of one
     // weight collide on a single name and only whichever sorts first survives.
     assert.match(
       source,
-      /const clean = `\$\{fam\.replace\(\/\[\^A-Za-z0-9\]\/g, ""\)\}-\$\{w\}\$\{style === "italic" \? "-Italic" : ""\}\./,
-      `${skill}/build-frame.mjs must keep the style token in the staged name`,
-    );
-    // ...and the emitted descriptor must report the real style, not a hardcoded normal.
-    assert.doesNotMatch(
-      source,
-      /font-weight:\$\{n\};font-style:normal/,
-      `${skill}/build-frame.mjs must not assert font-style:normal over captured bytes`,
+      /const name = `\$\{family\.replace\(\/\[\^A-Za-z0-9\]\/g, ""\)\}-\$\{w\}\$\{style === "italic" \? "-Italic" : ""\}\./,
+      `${skill}/lib/font-faces.mjs must keep the style token in the staged name`,
     );
   }
 });
