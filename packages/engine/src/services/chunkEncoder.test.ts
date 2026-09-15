@@ -1063,7 +1063,7 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv:out_color_matrix=bt709");
   });
 
   it("adds the pad after range conversion for odd CPU output dimensions", () => {
@@ -1073,10 +1073,12 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
     );
     const vfIdx = args.indexOf("-vf");
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(args[vfIdx + 1]).toBe(
+      "scale=in_range=pc:out_range=tv:out_color_matrix=bt709,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+    );
   });
 
-  it("prepends range conversion to VAAPI filter chain", () => {
+  it("prepends range conversion with a bt709 matrix to VAAPI filter chain", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
       inputArgs,
@@ -1085,7 +1087,9 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
+    expect(args[vfIdx + 1]).toBe(
+      "scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=nv12,hwupload",
+    );
   });
 
   it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
@@ -1632,7 +1636,9 @@ describe("buildEncoderArgs HDR color space", () => {
     warnSpy.mockRestore();
   });
 
-  it("uses range conversion for HDR CPU encoding", () => {
+  it("uses range conversion for HDR CPU encoding, without a bt709 color matrix", () => {
+    // The HDR path tags bt2020nc, so a bt709 matrix would be wrong here; the
+    // analogous bt2020 matrix gap is unverified and deliberately out of scope.
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h265", preset: "medium", quality: 23, hdr: { transfer: "hlg" } },
       inputArgs,
@@ -1640,17 +1646,17 @@ describe("buildEncoderArgs HDR color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv");
   });
 
-  it("uses same range conversion for SDR CPU encoding", () => {
+  it("adds a bt709 color matrix for SDR CPU encoding, unlike the HDR path", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 23 },
       inputArgs,
       "out.mp4",
     );
     const vfIdx = args.indexOf("-vf");
-    expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv:out_color_matrix=bt709");
   });
 
   it("tags BT.2020 + transfer for HDR GPU H.265 (no mastering metadata via -x265-params)", () => {
