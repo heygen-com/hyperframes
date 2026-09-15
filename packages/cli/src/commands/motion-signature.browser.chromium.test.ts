@@ -355,6 +355,126 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.liveness).not.toBe(before.liveness);
   });
 
+  // Blink reports a 290x0 box for this path (object bounding box, no stroke),
+  // so this also pins that a stroked straight connector counts as visible.
+  it("sees a stroke-dashoffset draw-in on a straight connector", async () => {
+    await load(
+      composition(
+        "#wire { stroke: #000; stroke-width: 4; fill: none; stroke-dasharray: 290; stroke-dashoffset: 290; }",
+        '<svg width="640" height="360"><path id="wire" d="M 10 10 L 300 10"/></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("wire").style.strokeDashoffset = "145"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  // The dash list is half of the channel: a "grow the dashes" reveal that
+  // keeps the offset fixed is motion for both samplers.
+  it("sees a stroke-dasharray change at a fixed offset on a straight connector", async () => {
+    await load(
+      composition(
+        "#wire { stroke: #000; stroke-width: 4; fill: none; stroke-dasharray: 290; stroke-dashoffset: 0; }",
+        '<svg width="640" height="360"><path id="wire" d="M 10 10 L 300 10"/></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("wire").style.strokeDasharray = "145 145"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
+  // One row per painted-stroke / dash-pattern guard, against Blink's computed
+  // values: `stroke: transparent` computes to rgba(0, 0, 0, 0); an unpainted
+  // stroke leaves the 290x0 connector with no visible extent, so it fails the
+  // visibility floor before any channel runs; an all-zero dash list renders
+  // solid, so the offset has nothing to shift.
+  it.each([
+    ["stroke-opacity: 0", "stroke-opacity: 0;"],
+    ["a transparent stroke", "stroke: transparent;"],
+    ["stroke-width: 0", "stroke-width: 0;"],
+    ["an all-zero dash list", "stroke-dasharray: 0;"],
+    ["an all-zero two-entry dash list", "stroke-dasharray: 0 0;"],
+  ])("ignores stroke-dashoffset motion on a connector with %s", async (_label, css) => {
+    await load(
+      composition(
+        `#wire { stroke: #000; stroke-width: 4; fill: none; stroke-dasharray: 290; stroke-dashoffset: 290; ${css} }`,
+        '<svg width="640" height="360"><path id="wire" d="M 10 10 L 300 10"/></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("wire").style.strokeDashoffset = "0"');
+    const after = await sample();
+
+    expect(after).toEqual(before);
+  });
+
+  // Stroke properties inherit, so the <g> and the <text> both compute the
+  // dashed stroke; neither is an SVGGeometryElement, and both have a real box
+  // (the glyph run), so this pins the channel's element filter.
+  it("ignores stroke-dashoffset motion on non-geometry SVG elements", async () => {
+    await load(
+      composition(
+        "#group { stroke: #000; stroke-width: 2; stroke-dasharray: 20; stroke-dashoffset: 20; font: 32px monospace; }",
+        '<svg width="640" height="360"><g id="group"><text id="label" x="10" y="100">Q3</text></g></svg>',
+      ),
+    );
+    expect(await visible("#label")).toBe(true);
+    const before = await sample();
+    await mutate('document.getElementById("group").style.strokeDashoffset = "0"');
+    const after = await sample();
+
+    expect(after).toEqual(before);
+  });
+
+  // Blink already reports an empty box for descendants of every container in
+  // UNPAINTED_SVG_CONTAINERS (probed for all six); this pins that the platform
+  // and the classifier agree, not the container rule alone.
+  it("ignores stroke-dash motion under display:none and inside unpainted SVG containers", async () => {
+    await load(
+      composition(
+        "path { stroke: #000; stroke-width: 4; fill: none; stroke-dasharray: 290; stroke-dashoffset: 290; } #offstage { display: none; }",
+        `<svg width="640" height="360">
+          <g id="offstage"><path id="hidden" d="M 10 10 L 300 10"/></g>
+          <defs><path id="template" d="M 10 20 L 300 20"/></defs>
+          <clipPath id="reveal"><path id="clip" d="M 10 30 L 300 30"/></clipPath>
+          <mask id="fade"><path id="masked" d="M 10 40 L 300 40"/></mask>
+          <symbol id="glyph"><path id="instanced" d="M 10 50 L 300 50"/></symbol>
+          <pattern id="tile"><path id="tiled" d="M 10 60 L 300 60"/></pattern>
+          <marker id="head"><path id="vertex" d="M 10 70 L 300 70"/></marker>
+          <rect id="anchor" x="10" y="100" width="200" height="50" fill="#f00"/>
+        </svg>`,
+      ),
+    );
+    const before = await sample();
+    await mutate(
+      'for (const id of ["hidden", "template", "clip", "masked", "instanced", "tiled", "vertex"]) document.getElementById(id).style.strokeDashoffset = "0"',
+    );
+    const after = await sample();
+
+    expect(after).toEqual(before);
+  });
+
+  it("keeps signing content inside an HTML element named <defs>", async () => {
+    await load(
+      composition(
+        "#panel { display: block; } #label { display: inline-block; width: 40px; height: 48px; }",
+        '<defs id="panel"><span id="label">Q3</span></defs>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("label").style.opacity = "0.5"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
   it("sees textarea value and checkbox indeterminate changes", async () => {
     await load(
       composition(

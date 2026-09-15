@@ -32,6 +32,11 @@ const BASE_STYLE: StyleOverride = {
   opacity: "1",
   fontVariationSettings: "normal",
   clipPath: "none",
+  stroke: "none",
+  strokeWidth: "1px",
+  strokeOpacity: "1",
+  strokeDasharray: "none",
+  strokeDashoffset: "0px",
   counterReset: "none",
   counterIncrement: "none",
   counterSet: "none",
@@ -117,6 +122,14 @@ const ROOT = { left: 0, top: 0, width: 640, height: 360 };
 const COUNTDOWN = { left: 280, top: 140, width: 80, height: 48 };
 const ZERO_BOX = { left: 0, top: 0, width: 0, height: 0 };
 const COUNTER_CONSUMER = { after: { content: "counter(countdown)" } };
+// The real Chromium bbox of a horizontal stroked path: the object bounding
+// box excludes the stroke, so height is 0 regardless of stroke-width.
+const FLAT_CONNECTOR = { left: 10, top: 10, width: 290, height: 0 };
+const DASHED_STROKE: StyleOverride = {
+  stroke: "rgb(0, 0, 0)",
+  strokeWidth: "4px",
+  strokeDasharray: "290px",
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -259,6 +272,281 @@ describe("motion-signature.browser media and geometry channels", () => {
     const collect = installScript();
 
     expect(collect()).toBe(collect());
+  });
+
+  // A "draw the line in" SVG entrance (stroke-dashoffset animating on a path
+  // whose `d` never changes) shares the font-axis blind spot: no box change,
+  // no opacity change. The connector rect is deliberately degenerate (height
+  // 0) so the test also pins that a stroked straight line passes the
+  // visibility gate at all — the common real shape for this animation.
+  it("changes the sweep fingerprint when only stroke-dashoffset moves on a straight connector", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><path id="connector" d="M 10 10 L 300 10" /></svg>
+      </div>
+    `;
+    let dashOffset = "290px";
+    installFixture({
+      rects: { root: ROOT, diagram: ROOT, connector: FLAT_CONNECTOR },
+      styles: {
+        connector: {
+          ...DASHED_STROKE,
+          get strokeDashoffset() {
+            return dashOffset;
+          },
+        } as StyleOverride,
+      },
+    });
+
+    const collect = installScript();
+    const hidden = collect();
+    dashOffset = "145px"; // half drawn in
+    const half = collect();
+    dashOffset = "0px"; // fully revealed
+    const drawn = collect();
+
+    expect(half).not.toBe(hidden);
+    expect(drawn).not.toBe(half);
+  });
+
+  // The channel hashes the pattern AND the offset: a wipe that animates the
+  // dash lengths while the offset stays put (a "grow the dashes" reveal) must
+  // be motion for the sweep guard and for liveness alike.
+  it("changes both signatures when only stroke-dasharray moves at a fixed offset", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><path id="connector" d="M 10 10 L 300 10" /></svg>
+      </div>
+    `;
+    let dashes = "290px";
+    installFixture({
+      rects: { root: ROOT, diagram: ROOT, connector: FLAT_CONNECTOR },
+      styles: {
+        connector: {
+          ...DASHED_STROKE,
+          strokeDashoffset: "0px",
+          get strokeDasharray() {
+            return dashes;
+          },
+        } as StyleOverride,
+      },
+    });
+
+    const collect = installScript();
+    const { compositionSignature, compositionRoot } =
+      signatureWindow().__hyperframesMotionSignature;
+    const root = compositionRoot();
+    const sweepBefore = collect();
+    const livenessBefore = compositionSignature(root, { quantize: true });
+    dashes = "145px, 145px";
+
+    expect(collect()).not.toBe(sweepBefore);
+    expect(compositionSignature(root, { quantize: true })).not.toBe(livenessBefore);
+  });
+
+  it("keeps the sweep fingerprint identical when nothing moves, stroke dash included", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><path id="connector" d="M 10 10 L 300 10" /></svg>
+      </div>
+    `;
+    installFixture({
+      rects: { root: ROOT, diagram: ROOT, connector: FLAT_CONNECTOR },
+      styles: { connector: { ...DASHED_STROKE, strokeDashoffset: "0px" } },
+    });
+
+    const collect = installScript();
+
+    expect(collect()).toBe(collect());
+  });
+
+  // `display` is not inherited: the fake getComputedStyle reports the child as
+  // display:block, so only the classifier's ancestor walk can hide it.
+  it("ignores stroke-dash motion under a display:none ancestor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><g id="offstage"><path id="connector" d="M 10 10 L 300 10" /></g></svg>
+      </div>
+    `;
+    let dashOffset = "290px";
+    installFixture({
+      rects: { root: ROOT, diagram: ROOT, offstage: ROOT, connector: FLAT_CONNECTOR },
+      styles: {
+        offstage: { display: "none" },
+        connector: {
+          ...DASHED_STROKE,
+          get strokeDashoffset() {
+            return dashOffset;
+          },
+        } as StyleOverride,
+      },
+    });
+
+    const collect = installScript();
+    const before = collect();
+    dashOffset = "0px";
+
+    expect(collect()).toBe(before);
+  });
+
+  // Each row defeats one guard of the channel. The first three leave the
+  // stroke unpainted (paintsStroke), so the dash pattern on it is not motion —
+  // and the connector must not report as visible on the strength of its
+  // stroke. The last two paint a stroke whose dash list is all zeros, which
+  // renders solid (dashPattern), so the offset has nothing to shift.
+  it.each([
+    ["stroke-opacity: 0", { strokeOpacity: "0" }],
+    ["a transparent stroke", { stroke: "rgba(0, 0, 0, 0)" }],
+    ["stroke-width: 0", { strokeWidth: "0px" }],
+    ["an all-zero dash list", { strokeDasharray: "0px" }],
+    ["an all-zero two-entry dash list", { strokeDasharray: "0px, 0px" }],
+  ] as const)("ignores stroke-dashoffset motion on a connector with %s", (_label, override) => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><path id="connector" d="M 10 10 L 300 10" /></svg>
+      </div>
+    `;
+    let dashOffset = "290px";
+    installFixture({
+      rects: { root: ROOT, diagram: ROOT, connector: FLAT_CONNECTOR },
+      styles: {
+        connector: {
+          ...DASHED_STROKE,
+          ...override,
+          get strokeDashoffset() {
+            return dashOffset;
+          },
+        } as StyleOverride,
+      },
+    });
+
+    const collect = installScript();
+    const before = collect();
+    dashOffset = "0px";
+
+    expect(collect()).toBe(before);
+  });
+
+  // The channel is scoped to SVGGeometryElement: stroke properties inherit,
+  // so a <g> and a <text> compute the same dashed stroke as a shape would,
+  // but neither is a shape the channel signs. Both get a real box so they
+  // pass the visibility floor and this pins the element filter, not the gate.
+  it("ignores stroke-dashoffset motion on non-geometry SVG elements", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram"><g id="group"><text id="label">Q3</text></g></svg>
+      </div>
+    `;
+    let dashOffset = "290px";
+    const animated = {
+      ...DASHED_STROKE,
+      get strokeDashoffset() {
+        return dashOffset;
+      },
+    } as StyleOverride;
+    installFixture({
+      rects: {
+        root: ROOT,
+        diagram: ROOT,
+        group: { left: 10, top: 10, width: 200, height: 40 },
+        label: { left: 10, top: 10, width: 200, height: 40 },
+      },
+      styles: { group: animated, label: animated },
+    });
+
+    const collect = installScript();
+    const before = collect();
+    dashOffset = "0px";
+
+    expect(collect()).toBe(before);
+  });
+
+  // Blink reports an empty box for descendants of these containers; the
+  // fixture deliberately gives them a rendered path's box so this pins the
+  // container rule itself rather than the box gate.
+  it("ignores stroke-dash motion inside unpainted SVG containers", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <svg id="diagram">
+          <defs><path id="template" d="M 10 10 L 300 10" /></defs>
+          <clipPath id="reveal"><path id="clip" d="M 10 20 L 300 20" /></clipPath>
+          <mask id="fade"><path id="masked" d="M 10 30 L 300 30" /></mask>
+          <symbol id="glyph"><path id="instanced" d="M 10 40 L 300 40" /></symbol>
+          <pattern id="tile"><path id="tiled" d="M 10 50 L 300 50" /></pattern>
+          <marker id="head"><path id="vertex" d="M 10 60 L 300 60" /></marker>
+        </svg>
+      </div>
+    `;
+    let dashOffset = "290px";
+    const animated = {
+      ...DASHED_STROKE,
+      get strokeDashoffset() {
+        return dashOffset;
+      },
+    } as StyleOverride;
+    installFixture({
+      rects: {
+        root: ROOT,
+        diagram: ROOT,
+        defs: ROOT,
+        reveal: ROOT,
+        fade: ROOT,
+        glyph: ROOT,
+        tile: ROOT,
+        head: ROOT,
+        template: FLAT_CONNECTOR,
+        clip: { left: 10, top: 20, width: 290, height: 0 },
+        masked: { left: 10, top: 30, width: 290, height: 0 },
+        instanced: { left: 10, top: 40, width: 290, height: 0 },
+        tiled: { left: 10, top: 50, width: 290, height: 0 },
+        vertex: { left: 10, top: 60, width: 290, height: 0 },
+      },
+      styles: {
+        template: animated,
+        clip: animated,
+        masked: animated,
+        instanced: animated,
+        tiled: animated,
+        vertex: animated,
+      },
+    });
+
+    const collect = installScript();
+    const before = collect();
+    dashOffset = "0px";
+
+    expect(collect()).toBe(before);
+  });
+
+  // The container rule is namespaced: an HTML element that merely shares a
+  // name with an unpainted SVG container paints its subtree like any other.
+  it("keeps signing content inside an HTML element named <defs>", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <defs id="panel"><span id="label">Q3</span></defs>
+      </div>
+    `;
+    let labelOpacity = "1";
+    installFixture({
+      rects: {
+        root: ROOT,
+        panel: { left: 40, top: 40, width: 200, height: 48 },
+        label: { left: 40, top: 40, width: 40, height: 48 },
+      },
+      styles: {
+        label: {
+          get opacity() {
+            return labelOpacity;
+          },
+        } as StyleOverride,
+      },
+    });
+
+    const collect = installScript();
+    const before = collect();
+    labelOpacity = "0.5";
+
+    expect(collect()).not.toBe(before);
   });
 
   it("changes the sweep fingerprint when only clip-path moves", () => {
@@ -834,5 +1122,35 @@ describe("motion-signature.browser counter channel", () => {
     counterReset = "countdown 9";
 
     expect(collect()).toBe(before);
+  });
+});
+
+// layout-audit.browser.js is installed standalone, so it cannot import this
+// module's container list; the two literals are kept in step by hand. This
+// pins that they have not drifted. layout-audit spells the names as the SVG
+// DOM does (`clipPath`) while this module matches lower-cased tag names, so
+// the two spellings of one name compare equal.
+describe("motion-signature.browser source parity", () => {
+  function containerNames(source: string, listPattern: RegExp, file: string): string[] {
+    const list = listPattern.exec(source)?.[1];
+    if (list === undefined) throw new Error(`${file}: container list not found`);
+    return Array.from(list.matchAll(/[A-Za-z]+/g), (name) => name[0].toLowerCase()).sort();
+  }
+
+  it("keeps UNPAINTED_SVG_CONTAINERS equal to layout-audit's CONNECTOR_SKIP_CONTAINERS", () => {
+    const layoutAudit = readFileSync(join(__dirname, "layout-audit.browser.js"), "utf-8");
+    const unpainted = containerNames(
+      script,
+      /const UNPAINTED_SVG_CONTAINERS = new Set\(\[([^\]]*)\]\)/,
+      "motion-signature.browser.js",
+    );
+    const skipped = containerNames(
+      layoutAudit,
+      /const CONNECTOR_SKIP_CONTAINERS = "([^"]*)"/,
+      "layout-audit.browser.js",
+    );
+
+    expect(unpainted.length).toBeGreaterThan(0);
+    expect(unpainted).toEqual(skipped);
   });
 });

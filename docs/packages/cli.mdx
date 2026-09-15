@@ -717,7 +717,8 @@ HTML. Without a sidecar, nothing changes.
 
 `keepsMoving` uses the same motion classifier as the frozen-sweep guard: box
 geometry, opacity, text and generated content, form-control state, painted CSS
-counters, clip-path, variable-font axes, and the pixels of visible
+counters, clip-path, variable-font axes, SVG stroke dashing
+(`stroke-dasharray` / `stroke-dashoffset`), and the pixels of visible
 canvas/video/img elements all count as motion — so a playing same-origin (or
 CORS-readable) background video keeps a scope live on its own. Elements under
 `data-layout-ignore` inside the scope never count; the opt-out does not apply to

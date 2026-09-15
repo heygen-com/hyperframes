@@ -19,16 +19,16 @@
 // bucketing, while the sweep guard wants exact (0.01) rounding because it asks
 // whether the seek moved anything at all.
 //
-// Adding a channel (e.g. SVG stroke-dasharray/dashoffset): append one reader
+// Adding a channel (e.g. SVG fill-opacity): append one reader
 // `(element, ctx) => string` to BOX_CHANNELS (reads the element's own box,
-// including a control's widget type and checked state) or CONTENT_CHANNELS (reads what the
-// element's contents paint — text, pseudo content, control values, media
-// pixels — which `content-visibility: hidden` skips). `ctx`
-// carries the element's computed style, its ::before/::after styles, its
-// inherited opacity, and the quantize flag. A reader returns a string that is
-// equal between two samples iff that channel did not visibly change; return ""
-// for elements the channel does not apply to so ordinary compositions gain no
-// payload.
+// including a control's widget type and checked state, or an SVG shape's
+// stroke) or CONTENT_CHANNELS (reads what the element's contents paint — text,
+// pseudo content, control values, media pixels — which
+// `content-visibility: hidden` skips). `ctx` carries the element's computed
+// style, its ::before/::after styles, its inherited opacity, and the quantize
+// flag. A reader returns a string that is equal between two samples iff that
+// channel did not visibly change; return "" for elements the channel does not
+// apply to so ordinary compositions gain no payload.
 //
 // Signatures are a single opaque string per sample (not a structured array):
 // Node only ever needs equality, never per-element diffing. Textual channels
@@ -37,6 +37,39 @@
 (function () {
   const IGNORE_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "META", "LINK"]);
   const MEDIA_TAGS = new Set(["CANVAS", "VIDEO", "IMG"]);
+  // SVG containers whose content never paints in place: <defs> and <clipPath>
+  // only lend geometry to a referencing element; <mask>, <pattern> and
+  // <marker> content reaches the screen only through the element that
+  // references it (as a mask buffer, a fill tile, a vertex glyph), and
+  // <symbol> only as <use> instances, whose shadow trees querySelectorAll
+  // cannot reach. This walk visits the referencing element on its own, so
+  // motion OF that element (its box, opacity, clip-path) is signed; motion of
+  // the referenced CONTENT (a shape animating inside a <mask> or <pattern>)
+  // does change pixels through it but has no channel today. Blink reports an
+  // empty box for descendants of all six, but a subtree that never paints in
+  // place should be excluded by rule, not by one engine's bbox behaviour.
+  // The names match layout-audit's CONNECTOR_SKIP_CONTAINERS (kept in step by
+  // hand: layout-audit is installed standalone); that selector is not
+  // namespaced, this check is — SVG tag names are case-preserved
+  // (`clipPath`), hence the lower-cased match, and an HTML element that merely
+  // shares a name paints and is not pruned.
+  const UNPAINTED_SVG_CONTAINERS = new Set([
+    "defs",
+    "clippath",
+    "mask",
+    "pattern",
+    "marker",
+    "symbol",
+  ]);
+
+  function isUnpaintedSvgContainer(element) {
+    return (
+      element instanceof SVGElement && UNPAINTED_SVG_CONTAINERS.has(element.tagName.toLowerCase())
+    );
+  }
+  // A computed stroke that paints nothing: `none`, or a fully transparent
+  // colour (`transparent` computes to rgba(0, 0, 0, 0)).
+  const TRANSPARENT_COLOR = /^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\))$/;
   const FNV_OFFSET_BASIS = 2166136261;
   const FNV_PRIME = 16777619;
   const LIVENESS_POSITION_BUCKET_PX = 2;
@@ -109,17 +142,65 @@
     );
   }
 
+  // Whether `element` starts an unrendered subtree: nothing under it paints
+  // and nothing under it can feed a painted counter(). `display` is not
+  // inherited — a child of a display:none parent still computes display:block,
+  // and a shape inside <defs> computes as painted — so compositionSignature
+  // propagates this to descendants itself. The platform decides where it can
+  // (checkVisibility: display:none and skipped contents); the fallback is
+  // display:none. display:contents has no box of its own but its
+  // pseudo-elements and children render, so it stays an owner — except as
+  // the child of a host that skips its contents, where its pseudo-elements
+  // paint nothing either. The platform check cannot tell that from an
+  // ordinary display:contents host (both have no box), so the parent's
+  // skipsContents verdict (`parentSkipsContents`) decides; a display:contents
+  // child of an off-screen `auto` host is not caught (see
+  // compositionSignature). Without the platform check a skipped host is
+  // itself unrendered, so the caller never reaches this with a true
+  // `parentSkipsContents`. An unpainted SVG container
+  // (UNPAINTED_SVG_CONTAINERS) is excluded by rule: its shapes have layout
+  // boxes, so checkVisibility cannot know they never reach the screen.
+  function startsUnrenderedSubtree(element, style, platformDecides, parentSkipsContents) {
+    if (isUnpaintedSvgContainer(element)) return true;
+    if (style.display === "contents") return parentSkipsContents;
+    return platformDecides
+      ? !element.checkVisibility(RENDERED_BOX_OPTIONS)
+      : style.display === "none";
+  }
+
+  function paintsStroke(style) {
+    const stroke = cssValue(style.stroke);
+    return (
+      stroke !== "" &&
+      !TRANSPARENT_COLOR.test(stroke) &&
+      Number.parseFloat(style.strokeWidth) > 0 &&
+      Number.parseFloat(style.strokeOpacity) > 0
+    );
+  }
+
+  // An SVG geometry element (path/circle/ellipse/rect/line/polyline/polygon)
+  // with a painted stroke. Chromium's getBoundingClientRect for SVG shapes is
+  // the object bounding box WITHOUT the stroke, so a straight horizontal or
+  // vertical connector reports 0 height or 0 width regardless of stroke-width
+  // even though it is plainly on screen.
+  function isStrokedShape(element, style) {
+    return element instanceof SVGGeometryElement && paintsStroke(style);
+  }
+
   // Visibility floor: checkVisibility (as layout-audit.browser.js
   // isVisibleElement's opacity-floor path; its default path skips it and so
   // cannot see skipped contents), then display/visibility, then inherited
-  // opacity, then a non-empty box. Kept local rather than shared because
-  // layout-audit is also installed and tested on its own; this module owns the
-  // decision for both motion samplers. The author opt-out (data-layout-ignore /
-  // data-layout-check=ignore) is NOT applied here: motion-sample reports this
-  // bit for explicitly asserted selectors, and an assertion naming an element
-  // outranks a layout-audit opt-out. compositionSignature applies the opt-out
-  // itself (see there). clip-path is not probed either; it is a channel, so a
-  // clip-path wipe over a static box counts as motion directly.
+  // opacity, then a non-empty box — widened by one case: a stroked SVG shape
+  // whose geometry bbox is degenerate along one axis (see isStrokedShape) is
+  // on screen even though that floor rejects it. Kept local rather than shared
+  // because layout-audit is also installed and tested on its own; this module
+  // owns the decision for both motion samplers. The author opt-out
+  // (data-layout-ignore / data-layout-check=ignore) is NOT applied here:
+  // motion-sample reports this bit for explicitly asserted selectors, and an
+  // assertion naming an element outranks a layout-audit opt-out.
+  // compositionSignature applies the opt-out itself (see there). clip-path is
+  // not probed either; it is a channel, so a clip-path wipe over a static box
+  // counts as motion directly.
   // fallow-ignore-next-line complexity
   function isVisibleElement(element, style, opacity) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
@@ -129,10 +210,13 @@
     ) {
       return false;
     }
-    if (isHiddenStyle(style || getComputedStyle(element))) return false;
+    const computed = style || getComputedStyle(element);
+    if (isHiddenStyle(computed)) return false;
     if ((opacity === undefined ? opacityChain(element) : opacity) < 0.2) return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0.5 && rect.height > 0.5;
+    if (rect.width > 0.5 && rect.height > 0.5) return true;
+    // A stroked shape paints along its one non-degenerate axis.
+    return isStrokedShape(element, computed) && (rect.width > 0.5 || rect.height > 0.5);
   }
 
   function foldField(hash, value) {
@@ -188,6 +272,25 @@
   function clipPathChannel(element, ctx) {
     const clip = cssValue(ctx.style.clipPath);
     return clip ? hashFields([clip]) : "";
+  }
+
+  // `none` and an all-zero list (`0`, `0px 0px`) both render a solid stroke,
+  // on which the offset has no visible effect.
+  function dashPattern(style) {
+    const dashes = cssValue(style.strokeDasharray);
+    if (!dashes) return "";
+    return dashes.split(/[\s,]+/).some((dash) => Number.parseFloat(dash) > 0) ? dashes : "";
+  }
+
+  // A "draw the line in" SVG entrance animates stroke-dasharray /
+  // stroke-dashoffset on a shape whose geometry never changes: no box, no
+  // opacity, only how much of the stroke is currently dash-visible. Without a
+  // dash pattern the offset has no visible effect, and without a painted
+  // stroke neither does, so ordinary shapes stay "".
+  function strokeDashChannel(element, ctx) {
+    if (!isStrokedShape(element, ctx.style)) return "";
+    const dashes = dashPattern(ctx.style);
+    return dashes ? hashFields([dashes, ctx.style.strokeDashoffset || ""]) : "";
   }
 
   // Direct text nodes only: descendants are signed separately, and a hidden
@@ -271,14 +374,15 @@
   }
 
   // The element's own box still paints when its contents are skipped
-  // (content-visibility: hidden) — including a checkbox's check glyph; its
-  // text, pseudo boxes, control value, and replaced content (a canvas/video/img's
-  // pixels) do not.
+  // (content-visibility: hidden) — including a checkbox's check glyph and an
+  // SVG shape's stroke; its text, pseudo boxes, control value, and replaced
+  // content (a canvas/video/img's pixels) do not.
   const BOX_CHANNELS = [
     boxChannel,
     opacityChannel,
     fontAxesChannel,
     clipPathChannel,
+    strokeDashChannel,
     controlWidgetChannel,
   ];
   const CONTENT_CHANNELS = [
@@ -390,16 +494,11 @@
     const quantize = !!(options && options.quantize);
     const parts = [];
     const boxOwners = [];
-    // Unrendered elements (display:none subtrees, skipped contents) paint
-    // nothing and cannot feed a painted counter(). The platform decides where it
-    // can; the fallback is display:none and content-visibility:hidden hosts,
-    // propagated to descendants. display:contents has no box of its own but its
-    // pseudo-elements and children render, so it stays an owner — except as
-    // the child of a host that skips its contents, where its pseudo-elements
-    // paint nothing either. The platform check cannot tell that from an
-    // ordinary display:contents host (both have no box), so the parent's
-    // skipsContents verdict decides; a display:contents child of an off-screen
-    // `auto` host is not caught (see below).
+    // Unrendered subtrees (see startsUnrenderedSubtree; without the platform
+    // check, content-visibility:hidden hosts too) paint nothing and cannot feed
+    // a painted counter(); membership is propagated to descendants here, and
+    // hosts that skip their contents are remembered so a display:contents
+    // child of one is pruned as well.
     const unrenderedBelow = new Set();
     const skippedHosts = new Set();
     for (const element of [root, ...root.querySelectorAll("*")]) {
@@ -407,11 +506,10 @@
       const style = getComputedStyle(element);
       const parent = element.parentElement;
       const platformDecides = typeof element.checkVisibility === "function";
-      const noBox = platformDecides
-        ? !element.checkVisibility(RENDERED_BOX_OPTIONS)
-        : style.display === "none";
-      const boxlessOwner = style.display === "contents" && !skippedHosts.has(parent);
-      if (unrenderedBelow.has(parent) || (noBox && !boxlessOwner)) {
+      if (
+        unrenderedBelow.has(parent) ||
+        startsUnrenderedSubtree(element, style, platformDecides, skippedHosts.has(parent))
+      ) {
         unrenderedBelow.add(element);
         continue;
       }
