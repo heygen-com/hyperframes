@@ -316,6 +316,8 @@ export function trackRenderComplete(
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
+    /** Sampled running peak of V8 heapUsed (complement to RSS). */
+    peakHeapUsedMb?: number;
     memoryFreeMb?: number;
     tmpPeakBytes?: number;
     // Per-stage timings (subset of RenderPerfSummary.stages)
@@ -413,6 +415,7 @@ export function trackRenderComplete(
       video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
+      peak_heap_used_mb: props.peakHeapUsedMb,
       memory_free_mb: props.memoryFreeMb,
       tmp_peak_bytes: props.tmpPeakBytes,
       stage_compile_ms: props.stageCompileMs,
@@ -460,7 +463,18 @@ export function trackRenderError(
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
+    peakHeapUsedMb?: number;
     memoryFreeMb?: number;
+    /**
+     * Worker sizing on the failure path. Previously `render_complete`-only,
+     * which left PRINFRA-341's central question unanswerable: 0 of 317k
+     * `render_error` events carried these, so advisory-true renders could
+     * never be correlated with failures.
+     */
+    workersBoundBy?: string;
+    workersHeapBased?: number;
+    workersHeapLimitMb?: number;
+    workersExceedHeapAdvisory?: boolean;
     // Attribute this event to a specific user (e.g. the browser user who
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
@@ -480,7 +494,12 @@ export function trackRenderError(
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       peak_memory_mb: props.peakMemoryMb,
+      peak_heap_used_mb: props.peakHeapUsedMb,
       memory_free_mb: props.memoryFreeMb,
+      workers_bound_by: props.workersBoundBy,
+      workers_heap_based: props.workersHeapBased,
+      workers_heap_limit_mb: props.workersHeapLimitMb,
+      workers_exceed_heap_advisory: props.workersExceedHeapAdvisory,
       ...powerStateFields(),
       // gpu_renderer arrives via renderObservabilityEventProperties below:
       // on the failure path perfSummary is never built, so live capture
