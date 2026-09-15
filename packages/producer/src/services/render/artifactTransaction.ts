@@ -179,12 +179,19 @@ function assertFrameCountWithinTolerance(
   expectedFrames: number,
   probedFrames: number | undefined,
   stagingPath: string,
+  toleranceFrames?: number,
 ): void {
   if (probedFrames === undefined || !Number.isFinite(probedFrames) || probedFrames <= 0) {
+    if (expectedFrames > 0) {
+      console.warn(
+        `[ArtifactTransaction] Frame-count gate skipped: expected ${expectedFrames} frames ` +
+          `but probe returned ${String(probedFrames)} for ${stagingPath}`,
+      );
+    }
     return;
   }
   const shortfall = expectedFrames - probedFrames;
-  if (shortfall <= 1) return;
+  if (shortfall <= (toleranceFrames ?? 1)) return;
   throw new Error(
     `Render artifact is truncated: expected ${expectedFrames} frames, ` +
       `probed ${probedFrames} frames ` +
@@ -245,6 +252,14 @@ export class ArtifactTransaction {
       throw new Error(`Render artifact directory is empty: ${this.stagingPath}`);
     }
     for (const file of files) assertReadableNonEmptyFile(file);
+    if (expected?.expectedFrames !== undefined) {
+      assertFrameCountWithinTolerance(
+        expected.expectedFrames,
+        files.length,
+        this.stagingPath,
+        Math.max(1, Math.ceil(expected.expectedFrames * 0.002)),
+      );
+    }
   }
 
   private async assertArtifactDuration(expected: ArtifactValidationExpectation): Promise<void> {
