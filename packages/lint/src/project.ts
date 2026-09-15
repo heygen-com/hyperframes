@@ -15,8 +15,14 @@ import {
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
+import { querySelectorAllIncludingTemplates } from "./domQuery.js";
 import { collectLocalVideoCandidates, lintHevcPreviewCodec } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
+import { probeMediaStreams } from "./mediaStreamProbe.js";
+import {
+  collectRenderAudioCandidates,
+  lintRenderAudioSourceStreams,
+} from "./renderAudioSourceLint.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
 import { mediaSrcTagRe } from "./utils";
@@ -34,19 +40,6 @@ interface HtmlSource {
 interface CssSource {
   content: string;
   rootRelativePath?: string;
-}
-
-/** Linkedom keeps template contents in a DocumentFragment that is not part of
- * the document query tree. Lint rules must still see shell styles and links
- * inside templates, so walk each template's content recursively without
- * falling back to regex parsing. */
-function querySelectorAllIncludingTemplates(root: ParentNode, selector: string): Element[] {
-  const matches: Element[] = [...root.querySelectorAll(selector)];
-  for (const template of root.querySelectorAll("template")) {
-    const content = (template as HTMLTemplateElement).content;
-    if (content) matches.push(...querySelectorAllIncludingTemplates(content, selector));
-  }
-  return matches;
 }
 
 export interface ProjectLintResult {
@@ -226,6 +219,12 @@ export async function lintProject(
     }
   }
 
+  // One ffprobe pass serves every probe-backed rule: a file referenced by both
+  // an <audio> and a <video> is probed once, and both rules read the result.
+  const videoCandidates = collectLocalVideoCandidates(projectDir, allHtmlSources);
+  const audioCandidates = collectRenderAudioCandidates(projectDir, allHtmlSources);
+  const probes = await probeMediaStreams([...videoCandidates.keys(), ...audioCandidates.keys()]);
+
   const projectFindings = [
     ...lintProjectAudioFiles(projectDir, allHtmlSources),
     ...lintAudioSrcNotFound(projectDir, allHtmlSources),
@@ -235,7 +234,8 @@ export async function lintProject(
     ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
-    ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
+    ...lintRenderAudioSourceStreams(audioCandidates, probes),
+    ...lintHevcPreviewCodec(videoCandidates, probes),
   ];
   if (projectFindings.length > 0) {
     for (const finding of projectFindings) {

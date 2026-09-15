@@ -400,30 +400,61 @@ describe("template shell style sources", () => {
   });
 });
 
+interface ProbeStream {
+  codec_name?: string;
+  codec_tag_string?: string;
+  codec_type?: string;
+}
+
+const mockExecFile = vi.mocked(execFile);
+
+// Any real file works as a stand-in "ffprobe" path — execFile itself is
+// mocked below, so it's never actually spawned.
+const FAKE_FFPROBE_PATH = process.execPath;
+
+// The one ffprobe invocation every probe-backed rule shares, pinned literally
+// (not imported from the implementation) so a flag change in the source is a
+// visible test failure. `-select_streams v:0` here would list zero streams for
+// an audio-only file and turn every correct <audio src="music.mp3"> into an
+// error — the mock below answers ONLY this argv from the fixture and returns an
+// empty stream list for anything else, mirroring exactly that failure mode.
+const FFPROBE_STREAM_FLAGS = [
+  "-v",
+  "error",
+  "-show_entries",
+  "stream=codec_type,codec_name",
+  "-of",
+  "json",
+] as const;
+
+/** `<flags> -- <file>`: options terminated immediately before the single input. */
+function isContractedProbeArgv(args: readonly string[]): boolean {
+  const expected = [...FFPROBE_STREAM_FLAGS, "--"];
+  return (
+    args.length === expected.length + 1 && expected.every((flag, index) => args[index] === flag)
+  );
+}
+
+function mockFfprobeStreams(streamsByFile: Record<string, ProbeStream[]>): void {
+  mockExecFile.mockImplementation((_file, args, _options, callback) => {
+    const filePath = args[args.length - 1] ?? "";
+    const streams = isContractedProbeArgv(args) ? (streamsByFile[filePath] ?? []) : [];
+    callback(null, Buffer.from(JSON.stringify({ streams })), Buffer.alloc(0));
+    return new ChildProcess();
+  });
+}
+
+function expectProbedOnce(filePath: string): void {
+  expect(mockExecFile).toHaveBeenCalledTimes(1);
+  expect(mockExecFile).toHaveBeenCalledWith(
+    FAKE_FFPROBE_PATH,
+    [...FFPROBE_STREAM_FLAGS, "--", filePath],
+    expect.objectContaining({ timeout: 4000, windowsHide: true }),
+    expect.any(Function),
+  );
+}
+
 describe("hevc_preview_codec", () => {
-  interface ProbeStream {
-    codec_name: string;
-    codec_tag_string: string;
-  }
-
-  const mockExecFile = vi.mocked(execFile);
-
-  // Any real file works as a stand-in "ffprobe" path — execFile itself is
-  // mocked below, so it's never actually spawned.
-  const FAKE_FFPROBE_PATH = process.execPath;
-
-  function mockFfprobeStreams(streamsByFile: Record<string, ProbeStream[]>): void {
-    mockExecFile.mockImplementation((_file, args, _options, callback) => {
-      const filePath = args[args.length - 1] ?? "";
-      callback(
-        null,
-        Buffer.from(JSON.stringify({ streams: streamsByFile[filePath] ?? [] })),
-        Buffer.alloc(0),
-      );
-      return new ChildProcess();
-    });
-  }
-
   function videoHtml(...videoSrcs: string[]): string {
     const videoTags = videoSrcs
       .map(
@@ -483,6 +514,7 @@ describe("hevc_preview_codec", () => {
     expect(findings[0]?.message).toContain("automatically uses a cached H.264 proxy");
     expect(result.totalErrors).toBe(0);
     expect(result.results[0]?.result.ok).toBe(true);
+    expectProbedOnce(videoAbsPath);
   });
 
   it('flags an hev1-tagged HEVC video the same way (ffprobe reports codec_name "hevc" regardless of the container fourcc)', async () => {
@@ -557,6 +589,308 @@ describe("hevc_preview_codec", () => {
 
     expect(findings).toHaveLength(1);
     expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The probe-backed half of media_src_kind_mismatch: the compile gate probes
+// every `<audio src>` it needs a duration from or clamps (regardless of
+// data-hidden), and the mixer takes `audio[id]` + every `video[id]` the timing
+// compiler marks `data-has-audio="true"` (authored, or inferred from a missing
+// `muted`), minus data-hidden, hidden buses and inactive windows. The render
+// fail-closes when one of those files has no audio stream. The lint element set
+// must be exactly that union — no wider (a finding on an element the render
+// drops turns `check` red on a project that renders) and no narrower (a silent
+// unmuted <video> or hidden untimed <audio> throws at render).
+describe("media_src_kind_mismatch (audio stream probe)", () => {
+  const VIDEO_ONLY: ProbeStream[] = [{ codec_type: "video", codec_name: "h264" }];
+  const WITH_AUDIO: ProbeStream[] = [
+    { codec_type: "video", codec_name: "h264" },
+    { codec_type: "audio", codec_name: "aac" },
+  ];
+
+  function mediaProject(
+    compositionBody: string,
+    file = "silent.mp4",
+  ): { project: string; mediaPath: string } {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1">
+    ${compositionBody}
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`);
+    const mediaPath = join(project, file);
+    writeFileSync(mediaPath, "fake media bytes");
+    return { project, mediaPath };
+  }
+
+  async function mismatchFindings(project: string): Promise<{
+    findings: HyperframeLintFinding[];
+    totalErrors: number;
+    ok: boolean;
+  }> {
+    const result = await lintProject(project);
+    return {
+      findings: result.results
+        .flatMap((entry) => entry.result.findings)
+        .filter((finding) => finding.code === "media_src_kind_mismatch"),
+      totalErrors: result.totalErrors,
+      ok: result.results[0]?.result.ok ?? false,
+    };
+  }
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = FAKE_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  it("errors when an <audio> element's local file has no audio stream", async () => {
+    const { project, mediaPath } = mediaProject(
+      `<audio id="music" src="silent.mp4" data-start="0" data-duration="1"></audio>`,
+    );
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings, totalErrors, ok } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe("error");
+    expect(findings[0]?.elementId).toBe("music");
+    expect(findings[0]?.message).toContain("silent.mp4");
+    expect(findings[0]?.message).toContain("no audio stream");
+    expect(totalErrors).toBe(1);
+    expect(ok).toBe(false);
+    expectProbedOnce(mediaPath);
+  });
+
+  it("does not flag an <audio> whose file carries an audio stream", async () => {
+    const { project, mediaPath } = mediaProject(
+      `<audio id="music" src="clip.mp4" data-start="0" data-duration="1"></audio>`,
+      "clip.mp4",
+    );
+    mockFfprobeStreams({ [mediaPath]: WITH_AUDIO });
+
+    const { findings, totalErrors } = await mismatchFindings(project);
+
+    // Also the argv guard: with any other flag set the mock answers `streams: []`
+    // and this file would be reported as silent.
+    expect(findings).toHaveLength(0);
+    expect(totalErrors).toBe(0);
+    expectProbedOnce(mediaPath);
+  });
+
+  it("still flags a hidden <audio> bounded by data-duration — the compile gate probes it regardless of data-hidden", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <hf-audio-group id="muted-bus" data-hidden></hf-audio-group>
+    <audio id="self-hidden" data-hidden src="silent.mp4" data-start="0" data-duration="1"></audio>
+    <div data-hidden>
+      <audio id="parent-hidden" src="silent.mp4" data-start="0" data-duration="1"></audio>
+    </div>
+    <audio id="on-muted-bus" data-audio-group="muted-bus" src="silent.mp4" data-start="0" data-duration="1"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual([
+      "self-hidden",
+      "parent-hidden",
+      "on-muted-bus",
+    ]);
+  });
+
+  it("still flags a hidden <audio src> with no data-end and no data-duration — compile phase 1 probes it for a duration", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <div data-hidden>
+      <audio id="parent-hidden-untimed" src="silent.mp4" data-start="0"></audio>
+    </div>
+    <audio id="self-hidden-untimed" data-hidden src="silent.mp4"></audio>
+    <audio id="self-hidden-bad-duration" data-hidden src="silent.mp4" data-duration="not-a-number"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual([
+      "parent-hidden-untimed",
+      "self-hidden-untimed",
+      "self-hidden-bad-duration",
+    ]);
+  });
+
+  it("does not probe or flag a hidden <audio> neither compile phase sees (data-end, loop, or <source>-only) — the mixer drops it", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <hf-audio-group id="muted-bus" data-hidden></hf-audio-group>
+    <audio id="self-hidden" data-hidden src="silent.mp4" data-start="0" data-end="1"></audio>
+    <audio id="self-hidden-bad-duration-with-end" data-hidden src="silent.mp4" data-duration="not-a-number" data-end="1"></audio>
+    <div data-hidden>
+      <audio id="parent-hidden" src="silent.mp4" data-start="0" data-end="1"></audio>
+      <audio id="parent-hidden-looped" src="silent.mp4" loop data-start="0" data-duration="1"></audio>
+      <audio id="parent-hidden-source-only" data-start="0" data-duration="1"><source src="silent.mp4"></audio>
+    </div>
+    <audio id="on-muted-bus" data-audio-group="muted-bus" src="silent.mp4" data-start="0" data-end="1"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(0);
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("flags an unmuted <video> without data-has-audio — the timing compiler marks it audible before the mixer reads it", async () => {
+    const { project, mediaPath } = mediaProject(
+      `<video id="clip" src="silent.mp4" data-start="0" data-duration="1"></video>`,
+    );
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.elementId).toBe("clip");
+    expect(findings[0]?.message).toContain('<video id="clip">');
+    expect(findings[0]?.message).toContain("mixes an unmuted <video> as audio");
+    expect(findings[0]?.fixHint).toContain("Add muted");
+    expectProbedOnce(mediaPath);
+  });
+
+  // hevc_preview_codec probes every <video> file anyway, so "not probed" is not
+  // observable here; the absence of the error finding is the assertion.
+  it("does not flag a muted <video> without data-has-audio", async () => {
+    const { project, mediaPath } = mediaProject(
+      `<video id="clip" src="silent.mp4" muted data-start="0" data-duration="1"></video>`,
+    );
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings, totalErrors } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(0);
+    expect(totalErrors).toBe(0);
+  });
+
+  it('flags a muted <video data-has-audio="true"> — the authored attribute wins over muted', async () => {
+    const { project, mediaPath } = mediaProject(
+      `<video id="clip" src="silent.mp4" muted data-has-audio="true" data-start="0" data-duration="1"></video>`,
+    );
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('<video id="clip" data-has-audio="true">');
+    expect(findings[0]?.fixHint).toContain('Remove data-has-audio="true"');
+  });
+
+  it('does not flag an unmuted <video data-has-audio="false"> or <video data-has-audio="">, nor a hidden unmuted <video>', async () => {
+    const { project, mediaPath } = mediaProject(`
+    <video id="declared-silent" src="silent.mp4" data-has-audio="false" data-start="0" data-duration="1"></video>
+    <video id="declared-empty" src="silent.mp4" data-has-audio="" data-start="0" data-duration="1"></video>
+    <div data-hidden>
+      <video id="hidden" src="silent.mp4" data-start="0" data-duration="1"></video>
+    </div>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a member of a visible <hf-audio-group> bus that a hidden bus would have dropped", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <hf-audio-group id="muted-bus" data-hidden></hf-audio-group>
+    <hf-audio-group id="live-bus"></hf-audio-group>
+    <audio id="on-muted-bus" data-audio-group="muted-bus" src="silent.mp4" data-start="0" data-end="1"></audio>
+    <audio id="on-live-bus" data-audio-group="live-bus" src="silent.mp4" data-start="0" data-end="1"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual(["on-live-bus"]);
+  });
+
+  it("skips known inactive timing windows and unresolvable relative starts, keeps the active element", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <audio id="zero-duration" src="silent.mp4" data-start="0" data-duration="0"></audio>
+    <audio id="ends-before-start" src="silent.mp4" data-start="2" data-end="1"></audio>
+    <audio id="ends-at-start" src="silent.mp4" data-start="1" data-end="1"></audio>
+    <audio id="relative-start" src="silent.mp4" data-start="intro + 1" data-end="3"></audio>
+    <audio id="active" src="silent.mp4" data-start="0" data-end="5"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual(["active"]);
+  });
+
+  it("sees an <audio> inside a <template>-wrapped sub-composition under compositions/", async () => {
+    const project = makeProject(validHtml(), {
+      "scene.html": `<template>
+  <div data-composition-id="scene" data-width="1920" data-height="1080" data-start="0" data-duration="1">
+    <audio id="scene-music" src="silent.mp4" data-start="0" data-duration="1"></audio>
+  </div>
+</template>
+<script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>`,
+    });
+    const mediaPath = join(project, "silent.mp4");
+    writeFileSync(mediaPath, "fake media bytes");
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual(["scene-music"]);
+  });
+
+  it("resolves a nested <source src> the way the engine does", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <audio id="music" data-start="0" data-duration="1"><source src="silent.mp4" type="video/mp4"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.elementId).toBe("music");
+    expect(findings[0]?.message).toContain("silent.mp4");
+  });
+
+  it("names every element sharing a silent file while probing it once", async () => {
+    const { project, mediaPath } = mediaProject(`
+    <audio id="intro-sfx" src="silent.mp4" data-start="0" data-duration="1"></audio>
+    <audio id="outro-sfx" src="silent.mp4" data-start="0" data-duration="1"></audio>`);
+    mockFfprobeStreams({ [mediaPath]: VIDEO_ONLY });
+
+    const { findings } = await mismatchFindings(project);
+
+    expect(findings.map((finding) => finding.elementId)).toEqual(["intro-sfx", "outro-sfx"]);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent when the probe fails — an unknown result is not evidence of a missing stream", async () => {
+    const { project } = mediaProject(
+      `<audio id="music" src="silent.mp4" data-start="0" data-duration="1"></audio>`,
+    );
+    mockExecFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(new Error("ffprobe timed out"), Buffer.alloc(0), Buffer.alloc(0));
+      return new ChildProcess();
+    });
+
+    const { findings, totalErrors } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(0);
+    expect(totalErrors).toBe(0);
+  });
+
+  it("stays silent, without spawning, when ffprobe cannot be resolved", async () => {
+    const { project } = mediaProject(
+      `<audio id="music" src="silent.mp4" data-start="0" data-duration="1"></audio>`,
+    );
+    process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
+
+    const { findings, totalErrors } = await mismatchFindings(project);
+
+    expect(findings).toHaveLength(0);
+    expect(totalErrors).toBe(0);
+    expect(mockExecFile).not.toHaveBeenCalled();
   });
 });
 

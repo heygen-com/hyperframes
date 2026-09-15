@@ -157,6 +157,10 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/studio/src/player/store/groupLevels.ts",
     "#3454 deliberately removes group level-meter state",
   ],
+  [
+    "packages/lint/src/hevcPreviewLint.windowsHide.test.ts",
+    "its single windowsHide assertion moved into mediaStreamProbe.test.ts when the ffprobe runner became shared by hevc_preview_codec and media_src_kind_mismatch",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

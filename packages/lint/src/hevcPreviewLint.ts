@@ -1,83 +1,21 @@
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { maskNonScannableRanges } from "@hyperframes/parsers/asset-resolution";
 import {
-  cleanAssetUrl,
-  isRemoteOrInlineUrl,
-  isUnresolvedAssetPlaceholder,
-  maskNonScannableRanges,
-  resolveExistingLocalAsset,
-} from "@hyperframes/parsers/asset-resolution";
+  resolveLocalMediaCandidate,
+  type HtmlSourceLike,
+  type MediaStreamProbeResults,
+} from "./mediaStreamProbe.js";
 import type { HyperframeLintFinding } from "./types.js";
 import { mediaSrcTagRe } from "./utils";
 
-/** Structurally compatible with `project.ts`'s (unexported) `HtmlSource` —
- * duplicated as a shape, not imported, to avoid a circular import between
- * this file and `project.ts` (which imports `lintHevcPreviewCodec` below). */
-interface HtmlSourceLike {
-  html: string;
-  compSrcPath?: string;
-}
-
-const PROBE_TIMEOUT_MS = 4000;
-// Bounds concurrent ffprobe child processes for compositions referencing many videos.
-const PROBE_CONCURRENCY = 8;
-
-function execFileAsync(file: string, args: string[]): Promise<string> {
-  return new Promise((resolvePromise, reject) => {
-    execFile(file, args, { timeout: PROBE_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
-      if (error) reject(error);
-      else resolvePromise(stdout.toString());
-    });
-  });
-}
-
-function hasHevcStream(json: unknown): boolean {
-  if (typeof json !== "object" || json === null) return false;
-  const streams = Reflect.get(json, "streams");
-  if (!Array.isArray(streams)) return false;
-  return streams.some((stream) => {
-    if (typeof stream !== "object" || stream === null) return false;
-    return Reflect.get(stream, "codec_name") === "hevc";
-  });
-}
-
-// Best-effort: any failure (ffprobe missing, times out, non-video file,
-// unparsable output) resolves to "not HEVC" rather than throwing. This rule
-// must never fail lint/check just because ffprobe isn't installed.
-async function probeIsHevc(ffprobePath: string, filePath: string): Promise<boolean> {
-  try {
-    const stdout = await execFileAsync(ffprobePath, [
-      "-v",
-      "error",
-      "-select_streams",
-      "v:0",
-      "-show_entries",
-      "stream=codec_name",
-      "-of",
-      "json",
-      "--",
-      filePath,
-    ]);
-    return hasHevcStream(JSON.parse(stdout));
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Collects local `<video src>` references, resolved to their absolute path
- * and deduped by that path — this is both the candidate set AND the in-run
- * probe cache for `lintHevcPreviewCodec` below: the same file referenced
- * twice only ends up as one map entry, so it's only probed once.
+ * and deduped by that path — the same file referenced twice only ends up as
+ * one map entry, so `probeMediaStreams` only probes it once.
  *
  * Files that don't resolve to an existing local asset are skipped here —
  * `missing_local_asset` already reports those, and hevc_preview_codec never
  * probes a file that doesn't exist.
  */
-// fallow-ignore-next-line complexity
 export function collectLocalVideoCandidates(
   projectDir: string,
   htmlSources: HtmlSourceLike[],
@@ -90,18 +28,9 @@ export function collectLocalVideoCandidates(
     const re = new RegExp(videoSrcRe.source, videoSrcRe.flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
-      const rawSrc = match[2] ?? "";
-      // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
-      if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
-      const src = cleanAssetUrl(rawSrc);
-      if (!src) continue;
-      if (isRemoteOrInlineUrl(src)) continue;
-      const rootRelative = compSrcPath
-        ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
-        : src;
-      const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
-      if (!resolvedAsset) continue;
-      if (!candidates.has(resolvedAsset.resolved)) candidates.set(resolvedAsset.resolved, src);
+      const candidate = resolveLocalMediaCandidate(projectDir, compSrcPath, match[2] ?? "");
+      if (!candidate || candidates.has(candidate.resolved)) continue;
+      candidates.set(candidate.resolved, candidate.src);
     }
   }
 
@@ -115,35 +44,23 @@ export function collectLocalVideoCandidates(
  * embeddable player play the file directly in-browser, where HEVC support
  * varies. Never escalated beyond "info" — this must not fail lint or check.
  *
- * `candidates` maps each unique resolved file path to a display src string
- * (already deduped by the caller, so each file is probed exactly once here);
- * files missing from disk are the caller's responsibility to have excluded —
- * `missing_local_asset` covers those and this rule never probes them.
+ * `candidates` maps each unique resolved file path to a display src string;
+ * `probes` is the shared `probeMediaStreams` result for (at least) those
+ * paths. A file whose probe is unknown (`null`/absent) is never reported.
+ * `codec_name === "hevc"` is only ever carried by a video stream, so no
+ * `codec_type` filter is needed; every video stream is considered, so a file
+ * whose first video stream is H.264 but carries an HEVC stream later is also
+ * reported.
  */
-export async function lintHevcPreviewCodec(
-  candidates: Map<string, string>,
-): Promise<HyperframeLintFinding[]> {
-  if (candidates.size === 0) return [];
-
-  const ffprobePath = findFfBinary("ffprobe", { configuredMustExist: true });
-  if (!ffprobePath) return [];
-
-  const entries = [...candidates.entries()];
-  const isHevc = new Array<boolean>(entries.length).fill(false);
-  let nextIndex = 0;
-  const workerCount = Math.min(PROBE_CONCURRENCY, entries.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < entries.length) {
-        const index = nextIndex++;
-        const entry = entries[index];
-        if (!entry) break;
-        isHevc[index] = await probeIsHevc(ffprobePath, entry[0]);
-      }
-    }),
-  );
-
-  const hevcSrcs = entries.filter((_, i) => isHevc[i]).map(([, src]) => src);
+export function lintHevcPreviewCodec(
+  candidates: ReadonlyMap<string, string>,
+  probes: MediaStreamProbeResults,
+): HyperframeLintFinding[] {
+  const hevcSrcs: string[] = [];
+  for (const [filePath, src] of candidates) {
+    const streams = probes.get(filePath);
+    if (streams?.some((stream) => stream.codec_name === "hevc")) hevcSrcs.push(src);
+  }
   if (hevcSrcs.length === 0) return [];
 
   const unique = [...new Set(hevcSrcs)];

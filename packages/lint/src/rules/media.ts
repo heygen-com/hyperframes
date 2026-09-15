@@ -112,6 +112,14 @@ function srcKind(src: string): SrcKind | null {
   return null;
 }
 
+/**
+ * Static half of `media_src_kind_mismatch`: the tag says one media kind, the
+ * src's extension / data: MIME says another. The probe-backed half lives in
+ * `../renderAudioSourceLint.ts` (project level, needs the files on disk): it takes
+ * the render's audio element set and reports, under the SAME code and
+ * severity, any file ffprobe finds to have no audio stream — the check the
+ * producer preflight applies before fail-closing.
+ */
 function findMediaSrcKindMismatchFindings(ctx: LintContext): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
   for (const tag of ctx.tags) {
