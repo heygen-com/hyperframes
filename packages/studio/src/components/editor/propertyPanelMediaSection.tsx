@@ -9,8 +9,8 @@ import {
   LABEL,
   parseNumericValue,
   RESPONSIVE_GRID,
-  stripQueryAndHash,
 } from "./propertyPanelHelpers";
+import { resolveProjectAssetPath } from "../../utils/projectAssetPath";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import {
@@ -78,25 +78,30 @@ export function MediaSection({
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
 
   const srcAttr = el.getAttribute("src") ?? "";
+  const authoredSrc = el.getAttribute("data-hf-authored-src") ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);
   const [createPlate, setCreatePlate] = useState(false);
   const [quality, setQuality] = useState<"fast" | "balanced" | "best">("balanced");
 
-  const absoluteSrc =
-    projectDir && srcAttr && !srcAttr.startsWith("http") ? `${projectDir}/${srcAttr}` : srcAttr;
+  const sourceFile = element.sourceFile || "index.html";
   const projectSrc =
-    srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
-      ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
-      : "";
+    resolveProjectAssetPath(authoredSrc, sourceFile) ??
+    resolveProjectAssetPath(srcAttr, sourceFile) ??
+    "";
+  const displaySrc = projectSrc || authoredSrc || srcAttr;
+  const absoluteSrc =
+    projectDir && displaySrc && !displaySrc.startsWith("http") && !displaySrc.startsWith("data:")
+      ? `${projectDir}/${displaySrc}`
+      : displaySrc;
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
   const panelTitle = isImage ? "Image" : isVideo ? "Video" : "Audio";
 
   useEffect(() => {
     setRemoveProgress(null);
     setCreatePlate(false);
-  }, [srcAttr]);
+  }, [srcAttr, authoredSrc]);
 
   const applyCutoutResult = async (result: BackgroundRemovalResult) => {
     await onSetHtmlAttribute("src", result.outputPath);
@@ -139,7 +144,7 @@ export function MediaSection({
   return (
     <Section title={panelTitle} icon={isAudio ? <Music size={15} /> : <Film size={15} />}>
       <div className="space-y-4">
-        {srcAttr && (
+        {displaySrc && (
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-medium text-neutral-500">Source</div>
@@ -177,6 +182,7 @@ export function MediaSection({
               </div>
               <button
                 type="button"
+                data-media-remove-bg="true"
                 disabled={!canRemoveBackground || removeBusy}
                 onClick={(event) => {
                   event.stopPropagation();

@@ -228,4 +228,31 @@ describe("registerMediaRoutes", () => {
     expect(response.status).toBe(403);
     expect(startBackgroundRemoval).not.toHaveBeenCalled();
   });
+
+  it("starts an image cutout job with default PNG output for JPG input", async () => {
+    const { app, projectDir, startBackgroundRemoval } = createAdapter(completeJob);
+
+    const response = await app.request("http://localhost/projects/demo/media/remove-background", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputPath: "assets/photo.jpg" }),
+    });
+    const data = (await response.json()) as {
+      jobId: string;
+      outputPath: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(data.outputPath).toBe("assets/cutouts/photo-cutout.png");
+    expect(startBackgroundRemoval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project: { id: "demo", dir: projectDir },
+        inputAssetPath: "assets/photo.jpg",
+        outputAssetPath: "assets/cutouts/photo-cutout.png",
+        quality: "balanced",
+        device: "auto",
+        jobId: data.jobId,
+      }),
+    );
+  });
 });
