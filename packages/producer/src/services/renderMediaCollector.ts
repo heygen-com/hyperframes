@@ -41,6 +41,19 @@ import {
  */
 const COMPOSITION_HOST_ATTR = "data-composition-file";
 
+/**
+ * Where a composition host closes, in its parent's time. `data-end` wins; a
+ * host authored with only `data-duration` closes at start + duration — the
+ * same window the runtime uses to hide the host's descendants, so nested
+ * media stops with the scene instead of running to the scene file's end.
+ */
+function resolveHostEnd(host: Element, hostStart: number): number | null {
+  const end = parseNumeric(host.getAttribute("data-end"));
+  if (end != null) return end;
+  const duration = parseNumeric(host.getAttribute("data-duration"));
+  return duration == null ? null : hostStart + duration;
+}
+
 interface HostWindow {
   /** Seconds to add to a descendant's authored, scene-relative start. */
   offset: number;
@@ -84,7 +97,7 @@ function resolveHostWindow(
   // parentElement walks leaf → root; the offsets accumulate root → leaf.
   for (const host of hosts.reverse()) {
     const hostStart = resolveReferencedStart(document, host, startCache, visiting);
-    const hostEnd = parseNumeric(host.getAttribute("data-end"));
+    const hostEnd = resolveHostEnd(host, hostStart);
     if (hostEnd != null) limit = Math.min(limit, offset + hostEnd);
     offset += hostStart;
   }
