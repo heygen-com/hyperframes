@@ -1538,6 +1538,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     { dasharray: "1", offset: "0.9", pathLength: 1, count: 0 },
     { dasharray: "1", offset: "0.5", pathLength: 1, count: 1 },
     { dasharray: "0.1 0.9", offset: "0", pathLength: 1, linecap: "round", count: 1 },
+    { dasharray: "100", offset: "100", pathLength: 0, count: 1 },
   ])(
     "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap, pathLength $pathLength → $count connector_detached",
     ({ dasharray, offset, linecap, pathLength, count }) => {
@@ -3484,6 +3485,17 @@ interface CtmTranslate {
 }
 
 // happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
+/**
+ * `SVGGeometryElement.pathLength.baseVal` as the DOM computes it: a finite SVG number (one
+ * trailing comma allowed); anything else (unset, `1.`, `Infinity`, hex, garbage) reads as 0.
+ */
+function domPathLength(attr: string | null): number {
+  if (attr === null) return 0;
+  const svgNumber = /^\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,)?\s*$/.test(attr);
+  const parsed = svgNumber ? Number(attr.replace(",", "")) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
   const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
   const prop = { configurable: true, writable: true };
@@ -3503,10 +3515,10 @@ function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = do
       const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
       const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
       Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
-      // happy-dom has no SVGGeometryElement; mirror the DOM's `pathLength` (0 when unset).
+      // happy-dom has no SVGGeometryElement; mirror the DOM's `pathLength`.
       Object.defineProperty(path, "pathLength", {
         ...prop,
-        value: { baseVal: Number(path.getAttribute("pathLength")) || 0 },
+        value: { baseVal: domPathLength(path.getAttribute("pathLength")) },
       });
       Object.defineProperty(path, "getPointAtLength", {
         ...prop,
