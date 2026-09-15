@@ -1027,8 +1027,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
   });
 
-  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
-    document.body.innerHTML = `
+  const foreignFrameDom = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
         <div id="n1"></div>
         <div id="n2"></div>
@@ -1039,18 +1038,20 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         </svg>
       </div>
     `;
-    installGeometry(
-      {
-        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
-        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
-        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
-      },
-      {
-        n1: { backgroundColor: "rgb(30, 40, 50)" },
-        n2: { backgroundColor: "rgb(30, 40, 50)" },
-      },
-    );
+  const foreignFrameRects = {
+    root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+    n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+    n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+    "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+  };
+  const foreignFrameStyles = {
+    n1: { backgroundColor: "rgb(30, 40, 50)" },
+    n2: { backgroundColor: "rgb(30, 40, 50)" },
+  };
+
+  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
+    document.body.innerHTML = foreignFrameDom;
+    installGeometry(foreignFrameRects, foreignFrameStyles);
     // Screen CTM translates svg user space by the svg's offset (80, 227): the detached path's
     // start (980, 580) renders at (1060, 807) — 147px below #n1's box — while the anchored
     // path's start (900, 353) renders at (980, 580), inside #n1.
@@ -1064,6 +1065,59 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues[0]?.message).toContain("user-space coordinates would attach");
     expect(issues[0]?.fixHint).toContain("invert getScreenCTM");
   });
+
+  it("does not flag a paste-bug connector still hidden behind its dash offset", () => {
+    document.body.innerHTML = foreignFrameDom;
+    // The fixture above, with #detached fully dash-hidden — draw-on entrance not yet advanced.
+    installGeometry(foreignFrameRects, {
+      ...foreignFrameStyles,
+      detached: { strokeDasharray: "100", strokeDashoffset: "100" },
+    });
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // The dash gate reads the whole pattern: only a stroke whose visible window sits inside one
+  // gap is hidden. Dashed patterns, a bare `0` (renders solid) and `none` all paint; a
+  // zero-length dash paints only as a round/square cap (`0 4` is dotted with round caps and
+  // invisible with the default butt cap). Path length is 100 (installConnectorGeometry);
+  // `50 100` at offset 40 leaves exactly 10% painted — the tolerance boundary — while offset 30
+  // shows 20% and fires.
+  it.each([
+    { dasharray: "0 4", offset: "0", count: 0 },
+    { dasharray: "0 4", offset: "0", linecap: "round", count: 1 },
+    { dasharray: "0, 4", offset: "0", linecap: "square", count: 1 },
+    { dasharray: "0px, 999999px", offset: "-99.999px", count: 0 },
+    { dasharray: "0 400", offset: "0", linecap: "round", count: 1 },
+    { dasharray: "0 400", offset: "1", linecap: "round", count: 0 },
+    { dasharray: "4 0", offset: "0", count: 1 },
+    { dasharray: "0", offset: "0", count: 1 },
+    { dasharray: "none", offset: "0", count: 1 },
+    { dasharray: "100px", offset: "100px", count: 0 },
+    { dasharray: "100", offset: "-100", count: 0 },
+    { dasharray: "50 100", offset: "50", count: 0 },
+    { dasharray: "50 100", offset: "40", count: 0 },
+    { dasharray: "50 100", offset: "30", count: 1 },
+  ])(
+    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap → $count connector_detached",
+    ({ dasharray, offset, linecap, count }) => {
+      document.body.innerHTML = foreignFrameDom;
+      installGeometry(foreignFrameRects, {
+        ...foreignFrameStyles,
+        detached: {
+          strokeDasharray: dasharray,
+          strokeDashoffset: offset,
+          ...(linecap ? { strokeLinecap: linecap } : {}),
+        },
+      });
+      installConnectorGeometry({ e: 80, f: 227 });
+      installAuditScript();
+
+      expect(runAudit().filter((issue) => issue.code === "connector_detached")).toHaveLength(count);
+    },
+  );
 
   it("skips svgs and paths without connector intent", () => {
     document.body.innerHTML = `
