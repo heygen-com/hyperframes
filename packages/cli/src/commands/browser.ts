@@ -126,11 +126,13 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
 }
 
 async function runPath(): Promise<void> {
-  const result = await findBrowser();
+  // `preferManagedChrome` on both resolutions below so the printed path is the
+  // one `render` will actually use — same reasoning as `runEnsure` above.
+  const result = await findBrowser({ preferManagedChrome: true });
   if (!result) {
     // Try a full ensure (which includes download) but write only the path
     try {
-      const ensured = await ensureBrowser();
+      const ensured = await ensureBrowser({ preferManagedChrome: true });
       process.stdout.write(ensured.executablePath + "\n");
     } catch (err: unknown) {
       trackCommandFailure("browser", err);
