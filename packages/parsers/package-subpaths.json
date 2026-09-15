@@ -98,6 +98,12 @@
       "types": "./dist/ffBinaries.d.ts",
       "environments": ["bun", "node"]
     },
+    "./process-tracker": {
+      "source": "./src/processTracker.ts",
+      "runtime": "./dist/processTracker.js",
+      "types": "./dist/processTracker.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./asset-resolution": {
       "source": "./src/assetResolution.ts",
       "runtime": "./dist/assetResolution.js",

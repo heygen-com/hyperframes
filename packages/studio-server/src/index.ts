@@ -1,4 +1,4 @@
-export { createStudioApi } from "./createStudioApi.js";
+export { createStudioApi, type StudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export type {
   StudioApiAdapter,

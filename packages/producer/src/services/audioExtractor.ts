@@ -90,7 +90,7 @@ function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
-    trackChildProcess(ffmpeg);
+    trackChildProcess(ffmpeg, { kind: "ffmpeg" });
     let stderr = "";
 
     ffmpeg.stderr.on("data", (data) => {

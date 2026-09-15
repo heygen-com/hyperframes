@@ -17,6 +17,7 @@ export default defineConfig({
     colorGradingContract: "src/colorGradingContract.ts",
     subCompositionValidity: "src/subCompositionValidity.ts",
     ffBinaries: "src/ffBinaries.ts",
+    processTracker: "src/processTracker.ts",
     assetResolution: "src/assetResolution.ts",
   },
   format: ["esm"],

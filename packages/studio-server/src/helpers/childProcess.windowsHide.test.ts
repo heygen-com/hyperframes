@@ -31,6 +31,9 @@ describe("Studio child-process options", () => {
           JSON.stringify({ streams: [{ codec_type: "video", codec_name: "h264" }] }),
           "",
         );
+        // The real execFile returns the ChildProcess the runner registers
+        // with the process tracker.
+        return new EventEmitter();
       },
     );
 

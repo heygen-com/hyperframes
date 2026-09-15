@@ -7,8 +7,15 @@ import type { HyperframeLintFinding } from "./types.js";
 import { lintProject } from "./project.js";
 
 // Keep project lint tests independent of the host's ffprobe installation.
-vi.mock("node:child_process", () => {
-  const mocked = { ChildProcess: class {}, execFile: vi.fn(), execSync: vi.fn() };
+vi.mock("node:child_process", async () => {
+  // The probe runner hands the returned ChildProcess to the process tracker,
+  // which attaches exit/close listeners — the stand-in must be an emitter.
+  const { EventEmitter } = await import("node:events");
+  const mocked = {
+    ChildProcess: class extends EventEmitter {},
+    execFile: vi.fn(),
+    execSync: vi.fn(),
+  };
   return { ...mocked, default: mocked };
 });
 

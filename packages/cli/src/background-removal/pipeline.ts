@@ -15,6 +15,7 @@
  */
 import { spawn } from "node:child_process";
 import { extname } from "node:path";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
@@ -342,6 +343,9 @@ function spawnFfmpeg(
   stdio: StdioTuple,
 ): FfmpegProc {
   const proc = spawn(ffmpegPath, args, { stdio, windowsHide: true });
+  // Decoder and encoder run for the whole clip; tagged so a crash of the CLI
+  // mid-render leaves a recoverable record.
+  trackChildProcess(proc, { kind: "ffmpeg" });
   let stderrBuf = "";
   proc.stderr?.on("data", (d: Buffer) => {
     stderrBuf += d.toString();

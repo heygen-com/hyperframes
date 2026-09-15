@@ -9,7 +9,7 @@
 import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
-import { trackChildProcess } from "./processTracker.js";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 
 export type ConcreteGpuEncoder = "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf";
 export type GpuEncoder = ConcreteGpuEncoder | null;

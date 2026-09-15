@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
 import {
@@ -539,6 +540,7 @@ export async function runFfmpegOnce(
 ): Promise<FfmpegRunResult> {
   return await new Promise((resolvePromise) => {
     const ff = spawn(ffmpegPath, args, { windowsHide: true });
+    trackChildProcess(ff);
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {

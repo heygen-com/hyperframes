@@ -7,7 +7,7 @@ import { basename } from "path";
 import { redactTelemetryString } from "@hyperframes/core";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
-import { trackChildProcess } from "./processTracker.js";
+import { trackChildProcess } from "@hyperframes/parsers/process-tracker";
 
 const FFPROBE_STDERR_MAX_BYTES = 8 * 1024;
 /** Bound on collected stdout. Generous — real -show_streams JSON is well
