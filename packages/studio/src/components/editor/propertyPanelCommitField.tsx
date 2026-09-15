@@ -184,6 +184,10 @@ export function CommitField({
     <input
       ref={inputRef}
       type="text"
+      // Stable hook for the design-shots computed-style capture: the inspector
+      // metric field is the one control the sweep measures that has no label,
+      // role or aria-label of its own.
+      data-testid="inspector-field"
       value={draft}
       disabled={disabled}
       onFocus={() => {
