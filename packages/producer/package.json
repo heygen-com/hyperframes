@@ -112,6 +112,7 @@
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
     "esbuild": "^0.25.12",
+    "gsap": "^3.13.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"
