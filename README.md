@@ -49,7 +49,7 @@ Try a prompt like:
 
 > Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music.
 
-The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Cursor, Gemini CLI, Codex, and other coding agents that support skills.
+The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with IBM Bob, Claude Code, Cursor, Gemini CLI, Codex, and other coding agents that support skills.
 
 ## Skills
 

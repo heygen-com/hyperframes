@@ -22,6 +22,7 @@ import { detectWSL } from "./platform.js";
 export type SandboxRuntime = "gvisor" | "firecracker" | "docker" | "kvm" | "wsl" | null;
 
 export type AgentRuntime =
+  | "bob"
   | "claude_code"
   | "codex"
   | "cursor"
@@ -47,6 +48,18 @@ interface VendorRule {
 // before more generic ones (e.g. copilot_agent before a hypothetical generic
 // 'github_actions' rule).
 const VENDOR_RULES: VendorRule[] = [
+  // IBM Bob Shell — both shell execution paths stamp BOBSHELL_CLI=1 onto the
+  // child environment: childProcessFallback's spawn env and executeWithPty's
+  // PTY env. Keep this ahead of other agents because Bob inherits the parent
+  // environment, so a Bob session launched from Codex or Claude can carry both
+  // vendors' markers; BOBSHELL_CLI identifies the immediate executor.
+  // BOBSHELL_API_KEY is deliberately ignored: it is an authentication setting,
+  // not proof that Bob launched the current process.
+  // Source: IBM Bob Shell 1.0.6 bundle (lb.childProcessFallback / executeWithPty).
+  {
+    name: "bob",
+    check: (env) => typeof env["BOBSHELL_CLI"] === "string",
+  },
   // Anthropic Claude Code — sets CLAUDECODE=1 on every Bash/PowerShell tool
   // spawn (Shell.ts:321) and CLAUDE_CODE_ENTRYPOINT at startup, inherited by
   // every child (main.tsx:527). Both propagate to spawned subprocesses.
