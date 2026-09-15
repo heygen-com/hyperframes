@@ -322,15 +322,61 @@ describe("resolveVideoExtractionDuration", () => {
     }
   });
 
-  it("rejects a media start at source EOF before planning extraction", () => {
-    expect(() =>
-      resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(3), 10),
-    ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
+  it("holds the final frame when a non-loop media start sits at source EOF", () => {
+    // The runtime clamps currentTime and holds the last frame for the slot;
+    // encode plans one held frame instead of failing the render.
+    expect(resolveVideoExtractionWindow(video({ end: 6, mediaStart: 3 }), metadata(3), 10)).toEqual(
+      {
+        compositionStart: 0,
+        mediaStart: 3 - 1e-6,
+        durationSeconds: 1e-6,
+        preserveTimelineEnd: true,
+        ensureFinalFrame: true,
+      },
+    );
   });
 
-  it("rejects a media start at video-stream EOF even when the container continues", () => {
+  it("holds the final frame at video-stream EOF even when the container continues", () => {
+    expect(
+      resolveVideoExtractionWindow(video({ end: 6, mediaStart: 3 }), metadata(60, 3), 10),
+    ).toEqual({
+      compositionStart: 0,
+      mediaStart: 3 - 1e-6,
+      durationSeconds: 1e-6,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("holds the final frame for a media start well past EOF on a later slot", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: 104, end: 120, mediaStart: 14 }),
+        metadata(9.6),
+        270,
+      ),
+    ).toEqual({
+      compositionStart: 104,
+      mediaStart: 9.6 - 1e-6,
+      durationSeconds: 1e-6,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("skips a past-EOF hold whose slot has no interval inside the composition", () => {
+    expect(
+      resolveVideoExtractionWindow(video({ start: 12, end: 20, mediaStart: 3 }), metadata(3), 10)
+        .durationSeconds,
+    ).toBe(0);
+    expect(
+      resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(3), 10).durationSeconds,
+    ).toBe(0);
+  });
+
+  it("still rejects a looping media start at source EOF", () => {
     expect(() =>
-      resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(60, 3), 10),
+      resolveVideoExtractionWindow(video({ end: 6, mediaStart: 3, loop: true }), metadata(3), 10),
     ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
   });
 
@@ -1804,6 +1850,22 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       kind: "media_start_out_of_range",
       retryable: false,
     });
+  }, 60_000);
+
+  it("holds the final frame for a non-loop media start past source EOF", async () => {
+    const src = await synthCfrClip("past-eof-hold-src.mp4", 1);
+    const outputDir = join(FIXTURE_DIR, "out-past-eof-hold");
+    const video = cfrClipElement("past-eof-hold", src, 3, 2);
+
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, { fps: 30, outputDir });
+
+    expect(result.errors).toEqual([]);
+    expect(result.extracted).toHaveLength(1);
+    // The slot keeps its authored window; the source collapses to one held frame.
+    expect(video.start).toBe(0);
+    expect(video.end).toBe(3);
+    const frames = readdirSync(join(outputDir, "past-eof-hold")).filter((f) => f.endsWith(".jpg"));
+    expect(frames).toHaveLength(1);
   }, 60_000);
 
   it("preserves legacy metadata rejection unless typed aggregation is explicitly enabled", async () => {

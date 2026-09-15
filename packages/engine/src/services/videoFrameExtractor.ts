@@ -1131,6 +1131,39 @@ export function resolveTimelineExtractionWindow(
 }
 
 /**
+ * Plan a non-looping video whose media start already sits at/after the last
+ * playable frame. The browser runtime clamps `currentTime` there and holds the
+ * final frame for the whole slot (`isHeldVideoTail`), so encode holds the same
+ * frame instead of failing the render. Nothing outside the composition or the
+ * authored slot is extracted; a source-bounded slot (no finite end) has no
+ * visible interval left and is skipped, matching the runtime's implicit slot.
+ */
+function resolvePastEofHoldWindow(
+  video: TimelineWindowVideo,
+  playableDuration: number,
+  timelineEnd: number | undefined,
+): TimelineExtractionWindow {
+  const compositionStart = Math.max(0, video.start);
+  const authoredDuration =
+    Number.isFinite(video.end) && video.end > compositionStart ? video.end - compositionStart : 0;
+  const timelineDuration =
+    timelineEnd === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, timelineEnd - compositionStart);
+  const visibleDuration = Math.min(authoredDuration, timelineDuration);
+  if (!(visibleDuration > 0)) {
+    return { compositionStart, mediaStart: playableDuration, durationSeconds: 0 };
+  }
+  return {
+    compositionStart,
+    mediaStart: playableDuration - FINAL_FRAME_LOGICAL_DURATION_SECONDS,
+    durationSeconds: FINAL_FRAME_LOGICAL_DURATION_SECONDS,
+    preserveTimelineEnd: true,
+    ensureFinalFrame: true,
+  };
+}
+
+/**
  * Replace a held-tail suffix that starts at/after the final decoded timestamp
  * with one exact frame. This keeps raw HDR scratch O(one frame) without
  * assuming a one-second seek window contains a CFR/VFR timestamp.
@@ -1154,7 +1187,12 @@ export async function resolveFinalFrameExtractionWindow(
   );
   if (window.mediaStart < finalFrameTimestamp - 1e-9) return window;
 
-  const sourceRemaining = playableDuration - video.mediaStart;
+  // A media start at/after EOF (past-EOF hold) leaves no source remaining;
+  // the logical duration is still one held frame, never zero or negative.
+  const sourceRemaining = Math.max(
+    playableDuration - video.mediaStart,
+    FINAL_FRAME_LOGICAL_DURATION_SECONDS,
+  );
   const logicalDuration = Math.min(sourceRemaining, FINAL_FRAME_LOGICAL_DURATION_SECONDS);
   return {
     compositionStart: Math.max(0, video.start),
@@ -1185,12 +1223,15 @@ export function resolveVideoExtractionWindow(
     );
   }
   if (video.mediaStart >= playableDuration) {
-    throw new VideoSourceExtractionError(
-      "media_start_out_of_range",
-      false,
-      "Video media start is outside the source duration",
-      `Video media start ${video.mediaStart}s is outside playable video duration ${playableDuration}s`,
-    );
+    if (video.loop) {
+      throw new VideoSourceExtractionError(
+        "media_start_out_of_range",
+        false,
+        "Video media start is outside the source duration",
+        `Video media start ${video.mediaStart}s is outside playable video duration ${playableDuration}s`,
+      );
+    }
+    return resolvePastEofHoldWindow(video, playableDuration, timelineEnd);
   }
   const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
   const requestedTimelineDuration = video.end - video.start;
@@ -1723,11 +1764,13 @@ export async function extractAllVideoFrames(
         const metadata = videoMetadata[i];
         if (!entry || !metadata) continue;
 
-        // Guard against mediaStart past EOF — FFmpeg's `-ss` silently produces
+        // Guard a looping mediaStart past EOF — FFmpeg's `-ss` silently produces
         // a 0-byte file when seeking beyond the source duration, and the
-        // downstream extractor then points at a broken input.
+        // downstream extractor then points at a broken input. A non-looping
+        // past-EOF start is planned as a final-frame hold instead (see
+        // `resolvePastEofHoldWindow`), which seeks to a real timestamp.
         const playableDuration = resolvePlayableVideoDuration(metadata);
-        if (entry.video.mediaStart >= playableDuration) {
+        if (entry.video.loop && entry.video.mediaStart >= playableDuration) {
           errors.push({
             videoId: entry.video.id,
             kind: "media_start_out_of_range",

@@ -305,9 +305,39 @@ describe("resolveHdrExtractionWindow", () => {
     });
   });
 
-  it("rejects mediaStart at source EOF before HDR budgeting", () => {
+  it("plans a one-frame hold for a non-loop mediaStart at source EOF", () => {
+    expect(
+      resolveHdrExtractionWindow(
+        hdrVideo("past-eof", { end: 6, mediaStart: 3 }),
+        60,
+        videoMetadata(3),
+      ),
+    ).toEqual({
+      compositionStart: 0,
+      mediaStart: 3 - 1e-6,
+      durationSeconds: 1e-6,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("skips a source-bounded slot whose mediaStart is at source EOF", () => {
+    expect(
+      resolveHdrExtractionWindow(
+        hdrVideo("past-eof-open", { mediaStart: 3 }),
+        60,
+        videoMetadata(3),
+      ),
+    ).toBeNull();
+  });
+
+  it("still rejects a looping mediaStart at source EOF before HDR budgeting", () => {
     expect(() =>
-      resolveHdrExtractionWindow(hdrVideo("past-eof", { mediaStart: 3 }), 60, videoMetadata(3)),
+      resolveHdrExtractionWindow(
+        hdrVideo("past-eof-loop", { end: 6, mediaStart: 3, loop: true }),
+        60,
+        videoMetadata(3),
+      ),
     ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
   });
 
