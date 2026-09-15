@@ -334,6 +334,34 @@ describe("resolveVideoExtractionDuration", () => {
     ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
   });
 
+  it("plans a one-frame held tail when an explicit non-looping slot starts past EOF", () => {
+    expect(resolveVideoExtractionWindow(video({ end: 6, mediaStart: 5 }), metadata(2))).toEqual({
+      compositionStart: 0,
+      mediaStart: 1.999999,
+      durationSeconds: 0.000001,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("keeps the playable suffix when an explicit non-looping slot starts just inside EOF", () => {
+    expect(
+      resolveVideoExtractionWindow(video({ end: 6, mediaStart: 1.9 }), metadata(2), 6),
+    ).toEqual({
+      compositionStart: 0,
+      mediaStart: 1.9,
+      durationSeconds: 0.10000000000000009,
+      preserveTimelineEnd: true,
+      ensureFinalFrame: true,
+    });
+  });
+
+  it("rejects a looping explicit slot that starts at source EOF", () => {
+    expect(() =>
+      resolveVideoExtractionWindow(video({ end: 6, mediaStart: 2, loop: true }), metadata(2), 6),
+    ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
+  });
+
   it("rebases a loop phase when the visible window stays within one cycle", () => {
     expect(
       resolveVideoExtractionWindow(
@@ -1548,6 +1576,48 @@ describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
     },
     30_000,
   );
+
+  it("renders the same final decoded frame just inside and past EOF", async () => {
+    const metadata = await extractVideoMetadata(cfrFixture);
+    const sourceDuration = metadata.videoStreamDurationSeconds;
+    const outputDir = mkdtempSync(join(fixtureDir, "eof-out-"));
+    const videos: VideoElement[] = [
+      {
+        id: "just-inside-eof",
+        src: cfrFixture,
+        start: 0,
+        end: 5,
+        mediaStart: sourceDuration - 0.001,
+        loop: false,
+        hasAudio: false,
+      },
+      {
+        id: "past-eof",
+        src: cfrFixture,
+        start: 0,
+        end: 5,
+        mediaStart: sourceDuration + 1,
+        loop: false,
+        hasAudio: false,
+      },
+    ];
+
+    const result = await extractAllVideoFrames(videos, fixtureDir, {
+      fps: 30,
+      format: "png",
+      outputDir,
+      timelineEnd: 5,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.extracted).toHaveLength(2);
+    const insideFrame = result.extracted[0]?.framePaths.get(0);
+    const pastFrame = result.extracted[1]?.framePaths.get(0);
+    expect(insideFrame).toBeDefined();
+    expect(pastFrame).toBeDefined();
+    if (!insideFrame || !pastFrame) throw new Error("expected both final-frame outputs");
+    expect(readFileSync(pastFrame)).toEqual(readFileSync(insideFrame));
+  }, 30_000);
 });
 
 // Regression test for the VFR (variable frame rate) freeze bug.

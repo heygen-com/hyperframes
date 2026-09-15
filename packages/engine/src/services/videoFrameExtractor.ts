@@ -1015,6 +1015,11 @@ type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
   Partial<Pick<VideoElement, "playbackRate">> &
   Partial<Pick<VideoElement, "loop">>;
 
+function canHoldFinalFramePastEof(video: TimelineWindowVideo): boolean {
+  const timelineDuration = video.end - video.start;
+  return !video.loop && Number.isFinite(timelineDuration) && timelineDuration > 0;
+}
+
 // Logical duration assigned to a one-frame held-tail representation. This is
 // deliberately below any supported output frame interval: coverage expects
 // one frame, while FFmpeg seeks to the separately probed real frame timestamp.
@@ -1118,6 +1123,18 @@ export function resolveTimelineExtractionWindow(
         },
         visibleDuration,
       );
+    } else if (canHoldFinalFramePastEof(video)) {
+      const logicalDuration = Math.min(sourceDuration, FINAL_FRAME_LOGICAL_DURATION_SECONDS);
+      return withTimelineDuration(
+        {
+          compositionStart: video.start,
+          mediaStart: sourceDuration - logicalDuration,
+          durationSeconds: logicalDuration,
+          preserveTimelineEnd: true,
+          ensureFinalFrame: true,
+        },
+        visibleDuration,
+      );
     }
   }
   return withTimelineDuration(
@@ -1155,7 +1172,10 @@ export async function resolveFinalFrameExtractionWindow(
   if (window.mediaStart < finalFrameTimestamp - 1e-9) return window;
 
   const sourceRemaining = playableDuration - video.mediaStart;
-  const logicalDuration = Math.min(sourceRemaining, FINAL_FRAME_LOGICAL_DURATION_SECONDS);
+  const logicalDuration = Math.min(
+    Math.max(sourceRemaining, window.durationSeconds),
+    FINAL_FRAME_LOGICAL_DURATION_SECONDS,
+  );
   return {
     compositionStart: Math.max(0, video.start),
     mediaStart: playableDuration - logicalDuration,
@@ -1184,7 +1204,9 @@ export function resolveVideoExtractionWindow(
       `Playable video stream duration is ${playableDuration}s`,
     );
   }
-  if (video.mediaStart >= playableDuration) {
+  const requestedTimelineDuration = video.end - video.start;
+  const heldPastEof = video.mediaStart >= playableDuration && canHoldFinalFramePastEof(video);
+  if (video.mediaStart >= playableDuration && !heldPastEof) {
     throw new VideoSourceExtractionError(
       "media_start_out_of_range",
       false,
@@ -1193,13 +1215,17 @@ export function resolveVideoExtractionWindow(
     );
   }
   const playbackRate = normalizePlaybackRate(video.playbackRate ?? 1);
-  const requestedTimelineDuration = video.end - video.start;
   const resolvedDuration =
     Number.isFinite(requestedTimelineDuration) && requestedTimelineDuration > 0
       ? requestedTimelineDuration
       : resolveSegmentDuration(requestedTimelineDuration, video.mediaStart, playableDuration) /
         playbackRate;
-  return resolveTimelineExtractionWindow(video, resolvedDuration, timelineEnd, playableDuration);
+  return resolveTimelineExtractionWindow(
+    video,
+    resolvedDuration,
+    timelineEnd ?? (heldPastEof ? video.end : undefined),
+    playableDuration,
+  );
 }
 
 export function resolveVideoExtractionDuration(
@@ -1723,11 +1749,10 @@ export async function extractAllVideoFrames(
         const metadata = videoMetadata[i];
         if (!entry || !metadata) continue;
 
-        // Guard against mediaStart past EOF — FFmpeg's `-ss` silently produces
-        // a 0-byte file when seeking beyond the source duration, and the
-        // downstream extractor then points at a broken input.
+        // Guard past-EOF windows that cannot use the non-looping held-tail plan.
+        // FFmpeg's `-ss` otherwise silently produces a 0-byte intermediate.
         const playableDuration = resolvePlayableVideoDuration(metadata);
-        if (entry.video.mediaStart >= playableDuration) {
+        if (entry.video.mediaStart >= playableDuration && !canHoldFinalFramePastEof(entry.video)) {
           errors.push({
             videoId: entry.video.id,
             kind: "media_start_out_of_range",
