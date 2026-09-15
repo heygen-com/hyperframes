@@ -3,13 +3,6 @@ import type { ProducerLogger } from "../../logger.js";
 import type { ProgressCallback, RenderJob } from "../renderOrchestrator.js";
 import { updateJobStatus } from "./shared.js";
 
-function snapshotJob(job: RenderJob): RenderJob {
-  return {
-    ...job,
-    warnings: cloneCaptureWarnings(job.warnings),
-  };
-}
-
 /** Serializes progress delivery and contains sink failures at the boundary. */
 export class OrderedRenderEventPublisher {
   private tail: Promise<void> = Promise.resolve();
@@ -21,7 +14,10 @@ export class OrderedRenderEventPublisher {
 
   publish(job: RenderJob, message: string): void {
     if (!this.sink) return;
-    const snapshot = snapshotJob(job);
+    const snapshot = {
+      ...job,
+      warnings: cloneCaptureWarnings(job.warnings),
+    };
     this.tail = this.tail
       .then(() => this.sink?.(snapshot, message))
       .then(() => undefined)

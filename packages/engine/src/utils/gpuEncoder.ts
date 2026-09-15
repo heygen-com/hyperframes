@@ -77,7 +77,7 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
   }).wait();
   if (outcome.reason !== "exit" || outcome.exitCode !== 0) return null;
   const candidates = getCompiledGpuEncoders(stdout);
-  return selectUsableGpuEncoder(candidates, canUseGpuEncoder).catch(() => null);
+  return selectUsableGpuEncoder(candidates, canUseGpuEncoder);
 }
 
 let cachedGpuEncoder: GpuEncoder | undefined = undefined;

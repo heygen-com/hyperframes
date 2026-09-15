@@ -14,8 +14,6 @@ const UI_UPDATE_INTERVAL_MS = 100;
 export interface ClockCallbacks {
   /** Called every ~100ms and on completion with the current time. */
   onTimeUpdate: (currentTime: number, duration: number) => void;
-  /** Called when playback reaches the end. Return true to loop (seek+play). */
-  onEnded: () => boolean;
   /** Get the current loop flag. */
   getLoop: () => boolean;
   /** Trigger a seek-then-play loop restart. */
@@ -30,12 +28,7 @@ export class DirectTimelineClock {
 
   constructor(private readonly _callbacks: ClockCallbacks) {}
 
-  start(
-    timeline: DirectTimelineAdapter,
-    getCurrentTime: () => number,
-    getDuration: () => number,
-    isPaused: () => boolean,
-  ): void {
+  start(timeline: DirectTimelineAdapter, getDuration: () => number, isPaused: () => boolean): void {
     this.stop();
 
     const tick = () => {
@@ -88,9 +81,5 @@ export class DirectTimelineClock {
     if (this._raf === null) return;
     cancelAnimationFrame(this._raf);
     this._raf = null;
-  }
-
-  get isRunning(): boolean {
-    return this._raf !== null;
   }
 }

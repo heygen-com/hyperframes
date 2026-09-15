@@ -111,10 +111,6 @@ export class ShaderLoaderState {
     this.show();
   }
 
-  get hideTimeout(): ReturnType<typeof setTimeout> | null {
-    return this._hideTimeout;
-  }
-
   destroy(): void {
     if (this._hideTimeout) {
       clearTimeout(this._hideTimeout);

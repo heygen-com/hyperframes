@@ -1156,6 +1156,40 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("completes direct timeline playback with loop=%s", (loop) => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const timeline: TimelineStub = {
+      duration: () => 5,
+      time: () => 5,
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.toggleAttribute("loop", loop);
+    stubContentWindow({ __timelines: { main: timeline } });
+
+    player.play();
+    const tick = frames.shift();
+    expect(tick).toBeDefined();
+    tick?.(0);
+
+    if (loop) {
+      expect(timeline.seek).toHaveBeenCalledWith(0, false);
+      expect(timeline.play).toHaveBeenCalledTimes(2);
+      expect(ended).not.toHaveBeenCalled();
+    } else {
+      expect(timeline.pause).toHaveBeenCalledOnce();
+      expect(ended).toHaveBeenCalledOnce();
+      expect(player._currentTime).toBe(5);
+    }
+  });
+
   it("pauses same-origin __timelines after seek while playing", () => {
     const pause = vi.fn();
     const timeline: TimelineStub = {

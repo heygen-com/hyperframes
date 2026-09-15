@@ -155,7 +155,6 @@ class HyperframesPlayer extends HTMLElement {
         this.controlsApi?.updatePlaying(false);
         this.dispatchEvent(new Event("ended"));
       },
-      onEnded: () => this.loop,
     });
 
     this.probe = new CompositionProbe(this.iframe, {
@@ -367,7 +366,6 @@ class HyperframesPlayer extends HTMLElement {
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,
-        () => this._currentTime,
         () => this._duration,
         () => this._paused,
       );
