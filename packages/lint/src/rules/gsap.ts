@@ -42,6 +42,7 @@ import {
   hasCaptionStyles,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
+  TIMELINE_REGISTRY_ASSIGN_PATTERN,
 } from "../utils";
 import { collectAllDeclaredVariableIds } from "./composition";
 
@@ -1004,6 +1005,10 @@ function collectCssOpacityZeroSelectors(
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
+// Render-time network requests a composition script can hang its timeline on.
+const NETWORK_FETCH_PATTERN =
+  /\bfetch\s*\(|\bd3\s*\.\s*(?:json|csv|tsv|dsv|text|xml|html)\s*\(|new\s+XMLHttpRequest\s*\(|\baxios\s*[.(]/;
+
 export const gsapRules: LintRule<LintContext>[] = [
   // gsap_undefined_css_variable
   async ({ tags, styles, scripts }) => {
@@ -1680,6 +1685,46 @@ export const gsapRules: LintRule<LintContext>[] = [
           "Move the `window.__timelines[id] = tl;` assignment to the END of the " +
           "document.fonts.ready callback, after the tweens are added. Optionally call " +
           "window.__hfForceTimelineRebind() right after, to re-nest the populated timeline.",
+      });
+    }
+    return findings;
+  },
+
+  // gsap_timeline_registered_behind_network_fetch — the timeline is built and registered
+  // inside the callback of a render-time network request (fetch / d3.json / XHR for
+  // topojson, CSV, remote JSON…). Two contracts break at once: the render depends on the
+  // network at capture time, and window.__timelines[id] arrives only when the request
+  // resolves, so the engine's sub-composition timeline poll waits on it — up to the full
+  // player-ready timeout when the request is slow, offline, or blocked. Data a
+  // composition needs must be inline (baked at authoring time) so the timeline is
+  // registered synchronously.
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const content = stripJsComments(script.content);
+      const regIdx = content.search(TIMELINE_REGISTRY_ASSIGN_PATTERN);
+      if (regIdx < 0) continue;
+      const fetchMatch = NETWORK_FETCH_PATTERN.exec(content);
+      if (!fetchMatch || fetchMatch.index > regIdx) continue;
+      // The registration has to sit inside the request's continuation: a `.then(` after
+      // the request, or an `await` on it (`await fetch(…)` puts the keyword just before
+      // the match). A request that is merely earlier in the script with a synchronous
+      // registration after it is not this bug.
+      const after = content.slice(fetchMatch.index, regIdx);
+      const before = content.slice(Math.max(0, fetchMatch.index - 64), fetchMatch.index);
+      if (!/\.then\s*\(/.test(after) && !/\bawait\b/.test(before + after)) continue;
+      findings.push({
+        code: "gsap_timeline_registered_behind_network_fetch",
+        severity: "error",
+        message:
+          `window.__timelines is registered inside the callback of a render-time network request (${fetchMatch[0].trim()}). ` +
+          "The render then depends on the network at capture time, and the timeline is registered late, " +
+          "so the engine's sub-composition timeline poll waits on the request (up to the full player-ready timeout when it is slow or blocked).",
+        fixHint:
+          "Inline the data the composition needs (bake it at authoring time — for map blocks see " +
+          "scripts/catalog/bake-map-geometry.ts) and build + register the paused timeline synchronously. " +
+          "Keep network-free asset readiness (fonts, media) behind the existing readiness gates, not the registration.",
+        snippet: truncateSnippet(fetchMatch[0]),
       });
     }
     return findings;

@@ -3569,3 +3569,83 @@ describe("SVG draw-on rules", () => {
     });
   });
 });
+
+describe("gsap_timeline_registered_behind_network_fetch", () => {
+  const host = (script: string) => `
+<html><body>
+  <div data-composition-id="map" data-width="1920" data-height="1080"><svg><g class="states"></g></svg></div>
+  <script>${script}</script>
+</body></html>`;
+
+  it("flags a timeline registered inside a fetch().then() callback", async () => {
+    const result = await lintHyperframeHtml(
+      host(`
+    const tl = gsap.timeline({ paused: true });
+    fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
+      .then((r) => r.json())
+      .then((us) => {
+        tl.to(".states", { opacity: 1, duration: 1 }, 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["map"] = tl;
+      });`),
+    );
+    expect(
+      result.findings.find((f) => f.code === "gsap_timeline_registered_behind_network_fetch"),
+    ).toMatchObject({ severity: "error" });
+  });
+
+  it("flags d3.json(...).then and await fetch forms", async () => {
+    for (const script of [
+      `var tl = gsap.timeline({ paused: true });
+       d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function (w) {
+         tl.to(".states", { opacity: 1, duration: 1 }, 0);
+         window.__timelines = window.__timelines || {};
+         window.__timelines["map"] = tl;
+       });`,
+      `(async () => {
+         const tl = gsap.timeline({ paused: true });
+         const data = await (await fetch("data.json")).json();
+         tl.to(".states", { opacity: 1, duration: 1 }, 0);
+         window.__timelines = window.__timelines || {};
+         window.__timelines.map = tl;
+       })();`,
+    ]) {
+      const result = await lintHyperframeHtml(host(script));
+      expect(
+        result.findings.some((f) => f.code === "gsap_timeline_registered_behind_network_fetch"),
+        script,
+      ).toBe(true);
+    }
+  });
+
+  it("does not flag a synchronous registration, even with an unrelated fetch elsewhere", async () => {
+    for (const script of [
+      `const MAP_GEOMETRY = { features: [{ id: "01", d: "M0,0L1,1Z" }] };
+       const tl = gsap.timeline({ paused: true });
+       tl.to(".states", { opacity: 1, duration: 1 }, 0);
+       window.__timelines = window.__timelines || {};
+       window.__timelines["map"] = tl;`,
+      `fetch("/telemetry", { method: "POST" });
+       const tl = gsap.timeline({ paused: true });
+       tl.to(".states", { opacity: 1, duration: 1 }, 0);
+       window.__timelines = window.__timelines || {};
+       window.__timelines["map"] = tl;`,
+      `const tl = gsap.timeline({ paused: true });
+       tl.to(".states", { opacity: 1, duration: 1 }, 0);
+       window.__timelines = window.__timelines || {};
+       window.__timelines["map"] = tl;
+       fetch("/after").then((r) => r.json());`,
+      `// fetch(url).then(() => { window.__timelines["map"] = tl; })  -- only a comment
+       const tl = gsap.timeline({ paused: true });
+       tl.to(".states", { opacity: 1, duration: 1 }, 0);
+       window.__timelines = window.__timelines || {};
+       window.__timelines["map"] = tl;`,
+    ]) {
+      const result = await lintHyperframeHtml(host(script));
+      expect(
+        result.findings.some((f) => f.code === "gsap_timeline_registered_behind_network_fetch"),
+        script,
+      ).toBe(false);
+    }
+  });
+});
