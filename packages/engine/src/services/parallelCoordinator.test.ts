@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  assertDiskSampleVerified,
   calculateOptimalWorkers,
   computeWorkerSizing,
   distributeFrames,
@@ -16,6 +17,7 @@ import {
   resolveParallelDeVerifySamples,
   type WorkerResult,
 } from "./parallelCoordinator.js";
+import { getDrawElementVerificationDetails } from "./frameCapture.js";
 import type { EngineConfig } from "../config.js";
 
 describe("parallel worker phase deadline", () => {
@@ -510,5 +512,37 @@ describe("isFfmpegInfrastructureFailure", () => {
     expect(isFfmpegInfrastructureFailure(undefined)).toBe(false);
     expect(isFfmpegInfrastructureFailure("psnr broken")).toBe(false);
     expect(isFfmpegInfrastructureFailure(42)).toBe(false);
+  });
+});
+
+describe("assertDiskSampleVerified", () => {
+  it("throws kind='shift' when a low-contrast region is missing but PSNR passes", () => {
+    // The #3345 failure shape on the disk path: whole-frame PSNR clears the
+    // floor while a region is fully absent.
+    let caught: unknown;
+    try {
+      assertDiskSampleVerified({ db: 44, shift: 13 }, 32, 3, 7, 1);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("drawElement self-verify failed at frame 7");
+    expect((caught as Error).message).toContain("region shift 13/255 > 3/255");
+    expect(getDrawElementVerificationDetails(caught)).toEqual({
+      kind: "shift",
+      frameIndex: 7,
+      failedShift: 13,
+      verifyMaxShift: 3,
+    });
+  });
+
+  it("still throws kind='psnr' below the dB floor even with zero shift", () => {
+    expect(() => assertDiskSampleVerified({ db: 20, shift: 0 }, 32, 3, 7, 1)).toThrow(
+      /20\.0dB < 32dB/,
+    );
+  });
+
+  it("passes a sample that clears both gates", () => {
+    expect(() => assertDiskSampleVerified({ db: 48, shift: 2 }, 32, 3, 7, 1)).not.toThrow();
   });
 });
