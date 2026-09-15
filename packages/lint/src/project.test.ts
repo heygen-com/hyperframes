@@ -655,10 +655,9 @@ describe("video_media_start_at_or_past_eof", () => {
       <video src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="6" data-media-start="5" muted></video>
       <video src="missing.mp4" data-start="0" data-duration="6" data-media-start="5" muted></video>
     `);
-    mockExecFile.mockImplementation((_file, _args, _options, callback) => {
-      callback(new Error("ffprobe failed"), Buffer.alloc(0), Buffer.alloc(0));
-      return new ChildProcess();
-    });
+    // Every locally addressable source receives a successful duration probe;
+    // each listed attribute/path boundary, not a probe failure, must exclude it.
+    mockDurationProbe(2);
 
     expect(await mediaStartFindings(project)).toEqual([]);
   });

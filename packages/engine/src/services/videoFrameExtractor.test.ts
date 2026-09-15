@@ -2238,6 +2238,30 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     ).toBe(false);
   }, 60_000);
 
+  it("keeps a finite SDR past-EOF slot in a mixed HDR timeline", async () => {
+    const SDR_SHORT = await synthCfrClip("sdr-past-eof.mp4", 1);
+    const HDR_SHORT = await synthHdrTaggedClip("hdr-past-eof-peer.mp4", 1);
+    const outputDir = join(FIXTURE_DIR, "out-hdr-past-eof");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [
+        cfrClipElement("sdr-past-eof", SDR_SHORT, 4, 5),
+        { ...cfrClipElement("hdr-peer", HDR_SHORT, 1), start: 1, end: 2 },
+      ],
+      FIXTURE_DIR,
+      { fps: 30, outputDir },
+    );
+
+    // The SDR slot must survive the mixed-HDR preflight and use the held-tail
+    // path. Reverting its guard to `mediaStart >= playableDuration` records an
+    // out-of-range error here and drops the slot before extraction.
+    expect(result.errors).toEqual([]);
+    expect(result.phaseBreakdown.hdrPreflightCount).toBe(1);
+    expect(extractedFor(result, "sdr-past-eof").totalFrames).toBe(1);
+    expect(extractedFor(result, "hdr-peer").totalFrames).toBeGreaterThan(0);
+  }, 60_000);
+
   it("keeps SDR→HDR cache entries distinct from plain SDR entries", async () => {
     const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-hdr-cache-test-"));
     const SDR = await synthCfrClip("cache-hdr-sdr.mp4", 1);
