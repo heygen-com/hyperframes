@@ -1,6 +1,6 @@
 # Visual design — PR-to-video per-frame shot method
 
-> The method behind **Step 4 (Frame visual design)**. You (the orchestrator) read it to **enrich `STORYBOARD.md` frames in place** — story-design wrote the skeleton (each frame's `scene`, `voiceover`, `transition_in`, the narrative fields, and optionally a candidate blueprint id); you add how each frame **looks and moves**. The unit you write per frame is a **time-coded shot sequence** — a shot directed across its whole duration, not a static slide. You write **no HTML** (that's the frame workers). A PR video is **mostly invented** — typography, number-lockups, mechanism diagrams — so you **design** those elements; the two exceptions are **code beats** (a ready-made `code-*` registry block) and the **credits close** (real contributor avatars), both covered below. `frame.md` is your palette/type truth by role. Layout is a compact vocabulary in this file (the **Layout** section below), stated inline per Scene; motion vocabulary + the motion doctrine + the seek-safe core → `motion-language.md`; the proven shapes → `../hyperframes-animation/blueprints-index.md` + `blueprints/<id>.md`; the `code-*` blocks → `code-vocabulary.md`; concrete rules resolve in Step 5 from this skill's local `../hyperframes-animation/rules/`. Adding palette theory or a generic font rule here? Wrong home — `frame.md` + `hyperframes-creative`.
+> The method behind **Step 4 (Frame visual design)**. You (the orchestrator) read it to **enrich `STORYBOARD.md` frames in place** — story-design wrote the skeleton (each frame's `scene`, `voiceover`, `transition_in`, the narrative fields, and optionally a candidate blueprint id); you add how each frame **looks and moves**. The unit you write per frame is a **time-coded shot sequence** — a shot directed across its whole duration, not a static slide. You write **no HTML** (that's the frame workers). A PR video is **mostly invented** — typography, number-lockups, mechanism diagrams — so you **design** those elements; the two exceptions are **code beats** (a ready-made `code-*` registry block) and the **credits close** (real contributor avatars), both covered below. `frame.md` is your palette/type truth by role. Layout is a compact vocabulary in this file (the **Layout** section below), stated inline per Scene; motion vocabulary + the motion doctrine + the seek-safe core → `motion-language.md`; the proven shapes → `../../hyperframes-animation/blueprints-index.md` + `blueprints/<id>.md`; the `code-*` blocks → `code-vocabulary.md`; concrete rules resolve in Step 5 from this skill's local `../../hyperframes-animation/rules/`. Adding palette theory or a generic font rule here? Wrong home — `frame.md` + `hyperframes-creative`.
 
 ## The unit is a time-coded shot sequence
 
@@ -24,7 +24,7 @@ Scene N (…–end):   content has resolved; hold the read (stillness; subtle ji
 
 Don't invent each shot from scratch. The frame's **role** (its `type` / `beat`) points to a proven shape:
 
-1. **Match the role to a blueprint.** Open `../hyperframes-animation/blueprints-index.md`, find the frame's role in the **role→blueprint menu**, and pick the blueprint whose intent fits this beat (story may already have named a candidate id — confirm or override it). Read that `blueprints/<id>.md`: it is a short, domain-agnostic, **time-coded shot template with `[slots]`** and a named **signature move**.
+1. **Match the role to a blueprint.** Open `../../hyperframes-animation/blueprints-index.md`, find the frame's role in the **role→blueprint menu**, and pick the blueprint whose intent fits this beat (story may already have named a candidate id — confirm or override it). Read that `blueprints/<id>.md`: it is a short, domain-agnostic, **time-coded shot template with `[slots]`** and a named **signature move**.
 
 2. **Instantiate its `[slots]` with THIS frame's content** — three postures:
    - **Reproduce** — the blueprint fits the beat and your content maps onto its slots cleanly. Fill every `[slot]` and follow its Scene timing.
@@ -138,16 +138,16 @@ The bottom ~17% of the canvas is reserved for the caption pill. Plan every frame
 
 ## Where the detail lives
 
-| For…                                                                            | Read                                                                           |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| the proven shapes + role→blueprint menu + how to pick                           | `../hyperframes-animation/blueprints-index.md` → `blueprints/<id>.md`          |
-| the `code-*` blocks (pick + fill for a code beat)                               | `code-vocabulary.md` (local)                                                   |
-| motion — shot model, vocabulary, holds, idle budget, stillness, seek-safe       | `motion-language.md` (local)                                                   |
-| layout — framing, density, depth, hierarchy, inventing the visual, caption band | the **Layout** + **Inventing the visual** sections in this file                |
-| concrete eases / ms / stagger + rule recipe bodies (Step 5)                     | local `../hyperframes-animation/rules/` (the frame worker reads it; you don't) |
-| palette + type tokens                                                           | the project's `frame.md` (code-editorial); basics → `hyperframes-creative`     |
-| within-frame cuts / seams (zoom-through · cut-the-curve · waterfall)            | `cut-catalog.md` (the worker builds them inside the composition)               |
-| transitions                                                                     | story-design owns `transition_in`; you don't touch it                          |
+| For…                                                                            | Read                                                                              |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| the proven shapes + role→blueprint menu + how to pick                           | `../../hyperframes-animation/blueprints-index.md` → `blueprints/<id>.md`          |
+| the `code-*` blocks (pick + fill for a code beat)                               | `code-vocabulary.md` (local)                                                      |
+| motion — shot model, vocabulary, holds, idle budget, stillness, seek-safe       | `motion-language.md` (local)                                                      |
+| layout — framing, density, depth, hierarchy, inventing the visual, caption band | the **Layout** + **Inventing the visual** sections in this file                   |
+| concrete eases / ms / stagger + rule recipe bodies (Step 5)                     | local `../../hyperframes-animation/rules/` (the frame worker reads it; you don't) |
+| palette + type tokens                                                           | the project's `frame.md` (code-editorial); basics → `hyperframes-creative`        |
+| within-frame cuts / seams (zoom-through · cut-the-curve · waterfall)            | `cut-catalog.md` (the worker builds them inside the composition)                  |
+| transitions                                                                     | story-design owns `transition_in`; you don't touch it                             |
 
 ## Before you finish — checklist
 
