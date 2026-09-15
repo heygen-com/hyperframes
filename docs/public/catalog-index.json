@@ -667,6 +667,22 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/card-resize.png"
   },
   {
+    "name": "caret-swap",
+    "type": "component",
+    "title": "Caret Swap",
+    "description": "A gradient caret expands over one phrase, collapses to the left, then types its replacement with a blinking caret.",
+    "tags": [
+      "motion-primitive",
+      "text-effects",
+      "typography",
+      "swap",
+      "typewriter",
+      "remocn-port"
+    ],
+    "href": "/catalog/components/caret-swap",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caret-swap.png"
+  },
+  {
     "name": "carousel-circle-1",
     "type": "block",
     "title": "Circle Carousel 1",
