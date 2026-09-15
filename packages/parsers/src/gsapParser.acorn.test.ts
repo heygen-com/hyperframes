@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
+import { extractLiteralSelectorCalls, parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 
 const __goldens__ = join(fileURLToPath(import.meta.url), "..", "__goldens__");
 const g = (name: string) => join(__goldens__, name);
@@ -221,5 +221,86 @@ window.__timelines['t'] = tl1;
 `.trim();
     const result = parseGsapScriptAcorn(script);
     expect(result.multipleTimelines).toBe(true);
+  });
+});
+
+describe("extractLiteralSelectorCalls", () => {
+  it("collects string literals from every selector sink without timeline resolution", () => {
+    const script = `
+const tl = gsap.timeline({ paused: true });
+tl.to("#a", { x: 1 }, 0);
+gsap.to("#b", { x: 1 });
+gsap.from("#c", { x: 1 });
+gsap.fromTo("#d", { x: 0 }, { x: 1 });
+gsap.set("#e", { x: 1 });
+gsap.timeline().to(\`#f\`, { x: 1 });
+document.querySelector("#g");
+document.querySelectorAll("#h");
+document.body.matches("#i");
+document.body.closest("#j");
+gsap.utils.toArray("#k");
+gsap.to(".box", { x: 1, scrollTrigger: { trigger: "#l", endTrigger: "#m", pin: true } });
+ScrollTrigger.create({ trigger: "#n", pin: "#o" });
+document["querySelector"]("#p");
+let master;
+master = gsap.timeline({ paused: true });
+master.to("#q", { x: 1 });
+const alias = master;
+alias.to("#r", { x: 1 });
+const scene = master.add(gsap.timeline(), 0);
+scene.set("#s", { x: 1 });
+`.trim();
+    const calls = extractLiteralSelectorCalls(script);
+    expect(calls.map((call) => call.selector).sort()).toEqual([
+      "#a",
+      "#b",
+      "#c",
+      "#d",
+      "#e",
+      "#f",
+      "#g",
+      "#h",
+      "#i",
+      "#j",
+      "#k",
+      "#l",
+      "#m",
+      "#n",
+      "#o",
+      "#p",
+      "#q",
+      "#r",
+      "#s",
+      ".box",
+    ]);
+    expect(calls.find((call) => call.selector === "#l")?.raw).toBe('trigger: "#l"');
+    expect(calls.find((call) => call.selector === "#b")?.raw).toBe('gsap.to("#b", { x: 1 })');
+  });
+
+  it("omits dynamic arguments, element targets, and tween-named methods on other receivers", () => {
+    const script = `
+const id = "x";
+const el = document.getElementById("x");
+gsap.to(el, { x: 1 });
+gsap.to("#" + id, { x: 1 });
+gsap.to(\`#\${id}\`, { x: 1 });
+document.querySelector(CSS.escape(id));
+material.color.set("#1a1a2e");
+new Map().set("#1-hash", 1);
+Array.from("#123abc");
+const items = gsap.utils.toArray(".item");
+items.set("#2-not-a-timeline");
+ScrollTrigger.create({ [trigger]: "#3-computed" });
+function scene1() { const scene = gsap.timeline(); scene.to(".bg", { opacity: 1 }); return scene; }
+function scene2() { const scene = new THREE.Scene(); scene.background.set("#4a4a4a"); }
+`.trim();
+    expect(extractLiteralSelectorCalls(script).map((call) => call.selector)).toEqual([
+      ".item",
+      ".bg",
+    ]);
+  });
+
+  it("returns nothing for unparsable scripts", () => {
+    expect(extractLiteralSelectorCalls("gsap.to(")).toEqual([]);
   });
 });

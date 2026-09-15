@@ -37,6 +37,12 @@ export type {
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
+/** Methods that resolve a CSS selector string to elements. */
+const SELECTOR_TARGET_METHODS = new Set([...QUERY_METHODS, "toArray"]);
+/** Every method that parses its string argument as a CSS selector (all throw on invalid input). */
+const SELECTOR_SINK_METHODS = new Set([...SELECTOR_TARGET_METHODS, "matches", "closest"]);
+/** ScrollTrigger config keys that accept a CSS selector string. */
+const SCROLL_TRIGGER_SELECTOR_KEYS = new Set(["trigger", "endTrigger", "pin"]);
 const ITERATION_METHODS = new Set(["forEach", "map"]);
 const SCOPE_NODE_TYPES = new Set([
   "Program",
@@ -210,9 +216,7 @@ function resolveNode(
   if (node.type === "Identifier" && scope.has(node.name)) {
     return scope.get(node.name);
   }
-  if (node.type === "TemplateLiteral" && node.expressions?.length === 0) {
-    return node.quasis?.[0]?.value?.cooked ?? undefined;
-  }
+  if (node.type === "TemplateLiteral") return staticStringLiteral(node);
   if (node.type === "MemberExpression") {
     return resolveMemberNode(node, scope);
   }
@@ -246,7 +250,7 @@ function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
   const method = callee.property.name;
   const argValue = resolveNode(node.arguments?.[0], scope);
   if (typeof argValue !== "string" || argValue.length === 0) return null;
-  if (QUERY_METHODS.has(method) || method === "toArray") return argValue;
+  if (SELECTOR_TARGET_METHODS.has(method)) return argValue;
   if (method === "getElementById") return `#${argValue}`;
   return null;
 }
@@ -1849,6 +1853,138 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+export interface LiteralSelectorCall {
+  selector: string;
+  raw: string;
+}
+
+/** Static string value of a string literal or expression-free template literal. */
+function staticStringLiteral(node: any): string | undefined {
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral" && node.expressions?.length === 0) {
+    return node.quasis?.[0]?.value?.cooked ?? undefined;
+  }
+  return undefined;
+}
+
+/** Method name of a member callee: `obj.method(...)` or `obj["method"](...)`. */
+function calleeMethodName(callee: any): string | undefined {
+  if (callee?.type !== "MemberExpression") return undefined;
+  if (!callee.computed) {
+    return callee.property?.type === "Identifier" ? callee.property.name : undefined;
+  }
+  return staticStringLiteral(callee.property);
+}
+
+/**
+ * Root identifier of a method-call chain (`gsap` for `gsap.timeline().to(...)`),
+ * plus whether the chain passes through `.timeline(...)`. Plain property hops
+ * end the chain, so `scene.background` roots at nothing: a timeline's methods
+ * return the timeline, but its properties do not.
+ */
+function methodChainRoot(node: any): { name: string | undefined; viaTimeline: boolean } {
+  let cur = node;
+  let viaTimeline = false;
+  while (cur?.type === "CallExpression" && cur.callee?.type === "MemberExpression") {
+    const callee = cur.callee;
+    if (!callee.computed && callee.property?.name === "timeline") viaTimeline = true;
+    cur = callee.object;
+  }
+  return { name: cur?.type === "Identifier" ? cur.name : undefined, viaTimeline };
+}
+
+/**
+ * Identifiers bound to a timeline: `gsap.timeline(...)` (optionally chained),
+ * a method chain on an already-known timeline (`tl.add(...)`), or an alias of
+ * one. Iterates to a fixpoint so declaration order does not matter.
+ */
+function collectTimelineNames(ast: any): Set<string> {
+  const names = new Set<string>();
+  const isTimelineValue = (value: any): boolean => {
+    if (value?.type === "Identifier") return names.has(value.name);
+    if (value?.type !== "CallExpression") return false;
+    const root = methodChainRoot(value);
+    if (root.name === undefined) return false;
+    return root.name === "gsap" ? root.viaTimeline : names.has(root.name);
+  };
+  const bind = (target: any, value: any): void => {
+    if (target?.type === "Identifier" && isTimelineValue(value)) names.add(target.name);
+  };
+  let previousSize = -1;
+  while (names.size !== previousSize) {
+    previousSize = names.size;
+    acornWalk.simple(ast, {
+      VariableDeclarator(node: any) {
+        bind(node.id, node.init);
+      },
+      AssignmentExpression(node: any) {
+        bind(node.left, node.right);
+      },
+    });
+  }
+  return names;
+}
+
+/**
+ * Return every string literal the script hands to a CSS-selector sink: DOM
+ * query/match methods, `gsap.utils.toArray`, GSAP tweens on `gsap` or a
+ * timeline (`gsap.to`, `tl.from`, `gsap.set`, `gsap.timeline().to`), and
+ * ScrollTrigger `trigger`/`endTrigger`/`pin` values. Tween methods on other
+ * receivers are not sinks (`color.set("#1a1a2e")` is a hex colour). Dynamic
+ * expressions are omitted on purpose: callers use this only when a
+ * browser-invalid selector can be proven from source, so no timeline
+ * resolution runs here.
+ */
+export function extractLiteralSelectorCalls(script: string): LiteralSelectorCall[] {
+  try {
+    const ast = parseProgram(script);
+    const timelineNames = collectTimelineNames(ast);
+    const calls: LiteralSelectorCall[] = [];
+    const push = (node: any, selectorNode: any): void => {
+      const selector = staticStringLiteral(selectorNode);
+      if (selector !== undefined) calls.push({ selector, raw: script.slice(node.start, node.end) });
+    };
+    const staticKey = (prop: any): string | undefined =>
+      isObjectProperty(prop) && !prop.computed ? propKeyName(prop) : undefined;
+    const pushScrollTriggerConfig = (config: any): void => {
+      if (config?.type !== "ObjectExpression") return;
+      for (const prop of config.properties ?? []) {
+        const key = staticKey(prop);
+        if (key !== undefined && SCROLL_TRIGGER_SELECTOR_KEYS.has(key)) push(prop, prop.value);
+      }
+    };
+    const isGsapReceiver = (callee: any): boolean => {
+      const root = methodChainRoot(callee.object);
+      return root.name === "gsap" || (root.name !== undefined && timelineNames.has(root.name));
+    };
+    acornWalk.simple(ast, {
+      CallExpression(node: any) {
+        const method = calleeMethodName(node.callee);
+        if (method === undefined) return;
+        if (
+          SELECTOR_SINK_METHODS.has(method) ||
+          (GSAP_METHODS.has(method) && isGsapReceiver(node.callee))
+        ) {
+          push(node, node.arguments?.[0]);
+        } else if (
+          method === "create" &&
+          node.callee.object?.type === "Identifier" &&
+          node.callee.object.name === "ScrollTrigger"
+        ) {
+          pushScrollTriggerConfig(node.arguments?.[0]);
+        }
+      },
+      Property(node: any) {
+        if (staticKey(node) === "scrollTrigger") pushScrollTriggerConfig(node.value);
+      },
+    });
+    return calls;
+  } catch {
+    // Unparsable script or a walker failure: nothing can be proven, so report nothing.
+    return [];
+  }
+}
 
 /**
  * Browser-safe equivalent of `parseGsapScript` (gsapParser.ts).
