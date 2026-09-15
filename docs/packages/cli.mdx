@@ -715,6 +715,16 @@ HTML. Without a sidecar, nothing changes.
 | `staysInFrame(selector)`       | Off-frame drift — once visible, the box never leaves the canvas (`motion_off_frame`)                            |
 | `keepsMoving(withinSelector?)` | A frozen shot — no fully static window longer than `maxStaticSec`, default 2s (`motion_frozen`)                 |
 
+`keepsMoving` uses the same motion classifier as the frozen-sweep guard: box
+geometry, opacity, text and generated content, form-control state, painted CSS
+counters, clip-path, variable-font axes, and the pixels of visible
+canvas/video/img elements all count as motion — so a playing same-origin (or
+CORS-readable) background video keeps a scope live on its own. Elements under
+`data-layout-ignore` inside the scope never count; the opt-out does not apply to
+the scope element itself, since naming it in an assertion outranks it. Content
+the browser does not paint (`display: none` subtrees, `visibility: hidden`
+boxes, skipped `content-visibility` contents) never counts as motion either.
+
 `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are
 optional. Findings use the same shape and envelope as layout findings and are
 errors by default, so a failed assertion fails the run. A selector that matches

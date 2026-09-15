@@ -104,6 +104,11 @@ async function main() {
     cpSync(contrastAuditScript, join(DIST, "commands", "contrast-audit.browser.js"));
   }
 
+  const motionSignatureScript = join(CLI_ROOT, "src", "commands", "motion-signature.browser.js");
+  if (existsSync(motionSignatureScript)) {
+    cpSync(motionSignatureScript, join(DIST, "commands", "motion-signature.browser.js"));
+  }
+
   const motionSampleScript = join(CLI_ROOT, "src", "commands", "motion-sample.browser.js");
   if (existsSync(motionSampleScript)) {
     cpSync(motionSampleScript, join(DIST, "commands", "motion-sample.browser.js"));

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const signatureScript = readFileSync(join(__dirname, "motion-signature.browser.js"), "utf-8");
 const script = readFileSync(join(__dirname, "motion-sample.browser.js"), "utf-8");
 
 interface Geo {
@@ -13,6 +14,8 @@ interface Geo {
   opacity?: string;
   display?: string;
   visibility?: string;
+  /** `::after` computed `content`; re-read on every call when a getter. */
+  afterContent?: string;
 }
 
 interface SampleResult {
@@ -24,8 +27,13 @@ interface SampleResult {
 }
 
 function installGeometry(byId: Record<string, Geo>): void {
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
     const geo = byId[(element as Element).id] ?? {};
+    if (pseudoElement) {
+      return {
+        content: pseudoElement === "::after" ? (geo.afterContent ?? "none") : "none",
+      } as unknown as CSSStyleDeclaration;
+    }
     return {
       display: geo.display ?? "block",
       visibility: geo.visibility ?? "visible",
@@ -47,6 +55,9 @@ function installGeometry(byId: Record<string, Geo>): void {
 }
 
 function installScript(): void {
+  // The sampler reads the shared motion classifier at install time.
+  // eslint-disable-next-line no-new-func
+  new Function(signatureScript)();
   // eslint-disable-next-line no-new-func
   new Function(script)();
 }
@@ -62,6 +73,16 @@ describe("motion-sample.browser", () => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
     delete (window as unknown as { __hyperframesMotionSample?: unknown }).__hyperframesMotionSample;
+    Reflect.deleteProperty(window, "__hyperframesMotionSignature");
+    Reflect.deleteProperty(window, "__hyperframesLayoutGeometry");
+  });
+
+  it("installs without the shared motion classifier and names it on the first call", () => {
+    // Installing must not throw: addScriptTag resolves on load regardless, so
+    // the driver only ever sees the error from its evaluate call.
+    // eslint-disable-next-line no-new-func
+    expect(() => new Function(script)()).not.toThrow();
+    expect(() => sample({ livenessScopes: ["*"] })).toThrow(/motion-signature\.browser\.js/);
   });
 
   it("samples a present, visible selector and returns null for an absent one", () => {
@@ -77,6 +98,18 @@ describe("motion-sample.browser", () => {
     expect(result.data["#headline"]).toMatchObject({ visible: true, opacity: 1 });
     expect(result.data["#headline"]?.rect).toMatchObject({ left: 100, right: 400 });
     expect(result.data["#missing"]).toBeNull();
+  });
+
+  it("reports an explicitly asserted data-layout-ignore element as visible", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="main"><div id="glow" data-layout-ignore>x</div></div>
+    `;
+    installGeometry({ glow: { rect: { left: 100, top: 50, width: 300, height: 80 } } });
+    installScript();
+
+    // The layout-audit opt-out excludes the layer from liveness, not from an
+    // assertion that names it.
+    expect(sample({ selectors: ["#glow"] }).data["#glow"]?.visible).toBe(true);
   });
 
   it("reflects inherited ancestor opacity", () => {
@@ -112,6 +145,46 @@ describe("motion-sample.browser", () => {
 
     expect(stillStatic).toBe(before);
     expect(moved).not.toBe(before);
+  });
+
+  // Liveness and the frozen-sweep guard share one classifier: a fixed-width
+  // attr()-backed countdown that the sweep guard accepts as motion must not be
+  // reported frozen by keepsMoving.
+  it("changes the liveness signature when attr-backed generated content changes, in step with the sweep fingerprint", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="main"><span id="countdown" data-txt="10"></span></div>
+    `;
+    installGeometry({
+      countdown: {
+        rect: { left: 280, top: 140, width: 80, height: 48 },
+        get afterContent() {
+          return JSON.stringify(document.getElementById("countdown")!.getAttribute("data-txt"));
+        },
+      },
+    });
+    installScript();
+    const sweep = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    const livenessBefore = sample({ livenessScopes: ["*"] }).liveness["*"];
+    const sweepBefore = sweep();
+    document.getElementById("countdown")!.setAttribute("data-txt", "09");
+
+    expect(sample({ livenessScopes: ["*"] }).liveness["*"]).not.toBe(livenessBefore);
+    expect(sweep()).not.toBe(sweepBefore);
+  });
+
+  it("signs a leaf withinSelector scope by the scope element itself", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="main"><div id="logo">x</div></div>
+    `;
+    installGeometry({ logo: { rect: { left: 10, top: 10, width: 50, height: 50 } } });
+    installScript();
+
+    // The scope root is part of its own signature; a leaf scope is never "missing".
+    expect((sample({ livenessScopes: ["#logo"] }).liveness["#logo"] ?? "").length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("scopes liveness to a withinSelector and returns empty for a missing scope", () => {
