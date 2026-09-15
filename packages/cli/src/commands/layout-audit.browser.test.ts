@@ -1528,13 +1528,23 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     { dasharray: "none", offset: "0", count: 1 },
     { dasharray: "100px", offset: "100px", count: 0 },
     { dasharray: "100", offset: "-100", count: 0 },
+    { dasharray: "100", offset: "-150", count: 1 },
+    { dasharray: "10%", offset: "10%", count: 0 },
     { dasharray: "50 100", offset: "50", count: 0 },
     { dasharray: "50 100", offset: "40", count: 0 },
     { dasharray: "50 100", offset: "30", count: 1 },
+    { dasharray: "2 97", offset: "0.5", count: 0 },
+    { dasharray: "1", offset: "1", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.9", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.5", pathLength: 1, count: 1 },
+    { dasharray: "0.1 0.9", offset: "0", pathLength: 1, linecap: "round", count: 1 },
   ])(
-    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap → $count connector_detached",
-    ({ dasharray, offset, linecap, count }) => {
+    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap, pathLength $pathLength → $count connector_detached",
+    ({ dasharray, offset, linecap, pathLength, count }) => {
       document.body.innerHTML = foreignFrameDom;
+      if (pathLength !== undefined) {
+        document.getElementById("detached")?.setAttribute("pathLength", String(pathLength));
+      }
       installGeometry(foreignFrameRects, {
         ...foreignFrameStyles,
         detached: {
@@ -3493,6 +3503,11 @@ function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = do
       const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
       const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
       Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
+      // happy-dom has no SVGGeometryElement; mirror the DOM's `pathLength` (0 when unset).
+      Object.defineProperty(path, "pathLength", {
+        ...prop,
+        value: { baseVal: Number(path.getAttribute("pathLength")) || 0 },
+      });
       Object.defineProperty(path, "getPointAtLength", {
         ...prop,
         value: (length: number) => (length === 0 ? start : end),
