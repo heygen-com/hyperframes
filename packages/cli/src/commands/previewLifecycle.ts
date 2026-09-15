@@ -181,12 +181,17 @@ function matchingServer(
   projectDir: string,
   browserGpuMode?: BrowserGpuMode,
 ): ActiveServer | null {
-  return (
-    servers.find(
-      (server) =>
-        normalized(server.projectDir) === normalized(projectDir) &&
-        (browserGpuMode === undefined || server.browserGpuMode === browserGpuMode),
-    ) ?? null
+  return policyMatchingServers(servers, projectDir, browserGpuMode)[0] ?? null;
+}
+
+/** Same-project servers that also satisfy the requested GPU policy, if any. */
+function policyMatchingServers(
+  servers: ActiveServer[],
+  projectDir: string,
+  browserGpuMode?: BrowserGpuMode,
+): ActiveServer[] {
+  return sameProjectServers(servers, projectDir).filter(
+    (server) => browserGpuMode === undefined || server.browserGpuMode === browserGpuMode,
   );
 }
 
@@ -201,19 +206,13 @@ function matchingServerAtPort(
   );
 }
 
-/** Lists servers on `port` first so an explicit --port wins candidate selection. */
-function preferPort(servers: ActiveServer[], port: number | undefined): ActiveServer[] {
-  if (port === undefined) return servers;
-  return [...servers].sort((a, b) => Number(b.port === port) - Number(a.port === port));
+function sameProjectServers(servers: ActiveServer[], projectDir: string): ActiveServer[] {
+  const project = normalized(projectDir);
+  return servers.filter((server) => normalized(server.projectDir) === project);
 }
 
 function sameProjectPorts(servers: ActiveServer[], projectDir: string): Set<number> {
-  const project = normalized(projectDir);
-  return new Set(
-    servers
-      .filter((server) => normalized(server.projectDir) === project)
-      .map((server) => server.port),
-  );
+  return new Set(sameProjectServers(servers, projectDir).map((server) => server.port));
 }
 
 async function stopProcess(pid: number): Promise<void> {
@@ -468,22 +467,31 @@ function unmetPreferredPort(port: number, preferredPort: number | undefined): nu
   return preferredPort !== undefined && port !== preferredPort ? preferredPort : undefined;
 }
 
+type BackgroundPreviewResult =
+  | { type: "reused"; port: number; pid: number | null; logPath: string | null }
+  | { type: "started"; port: number; pid: number; logPath: string };
+
 /**
  * Returns a reuse result when `reusableExisting` is a valid reuse candidate,
  * or `null` when the caller must fall through to a fresh launch. Throws when
  * the candidate's port conflicts with an explicit --port request rather than
- * silently substituting the wrong port.
+ * silently substituting the wrong port; `candidates` is every policy-matching
+ * same-project server the scan found, reported so the error names real
+ * alternatives.
  */
 function reuseExistingPreview(
   reusableExisting: ActiveServer | null,
+  candidates: ActiveServer[],
   dependencies: LifecycleDependencies,
-): { type: "reused"; port: number; pid: number | null; logPath: string | null } | null {
+): Extract<BackgroundPreviewResult, { type: "reused" }> | null {
   if (!reusableExisting || dependencies.forceNew) return null;
   // An explicit --port that doesn't match the reuse candidate is a conflict
   // the caller must resolve, not a silent substitution. A bare launch has no
   // preferred port, so reusing any project-matching server stays correct.
+  // The error lists every candidate, not just the chosen one, so the
+  // "matching ports" it reports are the ones actually running.
   const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
-  if (unmet !== undefined) throw new PreviewServerPortMismatchError(unmet, [reusableExisting]);
+  if (unmet !== undefined) throw new PreviewServerPortMismatchError(unmet, candidates);
   return {
     type: "reused",
     port: reusableExisting.port,
@@ -496,10 +504,7 @@ export async function startBackgroundPreview(
   projectDir: string,
   startPort: number,
   dependencies: LifecycleDependencies = {},
-): Promise<
-  | { type: "reused"; port: number; pid: number | null; logPath: string | null }
-  | { type: "started"; port: number; pid: number; logPath: string }
-> {
+): Promise<BackgroundPreviewResult> {
   const { scan, stateHome, saved, scanned } = await readPreviewLifecycleState(
     projectDir,
     startPort,
@@ -508,20 +513,24 @@ export async function startBackgroundPreview(
   // Always inspect a saved custom port first. `--force-new --port <new>` must
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.
-  const requestedExisting = matchingServer(
-    preferPort(scanned, dependencies.preferredPort),
-    projectDir,
-    dependencies.browserGpuMode,
-  );
+  const candidates = policyMatchingServers(scanned, projectDir, dependencies.browserGpuMode);
+  // An explicit --port names the server to reuse: a policy-matching server
+  // already on that port satisfies the request whether or not it is the owned
+  // one, so `--port 3003` reuses the 3003 sibling instead of reporting a
+  // mismatch against the owned 3002.
+  const onPreferredPort =
+    candidates.find((server) => server.port === dependencies.preferredPort) ?? null;
+  const requestedExisting = candidates[0] ?? null;
   const ownedExisting = savedOwnedPreview(scanned, saved, projectDir);
-  // A saved managed preview is the authoritative same-project instance. An
-  // explicit GPU-policy change replaces it; it must not silently adopt an
-  // unmanaged sibling that happens to match the new policy.
+  // Otherwise a saved managed preview is the authoritative same-project
+  // instance. An explicit GPU-policy change replaces it; it must not silently
+  // adopt an unmanaged sibling that happens to match the new policy.
   const reusableOwned = ownedExisting
     ? matchingServer([ownedExisting], projectDir, dependencies.browserGpuMode)
     : null;
-  const reusableExisting = reusableOwned ?? (ownedExisting ? null : requestedExisting);
-  const reused = reuseExistingPreview(reusableExisting, dependencies);
+  const reusableExisting =
+    onPreferredPort ?? reusableOwned ?? (ownedExisting ? null : requestedExisting);
+  const reused = reuseExistingPreview(reusableExisting, candidates, dependencies);
   if (reused) return reused;
   await stopOwnedPreviewBeforeReplacement(ownedExisting, projectDir, dependencies);
   // Snapshot every same-project listener in the prospective launch range only
