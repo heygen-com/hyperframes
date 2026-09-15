@@ -706,6 +706,31 @@ describe("GSAP rules", () => {
     expect(conflicts[0]?.message).toMatch(/x\/scale|scale\/x/);
   });
 
+  it("does not duplicate the CSS transform text when one declaration matches both translate and scale", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene-1" class="scene-1">hi</div>
+  </div>
+  <style>
+    .scene-1 { transform: scale(1.08) translate3d(1.5%, 0, 0); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".scene-1", { duration: 1, x: 100, scale: 1.2 });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(conflict).toBeDefined();
+    const doubled = "scale(1.08) translate3d(1.5%, 0, 0) scale(1.08) translate3d(1.5%, 0, 0)";
+    expect(conflict?.message).not.toContain(doubled);
+    expect(conflict?.fixHint).not.toContain(doubled);
+    expect(conflict?.message).toContain("transform: scale(1.08) translate3d(1.5%, 0, 0)");
+  });
+
   // --- Inline style transform detection tests ---
 
   it("warns when inline style transform: translateX conflicts with GSAP x", async () => {
