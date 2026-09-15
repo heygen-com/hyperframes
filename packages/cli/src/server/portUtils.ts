@@ -217,7 +217,10 @@ async function getProcessOnPort(port: number): Promise<string | null> {
 
 async function windowsListenerPid(port: number): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], { timeout: 4000 });
+    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], {
+      timeout: 4000,
+      windowsHide: true,
+    });
     for (const line of stdout.split(/\r?\n/)) {
       const columns = line.trim().split(/\s+/);
       if (columns.length < 5 || columns[3] !== "LISTENING") continue;
