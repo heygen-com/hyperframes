@@ -1457,7 +1457,12 @@
    * (renders solid) and `none` are painted. A zero-length dash paints only as a line cap: `0 4`
    * is a dotted line under `stroke-linecap: round | square` and invisible under the default
    * `butt` (the state a finished draw-off tween leaves behind: `0px, 999999px`). Caps that a
-   * non-zero dash would add at the window edges are ignored.
+   * non-zero dash would add at the window edges are ignored. The 10% rule applies uniformly: a
+   * window that spans a whole period without enclosing a whole dash (`2 97` on a 100-long path
+   * at offset 0.5 paints 3%) is hidden too. A `pathLength` attribute rescales every distance
+   * along the path, so the window is judged in the author's units: the CSS draw-on idiom
+   * `pathLength="1"` with `dasharray 1; dashoffset 1` is hidden. A `pathLength` that resolves
+   * to 0 (`"0"` or an unparseable value) zeroes the dash scale, so the stroke paints solid.
    */
   function shaftDashHidden(path, total) {
     const style = getComputedStyle(path);
@@ -1466,11 +1471,16 @@
     const dotsPaint = (style.strokeLinecap || "butt") !== "butt";
     const dashPaints = (index) => index % 2 === 0 && (dashes[index] > 0 || dotsPaint);
     if (!dashes.some((_, index) => dashPaints(index))) return true; // only butt-capped dots
-    const period = dashes.reduce((sum, length) => sum + length, 0);
-    if (total > period) return false; // a full period of dash paints — call it visible
+    const period = dashes.reduce((sum, dash) => sum + dash, 0);
+    const authored = path.pathLength?.baseVal; // SVGAnimatedNumber; 0 when unset or unparseable
+    // A present `pathLength` that resolves to 0 zeroes the dash scale, so the stroke paints solid.
+    if (authored === 0 && path.hasAttribute("pathLength")) return false;
+    const length = authored > 0 ? authored : total;
     const offset = dashLength(style.strokeDashoffset, path); // unparseable reads as 0
-    const start = Number.isFinite(offset) ? ((offset % period) + period) % period : 0;
-    const end = start + total;
+    // Wrap into [0, period); adding the period only to negatives keeps `0.9 % 2` exact.
+    const wrapped = Number.isFinite(offset) ? offset % period : 0;
+    const start = wrapped < 0 ? wrapped + period : wrapped;
+    const end = start + length;
     let painted = 0;
     let segmentStart = 0;
     // Two periods cover any window that starts inside the first.
@@ -1482,7 +1492,7 @@
       }
       segmentStart = segmentEnd;
     }
-    return painted <= total * 0.1;
+    return painted <= length * 0.1;
   }
 
   // Computed `stroke-dasharray` as an even-length list of user-unit lengths, or null when the

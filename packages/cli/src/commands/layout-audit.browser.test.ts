@@ -1084,7 +1084,14 @@ describe("layout-audit.browser coordinate-frame findings", () => {
   // zero-length dash paints only as a round/square cap (`0 4` is dotted with round caps and
   // invisible with the default butt cap). Path length is 100 (installConnectorGeometry);
   // `50 100` at offset 40 leaves exactly 10% painted — the tolerance boundary — while offset 30
-  // shows 20% and fires.
+  // shows 20% and fires. `2 97` at offset 0.5 spans a whole period yet encloses no whole dash
+  // and paints 3% — hidden; there is no full-period shortcut. A negative offset wraps into the
+  // period (`100` at -150 shows half a dash; unwrapped it would read as hidden). Percentages
+  // resolve against the SVG viewport (1740×830 → `10%` ≈ 136), not as bare numbers.
+  // `pathLength` puts the dashes and the offset in the author's units, so `pathLength="1"` with
+  // `1 / 1` — the CSS draw-on idiom — is hidden, `1 / 0.9` sits on the 10% boundary (hidden,
+  // exact in fractional units too) while `1 / 0.5` and a `0.1 0.9` dot on the same path paint.
+  // A `pathLength` that resolves to 0 zeroes the dash scale and the stroke paints solid.
   it.each([
     { dasharray: "0 4", offset: "0", count: 0 },
     { dasharray: "0 4", offset: "0", linecap: "round", count: 1 },
@@ -1097,13 +1104,24 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     { dasharray: "none", offset: "0", count: 1 },
     { dasharray: "100px", offset: "100px", count: 0 },
     { dasharray: "100", offset: "-100", count: 0 },
+    { dasharray: "100", offset: "-150", count: 1 },
+    { dasharray: "10%", offset: "10%", count: 0 },
     { dasharray: "50 100", offset: "50", count: 0 },
     { dasharray: "50 100", offset: "40", count: 0 },
     { dasharray: "50 100", offset: "30", count: 1 },
+    { dasharray: "2 97", offset: "0.5", count: 0 },
+    { dasharray: "1", offset: "1", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.9", pathLength: 1, count: 0 },
+    { dasharray: "1", offset: "0.5", pathLength: 1, count: 1 },
+    { dasharray: "0.1 0.9", offset: "0", pathLength: 1, linecap: "round", count: 1 },
+    { dasharray: "100", offset: "100", pathLength: 0, count: 1 },
   ])(
-    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap → $count connector_detached",
-    ({ dasharray, offset, linecap, count }) => {
+    "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap, pathLength $pathLength → $count connector_detached",
+    ({ dasharray, offset, linecap, pathLength, count }) => {
       document.body.innerHTML = foreignFrameDom;
+      if (pathLength !== undefined) {
+        document.getElementById("detached")?.setAttribute("pathLength", String(pathLength));
+      }
       installGeometry(foreignFrameRects, {
         ...foreignFrameStyles,
         detached: {
@@ -3024,6 +3042,17 @@ interface CtmTranslate {
 }
 
 // happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
+/**
+ * `SVGGeometryElement.pathLength.baseVal` as the DOM computes it: a finite SVG number (one
+ * trailing comma allowed); anything else (unset, `1.`, `Infinity`, hex, garbage) reads as 0.
+ */
+function domPathLength(attr: string | null): number {
+  if (attr === null) return 0;
+  const svgNumber = /^\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,)?\s*$/.test(attr);
+  const parsed = svgNumber ? Number(attr.replace(",", "")) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
   const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
   const prop = { configurable: true, writable: true };
@@ -3043,6 +3072,11 @@ function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = do
       const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
       const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
       Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
+      // happy-dom has no SVGGeometryElement; mirror the DOM's `pathLength`.
+      Object.defineProperty(path, "pathLength", {
+        ...prop,
+        value: { baseVal: domPathLength(path.getAttribute("pathLength")) },
+      });
       Object.defineProperty(path, "getPointAtLength", {
         ...prop,
         value: (length: number) => (length === 0 ? start : end),
