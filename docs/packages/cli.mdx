@@ -630,17 +630,22 @@ did, in one command and one browser session.
 
 ```bash
 npx hyperframes check [dir]
-npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+npx hyperframes check [dir] --json         # {ok, browserSkipped, lint, runtime, layout, motion, contrast, snapshots}
 npx hyperframes check [dir] --snapshots
 npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
-`check` runs the linter first and skips the browser entirely on a lint error.
-Then it loads the bundled composition once and sweeps a single seek grid,
-running every audit at every sample: runtime console errors and failed requests,
-layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
-drift), `*.motion.json` assertions, and WCAG AA contrast.
+`check` runs the linter first and skips the browser entirely when lint reports
+errors. When that happens (or the browser session fails to launch),
+`layout`/`motion`/`contrast` report the same clean `ok:true`/zero-findings shape
+a genuinely passing session would (`runtime` may too, unless the failure itself
+left a diagnostic finding there) — check the top-level `browserSkipped` field,
+not just those sections, before trusting a "clean" result. Otherwise it loads
+the bundled composition once and sweeps a single seek grid, running every audit
+at every sample: runtime console errors and failed requests, layout defects
+(overflow, clipping, held overlaps, occlusion, coordinate-frame drift),
+`*.motion.json` assertions, and WCAG AA contrast.
 
 | Flag                                         | Description                                                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
