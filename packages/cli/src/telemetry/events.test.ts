@@ -431,6 +431,34 @@ describe("render telemetry events", () => {
     expect(props.authoring_skill_source).toBeUndefined();
   });
 
+  it("carries the root/body scaffold-mismatch measurement from perfSummary on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      rootBodyMismatch: true,
+      rootBodyDeltaPxBucket: "51+",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.root_body_mismatch).toBe(true);
+    expect(props.root_body_delta_px_bucket).toBe("51+");
+  });
+
+  it("falls back to the live capture-observability measurement on render_error (no perfSummary)", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      captureRootBodyMismatch: false,
+      captureRootBodyDeltaPxBucket: "0",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.root_body_mismatch).toBe(false);
+    expect(props.root_body_delta_px_bucket).toBe("0");
+  });
+
   it("names the runtime adapters a render exercised", () => {
     trackRenderComplete({
       durationMs: 1000,

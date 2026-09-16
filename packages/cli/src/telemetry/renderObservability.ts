@@ -54,6 +54,8 @@ export function renderObservabilityTelemetryPayload(
     captureAudioGroupCount: capture.audioGroupCount,
     captureColorGradingCount: capture.colorGradingCount,
     captureHasLut: capture.hasLut,
+    captureRootBodyMismatch: capture.rootBodyMismatch,
+    captureRootBodyDeltaPxBucket: capture.rootBodyDeltaPxBucket,
     captureDeShortBand: capture.deShortBand,
     captureDeParallelRouter: capture.deParallelRouter,
     captureDeGpuRenderer: capture.deGpuRenderer,

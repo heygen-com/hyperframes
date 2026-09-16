@@ -105,6 +105,9 @@ export interface DrawElementPerfInput {
   audioGroupCount?: number;
   colorGradingCount?: number;
   hasLut?: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -160,6 +163,8 @@ function aggregateDrawElement(
     audioGroupCount: de.audioGroupCount,
     colorGradingCount: de.colorGradingCount,
     hasLut: de.hasLut,
+    rootBodyMismatch: de.rootBodyMismatch,
+    rootBodyDeltaPxBucket: de.rootBodyDeltaPxBucket,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,

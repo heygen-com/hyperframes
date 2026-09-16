@@ -85,6 +85,8 @@ export interface RenderObservabilityTelemetryPayload {
   captureAudioGroupCount?: number;
   captureColorGradingCount?: number;
   captureHasLut?: boolean;
+  captureRootBodyMismatch?: boolean;
+  captureRootBodyDeltaPxBucket?: string;
   captureDeShortBand?: string;
   captureDeParallelRouter?: string;
   captureDeGpuRenderer?: string;
@@ -157,6 +159,8 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     audio_group_count: props.captureAudioGroupCount,
     color_grading_count: props.captureColorGradingCount,
     has_lut: props.captureHasLut,
+    root_body_mismatch: props.captureRootBodyMismatch,
+    root_body_delta_px_bucket: props.captureRootBodyDeltaPxBucket,
     de_short_band: props.captureDeShortBand,
     de_parallel_router: props.captureDeParallelRouter,
     gpu_renderer: props.captureDeGpuRenderer,
@@ -347,6 +351,8 @@ export function trackRenderComplete(
     audioGroupCount?: number;
     colorGradingCount?: number;
     hasLut?: boolean;
+    rootBodyMismatch?: boolean;
+    rootBodyDeltaPxBucket?: string;
     deShortBand?: string;
     deParallelRouter?: string;
     dePreRouterWorkers?: number;
@@ -465,6 +471,8 @@ export function trackRenderComplete(
       audio_group_count: props.audioGroupCount,
       color_grading_count: props.colorGradingCount,
       has_lut: props.hasLut,
+      root_body_mismatch: props.rootBodyMismatch,
+      root_body_delta_px_bucket: props.rootBodyDeltaPxBucket,
       de_short_band: props.deShortBand,
       de_parallel_router: props.deParallelRouter,
       de_pre_router_workers: props.dePreRouterWorkers,

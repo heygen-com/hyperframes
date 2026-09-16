@@ -55,6 +55,7 @@ import {
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
 import {
   type EngineConfig,
   resolveConfig,
@@ -530,6 +531,9 @@ export interface RenderPerfSummary {
     audioGroupCount?: number;
     colorGradingCount?: number;
     hasLut?: boolean;
+    /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+    rootBodyMismatch?: boolean;
+    rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -1426,9 +1430,47 @@ export interface ElementTagScan {
   audioGroupCount: number;
   colorGradingCount: number;
   hasLut: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
 }
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
+
+/** First element carrying data-composition-id — same root marker other `[data-composition-id]` queries here use. */
+const ROOT_COMPOSITION_TAG_RE =
+  /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
+
+function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDeltaPxBucket"]> {
+  if (delta === 0) return "0";
+  if (delta <= 10) return "1-10";
+  if (delta <= 50) return "11-50";
+  return "51+";
+}
+
+/** Authored root size vs. the scaffold's html/body CSS size — a source-level fact this HTML
+ * string carries whether or not init.ts's runtime DOM correction ran. Undefined, not a false/"0"
+ * default, when either side can't be read; a lighter root-tag heuristic than lint's findRootTag. */
+function detectRootBodySizeMismatch(
+  html: string,
+): Pick<ElementTagScan, "rootBodyMismatch" | "rootBodyDeltaPxBucket"> {
+  const rootTag = html.match(ROOT_COMPOSITION_TAG_RE)?.[0];
+  const dataWidth = rootTag && Number(rootTag.match(/\bdata-width=["'](\d+)["']/i)?.[1]);
+  const dataHeight = rootTag && Number(rootTag.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
+  if (!dataWidth || !dataHeight) return {};
+
+  const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const [cssWidth, cssHeight] = widthFirst
+    ? [Number(widthFirst[1]), Number(widthFirst[2])]
+    : heightFirst
+      ? [Number(heightFirst[2]), Number(heightFirst[1])]
+      : [undefined, undefined];
+  if (!cssWidth || !cssHeight) return {};
+
+  const delta = Math.max(Math.abs(dataWidth - cssWidth), Math.abs(dataHeight - cssHeight));
+  return { rootBodyMismatch: delta > 0, rootBodyDeltaPxBucket: bucketPxDelta(delta) };
+}
 
 /**
  * Rough element count (and per-tag breakdown) for compiled composition HTML.
@@ -1559,6 +1601,7 @@ export function scanElementTags(html: string): ElementTagScan {
     audioGroupCount,
     colorGradingCount,
     hasLut,
+    ...detectRootBodySizeMismatch(html),
   };
 }
 
@@ -1622,6 +1665,8 @@ export async function resolveCompositionElementCount(
   audioGroupCount?: number;
   colorGradingCount?: number;
   hasLut?: boolean;
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: ElementTagScan["rootBodyDeltaPxBucket"];
 }> {
   if (probeSession?.isInitialized) {
     try {
@@ -1655,6 +1700,8 @@ export async function resolveCompositionElementCount(
     audioGroupCount: scan.audioGroupCount,
     colorGradingCount: scan.colorGradingCount,
     hasLut: scan.hasLut,
+    rootBodyMismatch: scan.rootBodyMismatch,
+    rootBodyDeltaPxBucket: scan.rootBodyDeltaPxBucket,
   };
 }
 
@@ -3220,6 +3267,8 @@ async function executeRenderPipeline(input: {
       audioGroupCount,
       colorGradingCount,
       hasLut,
+      rootBodyMismatch,
+      rootBodyDeltaPxBucket,
     } = await resolveCompositionElementCount(probeSession, compiled.html);
     const adaptersUsed = await resolveAdaptersUsed(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
@@ -3574,6 +3623,8 @@ async function executeRenderPipeline(input: {
       audioGroupCount,
       colorGradingCount,
       hasLut,
+      rootBodyMismatch,
+      rootBodyDeltaPxBucket,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -4494,6 +4545,8 @@ async function executeRenderPipeline(input: {
         audioGroupCount,
         colorGradingCount,
         hasLut,
+        rootBodyMismatch,
+        rootBodyDeltaPxBucket,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,

@@ -2311,6 +2311,75 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
       expect(scan.hasLut).toBe(false);
       expect(scan.byTag).toEqual({});
       expect(scan.total).toBe(0);
+      // Unlike the counts above, this pair reports absent (not a false/"0"
+      // default) when there's no root tag at all to compare against.
+      expect(scan.rootBodyMismatch).toBeUndefined();
+      expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+    });
+
+    describe("rootBodyMismatch / rootBodyDeltaPxBucket", () => {
+      function html(rootWidth: number, rootHeight: number, css: string): string {
+        return (
+          `<style>${css}</style>` +
+          `<body><div data-composition-id="c1" data-width="${rootWidth}" data-height="${rootHeight}"></div></body>`
+        );
+      }
+
+      it("reports no mismatch and bucket 0 when the scaffold's html/body CSS matches the root exactly", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1080px; height: 1920px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(false);
+        expect(scan.rootBodyDeltaPxBucket).toBe("0");
+      });
+
+      it("buckets a small stale-scaffold delta as 1-10", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1085px; height: 1920px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("1-10");
+      });
+
+      it("buckets a mid-size delta as 11-50", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1080px; height: 1950px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("11-50");
+      });
+
+      it("buckets a landscape-scaffold-under-portrait-root delta as 51+ (the real #4001 shape)", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { width: 1920px; height: 1080px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(true);
+        expect(scan.rootBodyDeltaPxBucket).toBe("51+");
+      });
+
+      it("reads a height-authored-before-width CSS block the same way", () => {
+        const scan = scanElementTags(
+          html(1080, 1920, "html, body { height: 1920px; width: 1080px; }"),
+        );
+        expect(scan.rootBodyMismatch).toBe(false);
+        expect(scan.rootBodyDeltaPxBucket).toBe("0");
+      });
+
+      it("reports absent, not a false default, when there is no composition root to read", () => {
+        const scan = scanElementTags(
+          "<style>html, body { width: 1080px; height: 1920px; }</style><p>no root</p>",
+        );
+        expect(scan.rootBodyMismatch).toBeUndefined();
+        expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+      });
+
+      it("reports absent, not a false default, when the scaffold has no html/body CSS block at all", () => {
+        const scan = scanElementTags(
+          '<body><div data-composition-id="c1" data-width="1080" data-height="1920"></div></body>',
+        );
+        expect(scan.rootBodyMismatch).toBeUndefined();
+        expect(scan.rootBodyDeltaPxBucket).toBeUndefined();
+      });
     });
   });
 

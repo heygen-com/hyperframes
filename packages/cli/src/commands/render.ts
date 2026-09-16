@@ -1722,6 +1722,8 @@ function trackRenderMetrics(
     audioGroupCount: perf?.drawElement?.audioGroupCount,
     colorGradingCount: perf?.drawElement?.colorGradingCount,
     hasLut: perf?.drawElement?.hasLut,
+    rootBodyMismatch: perf?.drawElement?.rootBodyMismatch,
+    rootBodyDeltaPxBucket: perf?.drawElement?.rootBodyDeltaPxBucket,
     deShortBand: perf?.drawElement?.shortBand,
     deParallelRouter: perf?.drawElement?.parallelRouter,
     dePreRouterWorkers: perf?.drawElement?.preRouterWorkers,
