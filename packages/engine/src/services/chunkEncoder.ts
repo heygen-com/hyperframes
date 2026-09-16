@@ -185,21 +185,22 @@ export function resolveLockedGopSize(options: LockedGopOptions): number | null {
 }
 
 /**
- * Closed-GOP / forced-keyframe args, so an orchestrator can concat chunks with
- * `-c copy` or segment the stream with `-f hls -c copy`. Without them the
- * encoder picks its own keyframes and a boundary may not be a decodable IDR.
- *
- * `-sc_threshold` is libx264/libx265-private; GPU encoders take only the
- * generic `-g` / `-keyint_min` / `-force_key_frames`.
+ * Closed-GOP / forced-keyframe args for libx264 / libx265, so an orchestrator
+ * can concat chunks with `-c copy` or cut the stream into segments with
+ * `-f hls -c copy`. Without them the encoder picks its own keyframes and a
+ * boundary may not land on an independently decodable IDR.
  */
-export function appendLockedGopArgs(
-  args: string[],
-  gopSize: number,
-  options: { softwareEncoder?: boolean } = {},
-): void {
-  args.push("-g", String(gopSize), "-keyint_min", String(gopSize));
-  if (options.softwareEncoder !== false) args.push("-sc_threshold", "0");
-  args.push("-force_key_frames", `expr:eq(mod(n,${gopSize}),0)`);
+export function appendLockedGopArgs(args: string[], gopSize: number): void {
+  args.push(
+    "-g",
+    String(gopSize),
+    "-keyint_min",
+    String(gopSize),
+    "-sc_threshold",
+    "0",
+    "-force_key_frames",
+    `expr:eq(mod(n,${gopSize}),0)`,
+  );
 }
 
 /**
@@ -304,11 +305,6 @@ export function buildEncoderArgs(
           args.push("-b_strategy", "0");
         }
       }
-
-      // An IDR every `gopSize` frames is all the concat-copy and HLS
-      // segmenters need, and it's all these encoders can promise.
-      const gpuGop = resolveLockedGopSize(options);
-      if (gpuGop !== null) appendLockedGopArgs(args, gpuGop, { softwareEncoder: false });
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);

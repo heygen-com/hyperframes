@@ -410,18 +410,6 @@ describe("buildStreamingArgs", () => {
       expect(args[args.indexOf("-bf") + 1]).toBe("0");
     });
 
-    it("emits only the generic keyframe args on GPU encoders", () => {
-      const args = buildStreamingArgs(
-        { ...baseSdr, useGpu: true, lockGopForChunkConcat: true, gopSize: 120 },
-        "/tmp/out.mp4",
-        "nvenc",
-      );
-      expect(args[args.indexOf("-g") + 1]).toBe("120");
-      expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,120),0)");
-      expect(args).not.toContain("-sc_threshold");
-      expect(args).not.toContain("-x264-params");
-    });
-
     it("throws on a missing or invalid gopSize", () => {
       for (const bad of [undefined, 0, -10, NaN, Infinity]) {
         expect(() =>

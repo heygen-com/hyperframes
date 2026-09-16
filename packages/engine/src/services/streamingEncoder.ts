@@ -160,8 +160,8 @@ export interface StreamingEncoderOptions {
    * Force an IDR keyframe every `gopSize` frames. Set by the HLS format so
    * `-f hls -c copy` can cut segments on exact time boundaries — the segmenter
    * only splits at keyframes the encoder already emitted. Default `false`
-   * leaves the arg list byte-identical. h264/h265 only; see
-   * `EncoderOptions.lockGopForChunkConcat`.
+   * leaves the arg list byte-identical. libx264 / libx265 only (GPU encoders,
+   * VP9 and ProRes ignore it); see `EncoderOptions.lockGopForChunkConcat`.
    */
   lockGopForChunkConcat?: boolean;
   /** Required when `lockGopForChunkConcat` is `true`. Frames per GOP. */
@@ -271,8 +271,6 @@ export function buildStreamingArgs(
   args.push("-r", fpsToFfmpegArg(fps));
 
   const shouldUseGpu = useGpu && gpuEncoder !== null;
-  // Validated before FFmpeg is spawned, not mid-stream.
-  const lockedGop = resolveLockedGopSize(options);
 
   if (codec === "h264" || codec === "h265") {
     if (shouldUseGpu) {
@@ -328,24 +326,23 @@ export function buildStreamingArgs(
           args.push("-b_strategy", "0");
         }
       }
-
-      if (lockedGop !== null) {
-        appendLockedGopArgs(args, lockedGop, { softwareEncoder: false });
-      }
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
+      // Same closed-GOP lock as chunkEncoder.buildEncoderArgs, so the HLS
+      // packager can cut `-c copy` segments on exact keyframe boundaries.
+      const lockedGop = resolveLockedGopSize(options);
       if (lockedGop !== null) appendLockedGopArgs(args, lockedGop);
 
       // Mirrors chunkEncoder: disable B-frames for h264 so PTS == DTS, no
       // negative DTS at stream start. Without this, files freeze on the
       // first frame in VS Code preview, several browsers, and some HW
       // decoders. See chunkEncoder.buildEncoderArgs for the full reasoning.
-      // h265 joins it under a locked GOP: B-frame reordering across a segment
-      // boundary reintroduces the negative-DTS hazard at every seam.
+      // h265 also gets `-bf 0` under a locked GOP: B-frame reordering across
+      // a segment boundary brings the same negative-DTS hazard back at every seam.
       if (codec === "h264" || lockedGop !== null) {
         args.push("-bf", "0");
       }

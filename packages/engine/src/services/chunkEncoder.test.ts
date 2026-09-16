@@ -1362,10 +1362,9 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     expect(args[paramIdx + 1]).not.toContain("deblock");
   });
 
-  it("true emits only the generic keyframe args on GPU encoders", () => {
-    // `-sc_threshold` and the x264/x265 param string are libx264/libx265
-    // private; nvenc/amf/qsv/vaapi get the portable trio so HLS `-c copy`
-    // segmentation still lands on IDRs.
+  it("true is a no-op on GPU encoders", () => {
+    // GPU encoders take a separate code path; lockGopForChunkConcat does not
+    // wire `-g` / `-keyint_min` into nvenc/amf/qsv/vaapi.
     const args = buildEncoderArgs(
       {
         ...baseOptions,
@@ -1380,23 +1379,11 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
       "out.mp4",
       "nvenc",
     );
-    expect(args[args.indexOf("-g") + 1]).toBe("240");
-    expect(args[args.indexOf("-keyint_min") + 1]).toBe("240");
-    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,240),0)");
-    expect(args).not.toContain("-sc_threshold");
-    expect(args.indexOf("-x264-params")).toBe(-1);
-  });
-
-  it("default (false) omits closed-GOP args on GPU encoders", () => {
-    const args = buildEncoderArgs(
-      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
-      inputArgs,
-      "out.mp4",
-      "nvenc",
-    );
     expect(args).not.toContain("-g");
     expect(args).not.toContain("-keyint_min");
     expect(args).not.toContain("-force_key_frames");
+    expect(args).not.toContain("-sc_threshold");
+    expect(args.indexOf("-x264-params")).toBe(-1);
   });
 
   it("true appends closed-GOP args for libvpx-vp9", () => {
@@ -1504,27 +1491,16 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     }
   });
 
-  it("appendLockedGopArgs drops -sc_threshold for non-software encoders", () => {
-    const sw: string[] = [];
-    appendLockedGopArgs(sw, 120);
-    expect(sw).toEqual([
+  it("appendLockedGopArgs emits the closed-GOP quartet in order", () => {
+    const args: string[] = [];
+    appendLockedGopArgs(args, 120);
+    expect(args).toEqual([
       "-g",
       "120",
       "-keyint_min",
       "120",
       "-sc_threshold",
       "0",
-      "-force_key_frames",
-      "expr:eq(mod(n,120),0)",
-    ]);
-
-    const gpu: string[] = [];
-    appendLockedGopArgs(gpu, 120, { softwareEncoder: false });
-    expect(gpu).toEqual([
-      "-g",
-      "120",
-      "-keyint_min",
-      "120",
       "-force_key_frames",
       "expr:eq(mod(n,120),0)",
     ]);
