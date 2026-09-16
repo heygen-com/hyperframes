@@ -77,6 +77,223 @@ describe("core rules", () => {
     expect(finding?.fixHint).toContain("CSS.escape");
   });
 
+  it("errors for literal querySelector and querySelectorAll calls with raw unsafe ids", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+    <div id="456-card"></div>
+  </div>
+  <script>
+    document.querySelector("#123-frame");
+    document.querySelectorAll('#456-card');
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter(
+      (finding) => finding.code === "invalid_raw_selector_execution",
+    );
+
+    expect(findings.map((finding) => finding.elementId).sort()).toEqual(["123-frame", "456-card"]);
+  });
+
+  it.each([
+    [
+      "timeline variable",
+      'const tl = gsap.timeline({ paused: true });\n    tl.to("#123-frame", { x: 10 }, 0);',
+    ],
+    ["global gsap.to", 'gsap.to("#123-frame", { opacity: 1, duration: 0.5 });'],
+    ["global gsap.from", 'gsap.from("#123-frame", { opacity: 0, duration: 0.5 });'],
+    ["global gsap.fromTo", 'gsap.fromTo("#123-frame", { opacity: 0 }, { opacity: 1 });'],
+    ["chained timeline", 'gsap.timeline({ paused: true }).to("#123-frame", { x: 10 }, 0);'],
+    ["matches", 'document.body.matches("#123-frame");'],
+    ["closest", 'document.body.closest("#123-frame");'],
+    ["gsap.utils.toArray", 'const items = gsap.utils.toArray("#123-frame");'],
+    [
+      "scrollTrigger.trigger",
+      'gsap.to(".box", { x: 10, scrollTrigger: { trigger: "#123-frame" } });',
+    ],
+    ["ScrollTrigger.create", 'ScrollTrigger.create({ trigger: "#123-frame", pin: true });'],
+    [":not()", 'document.querySelector(":not(#123-frame)");'],
+    [":has()", 'document.querySelector(".stage:has(#123-frame)");'],
+    [":nth-child(of)", 'document.querySelector("li:nth-child(2 of #123-frame)");'],
+    ["descendant compound", 'document.querySelector(".stage #123-frame > span");'],
+    ["template literal", "document.querySelector(`#123-frame`);"],
+  ])("errors when %s executes a raw digit-leading id selector", async (_sink, statement) => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+  </div>
+  <script>
+    ${statement}
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toMatchObject({ severity: "error", elementId: "123-frame", selector: "#123-frame" });
+    expect(
+      result.findings.find((finding) => finding.code === "id_requires_css_escape"),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ":is(#123-frame)",
+    ":where(#123-frame)",
+    ":is(.a, #123-frame)",
+    ":is(#123-frame) span",
+    ".a:is(#123-frame)",
+    ":is(:not(#123-frame))",
+    ":not(:is(#123-frame))",
+  ])(
+    "keeps warning-only behavior for %s, where :is()/:where() forgiveness prevents the throw",
+    async (selector) => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+  </div>
+  <script>
+    document.querySelector(${JSON.stringify(selector)});
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+
+      expect(
+        result.findings.filter((finding) => finding.code === "invalid_raw_selector_execution"),
+      ).toEqual([]);
+      expect(
+        result.findings.find((finding) => finding.code === "id_requires_css_escape")?.elementId,
+      ).toBe("123-frame");
+    },
+  );
+
+  it("errors when the executed invalid selector has no matching element", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    document.querySelector("#404-missing");
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toMatchObject({ severity: "error", elementId: "404-missing" });
+  });
+
+  it("does not flag a valid selector that merely contains #<digit> in an attribute value", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+    <a href="#123-frame">Jump</a>
+  </div>
+  <script>
+    document.querySelector('a[href="#123-frame"]');
+    gsap.to('a[href="#123-frame"]', { opacity: 1, duration: 0.5 });
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.filter((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toEqual([]);
+    expect(
+      result.findings.find((finding) => finding.code === "id_requires_css_escape")?.elementId,
+    ).toBe("123-frame");
+  });
+
+  it("reports every digit-leading id in an executed selector list", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-a"></div>
+    <div id="456-b"></div>
+  </div>
+  <script>
+    document.querySelectorAll("#123-a, #456-b");
+    window.__timelines = {};
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings
+        .filter((finding) => finding.code === "invalid_raw_selector_execution")
+        .map((finding) => finding.elementId)
+        .sort(),
+    ).toEqual(["123-a", "456-b"]);
+    expect(result.findings.filter((finding) => finding.code === "id_requires_css_escape")).toEqual(
+      [],
+    );
+  });
+
+  it("does not treat set/to on non-GSAP receivers as selector execution", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><canvas id="c"></canvas></div>
+  <script>
+    const material = new THREE.MeshBasicMaterial();
+    material.color.set("#1a1a2e");
+    new Map().set("#1-hash", 1);
+    const tl = gsap.timeline({ paused: true });
+    tl.data = new Map();
+    tl.data.set("#2b2b2b", 1);
+    window.__timelines = { c1: tl };
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.filter((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toEqual([]);
+  });
+
+  it("keeps warning-only behavior for unused and safely escaped digit-leading ids", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-unused"></div>
+    <div id="456-escaped"></div>
+    <div id="789-dynamic"></div>
+  </div>
+  <script>
+    const unused = document.getElementById("123-unused");
+    const tl = gsap.timeline({ paused: true });
+    tl.to(unused, { opacity: 1, duration: 0.5 }, 0);
+    tl.to("#\\34 56-escaped", { opacity: 1, duration: 0.5 }, 0);
+    document.querySelector("#\\34 56-escaped");
+    document.querySelector("#" + CSS.escape("789-dynamic"));
+    window.__timelines = { c1: tl };
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.filter((finding) => finding.code === "invalid_raw_selector_execution"),
+    ).toEqual([]);
+    expect(
+      result.findings.filter((finding) => finding.code === "id_requires_css_escape"),
+    ).toHaveLength(3);
+  });
+
   it("accepts ids that start with a letter", async () => {
     const html = `
 <html><body>
