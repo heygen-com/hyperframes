@@ -304,6 +304,11 @@ export async function captureScreenshotWithAlpha(
  * Idempotent, but NOT append-once: calling this again on the same page
  * rewrites the existing stylesheet's rule rather than skipping, so a later
  * call always wins even when it passes a different `clearCompositionRoot`.
+ * This matters because `initializeSession()`'s own internal call only fires
+ * when this session's OWN capture format is `"png"` — an HDR-layered DOM
+ * session commonly captures `"jpeg"` (the final output doesn't itself need
+ * alpha), so its caller must also call this explicitly, since the internal
+ * call may not fire at all.
  */
 const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
