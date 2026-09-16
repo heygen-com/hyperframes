@@ -464,6 +464,35 @@ describe("hf-id surfacing in preview route", () => {
     expect(readFileSync(compPath, "utf-8")).toContain('data-hf-id="hf-');
   });
 
+  it("returns ByteString-safe stable and distinct ETags for percent-encoded CJK sub-comp paths", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "compositions/測試.html"), "<div>First</div>");
+    writeFileSync(join(projectDir, "compositions/別頁.html"), "<div>Second</div>");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, { getProjectSignature: () => "stable-signature" }),
+    );
+
+    const first = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E6%B8%AC%E8%A9%A6.html",
+    );
+    const repeat = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E6%B8%AC%E8%A9%A6.html",
+    );
+    const other = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/%E5%88%A5%E9%A0%81.html",
+    );
+
+    expect([first.status, repeat.status, other.status]).toEqual([200, 200, 200]);
+    const firstEtag = first.headers.get("ETag");
+    expect(firstEtag).toBeTruthy();
+    expect(firstEtag).toMatch(/^[\x20-\x7e]+$/);
+    expect(repeat.headers.get("ETag")).toBe(firstEtag);
+    expect(other.headers.get("ETag")).not.toBe(firstEtag);
+  });
+
   it("sub-comp served ids equal disk ids even when relative asset paths are rewritten", async () => {
     // Regression guard for the setTiming element_not_found divergence class:
     // the sub-comp route rewrites relative src/href BEFORE minting, so an
