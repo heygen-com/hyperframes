@@ -39,7 +39,7 @@
 // the generate path it is spawned detached (bgm_pending:true) — run wait-bgm.mjs
 // before assembling.
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
@@ -68,6 +68,7 @@ const die = (m) => {
   process.exit(1);
 };
 const r3 = (x) => Number(x.toFixed(3));
+const lineText = (line) => String(line.text ?? "").trim();
 
 // Two independent reports of an unbounded Promise.all over TTS lines
 // overwhelming a machine: one OOM'd 12/13 concurrent Kokoro TTS +
@@ -140,7 +141,7 @@ if (only.has("tts") && lines.length) {
   console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
   const synthLine = async (line) => {
     const id = String(line.id);
-    const text = String(line.text ?? "").trim();
+    const text = lineText(line);
     if (!text) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
@@ -173,6 +174,43 @@ if (only.has("tts") && lines.length) {
   voices = results.filter(Boolean);
   for (const v of voices)
     console.error(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`);
+}
+
+// ── reconcile externally-supplied narration ──────────────────────────────────
+// A narration WAV can land in assets/voice/<id>.wav without ever going
+// through the synthLine loop above — hand-placed, copied over from another
+// run, or left behind by one that generated the file but didn't finish
+// registering it. voices[] only ever grows inside that loop, so such a file
+// is invisible to every consumer that trusts voices[] (assemble-index.mjs's
+// <audio> emission, captions.mjs) with zero warning. Runs every invocation,
+// independent of --only, so a workflow that reassembles after only bgm/sfx
+// still picks up a line that TTS registered in an earlier run and a manual
+// drop-in registers on the very next run. Only reconciles ids the current
+// request still asks for AND still has real text for (`lines`, same
+// empty-text exclusion synthLine uses above) — a stale file from a
+// since-edited or since-cleared script line is left alone, not resurrected.
+const voiceDir = join(hyperframesDir, "assets", "voice");
+if (lines.length && existsSync(voiceDir)) {
+  const expectedIds = new Set(lines.filter((l) => lineText(l)).map((l) => String(l.id)));
+  const knownIds = new Set(voices.map((v) => String(v.id)));
+  for (const file of readdirSync(voiceDir)) {
+    if (!file.endsWith(".wav")) continue;
+    const id = file.slice(0, -".wav".length);
+    if (knownIds.has(id) || !expectedIds.has(id)) continue;
+    const rel = `assets/voice/${file}`;
+    const dur = ffprobeDuration(join(hyperframesDir, rel));
+    if (!isFinite(dur) || dur <= 0) {
+      anomalies.push(
+        `voice ${id}: found ${rel} on disk but couldn't read its duration — not reconciled`,
+      );
+      continue;
+    }
+    // No word timing is available for a file that never went through TTS —
+    // captions.mjs simply has nothing to render for this line, same as any
+    // other voice with an empty words[] today.
+    voices.push({ id, path: rel, duration_s: r3(dur), words: [] });
+    anomalies.push(`voice ${id}: found ${rel} on disk, missing from the ledger — reconciled`);
+  }
 }
 const hasVoice = voices.length > 0;
 const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
