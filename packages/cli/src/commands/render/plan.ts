@@ -146,6 +146,8 @@ export interface RenderPlan {
   variablesFileArg?: string;
   strictVariables: boolean;
   environment: Readonly<Record<string, string>>;
+  /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
+  hfEnvOverrides: readonly string[];
 }
 
 function formatFpsParseError(
@@ -182,9 +184,23 @@ function positiveInteger(raw: string, title: string, message: string, min = 1): 
   return parsed;
 }
 
+const HF_ENV_OVERRIDE_RE = /^(HF|HYPERFRAMES)_/;
+const MAX_REPORTED_ENV_OVERRIDES = 20;
+
+/** Names (never values — could hold paths or secrets) of HF_-/HYPERFRAMES_-prefixed env vars
+ * present when this plan resolves — before this render's own preflight injects its ffmpeg/
+ * ffprobe path overrides, which would otherwise always read back as operator-set. */
+function resolveHfEnvOverrides(): readonly string[] {
+  return Object.keys(process.env)
+    .filter((name) => HF_ENV_OVERRIDE_RE.test(name))
+    .sort()
+    .slice(0, MAX_REPORTED_ENV_OVERRIDES);
+}
+
 /** Parse and validate command input into an immutable execution plan. */
 // fallow-ignore-next-line complexity
 export function createRenderPlan(args: RenderCommandArgs, now = new Date()): RenderPlan {
+  const hfEnvOverrides = resolveHfEnvOverrides();
   const hasExplicitComposition = hasExplicitCompositionArg(args.composition);
   const project = resolveProject(args.dir, { requireIndex: !hasExplicitComposition });
   const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
@@ -490,6 +506,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     variablesFileArg: args["variables-file"],
     strictVariables: args["strict-variables"] ?? false,
     environment: Object.freeze(environment),
+    hfEnvOverrides,
   });
 }
 

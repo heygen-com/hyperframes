@@ -242,4 +242,52 @@ describe("createRenderPlan", () => {
     expect(plan.authoringSkill).toBe("product-launch-video");
     expect(plan.authoringSkillSource).toBe("project-config");
   });
+
+  describe("hfEnvOverrides", () => {
+    const savedEnv: Record<string, string | undefined> = {};
+    const OVERRIDE_KEYS = [
+      "HF_DE_VERIFY",
+      "HF_TEST_ENV_INT",
+      "HYPERFRAMES_ZZZ_TEST_OVERRIDE",
+      "HYPERFRAMES_AAA_TEST_OVERRIDE",
+    ];
+
+    beforeEach(() => {
+      for (const key of OVERRIDE_KEYS) savedEnv[key] = process.env[key];
+    });
+
+    afterEach(() => {
+      for (const key of OVERRIDE_KEYS) {
+        if (savedEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = savedEnv[key];
+      }
+    });
+
+    it("reports an array (never absent) and never includes a key this test didn't set", () => {
+      for (const key of OVERRIDE_KEYS) delete process.env[key];
+      const plan = createRenderPlan({ dir: projectDir });
+      expect(Array.isArray(plan.hfEnvOverrides)).toBe(true);
+      for (const key of OVERRIDE_KEYS) expect(plan.hfEnvOverrides).not.toContain(key);
+    });
+
+    it("reports the sorted names (never values) of set HF_/HYPERFRAMES_ env vars", () => {
+      process.env.HF_TEST_ENV_INT = "some-path-that-must-not-leak";
+      process.env.HYPERFRAMES_ZZZ_TEST_OVERRIDE = "another-secret-looking-value";
+      const plan = createRenderPlan({ dir: projectDir });
+      expect(plan.hfEnvOverrides).toContain("HF_TEST_ENV_INT");
+      expect(plan.hfEnvOverrides).toContain("HYPERFRAMES_ZZZ_TEST_OVERRIDE");
+      expect(plan.hfEnvOverrides.join(" ")).not.toContain("some-path-that-must-not-leak");
+      expect(plan.hfEnvOverrides.join(" ")).not.toContain("another-secret-looking-value");
+    });
+
+    it("sorts names rather than reporting them in process.env's insertion order", () => {
+      process.env.HYPERFRAMES_ZZZ_TEST_OVERRIDE = "1";
+      process.env.HYPERFRAMES_AAA_TEST_OVERRIDE = "1";
+      const plan = createRenderPlan({ dir: projectDir });
+      const indexOfAaa = plan.hfEnvOverrides.indexOf("HYPERFRAMES_AAA_TEST_OVERRIDE");
+      const indexOfZzz = plan.hfEnvOverrides.indexOf("HYPERFRAMES_ZZZ_TEST_OVERRIDE");
+      expect(indexOfAaa).toBeGreaterThanOrEqual(0);
+      expect(indexOfAaa).toBeLessThan(indexOfZzz);
+    });
+  });
 });

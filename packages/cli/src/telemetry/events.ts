@@ -300,6 +300,8 @@ export function trackRenderComplete(
     authoringSkillSource?: string;
     /** Raw --skill value when it failed skill-slug normalization (an unrecognized skill name). */
     authoringSkillInvalid?: string;
+    /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
+    hfEnvOverrides?: readonly string[];
     /**
      * Catalog items installed in this project, and those the rendered
      * composition reaches. The pair is what joins `registry_item_added` to a
@@ -436,6 +438,7 @@ export function trackRenderComplete(
       authoring_skill: props.authoringSkill,
       authoring_skill_source: props.authoringSkillSource,
       authoring_skill_invalid: props.authoringSkillInvalid,
+      hf_env_overrides: props.hfEnvOverrides ?? [],
       ...catalogEventProperties(props.catalogUsage),
       workers: props.workers,
       workers_bound_by: props.workersBoundBy,
@@ -551,6 +554,8 @@ export function trackRenderError(
     authoringSkillSource?: string;
     /** Raw --skill value when it failed skill-slug normalization (an unrecognized skill name). */
     authoringSkillInvalid?: string;
+    /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
+    hfEnvOverrides?: readonly string[];
     docker: boolean;
     workers?: number;
     gpu?: boolean;
@@ -579,6 +584,7 @@ export function trackRenderError(
       authoring_skill: props.authoringSkill,
       authoring_skill_source: props.authoringSkillSource,
       authoring_skill_invalid: props.authoringSkillInvalid,
+      hf_env_overrides: props.hfEnvOverrides ?? [],
       docker: props.docker,
       workers: props.workers,
       gpu: props.gpu,

@@ -417,6 +417,8 @@ export interface RenderOptions {
   authoringSkillSource?: "flag" | "project-config";
   /** Raw --skill value when it failed normalizeSkillSlug (an unrecognized skill name was passed). */
   authoringSkillInvalid?: string;
+  /** Names of HF_-/HYPERFRAMES_-prefixed env vars present at plan time (never values), capped at 20. */
+  hfEnvOverrides?: readonly string[];
   /**
    * Catalog items installed in this project and those the rendered composition
    * reaches. Resolved once in the render plan; absent on programmatic callers
@@ -816,6 +818,7 @@ async function renderDocker(
       authoringSkill: options.authoringSkill,
       authoringSkillSource: options.authoringSkillSource,
       authoringSkillInvalid: options.authoringSkillInvalid,
+      hfEnvOverrides: options.hfEnvOverrides,
       catalogUsage: options.catalogUsage,
       ...renderOutputShapeTelemetryPayload(options),
       ...renderEnvironmentTelemetryPayload(options),
@@ -1593,6 +1596,7 @@ function handleRenderError(
     authoringSkill: options.authoringSkill,
     authoringSkillSource: options.authoringSkillSource,
     authoringSkillInvalid: options.authoringSkillInvalid,
+    hfEnvOverrides: options.hfEnvOverrides,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
@@ -1695,6 +1699,7 @@ function trackRenderMetrics(
     authoringSkill: options.authoringSkill,
     authoringSkillSource: options.authoringSkillSource,
     authoringSkillInvalid: options.authoringSkillInvalid,
+    hfEnvOverrides: options.hfEnvOverrides,
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
