@@ -469,6 +469,10 @@ export function trackRenderError(
     gpu?: boolean;
     source?: "cli" | "studio";
     failedStage?: string;
+    /** One of ~20 typed producer error classes (CaptureFailure, DrawElementCaptureError, …), or "unknown" for a non-Error throw. */
+    errorName?: string;
+    /** failedStage normalized to a stable snake_case code. */
+    failedStageCode?: string;
     errorMessage?: string;
     elapsedMs?: number;
     peakMemoryMb?: number;
@@ -489,6 +493,8 @@ export function trackRenderError(
       gpu: props.gpu,
       source: props.source ?? "cli",
       failed_stage: props.failedStage,
+      error_name: props.errorName,
+      failed_stage_code: props.failedStageCode,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
       peak_memory_mb: props.peakMemoryMb,

@@ -1500,6 +1500,37 @@ function reportDeParallelRouterBreakerTrip(quiet: boolean): void {
   );
 }
 
+/**
+ * `job.currentStage`/`failedStage` are free-text progress labels
+ * (`updateJobStatus`'s callers each pass their own human sentence — "Compiling
+ * composition", "Extracting video frames", …), which makes an exact string
+ * property unbounded in a telemetry event. This maps the known set to a
+ * stable snake_case code, and slugifies anything unrecognized instead of
+ * bucketing it into a single opaque "unknown" — a future stage string still
+ * gets a distinct, readable code without needing this map updated first.
+ */
+const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
+  Queued: "queued",
+  "Compiling composition": "compiling_composition",
+  "Extracting video frames": "extracting_video_frames",
+  "Processing audio tracks": "processing_audio_tracks",
+  "Starting frame capture": "starting_frame_capture",
+  "Render complete": "render_complete",
+  "Render cancelled": "render_cancelled",
+  pipeline: "pipeline",
+};
+
+export function normalizeStageCode(stage: string): string {
+  const known = KNOWN_STAGE_CODES[stage];
+  if (known) return known;
+  const slug = stage
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug || "unknown";
+}
+
 function handleRenderError(
   error: unknown,
   options: RenderOptions,
@@ -1520,6 +1551,14 @@ function handleRenderError(
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
+    // A bucketable failure taxonomy alongside the free-text error_message
+    // above: error.name is one of ~20 typed producer error classes
+    // (CaptureFailure, DrawElementCaptureError, SwiftShaderAssertionError, …);
+    // failed_stage_code is the same job.currentStage value normalized to a
+    // stable code. Error-conditional by nature — there is no equivalent on
+    // the render_complete success path, since nothing failed to name.
+    errorName: error instanceof Error ? error.name : "unknown",
+    failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });

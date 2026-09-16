@@ -1861,4 +1861,28 @@ describe("render command batch options", () => {
   }, 60_000);
 });
 
+describe("normalizeStageCode", () => {
+  const { normalizeStageCode } = renderModule;
+
+  it("maps every known updateJobStatus stage string to its code", () => {
+    expect(normalizeStageCode("Queued")).toBe("queued");
+    expect(normalizeStageCode("Compiling composition")).toBe("compiling_composition");
+    expect(normalizeStageCode("Extracting video frames")).toBe("extracting_video_frames");
+    expect(normalizeStageCode("Processing audio tracks")).toBe("processing_audio_tracks");
+    expect(normalizeStageCode("Starting frame capture")).toBe("starting_frame_capture");
+    expect(normalizeStageCode("Render complete")).toBe("render_complete");
+    expect(normalizeStageCode("Render cancelled")).toBe("render_cancelled");
+    expect(normalizeStageCode("pipeline")).toBe("pipeline");
+  });
+
+  it("slugifies an unrecognized stage string instead of bucketing it as unknown", () => {
+    expect(normalizeStageCode("Some New Stage!")).toBe("some_new_stage");
+  });
+
+  it("falls back to unknown only when slugifying produces nothing usable", () => {
+    expect(normalizeStageCode("")).toBe("unknown");
+    expect(normalizeStageCode("!!!")).toBe("unknown");
+  });
+});
+
 // Variables-helper tests live in `../utils/variables.test.ts`.
