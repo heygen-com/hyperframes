@@ -119,6 +119,13 @@ export interface RenderCaptureObservability {
   heygenVideoCount?: number;
   /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set. */
   adaptersUsed?: readonly string[];
+  /** Element/attribute counts from the same static scan; only set when the source above is "static". */
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
   /**
    * Short-comp band decision, emitted only when the band is DECISIVE — every
    * other inversion-eligibility condition passed and only the floor (250 vs

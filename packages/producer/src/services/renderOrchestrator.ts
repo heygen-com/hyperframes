@@ -50,9 +50,11 @@ import {
   type Fps,
   type FpsInput,
   fpsToNumber,
+  HF_COLOR_GRADING_ATTR,
   redactTelemetryString,
   toFps,
 } from "@hyperframes/core";
+import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import {
   type EngineConfig,
   resolveConfig,
@@ -521,6 +523,13 @@ export interface RenderPerfSummary {
     heygenVideoCount?: number;
     /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`) — live+static union, always set (possibly empty). */
     adaptersUsed?: readonly string[];
+    /** Audio/image/sub-comp/color-grading counts, same static scan; only set when the source above is "static". */
+    audioCount?: number;
+    imageCount?: number;
+    subCompositionCount?: number;
+    audioGroupCount?: number;
+    colorGradingCount?: number;
+    hasLut?: boolean;
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -1411,6 +1420,12 @@ export interface ElementTagScan {
   byTag: Readonly<Record<string, number>>;
   arollVideoCount: number;
   heygenVideoCount: number;
+  audioCount: number;
+  imageCount: number;
+  subCompositionCount: number;
+  audioGroupCount: number;
+  colorGradingCount: number;
+  hasLut: boolean;
 }
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
@@ -1446,9 +1461,9 @@ const MAX_REPORTED_ELEMENT_TAGS = 50;
  * literal closing marker (`</`, a void name at a word boundary, or `/>`), so
  * ordinary JS comparisons and divisions don't qualify — verified by test.
  *
- * `byTag`/`arollVideoCount`/`heygenVideoCount` derive from the SAME matched set and the SAME
- * script/style-stripped markup as `total` — one scan feeds every property
- * this function returns, so none of them can drift apart from each other.
+ * Every other property derives from the SAME script/style-stripped markup as
+ * `total` — and the per-tag counts from the SAME matched set — so one scan
+ * feeds everything this function returns and none of them can drift apart.
  *
  * FALLBACK ONLY as of the live-DOM fix below — a string scan of the SOURCE
  * markup cannot see elements a composition's own script creates at runtime
@@ -1512,7 +1527,62 @@ export function scanElementTags(html: string): ElementTagScan {
   // or value, so a plain presence check is exact, not a substring guess.
   const heygenVideoCount =
     markup.match(/<video\b[^>]*\bdata-media-source=["']heygen["'][^>]*>/gi)?.length ?? 0;
-  return { total, byTag, arollVideoCount, heygenVideoCount };
+  // Uncapped `counts` Map, not `byTag`: 50+ distinct tags could push these
+  // into the "other" bucket, zeroing a named field the cap shouldn't affect.
+  const audioCount = counts.get("audio") ?? 0;
+  const imageCount = counts.get("img") ?? 0;
+  const audioGroupCount = counts.get(HF_AUDIO_GROUP_TAG) ?? 0;
+  // Not collectSubCompositionSrcs (@hyperframes/parsers/asset-resolution):
+  // that dedupes by src and drops placeholder/remote mounts, so its length is
+  // distinct resolvable sub-comps, not this field's mount-element count.
+  const subCompositionCount =
+    markup.match(/<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-src=["'][^"']*["']/gi)?.length ??
+    0;
+  let colorGradingCount = 0;
+  let hasLut = false;
+  for (const m of markup.matchAll(
+    new RegExp(`\\b${HF_COLOR_GRADING_ATTR}=(?:"([^"]*)"|'([^']*)')`, "gi"),
+  )) {
+    colorGradingCount++;
+    // Guarded, not unconditional: one LUT anywhere settles the flag, so the
+    // JSON parse stops running for every element after the first hit.
+    if (!hasLut) hasLut = colorGradingValueHasLut(m[1] ?? m[2] ?? "");
+  }
+  return {
+    total,
+    byTag,
+    arollVideoCount,
+    heygenVideoCount,
+    audioCount,
+    imageCount,
+    subCompositionCount,
+    audioGroupCount,
+    colorGradingCount,
+    hasLut,
+  };
+}
+
+/** `data-color-grading`'s JSON `lut` field means "has a LUT" (see `HF_COLOR_GRADING_ATTR`).
+ * Decode is load-bearing: linkedom re-serializes this `&quot;`-escaped, or `JSON.parse` throws. */
+function colorGradingValueHasLut(rawAttributeValue: string): boolean {
+  const decoded = rawAttributeValue
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+  try {
+    const parsed: unknown = JSON.parse(decoded);
+    if (typeof parsed !== "object" || parsed === null || !("lut" in parsed)) return false;
+    const lut = parsed.lut;
+    // Mirrors normalizeLut (@hyperframes/core colorGrading.ts): a bare
+    // non-blank string, or an object with a non-blank string `src`, counts —
+    // null/absent/empty-string/blank-src does not.
+    if (typeof lut === "string") return lut.trim() !== "";
+    if (typeof lut !== "object" || lut === null) return false;
+    const src = (lut as { src?: unknown }).src;
+    return typeof src === "string" && src.trim() !== "";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1546,6 +1616,12 @@ export async function resolveCompositionElementCount(
   byTag?: Readonly<Record<string, number>>;
   arollVideoCount?: number;
   heygenVideoCount?: number;
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
 }> {
   if (probeSession?.isInitialized) {
     try {
@@ -1563,9 +1639,9 @@ export async function resolveCompositionElementCount(
       // render on a routing-gate measurement.
     }
   }
-  // byTag/arollVideoCount/heygenVideoCount are static-only: the live path
-  // measures a real DOM node count and never runs this string scan, so it
-  // has nothing to report.
+  // Every field below `source` is static-only: the live path measures a real
+  // DOM node count and never runs this string scan, so it has nothing to
+  // report for any of them.
   const scan = scanElementTags(html);
   return {
     count: scan.total,
@@ -1573,6 +1649,12 @@ export async function resolveCompositionElementCount(
     byTag: scan.byTag,
     arollVideoCount: scan.arollVideoCount,
     heygenVideoCount: scan.heygenVideoCount,
+    audioCount: scan.audioCount,
+    imageCount: scan.imageCount,
+    subCompositionCount: scan.subCompositionCount,
+    audioGroupCount: scan.audioGroupCount,
+    colorGradingCount: scan.colorGradingCount,
+    hasLut: scan.hasLut,
   };
 }
 
@@ -3132,6 +3214,12 @@ async function executeRenderPipeline(input: {
       byTag: compositionElementTags,
       arollVideoCount,
       heygenVideoCount,
+      audioCount,
+      imageCount,
+      subCompositionCount,
+      audioGroupCount,
+      colorGradingCount,
+      hasLut,
     } = await resolveCompositionElementCount(probeSession, compiled.html);
     const adaptersUsed = await resolveAdaptersUsed(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
@@ -3480,6 +3568,12 @@ async function executeRenderPipeline(input: {
       arollVideoCount,
       heygenVideoCount,
       adaptersUsed,
+      audioCount,
+      imageCount,
+      subCompositionCount,
+      audioGroupCount,
+      colorGradingCount,
+      hasLut,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -4394,6 +4488,12 @@ async function executeRenderPipeline(input: {
         arollVideoCount,
         heygenVideoCount,
         adaptersUsed,
+        audioCount,
+        imageCount,
+        subCompositionCount,
+        audioGroupCount,
+        colorGradingCount,
+        hasLut,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,

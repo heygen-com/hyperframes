@@ -98,6 +98,13 @@ export interface DrawElementPerfInput {
   heygenVideoCount?: number;
   /** Runtime adapters exercised (live+static union); always set (possibly empty). */
   adaptersUsed?: readonly string[];
+  /** Audio/image/sub-comp/color-grading counts, same static scan; only set when the source above is "static". */
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -147,6 +154,12 @@ function aggregateDrawElement(
     arollVideoCount: de.arollVideoCount,
     heygenVideoCount: de.heygenVideoCount,
     adaptersUsed: de.adaptersUsed,
+    audioCount: de.audioCount,
+    imageCount: de.imageCount,
+    subCompositionCount: de.subCompositionCount,
+    audioGroupCount: de.audioGroupCount,
+    colorGradingCount: de.colorGradingCount,
+    hasLut: de.hasLut,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,

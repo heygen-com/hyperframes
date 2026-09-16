@@ -402,6 +402,52 @@ describe("render telemetry events", () => {
     expect(props.adapters_used).toBeUndefined();
   });
 
+  it("carries the composition scan's element/attribute counts and hasLut flag", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      audioCount: 3,
+      imageCount: 5,
+      subCompositionCount: 1,
+      audioGroupCount: 2,
+      colorGradingCount: 4,
+      hasLut: true,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.audio_count).toBe(3);
+    expect(props.image_count).toBe(5);
+    expect(props.sub_composition_count).toBe(1);
+    expect(props.audio_group_count).toBe(2);
+    expect(props.color_grading_count).toBe(4);
+    expect(props.has_lut).toBe(true);
+  });
+
+  it("reports zero counts and hasLut false rather than dropping the properties", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      audioCount: 0,
+      imageCount: 0,
+      subCompositionCount: 0,
+      audioGroupCount: 0,
+      colorGradingCount: 0,
+      hasLut: false,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.audio_count).toBe(0);
+    expect(props.image_count).toBe(0);
+    expect(props.sub_composition_count).toBe(0);
+    expect(props.audio_group_count).toBe(0);
+    expect(props.color_grading_count).toBe(0);
+    expect(props.has_lut).toBe(false);
+  });
+
   it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
     expect(flush).toHaveBeenCalledTimes(1);

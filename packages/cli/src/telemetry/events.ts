@@ -79,6 +79,12 @@ export interface RenderObservabilityTelemetryPayload {
   captureArollVideoCount?: number;
   captureHeygenVideoCount?: number;
   captureAdaptersUsed?: readonly string[];
+  captureAudioCount?: number;
+  captureImageCount?: number;
+  captureSubCompositionCount?: number;
+  captureAudioGroupCount?: number;
+  captureColorGradingCount?: number;
+  captureHasLut?: boolean;
   captureDeShortBand?: string;
   captureDeParallelRouter?: string;
   captureDeGpuRenderer?: string;
@@ -145,6 +151,12 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     aroll_video_count: props.captureArollVideoCount,
     heygen_video_count: props.captureHeygenVideoCount,
     adapters_used: props.captureAdaptersUsed,
+    audio_count: props.captureAudioCount,
+    image_count: props.captureImageCount,
+    sub_composition_count: props.captureSubCompositionCount,
+    audio_group_count: props.captureAudioGroupCount,
+    color_grading_count: props.captureColorGradingCount,
+    has_lut: props.captureHasLut,
     de_short_band: props.captureDeShortBand,
     de_parallel_router: props.captureDeParallelRouter,
     gpu_renderer: props.captureDeGpuRenderer,
@@ -312,6 +324,12 @@ export function trackRenderComplete(
     arollVideoCount?: number;
     heygenVideoCount?: number;
     adaptersUsed?: readonly string[];
+    audioCount?: number;
+    imageCount?: number;
+    subCompositionCount?: number;
+    audioGroupCount?: number;
+    colorGradingCount?: number;
+    hasLut?: boolean;
     deShortBand?: string;
     deParallelRouter?: string;
     dePreRouterWorkers?: number;
@@ -421,6 +439,12 @@ export function trackRenderComplete(
       aroll_video_count: props.arollVideoCount,
       heygen_video_count: props.heygenVideoCount,
       adapters_used: props.adaptersUsed,
+      audio_count: props.audioCount,
+      image_count: props.imageCount,
+      sub_composition_count: props.subCompositionCount,
+      audio_group_count: props.audioGroupCount,
+      color_grading_count: props.colorGradingCount,
+      has_lut: props.hasLut,
       de_short_band: props.deShortBand,
       de_parallel_router: props.deParallelRouter,
       de_pre_router_workers: props.dePreRouterWorkers,
