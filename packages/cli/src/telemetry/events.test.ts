@@ -312,6 +312,60 @@ describe("render telemetry events", () => {
     expect(props.registry_blocks_used_count).toBeUndefined();
   });
 
+  // Output-shape request facts are resolved from CLI flags before the
+  // pipeline starts, so both render_complete and render_error must carry
+  // them — a failure before perfSummary exists is exactly the case these
+  // fields (unlike the perfSummary-derived ones) still need to cover.
+  it("carries output-shape request facts on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      outputResolutionPreset: "landscape-4k",
+      outputFormat: "gif",
+      hdrMode: "force-sdr",
+      videoFrameFormat: "png",
+      gifFpsCapped: true,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.output_resolution_preset).toBe("landscape-4k");
+    expect(props.output_format).toBe("gif");
+    expect(props.hdr_mode).toBe("force-sdr");
+    expect(props.video_frame_format).toBe("png");
+    expect(props.gif_fps_capped).toBe(true);
+  });
+
+  it("carries output-shape request facts on render_error", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "high",
+      docker: false,
+      outputResolutionPreset: "portrait",
+      outputFormat: "mp4",
+      hdrMode: "auto",
+      videoFrameFormat: "auto",
+      gifFpsCapped: false,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.output_resolution_preset).toBe("portrait");
+    expect(props.output_format).toBe("mp4");
+    expect(props.hdr_mode).toBe("auto");
+    expect(props.video_frame_format).toBe("auto");
+    expect(props.gif_fps_capped).toBe(false);
+  });
+
+  it("omits output-shape request facts when the caller never resolved them", () => {
+    trackRenderComplete({ durationMs: 1, fps: 30, quality: "draft", docker: false, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.output_resolution_preset).toBeUndefined();
+    expect(props.output_format).toBeUndefined();
+    expect(props.hdr_mode).toBeUndefined();
+    expect(props.video_frame_format).toBeUndefined();
+    expect(props.gif_fps_capped).toBeUndefined();
+  });
+
   it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
     expect(flush).toHaveBeenCalledTimes(1);

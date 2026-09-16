@@ -68,6 +68,7 @@ import {
   trackRenderComplete,
   trackRenderError,
   trackRenderObservation,
+  type RenderOutputShapeTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import {
@@ -419,6 +420,8 @@ export interface RenderOptions {
   catalogUsage?: CatalogUsage;
   format: RenderFormat;
   gifLoop?: number;
+  /** True when `createRenderPlan` clamped a requested `--fps` above 30 to 30 for `--format gif`. */
+  gifFpsCapped?: boolean;
   workers?: number;
   gpu: boolean;
   /**
@@ -804,6 +807,7 @@ async function renderDocker(
       gpu: options.gpu,
       authoringSkill: options.authoringSkill,
       catalogUsage: options.catalogUsage,
+      ...renderOutputShapeTelemetryPayload(options),
       ...getMemorySnapshot(),
     }),
   );
@@ -1089,6 +1093,19 @@ function getMemorySnapshot() {
   return {
     peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
     memoryFreeMb: bytesToMb(freemem()),
+  };
+}
+
+/** Output-shape request facts, resolved before the pipeline starts (survives a pre-perfSummary render_error). */
+function renderOutputShapeTelemetryPayload(
+  options: RenderOptions,
+): RenderOutputShapeTelemetryPayload {
+  return {
+    outputResolutionPreset: options.outputResolution,
+    outputFormat: options.format,
+    hdrMode: options.hdrMode,
+    videoFrameFormat: options.videoFrameFormat,
+    gifFpsCapped: options.gifFpsCapped,
   };
 }
 
@@ -1551,6 +1568,7 @@ function handleRenderError(
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
+    ...renderOutputShapeTelemetryPayload(options),
     // A bucketable failure taxonomy alongside the free-text error_message
     // above: error.name is one of ~20 typed producer error classes
     // (CaptureFailure, DrawElementCaptureError, SwiftShaderAssertionError, …);
@@ -1647,6 +1665,7 @@ function trackRenderMetrics(
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
     catalogUsage: options.catalogUsage,
+    ...renderOutputShapeTelemetryPayload(options),
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,

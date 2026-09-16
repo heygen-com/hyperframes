@@ -37,6 +37,43 @@ describe("createRenderPlan", () => {
     expect(Object.isFrozen(plan.environment)).toBe(true);
   });
 
+  // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
+  // 30 rounds to visually-indistinguishable delay values — createRenderPlan
+  // clamps and flags it so both the CLI console warning (present.ts) and
+  // render telemetry (gif_fps_capped) can report the same decision.
+  it("caps fps to 30 and flags it for --format gif above the ceiling", () => {
+    const plan = createRenderPlan({
+      dir: projectDir,
+      output: "result.gif",
+      format: "gif",
+      fps: "60",
+    });
+    expect(plan.fps).toEqual({ num: 30, den: 1 });
+    expect(plan.gifFpsCapped).toBe(true);
+  });
+
+  it("does not flag gifFpsCapped for gif fps at or below the ceiling", () => {
+    const plan = createRenderPlan({
+      dir: projectDir,
+      output: "result.gif",
+      format: "gif",
+      fps: "24",
+    });
+    expect(plan.fps).toEqual({ num: 24, den: 1 });
+    expect(plan.gifFpsCapped).toBe(false);
+  });
+
+  it("does not flag gifFpsCapped for non-gif formats regardless of fps", () => {
+    const plan = createRenderPlan({
+      dir: projectDir,
+      output: "result.mp4",
+      format: "mp4",
+      fps: "60",
+    });
+    expect(plan.fps).toEqual({ num: 60, den: 1 });
+    expect(plan.gifFpsCapped).toBe(false);
+  });
+
   // The catalog join reaches the render event through the plan, so a plan that
   // silently drops it would leave every render reporting no catalog items.
   it("resolves catalog usage from the project manifest and the render entry", () => {

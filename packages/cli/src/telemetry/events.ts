@@ -169,6 +169,30 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
   };
 }
 
+/** Output-shape request facts, resolved before the pipeline starts, shared by render_complete/render_error. */
+export interface RenderOutputShapeTelemetryPayload {
+  /** Named canvas preset from `--resolution`; undefined when rendering at the composition's native dimensions. */
+  outputResolutionPreset?: string;
+  /** Container/output format: mp4 | webm | mov | gif | png-sequence. */
+  outputFormat?: string;
+  /** Requested HDR mode (the CLI flag value, not the resolved per-render outcome): auto | force-hdr | force-sdr. */
+  hdrMode?: string;
+  /** Intermediate frame format used when extracting source video frames: auto | jpg | png. */
+  videoFrameFormat?: string;
+  /** True when a requested --fps > 30 was clamped to 30 for --format gif (createRenderPlan's gifFpsCapped). */
+  gifFpsCapped?: boolean;
+}
+
+function renderOutputShapeEventProperties(props: RenderOutputShapeTelemetryPayload) {
+  return {
+    output_resolution_preset: props.outputResolutionPreset,
+    output_format: props.outputFormat,
+    hdr_mode: props.hdrMode,
+    video_frame_format: props.videoFrameFormat,
+    gif_fps_capped: props.gifFpsCapped,
+  };
+}
+
 function redactTelemetryMessage(value: string): string {
   return redactTelemetryString(value);
 }
@@ -350,7 +374,8 @@ export function trackRenderComplete(
     // Attribute this event to a specific user (e.g. the browser user who
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
-  } & RenderObservabilityTelemetryPayload,
+  } & RenderObservabilityTelemetryPayload &
+    RenderOutputShapeTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -415,6 +440,7 @@ export function trackRenderComplete(
       de_frame_timeouts: props.deFrameTimeouts,
       ...powerStateFields(),
       source: props.source ?? "cli",
+      ...renderOutputShapeEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
@@ -480,7 +506,8 @@ export function trackRenderError(
     // Attribute this event to a specific user (e.g. the browser user who
     // triggered a studio render); defaults to the install anonymousId.
     distinctId?: string;
-  } & RenderObservabilityTelemetryPayload,
+  } & RenderObservabilityTelemetryPayload &
+    RenderOutputShapeTelemetryPayload,
 ): void {
   trackEvent(
     "render_error",
@@ -497,6 +524,7 @@ export function trackRenderError(
       failed_stage_code: props.failedStageCode,
       error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
       elapsed_ms: props.elapsedMs,
+      ...renderOutputShapeEventProperties(props),
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,
       ...powerStateFields(),
