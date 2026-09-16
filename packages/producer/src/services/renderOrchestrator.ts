@@ -127,7 +127,7 @@ import {
 } from "./render/capturePlan.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
-import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
+import { findRenderHdrAutoPromotionTrigger, resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import {
   buildRenderPerfSummary,
   pushWorkerDedupPerfs,
@@ -2661,11 +2661,18 @@ async function executeRenderPipeline(input: {
     assertVideoFrameCoverage(coverageReports, coverageThreshold);
 
     // ── HDR auto-detection ──────────────────────────────────────────────
+    const autoPromotionTrigger = findRenderHdrAutoPromotionTrigger({
+      extractionResult,
+      videos: composition.videos,
+      images: composition.images,
+      nativeHdrImageIds,
+    });
     const effectiveHdr = resolveEffectiveHdrMode({
       hdrMode: job.config.hdrMode,
       outputFormat,
       extractionResult,
       imageColorSpaces,
+      autoPromotionTrigger,
       log,
     });
     observability.checkpoint("hdr_detection", "resolved", {

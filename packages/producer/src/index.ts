@@ -108,6 +108,7 @@ export {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
+export { collectRenderMedia, type RenderMedia } from "./services/renderMediaCollector.js";
 // Font localization: fetch + embed @font-face rules for requested families
 // (including those declared only via a remote <link>) so a bundled composition
 // renders with the real font instead of a fallback, regardless of network

@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { ExtractionResult, VideoColorSpace } from "@hyperframes/engine";
-import { resolveEffectiveHdrMode } from "./hdrMode.js";
+import { findRenderHdrAutoPromotionTrigger, resolveEffectiveHdrMode } from "./hdrMode.js";
 
 function makeLog() {
   return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -53,14 +53,19 @@ describe("resolveEffectiveHdrMode", () => {
   it("auto-detects HDR from video sources when format=mp4", () => {
     const log = makeLog();
     const result = resolveEffectiveHdrMode({
-      hdrMode: "auto",
+      hdrMode: undefined,
       outputFormat: "mp4",
       extractionResult: extractionWith([HDR_PQ]),
       imageColorSpaces: [],
+      autoPromotionTrigger: "assets/source-hdr.mp4?token=secret\r\n[ERROR] forged",
       log,
     });
     expect(result).toEqual({ transfer: "pq" });
-    expect(log.info).toHaveBeenCalledWith(expect.stringContaining("auto-detected from source(s)"));
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      '[Render] HDR auto-promotion triggered by "assets/source-hdr.mp4" — output: BT.2020 / HEVC Main10',
+    );
+    expect(log.info).not.toHaveBeenCalled();
   });
 
   it("auto-detects SDR with no HDR sources", () => {
@@ -143,5 +148,32 @@ describe("resolveEffectiveHdrMode", () => {
       2,
       expect.stringContaining("HDR forced by --hdr flag, but no HDR sources were detected"),
     );
+  });
+});
+
+describe("findRenderHdrAutoPromotionTrigger", () => {
+  it("maps a successfully extracted remote HDR video back to its authored source", () => {
+    const extractionResult = extractionWith([HDR_PQ])!;
+    extractionResult.extracted[0]!.videoId = "remote-video";
+
+    expect(
+      findRenderHdrAutoPromotionTrigger({
+        extractionResult,
+        videos: [{ id: "remote-video", src: "https://media.example/hdr.mp4?token=secret" }],
+        images: [],
+        nativeHdrImageIds: new Set(),
+      }),
+    ).toBe("https://media.example/hdr.mp4?token=secret");
+  });
+
+  it("falls back to the native HDR image when no extracted video is HDR", () => {
+    expect(
+      findRenderHdrAutoPromotionTrigger({
+        extractionResult: undefined,
+        videos: [{ id: "unextracted-video", src: "assets/unextracted.mp4" }],
+        images: [{ id: "hero-image", src: "assets/hero.png" }],
+        nativeHdrImageIds: new Set(["hero-image"]),
+      }),
+    ).toBe("assets/hero.png");
   });
 });

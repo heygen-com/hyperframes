@@ -9,18 +9,80 @@
  * formats can carry an HDR signal.
  */
 
-import { analyzeCompositionHdr } from "@hyperframes/engine";
+import {
+  analyzeCompositionHdr,
+  formatHdrAutoPromotionWarning,
+  HDR_AUTO_PROMOTION_PIPELINE,
+  isHdrColorSpace,
+  sanitizeHdrAutoPromotionAsset,
+} from "@hyperframes/engine";
 import type { ExtractionResult, HdrTransfer, VideoColorSpace } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
 import type { RenderConfig } from "../renderOrchestrator.js";
 
-export function resolveEffectiveHdrMode(input: {
+type EffectiveHdr = { transfer: HdrTransfer } | undefined;
+type HdrModeInput = {
   hdrMode: RenderConfig["hdrMode"];
   outputFormat: NonNullable<RenderConfig["format"]>;
   extractionResult: ExtractionResult | null | undefined;
   imageColorSpaces: (VideoColorSpace | null)[];
+  autoPromotionTrigger?: string;
   log: ProducerLogger;
-}): { transfer: HdrTransfer } | undefined {
+};
+
+export function findRenderHdrAutoPromotionTrigger(input: {
+  extractionResult: ExtractionResult | null | undefined;
+  videos: readonly { id: string; src: string }[];
+  images: readonly { id: string; src: string }[];
+  nativeHdrImageIds: ReadonlySet<string>;
+}): string | undefined {
+  for (const extracted of input.extractionResult?.extracted ?? []) {
+    if (!isHdrColorSpace(extracted.metadata.colorSpace)) continue;
+    const source = input.videos.find(({ id }) => id === extracted.videoId)?.src;
+    if (source) return source;
+  }
+  return input.images.find(({ id }) => input.nativeHdrImageIds.has(id))?.src;
+}
+
+function logHdrResolution(
+  input: HdrModeInput,
+  hdrMode: NonNullable<RenderConfig["hdrMode"]>,
+  effectiveHdr: EffectiveHdr,
+  forcedHdrWithoutSources: boolean,
+): void {
+  if (forcedHdrWithoutSources) {
+    input.log.warn(
+      "[Render] HDR forced by --hdr flag, but no HDR sources were detected — defaulting to HLG. SDR-only compositions may look perceptually wrong on HDR displays.",
+    );
+  }
+  if (!effectiveHdr) {
+    input.log.info(
+      hdrMode === "force-sdr"
+        ? "[Render] SDR forced by --sdr flag"
+        : "[Render] No HDR sources detected — rendering SDR",
+    );
+    return;
+  }
+  if (hdrMode === "auto") {
+    input.log.warn(
+      formatHdrAutoPromotionWarning({
+        triggeringAsset: sanitizeHdrAutoPromotionAsset(
+          input.autoPromotionTrigger ?? "an HDR-tagged asset",
+        ),
+        output: HDR_AUTO_PROMOTION_PIPELINE,
+      }),
+    );
+    return;
+  }
+  const reason = forcedHdrWithoutSources
+    ? "forced by --hdr flag (no HDR sources detected — defaulting to HLG)"
+    : "forced by --hdr flag";
+  input.log.info(
+    `[Render] HDR ${reason} — output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
+  );
+}
+
+export function resolveEffectiveHdrMode(input: HdrModeInput): EffectiveHdr {
   const hdrMode = input.hdrMode ?? "auto";
   const videoColorSpaces = (input.extractionResult?.extracted ?? []).map(
     (ext) => ext.metadata.colorSpace,
@@ -28,7 +90,7 @@ export function resolveEffectiveHdrMode(input: {
   const allColorSpaces = [...videoColorSpaces, ...input.imageColorSpaces];
   const info = allColorSpaces.length > 0 ? analyzeCompositionHdr(allColorSpaces) : null;
 
-  let effectiveHdr: { transfer: HdrTransfer } | undefined;
+  let effectiveHdr: EffectiveHdr;
   let forcedHdrWithoutSources = false;
 
   if (hdrMode === "force-sdr") {
@@ -55,28 +117,7 @@ export function resolveEffectiveHdrMode(input: {
     effectiveHdr = undefined;
   }
 
-  if (forcedHdrWithoutSources) {
-    input.log.warn(
-      "[Render] HDR forced by --hdr flag, but no HDR sources were detected — defaulting to HLG. SDR-only compositions may look perceptually wrong on HDR displays.",
-    );
-  }
-  if (effectiveHdr) {
-    let reason: string;
-    if (hdrMode === "force-hdr") {
-      reason = forcedHdrWithoutSources
-        ? "forced by --hdr flag (no HDR sources detected — defaulting to HLG)"
-        : "forced by --hdr flag";
-    } else {
-      reason = "auto-detected from source(s)";
-    }
-    input.log.info(
-      `[Render] HDR ${reason} — output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
-    );
-  } else if (hdrMode === "force-sdr") {
-    input.log.info("[Render] SDR forced by --sdr flag");
-  } else {
-    input.log.info("[Render] No HDR sources detected — rendering SDR");
-  }
+  logHdrResolution(input, hdrMode, effectiveHdr, forcedHdrWithoutSources);
 
   return effectiveHdr;
 }

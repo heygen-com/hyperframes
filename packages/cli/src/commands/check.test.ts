@@ -268,6 +268,7 @@ function dependencies(
     runtime?: CheckFinding[];
     writeSnapshot?: CheckDependencies["writeSnapshot"];
     captureFindingCrops?: CheckDependencies["captureFindingCrops"];
+    inspectHdrAutoPromotion?: NonNullable<CheckDependencies["inspectHdrAutoPromotion"]>;
   } = {},
 ): { deps: CheckDependencies; runBrowserCheck: ReturnType<typeof vi.fn> } {
   const runBrowserCheck = vi.fn(
@@ -292,6 +293,7 @@ function dependencies(
         ),
       ),
     captureFindingCrops: options.captureFindingCrops ?? vi.fn(async () => []),
+    inspectHdrAutoPromotion: options.inspectHdrAutoPromotion ?? vi.fn(async () => null),
   };
   return { deps, runBrowserCheck };
 }
@@ -421,6 +423,45 @@ it("preserves --json after bare --frame-check", async () => {
     }),
   );
   expect(log).toHaveBeenCalledWith(expect.stringContaining('"ok"'));
+});
+
+it("includes local HDR auto-promotion attribution in --json output", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      inspectHdrAutoPromotion: vi.fn(async () => ({
+        triggeringAsset: "assets/source-hdr.mp4",
+        output: { colorSpace: "BT.2020", codec: "HEVC Main10" } as const,
+      })),
+    },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => report),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  expect(log).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(log.mock.calls[0]?.[0])).hdr.autoPromotion).toEqual({
+    triggeringAsset: "assets/source-hdr.mp4",
+    output: { colorSpace: "BT.2020", codec: "HEVC Main10" },
+  });
+});
+
+it("distinguishes unavailable HDR inspection from no promotion", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      inspectHdrAutoPromotion: vi.fn(async () => Promise.reject(new Error("ffprobe unavailable"))),
+    },
+  );
+
+  expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
 });
 
 it("threads --no-proxy into the browser check options", async () => {
@@ -922,6 +963,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
     },
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
+    hdr: { autoPromotion: null, inspection: "available" },
     snapshots: { enabled: false, files: [], times: [], findingFiles: [] },
     ...overrides,
   };
