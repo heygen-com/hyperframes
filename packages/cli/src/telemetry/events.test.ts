@@ -355,6 +355,38 @@ describe("render telemetry events", () => {
     );
   });
 
+  // PRINFRA-341 could not be decided because these props were render_complete
+  // only: 0 of 317k render_error events carried them, so advisory-true renders
+  // could never be correlated with failures. Dropping them again re-opens that.
+  it("carries worker-sizing provenance and sampled peaks on render_error too", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "high",
+      docker: false,
+      workers: 6,
+      workersBoundBy: "heap",
+      workersHeapBased: 4,
+      workersHeapLimitMb: 4144,
+      workersExceedHeapAdvisory: true,
+      peakMemoryMb: 1633,
+      peakHeapUsedMb: 900,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({
+        workers: 6,
+        workers_bound_by: "heap",
+        workers_heap_based: 4,
+        workers_heap_limit_mb: 4144,
+        workers_exceed_heap_advisory: true,
+        peak_memory_mb: 1633,
+        peak_heap_used_mb: 900,
+      }),
+      undefined,
+    );
+  });
+
   it("ties feedback to its report and recent renders via feedback_id + recent_render_ids", () => {
     trackRenderFeedback({
       rating: 3,
@@ -862,5 +894,42 @@ describe("power-state sampling respects the telemetry opt-out", () => {
     shouldTrack.mockReturnValue(false);
     trackRenderComplete({ durationMs: 1, fps: 30, quality: "high", docker: false, gpu: false });
     expect(getPowerState).not.toHaveBeenCalled();
+  });
+});
+
+// Appended at end of file deliberately: inserting mid-file shifts the line
+// numbers of pre-existing clone groups, which makes fallow re-report them as
+// new findings on an unrelated change.
+describe("render_error worker-sizing provenance", () => {
+  // PRINFRA-341 could not be decided because these props were render_complete
+  // only: 0 of 317k render_error events carried them, so advisory-true renders
+  // could never be correlated with failures. Dropping them reopens that.
+  it("carries sizing and sampled peaks on the failure path", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "high",
+      docker: false,
+      workers: 6,
+      workersBoundBy: "heap",
+      workersHeapBased: 4,
+      workersHeapLimitMb: 4144,
+      workersExceedHeapAdvisory: true,
+      peakMemoryMb: 1633,
+      peakHeapUsedMb: 900,
+    });
+    const props = trackEvent.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(props.workers_bound_by).toBe("heap");
+    expect(props.workers_heap_based).toBe(4);
+    expect(props.workers_heap_limit_mb).toBe(4144);
+    expect(props.workers_exceed_heap_advisory).toBe(true);
+    expect(props.peak_memory_mb).toBe(1633);
+    expect(props.peak_heap_used_mb).toBe(900);
+  });
+
+  it("omits them when the render failed before sizing was computed", () => {
+    trackRenderError({ fps: 30, quality: "draft", docker: false });
+    const props = trackEvent.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(props.workers_bound_by).toBeUndefined();
+    expect(props.workers_heap_limit_mb).toBeUndefined();
   });
 });

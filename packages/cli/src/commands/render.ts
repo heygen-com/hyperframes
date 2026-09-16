@@ -1092,6 +1092,38 @@ function getMemorySnapshot() {
   };
 }
 
+/**
+ * Sizing + memory props for the failure path.
+ *
+ * `job.perfSummary` — where the success path reads these from — is assembled
+ * only after a render completes, so these come off the job fields the
+ * orchestrator's unconditional memory-sampler disposer writes
+ * (`recordJobFailureMetrics`). Extracted from `handleRenderError` to keep its
+ * branch count down.
+ *
+ * Prefers the sampled running peak to the teardown RSS snapshot: the snapshot
+ * reads whatever RSS happens to be at teardown and misses the mid-render spike
+ * the field exists to catch.
+ */
+function failureSizingTelemetry(job: RenderJob | undefined, requestedWorkers: number | undefined) {
+  const snapshot = getMemorySnapshot();
+  const base = {
+    ...snapshot,
+    peakMemoryMb: job?.peakRssMb ?? snapshot.peakMemoryMb,
+    peakHeapUsedMb: job?.peakHeapUsedMb,
+  };
+  const sizing = job?.workerSizing;
+  if (!sizing) return { ...base, workers: requestedWorkers };
+  return {
+    ...base,
+    workers: requestedWorkers ?? sizing.workers,
+    workersBoundBy: sizing.boundBy,
+    workersHeapBased: sizing.heapBasedWorkers,
+    workersHeapLimitMb: sizing.heapLimitMb,
+    workersExceedHeapAdvisory: sizing.exceedsHeapAdvisory,
+  };
+}
+
 function metaString(meta: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = meta?.[key];
   return typeof value === "string" ? value : undefined;
@@ -1545,7 +1577,6 @@ function handleRenderError(
     fps: fpsToNumber(options.fps),
     quality: options.quality,
     docker,
-    workers: options.workers,
     gpu: options.gpu,
     authoringSkill: options.authoringSkill,
     elapsedMs: Date.now() - startTime,
@@ -1560,7 +1591,7 @@ function handleRenderError(
     errorName: error instanceof Error ? error.name : "unknown",
     failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     ...renderJobObservabilityTelemetryPayload(job),
-    ...getMemorySnapshot(),
+    ...failureSizingTelemetry(job, options.workers),
   });
   // Failed renders join the recent-renders ring too — a bug report filed via
   // `hyperframes feedback` is MOST likely to be about a failed render.
@@ -1716,6 +1747,10 @@ function trackRenderMetrics(
     extractCacheMisses: extract?.cacheMisses,
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
+    // Same reason as the failure path: prefer the sampled running peak to the
+    // teardown snapshot. Falls back when perfSummary is absent (e.g. Docker).
+    peakMemoryMb: perf?.peakRssMb ?? getMemorySnapshot().peakMemoryMb,
+    peakHeapUsedMb: perf?.peakHeapUsedMb,
   });
 }
 
