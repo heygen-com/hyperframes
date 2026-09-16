@@ -31,6 +31,7 @@
  * diagnostics).
  */
 
+import { rm } from "node:fs/promises";
 import {
   existsSync,
   mkdirSync,
@@ -322,6 +323,8 @@ export interface RenderConfig {
   debug?: boolean;
   /** Strict rejects correctness warnings; best-effort returns a qualified outcome. */
   strictness?: RenderStrictness;
+  /** Opt-in OpenMAIC slide-snapshot reuse; invalid/ineligible plans use dense capture. */
+  sourceStaticPlan?: { enabled: boolean };
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
   /** Full producer config. When provided, env vars are not read. */
@@ -2244,7 +2247,7 @@ export async function executeRenderJob(
       log.info("KEEP_TEMP=1 — leaving workDir on disk for inspection", { workDir });
       return;
     }
-    rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    return rm(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   });
 
   try {
@@ -3638,6 +3641,8 @@ async function executeRenderPipeline(input: {
       needsAlpha,
       routing: captureRouting,
     });
+    // Preserve initial route provenance across streaming/HDR retry fallbacks.
+    const initialDirectSdrDiskEligible = capturePlan.kind === "sdr_disk";
     const syncCapturePlan = (): void => {
       workerCount = capturePlan.workerCount;
       captureForceScreenshot = capturePlan.forceScreenshot;
@@ -4019,6 +4024,10 @@ async function executeRenderPipeline(input: {
             captureStageObservationData({ needsAlpha: diskPlan.needsAlpha }),
             () =>
               runCaptureStage({
+                sourceProjectDir: projectDir,
+                sourceEntryFile: entryFile,
+                initialDirectSdrDiskEligible,
+                sourceStaticPlanEnabled: job.config.sourceStaticPlan?.enabled === true,
                 fileServer: activeFileServer,
                 workDir,
                 framesDir,
