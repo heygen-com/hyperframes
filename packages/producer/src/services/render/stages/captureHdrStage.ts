@@ -220,6 +220,11 @@ export async function runCaptureHdrStage(
   const hdrVideoFrameSources = new Map<string, HdrVideoFrameSource>();
   try {
     await initializeSession(domSession);
+    if (domSession.motionBlur) {
+      throw new Error(
+        "Engine motion blur currently supports SDR screenshot capture only; disable data-motion-blur-samples for layered HDR/shader rendering",
+      );
+    }
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
     await initTransparentBackground(domSession.page);

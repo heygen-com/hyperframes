@@ -19,6 +19,13 @@ import {
 } from "@hyperframes/core";
 
 import { DrawElementCaptureError } from "./drawElementCaptureError.js";
+import {
+  blendMotionBlurSamples,
+  motionBlurSampleTimes,
+  motionBlurFrameIsStatic,
+  parseMotionBlurSettings,
+  type MotionBlurSettings,
+} from "./motionBlur.js";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
 import {
@@ -76,6 +83,10 @@ export type BeforeCaptureHook = (page: Page, time: number) => Promise<void>;
 
 export interface CaptureSession {
   browser: Browser;
+  /** Opt-in SDR temporal accumulation; drawElement capture is disabled. */
+  motionBlur?: MotionBlurSettings;
+  motionBlurCaptureIndex?: number;
+  lastMotionBlurFrame?: number;
   /** Exact ownership token for this browser acquisition. */
   browserLease?: BrowserLease;
   page: Page;
@@ -827,6 +838,19 @@ async function initDrawElementOrTransparentBackground(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  const attributes = await page.evaluate(() => {
+    const root = document.querySelector("[data-composition-id]");
+    return [
+      root?.getAttribute("data-motion-blur-samples") ?? null,
+      root?.getAttribute("data-shutter-angle") ?? null,
+      root?.getAttribute("data-shutter-phase") ?? null,
+    ];
+  });
+  session.motionBlur = parseMotionBlurSettings(
+    attributes?.[0] ?? null,
+    attributes?.[1] ?? null,
+    attributes?.[2] ?? null,
+  );
   const supersampling = (session.options.deviceScaleFactor ?? 1) > 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
@@ -851,6 +875,7 @@ async function initDrawElementOrTransparentBackground(
   const useDrawElement =
     ((session.config?.useDrawElement ?? false) || forceDE) &&
     !supersampling &&
+    !session.motionBlur &&
     (!forceScreenshot || forceDE);
   if ((session.config?.useDrawElement ?? false) && supersampling) {
     session.deGateReason = "supersampling";
@@ -2551,6 +2576,7 @@ async function prepareFrameForCapture(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  subframe = false,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2562,19 +2588,24 @@ async function prepareFrameForCapture(
     throw new Error("[FrameCapture] Session not initialized");
   }
 
-  const quantizedTime = quantizeTimeToFrame(time, fpsToNumber(options.fps));
+  const quantizedTime = subframe ? time : quantizeTimeToFrame(time, fpsToNumber(options.fps));
 
   const seekStart = Date.now();
   // Seek via the __hf protocol. The page's seek() implementation handles
   // all framework-specific logic (GSAP stepping, CSS animation sync, etc.)
   // Seek + check page-side composite pending flag in one round-trip.
-  const hasPendingComposite = await page.evaluate((t: number) => {
-    if (window.__hf && typeof window.__hf.seek === "function") {
-      window.__hf.seek(t);
-    }
-    return !!(window as unknown as { __hf_page_composite_pending?: boolean })
-      .__hf_page_composite_pending;
-  }, quantizedTime);
+  const hasPendingComposite = await page.evaluate(
+    (t: number, exact: boolean) => {
+      if (window.__hf && typeof window.__hf.seek === "function") {
+        if (exact) window.__hf.seek(t, { subframe: true, suppressEvents: true });
+        else window.__hf.seek(t);
+      }
+      return !!(window as unknown as { __hf_page_composite_pending?: boolean })
+        .__hf_page_composite_pending;
+    },
+    quantizedTime,
+    subframe,
+  );
 
   await decodeDynamicCssBackgroundImages(page);
 
@@ -3572,8 +3603,67 @@ async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  subframe = false,
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
-  const { page, options } = session;
+  if (session.motionBlur && !subframe) {
+    const started = Date.now();
+    const nominalTime = quantizeTimeToFrame(time, fpsToNumber(session.options.fps));
+    const absoluteFrame = Math.floor(nominalTime * fpsToNumber(session.options.fps) + 1e-9);
+    if (
+      session.lastFrameBuffer &&
+      session.lastMotionBlurFrame === absoluteFrame - 1 &&
+      motionBlurFrameIsStatic(session.staticFrames, absoluteFrame, session.motionBlur, true)
+    ) {
+      session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
+      session.lastMotionBlurFrame = absoluteFrame;
+      return { buffer: session.lastFrameBuffer, quantizedTime: nominalTime, captureTimeMs: 0 };
+    }
+    session.lastMotionBlurFrame = undefined;
+    const buffers: Buffer[] = [];
+    let capturedMs = 0;
+    let buffer: Buffer;
+    await prepareFrameForCapture(session, frameIndex, nominalTime);
+    try {
+      const duration =
+        session.options.compositionDurationSeconds ?? (await getCompositionDuration(session));
+      const sampleTimes = motionBlurFrameIsStatic(
+        session.staticFrames,
+        absoluteFrame,
+        session.motionBlur,
+      )
+        ? [nominalTime]
+        : motionBlurSampleTimes(
+            nominalTime,
+            fpsToNumber(session.options.fps),
+            duration,
+            session.motionBlur,
+          );
+      for (const sampleTime of sampleTimes) {
+        const result = await captureFrameCore(session, frameIndex, sampleTime, true);
+        buffers.push(result.buffer);
+        capturedMs += result.captureTimeMs;
+      }
+      buffer = await blendMotionBlurSamples(
+        session.page,
+        buffers,
+        session.options.format ?? "jpeg",
+        session.options.quality ?? 80,
+      );
+    } finally {
+      await prepareFrameForCapture(session, frameIndex, nominalTime, true);
+    }
+    session.lastFrameBuffer = buffer;
+    session.lastMotionBlurFrame = absoluteFrame;
+    const captureTimeMs = Date.now() - started;
+    session.capturePerf.frames++;
+    session.capturePerf.totalMs += captureTimeMs - capturedMs;
+    session.capturePerf.frameMs.push(captureTimeMs);
+    return { buffer, quantizedTime: nominalTime, captureTimeMs };
+  }
+  const { page } = session;
+  const options: CaptureOptions = subframe
+    ? { ...session.options, format: "png" }
+    : session.options;
   const startTime = Date.now();
 
   // Static-frame dedup: this frame is byte-identical to its predecessor (predicted +
@@ -3592,6 +3682,7 @@ async function captureFrameCore(
   // with the frame the seek actually lands on, even if `time` ever isn't exactly i/fps.
   const absFrameIndex = Math.floor(time * fpsToNumber(options.fps) + 1e-9);
   if (
+    !subframe &&
     session.staticFrames?.has(absFrameIndex) &&
     session.lastFrameBuffer &&
     session.lastFrameAbsoluteIndex === absFrameIndex - 1
@@ -3610,20 +3701,19 @@ async function captureFrameCore(
       session,
       frameIndex,
       time,
+      subframe,
     );
 
     const screenshotStart = Date.now();
     let screenshotBuffer: Buffer;
 
     if (session.captureMode === "beginframe") {
-      const frameTimeTicks =
-        session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
-      const result = await beginFrameCapture(
-        page,
-        options,
-        frameTimeTicks,
-        session.beginFrameIntervalMs,
-      );
+      const sampleIndex = subframe ? (session.motionBlurCaptureIndex ?? 0) : frameIndex;
+      if (subframe) session.motionBlurCaptureIndex = sampleIndex + 1;
+      const interval =
+        session.beginFrameIntervalMs / (subframe ? (session.motionBlur?.samples ?? 1) : 1);
+      const frameTimeTicks = session.beginFrameTimeTicks + sampleIndex * interval;
+      const result = await beginFrameCapture(page, options, frameTimeTicks, interval);
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
@@ -3697,12 +3787,12 @@ async function captureFrameCore(
     const screenshotMs = Date.now() - screenshotStart;
     const captureTimeMs = Date.now() - startTime;
 
-    session.capturePerf.frames += 1;
+    if (!subframe) session.capturePerf.frames += 1;
     session.capturePerf.seekMs += seekMs;
     session.capturePerf.beforeCaptureMs += beforeCaptureMs;
     session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
-    session.capturePerf.frameMs.push(captureTimeMs);
+    if (!subframe) session.capturePerf.frameMs.push(captureTimeMs);
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
     if (session.staticFrames) {
@@ -3814,6 +3904,10 @@ export async function captureFrameToBufferPipelined(
   frameIndex: number,
   time: number,
 ): Promise<{ encodeResult: Promise<Buffer>; captureTimeMs: number }> {
+  if (session.motionBlur) {
+    const result = await captureFrameCore(session, frameIndex, time);
+    return { encodeResult: Promise.resolve(result.buffer), captureTimeMs: result.captureTimeMs };
+  }
   const { page, options } = session;
   const startTime = Date.now();
 
@@ -3978,6 +4072,18 @@ export async function captureFramesBatchPipelined(
   frameIndices: number[],
   times: number[],
 ): Promise<Array<{ frameIndex: number; encodeResult: Promise<Buffer> }>> {
+  if (session.motionBlur) {
+    const results: Array<{ frameIndex: number; encodeResult: Promise<Buffer> }> = [];
+    for (let i = 0; i < frameIndices.length; i++) {
+      const index = frameIndices[i];
+      const time = times[i];
+      if (index === undefined || time === undefined)
+        throw new Error("Missing motion blur batch frame time");
+      const result = await captureFrameToBufferPipelined(session, index, time);
+      results.push({ frameIndex: index, encodeResult: result.encodeResult });
+    }
+    return results;
+  }
   const { page, options } = session;
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");

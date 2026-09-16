@@ -124,6 +124,19 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
   });
 
+  it("keeps fractional shutter times through the initialized render transport", () => {
+    document.body.innerHTML =
+      '<div data-composition-id="main" data-root="true" data-duration="2" data-fps="30"></div>';
+    const timeline = createMockTimeline(2);
+    window.__timelines = { main: timeline };
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(0.011, { subframe: true, suppressEvents: true });
+    expect(window.__player?.getTime()).toBeCloseTo(0.011, 8);
+    expect(timeline.time()).toBeCloseTo(0.011, 8);
+    window.__player?.renderSeek(0.011);
+    expect(window.__player?.getTime()).toBe(0);
+  });
+
   it.each([
     ["2x", 5],
     ["0x2", 10],

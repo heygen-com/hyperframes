@@ -256,6 +256,8 @@ export type RuntimePlayer = {
 };
 
 export type RuntimeSeekOptions = {
+  /** Render-only temporal samples retain their exact time instead of snapping to a frame. */
+  subframe?: boolean;
   suppressEvents?: boolean;
 };
 

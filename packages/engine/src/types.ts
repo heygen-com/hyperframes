@@ -100,7 +100,7 @@ export interface HfProtocol {
   /** Total duration of the composition in seconds */
   duration: number;
   /** Seek to a specific time. Must produce deterministic visual output. */
-  seek(time: number): void;
+  seek(time: number, options?: { subframe?: boolean; suppressEvents?: boolean }): void;
   /** Optional: media elements the engine should handle */
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */

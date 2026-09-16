@@ -500,6 +500,20 @@ describe("createRuntimePlayer", () => {
       expect(deps.onRenderFrameSeek).toHaveBeenCalled();
     });
 
+    it("retains sub-frame sample times while ordinary render seeks stay frame-quantized", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.renderSeek(0.011, { subframe: true, suppressEvents: true });
+      expect(timeline.totalTime).toHaveBeenLastCalledWith(0.011, true);
+      expect(deps.onDeterministicSeek).toHaveBeenLastCalledWith(0.011, {
+        subframe: true,
+        suppressEvents: true,
+      });
+      player.renderSeek(0.011);
+      expect(timeline.totalTime).toHaveBeenLastCalledWith(0, false);
+    });
+
     it("can suppress timeline events during administrative render seeks", () => {
       const timeline = createMockTimeline({ duration: 10 });
       const deps = createMockDeps(timeline);

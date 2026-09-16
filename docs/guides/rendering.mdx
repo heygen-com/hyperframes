@@ -37,6 +37,43 @@ npx hyperframes render --output final.mp4
 
 `lint` checks the project structure. `check` opens the project in a browser and looks for runtime, layout, motion, media, and contrast problems.
 
+## Temporal motion blur (SDR)
+
+To integrate rotation, scaling, translation and fades across a shutter window, add
+these attributes to the composition root. This initial mode integrates the whole
+composition; it does not provide per-element exclusions:
+
+```html
+<div data-composition-id="main" data-motion-blur-samples="8"
+     data-shutter-angle="180" data-shutter-phase="-90">
+  <!-- composition content -->
+</div>
+```
+
+This is opt-in for export; Studio playback stays sharp. Omit
+`data-motion-blur-samples` (or set it to `0` or `1`) for the normal single capture.
+Counts from 2 to 64 are supported. More samples reduce stepping and increase
+capture work proportionally. Shutter angles up to 720 degrees are supported.
+Shutter angle defaults to 180 degrees and phase to
+-90 degrees, centering a half-frame exposure on each output frame. Times outside
+the composition hold the endpoint. The actual render frame rate, including an
+`--fps` override, determines the shutter duration.
+
+Samples are captured as PNG and averaged in **sRGB**, with premultiplied alpha,
+before the output frame is encoded. Transparent samples therefore do not darken
+colored edges. This is not linear-light integration. The mode uses screenshot
+capture and disables drawElement fast capture. Verified static holds use one sample;
+consecutive frames reuse the result only when both complete shutter windows stay
+inside the verified hold. Dynamic boundary frames retain all K samples.
+Layered HDR/shader rendering is not supported and reports an error when enabled.
+
+Use this instead of the catalog motion-blur component on the same content to
+avoid applying blur twice. Video sources retain their available source frames;
+temporal sampling does not invent intermediate video frames. Timeline callbacks
+run at the nominal output time; sub-frame seeks suppress callbacks and restore
+that time after capture. Animations implemented only through callback side
+effects are not integrated.
+
 ## Choose a format
 
 | Format       | Use it for                                                 |
@@ -219,3 +256,4 @@ Keep the first exact error rather than only the final “render failed” messag
 - [Compare local, hosted, and self-managed rendering](/deploy/overview)
 - [Render and export from Studio](/studio/export)
 - [Diagnose a failed render](/guides/troubleshooting)
+

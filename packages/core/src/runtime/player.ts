@@ -89,7 +89,9 @@ function seekTimelineDeterministically(
   canonicalFps: number,
   options?: RuntimeSeekOptions,
 ): number {
-  const quantized = quantizeTimeToFrame(timeSeconds, canonicalFps);
+  const quantized = options?.subframe
+    ? Math.max(0, Number(timeSeconds) || 0)
+    : quantizeTimeToFrame(timeSeconds, canonicalFps);
   const suppressEvents = options?.suppressEvents === true;
   safeVoid(timeline, "pause");
   if (typeof timeline.totalTime === "function") {
@@ -248,7 +250,9 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
             activateSiblingTimelines(deps.getTimelineRegistry?.(), timeline);
             return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps, options);
           })()
-        : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
+        : options?.subframe
+          ? Math.max(0, Number(timeSeconds) || 0)
+          : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
       deps.onDeterministicSeek(quantized, options);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);
