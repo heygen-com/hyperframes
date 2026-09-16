@@ -1442,6 +1442,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev", "--", ...previewViteArgs(options?.port)], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,
@@ -1504,6 +1505,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: studioProxyEnv(options?.autoProxy ?? true, process.env, {
       projectDir: dir,
       projectName: pName,

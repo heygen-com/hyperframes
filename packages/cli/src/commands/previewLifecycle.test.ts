@@ -159,7 +159,10 @@ describe("background preview lifecycle", () => {
     const replacement = { ...server, port: 3211, pid: "5432" };
     let scans = 0;
     const scan = vi.fn(async () => (++scans < 3 ? [server] : [server, replacement]));
-    const spawn = vi.fn(() => ({ pid: 5432, unref: vi.fn() }));
+    const spawn = vi.fn((_command: string, _args: string[], _options: unknown) => ({
+      pid: 5432,
+      unref: vi.fn(),
+    }));
 
     const result = await startBackgroundPreview(projectDir, 3002, {
       forceNew: true,
@@ -171,6 +174,8 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
     expect(spawn).toHaveBeenCalledOnce();
+    // windowsHide keeps the detached child from flashing a console on Windows.
+    expect(spawn.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ windowsHide: true }));
   });
 
   it.each([
