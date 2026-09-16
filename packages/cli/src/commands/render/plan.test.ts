@@ -250,6 +250,7 @@ describe("createRenderPlan", () => {
       "HF_TEST_ENV_INT",
       "HYPERFRAMES_ZZZ_TEST_OVERRIDE",
       "HYPERFRAMES_AAA_TEST_OVERRIDE",
+      "HF_SHADER_WORKER_ENTRY",
     ];
 
     beforeEach(() => {
@@ -288,6 +289,14 @@ describe("createRenderPlan", () => {
       const indexOfZzz = plan.hfEnvOverrides.indexOf("HYPERFRAMES_ZZZ_TEST_OVERRIDE");
       expect(indexOfAaa).toBeGreaterThanOrEqual(0);
       expect(indexOfAaa).toBeLessThan(indexOfZzz);
+    });
+
+    it("never reports the CLI's own shader-worker bootstrap key as an operator override", () => {
+      // A real CLI run reaches this point with the key already set by cli.ts's bootstrap;
+      // no test in this file goes through that bootstrap, so set it here.
+      process.env.HF_SHADER_WORKER_ENTRY = "/some/dist/shaderTransitionWorker.js";
+      const plan = createRenderPlan({ dir: projectDir });
+      expect(plan.hfEnvOverrides).not.toContain("HF_SHADER_WORKER_ENTRY");
     });
   });
 });

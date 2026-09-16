@@ -187,6 +187,12 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
   };
 }
 
+/** The direct drawElement-sourced value when render.ts's own path resolved one, else the
+ * observability-capture fallback studioRenderTelemetry.ts's path resolves instead. */
+function directOrCapture<T>(direct: T | undefined, capture: T | undefined): T | undefined {
+  return direct ?? capture;
+}
+
 /** Output-shape request facts, resolved before the pipeline starts, shared by render_complete/render_error. */
 export interface RenderOutputShapeTelemetryPayload {
   /** Named canvas preset from `--resolution`; undefined when rendering at the composition's native dimensions. */
@@ -427,10 +433,10 @@ export function trackRenderComplete(
   trackEvent(
     "render_complete",
     {
-      // Spread first: explicit de_* keys below (sourced from the more
-      // authoritative perfSummary.drawElement, always present on this
-      // success path) must win over the observability-capture fallback
-      // this shares with trackRenderError's failure path.
+      // Spread first: fields below wrapped in directOrCapture() prefer
+      // perfSummary.drawElement, present only on the CLI's own render.ts path.
+      // studioRenderTelemetry.ts never populates drawElement, so without the
+      // fallback the explicit key still wins the spread with an undefined.
       ...renderObservabilityEventProperties(props),
       duration_ms: props.durationMs,
       fps: props.fps,
@@ -460,37 +466,70 @@ export function trackRenderComplete(
       de_capture_mode: props.deCaptureMode,
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
-      de_worker_inversion: props.deWorkerInversion,
-      de_pre_inversion_workers: props.dePreInversionWorkers,
-      composition_element_count: props.compositionElementCount,
-      composition_element_count_source: props.compositionElementCountSource,
-      composition_element_tags: props.compositionElementTags,
-      aroll_video_count: props.arollVideoCount,
-      heygen_video_count: props.heygenVideoCount,
-      adapters_used: props.adaptersUsed,
-      audio_count: props.audioCount,
-      image_count: props.imageCount,
-      sub_composition_count: props.subCompositionCount,
-      audio_group_count: props.audioGroupCount,
-      color_grading_count: props.colorGradingCount,
-      has_lut: props.hasLut,
-      root_body_mismatch: props.rootBodyMismatch,
-      root_body_delta_px_bucket: props.rootBodyDeltaPxBucket,
-      de_short_band: props.deShortBand,
-      de_parallel_router: props.deParallelRouter,
-      de_pre_router_workers: props.dePreRouterWorkers,
+      de_worker_inversion: directOrCapture(props.deWorkerInversion, props.captureDeWorkerInversion),
+      de_pre_inversion_workers: directOrCapture(
+        props.dePreInversionWorkers,
+        props.captureDePreInversionWorkers,
+      ),
+      composition_element_count: directOrCapture(
+        props.compositionElementCount,
+        props.captureCompositionElementCount,
+      ),
+      composition_element_count_source: directOrCapture(
+        props.compositionElementCountSource,
+        props.captureCompositionElementCountSource,
+      ),
+      composition_element_tags: directOrCapture(
+        props.compositionElementTags,
+        props.captureCompositionElementTags,
+      ),
+      aroll_video_count: directOrCapture(props.arollVideoCount, props.captureArollVideoCount),
+      heygen_video_count: directOrCapture(props.heygenVideoCount, props.captureHeygenVideoCount),
+      adapters_used: directOrCapture(props.adaptersUsed, props.captureAdaptersUsed),
+      audio_count: directOrCapture(props.audioCount, props.captureAudioCount),
+      image_count: directOrCapture(props.imageCount, props.captureImageCount),
+      sub_composition_count: directOrCapture(
+        props.subCompositionCount,
+        props.captureSubCompositionCount,
+      ),
+      audio_group_count: directOrCapture(props.audioGroupCount, props.captureAudioGroupCount),
+      color_grading_count: directOrCapture(props.colorGradingCount, props.captureColorGradingCount),
+      has_lut: directOrCapture(props.hasLut, props.captureHasLut),
+      root_body_mismatch: directOrCapture(props.rootBodyMismatch, props.captureRootBodyMismatch),
+      root_body_delta_px_bucket: directOrCapture(
+        props.rootBodyDeltaPxBucket,
+        props.captureRootBodyDeltaPxBucket,
+      ),
+      de_short_band: directOrCapture(props.deShortBand, props.captureDeShortBand),
+      de_parallel_router: directOrCapture(props.deParallelRouter, props.captureDeParallelRouter),
+      de_pre_router_workers: directOrCapture(
+        props.dePreRouterWorkers,
+        props.captureDePreRouterWorkers,
+      ),
       de_gate_reason: props.deGateReason,
-      gpu_renderer: props.gpuRenderer,
+      gpu_renderer: directOrCapture(props.gpuRenderer, props.captureDeGpuRenderer),
       de_worker_encode: props.deWorkerEncode,
       de_verify_armed: props.deVerifyArmed,
       de_verify_checked: props.deVerifyChecked,
       de_verify_min_db: props.deVerifyMinDb,
       de_verify_init_ms: props.deVerifyInitMs,
-      de_self_verify_fallback: props.deSelfVerifyFallback,
-      de_fallback_reason: props.deFallbackReason,
-      de_fallback_failed_db: props.deFallbackFailedDb,
-      de_fallback_frame_index: props.deFallbackFrameIndex,
-      de_fallback_threshold_db: props.deFallbackThresholdDb,
+      de_self_verify_fallback: directOrCapture(
+        props.deSelfVerifyFallback,
+        props.captureDeSelfVerifyFallback,
+      ),
+      de_fallback_reason: directOrCapture(props.deFallbackReason, props.captureDeFallbackReason),
+      de_fallback_failed_db: directOrCapture(
+        props.deFallbackFailedDb,
+        props.captureDeFallbackFailedDb,
+      ),
+      de_fallback_frame_index: directOrCapture(
+        props.deFallbackFrameIndex,
+        props.captureDeFallbackFrameIndex,
+      ),
+      de_fallback_threshold_db: directOrCapture(
+        props.deFallbackThresholdDb,
+        props.captureDeFallbackThresholdDb,
+      ),
       de_blank_suspects: props.deBlankSuspects,
       de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
       de_blank_recaptures: props.deBlankRecaptures,

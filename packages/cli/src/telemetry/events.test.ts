@@ -560,6 +560,46 @@ describe("render telemetry events", () => {
     expect(props.has_lut).toBe(false);
   });
 
+  // emitStudioRenderComplete never resolves perfSummary.drawElement, only the
+  // observability capture fields (captureAudioCount/captureRootBodyMismatch/etc),
+  // so these must fall back to the capture value or a studio render reports none
+  // of them despite having computed and sent it.
+  it("falls back to the observability capture value for a studio render, which never resolves the direct field", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      source: "studio",
+      captureAudioCount: 2,
+      captureImageCount: 1,
+      captureRootBodyMismatch: true,
+      captureRootBodyDeltaPxBucket: "11-50",
+      captureAdaptersUsed: ["gsap"],
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.audio_count).toBe(2);
+    expect(props.image_count).toBe(1);
+    expect(props.root_body_mismatch).toBe(true);
+    expect(props.root_body_delta_px_bucket).toBe("11-50");
+    expect(props.adapters_used).toEqual(["gsap"]);
+  });
+
+  it("prefers the direct drawElement-sourced value over the capture fallback when both are present", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      audioCount: 3,
+      captureAudioCount: 99,
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.audio_count).toBe(3);
+  });
+
   it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
     trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
     expect(flush).toHaveBeenCalledTimes(1);

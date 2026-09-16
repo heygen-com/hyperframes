@@ -187,12 +187,18 @@ function positiveInteger(raw: string, title: string, message: string, min = 1): 
 const HF_ENV_OVERRIDE_RE = /^(HF|HYPERFRAMES)_/;
 const MAX_REPORTED_ENV_OVERRIDES = 20;
 
+/** HF_-prefixed keys the CLI sets for itself during bootstrap rather than keys an operator
+ * set to steer a render: cli.ts points shaderTransitionWorkerPool at the worker bundled
+ * next to cli.js, so that key is present on essentially every built-CLI run and says
+ * nothing about how this render was configured. */
+const CLI_INTERNAL_HF_ENV_KEYS = new Set(["HF_SHADER_WORKER_ENTRY"]);
+
 /** Names (never values — could hold paths or secrets) of HF_-/HYPERFRAMES_-prefixed env vars
  * present when this plan resolves — before this render's own preflight injects its ffmpeg/
  * ffprobe path overrides, which would otherwise always read back as operator-set. */
 function resolveHfEnvOverrides(): readonly string[] {
   return Object.keys(process.env)
-    .filter((name) => HF_ENV_OVERRIDE_RE.test(name))
+    .filter((name) => HF_ENV_OVERRIDE_RE.test(name) && !CLI_INTERNAL_HF_ENV_KEYS.has(name))
     .sort()
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
 }
