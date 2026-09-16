@@ -517,6 +517,8 @@ export interface RenderPerfSummary {
     compositionElementTags?: Readonly<Record<string, number>>;
     /** `<video data-aroll="true">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
     arollVideoCount?: number;
+    /** `<video data-media-source="heygen">` elements from the same static scan. Only set when compositionElementCountSource is "static". */
+    heygenVideoCount?: number;
     /** Short-comp band attribution: "applied" | "skipped_elements" | "unmeasured"; unset when the frame count made the band irrelevant. */
     shortBand?: "applied" | "skipped_elements" | "unmeasured";
     /** DE parallel-router outcome: "routed" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". Mutually exclusive with workerInversion. */
@@ -1406,6 +1408,7 @@ export interface ElementTagScan {
   total: number;
   byTag: Readonly<Record<string, number>>;
   arollVideoCount: number;
+  heygenVideoCount: number;
 }
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
@@ -1441,7 +1444,7 @@ const MAX_REPORTED_ELEMENT_TAGS = 50;
  * literal closing marker (`</`, a void name at a word boundary, or `/>`), so
  * ordinary JS comparisons and divisions don't qualify — verified by test.
  *
- * `byTag`/`arollVideoCount` derive from the SAME matched set and the SAME
+ * `byTag`/`arollVideoCount`/`heygenVideoCount` derive from the SAME matched set and the SAME
  * script/style-stripped markup as `total` — one scan feeds every property
  * this function returns, so none of them can drift apart from each other.
  *
@@ -1501,7 +1504,13 @@ export function scanElementTags(html: string): ElementTagScan {
   // this codebase's fixtures stamps it on video elements.
   const arollVideoCount =
     markup.match(/<video\b[^>]*\bdata-aroll=["']true["'][^>]*>/gi)?.length ?? 0;
-  return { total, byTag, arollVideoCount };
+  // `data-media-source="heygen"` is the media-use skill's own provenance
+  // stamp (see resolve.md), written only when the mounted video's ledger
+  // record traces to the "heygen.video" provider — never any other provider
+  // or value, so a plain presence check is exact, not a substring guess.
+  const heygenVideoCount =
+    markup.match(/<video\b[^>]*\bdata-media-source=["']heygen["'][^>]*>/gi)?.length ?? 0;
+  return { total, byTag, arollVideoCount, heygenVideoCount };
 }
 
 /**
@@ -1534,6 +1543,7 @@ export async function resolveCompositionElementCount(
   source: "live" | "static";
   byTag?: Readonly<Record<string, number>>;
   arollVideoCount?: number;
+  heygenVideoCount?: number;
 }> {
   if (probeSession?.isInitialized) {
     try {
@@ -1551,14 +1561,16 @@ export async function resolveCompositionElementCount(
       // render on a routing-gate measurement.
     }
   }
-  // byTag/arollVideoCount are static-only: the live path measures a real DOM
-  // node count and never runs this string scan, so it has nothing to report.
+  // byTag/arollVideoCount/heygenVideoCount are static-only: the live path
+  // measures a real DOM node count and never runs this string scan, so it
+  // has nothing to report.
   const scan = scanElementTags(html);
   return {
     count: scan.total,
     source: "static",
     byTag: scan.byTag,
     arollVideoCount: scan.arollVideoCount,
+    heygenVideoCount: scan.heygenVideoCount,
   };
 }
 
@@ -2997,6 +3009,7 @@ async function executeRenderPipeline(input: {
       source: compositionElementCountSource,
       byTag: compositionElementTags,
       arollVideoCount,
+      heygenVideoCount,
     } = await resolveCompositionElementCount(probeSession, compiled.html);
     // HF_DE_SHORT_MAX_ELEMENTS=0 is the documented kill switch (symmetric
     // with HF_DE_SHORT_MIN_FRAMES=0, which disables via the predicate's own
@@ -3342,6 +3355,7 @@ async function executeRenderPipeline(input: {
       compositionElementCountSource,
       compositionElementTags,
       arollVideoCount,
+      heygenVideoCount,
       deShortBand,
       // Same rationale as the counters above: carried on live capture
       // observability, not only the success-path perfSummary, so a crash /
@@ -4254,6 +4268,7 @@ async function executeRenderPipeline(input: {
         compositionElementCountSource,
         compositionElementTags,
         arollVideoCount,
+        heygenVideoCount,
         shortBand: deShortBand,
         parallelRouter: deParallelRouter,
         preRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,

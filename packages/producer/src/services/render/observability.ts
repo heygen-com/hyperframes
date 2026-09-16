@@ -111,6 +111,13 @@ export interface RenderCaptureObservability {
    */
   arollVideoCount?: number;
   /**
+   * `<video data-media-source="heygen">` elements from the same static scan
+   * as `compositionElementTags` — the media-use skill stamps this attribute
+   * only when the mounted video's ledger record traces to the "heygen.video"
+   * provider. Only set when `compositionElementCountSource` is "static".
+   */
+  heygenVideoCount?: number;
+  /**
    * Short-comp band decision, emitted only when the band is DECISIVE — every
    * other inversion-eligibility condition passed and only the floor (250 vs
    * 900) differed. "applied": the element count cleared the ceiling too, so

@@ -94,6 +94,8 @@ export interface DrawElementPerfInput {
   compositionElementTags?: Readonly<Record<string, number>>;
   /** `<video data-aroll="true">` count from the same static scan; only set when compositionElementCountSource is "static". */
   arollVideoCount?: number;
+  /** `<video data-media-source="heygen">` count from the same static scan; only set when compositionElementCountSource is "static". */
+  heygenVideoCount?: number;
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -141,6 +143,7 @@ function aggregateDrawElement(
     compositionElementCountSource: de.compositionElementCountSource,
     compositionElementTags: de.compositionElementTags,
     arollVideoCount: de.arollVideoCount,
+    heygenVideoCount: de.heygenVideoCount,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,
